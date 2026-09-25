@@ -97,12 +97,14 @@ test('route manifest honors navigation order visibility nesting deletion and cus
 test('template route can be renamed by tombstoning the old path and publishing the new path',async()=>{
   const value=document();
   value.pages['/services']={navigation:{isDeleted:true},elements:{},sectionOrder:{},extras:[]};
-  value.pages['/work']={title:'Our work',navigation:{label:'Our work',showInNavigation:true,order:5},elements:{},sectionOrder:{},extras:[{id:'work-section',type:'section',sectionId:'home.root',style:{}},{id:'work-text',type:'text',sectionId:'extra:work-section',text:'Renamed services content',style:{}}]};
+  value.pages['/work']={title:'Our work',templatePath:'/services',navigation:{label:'Our work',showInNavigation:true,order:5},elements:{},sectionOrder:{},extras:[{id:'work-text',type:'text',sectionId:'services.section.1',text:'Renamed services content',style:{}}]};
   const result=await compileBusiness({business,document:value});
   assert.equal(result.pages['/services'],undefined);
   assert.ok(result.pages['/work']);
   assert.equal(result.manifest.some(page=>page.route==='/services'),false);
   assert.equal(result.manifest.some(page=>page.route==='/work'),true);
+  const work=parseHTML(result.pages['/work'].html).document;
+  assert.ok(work.querySelector('.card-grid'));
   assert.match(result.pages['/work'].html,/Renamed services content/);
 });
 
