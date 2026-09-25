@@ -707,37 +707,57 @@ jobs:
           }
 
           if ! python3 - <<'PYCUSTOM'
-          import http.client, json, os, ssl
+          import http.client, json, os, ssl, time
           host=os.environ['WEBSITE_ROUTING_CANARY']
-          conn=http.client.HTTPSConnection(host,443,timeout=30,context=ssl.create_default_context())
-          try:
-              conn.request('GET','/.well-known/legend-website',headers={'User-Agent':'LEGEND-worker-release-proof/1.0','Cache-Control':'no-cache','Accept':'application/json'})
-              response=conn.getresponse()
-              body=response.read(4097)
-              print(host,response.status,len(body))
-              if response.status != 200 or len(body) > 4096:
-                  raise SystemExit(f'Custom-domain routing proof failed: HTTP {response.status}')
-              receipt=json.loads(body)
-              for key in ('businessId','bindingId'):
-                  value=receipt.get(key)
-                  if not isinstance(value,str) or len(value) < 32:
-                      raise SystemExit(f'Custom-domain routing proof missing {key}')
-          finally:
-              conn.close()
+          context=ssl.create_default_context()
 
-          conn=http.client.HTTPSConnection(host,443,timeout=30,context=ssl.create_default_context())
-          try:
-              conn.request('GET','/store',headers={'User-Agent':'LEGEND-commerce-domain-proof/1.0','Cache-Control':'no-cache'})
-              response=conn.getresponse()
-              body=response.read(4097)
-              location=response.getheader('Location')
-              print(host,'/store',response.status,len(body),location or '')
-              if response.status != 200:
-                  raise SystemExit(f'Custom-domain store proof failed: HTTP {response.status}')
-              if location:
-                  raise SystemExit('Custom-domain store must not redirect away from the registered domain')
-          finally:
-              conn.close()
+          def request(path, accept=None):
+              conn=http.client.HTTPSConnection(host,443,timeout=20,context=context)
+              try:
+                  headers={'User-Agent':'LEGEND-commerce-domain-proof/1.0','Cache-Control':'no-cache'}
+                  if accept: headers['Accept']=accept
+                  conn.request('GET',path,headers=headers)
+                  response=conn.getresponse()
+                  body=response.read(4097)
+                  return response.status, body, response.getheader('Location')
+              finally:
+                  conn.close()
+
+          binding_ok=False
+          store_ok=False
+          last_binding=None
+          last_store=None
+          for attempt in range(1,9):
+              try:
+                  status,body,location=request('/.well-known/legend-website','application/json')
+                  last_binding=(status,len(body),location)
+                  print(host,'binding',attempt,status,len(body),location or '')
+                  if status==200 and len(body)<=4096 and not location:
+                      receipt=json.loads(body)
+                      if all(isinstance(receipt.get(key),str) and len(receipt.get(key))>=32 for key in ('businessId','bindingId')):
+                          binding_ok=True
+              except Exception as error:
+                  last_binding=(type(error).__name__,0,None)
+                  print(host,'binding',attempt,type(error).__name__)
+
+              try:
+                  status,body,location=request('/store')
+                  last_store=(status,len(body),location)
+                  print(host,'/store',attempt,status,len(body),location or '')
+                  store_ok=status==200 and not location
+              except Exception as error:
+                  last_store=(type(error).__name__,0,None)
+                  print(host,'/store',attempt,type(error).__name__)
+                  store_ok=False
+
+              if binding_ok and store_ok:
+                  break
+              time.sleep(5)
+
+          if not binding_ok:
+              raise SystemExit(f'Custom-domain routing proof did not stabilize: {last_binding}')
+          if not store_ok:
+              raise SystemExit(f'Custom-domain store proof did not stabilize: {last_store}')
           PYCUSTOM
           then
             restore_router
