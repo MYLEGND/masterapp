@@ -35,11 +35,19 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // migration-gated adoption of the platform Blob+Key Vault ring is a deployment step.
 Shared.Security.PlatformConfigValidation.ValidateDataProtection(
     builder.Configuration, builder.Environment.IsProduction());
+
+var appServiceHome = Environment.GetEnvironmentVariable("HOME");
+var parfaitDataProtectionKeysDirectory =
+    builder.Environment.IsProduction() && !string.IsNullOrWhiteSpace(appServiceHome)
+        ? Path.Combine(appServiceHome, "data", "DataProtection", "ParfaitApp")
+        : Path.Combine(builder.Environment.ContentRootPath, "App_Data", "keys");
+
 Infrastructure.Security.PlatformDataProtection.AddPlatformDataProtection(
     builder.Services,
     builder.Configuration,
     builder.Environment,
-    "ParfaitApp");
+    "ParfaitApp",
+    parfaitDataProtectionKeysDirectory);
 
 // Rate limiting (was absent). Opt-in named policies from the shared authority;
 // applied to the public analytics ingest endpoint.
