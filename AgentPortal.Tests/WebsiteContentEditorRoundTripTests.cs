@@ -351,8 +351,12 @@ public sealed class WebsiteContentEditorRoundTripTests
         fixture.Db.ChangeTracker.Clear();
         var manage = Assert.IsType<OkObjectResult>(await fixture.CreateController().Manage(ticket));
         var json = JsonSerializer.SerializeToElement(manage.Value, JsonOptions);
-        var projection = Assert.Single(json.GetProperty("collections").EnumerateArray());
-        Assert.Equal("products", projection.GetProperty("id").GetString());
+        var projections = json.GetProperty("collections").EnumerateArray().ToArray();
+        var projection = Assert.Single(
+            projections.Where(value => value.GetProperty("id").GetString() == "commerce_products"));
+        Assert.Contains(
+            projections,
+            value => value.GetProperty("id").GetString() == "business_facts");
         Assert.True(projection.GetProperty("isList").GetBoolean());
         var item = Assert.Single(projection.GetProperty("items").EnumerateArray());
         Assert.Equal("own-active", item.GetProperty("key").GetString());
