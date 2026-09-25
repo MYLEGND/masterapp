@@ -23,7 +23,7 @@ public sealed class WebsiteEditorTicketAuthorityIsolationTests
     [Fact]
     public void Protect_IsTheBusinessWebsiteTicketMintingAuthority()
     {
-        var protect = File.ReadAllText(Source("Protect-Website", "Controllers", "WebsiteContentController.cs"));
+        var protect = File.ReadAllText(Source("Protect-Website", "Controllers", "WebsitePlatformController.cs"));
 
         Assert.Contains("[HttpPost(\"handoff\")]", protect, StringComparison.Ordinal);
         Assert.Contains("WebsiteBusinessAccess.CanManageAsActorAsync", protect, StringComparison.Ordinal);
@@ -48,7 +48,7 @@ public sealed class WebsiteEditorTicketAuthorityIsolationTests
         var portal = File.ReadAllText(Source("AgentPortal", "Views", "Shared", "_Layout.cshtml"));
         var workspace = File.ReadAllText(Source("AgentPortal", "Views", "Shared", "_ClientWorkspaceLayout.cshtml"));
         var client = File.ReadAllText(Source("ClientApp", "Views", "Shared", "_Layout.cshtml"));
-        var controller = File.ReadAllText(Source("Protect-Website", "Controllers", "WebsiteContentController.cs"));
+        var controller = File.ReadAllText(Source("Protect-Website", "Controllers", "WebsitePlatformController.cs"));
 
         Assert.Contains("WebsiteFaviconParity.PublicUrl", portal, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorSiteKeys.Protect", portal, StringComparison.Ordinal);
