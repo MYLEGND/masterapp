@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.Text.Json;
 using System.Net;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -27,6 +29,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
     private readonly IWebsiteLifeLeadCaptureService _capture;
     private readonly WebsiteIntakeRecipientResolver _recipients;
     private readonly IProtectEmailSender _emailSender;
+    private static readonly JsonSerializerOptions WebsiteJsonOptions = new(JsonSerializerDefaults.Web);
 
     public WebsiteInquiriesController(
         MasterAppDbContext db,
@@ -44,6 +47,28 @@ public sealed class WebsiteInquiriesController : ControllerBase
         _capture = capture;
         _recipients = recipients;
         _emailSender = emailSender;
+    }
+
+    public interface IPublicWebsiteSubmission
+    {
+        Guid SubmissionId { get; }
+        string SourcePath { get; }
+        bool Consent { get; }
+        string? SourceActionKey { get; }
+        string? SessionId { get; }
+        string? VisitorId { get; }
+        string? UtmSource { get; }
+        string? UtmMedium { get; }
+        string? UtmCampaign { get; }
+        string? UtmId { get; }
+        string? UtmTerm { get; }
+        string? UtmContent { get; }
+        string? Fbclid { get; }
+        string? Fbp { get; }
+        string? Fbc { get; }
+        string? MetaCampaignId { get; }
+        string? MetaAdSetId { get; }
+        string? MetaAdId { get; }
     }
 
     public sealed record PublicRequest(
@@ -69,7 +94,29 @@ public sealed class WebsiteInquiriesController : ControllerBase
         string? Fbc = null,
         string? MetaCampaignId = null,
         string? MetaAdSetId = null,
-        string? MetaAdId = null);
+        string? MetaAdId = null) : IPublicWebsiteSubmission;
+
+    public sealed record CustomFormRequest(
+        Guid SubmissionId,
+        string FormDefinitionId,
+        Dictionary<string, string?> Fields,
+        string SourcePath,
+        bool Consent,
+        string? SourceActionKey = null,
+        string? SessionId = null,
+        string? VisitorId = null,
+        string? UtmSource = null,
+        string? UtmMedium = null,
+        string? UtmCampaign = null,
+        string? UtmId = null,
+        string? UtmTerm = null,
+        string? UtmContent = null,
+        string? Fbclid = null,
+        string? Fbp = null,
+        string? Fbc = null,
+        string? MetaCampaignId = null,
+        string? MetaAdSetId = null,
+        string? MetaAdId = null) : IPublicWebsiteSubmission;
 
     [HttpPost("public")]
     [RequestSizeLimit(32768)]
@@ -79,7 +126,8 @@ public sealed class WebsiteInquiriesController : ControllerBase
         if (!PublicWebsiteRuntimeScopeResolver.HasValidPublicOrigin(HttpContext))
             return BadRequest(new { error = "verified_website_origin_required" });
 
-        var scope = await _publicScopes.ResolveInquiryAsync(HttpContext, cancellationToken);
+        var path = request.SourcePath?.Trim() ?? "/";
+        var scope = await _publicScopes.ResolveInquiryAsync(HttpContext, path, cancellationToken);
         if (scope is null)
             return NotFound(new { error = "published_website_required" });
 
@@ -88,7 +136,6 @@ public sealed class WebsiteInquiriesController : ControllerBase
         var phone = request.Phone?.Trim() ?? "";
         var email = request.Email?.Trim() ?? "";
         var message = request.Message?.Trim() ?? "";
-        var path = request.SourcePath?.Trim() ?? "/";
         var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
 
         if (request.SubmissionId == Guid.Empty || !request.Consent ||
@@ -112,8 +159,8 @@ public sealed class WebsiteInquiriesController : ControllerBase
         {
             WebsiteEditorSiteKeys.Business when scope.CommerceBusinessId.HasValue && scope.PublishedVersion is not null =>
                 await SubmitBusinessAsync(scope, request, lead, firstName, lastName, phone, email, message, path, cancellationToken),
-            WebsiteEditorSiteKeys.Legend =>
-                await SubmitFounderAsync(scope, request, lead, firstName, lastName, phone, email, message, path, cancellationToken),
+            WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Protect =>
+                await SubmitOwnerAsync(scope, request, lead, firstName, lastName, phone, email, message, path, cancellationToken),
             _ => NotFound(new { error = "published_website_required" })
         };
     }
