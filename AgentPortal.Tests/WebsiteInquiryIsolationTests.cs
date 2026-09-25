@@ -373,7 +373,12 @@ public sealed class WebsiteInquiryIsolationTests
             Db.Add(new WebsiteDomainBinding { CommerceBusinessId = BusinessId, Hostname = "business.example", Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
             var state = new WebsiteContentState { OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(BusinessId), SiteKey = WebsiteEditorSiteKeys.Business, PublishedVersionId = VersionId };
             Db.Add(state);
-            Db.Add(new WebsiteContentVersion { Id = VersionId, StateId = state.Id });
+            Db.Add(new WebsiteContentVersion
+            {
+                Id = VersionId,
+                StateId = state.Id,
+                CompiledPagesJson = "{\"pages\":{\"/\":{\"html\":\"published\"},\"/contact\":{\"html\":\"published\"}}}"
+            });
             await Db.SaveChangesAsync();
         }
         public string Ticket(ClientProfile profile) => _tickets.Protect(new WebsiteEditorTicket(
