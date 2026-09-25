@@ -948,16 +948,18 @@
       const parentRect = parent.getBoundingClientRect();
       const override = selectedOverride();
       if (!override) return;
-      override.style ||= {};
+      const resolvedStyle = resolvedVariant(override).style || {};
+      const variant = editableVariant(override);
+      variant.style ||= {};
       checkpoint();
       directGesture = {
         mode, target: selected, section, parent,
         startX: event.clientX, startY: event.clientY,
         selectedRect, sectionRect, parentRect,
-        startWidthPercent: positiveNumber(override.style.widthPercent) ? Number(override.style.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
-        startHeightPx: positiveNumber(override.style.heightPx) ? Number(override.style.heightPx) : Math.max(selectedRect.height, 24),
-        startOffsetXPercent: Number.isFinite(Number(override.style.offsetXPercent)) ? Number(override.style.offsetXPercent) : 0,
-        startOffsetYPx: Number.isFinite(Number(override.style.offsetYPx)) ? Number(override.style.offsetYPx) : 0,
+        startWidthPercent: positiveNumber(resolvedStyle.widthPercent) ? Number(resolvedStyle.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
+        startHeightPx: positiveNumber(resolvedStyle.heightPx) ? Number(resolvedStyle.heightPx) : Math.max(selectedRect.height, 24),
+        startOffsetXPercent: Number.isFinite(Number(resolvedStyle.offsetXPercent)) ? Number(resolvedStyle.offsetXPercent) : 0,
+        startOffsetYPx: Number.isFinite(Number(resolvedStyle.offsetYPx)) ? Number(resolvedStyle.offsetYPx) : 0,
         changed: false
       };
       gridOverlay.hidden = false;
@@ -976,8 +978,9 @@
       const dy = event.clientY - gesture.startY;
       const override = selectedOverride();
       if (!override) return;
-      override.style ||= {};
-      const style = override.style;
+      const variant = editableVariant(override);
+      variant.style ||= {};
+      const style = variant.style;
       const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
       const parentWidth = gesture.parentRect.width || sectionWidth || 1;
       const cell = sectionWidth / 12;
@@ -1018,7 +1021,7 @@
         }
       }
       gesture.changed = true;
-      applyStyle(selected, style);
+      applyElementOverride(selected, override);
       updateDirectCanvasUi();
       event.preventDefault();
     }, { passive: false });
@@ -1075,6 +1078,10 @@
     if (codeGroup) codeGroup.hidden = !isCode;
 
     const ov = extra || pageState().elements[selected.dataset.cmsId] || {};
+    const variant = editableVariant(ov, false);
+    const resolved = resolvedVariant(ov);
+    const variantStyle = variant?.style || {};
+    const resolvedStyle = resolved.style || {};
     const computed = getComputedStyle(selected);
     const parentStyle = selected.parentElement ? getComputedStyle(selected.parentElement) : null;
     const parentWidth = selected.parentElement
@@ -1099,23 +1106,30 @@
       removeButton.textContent = `Delete ${kind}`;
       removeButton.disabled = false;
     }
-    if (scale) scale.value = String(ov.style?.fontScale ?? 1);
-    if (width) width.value = displayNumber(ov.style?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
-    if (height) height.value = ov.style?.heightPx != null ? displayNumber(ov.style.heightPx) : '';
-    if (top) top.value = displayNumber(ov.style?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
-    if (bottom) bottom.value = displayNumber(ov.style?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
-    if (offsetX) offsetX.value = displayNumber(ov.style?.offsetXPercent ?? 0);
-    if (offsetY) offsetY.value = displayNumber(ov.style?.offsetYPx ?? 0);
-    if (align) align.value = ov.style?.textAlign ?? computed.textAlign ?? '';
+    if (scale) scale.value = String(variantStyle.fontScale ?? resolvedStyle.fontScale ?? 1);
+    if (width) width.value = displayNumber(variantStyle.widthPercent ?? resolvedStyle.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
+    if (height) height.value = variantStyle.heightPx != null ? displayNumber(variantStyle.heightPx) : resolvedStyle.heightPx != null ? displayNumber(resolvedStyle.heightPx) : '';
+    if (top) top.value = displayNumber(variantStyle.paddingTop ?? resolvedStyle.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
+    if (bottom) bottom.value = displayNumber(variantStyle.paddingBottom ?? resolvedStyle.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
+    if (offsetX) offsetX.value = displayNumber(variantStyle.offsetXPercent ?? resolvedStyle.offsetXPercent ?? 0);
+    if (offsetY) offsetY.value = displayNumber(variantStyle.offsetYPx ?? resolvedStyle.offsetYPx ?? 0);
+    if (align) align.value = variantStyle.textAlign ?? resolvedStyle.textAlign ?? computed.textAlign ?? '';
     if (scale) scale.disabled = isImage || isCode;
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
-    document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(ov.style?.[key] || computed[key]) : ov.style?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
-    document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(ov.style?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
+    document.querySelectorAll('[data-style-key]').forEach(input => {
+      const key = input.dataset.styleKey;
+      const value = variantStyle[key] ?? resolvedStyle[key];
+      input.value = ['color','backgroundColor'].includes(key) ? colorHex(value || computed[key]) : value ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || '');
+    });
+    document.querySelectorAll('[data-color-hex]').forEach(input => {
+      const key = input.dataset.colorHex;
+      input.value = colorHex(variantStyle[key] ?? resolvedStyle[key] ?? computed[key]);
+    });
     const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A';
     if (selected.tagName === 'A') syncCtaControls(ov, values.href);
     const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
-    if (hidden) hidden.checked = ov.hidden === true || selected.hidden;
+    if (hidden) hidden.checked = (variant?.hidden ?? resolved.hidden) === true;
   }
 
   function updateSelectedFromControls(event) {
@@ -1145,20 +1159,20 @@
     checkpoint();
     const ov = selectedOverride();
     if (!ov) return;
+    const variant = editableVariant(ov);
     if (control.id === 'legend-cms-hidden') {
-      ov.hidden = control.checked;
-      selected.hidden = control.checked;
+      variant.hidden = control.checked;
     } else {
-      ov.style ||= {};
+      variant.style ||= {};
       if (field) {
-        if (control.value === '') delete ov.style[field];
-        else ov.style[field] = Number(control.value);
+        if (control.value === '') delete variant.style[field];
+        else variant.style[field] = Number(control.value);
       } else if (control.id === 'legend-cms-align') {
-        if (control.value) ov.style.textAlign = control.value;
-        else delete ov.style.textAlign;
+        if (control.value) variant.style.textAlign = control.value;
+        else delete variant.style.textAlign;
       } else return;
-      applyStyle(selected, ov.style);
     }
+    applyElementOverride(selected, ov);
     updateDirectCanvasUi();
     markDirty();
   }
