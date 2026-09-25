@@ -15,6 +15,7 @@ using Microsoft.Extensions.Configuration;
 using Moq;
 using ProtectWebsite.Controllers;
 using ProtectWebsite.Services.Communication;
+using Shared.Analytics;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -84,6 +85,92 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Null(analytics.AgentTrackingProfileId);
         Assert.IsType<ConflictObjectResult>(await f.Controller.Submit(request with { Message = "Different request" }, CancellationToken.None));
         Assert.IsType<ConflictObjectResult>(await f.Controller.Submit(request with { Phone = "(602) 555-0100" }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task BusinessInquiryImmediatelyUsesCurrentScopedRecipient_AndPublishedFormBindingControlsMetaEligibility()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+
+        var business = await f.Db.CommerceBusinesses.SingleAsync(x => x.Id == f.BusinessId);
+        business.OwnerEmail = "owner@example.org";
+        var profile = new ClientProfile
+        {
+            ClientUserId = Guid.NewGuid().ToString(),
+            Email = "owner@example.org"
+        };
+        var member = new CommerceBusinessMember
+        {
+            CommerceBusinessId = f.BusinessId,
+            ClientProfileId = profile.Id,
+            Email = profile.Email,
+            NormalizedEmail = profile.Email.ToUpperInvariant(),
+            DisplayName = "Owner"
+        };
+        f.Db.AddRange(profile, member);
+
+        var bindingId = Guid.NewGuid().ToString("N");
+        var document = new WebsiteContentDocument
+        {
+            Pages =
+            {
+                ["/contact"] = new WebsitePageDocument
+                {
+                    Extras =
+                    [
+                        new WebsiteExtraComponent
+                        {
+                            Id = "contact-form",
+                            SectionId = "contact",
+                            Type = "form",
+                            Signals =
+                            [
+                                new WebsiteSignalBinding
+                                {
+                                    Id = bindingId,
+                                    Trigger = "submission_saved",
+                                    EventName = "Lead",
+                                    DeliveryMode = "analytics"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        };
+        var version = await f.Db.Set<WebsiteContentVersion>().SingleAsync(x => x.Id == f.VersionId);
+        version.DocumentJson = System.Text.Json.JsonSerializer.Serialize(
+            document,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        version.CompiledPagesJson = "{\"pages\":{\"/contact\":{\"html\":\"published\"}}}";
+        await f.Db.SaveChangesAsync();
+
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.Submit(
+            f.Request() with { SourceFormElementId = "extra:contact-form" },
+            CancellationToken.None));
+        var resultJson = System.Text.Json.JsonSerializer.Serialize(result.Value);
+        Assert.Contains("\"notificationSent\":true", resultJson, StringComparison.OrdinalIgnoreCase);
+
+        var inquiry = Assert.Single(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+        Assert.Equal("Sent", inquiry.NotificationStatus);
+        Assert.NotNull(inquiry.NotificationSentUtc);
+
+        f.EmailSender.Verify(sender => sender.TrySendAsync(
+            "owner@example.org",
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            "visitor@example.org",
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(bindingId, analytics.WebsiteBindingId);
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(
+            analytics.MetadataJson,
+            "metaServerAuthorityEligible") == true);
     }
 
     [Fact]
