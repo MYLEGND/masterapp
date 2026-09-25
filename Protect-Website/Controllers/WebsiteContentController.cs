@@ -197,7 +197,7 @@ public sealed class WebsiteContentController : ControllerBase
         var actions = await BuildCallToActionCatalogAsync(
             scope.SiteKey,
             scope.OwnerKey,
-            agentSlug: null,
+            scope.AgentSlug,
             scope.CommerceBusinessId,
             facts,
             cancellationToken);
@@ -205,7 +205,9 @@ public sealed class WebsiteContentController : ControllerBase
         var metaResolver = HttpContext.RequestServices.GetRequiredService<ProtectWebsite.Services.Meta.IMetaPixelResolutionService>();
         var pixel = scope.CommerceBusinessId.HasValue
             ? await metaResolver.ResolveForBusinessAsync(scope.CommerceBusinessId.Value, cancellationToken)
-            : await metaResolver.ResolveForLeadAsync(null, null, isFounderPath: true, cancellationToken);
+            : scope.SiteKey == WebsiteEditorSiteKeys.Protect
+                ? await metaResolver.ResolveForLeadAsync(scope.AgentTrackingProfileId, scope.AgentSlug, isFounderPath: false, cancellationToken)
+                : await metaResolver.ResolveForLeadAsync(null, null, isFounderPath: true, cancellationToken);
         var metaOptions = HttpContext.RequestServices
             .GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions>>()
             .Value;
