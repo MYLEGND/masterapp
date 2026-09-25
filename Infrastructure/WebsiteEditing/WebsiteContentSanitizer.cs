@@ -4,6 +4,8 @@ public static class WebsiteContentSanitizer
 {
     private const int MaxElements = 600;
     private const int MaxExtras = 120;
+    private const int MaxReusableDefinitions = 40;
+    private const int MaxReusableComponents = 80;
     private const int MaxTextLength = 12000;
     private const int MaxCodeLength = 100000;
     private const int MaxImageDataUrlLength = 3500000;
@@ -16,6 +18,53 @@ public static class WebsiteContentSanitizer
             Breakpoints = SanitizeBreakpoints(source.Breakpoints)
         };
         var breakpointIds = clean.Breakpoints.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var pair in (source.ReusableComponents ?? new()).Take(MaxReusableDefinitions))
+        {
+            if (pair.Value is null) continue;
+            var id = SanitizeId(string.IsNullOrWhiteSpace(pair.Key) ? pair.Value.Id : pair.Key);
+            if (id.Length == 0 || clean.ReusableComponents.ContainsKey(id)) continue;
+
+            var definition = new WebsiteReusableComponentDefinition
+            {
+                Id = id,
+                Name = ClampText(pair.Value.Name) ?? "Reusable component",
+                Style = SanitizeStyle(pair.Value.Style),
+                Layout = SanitizeLayout(pair.Value.Layout),
+                Responsive = SanitizeResponsive(pair.Value.Responsive, breakpointIds),
+                UpdatedUtc = pair.Value.UpdatedUtc == default ? DateTime.UtcNow : pair.Value.UpdatedUtc
+            };
+
+            foreach (var component in (pair.Value.Components ?? new()).Take(MaxReusableComponents))
+            {
+                var cleanComponent = SanitizeExtra(component, breakpointIds, reusableDefinitionIds: null, allowReusable: false);
+                if (cleanComponent is null) continue;
+                cleanComponent.SectionId = "__reusable__";
+                definition.Components.Add(cleanComponent);
+            }
+
+            var definitionIds = definition.Components.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var component in definition.Components)
+            {
+                if (component.Placement is null) continue;
+                component.Placement.SectionId = "__reusable__";
+                if (!string.IsNullOrWhiteSpace(component.Placement.ContainerId))
+                {
+                    var container = component.Placement.ContainerId!;
+                    if (!container.StartsWith("extra:", StringComparison.Ordinal) ||
+                        !definitionIds.Contains(container["extra:".Length..]))
+                        component.Placement.ContainerId = null;
+                }
+                if (!string.IsNullOrWhiteSpace(component.Placement.BeforeId) &&
+                    !definitionIds.Contains(component.Placement.BeforeId!.StartsWith("extra:", StringComparison.Ordinal)
+                        ? component.Placement.BeforeId["extra:".Length..]
+                        : component.Placement.BeforeId))
+                    component.Placement.BeforeId = null;
+            }
+
+            clean.ReusableComponents[id] = definition;
+        }
+        var reusableDefinitionIds = clean.ReusableComponents.Keys.ToHashSet(StringComparer.Ordinal);
 
         foreach (var pair in (source.Elements ?? new()).Take(MaxElements))
         {
@@ -33,43 +82,91 @@ public static class WebsiteContentSanitizer
 
         foreach (var extra in (source.Extras ?? new()).Take(MaxExtras))
         {
-            if (extra is null) continue;
-            var id = SanitizeId(extra.Id);
-            var sectionId = SanitizeId(extra.SectionId);
-            var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || sectionId.Length == 0 || WebsiteComponentCatalog.Find(type) is null) continue;
-            clean.Extras.Add(new WebsiteExtraComponent
-            {
-                Id = id,
-                SectionId = sectionId,
-                Type = type,
-                EditorLocked = extra.EditorLocked,
-                EditorLabel = ClampText(extra.EditorLabel),
-                Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
-                Interactions = SanitizeInteractions(extra.Interactions),
-                ActionKey = SanitizeActionKey(extra.ActionKey),
-                Title = ClampContentText(extra.Title),
-                Text = type == "code" ? ClampCodeText(extra.Text) : ClampContentText(extra.Text),
-                Href = SanitizeUrl(extra.Href), Target = SanitizeTarget(extra.Target),
-                Alt = ClampText(extra.Alt), VideoUrl = SanitizeUrl(extra.VideoUrl, true),
-                Placement = SanitizePlacement(extra.Placement),
-                ImageDataUrl = type == "image" ? SanitizeImage(extra.ImageDataUrl) : null,
-                Style = SanitizeStyle(extra.Style),
-                Layout = SanitizeLayout(extra.Layout, WebsiteComponentCatalog.Find(type)?.LayoutModes),
-                Responsive = SanitizeResponsive(extra.Responsive, breakpointIds, WebsiteComponentCatalog.Find(type)?.LayoutModes)
-            });
+            var cleanExtra = SanitizeExtra(extra, breakpointIds, reusableDefinitionIds, allowReusable: true);
+            if (cleanExtra is not null) clean.Extras.Add(cleanExtra);
         }
 
         foreach (var page in (source.Pages ?? new()).Take(100))
         {
             var path = page.Key;
             if (page.Value is null || !path.StartsWith('/') || path.StartsWith("//") || path.Contains('?') || path.Contains('#') || path.Contains("..") || path.Length > 2048) continue;
-            var body = Sanitize(new WebsiteContentDocument { Elements = page.Value.Elements, SectionOrder = page.Value.SectionOrder, Extras = page.Value.Extras, Breakpoints = clean.Breakpoints });
-            clean.Pages[path] = new WebsitePageDocument { Title = ClampText(page.Value.Title), Description = ClampText(page.Value.Description), Elements = body.Elements, SectionOrder = body.SectionOrder, Extras = body.Extras };
+
+            var cleanPage = new WebsitePageDocument
+            {
+                Title = ClampText(page.Value.Title),
+                Description = ClampText(page.Value.Description)
+            };
+            foreach (var pair in (page.Value.Elements ?? new()).Take(MaxElements))
+            {
+                var id = SanitizeId(pair.Key);
+                if (id.Length == 0 || pair.Value is null) continue;
+                cleanPage.Elements[id] = SanitizeElement(pair.Value, breakpointIds);
+            }
+            foreach (var pair in (page.Value.SectionOrder ?? new()).Take(MaxElements))
+            {
+                var id = SanitizeId(pair.Key);
+                if (id.Length == 0) continue;
+                cleanPage.SectionOrder[id] = Math.Clamp(pair.Value, 0, MaxElements);
+            }
+            foreach (var extra in (page.Value.Extras ?? new()).Take(MaxExtras))
+            {
+                var cleanExtra = SanitizeExtra(extra, breakpointIds, reusableDefinitionIds, allowReusable: true);
+                if (cleanExtra is not null) cleanPage.Extras.Add(cleanExtra);
+            }
+            clean.Pages[path] = cleanPage;
         }
+
         clean.Theme = SanitizeTheme(source.Theme);
         clean.UpdatedUtc = source.UpdatedUtc;
         return clean;
+    }
+
+    private static WebsiteExtraComponent? SanitizeExtra(
+        WebsiteExtraComponent? extra,
+        HashSet<string> breakpointIds,
+        HashSet<string>? reusableDefinitionIds,
+        bool allowReusable)
+    {
+        if (extra is null) return null;
+        var id = SanitizeId(extra.Id);
+        var sectionId = SanitizeId(extra.SectionId);
+        var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
+        var capability = WebsiteComponentCatalog.Find(type);
+        if (id.Length == 0 || sectionId.Length == 0 || capability is null) return null;
+        if (type == "reusable" && !allowReusable) return null;
+
+        string? reusableDefinitionId = null;
+        if (type == "reusable")
+        {
+            reusableDefinitionId = SanitizeId(extra.ReusableDefinitionId);
+            if (reusableDefinitionId.Length == 0 || reusableDefinitionIds is null ||
+                !reusableDefinitionIds.Contains(reusableDefinitionId))
+                return null;
+        }
+
+        return new WebsiteExtraComponent
+        {
+            Id = id,
+            SectionId = sectionId,
+            Type = type,
+            ReusableDefinitionId = reusableDefinitionId,
+            EditorLocked = extra.EditorLocked,
+            EditorLabel = ClampText(extra.EditorLabel),
+            Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
+            Interactions = SanitizeInteractions(extra.Interactions),
+            ActionKey = SanitizeActionKey(extra.ActionKey),
+            Title = ClampContentText(extra.Title),
+            Text = type == "code" ? ClampCodeText(extra.Text) : ClampContentText(extra.Text),
+            Href = SanitizeUrl(extra.Href),
+            Target = SanitizeTarget(extra.Target),
+            Alt = ClampText(extra.Alt),
+            VideoUrl = SanitizeUrl(extra.VideoUrl, true),
+            Placement = SanitizePlacement(extra.Placement),
+            ImageDataUrl = type == "image" ? SanitizeImage(extra.ImageDataUrl) : null,
+            Style = SanitizeStyle(extra.Style),
+            Layout = SanitizeLayout(extra.Layout, capability.LayoutModes),
+            Responsive = SanitizeResponsive(extra.Responsive, breakpointIds, capability.LayoutModes)
+        };
     }
 
     private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source, HashSet<string> breakpointIds) => new()
