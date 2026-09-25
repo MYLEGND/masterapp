@@ -660,8 +660,20 @@
 
   function overrideForElement(el, create = true) {
     if (!el?.dataset?.cmsId) return null;
-    if (el.dataset.cmsExtraId) return pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
+    // An added composite block (for example a service card) owns its content,
+    // but each selectable child owns its own geometry/style. This keeps one
+    // canonical document store while allowing title/copy/etc. to move independently.
+    if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
+      return pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
     return create ? ensureOverride(el.dataset.cmsId) : pageState().elements[el.dataset.cmsId] || null;
+  }
+
+  function contentOverrideForElement(el, create = true) {
+    if (el?.dataset?.cmsExtraId) {
+      const extra = pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
+      if (extra) return extra;
+    }
+    return overrideForElement(el, create);
   }
 
   function isInlineEditable(el) {
@@ -681,7 +693,7 @@
       inlineEditCheckpointed = false;
       return;
     }
-    const override = overrideForElement(el, false);
+    const override = contentOverrideForElement(el, false);
     if (override) {
       const value = inlineTextValue(el);
       if (el.dataset.cmsExtraField === 'title') override.title = value;
@@ -710,7 +722,7 @@
     el.addEventListener('input', () => {
       if (!inlineEditCheckpointed) checkpoint();
       inlineEditCheckpointed = false;
-      const override = overrideForElement(el);
+      const override = contentOverrideForElement(el);
       if (!override) return;
       const value = inlineTextValue(el);
       if (el.dataset.cmsExtraField === 'title') override.title = value;
@@ -721,7 +733,7 @@
     });
     el.addEventListener('blur', () => {
       if (inlineEditNode !== el) return;
-      const override = overrideForElement(el, false);
+      const override = contentOverrideForElement(el, false);
       if (override) {
         const value = inlineTextValue(el);
         if (el.dataset.cmsExtraField === 'title') override.title = value;
@@ -1336,14 +1348,15 @@
     const description = document.querySelector('meta[name="description"]');
     if (description) description.setAttribute('content', metadata.description ?? originalDescription);
 
+    document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
+    pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
+    pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
+    // Composite children do not exist until their parent extra is rendered.
+    // Re-apply the one canonical page element map after extras exist.
     Object.entries(pageState().elements).forEach(([id, override]) => {
       const el = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
       applyElementOverride(el, override);
     });
-
-    document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
-    pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
-    pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
     applySectionOrder();
     Object.entries(pageState().elements).forEach(([id, ov]) => applyPlacement(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), ov.placement));
     pageState().extras.forEach(extra => applyPlacement(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra.placement));
@@ -1980,18 +1993,20 @@
       if (inlineHelp) inlineHelp.hidden = true;
       if (imageGroup) imageGroup.hidden = true;
       if (codeGroup) codeGroup.hidden = true;
+      const duplicateButton = document.getElementById('legend-cms-duplicate'); if (duplicateButton) duplicateButton.disabled = true;
       return;
     }
 
     if (title) title.textContent = elementLabel(selected);
     const isImage = selected instanceof HTMLImageElement;
-    const extra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
-    const isCode = extra?.type === 'code';
+    const selectedExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
+    const extra = selected.dataset.cmsExtraField ? null : selectedExtra;
+    const isCode = selectedExtra?.type === 'code' && !selected.dataset.cmsExtraField;
     if (inlineHelp) inlineHelp.hidden = !isInlineEditable(selected);
     if (imageGroup) imageGroup.hidden = !isImage;
     if (codeGroup) codeGroup.hidden = !isCode;
 
-    const ov = extra || pageState().elements[selected.dataset.cmsId] || {};
+    const ov = selectedOverride() || {};
     const editStyle = editingStyle(ov, false);
     const editLayout = editingLayout(ov, false);
     const computed = getComputedStyle(selected);
@@ -2002,7 +2017,12 @@
     const displayNumber = value => String(Math.round(value * 1000) / 1000);
     const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
     const serviceCard = businessServiceCardFor(selected);
-    const duplicateButton = document.getElementById('legend-cms-duplicate'); if (duplicateButton) duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate block';
+    const duplicateButton = document.getElementById('legend-cms-duplicate');
+    if (duplicateButton) {
+      duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate selected';
+      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM';
+      duplicateButton.title = selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
+    }
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const kind = serviceCard ? 'service'
@@ -2779,21 +2799,85 @@
       if(page.navigation.isDeleted) await navigateToEditorPage('/'); else syncPageControls();
     });
     document.getElementById('legend-cms-duplicate').addEventListener('click', () => {
-      if (!selected || !selectedSection) return;
+      if (!selected || !selectedSection || selected.dataset.cmsSignalOnly) return;
       const sourceExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
-      if (sourceExtra?.type === 'code') {
-        checkpoint();
-        const copy = JSON.parse(JSON.stringify(sourceExtra));
-        copy.id = crypto.randomUUID();
-        copy.sectionId = selectedSection.dataset.cmsSection;
+      if (sourceExtra?.type === 'form' || selected.tagName === 'FORM') {
+        alert('Each page uses one canonical inquiry form. Duplicate the surrounding content instead.');
+        return;
+      }
+
+      const shiftCopy = copy => {
+        copy.style ||= {};
+        const currentY = Number(copy.style.offsetYPx);
+        copy.style.offsetYPx = (Number.isFinite(currentY) ? currentY : 0) + 16;
+        delete copy.hidden;
         copy.signals = [];
+        return copy;
+      };
+      const rewriteExtraRef = (value, idMap) => {
+        if (typeof value !== 'string' || !value.startsWith('extra:')) return value;
+        const oldId = value.slice(6);
+        return idMap.has(oldId) ? 'extra:' + idMap.get(oldId) : value;
+      };
+
+      if (sourceExtra) {
+        checkpoint();
+        if (sourceExtra.type === 'section') {
+          const sourceIds = new Set([sourceExtra.id]);
+          let changed = true;
+          while (changed) {
+            changed = false;
+            for (const item of pageState().extras) {
+              const parent = String(item.sectionId || '').startsWith('extra:') ? String(item.sectionId).slice(6) : null;
+              if (parent && sourceIds.has(parent) && !sourceIds.has(item.id)) { sourceIds.add(item.id); changed = true; }
+            }
+          }
+          const originals = pageState().extras.filter(item => sourceIds.has(item.id));
+          const idMap = new Map(originals.map(item => [item.id, crypto.randomUUID()]));
+          const copies = originals.map(item => {
+            const copy = JSON.parse(JSON.stringify(item));
+            copy.id = idMap.get(item.id);
+            copy.sectionId = item.id === sourceExtra.id ? sourceExtra.sectionId : rewriteExtraRef(item.sectionId, idMap);
+            copy.signals = [];
+            if (copy.placement) {
+              copy.placement.sectionId = rewriteExtraRef(copy.placement.sectionId, idMap);
+              copy.placement.containerId = rewriteExtraRef(copy.placement.containerId, idMap);
+              copy.placement.beforeId = rewriteExtraRef(copy.placement.beforeId, idMap);
+            }
+            if (item.id === sourceExtra.id) shiftCopy(copy);
+            return copy;
+          });
+          pageState().extras.push(...copies);
+          const rootCopy = copies.find(item => item.id === idMap.get(sourceExtra.id));
+          const createdSections = new Map();
+          copies.filter(item => item.type === 'section').forEach(item => createdSections.set(item.id, createExtra(item)));
+          copies.filter(item => item.type !== 'section').forEach(item => {
+            const created = createExtra(item);
+            if (item.placement) applyPlacement(created, item.placement);
+          });
+          const sourceNode = document.querySelector(`[data-cms-id="extra:${CSS.escape(sourceExtra.id)}"]`);
+          const createdRoot = rootCopy ? createdSections.get(rootCopy.id) : null;
+          if (sourceNode && createdRoot && sourceNode.parentElement === createdRoot.parentElement)
+            sourceNode.parentElement.insertBefore(createdRoot, sourceNode.nextSibling);
+          syncSectionOrderFromDom();
+          setSelected(createdRoot || null);
+          markDirty();
+          return;
+        }
+
+        const copy = shiftCopy(JSON.parse(JSON.stringify(sourceExtra)));
+        copy.id = crypto.randomUUID();
+        copy.sectionId = sourceExtra.sectionId;
+        if (copy.placement) { copy.placement.beforeId = null; }
         pageState().extras.push(copy);
         const created = createExtra(copy);
         if (copy.placement) applyPlacement(created, copy.placement);
-        setSelected(created);
+        const field = selected.dataset.cmsExtraField;
+        setSelected(field ? created?.querySelector?.(`[data-cms-extra-field="${CSS.escape(field)}"]`) || created : created);
         markDirty();
         return;
       }
+
       const serviceCard = businessServiceCardFor(selected);
       if (serviceCard) {
         const grid = serviceCard.parentElement;
@@ -2804,23 +2888,52 @@
         const copy = {
           id: crypto.randomUUID(), type: 'card', sectionId: selectedSection.dataset.cmsSection,
           title: heading?.textContent || 'New service', text: body?.textContent || '', style: {},
+          signals: [],
           placement: { sectionId: selectedSection.dataset.cmsSection, containerId: grid.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 }
         };
         pageState().extras.push(copy);
         const created = createExtra(copy); applyPlacement(created, copy.placement); setSelected(created.querySelector('h3') || created); markDirty();
         return;
       }
-      if (selected.dataset.cmsSection || !['P','H1','H2','H3','H4','H5','A','IMG','VIDEO'].includes(selected.tagName)) return;
+
+      if (selected.dataset.cmsSection) {
+        alert('Select an added section to duplicate the whole section, or select an individual item inside this template section.');
+        return;
+      }
+      const supported = ['P','H1','H2','H3','H4','H5','H6','A','BUTTON','IMG','VIDEO','LI','SMALL','STRONG','SPAN'];
+      if (!supported.includes(selected.tagName)) return;
+
       checkpoint();
-      const original = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : pageState().elements[selected.dataset.cmsId];
-      const copy = JSON.parse(JSON.stringify(original || {}));
-      copy.id = crypto.randomUUID(); copy.sectionId = selectedSection.dataset.cmsSection;
-      copy.type = ({ A: 'button', IMG: 'image', VIDEO: 'video' }[selected.tagName] || 'text');
-      copy.text = selected.textContent; copy.hidden = false; copy.style ||= {};
-      if (copy.type === 'button') { copy.href = original?.href ?? rememberOriginal(selected).href; copy.target = selected.getAttribute('target'); }
-      if (copy.type === 'image') { copy.imageDataUrl = original?.imageDataUrl ?? rememberOriginal(selected).src; copy.alt = selected.getAttribute('alt'); }
-      if (copy.type === 'video') copy.videoUrl = original?.videoUrl ?? rememberOriginal(selected).src;
-      pageState().extras.push(copy); setSelected(createExtra(copy)); markDirty();
+      const original = pageState().elements[selected.dataset.cmsId] || {};
+      const copy = shiftCopy({
+        id: crypto.randomUUID(),
+        sectionId: selectedSection.dataset.cmsSection,
+        type: ({ A: 'button', BUTTON: 'button', IMG: 'image', VIDEO: 'video' }[selected.tagName] || 'text'),
+        text: selected.textContent || '',
+        style: JSON.parse(JSON.stringify(original.style || {})),
+        breakpointStyles: JSON.parse(JSON.stringify(original.breakpointStyles || {})),
+        layout: JSON.parse(JSON.stringify(original.layout || {})),
+        breakpointLayouts: JSON.parse(JSON.stringify(original.breakpointLayouts || {})),
+        signals: []
+      });
+      if (copy.type === 'button') {
+        copy.actionKey = original.actionKey || null;
+        copy.href = original.href ?? rememberOriginal(selected).href;
+        copy.target = original.target ?? selected.getAttribute('target');
+      }
+      if (copy.type === 'image') {
+        copy.imageDataUrl = original.imageDataUrl ?? rememberOriginal(selected).src;
+        copy.alt = original.alt ?? selected.getAttribute('alt');
+      }
+      if (copy.type === 'video') copy.videoUrl = original.videoUrl ?? rememberOriginal(selected).src;
+      const parent = selected.parentElement;
+      if (parent && parent !== selectedSection && parent.dataset?.cmsId && !parent.closest(lockedSelector))
+        copy.placement = { sectionId: selectedSection.dataset.cmsSection, containerId: parent.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
+      pageState().extras.push(copy);
+      const created = createExtra(copy);
+      if (copy.placement) applyPlacement(created, copy.placement);
+      setSelected(created);
+      markDirty();
     });
     const fontInput = panel.querySelector('[data-theme-key="fontFamily"]');
     if (fontInput?.replaceWith) {
@@ -2873,17 +2986,40 @@
   function syncCtaControls(override, currentHref) {
     const select = document.getElementById('legend-cms-action');
     const custom = document.getElementById('legend-cms-custom-link');
+    const wiring = document.getElementById('legend-cms-action-wiring');
     if (!select) return;
     const options = availableCtaOptions();
     select.replaceChildren();
+
+    const presets = options.filter(option => option.managed);
+    const navigation = options.filter(option => !option.managed);
+    const appendGroup = (label, values, wired) => {
+      if (!values.length) return;
+      const group = document.createElement('optgroup'); group.label = label;
+      values.forEach(option => {
+        const node = document.createElement('option');
+        node.value = option.key;
+        node.textContent = (option.group ? option.group + ' · ' : '') + option.label +
+          (wired ? (option.metaIntentEventName ? ' · AUTO Analytics + Meta' : ' · AUTO Analytics') : '');
+        group.appendChild(node);
+      });
+      select.appendChild(group);
+    };
+    appendGroup('Preset actions · backend wired', presets, true);
+    appendGroup('Navigate within this website', navigation, false);
     const customOption = document.createElement('option'); customOption.value = 'custom'; customOption.textContent = 'Custom destination…'; select.appendChild(customOption);
-    options.forEach(option => {
-      const node = document.createElement('option'); node.value = option.key; node.textContent = (option.group ? option.group + ' · ' : '') + option.label; select.appendChild(node);
-    });
+
     const byKey = override?.actionKey ? options.find(option => option.key === override.actionKey) : null;
-    const byHref = !byKey ? options.find(option => option.href === currentHref) : null;
-    select.value = (byKey || byHref)?.key || 'custom';
+    const byHref = !byKey ? options.find(option => option.href === currentHref && option.managed) || options.find(option => option.href === currentHref) : null;
+    const selectedOption = byKey || byHref || null;
+    select.value = selectedOption?.key || 'custom';
     if (custom) custom.hidden = select.value !== 'custom';
+    if (wiring) {
+      wiring.textContent = selectedOption?.managed
+        ? `Automatic wiring: ${selectedOption.analyticsEventName || 'cta_click'}${selectedOption.metaIntentEventName ? ' + Meta ' + selectedOption.metaIntentEventName : ''}. No manual event mapping required.`
+        : selectedOption ? 'Navigation link. Choose a preset action above when you want the existing automatic analytics/Meta contract.'
+          : 'Custom link. Preset actions above are the backend-wired choices.';
+    }
   }
 
   function selectedFlowContainer(section) {
@@ -3010,15 +3146,18 @@
     const layoutView = tools.querySelector('[data-cms-view="layout"]');
     ['legend-cms-up','legend-cms-down','legend-cms-reset'].forEach(id => { const button = document.getElementById(id); if (button && layoutView) layoutView.appendChild(button); });
     const selectedDelete = document.getElementById('legend-cms-remove');
-    if (selectedDelete && content) {
+    const selectedActions = document.createElement('div'); selectedActions.className = 'legend-cms-row legend-cms-selected-actions';
+    const duplicate = document.createElement('button'); duplicate.id = 'legend-cms-duplicate'; duplicate.type = 'button'; duplicate.textContent = 'Duplicate selected'; duplicate.disabled = true;
+    selectedActions.appendChild(duplicate);
+    if (selectedDelete) {
       selectedDelete.disabled = true;
       selectedDelete.setAttribute('aria-label', 'Delete selected website element');
-      content.appendChild(selectedDelete);
+      selectedActions.appendChild(selectedDelete);
     }
+    if (content) content.appendChild(selectedActions);
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
-    const duplicate = document.createElement('button'); duplicate.id = 'legend-cms-duplicate'; duplicate.type = 'button'; duplicate.textContent = 'Duplicate block'; layoutView.appendChild(duplicate);
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
-    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Select a working action already connected to this website. You can edit the button wording in Content at any time.</small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Preset actions are the existing backend-wired choices. Page and section links are navigation only.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     syncBreakpointControls();
@@ -3136,7 +3275,7 @@
       if (!selected) return; checkpoint(); const ov = selectedOverride(); if (ov.style) delete ov.style[button.dataset.colorReset];
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
-    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; if (key === 'href') { delete ov.actionKey; const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; } applyElementOverride(selected, ov); markDirty(); }));
+    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; if (key === 'href') { delete ov.actionKey; const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyElementOverride(selected, ov); markDirty(); }));
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => { const video = selected; if (video?.tagName !== 'VIDEO') return; const url = await uploadMedia(event.target.files?.[0]); if (!url || selected !== video) return; checkpoint(); const ov = selectedOverride(); ov.videoUrl = url; applyElementOverride(video, ov); syncEditorControls(); markDirty(); });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));

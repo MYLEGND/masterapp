@@ -800,6 +800,50 @@ test('shared CTA dropdown creates a styled live button and keeps its label indep
     assert.equal(extra.text,'Talk with our team');
   } finally { f.close(); }
 });
+test('button action picker keeps backend-wired presets separate from page navigation and explains automatic delivery',async()=>{
+  const actions=[
+    {key:'business_contact',group:'Contact',label:'Contact form',defaultText:'Contact Us',href:'/contact',openInNewTab:false,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'},
+    {key:'business_schedule',group:'Scheduling',label:'Schedule with the business',defaultText:'Schedule a Meeting',href:'https://book.example.test/',openInNewTab:true,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'}
+  ];
+  const pages=[{path:'/',label:'Home'},{path:'/contact',label:'Contact'}];
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages,ctaCatalog:actions});
+  try{
+    f.click('main h1'); f.click('[data-add="button"]');
+    const select=f.w.document.querySelector('#legend-cms-action');
+    const groups=[...select.querySelectorAll('optgroup')];
+    assert.equal(groups[0].label,'Preset actions · backend wired');
+    assert.equal(groups[1].label,'Navigate within this website');
+    const presetText=[...groups[0].querySelectorAll('option')].map(option=>option.textContent).join(' ');
+    assert.match(presetText,/Contact form · AUTO Analytics \+ Meta/);
+    assert.match(presetText,/Schedule with the business · AUTO Analytics \+ Meta/);
+    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Automatic wiring: cta_click \+ Meta ContactStepReached/);
+    f.change('#legend-cms-action','page:/contact');
+    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Navigation link/);
+  }finally{f.close();}
+});
+
+test('Duplicate selected is visible with the selected content controls and preserves managed CTA wiring',async()=>{
+  const actions=[{key:'legend_contact',group:'Contact',label:'Contact LEGEND®',defaultText:'Contact Us',href:'/contact',openInNewTab:false,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'}];
+  const f=await domFixture({ctaCatalog:actions});
+  try{
+    f.click('main h1'); f.click('[data-add="button"]');
+    const duplicate=f.w.document.querySelector('#legend-cms-duplicate');
+    assert.equal(duplicate.closest('[data-cms-view="content"]')!==null,true);
+    assert.equal(duplicate.disabled,false);
+    f.click('#legend-cms-duplicate');
+    const buttons=[...f.w.document.querySelectorAll('a[data-cms-extra-id]')];
+    assert.equal(buttons.length,2);
+    const saved=await f.save();
+    const copies=saved.pages['/'].extras.filter(extra=>extra.type==='button');
+    assert.equal(copies.length,2);
+    assert.notEqual(copies[0].id,copies[1].id);
+    assert.equal(copies[0].actionKey,'legend_contact');
+    assert.equal(copies[1].actionKey,'legend_contact');
+    assert.equal(copies[1].href,'/contact');
+    assert.deepEqual(copies[1].signals,[]);
+  }finally{f.close();}
+});
+
 test('manual destination remains available and intentionally leaves managed CTA routing',async()=>{
   const actions=[{key:'legend_contact',group:'Contact',label:'Contact LEGEND®',defaultText:'Contact Us',href:'/contact',openInNewTab:false}];
   const f=await domFixture({ctaCatalog:actions});
@@ -879,6 +923,36 @@ test('new button goes to the bottom of the selected container and persists that 
     assert.equal(extra.placement.containerId,container.dataset.cmsId); assert.equal(extra.placement.beforeId,null);
   } finally { f.close(); }
 });
+test('duplicated service child owns independent drag geometry while the card remains the content authority',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><main><section><div class="card-grid"><article class="card"><h3>Service one</h3><p>First description</p></article></div></section></main></body></html>';
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},html});
+  try{
+    f.click('.card-grid > article.card h3');
+    f.click('#legend-cms-duplicate');
+    const heading=f.w.document.querySelector('.cms-extra-card h3');
+    const card=heading.closest('article');
+    const section=heading.closest('[data-cms-section]');
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    assert.ok(heading&&card&&section&&preview);
+    heading.getBoundingClientRect=()=>({left:100,top:100,right:300,bottom:140,width:200,height:40});
+    card.getBoundingClientRect=()=>({left:80,top:80,right:480,bottom:240,width:400,height:160});
+    section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
+    preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
+    heading.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:140,clientY:120,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:140,clientY:120,button:0}));
+    f.editSelected('Duplicated service title');
+    const saved=await f.save();
+    const extra=saved.pages['/'].extras.find(value=>value.type==='card');
+    assert.equal(extra.title,'Duplicated service title');
+    assert.equal(extra.style?.offsetXPercent,undefined);
+    const child=saved.pages['/'].elements[`extra:${extra.id}:title`];
+    assert.ok(child);
+    assert.equal(child.style.offsetXPercent,10);
+    assert.equal(child.style.offsetYPx,20);
+  }finally{f.close();}
+});
+
 test('business services can be duplicated and deleted as whole cards without generic icons',async()=>{
   const html='<!doctype html><html><body data-page-key="home"><main><section><div class="card-grid"><article class="card"><h3>Service one</h3><p>First description</p></article><article class="card"><h3>Service two</h3><p>Second description</p></article></div></section></main></body></html>';
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},html});
