@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Shared.Meta;
 
-namespace ProtectWebsite.Services.Meta;
+namespace Infrastructure.Leads;
 
 public static class MetaLeadTrackingWorkflow
 {

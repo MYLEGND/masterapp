@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Http;
-using ProtectWebsite.Services.Meta;
+using Infrastructure.Leads;
 using Shared.Analytics;
 
-namespace ProtectWebsite.Services.Tracking;
+namespace Infrastructure.Analytics;
 
 public static class UnifiedEventContextBuilder
 {

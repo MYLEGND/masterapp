@@ -369,7 +369,7 @@ public sealed class TrackingProxyController : ControllerBase
 
     private void EnsureClientContextFallback(AnalyticsEventRequest req)
     {
-        var unified = Services.Tracking.UnifiedEventContextBuilder.Build(HttpContext);
+        var unified = UnifiedEventContextBuilder.Build(HttpContext);
 
         req.UserAgent = FirstMeaningful(req.UserAgent, unified.UserAgent, Request.Headers.UserAgent.ToString());
         req.IpAddress = FirstMeaningful(req.IpAddress, unified.IpAddress, ResolveClientIp());
