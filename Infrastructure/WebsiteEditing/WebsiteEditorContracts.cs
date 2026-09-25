@@ -256,7 +256,8 @@ public sealed record WebsiteCallToActionOption(
     string Href,
     bool OpenInNewTab = false,
     string AnalyticsEventName = "cta_click",
-    string? MetaIntentEventName = null);
+    string? MetaIntentEventName = null,
+    IReadOnlyList<string>? TextVariants = null);
 
 /// <summary>
 /// One scope-aware CTA catalog for the shared LEGEND website editor. Dynamic contact
@@ -264,6 +265,25 @@ public sealed record WebsiteCallToActionOption(
 /// </summary>
 public static class WebsiteCallToActionCatalog
 {
+    private static readonly string[] HomeTexts =
+        ["Home", "Go Home", "Back Home"];
+    private static readonly string[] AboutTexts =
+        ["About", "About Us", "Learn More", "Our Story", "Our Mission", "Who We Are"];
+    private static readonly string[] ServicesTexts =
+        ["Services", "View Services", "Our Services", "Explore Services", "See Services"];
+    private static readonly string[] ContactTexts =
+        ["Contact", "Contact Us", "Get in Touch", "Reach Out", "Let's Talk", "Talk to Us", "Speak With Us", "Send a Message", "Message Us"];
+    private static readonly string[] QuoteTexts =
+        ["Quote", "Free Quote", "Get a Quote", "Get a Free Quote", "Request a Quote", "Request a Free Quote", "Start a Quote", "Start My Quote", "Get My Quote"];
+    private static readonly string[] CallTexts =
+        ["Call", "Call Now", "Call Us", "Call Today", "Speak With Us", "Talk to Us", "Talk Now"];
+    private static readonly string[] EmailTexts =
+        ["Email", "Email Us", "Send Email", "Send an Email", "Message Us"];
+    private static readonly string[] ScheduleTexts =
+        ["Schedule", "Schedule Now", "Book Now", "Book a Call", "Schedule a Call", "Book a Meeting", "Schedule a Meeting", "Book an Appointment", "Schedule an Appointment", "Make an Appointment", "Reserve a Time", "Pick a Time"];
+    private static readonly string[] ProtectionTexts =
+        ["Protection", "Get Protected", "Protect What Matters", "Explore Protection", "Protection Options", "View Protection Options", "Learn About Protection"];
+
     public static IReadOnlyList<WebsiteCallToActionOption> Build(
         string siteKey,
         string? phone = null,
@@ -279,7 +299,8 @@ public static class WebsiteCallToActionCatalog
             string? href,
             bool external = false,
             string analytics = "cta_click",
-            string? metaIntent = null)
+            string? metaIntent = null,
+            IReadOnlyList<string>? textVariants = null)
         {
             if (string.IsNullOrWhiteSpace(href) || href == "#") return;
             if (!Shared.Analytics.AnalyticsEventCatalog.TryGet(analytics, out var analyticsDefinition) ||
@@ -290,36 +311,71 @@ public static class WebsiteCallToActionCatalog
                  Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(metaIntent) ||
                  !metaDefinition.AllowBrowserPixel))
                 throw new InvalidOperationException("CTA Meta intent must be a canonical browser signal.");
-            options.Add(new(key, group, label, defaultText, href, external, analytics, metaIntent));
+
+            var variants = new[] { defaultText }
+                .Concat(textVariants ?? Array.Empty<string>())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            options.Add(new(key, group, label, defaultText, href, external, analytics, metaIntent, variants));
         }
 
         if (siteKey == WebsiteEditorSiteKeys.Legend)
         {
-            Add("legend_home", "Navigation", "Home", "Home", "/");
-            Add("legend_about", "Navigation", "About LEGEND®", "About LEGEND®", "/about");
-            Add("legend_contact", "Contact", "Contact LEGEND®", "Contact Us", "/contact", metaIntent: "ContactStepReached");
-            Add("legend_protect", "LEGEND®", "Legacy Protection", "Protect What Matters", "https://protect.mylegnd.com/", true);
+            Add("legend_home", "Home", "Home", "Home", "/", textVariants: HomeTexts);
+            Add("legend_about", "About", "About", "About", "/about", textVariants: AboutTexts);
+            Add("legend_contact", "Contact", "Contact", "Contact", "/contact",
+                metaIntent: "ContactStepReached", textVariants: ContactTexts);
+            Add("legend_protect", "Protection", "Protection", "Protection", "https://protect.mylegnd.com/", true,
+                textVariants: ProtectionTexts);
         }
         else if (siteKey == WebsiteEditorSiteKeys.Protect)
         {
-            Add("protect_home", "Navigation", "Home", "Home", "/");
-            Add("protect_contact", "Contact", "Contact", "Contact Us", "/Contact");
-            Add("protect_quote", "Quotes", "Coverage / quote options", "Get a Quote", "/Quote", analytics: "quote_click");
+            Add("protect_home", "Home", "Home", "Home", "/", textVariants: HomeTexts);
+            Add("protect_contact", "Contact", "Contact", "Contact", "/Contact",
+                metaIntent: "ContactStepReached", textVariants: ContactTexts);
+            Add("protect_quote", "Quote", "Quote", "Quote", "/Quote",
+                analytics: "quote_click", textVariants: QuoteTexts);
             foreach (var route in Shared.Analytics.ProtectRouteCatalog.Routes.Where(route => !string.IsNullOrWhiteSpace(route.QuoteType)))
-                Add("protect_" + route.PageKey, "Quotes", route.DisplayName + " quote", "Get " + route.DisplayName + " Quote", route.Path, analytics: "quote_click");
-            Add("protect_call", "Contact", "Call the attached agent", "Call Now", NormalizePhone(phone), metaIntent: "ContactStepReached");
-            Add("protect_schedule", "Scheduling", "Schedule with the attached agent", "Schedule a Meeting", NormalizeHttps(bookingUrl), true, metaIntent: "ContactStepReached");
+            {
+                var subject = route.DisplayName.Trim();
+                Add(
+                    "protect_" + route.PageKey,
+                    "Quote · " + subject,
+                    subject + " Quote",
+                    subject + " Quote",
+                    route.Path,
+                    analytics: "quote_click",
+                    textVariants:
+                    [
+                        subject + " Quote",
+                        "Get a " + subject + " Quote",
+                        "Get a Free " + subject + " Quote",
+                        "Request a " + subject + " Quote",
+                        "Start a " + subject + " Quote"
+                    ]);
+            }
+            Add("protect_call", "Call", "Call", "Call", NormalizePhone(phone),
+                metaIntent: "ContactStepReached", textVariants: CallTexts);
+            Add("protect_schedule", "Schedule", "Schedule", "Schedule", NormalizeHttps(bookingUrl), true,
+                metaIntent: "ContactStepReached", textVariants: ScheduleTexts);
         }
         else if (siteKey == WebsiteEditorSiteKeys.Business)
         {
-            Add("business_home", "Navigation", "Home", "Home", "/");
-            Add("business_about", "Navigation", "About", "About Us", "/about");
-            Add("business_services", "Navigation", "Services", "View Services", "/services");
-            Add("business_contact", "Contact", "Contact form", "Contact Us", "/contact", metaIntent: "ContactStepReached");
-            Add("business_quote", "Contact", "Request a quote through the contact form", "Get a Quote", "/contact", metaIntent: "ContactStepReached");
-            Add("business_call", "Contact", "Call the business", "Call Now", NormalizePhone(phone), metaIntent: "ContactStepReached");
-            Add("business_email", "Contact", "Email the business", "Email Us", NormalizeEmail(email), metaIntent: "ContactStepReached");
-            Add("business_schedule", "Scheduling", "Schedule with the business", "Schedule a Meeting", NormalizeHttps(bookingUrl), true, metaIntent: "ContactStepReached");
+            Add("business_home", "Home", "Home", "Home", "/", textVariants: HomeTexts);
+            Add("business_about", "About", "About", "About", "/about", textVariants: AboutTexts);
+            Add("business_services", "Services", "Services", "Services", "/services", textVariants: ServicesTexts);
+            Add("business_contact", "Contact", "Contact", "Contact", "/contact",
+                metaIntent: "ContactStepReached", textVariants: ContactTexts);
+            Add("business_quote", "Quote", "Quote", "Quote", "/contact",
+                metaIntent: "ContactStepReached", textVariants: QuoteTexts);
+            Add("business_call", "Call", "Call", "Call", NormalizePhone(phone),
+                metaIntent: "ContactStepReached", textVariants: CallTexts);
+            Add("business_email", "Email", "Email", "Email", NormalizeEmail(email),
+                metaIntent: "ContactStepReached", textVariants: EmailTexts);
+            Add("business_schedule", "Schedule", "Schedule", "Schedule", NormalizeHttps(bookingUrl), true,
+                metaIntent: "ContactStepReached", textVariants: ScheduleTexts);
         }
 
         return options;
