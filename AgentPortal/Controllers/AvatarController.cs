@@ -1,3 +1,4 @@
+using AgentTrackingResolver = AgentPortal.Services.Tracking.AgentTrackingResolver;
 using System.Security.Claims;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Services;
