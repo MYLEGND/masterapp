@@ -1,3 +1,5 @@
+using Infrastructure.Analytics;
+using Infrastructure.Bookings;
 using System;
 using System.Collections.Generic;
 using System.IO;
