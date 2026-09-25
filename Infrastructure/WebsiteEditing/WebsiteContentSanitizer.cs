@@ -300,10 +300,13 @@ public static class WebsiteContentSanitizer
         if (source is null) return null;
         var collectionId = SanitizeId(source.CollectionId);
         var field = SanitizeId(source.Field);
+        var target = (source.Target ?? "text").Trim().ToLowerInvariant();
+        if (target is not ("text" or "image" or "href")) target = "text";
         return collectionId.Length == 0 || field.Length == 0 ? null : new WebsiteDataBinding
         {
             CollectionId = collectionId,
-            Field = field
+            Field = field,
+            Target = target
         };
     }
 
