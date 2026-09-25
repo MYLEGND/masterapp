@@ -328,6 +328,9 @@ test('Founder and business websites use one shared inquiry runtime with no hard-
   assert.ok(publicInquirySource.includes("new URLSearchParams(location.search).has('legendEdit')"));
   assert.ok(publicInquirySource.includes("document.querySelectorAll('[data-website-inquiry]:not([data-preview])')"));
   assert.ok(publicInquirySource.includes("new URL('/api/website-inquiries/public', apiBase)"));
+  assert.ok(publicInquirySource.includes("form._trackSubmitAttempt?.(true, 0)"));
+  assert.ok(publicInquirySource.includes("window.legendFormTracking?.markSubmitted?.("));
+  assert.equal(publicInquirySource.includes("EventType: 'lead_form_submit_success'"),false);
 });
 
 test('published business rendering activates the shared inquiry path without injecting a second runtime',()=>{

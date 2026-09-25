@@ -23,6 +23,11 @@
       event.preventDefault();
       if (!form.reportValidity()) return;
 
+      // The shared tracker owns browser form telemetry. This AJAX runtime only
+      // reports the attempt into that existing lifecycle; it does not emit a
+      // separate Lead conversion.
+      form._trackSubmitAttempt?.(true, 0);
+
       const button = form.querySelector('[type="submit"]');
       const status = form.querySelector('[role="status"]');
       const fields = new FormData(form);
@@ -81,6 +86,13 @@
           websiteLeadSaved: true,
           sourceActionKey
         });
+        // Server persistence remains the authoritative Lead event. Mark only
+        // the browser lifecycle complete so page exit cannot become a false
+        // form_abandon signal after a confirmed save.
+        window.legendFormTracking?.markSubmitted?.(
+          form.dataset.formKey || 'website_inquiry',
+          'server_confirmed_inquiry'
+        );
         form.reset();
         submissionId = null;
         pendingPayload = null;
