@@ -12173,6 +12173,83 @@ namespace Infrastructure.Migrations
                     b.ToTable("WebsiteContentVersion");
                 });
 
+            modelBuilder.Entity("Domain.Entities.WebsiteStudioComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("AnchorRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AuthorEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("AuthorRole")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("AuthorUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ElementId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PagePath")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<Guid?>("ParentCommentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResolvedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("ResolvedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("WebsiteContentStateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("WebsiteContentVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentCommentId");
+
+                    b.HasIndex("WebsiteContentVersionId");
+
+                    b.HasIndex("WebsiteContentStateId", "ElementId", "Status");
+
+                    b.HasIndex("WebsiteContentStateId", "PagePath", "Status", "CreatedUtc");
+
+                    b.ToTable("WebsiteStudioComments");
+                });
+
             modelBuilder.Entity("Domain.Entities.WebsiteDomainBinding", b =>
                 {
                     b.Property<Guid>("Id")
@@ -14103,6 +14180,25 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("StateId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.WebsiteStudioComment", b =>
+                {
+                    b.HasOne("Domain.Entities.WebsiteContentState", null)
+                        .WithMany()
+                        .HasForeignKey("WebsiteContentStateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.WebsiteContentVersion", null)
+                        .WithMany()
+                        .HasForeignKey("WebsiteContentVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Domain.Entities.WebsiteStudioComment", null)
+                        .WithMany()
+                        .HasForeignKey("ParentCommentId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Domain.Entities.WebsiteDomainBinding", b =>
