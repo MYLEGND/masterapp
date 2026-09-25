@@ -347,6 +347,20 @@ class ApprovedDispatchScope(unittest.TestCase):
         self.assertTrue(result['automaticRelease'])
 
 
+class ProductionSyncWorkflowSafety(unittest.TestCase):
+    def test_history_only_security_job_checks_out_repository_before_git_ancestry(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/agentportal-production-deploy.yml').read_text()
+        checkout = workflow.index('name: Checkout canonical history for synchronization proof')
+        verify = workflow.index('name: Verify canonical branch synchronization is history-only')
+        self.assertLess(checkout, verify)
+        window = workflow[checkout:verify]
+        self.assertIn('uses: actions/checkout@v4', window)
+        self.assertIn('ref: legend/approved-changes', window)
+        self.assertIn('fetch-depth: 0', window)
+        verify_block = workflow[verify:workflow.index('name: Confirm full release security completed', verify)]
+        self.assertIn("git merge-base --is-ancestor", verify_block)
+
+
 class StagingSafety(unittest.TestCase):
     def test_hold_blocks_all_automatic_mutations(self):
         from unittest.mock import Mock
