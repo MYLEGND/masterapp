@@ -3,6 +3,7 @@
     var contentContainerClass = ViewData["ContentContainerClass"] as string ?? "container";
     var layoutContentClass = ViewData["LayoutContentClass"] as string ?? "";
     var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var storefrontAssetRoot = commerce is null ? "" : "/store-assets";
     var isScopedStore = commerce is { IsParfait: false };
     var storeRoot = commerce?.StoreRootPath ?? "/store";
     var storeCart = commerce?.CartPath ?? "/store/cart";
@@ -35,16 +36,19 @@
     <title>@Html.Raw(ViewData["Title"]) - @storeName</title>
 
     <!-- Bootstrap -->
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
+    <link rel="stylesheet" href="@(storefrontAssetRoot + "/lib/bootstrap/dist/css/bootstrap.min.css")" />
+    <link rel="stylesheet" href="@(storefrontAssetRoot + "/css/site.css")" />
+    <link rel="stylesheet" href="@(storefrontAssetRoot + "/LegendCorePlatform.styles.css")" />
 
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&display=swap" rel="stylesheet">
 
-    <link rel="icon" type="image/png" href="~/images/favicon/parfait-logo.png" />
+    <link rel="icon" type="image/png" href="@(storefrontAssetRoot + "/images/favicon/parfait-logo.png")" />
     @RenderSection("Styles", required: false)
-    @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
+    @if (commerce is null)
+    {
+        @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
+    }
 </head>
 
 <body class="d-flex flex-column min-vh-100 @bodyClass" data-commerce-business-key="@(commerce?.BusinessKey ?? "parfait")" style="@commerceStyle">
@@ -67,7 +71,7 @@
             {
                 <a class="navbar-brand" asp-controller="Home" asp-action="Index" aria-label="Parfait home">
                     <span class="navbar-brand-mark" aria-hidden="true">
-                        <img src="~/images/favicon/parfait-logo.png" alt="" />
+                        <img src="@(storefrontAssetRoot + "/images/favicon/parfait-logo.png")" alt="" />
                     </span>
                     <span class="navbar-brand-copy">
                         <span class="title-nunito-expanded">Parfait</span>
@@ -145,7 +149,7 @@
     </div>
 </footer>
 
-<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script src="@(storefrontAssetRoot + "/lib/bootstrap/dist/js/bootstrap.bundle.min.js")"></script>
 <script>window.PARFAIT_COMMERCE_CONTEXT = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
         commerceBusinessId = commerce?.CommerceBusinessId,
         agentTrackingProfileId = commerce?.AgentTrackingProfileId,
@@ -163,7 +167,7 @@
         cartStorageKey = commerce?.CartStorageKey ?? "parfaitCart",
         isParfait = commerce?.IsParfait ?? true
     }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));</script>
-<script src="~/js/storefront.js" asp-append-version="true"></script>
+<script src="@(storefrontAssetRoot + "/js/storefront.js")"></script>
 <script>
     (function () {
         const nav = document.querySelector('.navbar');
