@@ -55,6 +55,11 @@
   let inlineEditCheckpointed = false;
   let dirty = false;
   let autoSaveTimer = null;
+  const pendingDeletedKeys = new Set();
+
+  function pageElementDeletionKey(id) { return `page:${currentPageRoute()}|element:${id}`; }
+  function pageExtraDeletionKey(id) { return `page:${currentPageRoute()}|extra:${id}`; }
+  function markDeleted(key) { if (key) pendingDeletedKeys.add(key); }
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
@@ -384,6 +389,38 @@
     const bindings = overrides?.signals || [];
     paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
     if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
+    if (type === 'FORM') {
+      const presetTitle = document.createElement('strong'); presetTitle.textContent = 'Form event presets from Protect Website';
+      host.appendChild(presetTitle);
+      const presetHelp = document.createElement('p');
+      presetHelp.textContent = 'These buttons come directly from the canonical Meta/analytics event catalog. Browser events fire only when eligible; confirmed Lead remains server-authoritative.';
+      host.appendChild(presetHelp);
+      const presetGrid = document.createElement('div'); presetGrid.className = 'legend-cms-signal-presets';
+      const presets = candidates.flatMap(option => option.triggers
+        .filter(trigger => triggers.includes(trigger))
+        .map(trigger => ({ option, trigger })));
+      for (const preset of presets) {
+        const button = document.createElement('button'); button.type='button';
+        button.textContent = `${preset.option.name} · ${preset.trigger.replaceAll('_',' ')} · ${preset.option.metaEligible ? 'Meta + analytics' : 'Analytics'}`;
+        button.disabled = bindings.length >= 8 || bindings.some(binding => binding.trigger === preset.trigger);
+        button.addEventListener('click', () => {
+          if (button.disabled) return;
+          checkpoint();
+          overrides.signals ||= [];
+          overrides.signals.push({
+            id: crypto.randomUUID().replaceAll('-',''),
+            eventName: preset.option.name,
+            trigger: preset.trigger,
+            deliveryMode: preset.option.metaEligible ? 'meta' : 'analytics',
+            oncePerSession: true,
+            matchingFields: []
+          });
+          markDirty(); renderSignalControls();
+        });
+        presetGrid.appendChild(button);
+      }
+      host.appendChild(presetGrid);
+    }
     const addSelect = (labelText, values, value, action) => {
       const label = document.createElement('label'); label.className = 'legend-cms-group'; label.textContent = labelText;
       const select = document.createElement('select');
@@ -1035,6 +1072,40 @@
     } else if (extra.type === 'button') {
       el = document.createElement('a'); el.textContent = extra.text || 'New button';
       if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
+    } else if (extra.type === 'form') {
+      el = document.createElement('form');
+      el.id = `website_inquiry_${extra.id}`;
+      el.className = 'cms-extra public-form cms-extra-form';
+      el.dataset.websiteInquiry = '';
+      el.dataset.formKey = 'website_inquiry';
+      el.setAttribute('action', '/api/website-inquiries/public');
+      el.setAttribute('method', 'post');
+      const fieldset = document.createElement('fieldset');
+      const legend = document.createElement('legend'); legend.textContent = extra.title || 'Send an inquiry';
+      const grid = document.createElement('div'); grid.className = 'public-form-grid';
+      const field = (labelText, name, type = 'text', attrs = {}) => {
+        const label = document.createElement('label'); label.textContent = labelText;
+        const input = name === 'Message' ? document.createElement('textarea') : document.createElement('input');
+        if (name !== 'Message') input.type = type;
+        input.name = name; input.required = true;
+        if (name === 'Message') input.rows = 5;
+        Object.entries(attrs).forEach(([key,value]) => input.setAttribute(key, value));
+        label.appendChild(input); return label;
+      };
+      grid.append(
+        field('First Name','FirstName','text',{autocomplete:'given-name',maxlength:'120'}),
+        field('Last Name','LastName','text',{autocomplete:'family-name',maxlength:'120'}),
+        field('Phone Number','Phone','tel',{inputmode:'tel',autocomplete:'tel',maxlength:'64'}),
+        field('Email','Email','email',{autocomplete:'email',maxlength:'254'})
+      );
+      const message = field('Message','Message','text',{maxlength:'12000'}); message.className='public-form-full'; grid.appendChild(message);
+      const consentLabel = document.createElement('label'); consentLabel.className='public-form-consent public-form-full';
+      const consent = document.createElement('input'); consent.type='checkbox'; consent.name='consent'; consent.required=true;
+      const consentText = document.createElement('span'); consentText.textContent='I agree to share this inquiry with this website.';
+      consentLabel.append(consent,consentText); grid.appendChild(consentLabel);
+      const submit = document.createElement('button'); submit.type='submit'; submit.className='btn primary'; submit.textContent=extra.text || 'Send inquiry';
+      const status = document.createElement('p'); status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+      fieldset.append(legend,grid,submit); el.append(fieldset,status);
     } else if (extra.type === 'code') {
       el = document.createElement('div'); el.className = 'cms-extra cms-extra-code';
       const frame = document.createElement('iframe'); frame.dataset.cmsCodeFrame = 'true'; frame.title = 'Custom code block';
@@ -1197,7 +1268,7 @@
       remove.title = remove.disabled ? 'Remove every instance before deleting this reusable definition.' : '';
       remove.addEventListener('click', () => {
         if (componentInUse(definition.id)) return;
-        checkpoint(); delete documentState.reusableComponents[definition.id]; markDirty(); renderReusableComponents();
+        checkpoint(); markDeleted('component:' + definition.id); delete documentState.reusableComponents[definition.id]; markDirty(); renderReusableComponents();
       });
       row.append(info, insert, update, remove); host.appendChild(row);
     }
@@ -1746,19 +1817,16 @@
     preview.appendChild(gridOverlay);
     preview.appendChild(selectionFrame);
 
-    const startGesture = event => {
-      const handle = event.target.closest?.('[data-cms-gesture]');
-      if (!handle || !selected || selected.dataset.cmsSignalOnly) return;
-      const mode = handle.dataset.cmsGesture;
-      const edge = handle.dataset.cmsEdge || '';
+    const beginGesture = (event, mode, edge = '', captureTarget = null, armed = false) => {
+      if (!selected || selected.dataset.cmsSignalOnly) return false;
       const section = selectedSection || currentSectionFor(selected);
       const parent = selected.parentElement;
-      if (!section || !parent) return;
+      if (!section || !parent) return false;
       const selectedRect = selected.getBoundingClientRect();
       const sectionRect = section.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
       const override = selectedOverride();
-      if (!override) return;
+      if (!override) return false;
       const gestureStyle = editingStyle(override, true);
       checkpoint();
       directGesture = {
@@ -1770,22 +1838,46 @@
         startOffsetXPercent: Number.isFinite(Number(gestureStyle.offsetXPercent)) ? Number(gestureStyle.offsetXPercent) : 0,
         startOffsetYPx: Number.isFinite(Number(gestureStyle.offsetYPx)) ? Number(gestureStyle.offsetYPx) : 0,
         style: gestureStyle,
+        armed,
         changed: false
       };
-      gridOverlay.hidden = false;
-      gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
-      positionGridOverlay(section);
-      handle.setPointerCapture?.(event.pointerId);
-      event.preventDefault();
-      event.stopPropagation();
+      captureTarget?.setPointerCapture?.(event.pointerId);
+      if (!armed) {
+        gridOverlay.hidden = false;
+        gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+        positionGridOverlay(section);
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return true;
+    };
+    const startGesture = event => {
+      const handle = event.target.closest?.('[data-cms-gesture]');
+      if (!handle) return;
+      beginGesture(event, handle.dataset.cmsGesture, handle.dataset.cmsEdge || '', handle, false);
     };
 
     selectionFrame.addEventListener('pointerdown', startGesture);
+    preview.addEventListener('pointerdown', event => {
+      if (event.button !== undefined && event.button !== 0) return;
+      if (!selected || selected.dataset.cmsSignalOnly || selected.tagName === 'FORM' || ['INPUT','SELECT','TEXTAREA'].includes(event.target?.tagName)) return;
+      const hit = event.target?.closest?.('[data-cms-id]');
+      if (hit !== selected && !selected.contains?.(event.target)) return;
+      beginGesture(event, 'move', '', selected, true);
+    });
     window.addEventListener('pointermove', event => {
       const gesture = directGesture;
       if (!gesture || selected !== gesture.target) return;
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
+      if (gesture.armed && !gesture.changed && Math.hypot(dx, dy) < 5) return;
+      if (gesture.armed && !gesture.changed) {
+        gesture.armed = false;
+        gridOverlay.hidden = false;
+        gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+        positionGridOverlay(gesture.section);
+        deactivateInlineEditing(gesture.target);
+      }
       const override = selectedOverride();
       if (!override) return;
       const style = gesture.style;
@@ -1816,6 +1908,12 @@
           snappedDy += sectionCenterY - desiredCenterY;
           gridOverlay.classList.add('legend-cms-snap-y');
         }
+        const minDx = gesture.sectionRect.left - gesture.selectedRect.left;
+        const maxDx = gesture.sectionRect.right - gesture.selectedRect.right;
+        const minDy = gesture.sectionRect.top - gesture.selectedRect.top;
+        const maxDy = gesture.sectionRect.bottom - gesture.selectedRect.bottom;
+        snappedDx = Math.max(minDx, Math.min(maxDx, snappedDx));
+        snappedDy = Math.max(minDy, Math.min(maxDy, snappedDy));
         style.offsetXPercent = Math.round((gesture.startOffsetXPercent + snappedDx / parentWidth * 100) * 1000) / 1000;
         style.offsetYPx = Math.round((gesture.startOffsetYPx + snappedDy) * 1000) / 1000;
       } else {
@@ -2054,11 +2152,13 @@
   function removeSelected() {
     if (!selected) return;
     checkpoint();
-    if (selected.dataset.cmsSignalOnly) { delete pageState().elements[selected.dataset.cmsId]; markDirty(); renderSignalControls(); return; }
+    if (selected.dataset.cmsSignalOnly) { markDeleted(pageElementDeletionKey(selected.dataset.cmsId)); delete pageState().elements[selected.dataset.cmsId]; markDirty(); renderSignalControls(); return; }
     if (selected.dataset.cmsExtraId) {
       const removedId = selected.dataset.cmsExtraId;
       const removedSection = selected.dataset.cmsSection;
-      pageState().extras = pageState().extras.filter(x => x.id !== removedId && (!removedSection || (x.sectionId !== removedSection && x.placement?.sectionId !== removedSection)));
+      const removedExtras = pageState().extras.filter(x => x.id === removedId || (removedSection && (x.sectionId === removedSection || x.placement?.sectionId === removedSection)));
+      removedExtras.forEach(extra => markDeleted(pageExtraDeletionKey(extra.id)));
+      pageState().extras = pageState().extras.filter(x => !removedExtras.includes(x));
       const removedNode = document.querySelector(`[data-cms-id="extra:${CSS.escape(removedId)}"]`) || selected;
       scaledElements.delete(removedNode);
       removedNode.remove();
@@ -2066,6 +2166,7 @@
       markDirty();
       return;
     }
+    markDeleted(pageElementDeletionKey(selected.dataset.cmsId));
     delete pageState().elements[selected.dataset.cmsId];
     const original = rememberOriginal(selected);
     selected.hidden = original.hidden;
@@ -2085,12 +2186,13 @@
     if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
     saving = true;
     const submitted = JSON.stringify(documentState);
+    const submittedDeletedKeys = [...pendingDeletedKeys];
     let saved = false;
     try {
       const response = await fetch(`${API_BASE}/api/website-content/${publish ? 'manage/publish' : 'manage'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, ...(namedDraft || {}) })
+        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, deletedKeys: submittedDeletedKeys, ...(namedDraft || {}) })
       });
       if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || error.error || `Save failed (${response.status})`); }
       const payload = await response.json();
@@ -2098,6 +2200,7 @@
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
       revision = payload.revision ?? revision;
       namedDrafts = payload.drafts || namedDrafts;
+      submittedDeletedKeys.forEach(key => pendingDeletedKeys.delete(key));
       dirty = changedDuringSave;
       saved = true;
       if (status) status.textContent = changedDuringSave ? 'Draft saved; newer edits remain unsaved' : publish ? 'Published' : 'Draft saved';
@@ -2832,8 +2935,10 @@
       id: crypto.randomUUID(),
       type,
       sectionId: section?.dataset.cmsSection || `${pageKey}.root`,
-      text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : type === 'code' ? defaultCodeBlock : '',
-      style: type === 'code' ? { widthPercent: 100, heightPx: 320 } : {}
+      text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : type === 'form' ? 'Send inquiry' : type === 'code' ? defaultCodeBlock : '',
+      title: type === 'form' ? 'Send an inquiry' : null,
+      signals: [],
+      style: type === 'code' ? { widthPercent: 100, heightPx: 320 } : type === 'form' ? { widthPercent: 100 } : {}
     };
     if (type === 'button') {
       extra.href = action.href;
@@ -2862,7 +2967,7 @@
     navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="ai">AI Assist</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="collaboration">Collaborate</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
-      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
+      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
       <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Drag the selected border edges or corners to resize. Use X/Y offset controls for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
@@ -2969,7 +3074,7 @@
     });
     document.getElementById('legend-cms-breakpoint-remove')?.addEventListener('click', () => {
       const current=(documentState.breakpoints||[]).find(value=>value.key===editorBreakpointKey); if (!current || current.isSystem) return;
-      checkpoint(); const key=current.key; documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
+      checkpoint(); const key=current.key; markDeleted('breakpoint:' + key); documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
       forEachDocumentOverride(override=>{ if(override?.breakpointStyles) delete override.breakpointStyles[key]; if(override?.breakpointLayouts) delete override.breakpointLayouts[key]; });
       editorBreakpointKey='base'; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
     });
@@ -3034,7 +3139,8 @@
     const style = document.createElement('style');
     style.textContent = `
       .legend-cms-selected{outline:none}
-      [data-cms-editable="true"]{cursor:pointer}
+      [data-cms-editable="true"]{cursor:grab}
+      [data-cms-editable="true"]:active{cursor:grabbing}
       .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
       .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
       .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad454d;background-color:#081a3a08;background-image:linear-gradient(to right,#d4ad4526 1px,transparent 1px),linear-gradient(to bottom,#d4ad4517 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px}
@@ -3080,6 +3186,7 @@
       .legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:10px;border:1px solid #344766;border-radius:12px;background:#10284a}.legend-cms-media-card img,.legend-cms-media-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-component-list{display:grid;gap:8px;margin-top:12px}.legend-cms-component-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:7px;align-items:start;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-component-row>div{min-width:0}.legend-cms-component-row strong,.legend-cms-component-row small{display:block;overflow-wrap:anywhere}.legend-cms-component-row button{padding:7px 9px}.cms-reusable-instance{min-width:0}.legend-cms-reusable-missing{padding:12px;border:1px dashed #c98e8e;border-radius:8px;background:#2b1717;color:#f6dede}
       .legend-cms-collaboration-roster,.legend-cms-collaboration-comments{display:grid;gap:8px;margin:10px 0 16px}.legend-cms-collaborator,.legend-cms-comment{display:grid;gap:6px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-collaborator small,.legend-cms-comment small{margin:0}.legend-cms-comment[data-depth="1"]{margin-left:18px;border-left:3px solid #d4ad45}.legend-cms-comment-head{display:flex;gap:8px;justify-content:space-between;align-items:center}.legend-cms-comment-head span{text-transform:capitalize;font-size:11px;color:#d4ad45}
+      .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets button{padding:10px 12px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;text-align:left}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
@@ -3223,6 +3330,7 @@
     document.getElementById('legend-cms-favicon-remove')?.addEventListener('click', () => {
       if (!documentState.faviconImageDataUrl) return;
       checkpoint();
+      markDeleted('site:favicon');
       documentState.faviconImageDataUrl = null;
       applyFavicon(null);
       syncFaviconControls();
