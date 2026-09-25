@@ -145,6 +145,11 @@ public sealed class WebsiteStudioAiProposalService(
             logger.LogWarning(ex, "Website Studio AI transport failed.");
             throw new InvalidOperationException("website_studio_ai_provider_unavailable", ex);
         }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "Website Studio AI provider returned invalid JSON.");
+            throw new InvalidOperationException("website_studio_ai_invalid_output", ex);
+        }
     }
 
     private string ResolveApiKey() =>
@@ -166,7 +171,7 @@ public sealed class WebsiteStudioAiProposalService(
             ? DefaultBaseUrl
             : configured.Trim().TrimEnd('/');
         if (!Uri.TryCreate(root + "/v1/responses", UriKind.Absolute, out var uri) ||
-            uri.Scheme is not ("https" or "http"))
+            (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
             throw new InvalidOperationException("website_studio_ai_endpoint_invalid");
         return uri;
     }
