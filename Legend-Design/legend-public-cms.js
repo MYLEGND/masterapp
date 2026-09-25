@@ -339,29 +339,66 @@
       scaledElements.set(el, style.fontScale);
       refreshScale(el, style.fontScale);
     }
-    if (positiveNumber(style.widthPercent)) {
-      el.style.width = `${style.widthPercent}%`;
-      el.style.maxWidth = '100%';
-    }
+    if (positiveNumber(style.widthPercent)) el.style.width = `${style.widthPercent}%`;
     if (positiveNumber(style.heightPx)) {
       el.style.height = `${style.heightPx}px`;
       el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
     }
+    if (positiveNumber(style.minWidthPx)) el.style.minWidth = `${style.minWidthPx}px`;
+    if (positiveNumber(style.maxWidthPx)) el.style.maxWidth = `${style.maxWidthPx}px`;
+    else if (positiveNumber(style.widthPercent) && style.widthPercent <= 100) el.style.maxWidth = '100%';
+    if (positiveNumber(style.minHeightPx)) el.style.minHeight = `${style.minHeightPx}px`;
+    if (positiveNumber(style.maxHeightPx)) el.style.maxHeight = `${style.maxHeightPx}px`;
+    if (positiveNumber(style.aspectRatio)) el.style.aspectRatio = String(style.aspectRatio);
+
+    const explicitPosition = ['relative','absolute','sticky','fixed'].includes(style.positionMode) ? style.positionMode : null;
     const hasOffsetX = style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
     const hasOffsetY = style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
-    if (hasOffsetX || hasOffsetY) {
-      el.style.position = 'relative';
-      if (hasOffsetX) el.style.left = `${Number(style.offsetXPercent)}%`;
-      if (hasOffsetY) el.style.top = `${Number(style.offsetYPx)}px`;
-    }
+    if (explicitPosition) el.style.position = explicitPosition;
+    else if (hasOffsetX || hasOffsetY) el.style.position = 'relative';
+    if (hasOffsetX) el.style.left = `${Number(style.offsetXPercent)}%`;
+    if (hasOffsetY) el.style.top = `${Number(style.offsetYPx)}px`;
+
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
     ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
-    // A chosen solid color replaces template gradients in editor and published rendering.
     if (style.backgroundColor) el.style.backgroundImage = 'none';
     ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius'].forEach(key => { if (spacingNumber(style[key])) el.style[key] = `${style[key]}px`; });
+    for (const key of ['marginTop','marginRight','marginBottom','marginLeft']) {
+      if (style[key] != null && Number.isFinite(Number(style[key]))) el.style[key] = `${Number(style[key])}px`;
+    }
     if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
     if (style.objectPosition && el instanceof HTMLImageElement) el.style.objectPosition = style.objectPosition;
+    if (style.opacity != null && Number.isFinite(Number(style.opacity))) el.style.opacity = String(style.opacity);
+    if (Number.isInteger(Number(style.zIndex))) el.style.zIndex = String(style.zIndex);
+    const transforms = [];
+    if (style.rotationDeg != null && Number.isFinite(Number(style.rotationDeg))) transforms.push(`rotate(${Number(style.rotationDeg)}deg)`);
+    if (positiveNumber(style.scaleX) || positiveNumber(style.scaleY)) transforms.push(`scale(${positiveNumber(style.scaleX) ? Number(style.scaleX) : 1}, ${positiveNumber(style.scaleY) ? Number(style.scaleY) : 1})`);
+    if (transforms.length) el.style.transform = transforms.join(' ');
+  }
+
+  function applyLayout(el, layout) {
+    if (!el) return;
+    delete el.dataset.cmsLayoutMode;
+    if (!layout || !layout.mode || layout.mode === 'flow') return;
+    const mode = layout.mode;
+    el.dataset.cmsLayoutMode = mode;
+    if (mode === 'grid') {
+      el.style.display = 'grid';
+      el.style.gridTemplateColumns = `repeat(${Math.max(1, Number(layout.columns) || 12)}, minmax(0, 1fr))`;
+      if (positiveNumber(layout.rows)) el.style.gridTemplateRows = `repeat(${Number(layout.rows)}, minmax(0, auto))`;
+    } else if (mode === 'flex' || mode === 'stack') {
+      el.style.display = 'flex';
+      el.style.flexDirection = mode === 'stack' ? 'column' : (layout.direction === 'column' ? 'column' : 'row');
+      el.style.flexWrap = layout.wrap === false ? 'nowrap' : 'wrap';
+    } else if (mode === 'free') {
+      el.style.position ||= 'relative';
+    }
+    if (layout.columnGap != null && Number.isFinite(Number(layout.columnGap))) el.style.columnGap = `${Number(layout.columnGap)}px`;
+    if (layout.rowGap != null && Number.isFinite(Number(layout.rowGap))) el.style.rowGap = `${Number(layout.rowGap)}px`;
+    if (['start','center','end','stretch','baseline'].includes(layout.alignItems)) el.style.alignItems = layout.alignItems;
+    if (['start','center','end','space-between','space-around','space-evenly'].includes(layout.justifyContent)) el.style.justifyContent = layout.justifyContent;
+    if (['visible','hidden','clip','auto','scroll'].includes(layout.overflow)) el.style.overflow = layout.overflow;
   }
 
   function setContentText(el, text, preserveWhitespace = false) {
@@ -496,10 +533,11 @@
   function applyElementOverride(el, override) {
     if (el?.dataset.cmsSignalOnly) return;
     if (!el || !override) return;
+    const resolved = resolvedVariant(override);
     if (override.actionKey) el.dataset.websiteActionKey = override.actionKey;
     else delete el.dataset.websiteActionKey;
-    if (override.hidden === true) el.hidden = true;
-    else if (override.hidden === false) el.hidden = false;
+    if (resolved.hidden === true) el.hidden = true;
+    else if (resolved.hidden === false) el.hidden = false;
 
     if (el instanceof HTMLImageElement) {
       if (override.imageDataUrl) el.src = mediaUrl(override.imageDataUrl);
@@ -510,7 +548,8 @@
     if (override.href != null && el.tagName === 'A' && safeUrl(override.href)) { el.href = override.href; el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer'; }
     if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
     if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
-    applyStyle(el, override.style);
+    applyStyle(el, resolved.style);
+    applyLayout(el, resolved.layout);
   }
 
   function createExtra(extra) {
@@ -594,6 +633,16 @@
     pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
     Object.entries(pageState().elements).forEach(([id, ov]) => applyPlacement(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), ov.placement));
     pageState().extras.forEach(extra => applyPlacement(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra.placement));
+  }
+
+  function refreshResponsiveOverrides() {
+    Object.entries(pageState().elements).forEach(([id, override]) => {
+      applyElementOverride(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), override);
+    });
+    pageState().extras.forEach(extra => {
+      applyElementOverride(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra);
+    });
+    updateDirectCanvasUi();
   }
 
   function bindBusiness(payload) {
