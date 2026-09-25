@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Infrastructure.Analytics;
 using System.Net.Http;
 using System.Security.Cryptography;
