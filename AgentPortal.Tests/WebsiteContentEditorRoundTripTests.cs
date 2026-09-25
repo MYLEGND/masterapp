@@ -652,6 +652,123 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public async Task Collaboration_UsesExistingBusinessMembershipRolesAndNeverMutatesWebsiteDraft()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Elements = new(StringComparer.Ordinal)
+            {
+                [ElementId] = new WebsiteElementOverride { Text = "Collaborative heading" }
+            }
+        };
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        fixture.Db.ChangeTracker.Clear();
+        var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+
+        var collaboration = Assert.IsType<OkObjectResult>(await fixture.CreateController().Collaboration(
+            ticket, "/", ElementId, CancellationToken.None));
+        var collaborationJson = JsonSerializer.SerializeToElement(collaboration.Value, JsonOptions);
+        Assert.Equal("website_studio_collaboration", collaborationJson.GetProperty("source").GetString());
+        Assert.Equal("owner", collaborationJson.GetProperty("role").GetProperty("roleKey").GetString());
+        Assert.True(collaborationJson.GetProperty("role").GetProperty("canPublish").GetBoolean());
+        var collaborator = Assert.Single(collaborationJson.GetProperty("collaborators").EnumerateArray());
+        Assert.Equal("owner", collaborator.GetProperty("roleKey").GetString());
+        Assert.True(collaborator.GetProperty("canManageStorefront").GetBoolean());
+        Assert.True(collaborator.GetProperty("canPublish").GetBoolean());
+
+        var created = Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
+            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+                ticket,
+                before.Revision,
+                "/",
+                ElementId,
+                "Tighten this headline before publishing."),
+            CancellationToken.None));
+        var createdJson = JsonSerializer.SerializeToElement(created.Value, JsonOptions);
+        Assert.Equal("website_studio_collaboration", createdJson.GetProperty("source").GetString());
+
+        fixture.Db.ChangeTracker.Clear();
+        var comment = Assert.Single(await fixture.Db.Set<WebsiteStudioComment>().AsNoTracking().ToListAsync());
+        Assert.Equal(before.Id, comment.WebsiteContentStateId);
+        Assert.Equal(before.Revision, comment.AnchorRevision);
+        Assert.Equal("/", comment.PagePath);
+        Assert.Equal(ElementId, comment.ElementId);
+        Assert.Equal("owner", comment.AuthorRole);
+        Assert.Equal("open", comment.Status);
+
+        var afterComment = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(before.Revision, afterComment.Revision);
+        Assert.Equal(before.DraftJson, afterComment.DraftJson);
+
+        var resolved = Assert.IsType<OkObjectResult>(await fixture.CreateController().SetCollaborationCommentStatus(
+            new WebsiteContentController.WebsiteStudioCommentStatusRequest(ticket, comment.Id, "resolved"),
+            CancellationToken.None));
+        var resolvedJson = JsonSerializer.SerializeToElement(resolved.Value, JsonOptions);
+        Assert.Equal("resolved", resolvedJson.GetProperty("comment").GetProperty("status").GetString());
+
+        fixture.Db.ChangeTracker.Clear();
+        var afterResolve = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(before.Revision, afterResolve.Revision);
+        Assert.Equal(before.DraftJson, afterResolve.DraftJson);
+
+        var member = Assert.Single(await fixture.Db.CommerceBusinessMembers.ToListAsync());
+        member.RoleKey = "member";
+        member.CanManageStorefront = true;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        collaboration = Assert.IsType<OkObjectResult>(await fixture.CreateController().Collaboration(
+            ticket, "/", null, CancellationToken.None));
+        collaborationJson = JsonSerializer.SerializeToElement(collaboration.Value, JsonOptions);
+        Assert.Equal("member", collaborationJson.GetProperty("role").GetProperty("roleKey").GetString());
+        Assert.False(collaborationJson.GetProperty("role").GetProperty("canPublish").GetBoolean());
+        Assert.Equal("Website editor", collaborationJson.GetProperty("role").GetProperty("label").GetString());
+
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().Collaboration(
+            "invalid-ticket", "/", null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Collaboration_RepliesStayScopedToCanonicalWebsiteStateAndOneLevelThread()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument();
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        var parentResult = Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
+            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+                ticket, 1, "/", null, "Page-level review note."),
+            CancellationToken.None));
+        var parentJson = JsonSerializer.SerializeToElement(parentResult.Value, JsonOptions);
+        var parentId = parentJson.GetProperty("comment").GetProperty("id").GetGuid();
+
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
+            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+                ticket, 1, "/", ElementId, "Reply on the same review thread.", parentId),
+            CancellationToken.None));
+
+        fixture.Db.ChangeTracker.Clear();
+        var comments = await fixture.Db.Set<WebsiteStudioComment>().AsNoTracking()
+            .OrderBy(value => value.CreatedUtc).ToListAsync();
+        Assert.Equal(2, comments.Count);
+        Assert.Null(comments[0].ParentCommentId);
+        Assert.Equal(parentId, comments[1].ParentCommentId);
+        Assert.Equal(comments[0].WebsiteContentStateId, comments[1].WebsiteContentStateId);
+        Assert.Equal("/", comments[1].PagePath);
+
+        var nested = await fixture.CreateController().CreateCollaborationComment(
+            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+                ticket, 1, "/", null, "Nested reply should be rejected.", comments[1].Id),
+            CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(nested);
+    }
+
+    [Fact]
     public async Task DraftQuality_ReadsOnlyAuthorizedPersistedDraftAndReportsServerSource()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
