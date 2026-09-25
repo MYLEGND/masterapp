@@ -156,10 +156,45 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.Contains(business, option => option.Key == "business_quote" && option.Href == "/contact" &&
             option.AnalyticsEventName == "cta_click" && option.MetaIntentEventName == "ContactStepReached");
 
+        var contact = Assert.Single(business.Where(option => option.Key == "business_contact"));
+        Assert.Equal("Contact", contact.Group);
+        Assert.Equal("Contact", contact.Label);
+        Assert.Contains("Contact", contact.TextVariants!);
+        Assert.Contains("Contact Us", contact.TextVariants!);
+        Assert.Contains("Get in Touch", contact.TextVariants!);
+        Assert.Contains("Reach Out", contact.TextVariants!);
+
+        var quote = Assert.Single(business.Where(option => option.Key == "business_quote"));
+        Assert.Equal("Quote", quote.Group);
+        Assert.Contains("Quote", quote.TextVariants!);
+        Assert.Contains("Free Quote", quote.TextVariants!);
+        Assert.Contains("Get a Quote", quote.TextVariants!);
+        Assert.Contains("Get a Free Quote", quote.TextVariants!);
+
+        var call = Assert.Single(business.Where(option => option.Key == "business_call"));
+        Assert.Equal("Call", call.Group);
+        Assert.Contains("Call", call.TextVariants!);
+        Assert.Contains("Call Now", call.TextVariants!);
+        Assert.Contains("Call Us", call.TextVariants!);
+
+        var schedule = Assert.Single(business.Where(option => option.Key == "business_schedule"));
+        Assert.Equal("Schedule", schedule.Group);
+        Assert.Contains("Book Now", schedule.TextVariants!);
+        Assert.Contains("Book a Call", schedule.TextVariants!);
+        Assert.Contains("Schedule a Meeting", schedule.TextVariants!);
+
+        var legend = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Legend);
+        Assert.DoesNotContain(legend, option => option.Label.Contains("LEGEND", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(legend, option => option.Key == "legend_contact" &&
+            option.TextVariants!.Contains("Contact") &&
+            option.TextVariants.Contains("Contact Us"));
+
         var protect = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Protect);
         Assert.Contains(protect, option => option.Key == "protect_quote" && option.Href == "/Quote" &&
             option.AnalyticsEventName == "quote_click");
         Assert.Contains(protect, option => option.Href == "/Quote/Life" && option.AnalyticsEventName == "quote_click");
+        Assert.Contains(protect, option => option.Key == "protect_contact" &&
+            option.MetaIntentEventName == "ContactStepReached");
         Assert.DoesNotContain(protect, option => option.Key == "protect_call");
         Assert.DoesNotContain(protect, option => option.Key == "protect_schedule");
     }

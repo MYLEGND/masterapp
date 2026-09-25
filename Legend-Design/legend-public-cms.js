@@ -53,6 +53,7 @@
   let directGesture = null;
   let inlineEditNode = null;
   let inlineEditCheckpointed = false;
+  let activeEditorPanel = 'content';
   let dirty = false;
   let autoSaveTimer = null;
   const pendingDeletedKeys = new Set();
@@ -726,6 +727,7 @@
     el.classList.remove('legend-cms-inline-editing');
     if (inlineEditNode === el) inlineEditNode = null;
     inlineEditCheckpointed = false;
+    updateDirectCanvasUi();
   }
 
   function activateInlineEditing(el) {
@@ -735,6 +737,7 @@
     el.setAttribute('contenteditable', 'plaintext-only');
     el.setAttribute('spellcheck', 'true');
     el.classList.add('legend-cms-inline-editing');
+    updateDirectCanvasUi();
     if (el.dataset.cmsInlineBound === 'true') return;
     el.dataset.cmsInlineBound = 'true';
     el.addEventListener('beforeinput', () => {
@@ -755,15 +758,7 @@
     });
     el.addEventListener('blur', () => {
       if (inlineEditNode !== el) return;
-      const override = contentOverrideForElement(el, false);
-      if (override) {
-        const value = inlineTextValue(el);
-        if (el.dataset.cmsExtraField === 'title') override.title = value;
-        else override.text = value;
-        setContentText(el, value, true);
-      }
-      inlineEditCheckpointed = false;
-      updateDirectCanvasUi();
+      deactivateInlineEditing(el);
     });
   }
 
@@ -1781,7 +1776,7 @@
     }
   }
 
-  function setSelected(el) {
+  function setSelected(el, { openContent = false } = {}) {
     const previous = selected;
     if (previous && previous !== el) deactivateInlineEditing(previous);
     document.querySelectorAll('.legend-cms-selected').forEach(x => x.classList.remove('legend-cms-selected'));
@@ -1793,7 +1788,9 @@
     }
     syncEditorControls();
     renderSignalControls();
-    showPanel('content');
+    if (activeEditorPanel === 'motion') renderMotionControls();
+    if (activeEditorPanel === 'data') renderDataControls();
+    if (openContent) showPanel('content');
     refreshLayers();
     updateDirectCanvasUi();
   }
@@ -1838,6 +1835,7 @@
     selectionFrame.style.width = `${Math.max(rect.width, 1)}px`;
     selectionFrame.style.height = `${Math.max(rect.height, 1)}px`;
     selectionFrame.dataset.sectionSelected = selected.dataset.cmsSection ? 'true' : 'false';
+    selectionFrame.dataset.textEditing = inlineEditNode === selected ? 'true' : 'false';
     if (directGesture) positionGridOverlay(directGesture.section);
   }
 
@@ -1869,7 +1867,7 @@
     preview.appendChild(selectionFrame);
 
     const beginGesture = (event, mode, edge = '', captureTarget = null) => {
-      if (!selected || selected.dataset.cmsSignalOnly) return false;
+      if (!selected || selected.dataset.cmsSignalOnly || inlineEditNode === selected) return false;
       const section = selectedSection || currentSectionFor(selected);
       const parent = selected.parentElement;
       if (!section || !parent) return false;
@@ -2409,6 +2407,7 @@
     if(dynamicStatus) dynamicStatus.textContent=dynamic ? `Dynamic route ${dynamic.routePattern || ''} from ${dynamicSource?.label || dynamic.collectionId}.` : 'This page is static.';
   }
   function showPanel(name) {
+    activeEditorPanel = name;
     document.querySelectorAll('[data-cms-view]').forEach(view => { view.hidden = view.dataset.cmsView !== name; });
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
     if (name === 'layers') refreshLayers();
@@ -2978,6 +2977,12 @@
       fontInput.replaceWith(select);
     }
     document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && inlineEditNode) {
+        event.preventDefault();
+        deactivateInlineEditing(inlineEditNode);
+        selected?.focus?.({ preventScroll: true });
+        return;
+      }
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       const key = event.key.toLowerCase();
       if (key === 's') { event.preventDefault(); chooseDraft(); return; }
@@ -2993,28 +2998,68 @@
   function availableCtaOptions() {
     const items = [];
     const seen = new Set();
-    const add = (option, managed = false) => {
-      if (!option?.key || !option?.href || option.href === '#' || !safeUrl(option.href) || seen.has(option.key)) return;
-      seen.add(option.key);
-      items.push({ ...option, managed });
+    const push = option => {
+      if (!option?.choiceKey || !option?.href || option.href === '#' || !safeUrl(option.href) || seen.has(option.choiceKey)) return;
+      seen.add(option.choiceKey);
+      items.push(option);
     };
-    (ctaCatalog || []).forEach(option => add(option, true));
+
+    for (const option of ctaCatalog || []) {
+      if (!option?.key || !option?.href || option.href === '#' || !safeUrl(option.href)) continue;
+      const phrases = [...new Set([
+        option.defaultText,
+        ...(Array.isArray(option.textVariants) ? option.textVariants : [])
+      ].filter(value => typeof value === 'string' && value.trim()).map(value => value.trim()))];
+      (phrases.length ? phrases : [option.label || option.key]).forEach((text, index) => {
+        push({
+          ...option,
+          managed: true,
+          kind: 'managed',
+          actionKey: option.key,
+          choiceKey: `managed:${option.key}:${index}`,
+          label: text,
+          defaultText: text
+        });
+      });
+    }
+
     const pageEntries = new Map();
-    for (const page of context.pages || []) if (typeof page.path === 'string') pageEntries.set(page.path.replace(/\/$/, '') || '/', page.label || page.path);
-    for (const [path, page] of Object.entries(documentState.pages || {})) pageEntries.set(path, page.title || pageEntries.get(path) || path);
-    for (const [path, label] of pageEntries) add({ key: 'page:' + path, group: 'This website', label: 'Page · ' + label, defaultText: label, href: path });
+    for (const page of context.pages || []) {
+      if (typeof page.path !== 'string') continue;
+      const path = page.path.replace(/\/$/, '') || '/';
+      pageEntries.set(path, page.label || page.path);
+    }
+    for (const [path, page] of Object.entries(documentState.pages || {})) {
+      const navigation = page?.navigation || {};
+      pageEntries.set(path, navigation.label || page?.title || pageEntries.get(path) || path);
+    }
+    for (const [path, label] of pageEntries) {
+      push({
+        key: 'page:' + path,
+        choiceKey: 'page:' + path,
+        group: 'Website pages',
+        label,
+        defaultText: label,
+        href: path,
+        managed: false,
+        kind: 'page'
+      });
+    }
     document.querySelectorAll('[data-cms-section][id]').forEach(section => {
       const id = section.id?.trim(); if (!id) return;
       const label = section.querySelector('h1,h2,h3')?.textContent?.trim() || id;
-      add({ key: 'section:' + id, group: 'This page', label: 'Section · ' + label, defaultText: label, href: '#' + encodeURIComponent(id) });
+      push({
+        key: 'section:' + id,
+        choiceKey: 'section:' + id,
+        group: 'This page',
+        label,
+        defaultText: label,
+        href: '#' + encodeURIComponent(id),
+        managed: false,
+        kind: 'section'
+      });
     });
     return items;
-  }
-
-  function preferredCtaOption() {
-    const preferred = SITE_KEY === 'business' ? 'business_contact' : SITE_KEY === 'protect' ? 'protect_quote' : 'legend_contact';
-    const options = availableCtaOptions();
-    return options.find(option => option.key === preferred) || options.find(option => option.managed) || options[0] || null;
   }
 
   function syncCtaControls(override, currentHref) {
@@ -3025,34 +3070,73 @@
     const options = availableCtaOptions();
     select.replaceChildren();
 
+    const choose = document.createElement('option');
+    choose.value = '';
+    choose.textContent = 'Choose a CTA or destination…';
+    select.appendChild(choose);
+
     const presets = options.filter(option => option.managed);
-    const navigation = options.filter(option => !option.managed);
-    const appendGroup = (label, values, wired) => {
-      if (!values.length) return;
-      const group = document.createElement('optgroup'); group.label = label;
+    const groups = new Map();
+    for (const option of presets) {
+      if (!groups.has(option.group)) groups.set(option.group, []);
+      groups.get(option.group).push(option);
+    }
+    for (const [groupName, values] of groups) {
+      const meta = values.some(option => option.metaIntentEventName);
+      const group = document.createElement('optgroup');
+      group.label = `${String(groupName || 'Action').toUpperCase()} — Analytics${meta ? ' + Meta' : ''}`;
       values.forEach(option => {
         const node = document.createElement('option');
-        node.value = option.key;
-        node.textContent = (option.group ? option.group + ' · ' : '') + option.label +
-          (wired ? (option.metaIntentEventName ? ' · AUTO Analytics + Meta' : ' · AUTO Analytics') : '');
+        node.value = option.choiceKey;
+        node.textContent = option.defaultText;
         group.appendChild(node);
       });
       select.appendChild(group);
-    };
-    appendGroup('Preset actions · backend wired', presets, true);
-    appendGroup('Navigate within this website', navigation, false);
-    const customOption = document.createElement('option'); customOption.value = 'custom'; customOption.textContent = 'Custom destination…'; select.appendChild(customOption);
+    }
 
-    const byKey = override?.actionKey ? options.find(option => option.key === override.actionKey) : null;
-    const byHref = !byKey ? options.find(option => option.href === currentHref && !option.managed) || options.find(option => option.href === currentHref) : null;
+    const pages = options.filter(option => option.kind === 'page');
+    if (pages.length) {
+      const group = document.createElement('optgroup'); group.label = 'WEBSITE PAGES';
+      pages.forEach(option => {
+        const node = document.createElement('option'); node.value = option.choiceKey; node.textContent = option.label; group.appendChild(node);
+      });
+      select.appendChild(group);
+    }
+    const sections = options.filter(option => option.kind === 'section');
+    if (sections.length) {
+      const group = document.createElement('optgroup'); group.label = 'THIS PAGE';
+      sections.forEach(option => {
+        const node = document.createElement('option'); node.value = option.choiceKey; node.textContent = option.label; group.appendChild(node);
+      });
+      select.appendChild(group);
+    }
+
+    const other = document.createElement('optgroup'); other.label = 'OTHER';
+    const customOption = document.createElement('option'); customOption.value = 'custom'; customOption.textContent = 'Custom URL…'; other.appendChild(customOption);
+    select.appendChild(other);
+
+    const currentText = String(override?.text ?? selected?.textContent ?? '').trim();
+    const managedMatches = override?.actionKey
+      ? options.filter(option => option.managed && option.actionKey === override.actionKey)
+      : [];
+    const byKey = managedMatches.find(option => option.defaultText === currentText) || managedMatches[0] || null;
+    const byHref = !byKey && currentHref
+      ? options.find(option => !option.managed && option.href === currentHref)
+        || options.find(option => option.managed && option.href === currentHref && option.defaultText === currentText)
+        || options.find(option => option.managed && option.href === currentHref)
+      : null;
     const selectedOption = byKey || byHref || null;
-    select.value = selectedOption?.key || 'custom';
+    const hasCustomHref = currentHref && currentHref !== '#';
+    select.value = selectedOption?.choiceKey || (hasCustomHref ? 'custom' : '');
     if (custom) custom.hidden = select.value !== 'custom';
     if (wiring) {
       wiring.textContent = selectedOption?.managed
-        ? `Automatic wiring: ${selectedOption.analyticsEventName || 'cta_click'}${selectedOption.metaIntentEventName ? ' + Meta ' + selectedOption.metaIntentEventName : ''}. No manual event mapping required.`
-        : selectedOption ? 'Navigation link. Choose a preset action above when you want the existing automatic analytics/Meta contract.'
-          : 'Custom link. Preset actions above are the backend-wired choices.';
+        ? `Automatic wiring: Analytics ${selectedOption.analyticsEventName || 'cta_click'}${selectedOption.metaIntentEventName ? ' + Meta ' + selectedOption.metaIntentEventName : ''}. Every phrase in this group uses the same destination and event contract.`
+        : selectedOption
+          ? 'Navigation only. This links to an existing page or section and does not create a second CTA wiring contract.'
+          : select.value === 'custom'
+            ? 'Custom URL. Use a grouped CTA above when you want the existing automatic analytics/Meta contract.'
+            : 'Choose the CTA wording you want. Grouped phrases share one canonical backend destination and event contract.';
     }
   }
 
@@ -3111,22 +3195,19 @@
     const sectionAnchor = type === 'section'
       ? (selectedSection && !selectedSection.matches('.site-header,.site-footer') ? selectedSection : pageLayerSections()[0] || null)
       : null;
-    const action = type === 'button' ? preferredCtaOption() : null;
-    if (type === 'button' && !action) { alert('Configure a working website action before adding this button.'); return; }
     checkpoint();
     const extra = {
       id: crypto.randomUUID(),
       type,
       sectionId: section?.dataset.cmsSection || `${pageKey}.root`,
-      text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : type === 'form' ? 'Send inquiry' : type === 'code' ? defaultCodeBlock : '',
+      text: type === 'button' ? 'Button' : type === 'text' ? 'Your text' : type === 'form' ? 'Send inquiry' : type === 'code' ? defaultCodeBlock : '',
       title: type === 'form' ? 'Send an inquiry' : null,
       signals: [],
       style: type === 'code' ? { widthPercent: 100, heightPx: 320 } : type === 'form' ? { widthPercent: 100 } : {}
     };
     if (type === 'button') {
-      extra.href = action.href;
-      extra.target = action.openInNewTab ? '_blank' : '_self';
-      if (action.managed) extra.actionKey = action.key;
+      extra.href = '';
+      extra.target = '_self';
       const container = selectedFlowContainer(section);
       if (container) extra.placement = { sectionId: section.dataset.cmsSection, containerId: container.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
     }
@@ -3137,7 +3218,8 @@
       syncSectionOrderFromDom();
     }
     if (extra.placement) applyPlacement(el, extra.placement);
-    setSelected(el); markDirty();
+    setSelected(el, { openContent: type === 'button' }); markDirty();
+    if (type === 'button') document.getElementById('legend-cms-action')?.focus();
     if (type === 'code') openCodeEditor();
   }
   function enhanceEditor(panel, preview) {
@@ -3191,7 +3273,7 @@
     if (content) content.appendChild(selectedActions);
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
-    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Preset actions are the existing backend-wired choices. Page and section links are navigation only.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose the exact CTA wording. Every phrase inside an action group shares the same canonical destination and automatic event wiring.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     syncBreakpointControls();
@@ -3282,16 +3364,25 @@
       if (!selected || selected.tagName !== 'A') return;
       const ov = selectedOverride(); if (!ov) return;
       checkpoint();
-      const option = availableCtaOptions().find(candidate => candidate.key === event.target.value);
+      const option = availableCtaOptions().find(candidate => candidate.choiceKey === event.target.value);
       if (!option) {
         delete ov.actionKey;
-        document.getElementById('legend-cms-custom-link').hidden = false;
-        markDirty();
+        if (event.target.value === 'custom') {
+          document.getElementById('legend-cms-custom-link').hidden = false;
+        } else {
+          ov.href = '';
+          ov.target = '_self';
+          document.getElementById('legend-cms-custom-link').hidden = true;
+        }
+        applyElementOverride(selected, ov); syncEditorControls(); markDirty();
         return;
       }
-      if (option.managed) ov.actionKey = option.key; else delete ov.actionKey;
+      if (option.managed) ov.actionKey = option.actionKey; else delete ov.actionKey;
       ov.href = option.href; ov.target = option.openInNewTab ? '_blank' : '_self';
-      if (selected.dataset.cmsExtraId) { ov.text = option.defaultText || option.label; setContentText(selected, ov.text, true); }
+      if (selected.dataset.cmsExtraId) {
+        ov.text = option.defaultText || option.label;
+        setContentText(selected, ov.text, true);
+      }
       applyElementOverride(selected, ov); syncEditorControls(); markDirty();
     });
     panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
@@ -3355,6 +3446,8 @@
       .legend-cms-move-handle{position:absolute;left:8px;top:8px;z-index:2;pointer-events:auto;touch-action:none;min-width:48px!important;min-height:30px!important;padding:5px 10px!important;border:1px solid #081a3a!important;border-radius:999px!important;background:#d4ad45!important;color:#081a3a!important;font:800 11px/1 Inter,system-ui,sans-serif!important;letter-spacing:.02em;cursor:grab!important;box-shadow:0 4px 12px #0004!important}
       .legend-cms-move-handle:active{cursor:grabbing!important}
       .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
+      .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-move-handle,
+      .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-edge-handle{display:none!important;pointer-events:none!important}
       .legend-cms-edge-handle{position:absolute;pointer-events:auto;touch-action:none;margin:0;padding:0;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;min-height:0!important}
       .legend-cms-edge-top,.legend-cms-edge-bottom{left:10px;right:10px;height:12px;cursor:ns-resize}
       .legend-cms-edge-top{top:-6px}.legend-cms-edge-bottom{bottom:-6px}
@@ -3497,7 +3590,9 @@
     document.addEventListener('click', event => {
       const target = editorSelectionTarget(event.target);
       if (!target || target.closest('.legend-cms-editor')) return;
-      if (target !== selected) setSelected(target);
+      const alreadySelected = target === selected;
+      if (!alreadySelected) setSelected(target);
+      else if (inlineEditNode !== target && event.detail === 1) showPanel('content');
       if (target.tagName === 'A' || target.tagName === 'BUTTON') event.preventDefault();
       event.stopPropagation();
     }, true);
