@@ -539,7 +539,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
 
     private async Task<IActionResult> SubmitOwnerAsync(
         PublicWebsiteRuntimeScope scope,
-        PublicRequest request,
+        IPublicWebsiteSubmission request,
         WebsiteLead lead,
         string firstName,
         string lastName,
