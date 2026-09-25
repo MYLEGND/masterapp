@@ -1052,6 +1052,8 @@
         if (el.closest('.legend-cms-editor') || el.dataset.cmsSignalOnly || el.dataset.cmsLocked === 'true' || el.hidden) return false;
         if (el.dataset.cmsSection) return false;
         if (['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) && !el.classList.contains('cms-extra-group')) return false;
+        const interactiveAncestor = el.parentElement?.closest?.('a[data-cms-editable="true"],button[data-cms-editable="true"]');
+        if (interactiveAncestor) return false;
         const item = previewRelativeRect(el);
         if (!item) return false;
         return item.left < rect.left + rect.width && item.left + item.width > rect.left &&
