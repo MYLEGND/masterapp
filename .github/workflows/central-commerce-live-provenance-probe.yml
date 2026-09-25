@@ -1,0 +1,27 @@
+name: Central commerce live provenance probe
+on:
+  push:
+    branches:
+      - diagnose/central-commerce-live-provenance-20260925
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe selected live provenance endpoints read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in             https://masterapp-protect.azurewebsites.net/api/runtime-provenance             https://masterapp-parfait.azurewebsites.net/api/runtime-provenance             https://masterapp-website.azurewebsites.net/_deployment-provenance.txt
+          do
+            body="$(mktemp)"
+            code="$(curl --silent --show-error --location --max-time 30               -H 'Cache-Control: no-cache' -o "$body" -w '%{http_code}' "$url" || true)"
+            bytes="$(wc -c < "$body" | tr -d ' ')"
+            printf '%s status=%s bytes=%s\n' "$url" "$code" "$bytes"
+            if [ "$code" = 200 ]; then
+              head -c 512 "$body"; printf '\n'
+            fi
+            rm -f "$body"
+          done
