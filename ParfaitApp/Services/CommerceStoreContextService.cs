@@ -9,6 +9,8 @@ namespace ParfaitApp.Services;
 
 public sealed record CommerceStoreContext(
     Guid CommerceBusinessId,
+    Guid? WebsiteContentVersionId,
+    string WebsiteSiteKey,
     string BusinessKey,
     string StoreName,
     string NavigationLabel,
@@ -81,18 +83,22 @@ public sealed class CommerceStoreContextService(
             .SingleOrDefaultAsync(x => x.CommerceBusinessId == business.Id, ct);
 
         WebsiteContentDocument? websiteDocument = explicitDocument;
+        Guid? publishedVersionId = null;
+        var websiteSiteKey = isParfaitKey(business.Key) ? "ParfaitApp" : "business";
         if (websiteDocument is null)
         {
             var state = await db.Set<WebsiteContentState>().AsNoTracking()
                 .SingleOrDefaultAsync(x => x.CommerceBusinessId == business.Id, ct);
             if (state is not null)
             {
+                websiteSiteKey = state.SiteKey;
                 if (publishedOnly)
                 {
                     if (!state.PublishedVersionId.HasValue) return null;
                     var version = await db.Set<WebsiteContentVersion>().AsNoTracking()
                         .SingleOrDefaultAsync(x => x.Id == state.PublishedVersionId.Value && x.StateId == state.Id, ct);
                     if (version is null) return null;
+                    publishedVersionId = version.Id;
                     websiteDocument = Deserialize(version.DocumentJson);
                     if (websiteDocument.Store?.Enabled != true) return null;
                 }
@@ -103,7 +109,7 @@ public sealed class CommerceStoreContextService(
             }
         }
 
-        var isParfait = string.Equals(business.Key, ParfaitBusinessScopeService.ParfaitBusinessKey, StringComparison.OrdinalIgnoreCase);
+        var isParfait = isParfaitKey(business.Key);
         if (publishedOnly && !isParfait && websiteDocument?.Store?.Enabled != true) return null;
 
         var label = websiteDocument?.Store?.NavigationLabel?.Trim();
@@ -114,6 +120,8 @@ public sealed class CommerceStoreContextService(
 
         return new CommerceStoreContext(
             business.Id,
+            publishedVersionId,
+            websiteSiteKey,
             business.Key,
             business.DisplayName,
             label,
@@ -130,6 +138,9 @@ public sealed class CommerceStoreContextService(
             string.IsNullOrWhiteSpace(settings?.GlobalStoreCheckoutUrl) ? null : settings!.GlobalStoreCheckoutUrl.Trim(),
             theme);
     }
+
+    private static bool isParfaitKey(string? key) =>
+        string.Equals(key, ParfaitBusinessScopeService.ParfaitBusinessKey, StringComparison.OrdinalIgnoreCase);
 
     private static WebsiteContentDocument Deserialize(string? json)
     {
