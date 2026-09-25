@@ -40,6 +40,8 @@
   let signalCatalog = null;
   let ctaCatalog = [];
   let managementPayload = null;
+  let storeContext = null;
+  let storePreviewActive = false;
   let pendingAiProposal = null;
   let collaborationReplyTo = null;
   let collectionData = new Map();
@@ -144,6 +146,12 @@
       reusableComponents: input?.reusableComponents && typeof input.reusableComponents === 'object' ? input.reusableComponents : {},
       collections: input?.collections && typeof input.collections === 'object' ? input.collections : {},
       theme: input?.theme && typeof input.theme === 'object' ? input.theme : {},
+      store: {
+        enabled: input?.store?.enabled === true,
+        navigationLabel: typeof input?.store?.navigationLabel === 'string' && input.store.navigationLabel.trim()
+          ? input.store.navigationLabel.trim().slice(0, 40)
+          : 'Store'
+      },
       pages
     };
   }
@@ -1360,6 +1368,7 @@
     documentState = normalizeDocument(doc);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
+    applyStoreNavigation();
     const metadata = pageState();
     document.title = metadata.title ?? originalTitle;
     const description = document.querySelector('meta[name="description"]');
@@ -1400,6 +1409,76 @@
     document.querySelectorAll('[data-business-field]').forEach(el => { const value = business[el.dataset.businessField]; el.textContent = value || ''; el.hidden = !value; });
 
   }
+
+  function effectiveStoreLabel() {
+    return documentState.store?.navigationLabel?.trim() || storeContext?.label?.trim() || 'Store';
+  }
+
+  function storeIsEnabled() {
+    return documentState.store?.enabled === true && storeContext?.enabled === true && !!storeContext?.storefrontUrl;
+  }
+
+  function createStoreCartIcon() {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 24 24');
+    svg.setAttribute('width','18');
+    svg.setAttribute('height','18');
+    svg.setAttribute('fill','none');
+    svg.setAttribute('aria-hidden','true');
+    svg.style.stroke='currentColor';
+    svg.style.strokeWidth='2';
+    svg.style.strokeLinecap='round';
+    svg.style.strokeLinejoin='round';
+    const path = document.createElementNS(svg.namespaceURI,'path');
+    path.setAttribute('d','M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3');
+    const first = document.createElementNS(svg.namespaceURI,'circle'); first.setAttribute('cx','9.8'); first.setAttribute('cy','20'); first.setAttribute('r','1.2');
+    const second = document.createElementNS(svg.namespaceURI,'circle'); second.setAttribute('cx','17.6'); second.setAttribute('cy','20'); second.setAttribute('r','1.2');
+    svg.append(path,first,second);
+    return svg;
+  }
+
+  function storeInsertionPoint(nav) {
+    const links=[...nav.querySelectorAll(':scope > a')];
+    if (SITE_KEY === 'business') {
+      const contact=links.find(link => /\bcontact\b/i.test(link.textContent || '') || /\/contact\/?$/i.test(link.getAttribute('href') || ''));
+      return contact?.nextSibling || null;
+    }
+    return links.find(link => /client login|legacy protection/i.test(link.textContent || ''))
+      || links.find(link => link.classList.contains('nav-cta'))
+      || null;
+  }
+
+  function applyStoreNavigation() {
+    document.querySelectorAll('[data-legend-store-nav]').forEach(node => node.remove());
+    if (!storeIsEnabled()) return;
+    const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
+    if (!nav) return;
+
+    const store=document.createElement('a');
+    store.href=storeContext.storefrontUrl;
+    store.textContent=effectiveStoreLabel();
+    store.dataset.legendStoreNav='store';
+    store.dataset.cmsLocked='true';
+    store.dataset.websiteAnalyticsEvent='cta_click';
+    store.dataset.websiteBindingId='commerce_store_nav';
+    store.dataset.cta='commerce_store';
+
+    const cart=document.createElement('a');
+    cart.href=storeContext.cartUrl;
+    cart.dataset.legendStoreNav='cart';
+    cart.dataset.cmsLocked='true';
+    cart.dataset.websiteAnalyticsEvent='cta_click';
+    cart.dataset.websiteBindingId='commerce_cart_nav';
+    cart.dataset.cta='commerce_cart';
+    cart.classList.add('legend-store-cart');
+    cart.setAttribute('aria-label','Shopping cart');
+    cart.appendChild(createStoreCartIcon());
+
+    const point=storeInsertionPoint(nav);
+    nav.insertBefore(store,point);
+    nav.insertBefore(cart,point);
+  }
+
   function templatePageEntries() {
     const entries=new Map();
     for (const page of context.pages || []) {
@@ -1442,6 +1521,8 @@
   }
 
   async function navigateToEditorPage(route) {
+    if (route === '__store__') { openStorePreview(); return; }
+    closeStorePreview();
     route=normalizePageRoute(route); if(!route) return;
     if (saving) { const status=document.getElementById('legend-cms-status'); if(status) status.textContent='Wait for the current save to finish, then choose a page.'; return; }
     if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
@@ -1512,7 +1593,14 @@
       option.textContent=entry.label;
       select.appendChild(option);
     }
-    if ([...select.options].some(option=>option.value===current)) select.value=current;
+    if (storeIsEnabled()) {
+      const option=document.createElement('option');
+      option.value='__store__';
+      option.textContent=effectiveStoreLabel();
+      select.appendChild(option);
+    }
+    if (storePreviewActive && storeIsEnabled()) select.value='__store__';
+    else if ([...select.options].some(option=>option.value===current)) select.value=current;
   }
 
   function installPageSelector() {
@@ -1521,8 +1609,139 @@
     const select=document.createElement('select'); select.id='legend-cms-page-select'; select.setAttribute('aria-label','Website page'); label.appendChild(select);
     select.addEventListener('change',()=>void navigateToEditorPage(select.value));
     panel.insertBefore(label,panel.querySelector('.legend-cms-navigation'));
+
+    const storeGroup=document.createElement('div');
+    storeGroup.id='legend-cms-store-controls';
+    storeGroup.className='legend-cms-group legend-cms-store-controls';
+    label.after(storeGroup);
+    renderStoreControls();
+
     refreshPageSelector();
     syncPageControls();
+  }
+
+  function renderStoreControls() {
+    const host=document.getElementById('legend-cms-store-controls');
+    if (!host) return;
+    host.replaceChildren();
+
+    const enabled=storeIsEnabled();
+    const action=document.createElement('button');
+    action.type='button';
+    action.id='legend-cms-store-toggle';
+    action.textContent=enabled?'Remove Store':'Add Store';
+    action.addEventListener('click',()=>void updateStore(!enabled));
+    host.appendChild(action);
+
+    if (!enabled) {
+      const help=document.createElement('small');
+      help.textContent='Adds one scoped Store page, Store/Shop navigation, cart, product catalog and centralized checkout. Products remain preserved if the Store page is later removed.';
+      host.appendChild(help);
+      return;
+    }
+
+    const label=document.createElement('label');
+    label.textContent='Store navigation name';
+    const input=document.createElement('input');
+    input.id='legend-cms-store-label';
+    input.type='text';
+    input.maxLength=40;
+    input.value=effectiveStoreLabel();
+    input.placeholder='Store or Shop';
+    input.addEventListener('change',()=>void updateStore(true,input.value));
+    label.appendChild(input);
+    host.appendChild(label);
+
+    const manage=document.createElement('button');
+    manage.type='button';
+    manage.id='legend-cms-manage-store';
+    manage.textContent='Manage Store';
+    manage.disabled=!storeContext?.managerUrl;
+    manage.addEventListener('click',openStoreManager);
+    host.appendChild(manage);
+  }
+
+  async function updateStore(enabled,labelValue=null) {
+    if (!editorMode || saving) return;
+    const status=document.getElementById('legend-cms-status');
+    if(status) status.textContent=enabled?'Setting up your store…':'Removing Store page…';
+    try {
+      const response=await fetch(`${API_BASE}/api/website-content/manage/store/${enabled?'enable':'remove'}`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel()})
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(payload.message || payload.error || `Store update failed (${response.status})`);
+      revision=payload.revision;
+      documentState=normalizeDocument(payload.document || documentState);
+      storeContext=payload.store || null;
+      dirty=false;
+      applyStoreNavigation();
+      if(!storeIsEnabled()) closeStorePreview();
+      refreshPageSelector();
+      renderStoreControls();
+      refreshHistoryControls();
+      if(status) status.textContent=enabled?'Store ready in this draft. Publish when you want it public.':'Store page removed. Commerce data is preserved.';
+    } catch(error) {
+      if(status) status.textContent=error?.message || 'Store update failed.';
+    }
+  }
+
+  function storePreviewUrl() {
+    if (!storeContext) return null;
+    return storeContext.previewUrl || storeContext.storefrontUrl || null;
+  }
+
+  function openStorePreview() {
+    if (!storeIsEnabled() || !editorPreview) return;
+    storePreviewActive=true;
+    setSelected(null);
+    let overlay=editorPreview.querySelector('.legend-cms-store-preview');
+    if(!overlay) {
+      overlay=document.createElement('div');
+      overlay.className='legend-cms-editor legend-cms-store-preview';
+      const bar=document.createElement('div'); bar.className='legend-cms-store-preview-bar';
+      const title=document.createElement('strong'); title.textContent='Store preview';
+      const manage=document.createElement('button'); manage.type='button'; manage.textContent='Manage Store'; manage.addEventListener('click',openStoreManager);
+      bar.append(title,manage);
+      const frame=document.createElement('iframe'); frame.className='legend-cms-store-preview-frame'; frame.title='Store preview';
+      overlay.append(bar,frame);
+      editorPreview.appendChild(overlay);
+    }
+    const frame=overlay.querySelector('iframe');
+    const url=storePreviewUrl();
+    if(frame && url && frame.src!==new URL(url,location.href).href) frame.src=url;
+    overlay.hidden=false;
+    refreshPageSelector();
+  }
+
+  function closeStorePreview() {
+    storePreviewActive=false;
+    const overlay=editorPreview?.querySelector?.('.legend-cms-store-preview');
+    if(overlay) overlay.hidden=true;
+  }
+
+  function openStoreManager() {
+    if(!storeContext?.managerUrl) return;
+    let modal=document.querySelector('.legend-cms-store-manager');
+    if(!modal) {
+      modal=document.createElement('div');
+      modal.className='legend-cms-editor legend-cms-store-manager';
+      modal.setAttribute('role','dialog');
+      modal.setAttribute('aria-modal','true');
+      modal.setAttribute('aria-label','Manage Store');
+      const shell=document.createElement('div'); shell.className='legend-cms-store-manager-shell';
+      const top=document.createElement('div'); top.className='legend-cms-store-manager-top';
+      const title=document.createElement('strong'); title.textContent='Manage Store';
+      const close=document.createElement('button'); close.type='button'; close.textContent='Close'; close.addEventListener('click',()=>{modal.hidden=true;});
+      top.append(title,close);
+      const frame=document.createElement('iframe'); frame.className='legend-cms-store-manager-frame'; frame.title='Manage Store workspace';
+      shell.append(top,frame); modal.appendChild(shell); document.body.appendChild(modal);
+    }
+    const frame=modal.querySelector('iframe');
+    if(frame) frame.src=storeContext.managerUrl;
+    modal.hidden=false;
   }
   function preservePreviewNavigation() {
     if (renderInput || SITE_KEY !== 'business') return;
@@ -1732,6 +1951,7 @@
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) { if (SITE_KEY === 'business') throw new Error('This business website is unavailable.'); return; }
       const payload = await response.json();
+      storeContext = payload.store || null;
       if (payload.businessName) {
         document.querySelectorAll('[data-business-name]').forEach(element => {
           element.textContent = payload.businessName;
@@ -3448,6 +3668,10 @@
       .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-move-handle,
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-edge-handle{display:none!important;pointer-events:none!important}
+      .legend-cms-store-controls{display:grid;gap:8px;padding:10px;border:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 52%,transparent);border-radius:12px;background:color-mix(in srgb,var(--web-surface,#fff) 92%,var(--web-gold,#d4ad45) 8%)}
+      .legend-cms-store-preview{position:absolute!important;inset:0!important;z-index:2147482400!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;background:var(--web-surface,#fff)!important;color:var(--web-ink,#101a35)!important;pointer-events:auto!important}
+      .legend-cms-store-preview[hidden]{display:none!important}.legend-cms-store-preview-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 50%,transparent);background:var(--web-surface,#fff)}.legend-cms-store-preview-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
+      .legend-cms-store-manager{position:fixed!important;inset:0!important;z-index:2147483640!important;display:grid!important;place-items:center!important;padding:2vmin!important;background:#0009!important;pointer-events:auto!important}.legend-cms-store-manager[hidden]{display:none!important}.legend-cms-store-manager-shell{width:min(98vw,1600px);height:96dvh;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border-radius:16px;background:var(--web-surface,#fff);box-shadow:0 24px 70px #0008}.legend-cms-store-manager-top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent);color:var(--web-ink,#101a35)}.legend-cms-store-manager-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
       .legend-cms-edge-handle{position:absolute;pointer-events:auto;touch-action:none;margin:0;padding:0;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;min-height:0!important}
       .legend-cms-edge-top,.legend-cms-edge-bottom{left:10px;right:10px;height:12px;cursor:ns-resize}
       .legend-cms-edge-top{top:-6px}.legend-cms-edge-bottom{bottom:-6px}
@@ -3698,6 +3922,7 @@
       if (payload.siteKey && payload.siteKey !== SITE_KEY) throw new Error('This edit session belongs to a different website. Open it from your profile.');
       bindBusiness(payload);
       managementPayload = payload;
+      storeContext = payload.store || null;
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
       if (customPage) {
         const pages = normalizeDocument(payload.document).pages;
