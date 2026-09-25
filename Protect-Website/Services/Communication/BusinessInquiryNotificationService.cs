@@ -32,10 +32,14 @@ public sealed class BusinessInquiryNotificationService(MasterAppDbContext db,
             {
                 if (recipient is not null)
                 {
+                    var linkedLead = row.WebsiteLeadId.HasValue
+                        ? await db.Set<WebsiteLead>().AsNoTracking().SingleOrDefaultAsync(x => x.LeadId == row.WebsiteLeadId.Value, ct)
+                        : null;
+                    var phone = linkedLead?.Phone;
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     timeout.CancelAfter(TimeSpan.FromSeconds(60));
                     sent = await sender.TrySendAsync(recipient, "New website inquiry",
-                        $"<p>{WebUtility.HtmlEncode(row.Name)} · {WebUtility.HtmlEncode(row.Email)}</p><p>{WebUtility.HtmlEncode(row.Message).Replace("\n", "<br>")}</p><p>Page: {WebUtility.HtmlEncode(row.SourcePath)}</p>",
+                        $"<p>{WebUtility.HtmlEncode(row.Name)} · {WebUtility.HtmlEncode(row.Email)}{(string.IsNullOrWhiteSpace(phone) ? "" : " · " + WebUtility.HtmlEncode(phone))}</p><p>{WebUtility.HtmlEncode(row.Message).Replace("\n", "<br>")}</p><p>Page: {WebUtility.HtmlEncode(row.SourcePath)}</p>",
                         replyToEmail: row.Email, cancellationToken: timeout.Token);
                 }
             }

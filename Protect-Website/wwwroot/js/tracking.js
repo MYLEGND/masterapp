@@ -1894,6 +1894,18 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     return true;
   }
 
+  function markTrackedFormSubmitted(formKey, source = 'server_confirmed') {
+    const normalizedFormKey = (formKey || '').trim();
+    if (!normalizedFormKey) return false;
+
+    const state = ensureFormTrackState(normalizedFormKey);
+    if (!state) return false;
+
+    state.nativeSubmissionPending = false;
+    transitionFormState(state, 'submitted', source || 'server_confirmed');
+    return true;
+  }
+
   // ============================================================
   // MODULE: BOOTSTRAP
   // Ownership:
@@ -1978,6 +1990,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     trackFieldError: trackCustomFieldError,
     clearFieldError: clearTrackedFieldError,
     trackStart: fireTrackedFormStartOnce,
+    markSubmitted: markTrackedFormSubmitted,
   };
   window.legendQuoteTracking = {
     ...(window.legendQuoteTracking || {}),

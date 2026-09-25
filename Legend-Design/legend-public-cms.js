@@ -36,11 +36,17 @@
   let ctaCatalog = [];
   let selected = null;
   let selectedSection = null;
+  let editorPreview = null;
+  let selectionFrame = null;
+  let gridOverlay = null;
+  let directGesture = null;
+  let inlineEditNode = null;
+  let inlineEditCheckpointed = false;
   let dirty = false;
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
+  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -281,6 +287,17 @@
       el.style.width = `${style.widthPercent}%`;
       el.style.maxWidth = '100%';
     }
+    if (positiveNumber(style.heightPx)) {
+      el.style.height = `${style.heightPx}px`;
+      el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+    }
+    const hasOffsetX = style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
+    const hasOffsetY = style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
+    if (hasOffsetX || hasOffsetY) {
+      el.style.position = 'relative';
+      if (hasOffsetX) el.style.left = `${Number(style.offsetXPercent)}%`;
+      if (hasOffsetY) el.style.top = `${Number(style.offsetYPx)}px`;
+    }
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
     ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
@@ -299,6 +316,90 @@
     while ((node = walker.nextNode())) if (node.textContent.trim() && !node.parentElement.closest('svg,i,[aria-hidden="true"]')) nodes.push(node);
     if (nodes.length) { nodes[0].textContent = text; nodes.slice(1).forEach(node => { node.textContent = ''; }); }
     else el.appendChild(document.createTextNode(text));
+  }
+
+
+  function overrideForElement(el, create = true) {
+    if (!el?.dataset?.cmsId) return null;
+    if (el.dataset.cmsExtraId) return pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
+    return create ? ensureOverride(el.dataset.cmsId) : pageState().elements[el.dataset.cmsId] || null;
+  }
+
+  function isInlineEditable(el) {
+    if (!el || el.dataset.cmsSignalOnly || el.dataset.cmsSection) return false;
+    if (['IMG','VIDEO','DIV','ARTICLE','HEADER','FOOTER','FORM','INPUT','SELECT','TEXTAREA'].includes(el.tagName)) return false;
+    return editableTextTags.has(el.tagName) || editableInteractiveTags.has(el.tagName);
+  }
+
+  function inlineTextValue(el) {
+    const value = typeof el.innerText === 'string' ? el.innerText : el.textContent || '';
+    return value.replace(/\r/g, '');
+  }
+
+  function deactivateInlineEditing(el = inlineEditNode) {
+    if (!el) return;
+    const override = overrideForElement(el, false);
+    if (override) {
+      const value = inlineTextValue(el);
+      if (el.dataset.cmsExtraField === 'title') override.title = value;
+      else override.text = value;
+      setContentText(el, value, true);
+    }
+    el.removeAttribute?.('contenteditable');
+    el.classList.remove('legend-cms-inline-editing');
+    if (inlineEditNode === el) inlineEditNode = null;
+    inlineEditCheckpointed = false;
+  }
+
+  function activateInlineEditing(el) {
+    if (!isInlineEditable(el)) return;
+    if (inlineEditNode && inlineEditNode !== el) deactivateInlineEditing(inlineEditNode);
+    inlineEditNode = el;
+    el.setAttribute('contenteditable', 'plaintext-only');
+    el.setAttribute('spellcheck', 'true');
+    el.classList.add('legend-cms-inline-editing');
+    if (el.dataset.cmsInlineBound === 'true') return;
+    el.dataset.cmsInlineBound = 'true';
+    el.addEventListener('beforeinput', () => {
+      checkpoint();
+      inlineEditCheckpointed = true;
+    });
+    el.addEventListener('input', () => {
+      if (!inlineEditCheckpointed) checkpoint();
+      inlineEditCheckpointed = false;
+      const override = overrideForElement(el);
+      if (!override) return;
+      const value = inlineTextValue(el);
+      if (el.dataset.cmsExtraField === 'title') override.title = value;
+      else override.text = value;
+      el.dataset.cmsPreserveWhitespace = 'true';
+      markDirty();
+      updateDirectCanvasUi();
+    });
+    el.addEventListener('blur', () => {
+      if (inlineEditNode !== el) return;
+      const override = overrideForElement(el, false);
+      if (override) {
+        const value = inlineTextValue(el);
+        if (el.dataset.cmsExtraField === 'title') override.title = value;
+        else override.text = value;
+        setContentText(el, value, true);
+      }
+      inlineEditCheckpointed = false;
+      updateDirectCanvasUi();
+    });
+  }
+
+  const defaultCodeBlock = '<div style="font:600 18px/1.5 system-ui;padding:24px">Edit this code block to build custom content.</div>';
+
+  function renderCodePreview(el, extra) {
+    const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
+    if (!frame) return;
+    const source = extra?.text?.trim() ? extra.text : defaultCodeBlock;
+    // A data document has an opaque origin under this sandbox and does not inherit
+    // the parent page's script policy. This keeps owner code isolated without
+    // weakening the main site's CSP with unsafe-inline/unsafe-eval.
+    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source);
   }
 
   function mediaUrl(value) {
@@ -380,6 +481,16 @@
       el.append(heading, copy);
     } else if (extra.type === 'button') {
       el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
+    } else if (extra.type === 'code') {
+      el = document.createElement('div'); el.className = 'cms-extra cms-extra-code';
+      const frame = document.createElement('iframe');
+      frame.dataset.cmsCodeFrame = 'true';
+      frame.title = 'Custom code block';
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
+      frame.setAttribute('referrerpolicy', 'no-referrer');
+      frame.setAttribute('loading', 'lazy');
+      el.appendChild(frame);
+      renderCodePreview(el, extra);
     } else {
       el = document.createElement('p');
       el.textContent = extra.text || '';
@@ -564,6 +675,7 @@
       await loadRuntimeScript(context.trackingAsset || '/legend-public-tracking.js');
       await loadRuntimeScript(context.metaSignalAsset || '/legend-public-meta-signal-intelligence.js');
       if (meta.enabled && window.metaSignalIntelligence?.createLandingSession) {
+        const inquiryForm = document.querySelector('form[data-website-inquiry][data-form-key]');
         window.LEGEND_PUBLIC_META_SESSION = window.metaSignalIntelligence.createLandingSession({
           ...meta,
           siteKey: SITE_KEY,
@@ -572,8 +684,8 @@
           effectivePageKey: pageKey,
           pageVariant: SITE_KEY + '_website',
           pageMode: 'site_mode',
-          formId: document.querySelector('form[data-form-key]')?.dataset.formKey || '',
-          requiredContactFields: SITE_KEY === 'business' ? ['email'] : []
+          formId: inquiryForm?.dataset.formKey || '',
+          requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []
         });
       }
     } catch (error) {
@@ -639,52 +751,225 @@
   }
 
   function setSelected(el) {
+    const previous = selected;
+    if (previous && previous !== el) deactivateInlineEditing(previous);
     document.querySelectorAll('.legend-cms-selected').forEach(x => x.classList.remove('legend-cms-selected'));
     selected = el;
     selectedSection = currentSectionFor(el);
-    if (selected) { selected.classList.add('legend-cms-selected'); selected.draggable = !selected.dataset.cmsSection && !selected.dataset.cmsSignalOnly; }
+    if (selected) {
+      selected.classList.add('legend-cms-selected');
+      selected.draggable = false;
+      activateInlineEditing(selected);
+    } else if (previous) {
+      deactivateInlineEditing(previous);
+    }
     syncEditorControls();
     renderSignalControls();
     showPanel('content');
     refreshLayers();
+    updateDirectCanvasUi();
   }
 
   function selectedOverride() {
-    if (!selected?.dataset?.cmsId) return null;
-    if (selected.dataset.cmsExtraId) {
-      return pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) || null;
+    return overrideForElement(selected);
+  }
+
+  function previewRelativeRect(el) {
+    if (!editorPreview || !el?.getBoundingClientRect) return null;
+    const rect = el.getBoundingClientRect();
+    const previewRect = editorPreview.getBoundingClientRect();
+    return {
+      left: rect.left - previewRect.left + editorPreview.scrollLeft,
+      top: rect.top - previewRect.top + editorPreview.scrollTop,
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  function positionGridOverlay(section) {
+    if (!gridOverlay || !section) return;
+    const rect = previewRelativeRect(section);
+    if (!rect) return;
+    gridOverlay.style.left = `${rect.left}px`;
+    gridOverlay.style.top = `${rect.top}px`;
+    gridOverlay.style.width = `${rect.width}px`;
+    gridOverlay.style.height = `${Math.max(rect.height, 120)}px`;
+  }
+
+  function updateDirectCanvasUi() {
+    if (!selectionFrame || !editorPreview || !selected || selected.dataset.cmsSignalOnly || selected.closest('.legend-cms-editor')) {
+      if (selectionFrame) selectionFrame.hidden = true;
+      if (gridOverlay && !directGesture) gridOverlay.hidden = true;
+      return;
     }
-    return ensureOverride(selected.dataset.cmsId);
+    const rect = previewRelativeRect(selected);
+    if (!rect) { selectionFrame.hidden = true; return; }
+    selectionFrame.hidden = false;
+    selectionFrame.style.left = `${rect.left}px`;
+    selectionFrame.style.top = `${rect.top}px`;
+    selectionFrame.style.width = `${Math.max(rect.width, 1)}px`;
+    selectionFrame.style.height = `${Math.max(rect.height, 1)}px`;
+    selectionFrame.dataset.sectionSelected = selected.dataset.cmsSection ? 'true' : 'false';
+    if (directGesture) positionGridOverlay(directGesture.section);
+  }
+
+  function installDirectCanvasControls(preview) {
+    editorPreview = preview;
+    gridOverlay = document.createElement('div');
+    gridOverlay.className = 'legend-cms-grid-overlay';
+    gridOverlay.hidden = true;
+    gridOverlay.setAttribute('aria-hidden', 'true');
+    selectionFrame = document.createElement('div');
+    selectionFrame.className = 'legend-cms-selection-frame';
+    selectionFrame.hidden = true;
+    selectionFrame.innerHTML = `
+      <button type="button" class="legend-cms-move-handle" data-cms-gesture="move" aria-label="Move selected block on grid" title="Move on grid">Move</button>
+      <button type="button" class="legend-cms-resize-handle legend-cms-resize-x" data-cms-gesture="resize-x" aria-label="Resize selected block width" title="Resize width"></button>
+      <button type="button" class="legend-cms-resize-handle legend-cms-resize-y" data-cms-gesture="resize-y" aria-label="Resize selected block height" title="Resize height"></button>
+      <button type="button" class="legend-cms-resize-handle legend-cms-resize-xy" data-cms-gesture="resize-xy" aria-label="Resize selected block width and height" title="Resize width and height"></button>`;
+    preview.appendChild(gridOverlay);
+    preview.appendChild(selectionFrame);
+
+    const startGesture = event => {
+      const handle = event.target.closest?.('[data-cms-gesture]');
+      if (!handle || !selected || selected.dataset.cmsSignalOnly) return;
+      const mode = handle.dataset.cmsGesture;
+      if (mode === 'move' && selected.dataset.cmsSection) return;
+      const section = selectedSection || currentSectionFor(selected);
+      const parent = selected.parentElement;
+      if (!section || !parent) return;
+      const selectedRect = selected.getBoundingClientRect();
+      const sectionRect = section.getBoundingClientRect();
+      const parentRect = parent.getBoundingClientRect();
+      const override = selectedOverride();
+      if (!override) return;
+      override.style ||= {};
+      checkpoint();
+      directGesture = {
+        mode, target: selected, section, parent,
+        startX: event.clientX, startY: event.clientY,
+        selectedRect, sectionRect, parentRect,
+        startWidthPercent: positiveNumber(override.style.widthPercent) ? Number(override.style.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
+        startHeightPx: positiveNumber(override.style.heightPx) ? Number(override.style.heightPx) : Math.max(selectedRect.height, 24),
+        startOffsetXPercent: Number.isFinite(Number(override.style.offsetXPercent)) ? Number(override.style.offsetXPercent) : 0,
+        startOffsetYPx: Number.isFinite(Number(override.style.offsetYPx)) ? Number(override.style.offsetYPx) : 0,
+        changed: false
+      };
+      gridOverlay.hidden = false;
+      gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+      positionGridOverlay(section);
+      handle.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    selectionFrame.addEventListener('pointerdown', startGesture);
+    window.addEventListener('pointermove', event => {
+      const gesture = directGesture;
+      if (!gesture || selected !== gesture.target) return;
+      const dx = event.clientX - gesture.startX;
+      const dy = event.clientY - gesture.startY;
+      const override = selectedOverride();
+      if (!override) return;
+      override.style ||= {};
+      const style = override.style;
+      const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
+      const parentWidth = gesture.parentRect.width || sectionWidth || 1;
+      const cell = sectionWidth / 12;
+      const verticalStep = 24;
+      let snappedDx = dx;
+      let snappedDy = dy;
+      gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+
+      if (gesture.mode === 'move') {
+        if (cell > 0) {
+          const desiredLeft = gesture.selectedRect.left + dx;
+          const gridLeft = gesture.sectionRect.left + Math.round((desiredLeft - gesture.sectionRect.left) / cell) * cell;
+          snappedDx = gridLeft - gesture.selectedRect.left;
+        }
+        snappedDy = Math.round(dy / verticalStep) * verticalStep;
+        const desiredCenterX = gesture.selectedRect.left + snappedDx + gesture.selectedRect.width / 2;
+        const sectionCenterX = gesture.sectionRect.left + gesture.sectionRect.width / 2;
+        if (Math.abs(desiredCenterX - sectionCenterX) <= Math.max(8, cell * .18)) {
+          snappedDx += sectionCenterX - desiredCenterX;
+          gridOverlay.classList.add('legend-cms-snap-x');
+        }
+        const desiredCenterY = gesture.selectedRect.top + snappedDy + gesture.selectedRect.height / 2;
+        const sectionCenterY = gesture.sectionRect.top + gesture.sectionRect.height / 2;
+        if (gesture.sectionRect.height > 0 && Math.abs(desiredCenterY - sectionCenterY) <= 12) {
+          snappedDy += sectionCenterY - desiredCenterY;
+          gridOverlay.classList.add('legend-cms-snap-y');
+        }
+        style.offsetXPercent = Math.round((gesture.startOffsetXPercent + snappedDx / parentWidth * 100) * 1000) / 1000;
+        style.offsetYPx = Math.round((gesture.startOffsetYPx + snappedDy) * 1000) / 1000;
+      } else {
+        if (gesture.mode === 'resize-x' || gesture.mode === 'resize-xy') {
+          const rawWidth = gesture.startWidthPercent + dx / parentWidth * 100;
+          const snappedWidth = cell > 0 ? Math.round((rawWidth / 100 * parentWidth) / cell) * cell / parentWidth * 100 : rawWidth;
+          style.widthPercent = Math.max(5, Math.min(100, Math.round(snappedWidth * 1000) / 1000));
+        }
+        if (gesture.mode === 'resize-y' || gesture.mode === 'resize-xy') {
+          style.heightPx = Math.max(24, Math.round((gesture.startHeightPx + dy) / verticalStep) * verticalStep);
+        }
+      }
+      gesture.changed = true;
+      applyStyle(selected, style);
+      updateDirectCanvasUi();
+      event.preventDefault();
+    }, { passive: false });
+
+    const finishGesture = () => {
+      if (!directGesture) return;
+      const changed = directGesture.changed;
+      directGesture = null;
+      gridOverlay.hidden = true;
+      gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+      if (changed) {
+        syncEditorControls();
+        markDirty();
+      }
+      updateDirectCanvasUi();
+    };
+    window.addEventListener('pointerup', finishGesture);
+    window.addEventListener('pointercancel', finishGesture);
+    preview.addEventListener('scroll', updateDirectCanvasUi, { passive: true });
+    window.addEventListener('resize', () => { refreshScaledElements(); updateDirectCanvasUi(); });
+    updateDirectCanvasUi();
   }
 
   function syncEditorControls() {
     const title = document.getElementById('legend-cms-selected-label');
-    const text = document.getElementById('legend-cms-text');
+    const inlineHelp = document.getElementById('legend-cms-inline-help');
     const imageGroup = document.getElementById('legend-cms-image-group');
-    const textGroup = document.getElementById('legend-cms-text-group');
+    const codeGroup = document.getElementById('legend-cms-code-group');
     const scale = document.getElementById('legend-cms-scale');
     const width = document.getElementById('legend-cms-width');
+    const height = document.getElementById('legend-cms-height');
     const top = document.getElementById('legend-cms-padding-top');
     const bottom = document.getElementById('legend-cms-padding-bottom');
+    const offsetX = document.getElementById('legend-cms-offset-x');
+    const offsetY = document.getElementById('legend-cms-offset-y');
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
     document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || !!selected.dataset.cmsSignalOnly; });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
-      if (textGroup) textGroup.hidden = true;
+      if (inlineHelp) inlineHelp.hidden = true;
       if (imageGroup) imageGroup.hidden = true;
+      if (codeGroup) codeGroup.hidden = true;
       return;
     }
 
     if (title) title.textContent = elementLabel(selected);
     const isImage = selected instanceof HTMLImageElement;
-    if (textGroup) textGroup.hidden = isImage || !!selected.dataset.cmsSection || ['VIDEO','DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName);
+    const extra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
+    const isCode = extra?.type === 'code';
+    if (inlineHelp) inlineHelp.hidden = !isInlineEditable(selected);
     if (imageGroup) imageGroup.hidden = !isImage;
+    if (codeGroup) codeGroup.hidden = !isCode;
 
-    const ov = selected.dataset.cmsExtraId
-      ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) || {}
-      : pageState().elements[selected.dataset.cmsId] || {};
+    const ov = extra || pageState().elements[selected.dataset.cmsId] || {};
     const computed = getComputedStyle(selected);
     const parentStyle = selected.parentElement ? getComputedStyle(selected.parentElement) : null;
     const parentWidth = selected.parentElement
@@ -692,13 +977,13 @@
     const actualWidth = parentWidth > 0 ? parseFloat(computed.width) / parentWidth * 100 : 100;
     const displayNumber = value => String(Math.round(value * 1000) / 1000);
     const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
-    if (text && !isImage) text.value = selected.dataset.cmsExtraField === 'title' ? ov.title ?? selected.textContent ?? '' : ov.text ?? selected.textContent ?? '';
     const serviceCard = businessServiceCardFor(selected);
     const duplicateButton = document.getElementById('legend-cms-duplicate'); if (duplicateButton) duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate block';
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
+        : isCode ? 'code block'
         : selected.tagName === 'IMG' ? 'image'
         : selected.tagName === 'VIDEO' ? 'video'
         : selected.tagName === 'FORM' ? 'form'
@@ -711,10 +996,13 @@
     }
     if (scale) scale.value = String(ov.style?.fontScale ?? 1);
     if (width) width.value = displayNumber(ov.style?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
+    if (height) height.value = ov.style?.heightPx != null ? displayNumber(ov.style.heightPx) : '';
     if (top) top.value = displayNumber(ov.style?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
     if (bottom) bottom.value = displayNumber(ov.style?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
+    if (offsetX) offsetX.value = displayNumber(ov.style?.offsetXPercent ?? 0);
+    if (offsetY) offsetY.value = displayNumber(ov.style?.offsetYPx ?? 0);
     if (align) align.value = ov.style?.textAlign ?? computed.textAlign ?? '';
-    if (scale) scale.disabled = isImage;
+    if (scale) scale.disabled = isImage || isCode;
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
     document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(ov.style?.[key] || computed[key]) : ov.style?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
@@ -730,24 +1018,29 @@
     const control = event.target;
     if (control.validity?.badInput) return;
     const fields = {
-      'legend-cms-scale': 'fontScale', 'legend-cms-width': 'widthPercent',
-      'legend-cms-padding-top': 'paddingTop', 'legend-cms-padding-bottom': 'paddingBottom'
+      'legend-cms-scale': 'fontScale',
+      'legend-cms-width': 'widthPercent',
+      'legend-cms-height': 'heightPx',
+      'legend-cms-padding-top': 'paddingTop',
+      'legend-cms-padding-bottom': 'paddingBottom',
+      'legend-cms-offset-x': 'offsetXPercent',
+      'legend-cms-offset-y': 'offsetYPx'
     };
     const field = fields[control.id];
     if (field && control.value !== '') {
       const value = Number(control.value);
-      const valid = field.startsWith('padding') ? spacingNumber(value) : positiveNumber(value);
-      if (!valid) { control.setCustomValidity('Enter a finite ' + (field.startsWith('padding') ? 'nonnegative' : 'positive') + ' number.'); return; }
+      const signed = field === 'offsetXPercent' || field === 'offsetYPx';
+      const valid = signed ? Number.isFinite(value) : field.startsWith('padding') ? spacingNumber(value) : positiveNumber(value);
+      if (!valid) {
+        control.setCustomValidity(signed ? 'Enter a finite position value.' : 'Enter a finite ' + (field.startsWith('padding') ? 'nonnegative' : 'positive') + ' number.');
+        return;
+      }
     }
     control.setCustomValidity('');
     checkpoint();
     const ov = selectedOverride();
     if (!ov) return;
-    if (control.id === 'legend-cms-text' && !(selected instanceof HTMLImageElement) && !selected.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName)) {
-      if (selected.dataset.cmsExtraField === 'title') ov.title = control.value;
-      else ov.text = control.value;
-      setContentText(selected, control.value, true);
-    } else if (control.id === 'legend-cms-hidden') {
+    if (control.id === 'legend-cms-hidden') {
       ov.hidden = control.checked;
       selected.hidden = control.checked;
     } else {
@@ -761,6 +1054,7 @@
       } else return;
       applyStyle(selected, ov.style);
     }
+    updateDirectCanvasUi();
     markDirty();
   }
 
@@ -1038,6 +1332,20 @@
     }
     document.getElementById('legend-cms-duplicate').addEventListener('click', () => {
       if (!selected || !selectedSection) return;
+      const sourceExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
+      if (sourceExtra?.type === 'code') {
+        checkpoint();
+        const copy = JSON.parse(JSON.stringify(sourceExtra));
+        copy.id = crypto.randomUUID();
+        copy.sectionId = selectedSection.dataset.cmsSection;
+        copy.signals = [];
+        pageState().extras.push(copy);
+        const created = createExtra(copy);
+        if (copy.placement) applyPlacement(created, copy.placement);
+        setSelected(created);
+        markDirty();
+        return;
+      }
       const serviceCard = businessServiceCardFor(selected);
       if (serviceCard) {
         const grid = serviceCard.parentElement;
@@ -1139,13 +1447,55 @@
     return null;
   }
 
+  function openCodeEditor() {
+    const block = selected;
+    const extra = block?.dataset?.cmsExtraId ? pageState().extras.find(x => x.id === block.dataset.cmsExtraId) : null;
+    if (!block || extra?.type !== 'code') return;
+    clearTimeout(autoSaveTimer);
+    const dialog = document.createElement('dialog');
+    dialog.className = 'legend-cms-editor legend-cms-code-dialog';
+    const title = document.createElement('h2'); title.textContent = 'Edit code block';
+    const help = document.createElement('p'); help.textContent = 'HTML, CSS, and browser JavaScript run only inside this sandboxed block. Save to preview it on the page before publishing.';
+    const textarea = document.createElement('textarea');
+    textarea.className = 'legend-cms-code-source';
+    textarea.setAttribute('aria-label', 'Code block source');
+    textarea.spellcheck = false;
+    textarea.value = extra.text || defaultCodeBlock;
+    const status = document.createElement('p'); status.setAttribute('role','status');
+    const actions = document.createElement('div'); actions.className = 'legend-cms-code-actions';
+    const saveButton = document.createElement('button'); saveButton.type = 'button'; saveButton.textContent = 'Save & preview';
+    const cancelButton = document.createElement('button'); cancelButton.type = 'button'; cancelButton.textContent = 'Cancel';
+    saveButton.addEventListener('click', () => {
+      if (textarea.value.length > 100000) { status.textContent = 'Code blocks can contain up to 100,000 characters.'; return; }
+      checkpoint();
+      extra.text = textarea.value;
+      renderCodePreview(block, extra);
+      markDirty();
+      dialog.close();
+      updateDirectCanvasUi();
+    });
+    cancelButton.addEventListener('click', () => dialog.close());
+    actions.append(saveButton, cancelButton);
+    dialog.append(title, help, textarea, status, actions);
+    dialog.addEventListener('close', () => { dialog.remove(); if (dirty) autoSaveTimer = setTimeout(() => save(false), 900); });
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    textarea.focus();
+  }
+
   function addBlock(type) {
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
     const action = type === 'button' ? preferredCtaOption() : null;
     if (type === 'button' && !action) { alert('Configure a working website action before adding this button.'); return; }
     checkpoint();
-    const extra = { id: crypto.randomUUID(), type, sectionId: section?.dataset.cmsSection || `${pageKey}.root`, text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : '', style: {} };
+    const extra = {
+      id: crypto.randomUUID(),
+      type,
+      sectionId: section?.dataset.cmsSection || `${pageKey}.root`,
+      text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : type === 'code' ? defaultCodeBlock : '',
+      style: type === 'code' ? { widthPercent: 100, heightPx: 320 } : {}
+    };
     if (type === 'button') {
       extra.href = action.href;
       extra.target = action.openInNewTab ? '_blank' : '_self';
@@ -1154,6 +1504,7 @@
       if (container) extra.placement = { sectionId: section.dataset.cmsSection, containerId: container.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
     }
     pageState().extras.push(extra); const el = createExtra(extra); if (extra.placement) applyPlacement(el, extra.placement); setSelected(el); markDirty();
+    if (type === 'code') openCodeEditor();
   }
   function enhanceEditor(panel, preview) {
     document.querySelectorAll('[data-cms-id]').forEach(el => baselineNodes.set(el.dataset.cmsId, { el, parent: el.parentElement, next: el.nextSibling }));
@@ -1165,9 +1516,9 @@
     navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
-      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Added to your selected section.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="section">Section</button></div></section>
+      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Arrange</h2><p>Drag above or below another block to move it within that layout. Use the column controls to place content in a separate responsive grid.</p><button id="legend-cms-drag">Enable drag</button><label class="legend-cms-group">Destination section<select id="legend-cms-destination"></select></label><label class="legend-cms-group">Column<input id="legend-cms-column" type="number" min="1" max="12" value="1"></label><label class="legend-cms-group">Column span<input id="legend-cms-span" type="number" min="1" max="12" value="12"></label><button id="legend-cms-place">Place block</button><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Position & size</h2><p>Use the Move and resize handles on the page. The canvas shows a 12-column horizontal grid, vertical rhythm lines, and center snap guides while you move or resize.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
@@ -1190,7 +1541,7 @@
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
     const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Select a working action already connected to this website. You can edit the button wording in Content at any time.</small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
-    panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => { showPanel(button.dataset.open); if (button.dataset.open === 'layout') { const select = document.getElementById('legend-cms-destination'); select.replaceChildren(); document.querySelectorAll('[data-cms-section]').forEach(section => { const option = document.createElement('option'); option.value = section.dataset.cmsSection; option.textContent = section.querySelector('h1,h2,h3')?.textContent || section.dataset.cmsSection; select.appendChild(option); }); } }));
+    panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     installStudioControls(panel);
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
@@ -1210,6 +1561,7 @@
     });
     panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-extra-image').click());
+    document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
     panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedOverride(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
@@ -1227,38 +1579,11 @@
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
     document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
-    function place(sectionId, column, span, beforeId, containerId, flow = false) { if (!selected || selected.dataset.cmsSection) return; checkpoint(); const ov = selectedOverride(); column = Math.max(1, Math.min(12, Math.round(column) || 1)); span = Math.max(1, Math.min(13-column, Math.round(span) || 12)); ov.placement = { sectionId, column, span, beforeId, containerId, flow };  applyPlacement(selected, ov.placement); selectedSection = currentSectionFor(selected); markDirty(); }
-    document.getElementById('legend-cms-place').addEventListener('click', () => place(document.getElementById('legend-cms-destination').value, Number(document.getElementById('legend-cms-column').value), Number(document.getElementById('legend-cms-span').value)));
-    document.getElementById('legend-cms-drag').addEventListener('click', () => { if (selected && !selected.dataset.cmsSection) { selected.draggable = true; document.getElementById('legend-cms-status').textContent = 'Drag the selected block onto a section'; } });
-    preview.addEventListener('dragstart', event => { const el = event.target.closest('[data-cms-editable="true"]'); if (!el || el.dataset.cmsSection || el.dataset.cmsSignalOnly || el.closest(lockedSelector)) { event.preventDefault(); return; } setSelected(el); event.dataTransfer.setData('text/plain', el.dataset.cmsId); preview.classList.add('legend-cms-dragging'); });
-    preview.addEventListener('dragover', event => { const section = event.target.closest('[data-cms-section]'); if (selected && section && !selected.contains(section)) { event.preventDefault(); document.querySelectorAll('.legend-cms-drop').forEach(x => x.classList.remove('legend-cms-drop')); section.classList.add('legend-cms-drop'); } });
-    preview.addEventListener('drop', event => {
-      event.preventDefault();
-      const section = event.target.closest('[data-cms-section]');
-      const sourceId = event.dataTransfer?.getData('text/plain');
-      if (!section || !selected || sourceId !== selected.dataset.cmsId || selected.contains(section) || selected.dataset.cmsSignalOnly) { clearDrag(); return; }
-      let target = event.target.closest('[data-cms-id]');
-      if (target === selected || selected.contains(target)) { clearDrag(); return; }
-      let container = target?.parentElement;
-      while (container && container !== section && !['DIV','ARTICLE','SECTION','HEADER','FOOTER'].includes(container.tagName)) { target = container; container = container.parentElement; }
-      if (target === section || !container || !section.contains(container)) { container = section; target = null; }
-      if (!container.dataset.cmsId || container.closest(lockedSelector)) { clearDrag(); return; }
-      // The lower half means after the target. Persist the next editable sibling,
-      // not a transient pointer coordinate, so reload and publication agree.
-      let before = target;
-      if (target && event.clientY >= target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2) {
-        before = target.nextElementSibling;
-        while (before && (!before.dataset.cmsId || before === selected)) before = before.nextElementSibling;
-      }
-      place(section.dataset.cmsSection, 1, 12, before?.dataset.cmsId, container.dataset.cmsId, true);
-      clearDrag();
-    });
-    function clearDrag() { preview.classList.remove('legend-cms-dragging'); document.querySelectorAll('.legend-cms-drop').forEach(x => x.classList.remove('legend-cms-drop')); }
-    preview.addEventListener('dragend', clearDrag);
+    installDirectCanvasControls(preview);
     showPanel('content');
   }
 
-  function injectContentStyles() { const style = document.createElement('style'); style.textContent = `      [data-cms-id][hidden]{display:none}.cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0}.cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}.cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px}.cms-extra video,video.cms-extra{max-width:100%;height:auto}@media(max-width:600px){.cms-layout-frame>*{grid-column:1 / -1}}
+  function injectContentStyles() { const style = document.createElement('style'); style.textContent = `      [data-cms-id][hidden]{display:none}.cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0}.cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}.cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px}.cms-extra video,video.cms-extra{max-width:100%;height:auto}.cms-extra-code{display:block;width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}.cms-extra-code iframe{display:block;width:100%;height:100%;border:0;background:#fff}@media(max-width:600px){.cms-layout-frame>*{grid-column:1 / -1}}
 `; document.head.appendChild(style); }
 
   function injectEditorStyles() {
@@ -1266,6 +1591,21 @@
     style.textContent = `
       .legend-cms-selected{outline:3px solid #f0cf78;outline-offset:4px}
       [data-cms-editable="true"]{cursor:pointer}
+      .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
+      .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
+      .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad45a0;background-image:linear-gradient(to right,#d4ad454d 1px,transparent 1px),linear-gradient(to bottom,#d4ad4538 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px;box-shadow:inset 0 0 0 1px #081a3a24}
+      .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;background:#4cc9f0b8}
+      .legend-cms-grid-overlay::before{left:50%;top:0;bottom:0;width:2px;transform:translateX(-1px)}
+      .legend-cms-grid-overlay::after{top:50%;left:0;right:0;height:2px;transform:translateY(-1px)}
+      .legend-cms-grid-overlay.legend-cms-snap-x::before,.legend-cms-grid-overlay.legend-cms-snap-y::after{background:#f0cf78;box-shadow:0 0 0 2px #081a3a99}
+      .legend-cms-selection-frame{position:absolute;z-index:2147482500;pointer-events:none;border:2px solid #d4ad45;box-shadow:0 0 0 1px #081a3a80}
+      .legend-cms-move-handle,.legend-cms-resize-handle{position:absolute;pointer-events:auto;touch-action:none;border:1px solid #d4ad45;background:#081a3a;color:#fff;box-shadow:0 3px 12px #0005}
+      .legend-cms-move-handle{left:0;top:-38px;min-height:32px;padding:6px 10px;border-radius:9px;font:700 12px/1 Inter,system-ui,sans-serif;cursor:move}
+      .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
+      .legend-cms-resize-handle{width:28px;height:28px;padding:0;border-radius:50%}
+      .legend-cms-resize-x{right:-15px;top:50%;transform:translateY(-50%);cursor:ew-resize}
+      .legend-cms-resize-y{left:50%;bottom:-15px;transform:translateX(-50%);cursor:ns-resize}
+      .legend-cms-resize-xy{right:-15px;bottom:-15px;cursor:nwse-resize}
       body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
       body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
       .legend-cms-preview{min-width:0;min-height:0;height:100%;overflow:auto;position:relative;transform:translateZ(0)}
@@ -1280,6 +1620,7 @@
       .legend-cms-panel{min-width:0;min-height:0;height:100%;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
+      .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
       .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;min-height:40px;padding:8px 12px;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;font:700 14px/1.2 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px #0005}
       .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;overflow-wrap:anywhere}
       .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
@@ -1287,12 +1628,12 @@
       .legend-cms-theme{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
       .legend-cms-theme label{font-size:11px;font-weight:800}.legend-cms-theme input{width:100%;height:36px;border:0;background:transparent}
       .legend-cms-favicon-preview{display:block;width:64px;height:64px;object-fit:contain;border-radius:12px;background:#fff;padding:6px;border:1px solid #50617e}.legend-cms-favicon button{width:100%;padding:10px 12px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;text-align:center}
-      .legend-cms-panel button{cursor:pointer}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}.legend-cms-drop{outline:2px dashed #d4ad45;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(8.333% - 1px),#d4ad4560 calc(8.333% - 1px),#d4ad4560 8.333%)}
+      .legend-cms-panel button{cursor:pointer}.legend-cms-inline-help{margin:8px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a;color:#e7eef8}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}
       .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}
       .legend-cms-navigation{margin:0 0 20px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
-      @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-panel{border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
+      @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-panel{border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}.legend-cms-move-handle{min-height:38px;padding:8px 12px;top:-44px}.legend-cms-resize-handle{width:34px;height:34px}.legend-cms-resize-x{right:-18px}.legend-cms-resize-y{bottom:-18px}.legend-cms-resize-xy{right:-18px;bottom:-18px}}
     `;
     document.head.appendChild(style);
   }
@@ -1316,9 +1657,10 @@
     panel.innerHTML = `
       <h2 id="legend-cms-heading">Website studio</h2>
       <small id="legend-cms-selected-label">Select content on the page</small>
-      <div id="legend-cms-text-group" class="legend-cms-group" hidden>
-        <label for="legend-cms-text">Content</label>
-        <textarea id="legend-cms-text" rows="5"></textarea>
+      <p id="legend-cms-inline-help" class="legend-cms-inline-help" hidden>Type directly on the selected page text. Highlight, replace, or delete words on the canvas; use this panel for controls and actions.</p>
+      <div id="legend-cms-code-group" class="legend-cms-group" hidden>
+        <button id="legend-cms-edit-code" type="button">Edit code in modal</button>
+        <small>Custom HTML, CSS, and browser JavaScript are previewed inside a sandboxed block. Resize the block directly on the page.</small>
       </div>
       <div id="legend-cms-image-group" class="legend-cms-group" hidden>
         <label for="legend-cms-image">Replace image</label>
@@ -1329,10 +1671,13 @@
         <div class="legend-cms-group"><label for="legend-cms-width">Width %</label><input id="legend-cms-width" type="number" min="0" step="any" value="100"></div>
       </div>
       <div class="legend-cms-row">
+        <div class="legend-cms-group"><label for="legend-cms-height">Height px</label><input id="legend-cms-height" type="number" min="0" step="any" placeholder="Auto"></div>
+        <div class="legend-cms-group"><label for="legend-cms-align">Alignment</label><select id="legend-cms-align"><option value="">Default</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="start">Start</option><option value="end">End</option><option value="justify">Justify</option></select></div>
+      </div>
+      <div class="legend-cms-row">
         <div class="legend-cms-group"><label for="legend-cms-padding-top">Top spacing</label><input id="legend-cms-padding-top" type="number" min="0" step="any" value="0"></div>
         <div class="legend-cms-group"><label for="legend-cms-padding-bottom">Bottom spacing</label><input id="legend-cms-padding-bottom" type="number" min="0" step="any" value="0"></div>
       </div>
-      <div class="legend-cms-group"><label for="legend-cms-align">Alignment</label><select id="legend-cms-align"><option value="">Default</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="start">Start</option><option value="end">End</option><option value="justify">Justify</option></select></div>
       <div class="legend-cms-group"><label><input id="legend-cms-hidden" type="checkbox"> Hide selected content</label></div>
       <div class="legend-cms-group"><label>Site colors</label>
         <div class="legend-cms-theme">
@@ -1349,16 +1694,16 @@
     panelToggle.type = 'button';
     panelToggle.id = 'legend-cms-panel-toggle';
     panelToggle.className = 'legend-cms-editor legend-cms-panel-toggle';
-    panelToggle.textContent = 'Preview full page';
+    panelToggle.textContent = 'Full-page canvas';
     panelToggle.setAttribute('aria-controls', 'legend-cms-heading');
     panelToggle.setAttribute('aria-expanded', 'true');
     panelToggle.addEventListener('click', () => {
       const hidden = document.body.classList.toggle('legend-cms-panel-hidden');
-      panelToggle.textContent = hidden ? 'Open editor' : 'Preview full page';
+      panelToggle.textContent = hidden ? 'Open controls' : 'Full-page canvas';
       panelToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
-      if (hidden) setSelected(null);
-      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refreshScaledElements);
-      else refreshScaledElements();
+      const refresh = () => { refreshScaledElements(); updateDirectCanvasUi(); };
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refresh);
+      else refresh();
     });
     document.body.appendChild(panelToggle);
     window.addEventListener('beforeunload', event => {
@@ -1381,18 +1726,21 @@
     panel.insertBefore(bar, panel.firstChild);
     enhanceEditor(panel, preview);
     refreshScaledElements();
-    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(refreshScaledElements).observe(preview);
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { refreshScaledElements(); updateDirectCanvasUi(); }).observe(preview);
     syncEditorControls();
 
     document.addEventListener('click', event => {
       const target = (event.target.tagName === 'IMG' ? event.target.closest('[data-cms-editable="true"]') : event.target.closest('a[data-cms-editable="true"]')) || event.target.closest('[data-cms-editable="true"]');
       if (!target || target.closest('.legend-cms-editor')) return;
-      event.preventDefault();
+      const alreadySelected = target === selected;
+      if (!alreadySelected) setSelected(target);
+      else activateInlineEditing(target);
+      if (target.tagName === 'A' || target.tagName === 'BUTTON') event.preventDefault();
       event.stopPropagation();
-      setSelected(target);
+      if (isInlineEditable(target)) target.focus?.({ preventScroll: true });
     }, true);
 
-    ['legend-cms-text','legend-cms-scale','legend-cms-width','legend-cms-padding-top','legend-cms-padding-bottom','legend-cms-align','legend-cms-hidden']
+    ['legend-cms-scale','legend-cms-width','legend-cms-height','legend-cms-padding-top','legend-cms-padding-bottom','legend-cms-offset-x','legend-cms-offset-y','legend-cms-align','legend-cms-hidden']
       .forEach(id => document.getElementById(id)?.addEventListener('input', updateSelectedFromControls));
 
     document.getElementById('legend-cms-image')?.addEventListener('change', e => {

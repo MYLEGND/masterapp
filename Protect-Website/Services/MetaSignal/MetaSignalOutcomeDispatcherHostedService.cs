@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ProtectWebsite.Services.Meta;
@@ -291,7 +292,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 : await metaPixelResolutionService.ResolveForLeadAsync(
                 row.AgentTrackingProfileId ?? websiteLead?.AgentTrackingProfileId,
                 row.AgentSlug ?? websiteLead?.AgentSlug,
-                isFounderPath: false,
+                isFounderPath: string.Equals(
+                    MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "siteKey"),
+                    WebsiteEditorSiteKeys.Legend,
+                    StringComparison.OrdinalIgnoreCase),
                 cancellationToken);
 
             var capiRequest = new MetaConversionsApiEventRequest

@@ -72,6 +72,9 @@ public sealed class WebsiteStyleOverride
     public decimal? PaddingRight { get; set; }
     public decimal? BorderRadius { get; set; }
     public string? ObjectFit { get; set; }
+    public decimal? HeightPx { get; set; }
+    public decimal? OffsetXPercent { get; set; }
+    public decimal? OffsetYPx { get; set; }
 
 }
 
@@ -192,7 +195,6 @@ public static class WebsiteCallToActionCatalog
             Add("legend_home", "Navigation", "Home", "Home", "/");
             Add("legend_about", "Navigation", "About LEGEND®", "About LEGEND®", "/about");
             Add("legend_contact", "Contact", "Contact LEGEND®", "Contact Us", "/contact", metaIntent: "ContactStepReached");
-            Add("legend_email", "Contact", "Email LEGEND®", "Email Us", "mailto:connect@mylegnd.com", metaIntent: "ContactStepReached");
             Add("legend_protect", "LEGEND®", "Legacy Protection", "Protect What Matters", "https://protect.mylegnd.com/", true);
         }
         else if (siteKey == WebsiteEditorSiteKeys.Protect)

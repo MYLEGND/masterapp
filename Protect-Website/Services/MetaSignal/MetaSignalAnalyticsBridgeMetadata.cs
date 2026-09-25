@@ -38,6 +38,7 @@ internal static class MetaSignalAnalyticsBridgeMetadata
             ["sourceAnalyticsEventId"] = source.Id,
             ["sourceAnalyticsGuid"] = source.EventId.ToString("D"),
             ["sourceAnalyticsEventType"] = source.EventType,
+            ["siteKey"] = MetaSignalSingleTruthPolicy.ReadString(source.MetadataJson, "siteKey"),
             ["sourceAnalyticsEventUtc"] = source.EventUtc,
             ["sourceAnalyticsReceivedUtc"] = source.ReceivedUtc,
             ["mappedMetaSignalEventName"] = mappedEventName,

@@ -5,6 +5,11 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../Legend-Design/legend-public-cms.js', import.meta.url), 'utf8');
 const publicCss = readFileSync(new URL('../../Legend-Design/legend-public-web.css', import.meta.url), 'utf8');
+const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
+const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
+const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
+const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
+const businessMiddlewareSource = readFileSync(new URL('../../Protect-Website/Services/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
 
 function fixture({ context, origin = 'https://protect.example.test', search = '', denied = false, savedStyle = null } = {}) {
   const ids = new Map(), events = new Map(), calls = [], alerts = [], errors = [], windowEvents = new Map();
@@ -77,6 +82,11 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
   vm.runInContext(source, environment);
   return { calls, alerts, errors, document, heading, ids, events, windowEvents,
     select() { events.get('click')({ target: heading, preventDefault() {}, stopPropagation() {} }); },
+    async editText(value) {
+      heading.textContent = value;
+      await heading.listeners.get('beforeinput')?.({ target: heading });
+      await heading.listeners.get('input')?.({ target: heading });
+    },
     async ready() { await events.get('DOMContentLoaded')?.(); } };
 }
 
@@ -157,15 +167,15 @@ for (const siteKey of ['legend', 'protect']) {
   test(`${siteKey}: selection populates actual defaults and text-only edit preserves original layout`, async () => {
     const f = fixture({ context: { siteKey, apiBase: '' }, search: '?legendEdit=ticket' });
     await f.ready(); f.select();
-    assert.equal(f.ids.get('legend-cms-text').value, 'Editor content');
+    assert.equal(f.heading.attributes.contenteditable, 'plaintext-only');
     assert.equal(f.ids.get('legend-cms-scale').value, '1');
     assert.equal(f.ids.get('legend-cms-width').value, '72');
     assert.equal(f.ids.get('legend-cms-padding-top').value, '24');
     assert.equal(f.ids.get('legend-cms-padding-bottom').value, '32');
     assert.equal(f.ids.get('legend-cms-align').value, 'center');
     assert.equal(f.ids.get('legend-cms-image-group').hidden, true);
-    assert.equal(f.ids.get('legend-cms-text-group').hidden, false);
-    await f.ids.get('legend-cms-text').input('An edited heading');
+    assert.equal(f.ids.get('legend-cms-inline-help').hidden, false);
+    await f.editText('An edited heading');
     await f.ids.get('legend-cms-save').click();
   f.ids.get('legend-cms-draft-name').value = 'Test variation';
   await f.ids.get('legend-cms-draft-submit').click();
@@ -184,7 +194,7 @@ test('scale is relative to original responsive typography and never accumulates'
   assert.equal(f.heading.style.fontSize, '128px');
   await f.ids.get('legend-cms-scale').input('5');
   assert.equal(f.heading.style.fontSize, '320px');
-  await f.ids.get('legend-cms-text').input('New title');
+  await f.editText('New title');
   assert.equal(f.heading.style.fontSize, '320px');
   f.heading.baseFontSize = 40;
   f.windowEvents.get('resize')();
@@ -235,7 +245,7 @@ test('editor places the complete website in its own preview beside the inspector
   const panel = f.document.body.children.find(el => el.className.includes('legend-cms-panel'));
   assert.ok(preview.children.includes(f.heading.parentElement));
   assert.equal(panel.firstChild.className, 'legend-cms-editor legend-cms-bar');
-  assert.equal(f.ids.get('legend-cms-text-group').hidden, true);
+  assert.equal(f.ids.get('legend-cms-inline-help').hidden, true);
   assert.equal(f.ids.get('legend-cms-image-group').hidden, true);
 });
 
@@ -288,11 +298,63 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   const click=selector=>w.document.querySelector(selector).dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true}));
   const input=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
+  const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
-  return {w,calls,click,input,change,save,close:()=>w.close()};
+  return {w,calls,click,input,change,editSelected,save,close:()=>w.close()};
 }
 test('canonical public stylesheet preserves authored spaces, tabs and line breaks',()=>{
   assert.match(publicCss,/\[data-cms-preserve-whitespace="true"\]\{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere\}/);
+});
+
+test('shared business inquiry uses Protect contact identity and two-column rows',()=>{
+  assert.ok(businessBuildSource.includes('id="business_inquiry"'));
+  for (const field of ['FirstName','LastName','Phone','Email']) assert.ok(businessBuildSource.includes(`name="${field}"`));
+  assert.ok(publicInquirySource.includes("fields.get('FirstName')"));
+  assert.ok(publicInquirySource.includes("fields.get('LastName')"));
+  assert.ok(publicInquirySource.includes("fields.get('Phone')"));
+  assert.ok(publicInquirySource.includes("fields.get('Email')"));
+  assert.ok(source.includes("requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []"));
+  assert.ok(publicCss.includes('.public-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'));
+});
+
+test('Founder and business websites use one shared inquiry runtime with no hard-coded founder email form path',()=>{
+  assert.ok(businessBuildSource.includes('function publicInquiryForm'));
+  assert.ok(businessBuildSource.includes('data-website-inquiry data-form-key="website_inquiry"'));
+  assert.ok(businessBuildSource.includes('${publicInquiryForm()}</section>'));
+  assert.ok(businessBuildSource.includes('publicInquiryForm({preview:true,business:true})'));
+  assert.ok(businessBuildSource.includes('/legend-public-inquiry.js?v='));
+  assert.equal(businessBuildSource.includes('mailto:connect@mylegnd.com'),false);
+  assert.equal(editorContractsSource.includes('legend_email'),false);
+  assert.ok(publicInquirySource.includes("new URLSearchParams(location.search).has('legendEdit')"));
+  assert.ok(publicInquirySource.includes("document.querySelectorAll('[data-website-inquiry]:not([data-preview])')"));
+  assert.ok(publicInquirySource.includes("new URL('/api/website-inquiries/public', apiBase)"));
+  assert.ok(publicInquirySource.includes("form._trackSubmitAttempt?.(true, 0)"));
+  assert.ok(publicInquirySource.includes("window.legendFormTracking?.markSubmitted?.("));
+  assert.equal(publicInquirySource.includes("EventType: 'lead_form_submit_success'"),false);
+});
+
+test('published business rendering activates the shared inquiry path without injecting a second runtime',()=>{
+  assert.ok(businessRenderSource.includes("doc.querySelector('[data-website-inquiry]')"));
+  assert.ok(businessRenderSource.includes("form.removeAttribute('data-preview')"));
+  assert.ok(businessRenderSource.includes("form.querySelectorAll('[disabled]').forEach(element=>element.removeAttribute('disabled'))"));
+  assert.ok(businessRenderSource.includes("form.querySelector('[data-preview-notice]')?.remove()"));
+  assert.equal(businessRenderSource.includes("script.src='/business-inquiry.js'"),false);
+});
+
+test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
+  assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source)"));
+  assert.equal(source.includes('allow-same-origin'),false);
+  assert.ok(businessMiddlewareSource.includes("frame-src data:; object-src 'none'"));
+  const policy=businessMiddlewareSource.match(/default-src 'self'; script-src[^"]+/)?.[0] || '';
+  assert.equal(policy.includes("script-src 'self' 'unsafe-inline'"),false);
+  assert.equal(policy.includes("script-src 'self' 'unsafe-eval'"),false);
+});
+
+test('shared mobile navigation opens as compact horizontal button grids',()=>{
+  assert.ok(publicCss.includes('.nav[data-open=true]{display:grid}'));
+  assert.ok(publicCss.includes('grid-template-columns:repeat(4,minmax(0,1fr))'));
+  assert.ok(publicCss.includes('.nav{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}'));
+  assert.equal(publicCss.includes('.nav[data-open=true]{display:flex}'),false);
 });
 for (const siteKey of ['legend','protect','business']) {
   test(`${siteKey}: shared editor round-trips authored whitespace exactly`,async()=>{
@@ -300,7 +362,7 @@ for (const siteKey of ['legend','protect','business']) {
     const f=await domFixture({siteKey,business}); let saved;
     const value='Line one\n\tLine two  with  spaces';
     try {
-      f.click('main h1'); f.input('#legend-cms-text',value);
+      f.click('main h1'); f.editSelected(value);
       const heading=f.w.document.querySelector('main h1');
       assert.equal(heading.textContent,value);
       assert.equal(heading.dataset.cmsPreserveWhitespace,'true');
@@ -329,7 +391,7 @@ test('shared CTA dropdown creates a styled live button and keeps its label indep
     f.change('#legend-cms-action','business_call');
     assert.equal(button.getAttribute('href'),'tel:+16025550199');
     assert.equal(button.textContent,'Call Now');
-    f.input('#legend-cms-text','Talk with our team');
+    f.editSelected('Talk with our team');
     assert.equal(button.textContent,'Talk with our team');
     const saved=await f.save(); const extra=saved.pages['/'].extras[0];
     assert.equal(extra.actionKey,'business_call');
@@ -385,7 +447,7 @@ test('business services can be duplicated and deleted as whole cards without gen
 for(const siteKey of ['legend','protect']) {
   test(`${siteKey}: nested existing links edit label and URL, reject unsafe destinations, draft uses revision`,async()=>{
     const f=await domFixture({siteKey}); try {
-      f.click('main a span'); f.input('#legend-cms-text','Book a visit'); f.input('#legend-cms-href','https://business.example/book');
+      f.click('main a span'); f.editSelected('Book a visit'); f.input('#legend-cms-href','https://business.example/book');
       assert.equal(f.w.document.querySelector('main a').textContent,'Book a visit');
       assert.equal(f.w.document.querySelector('main a').href,'https://business.example/book');
       f.input('#legend-cms-href','javascript:alert(1)');
@@ -400,7 +462,7 @@ test('autosave persists edits before domain connection and panel can collapse to
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'}});
   try {
     f.click('main h1');
-    f.input('#legend-cms-text','Persisted before domain');
+    f.editSelected('Persisted before domain');
     await new Promise(resolve=>setTimeout(resolve,1000));
     const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
     assert.ok(saveCall);
@@ -409,9 +471,13 @@ test('autosave persists edits before domain connection and panel can collapse to
     assert.ok(toggle);
     f.click('#legend-cms-panel-toggle');
     assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),true);
-    assert.equal(toggle.textContent,'Open editor');
+    assert.equal(toggle.textContent,'Open controls');
+    assert.ok(f.w.document.querySelector('.legend-cms-selected'));
+    f.editSelected('Still editing full width');
+    assert.equal(f.w.document.querySelector('main h1').textContent,'Still editing full width');
     f.click('#legend-cms-panel-toggle');
     assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),false);
+    assert.equal(toggle.textContent,'Full-page canvas');
   } finally { f.close(); }
 });
 test('section deletion preserves child structure, reset restores, global theme remains separate',async()=>{
@@ -420,37 +486,67 @@ test('section deletion preserves child structure, reset restores, global theme r
     const doc=await f.save();assert.equal(doc.pages['/'].elements['section:home.section.1'].hidden,true);
   }finally{f.close();}
 });
-test('new blocks, keyboard placement and published reload preserve page bounds and section ownership',async()=>{
+test('direct canvas replaces designated drop controls and persists shared geometry',async()=>{
   const f=await domFixture();let saved;try {
-    f.click('main h1');f.click('[data-add="button"]');f.input('#legend-cms-text','Contact us');f.input('#legend-cms-href','https://business.example/contact');
-    f.click('[data-open="layout"]');f.w.document.querySelector('#legend-cms-destination').value='home.section.2';
-    f.w.document.querySelector('#legend-cms-column').value='10';f.w.document.querySelector('#legend-cms-span').value='12';f.click('#legend-cms-place');
-    const block=f.w.document.querySelector('[data-cms-extra-id]'); assert.equal(block.closest('[data-cms-section]').dataset.cmsSection,'home.section.2');assert.equal(block.style.getPropertyValue('--cms-column'),'10');assert.equal(block.style.getPropertyValue('--cms-span'),'3');
+    f.click('main h1');
+    assert.equal(f.w.document.querySelector('#legend-cms-destination'),null);
+    assert.equal(f.w.document.querySelector('#legend-cms-column'),null);
+    assert.equal(f.w.document.querySelector('#legend-cms-place'),null);
+    assert.ok(f.w.document.querySelector('.legend-cms-selection-frame'));
+    assert.ok(f.w.document.querySelector('.legend-cms-grid-overlay'));
+    assert.equal(f.w.document.querySelectorAll('[data-cms-gesture]').length,4);
+    f.input('#legend-cms-width','50');
+    f.input('#legend-cms-height','240');
+    f.input('#legend-cms-offset-x','25');
+    f.input('#legend-cms-offset-y','48');
     saved=await f.save();
+    const style=Object.values(saved.pages['/'].elements)[0].style;
+    assert.equal(style.widthPercent,50);assert.equal(style.heightPx,240);assert.equal(style.offsetXPercent,25);assert.equal(style.offsetYPx,48);
   }finally{f.close();}
-  const loaded=await domFixture({doc:saved,search:''});try {const block=loaded.w.document.querySelector('[data-cms-extra-id]');assert.equal(block.textContent,'Contact us');assert.equal(block.style.getPropertyValue('--cms-column'),'10');assert.equal(block.style.getPropertyValue('--cms-span'),'3');assert.equal(block.closest('[data-cms-section]').dataset.cmsSection,'home.section.2');assert.equal(loaded.w.document.querySelector('.legend-cms-panel'),null);}finally{loaded.close();}
+  const loaded=await domFixture({doc:saved,search:''});try {
+    const heading=loaded.w.document.querySelector('main h1');
+    assert.equal(heading.style.width,'50%');assert.equal(heading.style.height,'240px');assert.equal(heading.style.left,'25%');assert.equal(heading.style.top,'48px');
+    assert.equal(loaded.w.document.querySelector('.legend-cms-panel'),null);
+  }finally{loaded.close();}
 });
 test('publish saves unsaved draft first then calls the explicit publish action',async()=>{
- const f=await domFixture();try{f.click('main h1');f.input('#legend-cms-text','New draft');f.click('#legend-cms-publish');await new Promise(r=>setTimeout(r,0));assert.equal(f.calls.length,3);assert.ok(f.calls[1].url.endsWith('/manage'));assert.ok(f.calls[2].url.endsWith('/manage/publish'));assert.equal(JSON.parse(f.calls[2].body).expectedRevision,'r2');}finally{f.close();}
+ const f=await domFixture();try{f.click('main h1');f.editSelected('New draft');f.click('#legend-cms-publish');await new Promise(r=>setTimeout(r,0));assert.equal(f.calls.length,3);assert.ok(f.calls[1].url.endsWith('/manage'));assert.ok(f.calls[2].url.endsWith('/manage/publish'));assert.equal(JSON.parse(f.calls[2].body).expectedRevision,'r2');}finally{f.close();}
 });
 test('editing current page preserves independent page content',async()=>{
- const f=await domFixture({doc:{pages:{about:{title:'About',elements:{'about.h1':{text:'Other page'}},extras:[],sectionOrder:{}}}}});try{f.click('main h1');f.input('#legend-cms-text','Home edit');const doc=await f.save();assert.equal(doc.pages['/about'].elements['about.h1'].text,'Other page');assert.ok(doc.pages['/']);}finally{f.close();}
+ const f=await domFixture({doc:{pages:{about:{title:'About',elements:{'about.h1':{text:'Other page'}},extras:[],sectionOrder:{}}}}});try{f.click('main h1');f.editSelected('Home edit');const doc=await f.save();assert.equal(doc.pages['/about'].elements['about.h1'].text,'Other page');assert.ok(doc.pages['/']);}finally{f.close();}
 });
 test('undo and redo restore content and leave other page drafts intact',async()=>{
- const f=await domFixture();try{f.click('main h1');f.input('#legend-cms-text','First edit');f.input('#legend-cms-text','Second edit');f.click('#legend-cms-undo');assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');f.click('#legend-cms-redo');assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');}finally{f.close();}
+ const f=await domFixture();try{f.click('main h1');f.editSelected('First edit');f.editSelected('Second edit');f.click('#legend-cms-undo');assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');f.click('#legend-cms-redo');assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');}finally{f.close();}
 });
-test('drag drop preserves the destination flow and reloads in the same location',async()=>{
- const f=await domFixture();let saved;try {
-  const heading=f.w.document.querySelector('main h1'), target=f.w.document.querySelector('main h2');
-  f.click('main h1'); target.getBoundingClientRect=()=>({top:100,height:40});
-  let dragged;const transfer={setData(_type,value){dragged=value;},getData(){return dragged;}};
-  const start=new f.w.Event('dragstart',{bubbles:true,cancelable:true});Object.defineProperty(start,'dataTransfer',{value:transfer});heading.dispatchEvent(start);
-  const drop=new f.w.Event('drop',{bubbles:true,cancelable:true});Object.defineProperties(drop,{dataTransfer:{value:transfer},clientY:{value:101}});target.dispatchEvent(drop);
-  assert.equal(heading.nextElementSibling,target);assert.equal(heading.parentElement,target.parentElement);
-  assert.equal(f.w.document.querySelector('.cms-layout-frame'),null); saved=await f.save();
+test('selected blocks disable legacy HTML drag and expose snap-grid handles',async()=>{
+ const f=await domFixture();try {
+  f.click('main h1');
+  const heading=f.w.document.querySelector('main h1');
+  assert.equal(heading.draggable,false);
+  assert.equal(f.w.document.querySelector('.legend-cms-move-handle').getAttribute('title'),'Move on grid');
+  assert.match(source,/background-size:calc\(100% \/ 12\) 100%,100% 24px/);
+  assert.equal(f.w.document.querySelector('#legend-cms-drag'),null);
  }finally{f.close();}
- const loaded=await domFixture({doc:saved,search:''});try{assert.equal(loaded.w.document.querySelector('main h1').nextElementSibling,loaded.w.document.querySelector('main h2'));}finally{loaded.close();}
 });
+
+test('sandboxed code block saves source and previews without same-origin access',async()=>{
+ const f=await domFixture();try {
+  f.click('main h1');f.click('[data-add="code"]');
+  const dialog=f.w.document.querySelector('.legend-cms-code-dialog');
+  assert.ok(dialog);
+  const sourceInput=dialog.querySelector('.legend-cms-code-source');
+  sourceInput.value='<style>body{margin:0}</style><form><input aria-label="Custom field"></form><script>document.body.dataset.ready="1"<\/script>';
+  f.click('.legend-cms-code-actions button');
+  const block=f.w.document.querySelector('.cms-extra-code');
+  const frame=block.querySelector('iframe');
+  assert.ok(frame.src.startsWith('data:text/html;charset=utf-8,'));
+  assert.equal(decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1)),sourceInput.value);
+  assert.equal(frame.getAttribute('sandbox').includes('allow-same-origin'),false);
+  const saved=await f.save();const extra=saved.pages['/'].extras.find(x=>x.type==='code');
+  assert.ok(extra);assert.equal(extra.text,sourceInput.value);assert.equal(extra.style.widthPercent,100);assert.equal(extra.style.heightPx,320);
+ }finally{f.close();}
+});
+
 test('solid section color replaces template gradient and reset restores the original',async()=>{
  const f=await domFixture();try {
   const section=f.w.document.querySelector('main section');section.style.backgroundImage='linear-gradient(black, blue)';
@@ -505,7 +601,7 @@ test('duplicate link has independent identity and undo removes only the duplicat
   try {
     f.click('main a'); f.input('#legend-cms-href', 'https://business.example/book');
     f.click('#legend-cms-duplicate');
-    f.input('#legend-cms-text', 'Another booking link');
+    f.editSelected('Another booking link');
     const saved = await f.save();
     assert.equal(saved.pages['/'].extras[0].href, 'https://business.example/book');
     assert.equal(saved.pages['/'].extras[0].text, 'Another booking link');
