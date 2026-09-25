@@ -90,10 +90,24 @@ public sealed class ParfaitBusinessProfileService(
         await db.SaveChangesAsync(ct);
     }
 
+    private async Task<MarketingConnection> GetOrCreateMarketingConnectionAsync(Guid businessId, CancellationToken ct)
+    {
+        var owner = MarketingOwnerScope.Business(businessId);
+        var row = await connections.GetStatusAsync(owner, ct);
+        if (row is not null) return row;
+
+        // The storefront settings import marker and the marketing row are separate durable
+        // records. If an interrupted/shared deployment committed the marker first, repair the
+        // canonical marketing authority instead of dereferencing a missing row.
+        await connections.ImportAsync(owner, null, ct: ct);
+        return await connections.GetStatusAsync(owner, ct)
+            ?? throw new InvalidOperationException("Parfait marketing connection authority could not be initialized.");
+    }
+
     public async Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(CancellationToken ct = default)
     {
         var (business, _) = await LoadAsync(ct);
-        var row = (await connections.GetStatusAsync(MarketingOwnerScope.Business(business.Id), ct))!;
+        var row = await GetOrCreateMarketingConnectionAsync(business.Id, ct);
         var status = Status(row);
         return new()
         {
@@ -111,14 +125,14 @@ public sealed class ParfaitBusinessProfileService(
     {
         var (business, _) = await LoadAsync(ct);
         var owner = MarketingOwnerScope.Business(business.Id);
-        var row = (await connections.GetStatusAsync(owner, ct))!;
+        var row = await GetOrCreateMarketingConnectionAsync(business.Id, ct);
         await connections.SaveSettingsAsync(owner, model.MetaPixelId, model.MetaTestEventCode, null, row.Revision, ct);
     }
 
     public async Task<ParfaitMetaAdsConnectionStatusDto> GetMetaConnectionStatusAsync(CancellationToken ct = default)
     {
         var (business, _) = await LoadAsync(ct);
-        return Status((await connections.GetStatusAsync(MarketingOwnerScope.Business(business.Id), ct))!);
+        return Status(await GetOrCreateMarketingConnectionAsync(business.Id, ct));
     }
 
     private static ParfaitMetaAdsConnectionStatusDto Status(MarketingConnection row) => new()
