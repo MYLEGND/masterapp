@@ -1,3 +1,4 @@
+using Infrastructure.Analytics;
 using System;
 using System.Reflection;
 using System.Text.Json;
@@ -162,7 +163,7 @@ public class MetaSignalAnalyticsBridgeTests
 
         var bridge = new ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge(
             Mock.Of<IServiceScopeFactory>(),
-            Options.Create(new ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions()),
+            Options.Create(new Infrastructure.Analytics.MetaSignalIntelligenceOptions()),
             NullLogger<ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge>.Instance);
 
         var bridgeRow = await InvokeTryBuildBridgeRowAsync(bridge, db, source);
@@ -197,7 +198,7 @@ public class MetaSignalAnalyticsBridgeTests
 
         var bridge = new ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge(
             Mock.Of<IServiceScopeFactory>(),
-            Options.Create(new ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions()),
+            Options.Create(new Infrastructure.Analytics.MetaSignalIntelligenceOptions()),
             NullLogger<ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge>.Instance);
 
         var bridgeRow = await InvokeTryBuildBridgeRowAsync(bridge, db, source);
