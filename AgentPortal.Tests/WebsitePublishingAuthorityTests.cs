@@ -187,7 +187,7 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.DoesNotContain(legend, option => option.Label.Contains("LEGEND", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(legend, option => option.Key == "legend_contact" &&
             option.TextVariants!.Contains("Contact") &&
-            option.TextVariants.Contains("Contact Us"));
+            option.TextVariants!.Contains("Contact Us"));
 
         var protect = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Protect);
         Assert.Contains(protect, option => option.Key == "protect_quote" && option.Href == "/Quote" &&
