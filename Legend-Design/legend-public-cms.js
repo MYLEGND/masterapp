@@ -55,6 +55,11 @@
   let inlineEditCheckpointed = false;
   let dirty = false;
   let autoSaveTimer = null;
+  const pendingDeletedKeys = new Set();
+
+  function pageElementDeletionKey(id) { return `page:${currentPageRoute()}|element:${id}`; }
+  function pageExtraDeletionKey(id) { return `page:${currentPageRoute()}|extra:${id}`; }
+  function markDeleted(key) { if (key) pendingDeletedKeys.add(key); }
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
@@ -384,6 +389,34 @@
     const bindings = overrides?.signals || [];
     paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
     if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
+    const managedActionKey = selected.dataset.websiteActionKey;
+    const selectedHref = selected.getAttribute?.('href');
+    const managedAction = (managedActionKey && availableCtaOptions().find(option => option.key === managedActionKey))
+      || (selectedHref && availableCtaOptions().find(option => option.href === selectedHref))
+      || null;
+    if (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) {
+      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic form analytics + Meta';
+      host.appendChild(automaticTitle);
+      const automaticHelp = document.createElement('p');
+      automaticHelp.textContent = 'No mapping is required. The shared Protect Website runtime automatically tracks the canonical inquiry lifecycle, and the backend owns the confirmed Lead outcome.';
+      host.appendChild(automaticHelp);
+      const automatic = document.createElement('div'); automatic.className = 'legend-cms-signal-presets';
+      const names = ['LeadFormStart','ContactInputStarted','PhoneFieldCompleted','RequiredContactFieldsCompleted','SubmitAttempt','Lead'];
+      for (const name of names) {
+        const option = signalCatalog.events.find(value => value.name === name);
+        if (!option) continue;
+        const row = document.createElement('div');
+        row.textContent = `${name} · automatic · ${option.requiresServerOutcome ? 'verified server outcome' : option.metaEligible ? 'Meta + analytics when configured' : 'analytics'}`;
+        automatic.appendChild(row);
+      }
+      host.appendChild(automatic);
+    } else if (managedAction) {
+      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic button analytics + Meta';
+      host.appendChild(automaticTitle);
+      const automaticHelp = document.createElement('p');
+      automaticHelp.textContent = `${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}${managedAction.metaIntentEventName ? ' + ' + managedAction.metaIntentEventName : ''}. No manual mapping is required.`;
+      host.appendChild(automaticHelp);
+    }
     const addSelect = (labelText, values, value, action) => {
       const label = document.createElement('label'); label.className = 'legend-cms-group'; label.textContent = labelText;
       const select = document.createElement('select');
@@ -428,8 +461,10 @@
       const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove mapping';
       remove.addEventListener('click', () => { checkpoint(); overrides.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
     }
-    const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add interaction mapping';
-    add.disabled = bindings.length >= 8 || !candidates.length;
+    const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add advanced custom mapping';
+    const automaticContract = (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
+    add.hidden = automaticContract;
+    add.disabled = automaticContract || bindings.length >= 8 || !candidates.length;
     add.addEventListener('click', () => {
       const option = candidates.flatMap(x => x.triggers.filter(t => triggers.includes(t) && !bindings.some(b => b.trigger === t)).map(t => ({ event: x, trigger: t })))[0];
       if (!option) { paragraph('All supported triggers for this element are already mapped.'); return; }
@@ -1035,6 +1070,41 @@
     } else if (extra.type === 'button') {
       el = document.createElement('a'); el.textContent = extra.text || 'New button';
       if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
+    } else if (extra.type === 'form') {
+      el = document.createElement('form');
+      el.id = `website_inquiry_${extra.id}`;
+      el.className = 'cms-extra public-form cms-extra-form';
+      el.dataset.websiteInquiry = '';
+      el.dataset.formKey = 'website_inquiry';
+      el.setAttribute('action', '/api/website-inquiries/public');
+      el.setAttribute('method', 'post');
+      const fieldset = document.createElement('fieldset');
+      if (editorMode) { el.dataset.preview = ''; fieldset.disabled = true; }
+      const legend = document.createElement('legend'); legend.textContent = extra.title || 'Send an inquiry';
+      const grid = document.createElement('div'); grid.className = 'public-form-grid';
+      const field = (labelText, name, type = 'text', attrs = {}) => {
+        const label = document.createElement('label'); label.textContent = labelText;
+        const input = name === 'Message' ? document.createElement('textarea') : document.createElement('input');
+        if (name !== 'Message') input.type = type;
+        input.name = name; input.required = true;
+        if (name === 'Message') input.rows = 5;
+        Object.entries(attrs).forEach(([key,value]) => input.setAttribute(key, value));
+        label.appendChild(input); return label;
+      };
+      grid.append(
+        field('First Name','FirstName','text',{autocomplete:'given-name',maxlength:'120'}),
+        field('Last Name','LastName','text',{autocomplete:'family-name',maxlength:'120'}),
+        field('Phone Number','Phone','tel',{inputmode:'tel',autocomplete:'tel',maxlength:'64'}),
+        field('Email','Email','email',{autocomplete:'email',maxlength:'254'})
+      );
+      const message = field('Message','Message','text',{maxlength:'12000'}); message.className='public-form-full'; grid.appendChild(message);
+      const consentLabel = document.createElement('label'); consentLabel.className='public-form-consent public-form-full';
+      const consent = document.createElement('input'); consent.type='checkbox'; consent.name='consent'; consent.required=true;
+      const consentText = document.createElement('span'); consentText.textContent='I agree to share this inquiry with this website.';
+      consentLabel.append(consent,consentText); grid.appendChild(consentLabel);
+      const submit = document.createElement('button'); submit.type='submit'; submit.className='btn primary'; submit.textContent=extra.text || 'Send inquiry';
+      const status = document.createElement('p'); status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+      fieldset.append(legend,grid,submit); el.append(fieldset,status);
     } else if (extra.type === 'code') {
       el = document.createElement('div'); el.className = 'cms-extra cms-extra-code';
       const frame = document.createElement('iframe'); frame.dataset.cmsCodeFrame = 'true'; frame.title = 'Custom code block';
@@ -1116,7 +1186,7 @@
 
   function captureReusableDefinition(name, existingId = null) {
     const source = selectedAddedExtra();
-    if (!source || source.type === 'reusable') return null;
+    if (!source || source.type === 'reusable' || source.type === 'form') return null;
     const componentId = existingId || crypto.randomUUID().replaceAll('-', '');
     const sourceIds = new Set([source.id]);
     if (source.type === 'section') {
@@ -1197,7 +1267,7 @@
       remove.title = remove.disabled ? 'Remove every instance before deleting this reusable definition.' : '';
       remove.addEventListener('click', () => {
         if (componentInUse(definition.id)) return;
-        checkpoint(); delete documentState.reusableComponents[definition.id]; markDirty(); renderReusableComponents();
+        checkpoint(); markDeleted('component:' + definition.id); delete documentState.reusableComponents[definition.id]; markDirty(); renderReusableComponents();
       });
       row.append(info, insert, update, remove); host.appendChild(row);
     }
@@ -1597,7 +1667,7 @@
           effectivePageKey: pageKey,
           pageVariant: SITE_KEY + '_website',
           pageMode: 'site_mode',
-          formId: inquiryForm?.dataset.formKey || '',
+          formId: inquiryForm?.id || inquiryForm?.dataset.formKey || '',
           requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []
         });
         installPublishedSignalBindings();
@@ -1746,19 +1816,16 @@
     preview.appendChild(gridOverlay);
     preview.appendChild(selectionFrame);
 
-    const startGesture = event => {
-      const handle = event.target.closest?.('[data-cms-gesture]');
-      if (!handle || !selected || selected.dataset.cmsSignalOnly) return;
-      const mode = handle.dataset.cmsGesture;
-      const edge = handle.dataset.cmsEdge || '';
+    const beginGesture = (event, mode, edge = '', captureTarget = null, armed = false) => {
+      if (!selected || selected.dataset.cmsSignalOnly) return false;
       const section = selectedSection || currentSectionFor(selected);
       const parent = selected.parentElement;
-      if (!section || !parent) return;
+      if (!section || !parent) return false;
       const selectedRect = selected.getBoundingClientRect();
       const sectionRect = section.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
       const override = selectedOverride();
-      if (!override) return;
+      if (!override) return false;
       const gestureStyle = editingStyle(override, true);
       checkpoint();
       directGesture = {
@@ -1770,22 +1837,46 @@
         startOffsetXPercent: Number.isFinite(Number(gestureStyle.offsetXPercent)) ? Number(gestureStyle.offsetXPercent) : 0,
         startOffsetYPx: Number.isFinite(Number(gestureStyle.offsetYPx)) ? Number(gestureStyle.offsetYPx) : 0,
         style: gestureStyle,
+        armed,
         changed: false
       };
-      gridOverlay.hidden = false;
-      gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
-      positionGridOverlay(section);
-      handle.setPointerCapture?.(event.pointerId);
-      event.preventDefault();
-      event.stopPropagation();
+      captureTarget?.setPointerCapture?.(event.pointerId);
+      if (!armed) {
+        gridOverlay.hidden = false;
+        gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+        positionGridOverlay(section);
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return true;
+    };
+    const startGesture = event => {
+      const handle = event.target.closest?.('[data-cms-gesture]');
+      if (!handle) return;
+      beginGesture(event, handle.dataset.cmsGesture, handle.dataset.cmsEdge || '', handle, false);
     };
 
     selectionFrame.addEventListener('pointerdown', startGesture);
+    preview.addEventListener('pointerdown', event => {
+      if (event.button !== undefined && event.button !== 0) return;
+      if (!selected || selected.dataset.cmsSignalOnly || event.target?.closest?.('input,select,textarea,button,label')) return;
+      const hit = event.target?.closest?.('[data-cms-id]');
+      if (hit !== selected && !selected.contains?.(event.target)) return;
+      beginGesture(event, 'move', '', selected, true);
+    });
     window.addEventListener('pointermove', event => {
       const gesture = directGesture;
       if (!gesture || selected !== gesture.target) return;
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
+      if (gesture.armed && !gesture.changed && Math.hypot(dx, dy) < 5) return;
+      if (gesture.armed && !gesture.changed) {
+        gesture.armed = false;
+        gridOverlay.hidden = false;
+        gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+        positionGridOverlay(gesture.section);
+        deactivateInlineEditing(gesture.target);
+      }
       const override = selectedOverride();
       if (!override) return;
       const style = gesture.style;
@@ -1798,12 +1889,10 @@
       gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
 
       if (gesture.mode === 'move') {
-        if (cell > 0) {
-          const desiredLeft = gesture.selectedRect.left + dx;
-          const gridLeft = gesture.sectionRect.left + Math.round((desiredLeft - gesture.sectionRect.left) / cell) * cell;
-          snappedDx = gridLeft - gesture.selectedRect.left;
-        }
-        snappedDy = Math.round(dy / verticalStep) * verticalStep;
+        // Movement is free-form inside the selected section. The grid is visual
+        // guidance only; only near-center alignment gets a soft snap.
+        snappedDx = dx;
+        snappedDy = dy;
         const desiredCenterX = gesture.selectedRect.left + snappedDx + gesture.selectedRect.width / 2;
         const sectionCenterX = gesture.sectionRect.left + gesture.sectionRect.width / 2;
         if (Math.abs(desiredCenterX - sectionCenterX) <= Math.max(8, cell * .18)) {
@@ -1816,6 +1905,12 @@
           snappedDy += sectionCenterY - desiredCenterY;
           gridOverlay.classList.add('legend-cms-snap-y');
         }
+        const minDx = gesture.sectionRect.left - gesture.selectedRect.left;
+        const maxDx = gesture.sectionRect.right - gesture.selectedRect.right;
+        const minDy = gesture.sectionRect.top - gesture.selectedRect.top;
+        const maxDy = gesture.sectionRect.bottom - gesture.selectedRect.bottom;
+        snappedDx = Math.max(minDx, Math.min(maxDx, snappedDx));
+        snappedDy = Math.max(minDy, Math.min(maxDy, snappedDy));
         style.offsetXPercent = Math.round((gesture.startOffsetXPercent + snappedDx / parentWidth * 100) * 1000) / 1000;
         style.offsetYPx = Math.round((gesture.startOffsetYPx + snappedDy) * 1000) / 1000;
       } else {
@@ -2054,11 +2149,13 @@
   function removeSelected() {
     if (!selected) return;
     checkpoint();
-    if (selected.dataset.cmsSignalOnly) { delete pageState().elements[selected.dataset.cmsId]; markDirty(); renderSignalControls(); return; }
+    if (selected.dataset.cmsSignalOnly) { markDeleted(pageElementDeletionKey(selected.dataset.cmsId)); delete pageState().elements[selected.dataset.cmsId]; markDirty(); renderSignalControls(); return; }
     if (selected.dataset.cmsExtraId) {
       const removedId = selected.dataset.cmsExtraId;
       const removedSection = selected.dataset.cmsSection;
-      pageState().extras = pageState().extras.filter(x => x.id !== removedId && (!removedSection || (x.sectionId !== removedSection && x.placement?.sectionId !== removedSection)));
+      const removedExtras = pageState().extras.filter(x => x.id === removedId || (removedSection && (x.sectionId === removedSection || x.placement?.sectionId === removedSection)));
+      removedExtras.forEach(extra => markDeleted(pageExtraDeletionKey(extra.id)));
+      pageState().extras = pageState().extras.filter(x => !removedExtras.includes(x));
       const removedNode = document.querySelector(`[data-cms-id="extra:${CSS.escape(removedId)}"]`) || selected;
       scaledElements.delete(removedNode);
       removedNode.remove();
@@ -2066,6 +2163,7 @@
       markDirty();
       return;
     }
+    markDeleted(pageElementDeletionKey(selected.dataset.cmsId));
     delete pageState().elements[selected.dataset.cmsId];
     const original = rememberOriginal(selected);
     selected.hidden = original.hidden;
@@ -2085,12 +2183,13 @@
     if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
     saving = true;
     const submitted = JSON.stringify(documentState);
+    const submittedDeletedKeys = [...pendingDeletedKeys];
     let saved = false;
     try {
       const response = await fetch(`${API_BASE}/api/website-content/${publish ? 'manage/publish' : 'manage'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, ...(namedDraft || {}) })
+        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, deletedKeys: submittedDeletedKeys, ...(namedDraft || {}) })
       });
       if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || error.error || `Save failed (${response.status})`); }
       const payload = await response.json();
@@ -2098,6 +2197,7 @@
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
       revision = payload.revision ?? revision;
       namedDrafts = payload.drafts || namedDrafts;
+      submittedDeletedKeys.forEach(key => pendingDeletedKeys.delete(key));
       dirty = changedDuringSave;
       saved = true;
       if (status) status.textContent = changedDuringSave ? 'Draft saved; newer edits remain unsaved' : publish ? 'Published' : 'Draft saved';
@@ -2144,12 +2244,24 @@
   }
   const undoStack = [], redoStack = [];
   const baselineNodes = new Map();
-  function checkpoint() { undoStack.push(JSON.stringify(documentState)); if (undoStack.length > 80) undoStack.shift(); redoStack.length = 0; }
+  function historySnapshot() {
+    return JSON.stringify({ document: documentState, deletedKeys: [...pendingDeletedKeys] });
+  }
+  function checkpoint() {
+    undoStack.push(historySnapshot());
+    if (undoStack.length > 80) undoStack.shift();
+    redoStack.length = 0;
+  }
   function restoreHistory(from, to) {
     if (!from.length) return;
-    to.push(JSON.stringify(documentState));
+    to.push(historySnapshot());
     baselineNodes.forEach(({ el, parent, next }) => { if (el.dataset.cmsSignalOnly) return; if (parent) parent.insertBefore(el, next?.parentElement === parent ? next : null); const original = rememberOriginal(el); el.hidden = original.hidden; if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) { setContentText(el, original.text); } if (original.href != null) el.setAttribute('href',original.href); if (original.src != null) el.setAttribute('src',original.src); applyStyle(el, null); });
-    applyDocument(JSON.parse(from.pop())); setSelected(null); markDirty();
+    const snapshot = JSON.parse(from.pop());
+    pendingDeletedKeys.clear();
+    for (const key of snapshot.deletedKeys || []) pendingDeletedKeys.add(key);
+    applyDocument(snapshot.document || snapshot);
+    setSelected(null);
+    markDirty();
   }
   function safeUrl(value, media = false) {
     if (typeof value !== 'string' || !value.trim() || /[\u0000-\u0020\\]/.test(value) || /(?:legendEdit|ticket)=/i.test(value)) return false;
@@ -2822,6 +2934,10 @@
   function addBlock(type) {
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
+    if (type === 'form' && document.querySelector('form[data-website-inquiry]')) {
+      alert('This page already has its canonical inquiry form. Select that form to move, resize, or review its automatic analytics and Meta wiring.');
+      return;
+    }
     const sectionAnchor = type === 'section'
       ? (selectedSection && !selectedSection.matches('.site-header,.site-footer') ? selectedSection : pageLayerSections()[0] || null)
       : null;
@@ -2832,8 +2948,10 @@
       id: crypto.randomUUID(),
       type,
       sectionId: section?.dataset.cmsSection || `${pageKey}.root`,
-      text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : type === 'code' ? defaultCodeBlock : '',
-      style: type === 'code' ? { widthPercent: 100, heightPx: 320 } : {}
+      text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : type === 'form' ? 'Send inquiry' : type === 'code' ? defaultCodeBlock : '',
+      title: type === 'form' ? 'Send an inquiry' : null,
+      signals: [],
+      style: type === 'code' ? { widthPercent: 100, heightPx: 320 } : type === 'form' ? { widthPercent: 100 } : {}
     };
     if (type === 'button') {
       extra.href = action.href;
@@ -2862,7 +2980,7 @@
     navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="ai">AI Assist</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="collaboration">Collaborate</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
-      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
+      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
       <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Drag the selected border edges or corners to resize. Use X/Y offset controls for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
@@ -2870,7 +2988,7 @@
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
-    signals.innerHTML = '<h2>Analytics & Meta</h2><p>Choose what this interaction means. Draft changes take effect when published.</p><div id="legend-cms-signal-controls"></div>';
+    signals.innerHTML = '<h2>Analytics & Meta</h2><p>Standard page engagement, managed buttons, and the canonical inquiry form are wired automatically from the shared Protect Website analytics and Meta authorities. Select content to review that wiring. Advanced custom mappings are only for non-standard interactions.</p><div id="legend-cms-signal-controls"></div>';
     tools.appendChild(signals);
     const motion = document.createElement('section'); motion.dataset.cmsView='motion'; motion.hidden=true;
     motion.innerHTML='<h2>Motion & interactions</h2><p>Declarative visual motion only. These effects never create analytics, leads, bookings, purchases, or other business outcomes.</p><small id="legend-cms-motion-status">Select an element to configure motion.</small><div id="legend-cms-motion-controls"></div>';
@@ -2969,7 +3087,7 @@
     });
     document.getElementById('legend-cms-breakpoint-remove')?.addEventListener('click', () => {
       const current=(documentState.breakpoints||[]).find(value=>value.key===editorBreakpointKey); if (!current || current.isSystem) return;
-      checkpoint(); const key=current.key; documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
+      checkpoint(); const key=current.key; markDeleted('breakpoint:' + key); documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
       forEachDocumentOverride(override=>{ if(override?.breakpointStyles) delete override.breakpointStyles[key]; if(override?.breakpointLayouts) delete override.breakpointLayouts[key]; });
       editorBreakpointKey='base'; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
     });
@@ -3034,7 +3152,8 @@
     const style = document.createElement('style');
     style.textContent = `
       .legend-cms-selected{outline:none}
-      [data-cms-editable="true"]{cursor:pointer}
+      [data-cms-editable="true"]{cursor:grab}
+      [data-cms-editable="true"]:active{cursor:grabbing}
       .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
       .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
       .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad454d;background-color:#081a3a08;background-image:linear-gradient(to right,#d4ad4526 1px,transparent 1px),linear-gradient(to bottom,#d4ad4517 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px}
@@ -3080,6 +3199,7 @@
       .legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:10px;border:1px solid #344766;border-radius:12px;background:#10284a}.legend-cms-media-card img,.legend-cms-media-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-component-list{display:grid;gap:8px;margin-top:12px}.legend-cms-component-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:7px;align-items:start;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-component-row>div{min-width:0}.legend-cms-component-row strong,.legend-cms-component-row small{display:block;overflow-wrap:anywhere}.legend-cms-component-row button{padding:7px 9px}.cms-reusable-instance{min-width:0}.legend-cms-reusable-missing{padding:12px;border:1px dashed #c98e8e;border-radius:8px;background:#2b1717;color:#f6dede}
       .legend-cms-collaboration-roster,.legend-cms-collaboration-comments{display:grid;gap:8px;margin:10px 0 16px}.legend-cms-collaborator,.legend-cms-comment{display:grid;gap:6px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-collaborator small,.legend-cms-comment small{margin:0}.legend-cms-comment[data-depth="1"]{margin-left:18px;border-left:3px solid #d4ad45}.legend-cms-comment-head{display:flex;gap:8px;justify-content:space-between;align-items:center}.legend-cms-comment-head span{text-transform:capitalize;font-size:11px;color:#d4ad45}
+      .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
@@ -3223,6 +3343,7 @@
     document.getElementById('legend-cms-favicon-remove')?.addEventListener('click', () => {
       if (!documentState.faviconImageDataUrl) return;
       checkpoint();
+      markDeleted('site:favicon');
       documentState.faviconImageDataUrl = null;
       applyFavicon(null);
       syncFaviconControls();

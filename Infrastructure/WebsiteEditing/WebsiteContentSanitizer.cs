@@ -38,7 +38,7 @@ public static class WebsiteContentSanitizer
             var id = SanitizeId(extra.Id);
             var sectionId = SanitizeId(extra.SectionId);
             var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "code" or "reusable")) continue;
+            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "form" or "code" or "reusable")) continue;
             clean.Extras.Add(new WebsiteExtraComponent
             {
                 Id = id,
@@ -144,7 +144,7 @@ public static class WebsiteContentSanitizer
             var id = SanitizeId(extra.Id);
             var sectionId = SanitizeId(extra.SectionId);
             var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "code" or "reusable")) continue;
+            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "form" or "code" or "reusable")) continue;
             clean.Extras.Add(new WebsiteExtraComponent
             {
                 Id = id, SectionId = sectionId, Type = type,

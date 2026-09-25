@@ -56,6 +56,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
         string SourcePath,
         bool Consent,
         string? SourceActionKey = null,
+        string? SourceFormElementId = null,
         string? SessionId = null,
         string? VisitorId = null,
         string? UtmSource = null,
@@ -107,13 +108,17 @@ public sealed class WebsiteInquiriesController : ControllerBase
             });
 
         var lead = BuildLead(scope, request, firstName, lastName, phone, email, message, path);
+        var submissionBinding = ResolvePublishedSubmissionBinding(scope, path, request.SourceFormElementId);
+        lead.WebsiteBindingId = submissionBinding?.Id
+            ?? Optional(request.SourceFormElementId, 120)
+            ?? lead.WebsiteBindingId;
 
         return scope.SiteKey switch
         {
             WebsiteEditorSiteKeys.Business when scope.CommerceBusinessId.HasValue && scope.PublishedVersion is not null =>
-                await SubmitBusinessAsync(scope, request, lead, firstName, lastName, phone, email, message, path, cancellationToken),
+                await SubmitBusinessAsync(scope, request, lead, firstName, lastName, phone, email, message, path, submissionBinding, cancellationToken),
             WebsiteEditorSiteKeys.Legend =>
-                await SubmitFounderAsync(scope, request, lead, firstName, lastName, phone, email, message, path, cancellationToken),
+                await SubmitFounderAsync(scope, request, lead, firstName, lastName, phone, email, message, path, submissionBinding, cancellationToken),
             _ => NotFound(new { error = "published_website_required" })
         };
     }
@@ -186,6 +191,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
         string email,
         string message,
         string path,
+        WebsiteSignalBinding? submissionBinding,
         CancellationToken cancellationToken)
     {
         var businessId = scope.CommerceBusinessId!.Value;
@@ -233,7 +239,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
                 });
 
             if (created)
-                WriteLeadAnalytics(scope, lead, request);
+                WriteLeadAnalytics(scope, lead, request, submissionBinding);
 
             // The inquiry row is durable independently of whether an idempotent
             // WebsiteLead already existed from the same scoped submission.
@@ -254,7 +260,8 @@ public sealed class WebsiteInquiriesController : ControllerBase
             return await SubmissionResult(existing, firstName, lastName, phone, email, message, path, cancellationToken);
         }
 
-        return Ok(new { accepted = true });
+        var notificationSent = await TryNotifyBusinessAsync(inquiry.Id, cancellationToken);
+        return Ok(new { accepted = true, notificationSent });
     }
 
     private async Task<IActionResult> SubmitFounderAsync(
@@ -267,6 +274,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
         string email,
         string message,
         string path,
+        WebsiteSignalBinding? submissionBinding,
         CancellationToken cancellationToken)
     {
         var created = await WebsiteLeadSubmission.TryCreateAsync(
@@ -276,7 +284,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
             cancellationToken,
             async ct =>
             {
-                WriteLeadAnalytics(scope, lead, request);
+                WriteLeadAnalytics(scope, lead, request, submissionBinding);
                 await _db.SaveChangesAsync(ct);
             });
 
@@ -299,7 +307,11 @@ public sealed class WebsiteInquiriesController : ControllerBase
         return Ok(new { accepted = true, notificationSent });
     }
 
-    private void WriteLeadAnalytics(PublicWebsiteRuntimeScope scope, WebsiteLead lead, PublicRequest request)
+    private void WriteLeadAnalytics(
+        PublicWebsiteRuntimeScope scope,
+        WebsiteLead lead,
+        PublicRequest request,
+        WebsiteSignalBinding? submissionBinding)
     {
         if (!AnalyticsEventCatalog.TryGet("website_lead_submitted", out var leadEvent))
             throw new InvalidOperationException("Canonical lead analytics event is unavailable.");
@@ -309,7 +321,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
             SiteKey = scope.SiteKey,
             CommerceBusinessId = scope.CommerceBusinessId,
             WebsiteContentVersionId = scope.PublishedVersion?.Id,
-            WebsiteBindingId = lead.SourceCtaKey,
+            WebsiteBindingId = submissionBinding?.Id ?? Optional(request.SourceFormElementId, 120) ?? lead.SourceCtaKey,
             EventId = scope.SiteKey + "_lead_" + lead.LeadId.ToString("N"),
             EventName = leadEvent.Name,
             EventCategory = leadEvent.Category,
@@ -335,17 +347,62 @@ public sealed class WebsiteInquiriesController : ControllerBase
             Environment = lead.Environment,
             IsBrowserSignal = false,
             IsServerAuthority = true,
-            MetaServerAuthorityEligible = true,
+            MetaServerAuthorityEligible = submissionBinding is null || submissionBinding.DeliveryMode == "meta",
             Metadata = new
             {
                 LeadId = lead.LeadId,
                 WebsiteLeadId = lead.LeadId,
                 SourceActionKey = lead.SourceCtaKey,
+                WebsiteFormElementId = request.SourceFormElementId,
+                WebsiteSignalBindingId = submissionBinding?.Id,
+                WebsiteSignalDeliveryMode = submissionBinding?.DeliveryMode,
                 Source = scope.SiteKey + "_website_inquiry_saved"
             }
         });
         analytics.ClientEventId = lead.LeadId;
         UnifiedAnalyticsWriter.Write(_db, analytics);
+    }
+
+    private static WebsiteSignalBinding? ResolvePublishedSubmissionBinding(
+        PublicWebsiteRuntimeScope scope,
+        string path,
+        string? elementId)
+    {
+        if (scope.PublishedVersion is null || string.IsNullOrWhiteSpace(elementId))
+            return null;
+
+        try
+        {
+            var document = WebsiteContentSanitizer.Sanitize(
+                System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(
+                    scope.PublishedVersion.DocumentJson,
+                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new());
+
+            var route = path.TrimEnd('/');
+            if (route.Length == 0) route = "/";
+            if (!document.Pages.TryGetValue(route, out var page))
+                return null;
+
+            IEnumerable<WebsiteSignalBinding>? bindings = null;
+            if (elementId.StartsWith("extra:", StringComparison.Ordinal))
+            {
+                var id = elementId.Split(':', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
+                bindings = page.Extras.FirstOrDefault(extra => extra.Id == id)?.Signals;
+            }
+            else if (page.Elements.TryGetValue(elementId, out var element))
+            {
+                bindings = element.Signals;
+            }
+
+            return (bindings ?? []).SingleOrDefault(binding =>
+                binding.Trigger == "submission_saved" &&
+                binding.EventName == "Lead" &&
+                binding.DeliveryMode != "off");
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or ArgumentException)
+        {
+            return null;
+        }
     }
 
     private async Task<bool> TryNotifyFounderAsync(WebsiteLead lead, CancellationToken cancellationToken)
@@ -407,17 +464,39 @@ public sealed class WebsiteInquiriesController : ControllerBase
         var name = $"{firstName} {lastName}".Trim();
         var rowMatches = row.Name == name && row.Email == email && row.Message == message && row.SourcePath == path;
         if (!rowMatches) return Conflict(new { error = "submission_id_already_used" });
-        if (!row.WebsiteLeadId.HasValue) return Ok(new { accepted = true });
 
-        var lead = await _db.WebsiteLeads.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.LeadId == row.WebsiteLeadId.Value, cancellationToken);
-        return lead is not null &&
-               lead.FirstName == firstName &&
-               (lead.LastName ?? "") == lastName &&
-               (lead.Phone ?? "") == phone &&
-               lead.Email == email
-            ? Ok(new { accepted = true })
-            : Conflict(new { error = "submission_id_already_used" });
+        if (row.WebsiteLeadId.HasValue)
+        {
+            var lead = await _db.WebsiteLeads.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.LeadId == row.WebsiteLeadId.Value, cancellationToken);
+            if (lead is null ||
+                lead.FirstName != firstName ||
+                (lead.LastName ?? "") != lastName ||
+                (lead.Phone ?? "") != phone ||
+                lead.Email != email)
+                return Conflict(new { error = "submission_id_already_used" });
+        }
+
+        var notificationSent = await TryNotifyBusinessAsync(row.Id, cancellationToken);
+        return Ok(new { accepted = true, notificationSent });
+    }
+
+    private async Task<bool> TryNotifyBusinessAsync(Guid inquiryId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var service = new BusinessInquiryNotificationService(_db, _recipients, _emailSender);
+            return await service.DeliverOneAsync(inquiryId, cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The persisted CommerceWebsiteInquiry remains the durable retry queue.
+            return false;
+        }
     }
 
     [HttpGet("manage")]

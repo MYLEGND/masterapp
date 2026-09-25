@@ -263,7 +263,9 @@ test('reset restores original content and persists removal without discarding un
   await f.ids.get('legend-cms-save').click();
   f.ids.get('legend-cms-draft-name').value = 'Test variation';
   await f.ids.get('legend-cms-draft-submit').click();
-  assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements, {});
+  const request=JSON.parse(f.calls.at(-1).init.body);
+  assert.deepEqual(request.document.pages['/'].elements, {});
+  assert.ok(request.deletedKeys.includes('page:/|element:home.title'));
 });
 
 test('public pages retain responsive baseline-relative scale after viewport changes', async () => {
@@ -339,6 +341,16 @@ async function metaSignalFixture() {
   return {w,session,requests,pixels,close:()=>w.close()};
 }
 
+
+test('public runtime binds autonomous Meta contact tracking to the actual generated inquiry form id',()=>{
+  assert.ok(source.includes("formId: inquiryForm?.id || inquiryForm?.dataset.formKey || ''"));
+  assert.ok(metaSignalSource.includes('function wireContactInputs()'));
+  assert.ok(metaSignalSource.includes("emitSignal('ContactInputStarted'"));
+  assert.ok(metaSignalSource.includes("emitSignal('PhoneFieldCompleted'"));
+  assert.ok(metaSignalSource.includes("emitSignal('RequiredContactFieldsCompleted'"));
+  assert.ok(source.includes('Automatic form analytics + Meta'));
+  assert.ok(source.includes('No mapping is required.'));
+});
 
 test('configured signal runtime suppresses Pixel for analytics-only and allows only Pixel-eligible Meta events',async()=>{
   const f=await metaSignalFixture();
@@ -455,7 +467,7 @@ test('signal editor private test saves draft first but sends no production signa
   try{
     f.click('main h1');
     f.click('[data-open="signals"]');
-    const add=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')].find(button=>button.textContent==='Add interaction mapping');
+    const add=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')].find(button=>button.textContent==='Add advanced custom mapping');
     assert.ok(add); add.click();
     const send=f.w.document.querySelector('#legend-cms-signal-controls select');
     send.value='analytics'; send.dispatchEvent(new f.w.Event('change',{bubbles:true}));
@@ -697,6 +709,8 @@ test('shared business inquiry uses Protect contact identity and two-column rows'
   assert.ok(publicInquirySource.includes("fields.get('Email')"));
   assert.ok(source.includes("requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []"));
   assert.ok(publicCss.includes('.public-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'));
+  assert.match(publicCss, /@media\(max-width:650px\)[\s\S]*?\.public-form-grid\{grid-template-columns:1fr;gap:14px\}/);
+  assert.match(publicCss, /@container legend-public-preview \(max-width:650px\)[\s\S]*?\.public-form-grid\{grid-template-columns:1fr;gap:14px\}/);
 });
 
 test('Founder and business websites use one shared inquiry runtime with no hard-coded founder email form path',()=>{
@@ -763,7 +777,7 @@ test('shared CTA dropdown creates a styled live button and keeps its label indep
     {key:'business_contact',group:'Contact',label:'Contact form',defaultText:'Contact Us',href:'/contact',openInNewTab:false},
     {key:'business_call',group:'Contact',label:'Call the business',defaultText:'Call Now',href:'tel:+16025550199',openInNewTab:false}
   ];
-  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},ctaCatalog:actions});
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},ctaCatalog:actions,signalCatalog:{events:[],matchingFields:[],runtimeEnabled:true}});
   try {
     f.click('main h1'); f.click('[data-add="button"]');
     const button=f.w.document.querySelector('[data-cms-extra-id]');
@@ -775,6 +789,11 @@ test('shared CTA dropdown creates a styled live button and keeps its label indep
     assert.equal(button.textContent,'Call Now');
     f.editSelected('Talk with our team');
     assert.equal(button.textContent,'Talk with our team');
+    f.click('[data-open="signals"]');
+    assert.match(f.w.document.querySelector('#legend-cms-signal-controls').textContent,/Automatic button analytics \+ Meta/);
+    const advanced=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')]
+      .find(node=>node.textContent==='Add advanced custom mapping');
+    assert.ok(advanced); assert.equal(advanced.hidden,true);
     const saved=await f.save(); const extra=saved.pages['/'].extras[0];
     assert.equal(extra.actionKey,'business_call');
     assert.equal(extra.href,'tel:+16025550199');
@@ -959,6 +978,47 @@ test('section deletion preserves child structure, reset restores, global theme r
     const doc=await f.save();assert.equal(doc.pages['/'].elements['section:home.section.1'].hidden,true);
   }finally{f.close();}
 });
+test('inquiry form builder is autonomous and exposes no required manual mapping',async()=>{
+  const catalog={events:[
+    {name:'LeadFormStart',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['form_started']},
+    {name:'ContactInputStarted',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['field_started']},
+    {name:'PhoneFieldCompleted',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['field_completed']},
+    {name:'RequiredContactFieldsCompleted',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['field_completed']},
+    {name:'SubmitAttempt',category:'submit',metaEligible:true,requiresServerOutcome:false,triggers:['submit_attempt']},
+    {name:'Lead',category:'conversion',metaEligible:true,requiresServerOutcome:true,triggers:['submission_saved']}
+  ],matchingFields:['email','phone','firstName','lastName'],runtimeEnabled:true};
+  const f=await domFixture({signalCatalog:catalog});
+  try{
+    f.click('main h1');
+    f.click('[data-add="form"]');
+    const form=f.w.document.querySelector('form.cms-extra-form[data-website-inquiry]');
+    assert.ok(form);
+    assert.ok(form.id.startsWith('website_inquiry_'));
+    assert.equal(form.dataset.formKey,'website_inquiry');
+    assert.equal(form.dataset.preview,'');
+    assert.equal(form.querySelector('fieldset').disabled,true);
+    for(const name of ['FirstName','LastName','Phone','Email','Message'])
+      assert.ok(form.querySelector(`[name="${name}"]`));
+    assert.ok(form.querySelector('[name="consent"]'));
+    f.click('[data-open="signals"]');
+    const status=f.w.document.querySelector('.legend-cms-signal-presets');
+    assert.ok(status);
+    assert.match(status.textContent,/LeadFormStart/);
+    assert.match(status.textContent,/ContactInputStarted/);
+    assert.match(status.textContent,/PhoneFieldCompleted/);
+    assert.match(status.textContent,/SubmitAttempt/);
+    assert.match(status.textContent,/Lead/);
+    const advanced=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')]
+      .find(button=>button.textContent==='Add advanced custom mapping');
+    assert.ok(advanced);
+    assert.equal(advanced.hidden,true);
+    const saved=await f.save();
+    const extra=saved.pages['/'].extras.find(value=>value.type==='form');
+    assert.ok(extra);
+    assert.deepEqual(extra.signals,[]);
+  }finally{f.close();}
+});
+
 test('direct canvas replaces designated drop controls and persists shared geometry',async()=>{
   const f=await domFixture();let saved;try {
     f.click('main h1');
@@ -982,6 +1042,47 @@ test('direct canvas replaces designated drop controls and persists shared geomet
     assert.equal(loaded.w.document.querySelector('.legend-cms-panel'),null);
   }finally{loaded.close();}
 });
+test('selected content drag preserves free-form placement instead of forcing grid cells',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    const heading=f.w.document.querySelector('main h1');
+    const section=heading.closest('[data-cms-section]');
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    heading.getBoundingClientRect=()=>({left:100,top:100,right:300,bottom:140,width:200,height:40});
+    section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
+    preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
+    heading.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:137,clientY:113,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:137,clientY:113,button:0}));
+    const saved=await f.save();
+    const style=Object.values(saved.pages['/'].elements)[0].style;
+    assert.equal(style.offsetXPercent,6.167);
+    assert.equal(style.offsetYPx,13);
+  }finally{f.close();}
+});
+
+test('selected content can be pointer-dragged and is clamped inside its section frame',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    const heading=f.w.document.querySelector('main h1');
+    const section=heading.closest('[data-cms-section]');
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    assert.ok(section&&preview);
+    heading.getBoundingClientRect=()=>({left:100,top:100,right:300,bottom:140,width:200,height:40});
+    section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
+    preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
+    heading.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:1000,clientY:700,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:1000,clientY:700,button:0}));
+    const saved=await f.save();
+    const style=Object.values(saved.pages['/'].elements)[0].style;
+    assert.equal(style.offsetXPercent,58.333);
+    assert.equal(style.offsetYPx,310);
+  }finally{f.close();}
+});
+
 test('publish saves unsaved draft first then calls the explicit publish action',async()=>{
  const f=await domFixture();try{f.click('main h1');f.editSelected('New draft');f.click('#legend-cms-publish');await new Promise(r=>setTimeout(r,0));assert.equal(f.calls.length,3);assert.ok(f.calls[1].url.endsWith('/manage'));assert.ok(f.calls[2].url.endsWith('/manage/publish'));assert.equal(JSON.parse(f.calls[2].body).expectedRevision,'r2');}finally{f.close();}
 });

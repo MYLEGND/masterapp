@@ -78,6 +78,68 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
+    public async Task OrdinarySaveCannotImplicitlyErasePersistedDraftContent_ButExplicitResetCan()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+
+        Body(await f.Controller.Save(new(token, Document("persisted"), 0)));
+        var empty = new WebsiteContentDocument();
+
+        var preserved = Body(await f.Controller.Save(new(token, empty, 1)))
+            .GetProperty("document")
+            .GetProperty("elements");
+        Assert.Equal("persisted", preserved.GetProperty("title").GetProperty("text").GetString());
+
+        var explicitlyRemoved = Body(await f.Controller.Save(new(
+            token,
+            new WebsiteContentDocument(),
+            2,
+            DeletedKeys: new[] { "root|element:title" })))
+            .GetProperty("document")
+            .GetProperty("elements");
+        Assert.False(explicitlyRemoved.TryGetProperty("title", out _));
+    }
+
+    [Fact]
+    public void CanonicalInquiryFormBlocksAndServerLeadBindingsSurviveSanitization()
+    {
+        var bindingId = Guid.NewGuid().ToString("N");
+        var doc = new WebsiteContentDocument
+        {
+            Extras =
+            [
+                new WebsiteExtraComponent
+                {
+                    Id = "contact-form",
+                    SectionId = "contact",
+                    Type = "form",
+                    Title = "Contact us",
+                    Text = "Send inquiry",
+                    Signals =
+                    [
+                        new WebsiteSignalBinding
+                        {
+                            Id = bindingId,
+                            Trigger = "submission_saved",
+                            EventName = "Lead",
+                            DeliveryMode = "meta"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var form = Assert.Single(WebsiteContentSanitizer.Sanitize(doc).Extras);
+        Assert.Equal("form", form.Type);
+        var binding = Assert.Single(form.Signals);
+        Assert.Equal(bindingId, binding.Id);
+        Assert.Equal("submission_saved", binding.Trigger);
+        Assert.Equal("Lead", binding.EventName);
+        Assert.Equal("meta", binding.DeliveryMode);
+    }
+
+    [Fact]
     public void ScopeCtaCatalogOnlyOffersConfiguredDynamicActions()
     {
         var business = WebsiteCallToActionCatalog.Build(
@@ -118,7 +180,7 @@ public sealed class WebsitePublishingAuthorityTests
         {
             Extras = [new() { Id = "managed", SectionId = "home.section.1", Type = "button", Text = "Talk", ActionKey = "legend_contact", Href = "#" }]
         };
-        Assert.Equal(2, Body(await f.Controller.Save(new(token, managed, 1))).GetProperty("revision").GetInt32());
+        Assert.Equal(2, Body(await f.Controller.Save(new(token, managed, 1, DeletedKeys: new[] { "root|extra:dead" }))).GetProperty("revision").GetInt32());
         Assert.IsType<OkObjectResult>(await f.Controller.Publish(new(token, 2)));
         var published = Body(await f.Controller.Public("legend"));
         Assert.Equal("/contact", published.GetProperty("document").GetProperty("extras")[0].GetProperty("href").GetString());
