@@ -2407,6 +2407,24 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => new { x.StateId, x.Revision }).IsUnique();
             e.HasOne<WebsiteContentState>().WithMany().HasForeignKey(x => x.StateId).OnDelete(DeleteBehavior.Restrict);
         });
+        modelBuilder.Entity<WebsiteStudioComment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.PagePath).HasMaxLength(160).IsRequired();
+            e.Property(x => x.ElementId).HasMaxLength(200);
+            e.Property(x => x.Body).HasMaxLength(4000).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(24).IsRequired();
+            e.Property(x => x.AuthorUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.AuthorEmail).HasMaxLength(320);
+            e.Property(x => x.AuthorRole).HasMaxLength(80).IsRequired();
+            e.Property(x => x.ResolvedByUserId).HasMaxLength(450);
+            e.HasIndex(x => new { x.WebsiteContentStateId, x.PagePath, x.Status, x.CreatedUtc });
+            e.HasIndex(x => new { x.WebsiteContentStateId, x.ElementId, x.Status });
+            e.HasIndex(x => x.ParentCommentId);
+            e.HasOne<WebsiteContentState>().WithMany().HasForeignKey(x => x.WebsiteContentStateId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<WebsiteContentVersion>().WithMany().HasForeignKey(x => x.WebsiteContentVersionId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<WebsiteStudioComment>().WithMany().HasForeignKey(x => x.ParentCommentId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<WebsiteDomainBinding>(e =>
         {
             e.HasKey(x => x.Id);

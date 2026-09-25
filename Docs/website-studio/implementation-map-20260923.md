@@ -1,9 +1,46 @@
 # Shared website studio implementation map
 
 Status: active shared-editor implementation, not a release or production completion certificate.
-Current baseline: `legend/approved-changes` at `3c24960ee32af2fb9bcd7f4ec04d60558659f879`.
-Current isolated branch: `feature/shared-website-studio-fluid-editing-20260924`.
+Frozen verified live baseline: `7b42f31e3d2b49b4c56b6863debd5cdd608e2435` on `freeze/shared-website-studio-live-20260924`.
+Current isolated continuation branch: `feature/website-studio-next-20260924`.
 Prior 2026-09-23 implementation and validation history remains documented below.
+
+## Locked Studio completion program — 2026-09-24
+
+This continuation starts from the exact successfully deployed website-studio revision. The frozen branch is evidence only and must never be mutated. No item below may introduce a second editor, renderer, stylesheet authority, page store, business data store, analytics sender, Meta sender, CRM, booking engine, or identity/authorization path.
+
+1. **Responsive breakpoints:** mobile/tablet/desktop plus bounded custom breakpoints; per-breakpoint style and layout inherit from the canonical base state.
+2. **Layout engine:** Free Canvas, Stack, Grid, and Flex/Auto Layout are typed modes on the same element/extra contract.
+3. **Pages/navigation:** create, duplicate, rename/slug, visibility/order/nesting, soft-delete and restore remain route-keyed `WebsitePageDocument` state.
+4. **Reusable/synced components:** reusable definitions and explicit sync identities are document-owned and versioned; no hidden copied HTML authority.
+5. **Media library:** browse/search the existing owner-scoped `WebsiteMediaAsset` authority and existing media service.
+6. **Dynamic CMS:** bind only to approved scoped business sources; never copy business records into a website-side database.
+7. **Responsive AI:** AI returns typed breakpoint/layout proposals only; proposals are inert until a user accepts them and the sanitizer approves them.
+8. **AI creation:** content/layout/section/image assistance returns structured document proposals and never writes production directly.
+9. **Animations/interactions:** allowlisted declarative effects only; no arbitrary JavaScript is injected into the parent page.
+10. **Quality Inspector:** Saved draft checks (server) and Live page checks (rendered canvas) stay visibly distinct; publish readiness remains server-authoritative.
+11. **Visual signals:** selected element → trigger → canonical analytics event → allowed Meta mode → destination/consent health → private test → publish → delivery evidence. Confirmed outcomes remain server-authoritative.
+12. **Collaboration:** roles/comments are owner/version-scoped management metadata and are excluded from public page payloads.
+
+### Required implementation order and gates
+
+- **Foundation gate:** typed V2 document fields + sanitizer + backwards-compatibility tests. No visible behavior.
+- **Responsive/layout gate:** runtime inheritance, editor breakpoint preview, custom breakpoint CRUD, Free/Stack/Grid/Flex controls, responsive regression tests and mobile visual proof.
+- **Content-structure gate:** full Pages manager, reusable/synced components, media library browser, route-manifest consistency and publish/reload tests.
+- **Data/AI gate:** approved scoped data adapters and structured AI proposal endpoints; no direct AI persistence; tenant isolation and proposal validation tests.
+- **Experience gate:** allowlisted interactions/animations, Quality Inspector, complete signal workflow and private test evidence.
+- **Collaboration gate:** owner/editor/commenter roles, comments/resolution history, authorization tests and public-payload exclusion.
+- **Combined candidate gate:** exact affected-app builds, focused .NET + Node suites, cross-scope regression matrix, browser/mobile visual checks, publish/reload/domain/analytics/Meta proof. Only then may a reviewed PR target `legend/approved-changes`.
+
+### Current V2 foundation
+
+- `WebsiteContentDocument` is version 2 with additive standard/custom breakpoint definitions.
+- Elements and extras support per-breakpoint styles, Free/Stack/Grid/Flex layout state, per-breakpoint layouts, allowlisted animation bindings, and explicit sync-source IDs.
+- Pages carry navigation metadata and an optional typed dynamic collection binding.
+- Reusable component definitions are versioned inside the website document.
+- Dynamic collection definitions currently accept only the existing scoped `business_facts` source and its approved public fields. A website-local shadow data store is rejected.
+- The sanitizer strips unknown breakpoint keys, invalid layout/animation values, and unapproved collection sources before persistence.
+- Existing version-1 content is upgraded without inventing responsive style overrides or changing legacy text/style values.
 
 ## Implemented in this branch
 

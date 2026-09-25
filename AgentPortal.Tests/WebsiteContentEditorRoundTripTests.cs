@@ -278,6 +278,536 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.IsType<UnauthorizedResult>(await fixture.CreateController().Manage(ticket));
     }
 
+
+    [Fact]
+    public async Task CmsCollectionProjection_ReturnsOnlyActiveProductsFromAuthorizedBusiness()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var businessId = fixture.BusinessId!.Value;
+        var foreignBusinessId = Guid.NewGuid();
+        fixture.Db.CommerceBusinesses.Add(new CommerceBusiness
+        {
+            Id = foreignBusinessId,
+            Key = "foreign-business",
+            DisplayName = "Foreign Business",
+            LegalName = "Foreign Business LLC",
+            BusinessType = "BusinessClient",
+            OwnerEmail = "foreign@example.test",
+            Status = "Active",
+            IsActive = true
+        });
+        fixture.Db.CommerceProducts.AddRange(
+            new CommerceProduct
+            {
+                CommerceBusinessId = businessId,
+                ExternalProductKey = "own-active",
+                Name = "Own Active Product",
+                Slug = "own-active",
+                Description = "Visible product",
+                PriceLabel = "$10",
+                PriceCents = 1000,
+                IsActive = true,
+                DisplayOrder = 1
+            },
+            new CommerceProduct
+            {
+                CommerceBusinessId = businessId,
+                ExternalProductKey = "own-inactive",
+                Name = "Own Inactive Product",
+                Slug = "own-inactive",
+                Description = "Hidden product",
+                PriceLabel = "$20",
+                PriceCents = 2000,
+                IsActive = false,
+                DisplayOrder = 2
+            },
+            new CommerceProduct
+            {
+                CommerceBusinessId = foreignBusinessId,
+                ExternalProductKey = "foreign-active",
+                Name = "Foreign Active Product",
+                Slug = "foreign-active",
+                Description = "Must never leak",
+                PriceLabel = "$30",
+                PriceCents = 3000,
+                IsActive = true,
+                DisplayOrder = 1
+            });
+        await fixture.Db.SaveChangesAsync();
+
+        var document = new WebsiteContentDocument();
+        document.Collections["products"] = new WebsiteCollectionDefinition
+        {
+            Id = "products",
+            Name = "Products",
+            Source = "commerce_products",
+            Fields = ["slug", "name", "description", "priceCents"]
+        };
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        fixture.Db.ChangeTracker.Clear();
+        var manage = Assert.IsType<OkObjectResult>(await fixture.CreateController().Manage(ticket));
+        var json = JsonSerializer.SerializeToElement(manage.Value, JsonOptions);
+        var projection = Assert.Single(json.GetProperty("collections").EnumerateArray());
+        Assert.Equal("products", projection.GetProperty("id").GetString());
+        Assert.True(projection.GetProperty("isList").GetBoolean());
+        var item = Assert.Single(projection.GetProperty("items").EnumerateArray());
+        Assert.Equal("own-active", item.GetProperty("key").GetString());
+        Assert.Equal("Own Active Product", item.GetProperty("fields").GetProperty("name").GetString());
+        var serialized = projection.GetRawText();
+        Assert.DoesNotContain("Own Inactive Product", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("Foreign Active Product", serialized, StringComparison.Ordinal);
+        Assert.Contains(json.GetProperty("dataCatalog").EnumerateArray(),
+            source => source.GetProperty("key").GetString() == "commerce_products");
+    }
+
+    [Fact]
+    public async Task MediaLibrary_IsOwnerScopedSearchableAndRejectsInvalidTickets()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ownerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(fixture.BusinessId!.Value);
+        var ownImage = new WebsiteMediaAsset
+        {
+            OwnerKey = ownerKey,
+            SourceUrl = "team-logo.png",
+            Sha256 = new string('a', 64),
+            StorageKey = "website/team-logo.png",
+            ContentType = "image/png",
+            SizeBytes = 1200,
+            CreatedUtc = DateTime.UtcNow
+        };
+        var ownVideo = new WebsiteMediaAsset
+        {
+            OwnerKey = ownerKey,
+            SourceUrl = "welcome-video.mp4",
+            Sha256 = new string('b', 64),
+            StorageKey = "website/welcome-video.mp4",
+            ContentType = "video/mp4",
+            SizeBytes = 2200,
+            CreatedUtc = DateTime.UtcNow.AddMinutes(-1)
+        };
+        fixture.Db.AddRange(ownImage, ownVideo, new WebsiteMediaAsset
+        {
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(Guid.NewGuid()),
+            SourceUrl = "other-logo.png",
+            Sha256 = new string('c', 64),
+            StorageKey = "website/other-logo.png",
+            ContentType = "image/png",
+            SizeBytes = 900
+        });
+        await fixture.Db.SaveChangesAsync();
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+
+        var imageResult = Assert.IsType<OkObjectResult>(await fixture.Controller.MediaLibrary(ticket, "logo", "image", CancellationToken.None));
+        var imageJson = JsonSerializer.SerializeToElement(imageResult.Value, JsonOptions);
+        var assets = imageJson.GetProperty("assets").EnumerateArray().ToArray();
+        var image = Assert.Single(assets);
+        Assert.Equal(ownImage.Id, image.GetProperty("id").GetGuid());
+        Assert.Equal("team-logo.png", image.GetProperty("name").GetString());
+        Assert.Equal("image/png", image.GetProperty("contentType").GetString());
+
+        var videoResult = Assert.IsType<OkObjectResult>(await fixture.Controller.MediaLibrary(ticket, null, "video", CancellationToken.None));
+        var videoJson = JsonSerializer.SerializeToElement(videoResult.Value, JsonOptions);
+        Assert.Equal(ownVideo.Id, Assert.Single(videoJson.GetProperty("assets").EnumerateArray()).GetProperty("id").GetGuid());
+
+        Assert.IsType<BadRequestObjectResult>(await fixture.Controller.MediaLibrary(ticket, null, "audio", CancellationToken.None));
+        Assert.IsType<UnauthorizedResult>(await fixture.Controller.MediaLibrary("invalid-ticket", null, "all", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task WebsiteStudioAiProposal_IsRevisionLockedAndNeverPersistsUntilUserSaves()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Title = "Home",
+            Elements = new(StringComparer.Ordinal)
+            {
+                [ElementId] = new WebsiteElementOverride { Text = "Original heading" }
+            }
+        };
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        fixture.Db.ChangeTracker.Clear();
+        var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        var beforeJson = before.DraftJson;
+        var beforeRevision = before.Revision;
+
+        var response = Assert.IsType<OkObjectResult>(await fixture.CreateController().WebsiteStudioAiProposal(
+            new WebsiteContentController.WebsiteStudioAiRequest(
+                ticket,
+                beforeRevision,
+                "create",
+                "Improve the heading.",
+                "/",
+                ElementId,
+                "home.section.1",
+                "Original heading"),
+            CancellationToken.None));
+
+        var envelope = JsonSerializer.SerializeToElement(response.Value, JsonOptions);
+        Assert.Equal("ai_proposal_preview", envelope.GetProperty("source").GetString());
+        Assert.False(envelope.GetProperty("persisted").GetBoolean());
+        Assert.False(envelope.GetProperty("published").GetBoolean());
+        Assert.Equal(beforeRevision, envelope.GetProperty("baseRevision").GetInt64());
+        var proposed = envelope.GetProperty("proposedDocument")
+            .Deserialize<WebsiteContentDocument>(JsonOptions)!;
+        Assert.Equal("AI proposed heading", proposed.Pages["/"].Elements[ElementId].Text);
+
+        fixture.Db.ChangeTracker.Clear();
+        var after = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(beforeRevision, after.Revision);
+        Assert.Equal(beforeJson, after.DraftJson);
+        Assert.Null(after.PublishedVersionId);
+
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().WebsiteStudioAiProposal(
+            new WebsiteContentController.WebsiteStudioAiRequest(
+                ticket,
+                beforeRevision - 1,
+                "create",
+                "Stale request",
+                "/",
+                ElementId,
+                "home.section.1",
+                "Original heading"),
+            CancellationToken.None));
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().WebsiteStudioAiProposal(
+            new WebsiteContentController.WebsiteStudioAiRequest(
+                "invalid-ticket",
+                beforeRevision,
+                "create",
+                "Unauthorized request",
+                "/",
+                ElementId,
+                "home.section.1",
+                "Original heading"),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SignalDryRun_ValidatesMappingWithoutPersistingAnalyticsMetaOrDraftChanges()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var browserBindingId = Guid.NewGuid().ToString("N");
+        var serverBindingId = Guid.NewGuid().ToString("N");
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Elements = new(StringComparer.Ordinal)
+            {
+                [ElementId] = new WebsiteElementOverride
+                {
+                    Text = "CTA",
+                    Signals =
+                    [
+                        new WebsiteSignalBinding
+                        {
+                            Id = browserBindingId,
+                            Trigger = "click",
+                            EventName = "LeadFormStart",
+                            DeliveryMode = "meta",
+                            OncePerSession = true
+                        },
+                        new WebsiteSignalBinding
+                        {
+                            Id = serverBindingId,
+                            Trigger = "submission_saved",
+                            EventName = "Lead",
+                            DeliveryMode = "meta",
+                            OncePerSession = true
+                        }
+                    ]
+                }
+            }
+        };
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        fixture.Db.ChangeTracker.Clear();
+        var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        var beforeJson = before.DraftJson;
+
+        var browser = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalDryRun(
+            new WebsiteContentController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, browserBindingId),
+            CancellationToken.None));
+        var browserJson = JsonSerializer.SerializeToElement(browser.Value, JsonOptions);
+        Assert.Equal("website_signal_private_dry_run", browserJson.GetProperty("source").GetString());
+        Assert.True(browserJson.GetProperty("dryRun").GetBoolean());
+        Assert.False(browserJson.GetProperty("persisted").GetBoolean());
+        Assert.False(browserJson.GetProperty("metaDispatched").GetBoolean());
+        Assert.True(browserJson.GetProperty("stages").GetProperty("mappingValidated").GetBoolean());
+        Assert.True(browserJson.GetProperty("stages").GetProperty("browserTriggerSupported").GetBoolean());
+        Assert.True(browserJson.GetProperty("stages").GetProperty("browserAnalyticsWouldBeAccepted").GetBoolean());
+        Assert.False(browserJson.GetProperty("stages").GetProperty("browserPixelWouldInvoke").GetBoolean());
+
+        var server = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalDryRun(
+            new WebsiteContentController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, serverBindingId),
+            CancellationToken.None));
+        var serverJson = JsonSerializer.SerializeToElement(server.Value, JsonOptions);
+        Assert.True(serverJson.GetProperty("stages").GetProperty("serverOutcomeRequired").GetBoolean());
+        Assert.False(serverJson.GetProperty("stages").GetProperty("browserTriggerSupported").GetBoolean());
+        Assert.False(serverJson.GetProperty("stages").GetProperty("browserAnalyticsWouldBeAccepted").GetBoolean());
+
+        fixture.Db.ChangeTracker.Clear();
+        var after = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.Equal(beforeJson, after.DraftJson);
+        Assert.Empty(await fixture.Db.AnalyticsEvents.AsNoTracking().ToListAsync());
+        Assert.Empty(await fixture.Db.MetaSignalEvents.AsNoTracking().ToListAsync());
+
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().SignalDryRun(
+            new WebsiteContentController.WebsiteSignalTestRequest(ticket, before.Revision - 1, "/", ElementId, browserBindingId),
+            CancellationToken.None));
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().SignalDryRun(
+            new WebsiteContentController.WebsiteSignalTestRequest("invalid-ticket", before.Revision, "/", ElementId, browserBindingId),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SignalHealth_ReadsOnlyCurrentWebsiteVersionAndBindingHistoryWithoutSecrets()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var bindingId = Guid.NewGuid().ToString("N");
+        var otherBindingId = Guid.NewGuid().ToString("N");
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Elements = new(StringComparer.Ordinal)
+            {
+                [ElementId] = new WebsiteElementOverride
+                {
+                    Signals =
+                    [
+                        new WebsiteSignalBinding
+                        {
+                            Id = bindingId,
+                            Trigger = "click",
+                            EventName = "LeadFormStart",
+                            DeliveryMode = "analytics"
+                        }
+                    ]
+                }
+            }
+        };
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var versionId = Guid.NewGuid();
+        state.PublishedVersionId = versionId;
+        fixture.Db.AnalyticsEvents.Add(new AnalyticsEvent
+        {
+            EventId = Guid.NewGuid(),
+            EventType = "LeadFormStart",
+            EventUtc = DateTime.UtcNow,
+            ReceivedUtc = DateTime.UtcNow,
+            CommerceBusinessId = fixture.BusinessId,
+            WebsiteContentVersionId = versionId,
+            WebsiteBindingId = bindingId,
+            PageKey = "/"
+        });
+        fixture.Db.MetaSignalEvents.Add(new MetaSignalEvent
+        {
+            EventId = Guid.NewGuid().ToString("N"),
+            EventName = "LeadFormStart",
+            CreatedUtc = DateTime.UtcNow,
+            CommerceBusinessId = fixture.BusinessId,
+            WebsiteContentVersionId = versionId,
+            WebsiteBindingId = bindingId,
+            MetaBrowserSent = false,
+            MetaServerSent = false,
+            MetadataJson = "{"metaServerAttempted":true,"metaServerSent":false,"metaServerStatus":"retry_scheduled","metaServerRetryable":true,"metaServerAttemptCount":2,"metaServerHttpStatusCode":503,"metaServerTraceId":"trace-safe"}"
+        });
+        fixture.Db.AnalyticsEvents.Add(new AnalyticsEvent
+        {
+            EventId = Guid.NewGuid(),
+            EventType = "LeadFormStart",
+            EventUtc = DateTime.UtcNow,
+            ReceivedUtc = DateTime.UtcNow,
+            CommerceBusinessId = Guid.NewGuid(),
+            WebsiteContentVersionId = Guid.NewGuid(),
+            WebsiteBindingId = otherBindingId
+        });
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        var result = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalHealth(
+            ticket, "/", ElementId, bindingId, CancellationToken.None));
+        var json = JsonSerializer.SerializeToElement(result.Value, JsonOptions);
+        Assert.Equal("website_signal_existing_authorities", json.GetProperty("source").GetString());
+        Assert.Equal(versionId, json.GetProperty("publishedVersionId").GetGuid());
+        Assert.Single(json.GetProperty("analytics").EnumerateArray());
+        var meta = Assert.Single(json.GetProperty("meta").EnumerateArray());
+        Assert.Equal("retry_scheduled", meta.GetProperty("dispatch").GetProperty("status").GetString());
+        Assert.Equal(2, meta.GetProperty("dispatch").GetProperty("attemptCount").GetInt32());
+        Assert.Equal(503, meta.GetProperty("dispatch").GetProperty("httpStatusCode").GetInt32());
+        Assert.Equal("trace-safe", meta.GetProperty("dispatch").GetProperty("traceId").GetString());
+
+        var serialized = json.ToString();
+        Assert.DoesNotContain("AccessToken", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Ciphertext", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(otherBindingId, serialized, StringComparison.Ordinal);
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().SignalHealth(
+            "invalid-ticket", "/", ElementId, bindingId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Collaboration_UsesExistingBusinessMembershipRolesAndNeverMutatesWebsiteDraft()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Elements = new(StringComparer.Ordinal)
+            {
+                [ElementId] = new WebsiteElementOverride { Text = "Collaborative heading" }
+            }
+        };
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        fixture.Db.ChangeTracker.Clear();
+        var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+
+        var collaboration = Assert.IsType<OkObjectResult>(await fixture.CreateController().Collaboration(
+            ticket, "/", ElementId, CancellationToken.None));
+        var collaborationJson = JsonSerializer.SerializeToElement(collaboration.Value, JsonOptions);
+        Assert.Equal("website_studio_collaboration", collaborationJson.GetProperty("source").GetString());
+        Assert.Equal("owner", collaborationJson.GetProperty("role").GetProperty("roleKey").GetString());
+        Assert.True(collaborationJson.GetProperty("role").GetProperty("canPublish").GetBoolean());
+        var collaborator = Assert.Single(collaborationJson.GetProperty("collaborators").EnumerateArray());
+        Assert.Equal("owner", collaborator.GetProperty("roleKey").GetString());
+        Assert.True(collaborator.GetProperty("canManageStorefront").GetBoolean());
+        Assert.True(collaborator.GetProperty("canPublish").GetBoolean());
+
+        var created = Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
+            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+                ticket,
+                before.Revision,
+                "/",
+                ElementId,
+                "Tighten this headline before publishing."),
+            CancellationToken.None));
+        var createdJson = JsonSerializer.SerializeToElement(created.Value, JsonOptions);
+        Assert.Equal("website_studio_collaboration", createdJson.GetProperty("source").GetString());
+
+        fixture.Db.ChangeTracker.Clear();
+        var comment = Assert.Single(await fixture.Db.Set<WebsiteStudioComment>().AsNoTracking().ToListAsync());
+        Assert.Equal(before.Id, comment.WebsiteContentStateId);
+        Assert.Equal(before.Revision, comment.AnchorRevision);
+        Assert.Equal("/", comment.PagePath);
+        Assert.Equal(ElementId, comment.ElementId);
+        Assert.Equal("owner", comment.AuthorRole);
+        Assert.Equal("open", comment.Status);
+
+        var afterComment = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(before.Revision, afterComment.Revision);
+        Assert.Equal(before.DraftJson, afterComment.DraftJson);
+
+        var resolved = Assert.IsType<OkObjectResult>(await fixture.CreateController().SetCollaborationCommentStatus(
+            new WebsiteContentController.WebsiteStudioCommentStatusRequest(ticket, comment.Id, "resolved"),
+            CancellationToken.None));
+        var resolvedJson = JsonSerializer.SerializeToElement(resolved.Value, JsonOptions);
+        Assert.Equal("resolved", resolvedJson.GetProperty("comment").GetProperty("status").GetString());
+
+        fixture.Db.ChangeTracker.Clear();
+        var afterResolve = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(before.Revision, afterResolve.Revision);
+        Assert.Equal(before.DraftJson, afterResolve.DraftJson);
+
+        var member = Assert.Single(await fixture.Db.CommerceBusinessMembers.ToListAsync());
+        member.RoleKey = "member";
+        member.CanManageStorefront = true;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        collaboration = Assert.IsType<OkObjectResult>(await fixture.CreateController().Collaboration(
+            ticket, "/", null, CancellationToken.None));
+        collaborationJson = JsonSerializer.SerializeToElement(collaboration.Value, JsonOptions);
+        Assert.Equal("member", collaborationJson.GetProperty("role").GetProperty("roleKey").GetString());
+        Assert.False(collaborationJson.GetProperty("role").GetProperty("canPublish").GetBoolean());
+        Assert.Equal("Website editor", collaborationJson.GetProperty("role").GetProperty("label").GetString());
+
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().Collaboration(
+            "invalid-ticket", "/", null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Collaboration_RepliesStayScopedToCanonicalWebsiteStateAndOneLevelThread()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument();
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        var parentResult = Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
+            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+                ticket, 1, "/", null, "Page-level review note."),
+            CancellationToken.None));
+        var parentJson = JsonSerializer.SerializeToElement(parentResult.Value, JsonOptions);
+        var parentId = parentJson.GetProperty("comment").GetProperty("id").GetGuid();
+
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
+            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+                ticket, 1, "/", ElementId, "Reply on the same review thread.", parentId),
+            CancellationToken.None));
+
+        fixture.Db.ChangeTracker.Clear();
+        var comments = await fixture.Db.Set<WebsiteStudioComment>().AsNoTracking()
+            .OrderBy(value => value.CreatedUtc).ToListAsync();
+        Assert.Equal(2, comments.Count);
+        Assert.Null(comments[0].ParentCommentId);
+        Assert.Equal(parentId, comments[1].ParentCommentId);
+        Assert.Equal(comments[0].WebsiteContentStateId, comments[1].WebsiteContentStateId);
+        Assert.Equal("/", comments[1].PagePath);
+
+        var nested = await fixture.CreateController().CreateCollaborationComment(
+            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+                ticket, 1, "/", null, "Nested reply should be rejected.", comments[1].Id),
+            CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(nested);
+    }
+
+    [Fact]
+    public async Task DraftQuality_ReadsOnlyAuthorizedPersistedDraftAndReportsServerSource()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Navigation = new WebsitePageNavigation { ShowInNavigation = true },
+            DynamicBinding = new WebsiteDynamicPageBinding { CollectionId = "missing", ItemKeyField = "id" },
+            Extras =
+            [
+                new WebsiteExtraComponent
+                {
+                    Id = "photo",
+                    Type = "image",
+                    SectionId = "home.section.1",
+                    ImageDataUrl = "https://images.example/photo.png"
+                }
+            ]
+        };
+
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        var quality = Assert.IsType<OkObjectResult>(await fixture.CreateController().DraftQuality(ticket, CancellationToken.None));
+        var json = JsonSerializer.SerializeToElement(quality.Value, JsonOptions);
+        Assert.Equal("saved_draft_server", json.GetProperty("source").GetString());
+        Assert.Equal(1, json.GetProperty("revision").GetInt64());
+        var codes = json.GetProperty("checks").EnumerateArray()
+            .Select(value => value.GetProperty("code").GetString())
+            .Where(value => value is not null)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("page_title_missing", codes);
+        Assert.Contains("navigation_label_missing", codes);
+        Assert.Contains("dynamic_collection_missing", codes);
+        Assert.Contains("image_alt_missing", codes);
+
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().DraftQuality("invalid-ticket", CancellationToken.None));
+    }
+
     private static WebsiteContentDocument ReadDocument(IActionResult result)
     {
         var value = Assert.IsType<OkObjectResult>(result).Value;
@@ -359,8 +889,21 @@ public sealed class WebsiteContentEditorRoundTripTests
                 Db.SaveChanges();
             }
             var environment = Mock.Of<IWebHostEnvironment>(e => e.ContentRootPath == AppContext.BaseDirectory);
-            _services = new ServiceCollection().AddSingleton(new WebsitePageCompiler(environment, _configuration)).BuildServiceProvider();
+            _services = new ServiceCollection()
+                .AddSingleton(new WebsitePageCompiler(environment, _configuration))
+                .AddSingleton<ProtectWebsite.Services.IWebsiteStudioAiProposalService>(new FixtureWebsiteStudioAi())
+                .BuildServiceProvider();
             Controller = CreateController();
+        }
+
+        private sealed class FixtureWebsiteStudioAi : ProtectWebsite.Services.IWebsiteStudioAiProposalService
+        {
+            public Task<ProtectWebsite.Services.WebsiteStudioAiProviderProposal> ProposeAsync(
+                ProtectWebsite.Services.WebsiteStudioAiProviderRequest request,
+                CancellationToken cancellationToken = default) =>
+                Task.FromResult(new ProtectWebsite.Services.WebsiteStudioAiProviderProposal(
+                    "Improve the selected heading.",
+                    [new WebsiteStudioAiOperation { Kind = "set_text", Text = "AI proposed heading" }]));
         }
 
         public WebsiteContentController CreateController() => new(Db, _tickets, _configuration) { ControllerContext = new() { HttpContext = new DefaultHttpContext { RequestServices = _services! } } };

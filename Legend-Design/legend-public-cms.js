@@ -31,12 +31,23 @@
   const initialFaviconLink = document.querySelector('link[rel~="icon"]');
   const originalFaviconHref = initialFaviconLink?.getAttribute('href') || (SITE_KEY === 'protect' ? '/images/favicon/legend-favicon.svg' : '/favicon.svg');
   const originalFaviconType = initialFaviconLink?.getAttribute('type') || '';
-  let documentState = { version: 1, faviconImageDataUrl: null, elements: {}, sectionOrder: {}, extras: [], theme: {} };
+  const defaultBreakpoints = () => [
+    { key: 'mobile', label: 'Mobile', minWidth: 0, maxWidth: 767, isSystem: true },
+    { key: 'tablet', label: 'Tablet', minWidth: 768, maxWidth: 1199, isSystem: true },
+    { key: 'desktop', label: 'Desktop', minWidth: 1200, maxWidth: null, isSystem: true }
+  ];
+  let documentState = { version: 2, faviconImageDataUrl: null, breakpoints: defaultBreakpoints(), elements: {}, sectionOrder: {}, extras: [], reusableComponents: {}, collections: {}, theme: {}, pages: {} };
   let signalCatalog = null;
   let ctaCatalog = [];
+  let managementPayload = null;
+  let pendingAiProposal = null;
+  let collaborationReplyTo = null;
+  let collectionData = new Map();
+  let dynamicCollectionItem = renderInput?.dynamicItem || null;
   let selected = null;
   let selectedSection = null;
   let editorPreview = null;
+  let editorBreakpointKey = 'base';
   let selectionFrame = null;
   let gridOverlay = null;
   let directGesture = null;
@@ -46,7 +57,8 @@
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
+  const animationRuntime = new WeakMap();
+  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap', 'display', 'flexDirection', 'gap', 'gridTemplateColumns', 'alignItems', 'justifyContent', 'flexWrap'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -86,6 +98,20 @@
   const editableInteractiveTags = new Set(['A']);
   const sectionCandidates = 'main > section, main > .section, main > .page-hero, main > .cta, main > .legal-page-wrap, main > .quote-page, main > .container-narrow, main > .training-page';
 
+  function normalizeBreakpoints(input) {
+    const values = defaultBreakpoints();
+    const seen = new Set(values.map(value => value.key));
+    for (const item of Array.isArray(input) ? input : []) {
+      if (!item || item.isSystem || typeof item.key !== 'string' || seen.has(item.key) || values.length >= 8) continue;
+      const minWidth = Number(item.minWidth);
+      const maxWidth = item.maxWidth == null ? null : Number(item.maxWidth);
+      if (!Number.isFinite(minWidth) || minWidth < 0 || (maxWidth != null && (!Number.isFinite(maxWidth) || maxWidth < minWidth))) continue;
+      seen.add(item.key);
+      values.push({ key:item.key, label:typeof item.label === 'string' && item.label.trim() ? item.label.trim() : item.key, minWidth, maxWidth, isSystem:false });
+    }
+    return values;
+  }
+
   function normalizeDocument(input) {
     const pages = {};
     const sourcePages = input?.pages && typeof input.pages === 'object' ? input.pages : {};
@@ -103,31 +129,47 @@
       } : value;
     }
     return {
-      version: 1,
+      version: 2,
       faviconImageDataUrl: typeof input?.faviconImageDataUrl === 'string' ? input.faviconImageDataUrl : null,
+      breakpoints: normalizeBreakpoints(input?.breakpoints),
       elements: input?.elements && typeof input.elements === 'object' ? input.elements : {},
       sectionOrder: input?.sectionOrder && typeof input.sectionOrder === 'object' ? input.sectionOrder : {},
       extras: Array.isArray(input?.extras) ? input.extras : [],
+      reusableComponents: input?.reusableComponents && typeof input.reusableComponents === 'object' ? input.reusableComponents : {},
+      collections: input?.collections && typeof input.collections === 'object' ? input.collections : {},
       theme: input?.theme && typeof input.theme === 'object' ? input.theme : {},
       pages
     };
   }
 
+  function normalizePageRoute(value) {
+    if (typeof value !== 'string') return null;
+    let route=value.trim().toLowerCase();
+    if (!route.startsWith('/')) route='/'+route;
+    route=route.replace(/\/+$/,'') || '/';
+    if (!/^\/(?:[a-z0-9_-]+\/?)*$/.test(route) || route.length>160 || route.includes('..')) return null;
+    return route;
+  }
+
+  function currentPageRoute() {
+    const pathname = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
+    return normalizePageRoute(pathname) || '/';
+  }
+
   function pageState() {
     documentState.pages ||= {};
-    const pathname = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
-    const routeKey = pathname;
+    const routeKey = currentPageRoute();
     if (!documentState.pages[routeKey]) {
       const belongs = id => id.startsWith(`${pageKey}.`) || id.startsWith(`section:${pageKey}.`);
       const elements = Object.fromEntries(Object.entries(documentState.elements).filter(([id]) => belongs(id)));
       const sectionOrder = Object.fromEntries(Object.entries(documentState.sectionOrder).filter(([id]) => belongs(id)));
       const extras = documentState.extras.filter(extra => belongs(extra.sectionId || ''));
-      documentState.pages[routeKey] = { elements, sectionOrder, extras };
+      documentState.pages[routeKey] = { elements, sectionOrder, extras, navigation: { showInNavigation: true, order: 0, isDeleted: false } };
       Object.keys(elements).forEach(id => delete documentState.elements[id]);
       Object.keys(sectionOrder).forEach(id => delete documentState.sectionOrder[id]);
       documentState.extras = documentState.extras.filter(extra => !extras.includes(extra));
     }
-    const page = documentState.pages[routeKey]; page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= [];
+    const page = documentState.pages[routeKey]; page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.navigation ||= { showInNavigation: true, order: 0, isDeleted: false };
     return page;
   }
 
@@ -196,6 +238,133 @@
     });
   }
 
+  function selectedSignalElementId() {
+    if (!selected) return null;
+    return selected.dataset.cmsExtraId ? `extra:${selected.dataset.cmsExtraId}` : selected.dataset.cmsId || null;
+  }
+
+  function signalDiagnosticHost(bindingId) {
+    return document.querySelector(`[data-signal-diagnostics="${CSS.escape(bindingId)}"]`);
+  }
+
+  function renderSignalDiagnosticMessage(bindingId, text, tone = 'info') {
+    const host = signalDiagnosticHost(bindingId);
+    if (!host) return;
+    host.replaceChildren();
+    const message = document.createElement('p');
+    message.className = `legend-cms-signal-diagnostic legend-cms-signal-${tone}`;
+    message.textContent = text;
+    host.appendChild(message);
+  }
+
+  async function ensureSavedForSignalInspection(bindingId) {
+    if (!dirty) return true;
+    renderSignalDiagnosticMessage(bindingId, 'Saving the current draft before inspecting this mapping…');
+    const saved = await save(false);
+    if (!saved || dirty) {
+      renderSignalDiagnosticMessage(bindingId, 'Save the current draft before testing this mapping.', 'error');
+      return false;
+    }
+    return true;
+  }
+
+  async function runSignalDryRun(binding) {
+    const elementId = selectedSignalElementId();
+    if (!binding?.id || !elementId) return;
+    if (!await ensureSavedForSignalInspection(binding.id)) return;
+    renderSignalDiagnosticMessage(binding.id, 'Running private dry-run validation…');
+    try {
+      const response = await fetch(`${API_BASE}/api/website-content/manage/signals/test`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          ticket: editorTicket,
+          expectedRevision: revision,
+          pagePath: currentPageRoute(),
+          elementId,
+          bindingId: binding.id
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || payload.error || `Signal dry-run failed (${response.status})`);
+      if (payload.source !== 'website_signal_private_dry_run' || payload.dryRun !== true ||
+          payload.persisted !== false || payload.metaDispatched !== false)
+        throw new Error('Signal dry-run response was invalid.');
+      const stages = payload.stages || {};
+      const destination = payload.destination || {};
+      const details = [
+        'PRIVATE TEST · no analytics or Meta event sent',
+        `Mapping: ${stages.mappingValidated ? 'valid' : 'invalid'}`,
+        `Browser trigger: ${stages.browserTriggerSupported ? 'supported' : 'server-only'}`,
+        `Analytics ingest: ${stages.browserAnalyticsWouldBeAccepted ? 'would accept' : 'not browser-eligible'}`,
+        `Browser Pixel: ${stages.browserPixelWouldInvoke ? 'would invoke' : 'would not invoke'}`,
+        `Server outcome required: ${stages.serverOutcomeRequired ? 'yes' : 'no'}`,
+        `Destination: Pixel ${destination.browserPixelConfigured ? 'ready' : 'not configured'}, CAPI ${destination.serverCapiConfigured ? 'ready' : 'not configured'}`
+      ].join(' · ');
+      renderSignalDiagnosticMessage(binding.id, details, 'ok');
+    } catch (error) {
+      renderSignalDiagnosticMessage(binding.id, error?.message || 'Unable to run private signal test.', 'error');
+    }
+  }
+
+  async function loadSignalHealth(binding) {
+    const elementId = selectedSignalElementId();
+    if (!binding?.id || !elementId) return;
+    if (!await ensureSavedForSignalInspection(binding.id)) return;
+    renderSignalDiagnosticMessage(binding.id, 'Loading destination health and published delivery evidence…');
+    try {
+      const url = new URL(`${API_BASE}/api/website-content/manage/signals/health`);
+      url.searchParams.set('ticket', editorTicket);
+      url.searchParams.set('pagePath', currentPageRoute());
+      url.searchParams.set('elementId', elementId);
+      url.searchParams.set('bindingId', binding.id);
+      const response = await fetch(url, { cache:'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || payload.error || `Signal health failed (${response.status})`);
+      if (payload.source !== 'website_signal_existing_authorities')
+        throw new Error('Signal health response was invalid.');
+
+      const host = signalDiagnosticHost(binding.id);
+      if (!host) return;
+      host.replaceChildren();
+      const destination = payload.destination || {};
+      const mapping = payload.binding || {};
+      const summary = document.createElement('p');
+      summary.className = 'legend-cms-signal-diagnostic legend-cms-signal-ok';
+      summary.textContent = [
+        `Destination owner: ${destination.ownerType || 'none'}`,
+        `Pixel: ${destination.browserPixelConfigured ? 'configured' : 'not configured'}`,
+        `CAPI: ${destination.serverCapiConfigured ? 'configured' : 'not configured'}`,
+        `Consent/matching: ${mapping.matchingConsent || 'not requested'}`,
+        `Published version: ${payload.publishedVersionId || 'not published'}`
+      ].join(' · ');
+      host.appendChild(summary);
+
+      const evidence = [
+        ...(payload.analytics || []).map(row => `Analytics accepted · ${row.eventType} · ${row.receivedUtc || ''}`),
+        ...(payload.meta || []).map(row => {
+          const dispatch = row.dispatch || {};
+          const server = dispatch.sent ? 'server sent' : dispatch.status ? `server ${dispatch.status}` : 'no server dispatch';
+          return `Meta signal · ${row.eventName} · browser ${row.metaBrowserSent ? 'invoked' : 'not invoked'} · ${server}`;
+        })
+      ];
+      if (!evidence.length) {
+        const empty = document.createElement('p');
+        empty.textContent = 'No published delivery evidence exists yet for this exact binding/version.';
+        host.appendChild(empty);
+      } else {
+        for (const value of evidence.slice(0, 12)) {
+          const row = document.createElement('div');
+          row.className = 'legend-cms-signal-history';
+          row.textContent = value;
+          host.appendChild(row);
+        }
+      }
+    } catch (error) {
+      renderSignalDiagnosticMessage(binding.id, error?.message || 'Unable to load signal health.', 'error');
+    }
+  }
+
   function renderSignalControls() {
     const host = document.getElementById('legend-cms-signal-controls');
     if (!host) return;
@@ -240,6 +409,22 @@
           label.append(input, document.createTextNode(' Match approved ' + field)); host.appendChild(label);
         }
       }
+      const diagnostics = document.createElement('div');
+      diagnostics.className = 'legend-cms-signal-diagnostics';
+      diagnostics.dataset.signalDiagnostics = binding.id;
+      const diagnosticIntro = document.createElement('p');
+      diagnosticIntro.textContent = 'Destination health and delivery evidence have not been checked for this mapping.';
+      diagnostics.appendChild(diagnosticIntro);
+      const diagnosticActions = document.createElement('div'); diagnosticActions.className = 'legend-cms-row';
+      const testButton = document.createElement('button'); testButton.type = 'button'; testButton.textContent = 'Run private test';
+      testButton.dataset.signalTest = binding.id;
+      testButton.addEventListener('click', () => void runSignalDryRun(binding));
+      const healthButton = document.createElement('button'); healthButton.type = 'button'; healthButton.textContent = 'Refresh delivery history';
+      healthButton.dataset.signalHealth = binding.id;
+      healthButton.addEventListener('click', () => void loadSignalHealth(binding));
+      diagnosticActions.append(testButton, healthButton);
+      diagnostics.appendChild(diagnosticActions);
+      host.appendChild(diagnostics);
       const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove mapping';
       remove.addEventListener('click', () => { checkpoint(); overrides.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
     }
@@ -272,6 +457,125 @@
     });
   }
 
+  function responsiveViewportWidth() {
+    const previewWidth = editorMode && editorPreview?.clientWidth;
+    if (Number.isFinite(previewWidth) && previewWidth > 0) return previewWidth;
+    const windowWidth = Number(window.innerWidth);
+    if (Number.isFinite(windowWidth) && windowWidth > 0) return windowWidth;
+    return Number(document.documentElement?.clientWidth) || 1200;
+  }
+
+  function activeBreakpoint(width = responsiveViewportWidth()) {
+    if (editorMode) {
+      if (editorBreakpointKey === 'base') return null;
+      if ((documentState.breakpoints || []).some(value => value.key === editorBreakpointKey)) return editorBreakpointKey;
+    }
+    const candidates = (documentState.breakpoints || []).filter(value => {
+      const min = Number(value.minWidth) || 0;
+      const max = value.maxWidth == null ? Infinity : Number(value.maxWidth);
+      return width >= min && width <= max;
+    });
+    candidates.sort((a,b) => {
+      const system = Number(!!a.isSystem) - Number(!!b.isSystem);
+      if (system !== 0) return system;
+      const aSpan = (a.maxWidth == null ? 100000 : Number(a.maxWidth)) - Number(a.minWidth || 0);
+      const bSpan = (b.maxWidth == null ? 100000 : Number(b.maxWidth)) - Number(b.minWidth || 0);
+      return aSpan - bSpan;
+    });
+    return candidates[0]?.key || null;
+  }
+
+  function effectiveStyle(override) {
+    const base = override?.style && typeof override.style === 'object' ? override.style : {};
+    const key = activeBreakpoint();
+    const responsive = key && override?.breakpointStyles && typeof override.breakpointStyles[key] === 'object' ? override.breakpointStyles[key] : null;
+    return responsive ? { ...base, ...responsive } : base;
+  }
+
+  function effectiveLayout(override) {
+    const base = override?.layout && typeof override.layout === 'object' ? override.layout : { mode:'free' };
+    const key = activeBreakpoint();
+    const responsive = key && override?.breakpointLayouts && typeof override.breakpointLayouts[key] === 'object' ? override.breakpointLayouts[key] : null;
+    return responsive ? { ...base, ...responsive } : base;
+  }
+
+  function applyLayout(el, layout) {
+    if (!el) return;
+    const mode = layout?.mode || 'free';
+    if (mode === 'stack' || mode === 'flex') {
+      el.style.display = 'flex';
+      el.style.flexDirection = mode === 'stack' ? 'column' : (layout.direction === 'row' ? 'row' : 'column');
+      if (layout.gapPx != null) el.style.gap = `${Number(layout.gapPx)}px`;
+      if (layout.alignItems) el.style.alignItems = layout.alignItems;
+      if (layout.justifyContent) el.style.justifyContent = layout.justifyContent;
+      if (mode === 'flex' && layout.wrap) el.style.flexWrap = layout.wrap;
+    } else if (mode === 'grid') {
+      el.style.display = 'grid';
+      el.style.gridTemplateColumns = `repeat(${Math.max(1, Math.min(12, Number(layout.columns) || 12))},minmax(0,1fr))`;
+      if (layout.gapPx != null) el.style.gap = `${Number(layout.gapPx)}px`;
+      if (layout.alignItems) el.style.alignItems = layout.alignItems;
+      if (layout.justifyContent) el.style.justifyContent = layout.justifyContent;
+    }
+  }
+  function editingStyle(override, create = false) {
+    if (!override) return null;
+    if (editorBreakpointKey === 'base') {
+      if (create) override.style ||= {};
+      return override.style || {};
+    }
+    if (create) { override.breakpointStyles ||= {}; override.breakpointStyles[editorBreakpointKey] ||= {}; }
+    return override.breakpointStyles?.[editorBreakpointKey] || {};
+  }
+
+  function editingLayout(override, create = false) {
+    if (!override) return null;
+    if (editorBreakpointKey === 'base') {
+      if (create) override.layout ||= { mode:'free', direction:'column' };
+      return override.layout || { mode:'free', direction:'column' };
+    }
+    if (create) { override.breakpointLayouts ||= {}; override.breakpointLayouts[editorBreakpointKey] ||= {}; }
+    return override.breakpointLayouts?.[editorBreakpointKey] || {};
+  }
+
+  function forEachDocumentOverride(action) {
+    Object.values(documentState.elements || {}).forEach(action);
+    (documentState.extras || []).forEach(action);
+    Object.values(documentState.pages || {}).forEach(page => {
+      Object.values(page?.elements || {}).forEach(action);
+      (page?.extras || []).forEach(action);
+    });
+    Object.values(documentState.reusableComponents || {}).forEach(component => {
+      Object.values(component?.elements || {}).forEach(action);
+      (component?.extras || []).forEach(action);
+    });
+  }
+
+  function syncBreakpointControls() {
+    const select = document.getElementById('legend-cms-breakpoint');
+    const remove = document.getElementById('legend-cms-breakpoint-remove');
+    if (!select) return;
+    select.replaceChildren();
+    const base = document.createElement('option'); base.value='base'; base.textContent='Base · all sizes'; select.appendChild(base);
+    for (const breakpoint of documentState.breakpoints || []) {
+      const option = document.createElement('option'); option.value=breakpoint.key; option.textContent=`${breakpoint.label || breakpoint.key} · ${breakpoint.minWidth}px${breakpoint.maxWidth == null ? '+' : '–'+breakpoint.maxWidth+'px'}`; select.appendChild(option);
+    }
+    if (![...select.options].some(option => option.value === editorBreakpointKey)) editorBreakpointKey='base';
+    select.value=editorBreakpointKey;
+    const current=(documentState.breakpoints || []).find(value=>value.key===editorBreakpointKey);
+    if (remove) remove.disabled=!current || !!current.isSystem;
+  }
+
+  function applyBreakpointPreview() {
+    if (!editorPreview) return;
+    const breakpoint=(documentState.breakpoints || []).find(value=>value.key===editorBreakpointKey);
+    if (!breakpoint) { editorPreview.style.width=''; editorPreview.style.maxWidth=''; editorPreview.style.justifySelf=''; }
+    else {
+      const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
+      editorPreview.style.width='100%'; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
+    }
+    refreshResponsiveOverrides();
+    syncEditorControls();
+  }
   function applyStyle(el, style) {
     if (!el) return;
     const original = rememberOriginal(el);
@@ -441,6 +745,244 @@
     if (remove) remove.disabled = !current;
   }
 
+  function updateCollectionData(payload) {
+    collectionData = new Map();
+    for (const projection of Array.isArray(payload?.collections) ? payload.collections : []) {
+      if (projection?.id) collectionData.set(projection.id, projection);
+    }
+    dynamicCollectionItem = payload?.dynamicItem || dynamicCollectionItem;
+  }
+
+  function resolveDataBinding(binding) {
+    if (!binding?.collectionId || !binding?.field) return undefined;
+    const projection = collectionData.get(binding.collectionId);
+    if (!projection) return undefined;
+    let item = null;
+    if (dynamicCollectionItem?.collectionId === binding.collectionId && dynamicCollectionItem?.fields) item = dynamicCollectionItem;
+    else if (projection.isList !== true) item = Array.isArray(projection.items) ? projection.items[0] : null;
+    if (!item?.fields || !Object.prototype.hasOwnProperty.call(item.fields, binding.field)) return undefined;
+    return item.fields[binding.field];
+  }
+
+  function applyDataBinding(el, binding) {
+    const value = resolveDataBinding(binding);
+    if (value === undefined || value === null || !el) return;
+    const target = binding?.target || 'text';
+    if (target === 'image') {
+      if (el instanceof HTMLImageElement && typeof value === 'string' && safeUrl(value, true)) el.src = mediaUrl(value);
+      return;
+    }
+    if (target === 'href') {
+      if (el.tagName === 'A' && typeof value === 'string' && safeUrl(value)) el.href = value;
+      return;
+    }
+    if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) setContentText(el, String(value), true);
+  }
+  function prefersReducedMotion() {
+    try { return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true; } catch { return false; }
+  }
+
+  function animationKeyframes(binding) {
+    const distance = Number.isFinite(Number(binding?.distancePx)) ? Number(binding.distancePx) : 24;
+    const effect = binding?.effect || 'fade';
+    if (effect === 'slide-up') return [{ opacity:0, transform:`translateY(${distance}px)` }, { opacity:1, transform:'translateY(0)' }];
+    if (effect === 'slide-down') return [{ opacity:0, transform:`translateY(${-distance}px)` }, { opacity:1, transform:'translateY(0)' }];
+    if (effect === 'slide-left') return [{ opacity:0, transform:`translateX(${distance}px)` }, { opacity:1, transform:'translateX(0)' }];
+    if (effect === 'slide-right') return [{ opacity:0, transform:`translateX(${-distance}px)` }, { opacity:1, transform:'translateX(0)' }];
+    if (effect === 'scale') return [{ opacity:0, transform:'scale(.94)' }, { opacity:1, transform:'scale(1)' }];
+    if (effect === 'rotate') return [{ opacity:0, transform:'rotate(-6deg)' }, { opacity:1, transform:'rotate(0deg)' }];
+    return [{ opacity:0 }, { opacity:1 }];
+  }
+
+  function playAnimation(el, binding) {
+    if (!el || typeof el.animate !== 'function' || prefersReducedMotion()) return null;
+    const duration = Math.max(50, Math.min(5000, Number(binding?.durationMs) || 400));
+    const delay = Math.max(0, Math.min(5000, Number(binding?.delayMs) || 0));
+    const easing = ['linear','ease','ease-in','ease-out','ease-in-out'].includes(binding?.easing) ? binding.easing : 'ease';
+    return el.animate(animationKeyframes(binding), { duration, delay, easing, fill:'none' });
+  }
+
+  function applyAnimations(el, bindings) {
+    if (!el) return;
+    const normalized = Array.isArray(bindings) ? bindings : [];
+    const signature = JSON.stringify(normalized);
+    const current = animationRuntime.get(el);
+    if (current?.signature === signature) return;
+    current?.cleanup?.();
+    animationRuntime.delete(el);
+    if (editorMode || renderInput?.server || normalized.length === 0) return;
+    const cleanups = [];
+    const played = new Set();
+    const invoke = binding => {
+      if (binding?.once && played.has(binding.id)) return;
+      if (binding?.once) played.add(binding.id);
+      playAnimation(el, binding);
+    };
+    for (const binding of normalized) {
+      if (!binding?.id) continue;
+      if (binding.trigger === 'load') {
+        const timer = setTimeout(() => invoke(binding), 0);
+        cleanups.push(() => clearTimeout(timer));
+      } else if (binding.trigger === 'view') {
+        if (typeof IntersectionObserver === 'function') {
+          const observer = new IntersectionObserver(entries => {
+            if (!entries.some(entry => entry.isIntersecting)) return;
+            invoke(binding);
+            if (binding.once) observer.disconnect();
+          }, { threshold:0.15 });
+          observer.observe(el);
+          cleanups.push(() => observer.disconnect());
+        } else {
+          const timer = setTimeout(() => invoke(binding), 0);
+          cleanups.push(() => clearTimeout(timer));
+        }
+      } else if (binding.trigger === 'hover') {
+        const handler = () => invoke(binding);
+        el.addEventListener('mouseenter', handler);
+        cleanups.push(() => el.removeEventListener('mouseenter', handler));
+      } else if (binding.trigger === 'click') {
+        const handler = () => invoke(binding);
+        el.addEventListener('click', handler);
+        cleanups.push(() => el.removeEventListener('click', handler));
+      }
+    }
+    animationRuntime.set(el, { signature, cleanup:() => cleanups.forEach(cleanup => cleanup()) });
+  }
+
+  function aiOperationLabel(operation) {
+    const kind=String(operation?.kind || '').replaceAll('_',' ');
+    if (operation?.kind==='suggest_image') return `${kind}: ${operation.imagePrompt || 'image direction'}`;
+    if (operation?.kind==='set_text') return `${kind}: ${(operation.text || '').slice(0,120)}`;
+    if (operation?.breakpointKey) return `${kind} · ${operation.breakpointKey}`;
+    return kind || 'website change';
+  }
+
+  function renderAiProposal() {
+    const host=document.getElementById('legend-cms-ai-proposal');
+    const status=document.getElementById('legend-cms-ai-status');
+    const apply=document.getElementById('legend-cms-ai-apply');
+    const discard=document.getElementById('legend-cms-ai-discard');
+    if(!host?.replaceChildren) return;
+    host.replaceChildren();
+    if(!pendingAiProposal){
+      if(status) status.textContent='No proposal generated.';
+      if(apply) apply.disabled=true;
+      if(discard) discard.disabled=true;
+      return;
+    }
+    if(status) status.textContent=`Proposal ready · base revision ${pendingAiProposal.baseRevision}. Review before applying.`;
+    const summary=document.createElement('p'); summary.className='legend-cms-ai-summary'; summary.textContent=pendingAiProposal.summary || 'Website Studio AI proposal'; host.appendChild(summary);
+    for(const operation of pendingAiProposal.operations || []){
+      const row=document.createElement('div'); row.className='legend-cms-ai-operation'; row.textContent=aiOperationLabel(operation); host.appendChild(row);
+    }
+    if(!(pendingAiProposal.operations || []).length){
+      const empty=document.createElement('p'); empty.textContent='The model proposed no document changes.'; host.appendChild(empty);
+    }
+    if(apply) apply.disabled=pendingAiProposal.baseRevision!==revision || !pendingAiProposal.proposedDocument;
+    if(discard) discard.disabled=false;
+  }
+
+  async function requestAiProposal() {
+    const status=document.getElementById('legend-cms-ai-status');
+    const prompt=document.getElementById('legend-cms-ai-prompt')?.value?.trim() || '';
+    const mode=document.getElementById('legend-cms-ai-mode')?.value || 'responsive';
+    if(!prompt){ if(status) status.textContent='Enter what you want the assistant to improve or create.'; return; }
+    if(mode==='responsive' && (!selected || selected.dataset.cmsSignalOnly)){
+      if(status) status.textContent='Select the element or section you want AI to make responsive.';
+      return;
+    }
+    if(dirty){
+      const saved=await save(false);
+      if(!saved || dirty){ if(status) status.textContent='Save the current draft before generating an AI proposal.'; return; }
+    }
+    if(status) status.textContent='Generating a structured proposal…';
+    pendingAiProposal=null;
+    try{
+      const selectedText=selected && !selected.dataset.cmsSection ? inlineTextValue(selected).slice(0,4000) : null;
+      const response=await fetch(`${API_BASE}/api/website-content/manage/ai/propose`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          ticket:editorTicket,
+          expectedRevision:revision,
+          mode,
+          instruction:prompt,
+          pagePath:currentPageRoute(),
+          selectedElementId:selected?.dataset?.cmsId || null,
+          selectedSectionId:selectedSection?.dataset?.cmsSection || null,
+          selectedText
+        })
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(payload.message || payload.error || `AI proposal failed (${response.status})`);
+      if(payload.source!=='ai_proposal_preview' || payload.persisted!==false || payload.published!==false || !payload.proposedDocument)
+        throw new Error('AI proposal response was invalid.');
+      pendingAiProposal=payload;
+      renderAiProposal();
+    }catch(error){
+      pendingAiProposal=null;
+      if(status) status.textContent=error?.message || 'Unable to generate an AI proposal.';
+      renderAiProposal();
+    }
+  }
+
+  function applyAiProposal() {
+    const status=document.getElementById('legend-cms-ai-status');
+    if(!pendingAiProposal?.proposedDocument) return;
+    if(pendingAiProposal.baseRevision!==revision){
+      if(status) status.textContent='This proposal is stale because the saved draft revision changed. Generate it again.';
+      return;
+    }
+    checkpoint();
+    setSelected(null);
+    applyDocument(pendingAiProposal.proposedDocument);
+    pendingAiProposal=null;
+    markDirty();
+    renderAiProposal();
+    showPanel('ai');
+    if(status) status.textContent='Proposal applied to the local draft. Review the canvas, then save or publish normally.';
+  }
+
+  function renderMotionControls() {
+    const host = document.getElementById('legend-cms-motion-controls');
+    if (!host?.replaceChildren) return;
+    host.replaceChildren();
+    const status = document.getElementById('legend-cms-motion-status');
+    if (!selected || selected.dataset.cmsSignalOnly) { if (status) status.textContent='Select a page element or added block.'; return; }
+    const existing = overrideForElement(selected, false);
+    const bindings = Array.isArray(existing?.animations) ? existing.animations : [];
+    if (status) status.textContent = bindings.length ? `${bindings.length} motion interaction${bindings.length===1?'':'s'} on this element.` : 'No motion interactions on this element.';
+    const selectControl = (labelText, values, value, onChange) => {
+      const label=document.createElement('label'); label.className='legend-cms-group'; label.textContent=labelText;
+      const select=document.createElement('select');
+      for(const [key,text] of values){ const option=document.createElement('option'); option.value=key; option.textContent=text; select.appendChild(option); }
+      select.value=value; select.addEventListener('change',()=>onChange(select.value)); label.appendChild(select); return label;
+    };
+    for (const binding of bindings) {
+      const row=document.createElement('div'); row.className='legend-cms-motion-row';
+      const mutate=action=>{ checkpoint(); action(); markDirty(); renderMotionControls(); };
+      row.appendChild(selectControl('Trigger', [['load','Page load'],['view','Enter viewport'],['hover','Hover'],['click','Click']], binding.trigger, value=>mutate(()=>binding.trigger=value)));
+      row.appendChild(selectControl('Effect', [['fade','Fade'],['slide-up','Slide up'],['slide-down','Slide down'],['slide-left','Slide left'],['slide-right','Slide right'],['scale','Scale'],['rotate','Rotate']], binding.effect, value=>mutate(()=>binding.effect=value)));
+      const timing=document.createElement('div'); timing.className='legend-cms-row';
+      for(const [labelText,key,min,max] of [['Duration ms','durationMs',50,5000],['Delay ms','delayMs',0,5000],['Distance px','distancePx',-2000,2000]]) {
+        const label=document.createElement('label'); label.className='legend-cms-group'; label.textContent=labelText;
+        const input=document.createElement('input'); input.type='number'; input.min=String(min); input.max=String(max); input.step='1'; input.value=binding[key] ?? (key==='distancePx'?24:'');
+        input.addEventListener('change',()=>mutate(()=>binding[key]=input.value===''?null:Number(input.value))); label.appendChild(input); timing.appendChild(label);
+      }
+      row.appendChild(timing);
+      row.appendChild(selectControl('Easing', [['ease','Ease'],['linear','Linear'],['ease-in','Ease in'],['ease-out','Ease out'],['ease-in-out','Ease in/out']], binding.easing || 'ease', value=>mutate(()=>binding.easing=value)));
+      const onceLabel=document.createElement('label'); onceLabel.className='legend-cms-group';
+      const once=document.createElement('input'); once.type='checkbox'; once.checked=binding.once!==false; once.addEventListener('change',()=>mutate(()=>binding.once=once.checked));
+      onceLabel.append(once,document.createTextNode(' Play once per page session')); row.appendChild(onceLabel);
+      const actions=document.createElement('div'); actions.className='legend-cms-row';
+      const preview=document.createElement('button'); preview.type='button'; preview.textContent='Preview effect'; preview.addEventListener('click',()=>playAnimation(selected,binding));
+      const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remove'; remove.addEventListener('click',()=>{ const ov=selectedOverride(); mutate(()=>ov.animations=(ov.animations||[]).filter(item=>item.id!==binding.id)); });
+      actions.append(preview,remove); row.appendChild(actions); host.appendChild(row);
+    }
+    const add=document.createElement('button'); add.type='button'; add.textContent='Add motion interaction'; add.disabled=bindings.length>=8;
+    add.addEventListener('click',()=>{ const ov=selectedOverride(); checkpoint(); ov.animations ||= []; ov.animations.push({id:crypto.randomUUID().replaceAll('-',''),trigger:'view',effect:'fade',durationMs:400,delayMs:0,distancePx:24,easing:'ease',once:true}); markDirty(); renderMotionControls(); });
+    host.appendChild(add);
+  }
   function applyElementOverride(el, override) {
     if (el?.dataset.cmsSignalOnly) return;
     if (!el || !override) return;
@@ -449,63 +991,270 @@
     if (override.hidden === true) el.hidden = true;
     else if (override.hidden === false) el.hidden = false;
 
+    const original = rememberOriginal(el);
     if (el instanceof HTMLImageElement) {
-      if (override.imageDataUrl) el.src = mediaUrl(override.imageDataUrl);
-    } else if (override.text != null && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) {
-      setContentText(el, override.text, true);
+      el.src = override.imageDataUrl ? mediaUrl(override.imageDataUrl) : (original.src || '');
+    } else if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
+      setContentText(el, override.text != null ? override.text : (original.text || ''), override.text != null);
     }
 
-    if (override.href != null && el.tagName === 'A' && safeUrl(override.href)) { el.href = override.href; el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer'; }
+    if (el.tagName === 'A') {
+      const href = override.href != null && safeUrl(override.href) ? override.href : original.href;
+      if (href) el.setAttribute('href', href); else el.removeAttribute('href');
+      el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
+    }
     if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
     if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
-    applyStyle(el, override.style);
+    applyDataBinding(el, override.dataBinding);
+    applyStyle(el, effectiveStyle(override));
+    applyLayout(el, effectiveLayout(override));
+    applyAnimations(el, override.animations);
   }
 
-  function createExtra(extra) {
-    const section = extra.type === 'section' ? document.querySelector('main') : document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
-    if (!section) return null;
+  function buildExtraNode(extra, editable = true, idPrefix = '') {
     let el;
     if (extra.type === 'image') {
       el = document.createElement('img');
-      el.src = mediaUrl(extra.imageDataUrl || '');
-      el.alt = '';
-      el.className = 'cms-extra cms-extra-image';
+      el.src = mediaUrl(extra.imageDataUrl || ''); el.alt = ''; el.className = 'cms-extra cms-extra-image';
     } else if (extra.type === 'section') {
-      el = document.createElement('section'); el.dataset.cmsSection = `extra:${extra.id}`; el.className = 'cms-extra cms-extra-section';
+      el = document.createElement('section');
+      if (editable) el.dataset.cmsSection = `extra:${extra.id}`;
+      el.className = 'cms-extra cms-extra-section';
     } else if (extra.type === 'video') {
-      el = document.createElement('video'); el.controls = true; el.preload = 'metadata'; if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
+      el = document.createElement('video'); el.controls = true; el.preload = 'metadata';
+      if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
     } else if (extra.type === 'card') {
       el = document.createElement('article'); el.className = 'cms-extra card cms-extra-card';
       const heading = document.createElement('h3'); setContentText(heading, extra.title || 'New service', true);
       const copy = document.createElement('p'); setContentText(copy, extra.text || '', true);
-      for (const [node, field] of [[heading, 'title'], [copy, 'text']]) {
+      if (editable) for (const [node, field] of [[heading, 'title'], [copy, 'text']]) {
         node.dataset.cmsExtraId = extra.id; node.dataset.cmsExtraField = field;
         node.dataset.cmsId = `extra:${extra.id}:${field}`; node.dataset.cmsEditable = 'true';
       }
       el.append(heading, copy);
     } else if (extra.type === 'button') {
-      el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
+      el = document.createElement('a'); el.textContent = extra.text || 'New button';
+      if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
     } else if (extra.type === 'code') {
       el = document.createElement('div'); el.className = 'cms-extra cms-extra-code';
-      const frame = document.createElement('iframe');
-      frame.dataset.cmsCodeFrame = 'true';
-      frame.title = 'Custom code block';
+      const frame = document.createElement('iframe'); frame.dataset.cmsCodeFrame = 'true'; frame.title = 'Custom code block';
       frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
-      frame.setAttribute('referrerpolicy', 'no-referrer');
-      frame.setAttribute('loading', 'lazy');
-      el.appendChild(frame);
-      renderCodePreview(el, extra);
+      frame.setAttribute('referrerpolicy', 'no-referrer'); frame.setAttribute('loading', 'lazy');
+      el.appendChild(frame); renderCodePreview(el, extra);
     } else {
-      el = document.createElement('p');
-      el.textContent = extra.text || '';
-      el.className = 'cms-extra cms-extra-text';
+      el = document.createElement('p'); el.textContent = extra.text || ''; el.className = 'cms-extra cms-extra-text';
     }
-    el.dataset.cmsExtraId = extra.id;
-    el.dataset.cmsId = `extra:${extra.id}`;
-    el.dataset.cmsEditable = 'true';
-    section.appendChild(el);
-    applyElementOverride(el, extra);
+    if (editable) {
+      el.dataset.cmsExtraId = extra.id; el.dataset.cmsId = `extra:${extra.id}`; el.dataset.cmsEditable = 'true';
+    } else if (idPrefix) el.dataset.cmsReusableChild = `${idPrefix}:${extra.id}`;
     return el;
+  }
+
+  function reusableDefinition(instance) {
+    return instance?.type === 'reusable' && instance.syncSourceId ? documentState.reusableComponents?.[instance.syncSourceId] || null : null;
+  }
+
+  function renderReusableInstance(wrapper, instance) {
+    if (!wrapper || !instance) return;
+    wrapper.replaceChildren();
+    const definition = reusableDefinition(instance);
+    wrapper.dataset.cmsReusableId = instance.syncSourceId || '';
+    if (!definition) {
+      if (editorMode) {
+        const missing = document.createElement('p'); missing.className = 'legend-cms-reusable-missing';
+        missing.textContent = 'Reusable component is unavailable. Restore its definition or remove this instance.';
+        wrapper.appendChild(missing);
+      }
+      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance)); applyAnimations(wrapper, instance.animations);
+      return;
+    }
+    const values = Array.isArray(definition.extras) ? definition.extras : [];
+    const root = values.find(value => value.sectionId === 'component.root') || values[0] || null;
+    const sectionMap = new Map([['component.root', wrapper]]);
+    if (definition.kind === 'section' && root?.type === 'section') {
+      sectionMap.set(`extra:${root.id}`, wrapper);
+      applyStyle(wrapper, { ...effectiveStyle(root), ...effectiveStyle(instance) });
+      applyLayout(wrapper, { ...effectiveLayout(root), ...effectiveLayout(instance) });
+      applyAnimations(wrapper, instance.animations);
+    } else {
+      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance)); applyAnimations(wrapper, instance.animations);
+    }
+    for (const item of values.filter(value => value.type === 'section' && value !== root)) {
+      const parent = sectionMap.get(item.sectionId) || wrapper;
+      const node = buildExtraNode(item, false, instance.id); node.classList.add('legend-cms-reusable-child');
+      parent.appendChild(node); sectionMap.set(`extra:${item.id}`, node);
+      applyStyle(node, effectiveStyle(item)); applyLayout(node, effectiveLayout(item));
+    }
+    const leaves = values.filter(value => value.type !== 'section');
+    for (const item of leaves) {
+      if (definition.kind === 'block' && root && item !== root) continue;
+      const parent = sectionMap.get(item.sectionId) || wrapper;
+      const node = buildExtraNode(item, false, instance.id); node.classList.add('legend-cms-reusable-child');
+      parent.appendChild(node); applyElementOverride(node, item);
+    }
+  }
+
+  function createExtra(extra) {
+    const section = extra.type === 'section' ? document.querySelector('main') : document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
+    if (!section) return null;
+    if (extra.type === 'reusable') {
+      const definition = reusableDefinition(extra);
+      const el = document.createElement(definition?.kind === 'section' ? 'section' : 'div');
+      el.className = 'cms-extra cms-reusable-instance';
+      el.dataset.cmsExtraId = extra.id; el.dataset.cmsId = `extra:${extra.id}`; el.dataset.cmsEditable = 'true';
+      if (extra.hidden === true) el.hidden = true;
+      section.appendChild(el); renderReusableInstance(el, extra); return el;
+    }
+    const el = buildExtraNode(extra, true);
+    section.appendChild(el); applyElementOverride(el, extra); return el;
+  }
+
+  function selectedAddedExtra() {
+    const id = selected?.dataset?.cmsExtraId;
+    return id ? pageState().extras.find(extra => extra.id === id) || null : null;
+  }
+
+  function captureReusableDefinition(name, existingId = null) {
+    const source = selectedAddedExtra();
+    if (!source || source.type === 'reusable') return null;
+    const componentId = existingId || crypto.randomUUID().replaceAll('-', '');
+    const sourceIds = new Set([source.id]);
+    if (source.type === 'section') {
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const extra of pageState().extras) {
+          const sectionId = String(extra.sectionId || '');
+          const parent = sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
+          if (parent && sourceIds.has(parent) && !sourceIds.has(extra.id)) { sourceIds.add(extra.id); changed = true; }
+        }
+      }
+    }
+    const sourceExtras = [source, ...pageState().extras.filter(extra => extra.id !== source.id && sourceIds.has(extra.id))];
+    const idMap = new Map([[source.id, 'root']]);
+    sourceExtras.slice(1).forEach((extra, index) => idMap.set(extra.id, `item-${index + 1}`));
+    const extras = sourceExtras.map(extra => {
+      const copy = JSON.parse(JSON.stringify(extra));
+      const oldId = extra.id;
+      const sectionId = String(extra.sectionId || '');
+      const parent = sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
+      copy.id = idMap.get(oldId);
+      copy.sectionId = oldId === source.id ? 'component.root' : parent && idMap.has(parent) ? `extra:${idMap.get(parent)}` : 'component.root';
+      copy.placement = null; copy.signals = []; copy.syncSourceId = null; delete copy.hidden;
+      return copy;
+    });
+    return { id: componentId, name: (name || 'Reusable component').trim().slice(0, 120), kind: source.type === 'section' ? 'section' : 'block', elements: {}, sectionOrder: {}, extras };
+  }
+
+  function componentInUse(componentId) {
+    let used = false;
+    const inspect = extras => { if ((extras || []).some(extra => extra.type === 'reusable' && extra.syncSourceId === componentId)) used = true; };
+    inspect(documentState.extras);
+    Object.values(documentState.pages || {}).forEach(page => inspect(page?.extras));
+    return used;
+  }
+
+  function refreshReusableInstances(componentId = null) {
+    document.querySelectorAll('.cms-reusable-instance[data-cms-extra-id]').forEach(wrapper => {
+      const instance = pageState().extras.find(extra => extra.id === wrapper.dataset.cmsExtraId);
+      if (!instance || (componentId && instance.syncSourceId !== componentId)) return;
+      renderReusableInstance(wrapper, instance);
+    });
+    updateDirectCanvasUi();
+  }
+
+  function renderReusableComponents() {
+    const host = document.getElementById('legend-cms-component-list');
+    const status = document.getElementById('legend-cms-component-status');
+    if (!host?.replaceChildren) return;
+    host.replaceChildren();
+    const definitions = Object.values(documentState.reusableComponents || {}).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+    for (const definition of definitions) {
+      const row = document.createElement('div'); row.className = 'legend-cms-component-row';
+      const info = document.createElement('div');
+      const title = document.createElement('strong'); title.textContent = definition.name || definition.id;
+      const meta = document.createElement('small'); meta.textContent = `${definition.kind || 'block'} · ${definition.id}`;
+      info.append(title, meta);
+      const insert = document.createElement('button'); insert.type = 'button'; insert.textContent = 'Insert';
+      insert.addEventListener('click', () => {
+        const section = selectedSection || document.querySelector('[data-cms-section]');
+        if (!section) { if (status) status.textContent = 'Select a section before inserting a reusable component.'; return; }
+        checkpoint();
+        const instance = { id: crypto.randomUUID(), type: 'reusable', sectionId: section.dataset.cmsSection, syncSourceId: definition.id, style: { widthPercent: 100 }, signals: [] };
+        pageState().extras.push(instance);
+        const created = createExtra(instance); setSelected(created); markDirty(); renderReusableComponents();
+      });
+      const update = document.createElement('button'); update.type = 'button'; update.textContent = 'Update from selected';
+      const selectedSource = selectedAddedExtra(); update.disabled = !selectedSource || selectedSource.type === 'reusable';
+      update.addEventListener('click', () => {
+        const next = captureReusableDefinition(definition.name, definition.id);
+        if (!next) { if (status) status.textContent = 'Select an added block or added section to update this component.'; return; }
+        checkpoint(); documentState.reusableComponents[definition.id] = next;
+        refreshReusableInstances(definition.id); markDirty(); renderReusableComponents();
+      });
+      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Delete';
+      remove.disabled = componentInUse(definition.id);
+      remove.title = remove.disabled ? 'Remove every instance before deleting this reusable definition.' : '';
+      remove.addEventListener('click', () => {
+        if (componentInUse(definition.id)) return;
+        checkpoint(); delete documentState.reusableComponents[definition.id]; markDirty(); renderReusableComponents();
+      });
+      row.append(info, insert, update, remove); host.appendChild(row);
+    }
+    if (!definitions.length) { const empty = document.createElement('p'); empty.textContent = 'No reusable components yet.'; host.appendChild(empty); }
+  }
+  function pageLayerSections() {
+    return Array.from(document.querySelectorAll('[data-cms-section]')).filter(section => {
+      if (section.matches('.site-header,.site-footer')) return false;
+      const parentSection = section.parentElement?.closest?.('[data-cms-section]');
+      return !parentSection;
+    });
+  }
+
+  function syncSectionOrderFromDom() {
+    const page = pageState();
+    page.sectionOrder ||= {};
+    const active = new Set();
+    pageLayerSections().forEach((section,index)=>{
+      const id=section.dataset.cmsSection;
+      if(!id) return;
+      active.add(id);
+      page.sectionOrder[id]=index;
+    });
+    for(const key of Object.keys(page.sectionOrder)) if(!active.has(key)) delete page.sectionOrder[key];
+  }
+
+  function applySectionOrder() {
+    const sections=pageLayerSections();
+    const position=new Map(sections.map((section,index)=>[section,index]));
+    sections.sort((a,b)=>{
+      const ai=pageState().sectionOrder[a.dataset.cmsSection];
+      const bi=pageState().sectionOrder[b.dataset.cmsSection];
+      const av=Number.isFinite(Number(ai))?Number(ai):position.get(a);
+      const bv=Number.isFinite(Number(bi))?Number(bi):position.get(b);
+      return av-bv;
+    });
+    const groups=new Map();
+    for(const section of sections){
+      const parent=section.parentElement;
+      if(!parent) continue;
+      if(!groups.has(parent)) groups.set(parent,[]);
+      groups.get(parent).push(section);
+    }
+    groups.forEach(group=>group.forEach(section=>section.parentElement.appendChild(section)));
+  }
+
+  function reorderSectionByLayer(sourceId,targetId) {
+    if(!sourceId || !targetId || sourceId===targetId) return;
+    const source=pageLayerSections().find(section=>section.dataset.cmsSection===sourceId);
+    const target=pageLayerSections().find(section=>section.dataset.cmsSection===targetId);
+    if(!source || !target || source.parentElement!==target.parentElement) return;
+    checkpoint();
+    target.parentElement.insertBefore(source,target);
+    syncSectionOrderFromDom();
+    setSelected(source);
+    markDirty();
+    refreshLayers();
   }
 
   function applyDocument(doc) {
@@ -522,29 +1271,27 @@
       applyElementOverride(el, override);
     });
 
-    const sections = Array.from(document.querySelectorAll('[data-cms-section]')).filter(section => !section.matches('.site-header,.site-footer'));
-    sections.sort((a,b) => {
-      const ai = pageState().sectionOrder[a.dataset.cmsSection] ?? sections.indexOf(a);
-      const bi = pageState().sectionOrder[b.dataset.cmsSection] ?? sections.indexOf(b);
-      return ai - bi;
-    });
-    const parentGroups = new Map();
-    sections.forEach(section => {
-      const parent = section.parentElement;
-      if (!parent) return;
-      if (!parentGroups.has(parent)) parentGroups.set(parent, []);
-      parentGroups.get(parent).push(section);
-    });
-    parentGroups.forEach(group => group.forEach(section => section.parentElement.appendChild(section)));
-
     document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
     pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
     pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
+    applySectionOrder();
     Object.entries(pageState().elements).forEach(([id, ov]) => applyPlacement(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), ov.placement));
     pageState().extras.forEach(extra => applyPlacement(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra.placement));
   }
 
+  function refreshResponsiveOverrides() {
+    Object.entries(pageState().elements).forEach(([id, override]) => applyElementOverride(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), override));
+    pageState().extras.forEach(extra => {
+      const node = document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`);
+      if (extra.type === 'reusable') renderReusableInstance(node, extra);
+      else applyElementOverride(node, extra);
+    });
+    refreshScaledElements();
+    updateDirectCanvasUi();
+  }
+
   function bindBusiness(payload) {
+    updateCollectionData(payload);
     const business = payload.business;
     if (SITE_KEY !== 'business') return;
     if (!business?.id || !business.displayName) throw new Error('This business website is unavailable.');
@@ -553,47 +1300,118 @@
     document.querySelectorAll('[data-business-field]').forEach(el => { const value = business[el.dataset.businessField]; el.textContent = value || ''; el.hidden = !value; });
 
   }
-  function installPageSelector(payload) {
-    const panel = document.querySelector('.legend-cms-panel');
-    if (!panel) return;
-    const label = document.createElement('label'); label.className = 'legend-cms-group'; label.textContent = 'Website page';
-    const select = document.createElement('select'); select.id = 'legend-cms-page-select'; select.setAttribute('aria-label', 'Website page'); label.appendChild(select);
-    const prefix = SITE_KEY === 'protect' ? (payload.agentSlug ? `/a/${encodeURIComponent(payload.agentSlug)}` : context.pagePrefix || '') : '';
-    const current = customPage || (SITE_KEY === 'business' ? location.pathname.replace(/^\/business-preview/, '') : location.pathname.slice(prefix.length)) || '/';
-    const normalize = path => path.replace(/\/$/, '') || '/';
-    const entries = new Map();
+  function templatePageEntries() {
+    const entries=new Map();
     for (const page of context.pages || []) {
-      if (typeof page.path === 'string' && /^\/(?:[a-z0-9_-]+\/?)*$/i.test(page.path)) entries.set(normalize(page.path), { label: page.label || page.path, template: true });
+      const route=normalizePageRoute(page?.path);
+      if (!route) continue;
+      entries.set(route,{route,label:page.label || route,template:true});
     }
-    // Business imported/custom routes are part of this authorized website document,
-    // even when they have no template or navigation link.
-    if (SITE_KEY === 'business') for (const [path, page] of Object.entries(documentState.pages)) {
-      if (/^\/(?:[a-z0-9_-]+\/?)*$/i.test(path)) entries.set(normalize(path), { ...entries.get(normalize(path)), label: page.title || entries.get(normalize(path))?.label || path });
-    }
-    if (!entries.has(normalize(current))) entries.set(normalize(current), { label: document.title || current, template: !customPage });
-    for (const [path, page] of entries) {
-      const option = document.createElement('option'); option.value = path; option.textContent = page.label; select.appendChild(option);
-    }
-    select.value = normalize(current);
-    select.addEventListener('change', async () => {
-      const route = select.value; if (!entries.has(route)) return;
-      select.disabled = true;
-      try {
-        if (saving) { document.getElementById('legend-cms-status').textContent = 'Wait for the current save to finish, then choose a page.'; return; }
-        if (dirty) { const saved = await save(false); if (!saved || dirty) return; }
-        const url = new URL(location.origin);
-        if (SITE_KEY === 'business') {
-          url.pathname = '/business-preview/' + (entries.get(route).template ? route.replace(/^\//, '') : '');
-          url.searchParams.set('businessId', BUSINESS_ID);
-          if (!entries.get(route).template) url.searchParams.set('cmsPage', route);
-        } else url.pathname = prefix + (route === '/' ? '/' : route);
-        url.searchParams.set('legendEdit', editorTicket);
-        location.assign(url.toString());
-      } finally { select.value = normalize(current); select.disabled = false; }
-    });
-    panel.insertBefore(label, panel.querySelector('.legend-cms-navigation'));
+    return entries;
   }
 
+  function websitePageEntries(includeDeleted = true) {
+    const entries=templatePageEntries();
+    for (const [rawPath,page] of Object.entries(documentState.pages || {})) {
+      const route=normalizePageRoute(rawPath);
+      if (!route || !page || typeof page!=='object') continue;
+      const previous=entries.get(route);
+      const navigation=page.navigation || {};
+      entries.set(route,{
+        route,
+        label:navigation.label || page.title || previous?.label || route,
+        template:previous?.template === true || !!page.templatePath,
+        templatePath:normalizePageRoute(page.templatePath) || (previous?.template ? route : null),
+        deleted:navigation.isDeleted === true,
+        showInNavigation:navigation.showInNavigation !== false,
+        parentPath:normalizePageRoute(navigation.parentPath),
+        order:Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0
+      });
+    }
+    return [...entries.values()]
+      .filter(entry=>includeDeleted || !entry.deleted)
+      .sort((a,b)=>a.order-b.order || a.route.localeCompare(b.route));
+  }
+
+  function ensurePageRecord(route) {
+    documentState.pages ||= {};
+    if (!documentState.pages[route]) documentState.pages[route]={elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
+    const page=documentState.pages[route];
+    page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+    return page;
+  }
+
+  async function navigateToEditorPage(route) {
+    route=normalizePageRoute(route); if(!route) return;
+    if (saving) { const status=document.getElementById('legend-cms-status'); if(status) status.textContent='Wait for the current save to finish, then choose a page.'; return; }
+    if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
+    const templates=templatePageEntries();
+    const entry=websitePageEntries(true).find(value=>value.route===route);
+    const url=new URL(location.origin);
+    if (SITE_KEY==='business') {
+      const nativeTemplate=templates.has(route) && (!entry?.templatePath || entry.templatePath===route);
+      url.pathname='/business-preview/' + (nativeTemplate ? route.replace(/^\//,'') : '');
+      url.searchParams.set('businessId',BUSINESS_ID);
+      if (!nativeTemplate) url.searchParams.set('cmsPage',route);
+    } else {
+      const prefix = SITE_KEY === 'protect' ? (managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}` : context.pagePrefix || '') : '';
+      url.pathname=prefix + (route==='/'?'/':route);
+    }
+    url.searchParams.set('legendEdit',editorTicket);
+    location.assign(url.toString());
+  }
+
+  function renderPageManager() {
+    const host=document.getElementById('legend-cms-page-list');
+    if (!host?.replaceChildren) return;
+    host.replaceChildren();
+    const current=currentPageRoute();
+    const entries=websitePageEntries(true);
+    for (const entry of entries) {
+      const row=document.createElement('div'); row.className='legend-cms-page-row';
+      const open=document.createElement('button'); open.type='button'; open.textContent=`${entry.label} · ${entry.route}${entry.deleted?' · Deleted':''}`;
+      open.disabled=entry.deleted; open.setAttribute('aria-current',String(entry.route===current));
+      open.addEventListener('click',()=>void navigateToEditorPage(entry.route)); row.appendChild(open);
+      if (SITE_KEY==='business' && entry.deleted) {
+        const restore=document.createElement('button'); restore.type='button'; restore.textContent='Restore';
+        restore.addEventListener('click',()=>{ checkpoint(); const page=ensurePageRecord(entry.route); page.navigation.isDeleted=false; markDirty(); syncPageControls(); });
+        row.appendChild(restore);
+      }
+      host.appendChild(row);
+    }
+  }
+
+  function syncBusinessPageFields() {
+    const page=pageState(); const navigation=page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+    const route=currentPageRoute();
+    const values={
+      'legend-cms-page-nav-label':navigation.label || page.title || route,
+      'legend-cms-page-slug':route,
+      'legend-cms-page-order':String(Number.isFinite(Number(navigation.order))?Number(navigation.order):0)
+    };
+    for (const [id,value] of Object.entries(values)) { const input=document.getElementById(id); if(input) input.value=value; }
+    const visible=document.getElementById('legend-cms-page-nav-visible'); if(visible) visible.checked=navigation.showInNavigation!==false;
+    const parent=document.getElementById('legend-cms-page-parent');
+    if(parent){ parent.replaceChildren(); const none=document.createElement('option'); none.value=''; none.textContent='Top level'; parent.appendChild(none);
+      for(const entry of websitePageEntries(false)){ if(entry.route===route) continue; const option=document.createElement('option'); option.value=entry.route; option.textContent=`${entry.label} · ${entry.route}`; parent.appendChild(option); }
+      parent.value=normalizePageRoute(navigation.parentPath)||'';
+    }
+    const remove=document.getElementById('legend-cms-page-delete'); if(remove){ remove.disabled=route==='/'; remove.textContent=navigation.isDeleted?'Restore page':'Delete page'; }
+    const businessOnly=document.getElementById('legend-cms-page-business-tools'); if(businessOnly) businessOnly.hidden=SITE_KEY!=='business';
+    const fixedNotice=document.getElementById('legend-cms-page-fixed-notice'); if(fixedNotice) fixedNotice.hidden=SITE_KEY==='business';
+    renderPageManager();
+  }
+
+  function installPageSelector(payload) {
+    const panel=document.querySelector('.legend-cms-panel'); if(!panel) return;
+    const label=document.createElement('label'); label.className='legend-cms-group'; label.textContent='Website page';
+    const select=document.createElement('select'); select.id='legend-cms-page-select'; select.setAttribute('aria-label','Website page'); label.appendChild(select);
+    for(const entry of websitePageEntries(false)){ const option=document.createElement('option'); option.value=entry.route; option.textContent=entry.label; select.appendChild(option); }
+    select.value=currentPageRoute();
+    select.addEventListener('change',()=>void navigateToEditorPage(select.value));
+    panel.insertBefore(label,panel.querySelector('.legend-cms-navigation'));
+    syncPageControls();
+  }
   function preservePreviewNavigation() {
     if (renderInput || SITE_KEY !== 'business') return;
     document.querySelectorAll('a[href]').forEach(el => { const url = new URL(el.getAttribute('href'), location.origin); if (url.origin !== location.origin || !url.pathname.startsWith('/business-preview/')) return; url.searchParams.set('businessId', BUSINESS_ID); if (editorMode) url.searchParams.set('legendEdit', editorTicket); el.href = url.toString(); });
@@ -651,6 +1469,97 @@
     });
   }
 
+  function installPublishedSignalBindings() {
+    if (editorMode || renderInput?.server) return;
+    const session = window.LEGEND_PUBLIC_META_SESSION;
+    if (!session || typeof session.trackConfiguredEvent !== 'function') return;
+
+    const allowedTriggers = new Set([
+      'viewed', 'click', 'form_started', 'submit_attempt',
+      'field_started', 'validation_failed', 'field_completed', 'scroll_threshold'
+    ]);
+    const page = pageState();
+    const candidates = [
+      ...Object.entries(page.elements || {}).map(([id, override]) => ({ id, override, node: document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`) })),
+      ...(page.extras || []).map(extra => ({ id: `extra:${extra.id}`, override: extra, node: document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`) }))
+    ];
+    const cleanups = [];
+
+    const emit = (binding, elementId) => {
+      if (!binding || binding.deliveryMode === 'off' || !allowedTriggers.has(binding.trigger)) return;
+      const onceKey = binding.oncePerSession ? `website-binding:${binding.id}` : null;
+      session.trackConfiguredEvent(binding.eventName, {
+        deliveryMode: binding.deliveryMode,
+        onceKey,
+        metadata: {
+          websiteBindingId: binding.id,
+          elementId,
+          trigger: binding.trigger,
+          deliveryMode: binding.deliveryMode,
+          pagePath: currentPageRoute(),
+          source: 'website_signal_binding'
+        }
+      });
+    };
+
+    const observe = (node, binding, elementId, threshold) => {
+      if (typeof IntersectionObserver !== 'function') {
+        emit(binding, elementId);
+        return;
+      }
+      const observer = new IntersectionObserver(entries => {
+        if (!entries.some(entry => entry.isIntersecting && entry.intersectionRatio >= threshold)) return;
+        emit(binding, elementId);
+        if (binding.oncePerSession) observer.disconnect();
+      }, { threshold });
+      observer.observe(node);
+      cleanups.push(() => observer.disconnect());
+    };
+
+    for (const candidate of candidates) {
+      if (!candidate.node || !Array.isArray(candidate.override?.signals)) continue;
+      for (const binding of candidate.override.signals) {
+        if (!binding?.id || !binding.eventName || binding.deliveryMode === 'off' || !allowedTriggers.has(binding.trigger)) continue;
+        const fire = () => emit(binding, candidate.id);
+        switch (binding.trigger) {
+          case 'viewed':
+            observe(candidate.node, binding, candidate.id, 0.25);
+            break;
+          case 'scroll_threshold':
+            observe(candidate.node, binding, candidate.id, 0.5);
+            break;
+          case 'click':
+            candidate.node.addEventListener('click', fire);
+            cleanups.push(() => candidate.node.removeEventListener('click', fire));
+            break;
+          case 'form_started':
+            candidate.node.addEventListener('focusin', fire);
+            cleanups.push(() => candidate.node.removeEventListener('focusin', fire));
+            break;
+          case 'submit_attempt':
+            candidate.node.addEventListener('submit', fire, true);
+            cleanups.push(() => candidate.node.removeEventListener('submit', fire, true));
+            break;
+          case 'field_started':
+            candidate.node.addEventListener('focus', fire);
+            cleanups.push(() => candidate.node.removeEventListener('focus', fire));
+            break;
+          case 'validation_failed':
+            candidate.node.addEventListener('invalid', fire, true);
+            cleanups.push(() => candidate.node.removeEventListener('invalid', fire, true));
+            break;
+          case 'field_completed':
+            candidate.node.addEventListener('change', fire);
+            cleanups.push(() => candidate.node.removeEventListener('change', fire));
+            break;
+        }
+      }
+    }
+
+    window.__legendWebsiteSignalBindingsCleanup?.();
+    window.__legendWebsiteSignalBindingsCleanup = () => cleanups.forEach(cleanup => cleanup());
+  }
+
   async function startPublicRuntime() {
     if (publicRuntimeStarted || editorMode || renderInput?.server) return;
     if (!['legend','business'].includes(SITE_KEY)) return;
@@ -691,6 +1600,7 @@
           formId: inquiryForm?.dataset.formKey || '',
           requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []
         });
+        installPublishedSignalBindings();
       }
     } catch (error) {
       console.error('[legend-public-runtime]', error);
@@ -825,10 +1735,14 @@
     selectionFrame.className = 'legend-cms-selection-frame';
     selectionFrame.hidden = true;
     selectionFrame.innerHTML = `
-      <button type="button" class="legend-cms-move-handle" data-cms-gesture="move" aria-label="Move selected block on grid" title="Move on grid">Move</button>
-      <button type="button" class="legend-cms-resize-handle legend-cms-resize-x" data-cms-gesture="resize-x" aria-label="Resize selected block width" title="Resize width"></button>
-      <button type="button" class="legend-cms-resize-handle legend-cms-resize-y" data-cms-gesture="resize-y" aria-label="Resize selected block height" title="Resize height"></button>
-      <button type="button" class="legend-cms-resize-handle legend-cms-resize-xy" data-cms-gesture="resize-xy" aria-label="Resize selected block width and height" title="Resize width and height"></button>`;
+      <button type="button" class="legend-cms-edge-handle legend-cms-edge-top" data-cms-gesture="resize-y" data-cms-edge="top" aria-label="Resize selected content upward or downward"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-edge-right" data-cms-gesture="resize-x" data-cms-edge="right" aria-label="Resize selected content left or right"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-edge-bottom" data-cms-gesture="resize-y" data-cms-edge="bottom" aria-label="Resize selected content upward or downward"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-edge-left" data-cms-gesture="resize-x" data-cms-edge="left" aria-label="Resize selected content left or right"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-corner-nw" data-cms-gesture="resize-xy" data-cms-edge="top-left" aria-label="Resize selected content diagonally"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-corner-ne" data-cms-gesture="resize-xy" data-cms-edge="top-right" aria-label="Resize selected content diagonally"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-corner-se" data-cms-gesture="resize-xy" data-cms-edge="bottom-right" aria-label="Resize selected content diagonally"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-corner-sw" data-cms-gesture="resize-xy" data-cms-edge="bottom-left" aria-label="Resize selected content diagonally"></button>`;
     preview.appendChild(gridOverlay);
     preview.appendChild(selectionFrame);
 
@@ -836,7 +1750,7 @@
       const handle = event.target.closest?.('[data-cms-gesture]');
       if (!handle || !selected || selected.dataset.cmsSignalOnly) return;
       const mode = handle.dataset.cmsGesture;
-      if (mode === 'move' && selected.dataset.cmsSection) return;
+      const edge = handle.dataset.cmsEdge || '';
       const section = selectedSection || currentSectionFor(selected);
       const parent = selected.parentElement;
       if (!section || !parent) return;
@@ -845,16 +1759,17 @@
       const parentRect = parent.getBoundingClientRect();
       const override = selectedOverride();
       if (!override) return;
-      override.style ||= {};
+      const gestureStyle = editingStyle(override, true);
       checkpoint();
       directGesture = {
-        mode, target: selected, section, parent,
+        mode, edge, target: selected, section, parent,
         startX: event.clientX, startY: event.clientY,
         selectedRect, sectionRect, parentRect,
-        startWidthPercent: positiveNumber(override.style.widthPercent) ? Number(override.style.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
-        startHeightPx: positiveNumber(override.style.heightPx) ? Number(override.style.heightPx) : Math.max(selectedRect.height, 24),
-        startOffsetXPercent: Number.isFinite(Number(override.style.offsetXPercent)) ? Number(override.style.offsetXPercent) : 0,
-        startOffsetYPx: Number.isFinite(Number(override.style.offsetYPx)) ? Number(override.style.offsetYPx) : 0,
+        startWidthPercent: positiveNumber(gestureStyle.widthPercent) ? Number(gestureStyle.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
+        startHeightPx: positiveNumber(gestureStyle.heightPx) ? Number(gestureStyle.heightPx) : Math.max(selectedRect.height, 24),
+        startOffsetXPercent: Number.isFinite(Number(gestureStyle.offsetXPercent)) ? Number(gestureStyle.offsetXPercent) : 0,
+        startOffsetYPx: Number.isFinite(Number(gestureStyle.offsetYPx)) ? Number(gestureStyle.offsetYPx) : 0,
+        style: gestureStyle,
         changed: false
       };
       gridOverlay.hidden = false;
@@ -873,8 +1788,7 @@
       const dy = event.clientY - gesture.startY;
       const override = selectedOverride();
       if (!override) return;
-      override.style ||= {};
-      const style = override.style;
+      const style = gesture.style;
       const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
       const parentWidth = gesture.parentRect.width || sectionWidth || 1;
       const cell = sectionWidth / 12;
@@ -906,16 +1820,27 @@
         style.offsetYPx = Math.round((gesture.startOffsetYPx + snappedDy) * 1000) / 1000;
       } else {
         if (gesture.mode === 'resize-x' || gesture.mode === 'resize-xy') {
-          const rawWidth = gesture.startWidthPercent + dx / parentWidth * 100;
+          const fromLeft = gesture.edge.includes('left');
+          const widthDelta = (fromLeft ? -dx : dx) / parentWidth * 100;
+          const rawWidth = gesture.startWidthPercent + widthDelta;
           const snappedWidth = cell > 0 ? Math.round((rawWidth / 100 * parentWidth) / cell) * cell / parentWidth * 100 : rawWidth;
-          style.widthPercent = Math.max(5, Math.min(100, Math.round(snappedWidth * 1000) / 1000));
+          const nextWidth = Math.max(5, Math.min(100, Math.round(snappedWidth * 1000) / 1000));
+          style.widthPercent = nextWidth;
+          if (fromLeft) {
+            style.offsetXPercent = Math.round((gesture.startOffsetXPercent + dx / parentWidth * 100) * 1000) / 1000;
+          }
         }
         if (gesture.mode === 'resize-y' || gesture.mode === 'resize-xy') {
-          style.heightPx = Math.max(24, Math.round((gesture.startHeightPx + dy) / verticalStep) * verticalStep);
+          const fromTop = gesture.edge.includes('top');
+          const heightDelta = fromTop ? -dy : dy;
+          style.heightPx = Math.max(24, Math.round((gesture.startHeightPx + heightDelta) / verticalStep) * verticalStep);
+          if (fromTop) {
+            style.offsetYPx = Math.round((gesture.startOffsetYPx + dy) * 1000) / 1000;
+          }
         }
       }
       gesture.changed = true;
-      applyStyle(selected, style);
+      applyElementOverride(selected, override);
       updateDirectCanvasUi();
       event.preventDefault();
     }, { passive: false });
@@ -935,7 +1860,7 @@
     window.addEventListener('pointerup', finishGesture);
     window.addEventListener('pointercancel', finishGesture);
     preview.addEventListener('scroll', updateDirectCanvasUi, { passive: true });
-    window.addEventListener('resize', () => { refreshScaledElements(); updateDirectCanvasUi(); });
+    window.addEventListener('resize', refreshResponsiveOverrides);
     updateDirectCanvasUi();
   }
 
@@ -972,6 +1897,8 @@
     if (codeGroup) codeGroup.hidden = !isCode;
 
     const ov = extra || pageState().elements[selected.dataset.cmsId] || {};
+    const editStyle = editingStyle(ov, false);
+    const editLayout = editingLayout(ov, false);
     const computed = getComputedStyle(selected);
     const parentStyle = selected.parentElement ? getComputedStyle(selected.parentElement) : null;
     const parentWidth = selected.parentElement
@@ -996,22 +1923,30 @@
       removeButton.textContent = `Delete ${kind}`;
       removeButton.disabled = false;
     }
-    if (scale) scale.value = String(ov.style?.fontScale ?? 1);
-    if (width) width.value = displayNumber(ov.style?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
-    if (height) height.value = ov.style?.heightPx != null ? displayNumber(ov.style.heightPx) : '';
-    if (top) top.value = displayNumber(ov.style?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
-    if (bottom) bottom.value = displayNumber(ov.style?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
-    if (offsetX) offsetX.value = displayNumber(ov.style?.offsetXPercent ?? 0);
-    if (offsetY) offsetY.value = displayNumber(ov.style?.offsetYPx ?? 0);
-    if (align) align.value = ov.style?.textAlign ?? computed.textAlign ?? '';
+    if (scale) scale.value = String(editStyle?.fontScale ?? 1);
+    if (width) width.value = displayNumber(editStyle?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
+    if (height) height.value = editStyle?.heightPx != null ? displayNumber(editStyle.heightPx) : '';
+    if (top) top.value = displayNumber(editStyle?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
+    if (bottom) bottom.value = displayNumber(editStyle?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
+    if (offsetX) offsetX.value = displayNumber(editStyle?.offsetXPercent ?? 0);
+    if (offsetY) offsetY.value = displayNumber(editStyle?.offsetYPx ?? 0);
+    if (align) align.value = editStyle?.textAlign ?? computed.textAlign ?? '';
     if (scale) scale.disabled = isImage || isCode;
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
-    document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(ov.style?.[key] || computed[key]) : ov.style?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
-    document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(ov.style?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
+    document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(editStyle?.[key] || computed[key]) : editStyle?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
+    document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(editStyle?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
     const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A';
     if (selected.tagName === 'A') syncCtaControls(ov, values.href);
     const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
+    const layoutMode = document.getElementById('legend-cms-layout-mode'); if (layoutMode) layoutMode.value = editLayout?.mode || 'free';
+    const layoutDirection = document.getElementById('legend-cms-layout-direction'); if (layoutDirection) layoutDirection.value = editLayout?.direction || 'column';
+    const layoutGap = document.getElementById('legend-cms-layout-gap'); if (layoutGap) layoutGap.value = editLayout?.gapPx ?? '';
+    const layoutColumns = document.getElementById('legend-cms-layout-columns'); if (layoutColumns) layoutColumns.value = editLayout?.columns ?? '';
+    const layoutMin = document.getElementById('legend-cms-layout-min'); if (layoutMin) layoutMin.value = editLayout?.minItemWidthPx ?? '';
+    const layoutAlign = document.getElementById('legend-cms-layout-align'); if (layoutAlign) layoutAlign.value = editLayout?.alignItems || '';
+    const layoutJustify = document.getElementById('legend-cms-layout-justify'); if (layoutJustify) layoutJustify.value = editLayout?.justifyContent || '';
+    const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) hidden.checked = ov.hidden === true || selected.hidden;
   }
 
@@ -1046,15 +1981,15 @@
       ov.hidden = control.checked;
       selected.hidden = control.checked;
     } else {
-      ov.style ||= {};
+      const style = editingStyle(ov, true);
       if (field) {
-        if (control.value === '') delete ov.style[field];
-        else ov.style[field] = Number(control.value);
+        if (control.value === '') delete style[field];
+        else style[field] = Number(control.value);
       } else if (control.id === 'legend-cms-align') {
-        if (control.value) ov.style.textAlign = control.value;
-        else delete ov.style.textAlign;
+        if (control.value) style.textAlign = control.value;
+        else delete style.textAlign;
       } else return;
-      applyStyle(selected, ov.style);
+      applyElementOverride(selected, ov);
     }
     updateDirectCanvasUi();
     markDirty();
@@ -1080,22 +2015,19 @@
   }
 
   function moveSelectedSection(delta) {
-    if (!selectedSection) return;
+    if (!selectedSection || selectedSection.matches('.site-header,.site-footer')) return;
+    const sections=pageLayerSections();
+    const index=sections.indexOf(selectedSection);
+    const target=index+delta;
+    if(index<0 || target<0 || target>=sections.length) return;
+    const targetSection=sections[target];
+    if(targetSection.parentElement!==selectedSection.parentElement) return;
     checkpoint();
-    const parent = selectedSection.parentElement;
-    if (!parent) return;
-    const sections = Array.from(parent.children).filter(x => x.dataset?.cmsSection);
-    const index = sections.indexOf(selectedSection);
-    const target = index + delta;
-    if (index < 0 || target < 0 || target >= sections.length) return;
-    if (delta < 0) parent.insertBefore(selectedSection, sections[target]);
-    else parent.insertBefore(sections[target], selectedSection);
-    Array.from(parent.children)
-      .filter(x => x.dataset?.cmsSection)
-      .forEach((section, i) => {
-        pageState().sectionOrder[section.dataset.cmsSection] = i;
-      });
+    if(delta<0) selectedSection.parentElement.insertBefore(selectedSection,targetSection);
+    else selectedSection.parentElement.insertBefore(targetSection,selectedSection);
+    syncSectionOrderFromDom();
     markDirty();
+    refreshLayers();
   }
 
   function addImage(file) {
@@ -1245,11 +2177,363 @@
     const span = Math.min(13 - column, Math.max(1, Number(placement.span) || 12));
     el.style.setProperty('--cms-column', String(column)); el.style.setProperty('--cms-span', String(span)); el.style.minWidth = '0'; el.style.maxWidth = '100%'; el.style.overflowWrap = 'anywhere';
   }
+  function approvedDataSources() {
+    return SITE_KEY === 'business' && Array.isArray(managementPayload?.dataCatalog) ? managementPayload.dataCatalog : [];
+  }
+
+  function sourceForCollection(collectionId) {
+    const collection=documentState.collections?.[collectionId];
+    return collection ? approvedDataSources().find(source=>source.key===collection.source) || null : null;
+  }
+
+  function ensureCollectionForSource(sourceKey, fields = []) {
+    const source=approvedDataSources().find(value=>value.key===sourceKey);
+    if(!source) return null;
+    documentState.collections ||= {};
+    let collection=Object.values(documentState.collections).find(value=>value?.source===sourceKey);
+    if(!collection){ collection={id:sourceKey,name:source.label,source:sourceKey,fields:[]}; documentState.collections[sourceKey]=collection; }
+    collection.fields ||= [];
+    for(const field of fields) if(source.fields?.includes(field) && !collection.fields.includes(field)) collection.fields.push(field);
+    return collection;
+  }
+
+  function setSelectOptions(select, values, current, emptyLabel = null) {
+    if(!select) return;
+    select.replaceChildren();
+    if(emptyLabel!=null){ const empty=document.createElement('option'); empty.value=''; empty.textContent=emptyLabel; select.appendChild(empty); }
+    for(const [value,label] of values){ const option=document.createElement('option'); option.value=value; option.textContent=label; select.appendChild(option); }
+    if(current!=null) select.value=current;
+  }
+
+  function renderDataControls() {
+    const business=document.getElementById('legend-cms-data-business');
+    const notice=document.getElementById('legend-cms-data-unavailable');
+    if(business) business.hidden=SITE_KEY!=='business';
+    if(notice) notice.hidden=SITE_KEY==='business';
+    if(SITE_KEY!=='business') return;
+    const sources=approvedDataSources();
+    const override=selectedOverride?.() || null;
+    const binding=override?.dataBinding || null;
+    const boundSource=sourceForCollection(binding?.collectionId);
+    const sourceSelect=document.getElementById('legend-cms-data-source');
+    const sourceKey=boundSource?.key || sourceSelect?.value || sources[0]?.key || '';
+    setSelectOptions(sourceSelect,sources.map(source=>[source.key,source.label]),sourceKey,'Choose source');
+    const source=sources.find(value=>value.key===sourceSelect?.value) || sources.find(value=>value.key===sourceKey);
+    const fieldSelect=document.getElementById('legend-cms-data-field');
+    setSelectOptions(fieldSelect,(source?.fields||[]).map(field=>[field,field.replaceAll(/([A-Z])/g,' $1').replace(/^./,m=>m.toUpperCase())]),binding?.field || fieldSelect?.value || source?.fields?.[0] || '');
+    const target=document.getElementById('legend-cms-data-target'); if(target) target.value=binding?.target || target.value || 'text';
+    const bindButton=document.getElementById('legend-cms-data-bind'); if(bindButton) bindButton.disabled=!selected || !!selected.dataset.cmsSignalOnly;
+    const clearButton=document.getElementById('legend-cms-data-clear'); if(clearButton) clearButton.disabled=!binding;
+    const status=document.getElementById('legend-cms-data-status');
+    if(status) status.textContent=binding ? `Bound to ${boundSource?.label || binding.collectionId} · ${binding.field}.` : selected?'Selected content is not data-bound.':'Select content on the page to bind it.';
+
+    const page=pageState();
+    const dynamic=page.dynamicBinding || null;
+    const listSources=sources.filter(value=>value.isList===true);
+    const dynamicSource=sourceForCollection(dynamic?.collectionId);
+    const dynamicSelect=document.getElementById('legend-cms-dynamic-source');
+    setSelectOptions(dynamicSelect,listSources.map(value=>[value.key,value.label]),dynamicSource?.key || '','Static page');
+    const chosenDynamic=listSources.find(value=>value.key===dynamicSelect?.value) || dynamicSource;
+    const keySelect=document.getElementById('legend-cms-dynamic-key');
+    setSelectOptions(keySelect,(chosenDynamic?.fields||[]).map(field=>[field,field]),dynamic?.itemKeyField || (chosenDynamic?.fields?.includes('slug')?'slug':chosenDynamic?.fields?.includes('id')?'id':chosenDynamic?.fields?.[0]||''));
+    const pattern=document.getElementById('legend-cms-dynamic-pattern');
+    if(pattern) pattern.value=dynamic?.routePattern || `${currentPageRoute()==='/'?'/items':currentPageRoute()}/{item}`;
+    const preview=document.getElementById('legend-cms-dynamic-preview');
+    const projection=dynamic?.collectionId ? collectionData.get(dynamic.collectionId) : chosenDynamic ? collectionData.get(chosenDynamic.key) : null;
+    const items=Array.isArray(projection?.items)?projection.items:[];
+    setSelectOptions(preview,items.map(item=>[item.key,String(item.fields?.name||item.key)]),dynamicCollectionItem?.collectionId===dynamic?.collectionId?dynamicCollectionItem.key:'','Preview item');
+    const dynamicStatus=document.getElementById('legend-cms-dynamic-status');
+    if(dynamicStatus) dynamicStatus.textContent=dynamic ? `Dynamic route ${dynamic.routePattern || ''} from ${dynamicSource?.label || dynamic.collectionId}.` : 'This page is static.';
+  }
   function showPanel(name) {
     document.querySelectorAll('[data-cms-view]').forEach(view => { view.hidden = view.dataset.cmsView !== name; });
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
     if (name === 'layers') refreshLayers();
+    if (name === 'media') void refreshMediaLibrary();
+    if (name === 'components') renderReusableComponents();
+    if (name === 'data') renderDataControls();
+    if (name === 'ai') renderAiProposal();
+    if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
+    if (name === 'signals') renderSignalControls();
+    if (name === 'quality') void refreshQualityInspector();
+    if (name === 'collaboration') void refreshCollaboration();
+  }
+
+
+  function collaborationSelectedElementId() {
+    if (!selected) return null;
+    return selected.dataset.cmsExtraId ? `extra:${selected.dataset.cmsExtraId}` : selected.dataset.cmsId || null;
+  }
+
+  function collaborationAuthorLabel(comment) {
+    const role = comment?.authorRole ? String(comment.authorRole).replaceAll('_',' ') : 'editor';
+    return comment?.authorEmail ? `${comment.authorEmail} · ${role}` : role;
+  }
+
+  async function ensureSavedForCollaboration() {
+    if (!dirty) return true;
+    const role = document.getElementById('legend-cms-collaboration-role');
+    if (role) role.textContent='Saving the current draft before anchoring this comment…';
+    const saved = await save(false);
+    return Boolean(saved && !dirty);
+  }
+
+  async function refreshCollaboration() {
+    const commentsHost=document.getElementById('legend-cms-collaboration-comments');
+    const rosterHost=document.getElementById('legend-cms-collaboration-roster');
+    const roleHost=document.getElementById('legend-cms-collaboration-role');
+    if(!commentsHost || !rosterHost || !editorTicket) return;
+    commentsHost.replaceChildren();
+    rosterHost.replaceChildren();
+    if(roleHost) roleHost.textContent='Loading collaboration…';
+    try{
+      const url=new URL(`${API_BASE}/api/website-content/manage/collaboration`);
+      url.searchParams.set('ticket',editorTicket);
+      url.searchParams.set('pagePath',currentPageRoute());
+      const response=await fetch(url,{cache:'no-store'});
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(payload.message || payload.error || `Collaboration failed (${response.status})`);
+      if(payload.source!=='website_studio_collaboration') throw new Error('Collaboration response was invalid.');
+      const role=payload.role || {};
+      if(roleHost) roleHost.textContent=`${role.label || role.roleKey || 'Editor'} · ${role.canPublish?'can publish':'review/edit only'} · revision ${payload.revision}`;
+      for(const person of payload.collaborators || []){
+        const row=document.createElement('div'); row.className='legend-cms-collaborator';
+        const name=document.createElement('strong'); name.textContent=person.displayName || 'Website collaborator';
+        const meta=document.createElement('small'); meta.textContent=`${person.roleKey || 'member'} · ${person.canPublish?'publisher':'editor'}`;
+        row.append(name,meta); rosterHost.appendChild(row);
+      }
+      if(!(payload.collaborators || []).length){
+        const empty=document.createElement('p'); empty.textContent='No other website collaborators are currently assigned.'; rosterHost.appendChild(empty);
+      }
+
+      const comments=payload.comments || [];
+      const children=new Map();
+      for(const comment of comments){
+        const key=comment.parentCommentId || 'root';
+        if(!children.has(key)) children.set(key,[]);
+        children.get(key).push(comment);
+      }
+      const renderComment=(comment,depth=0)=>{
+        const row=document.createElement('article'); row.className='legend-cms-comment'; row.dataset.depth=String(depth);
+        const header=document.createElement('div'); header.className='legend-cms-comment-head';
+        const who=document.createElement('strong'); who.textContent=collaborationAuthorLabel(comment);
+        const status=document.createElement('span'); status.textContent=comment.status || 'open';
+        header.append(who,status);
+        const body=document.createElement('p'); body.textContent=comment.body || '';
+        const meta=document.createElement('small');
+        meta.textContent=`Revision ${comment.anchorRevision} · ${comment.elementId || 'page'} · ${comment.createdUtc || ''}`;
+        const actions=document.createElement('div'); actions.className='legend-cms-row';
+        if(comment.elementId){
+          const locate=document.createElement('button'); locate.type='button'; locate.textContent='Select on page';
+          locate.addEventListener('click',()=>{
+            const node=document.querySelector(`[data-cms-id="${CSS.escape(comment.elementId)}"]`);
+            if(node){ setSelected(node); node.scrollIntoView?.({block:'center',behavior:'smooth'}); }
+          });
+          actions.appendChild(locate);
+        }
+        if(!comment.parentCommentId){
+          const reply=document.createElement('button'); reply.type='button'; reply.textContent='Reply';
+          reply.addEventListener('click',()=>{
+            collaborationReplyTo=comment.id;
+            const replyStatus=document.getElementById('legend-cms-collaboration-reply');
+            if(replyStatus) replyStatus.textContent=`Replying to ${collaborationAuthorLabel(comment)}`;
+            document.getElementById('legend-cms-collaboration-body')?.focus();
+          });
+          actions.appendChild(reply);
+        }
+        if(comment.canResolve){
+          const toggle=document.createElement('button'); toggle.type='button'; toggle.textContent=comment.status==='resolved'?'Reopen':'Resolve';
+          toggle.addEventListener('click',()=>void setCollaborationCommentStatus(comment.id,comment.status==='resolved'?'open':'resolved'));
+          actions.appendChild(toggle);
+        }
+        row.append(header,body,meta,actions); commentsHost.appendChild(row);
+        for(const child of children.get(comment.id) || []) renderComment(child,depth+1);
+      };
+      for(const comment of children.get('root') || []) renderComment(comment,0);
+      if(!comments.length){
+        const empty=document.createElement('p'); empty.textContent='No review comments on this page yet.'; commentsHost.appendChild(empty);
+      }
+    }catch(error){
+      if(roleHost) roleHost.textContent=error?.message || 'Unable to load collaboration.';
+      commentsHost.replaceChildren();
+    }
+  }
+
+  async function createCollaborationComment(pageOnly=false) {
+    const input=document.getElementById('legend-cms-collaboration-body');
+    const body=input?.value?.trim() || '';
+    if(!body) return;
+    if(!await ensureSavedForCollaboration()) return;
+    const response=await fetch(`${API_BASE}/api/website-content/manage/collaboration/comments`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        ticket:editorTicket,
+        expectedRevision:revision,
+        pagePath:currentPageRoute(),
+        elementId:pageOnly?null:collaborationSelectedElementId(),
+        body,
+        parentCommentId:collaborationReplyTo
+      })
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      const role=document.getElementById('legend-cms-collaboration-role');
+      if(role) role.textContent=payload.message || payload.error || `Comment failed (${response.status})`;
+      return;
+    }
+    if(input) input.value='';
+    collaborationReplyTo=null;
+    const replyStatus=document.getElementById('legend-cms-collaboration-reply'); if(replyStatus) replyStatus.textContent='';
+    await refreshCollaboration();
+  }
+
+  async function setCollaborationCommentStatus(commentId,status) {
+    const response=await fetch(`${API_BASE}/api/website-content/manage/collaboration/comments/status`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ticket:editorTicket,commentId,status})
+    });
+    if(response.ok) await refreshCollaboration();
+  }
+
+  async function refreshMediaLibrary() {
+    const grid=document.getElementById('legend-cms-media-grid');
+    const status=document.getElementById('legend-cms-media-status');
+    if(!grid || !editorTicket) return;
+    if(status) status.textContent='Loading website media…';
+    try {
+      const url=new URL(`${API_BASE}/api/website-content/manage/media`);
+      url.searchParams.set('ticket',editorTicket);
+      const search=document.getElementById('legend-cms-media-search')?.value?.trim();
+      const kind=document.getElementById('legend-cms-media-kind')?.value || 'all';
+      if(search) url.searchParams.set('q',search);
+      url.searchParams.set('kind',kind);
+      const response=await fetch(url,{cache:'no-store'});
+      if(!response.ok) throw new Error(`Media library failed (${response.status})`);
+      const payload=await response.json();
+      if(!Array.isArray(payload.assets)) throw new Error('Media library response was invalid.');
+      grid.replaceChildren();
+      for(const asset of payload.assets){
+        const card=document.createElement('article'); card.className='legend-cms-media-card';
+        const preview=asset.contentType?.startsWith('image/')?document.createElement('img'):document.createElement('video');
+        preview.src=mediaUrl(asset.url);
+        if(preview.tagName==='IMG') preview.alt=asset.name || 'Website media';
+        else { preview.muted=true; preview.preload='metadata'; }
+        const name=document.createElement('strong'); name.textContent=asset.name || asset.contentType || 'Website media';
+        const meta=document.createElement('small'); meta.textContent=`${asset.contentType || 'file'} · ${Math.max(1,Math.round((Number(asset.sizeBytes)||0)/1024))} KB`;
+        const use=document.createElement('button'); use.type='button'; use.textContent='Use this asset';
+        use.addEventListener('click',()=>useMediaAsset(asset));
+        card.append(preview,name,meta,use); grid.appendChild(card);
+      }
+      if(!payload.assets.length){ const empty=document.createElement('p'); empty.textContent='No media matches this filter.'; grid.appendChild(empty); }
+      if(status) status.textContent=`${payload.assets.length} asset${payload.assets.length===1?'':'s'} in this website scope.`;
+    } catch(error) {
+      grid.replaceChildren();
+      if(status) status.textContent=error?.message || 'Unable to load website media.';
+    }
+  }
+
+  function useMediaAsset(asset) {
+    if(!asset?.url || !asset?.contentType) return;
+    const isImage=asset.contentType.startsWith('image/');
+    const isVideo=asset.contentType.startsWith('video/');
+    if(!isImage && !isVideo) return;
+    if(selected && ((isImage && selected instanceof HTMLImageElement) || (isVideo && selected.tagName==='VIDEO'))){
+      checkpoint(); const override=selectedOverride(); if(!override) return;
+      if(isImage) override.imageDataUrl=asset.url; else override.videoUrl=asset.url;
+      applyElementOverride(selected,override); syncEditorControls(); markDirty(); return;
+    }
+    const section=selectedSection || document.querySelector('[data-cms-section]');
+    if(!section){ alert('Select a section before inserting media.'); return; }
+    checkpoint();
+    const extra={id:crypto.randomUUID(),type:isImage?'image':'video',sectionId:section.dataset.cmsSection,style:{widthPercent:isImage?70:100}};
+    if(isImage){ extra.imageDataUrl=asset.url; extra.alt=asset.name || ''; } else extra.videoUrl=asset.url;
+    pageState().extras.push(extra); const created=createExtra(extra); setSelected(created); markDirty();
+  }
+  function liveQualityChecks() {
+    const checks = [];
+    const main = document.querySelector('main');
+    const headings = main ? [...main.querySelectorAll('h1:not([hidden])')] : [];
+    if (headings.length === 0) checks.push({ code:'live_h1_missing', severity:'warning', message:'The rendered page has no visible H1 heading.' });
+    if (headings.length > 1) checks.push({ code:'live_h1_multiple', severity:'warning', message:`The rendered page has ${headings.length} visible H1 headings.` });
+
+    const ids = new Map();
+    document.querySelectorAll('[id]').forEach(node => {
+      const id = node.id?.trim();
+      if (!id || node.closest('.legend-cms-editor')) return;
+      ids.set(id, (ids.get(id) || 0) + 1);
+    });
+    for (const [id, count] of ids) if (count > 1)
+      checks.push({ code:'live_duplicate_id', severity:'error', message:`Duplicate rendered id "${id}" appears ${count} times.` });
+
+    document.querySelectorAll('main img:not([hidden])').forEach(image => {
+      if (!image.getAttribute('alt')?.trim())
+        checks.push({ code:'live_image_alt_missing', severity:'warning', message:'A rendered image is missing alternative text.', elementId:image.dataset.cmsId || image.id || null });
+    });
+
+    document.querySelectorAll('main a:not([hidden])').forEach(link => {
+      const href = link.getAttribute('href')?.trim();
+      if (!href || href === '#')
+        checks.push({ code:'live_link_destination_missing', severity:'warning', message:'A rendered link has no working destination.', elementId:link.dataset.cmsId || link.id || null });
+    });
+
+    document.querySelectorAll('main input:not([type="hidden"]),main select,main textarea').forEach(control => {
+      const labelled = !!control.getAttribute('aria-label')?.trim()
+        || !!control.getAttribute('aria-labelledby')?.trim()
+        || !!control.closest('label')
+        || (!!control.id && !!document.querySelector(`label[for="${CSS.escape(control.id)}"]`));
+      if (!labelled)
+        checks.push({ code:'live_control_label_missing', severity:'warning', message:'A rendered form control has no accessible label.', elementId:control.dataset.cmsId || control.id || null });
+    });
+
+    document.querySelectorAll('main [data-cms-editable="true"]').forEach(node => {
+      if (node.hidden) return;
+      if (Number(node.scrollWidth) > Number(node.clientWidth) + 1)
+        checks.push({ code:'live_horizontal_overflow', severity:'warning', message:'Rendered content overflows its visible width.', elementId:node.dataset.cmsId || null });
+    });
+    return checks;
+  }
+
+  function renderQualityChecks(host, checks, emptyMessage) {
+    if (!host?.replaceChildren) return;
+    host.replaceChildren();
+    if (!checks?.length) {
+      const empty=document.createElement('p'); empty.className='legend-cms-quality-ok'; empty.textContent=emptyMessage; host.appendChild(empty); return;
+    }
+    for (const check of checks) {
+      const row=document.createElement('div'); row.className=`legend-cms-quality-item legend-cms-quality-${check.severity || 'info'}`;
+      const badge=document.createElement('strong'); badge.textContent=(check.severity || 'info').toUpperCase();
+      const message=document.createElement('span'); message.textContent=check.message || check.code || 'Quality observation';
+      row.append(badge,message); host.appendChild(row);
+    }
+  }
+
+  async function refreshQualityInspector() {
+    const savedHost=document.getElementById('legend-cms-quality-saved');
+    const liveHost=document.getElementById('legend-cms-quality-live');
+    const savedMeta=document.getElementById('legend-cms-quality-saved-meta');
+    const liveMeta=document.getElementById('legend-cms-quality-live-meta');
+    const liveChecks=liveQualityChecks();
+    renderQualityChecks(liveHost,liveChecks,'No rendered-canvas issues detected by the current checks.');
+    if (liveMeta) liveMeta.textContent=`Live page checks (rendered canvas) · ${liveChecks.length} observation${liveChecks.length===1?'':'s'} · not a publish authorization`;
+    if (!editorTicket || !savedHost) return;
+    savedHost.textContent='Checking the saved server draft…';
+    if (savedMeta) savedMeta.textContent='Saved draft checks (server) · loading';
+    try {
+      const url=new URL(`${API_BASE}/api/website-content/manage/quality`);
+      url.searchParams.set('ticket',editorTicket);
+      const response=await fetch(url,{cache:'no-store'});
+      if(!response.ok) throw new Error(`Quality check failed (${response.status})`);
+      const payload=await response.json();
+      if(payload.source!=='saved_draft_server' || !Array.isArray(payload.checks)) throw new Error('Saved-draft quality response was invalid.');
+      renderQualityChecks(savedHost,payload.checks,'No saved-draft issues detected by the server checks.');
+      if(savedMeta) savedMeta.textContent=`Saved draft checks (server) · revision ${payload.revision} · ${payload.errorCount||0} errors · ${payload.warningCount||0} warnings`;
+    } catch(error) {
+      renderQualityChecks(savedHost,[{severity:'error',message:error?.message || 'Unable to inspect the saved draft.'}],'');
+      if(savedMeta) savedMeta.textContent='Saved draft checks (server) · unavailable';
+    }
   }
 
   function elementLabel(el) {
@@ -1263,28 +2547,45 @@
     if (!list?.replaceChildren) return;
     list.replaceChildren();
     const filter = (document.getElementById('legend-cms-layer-search')?.value || '').trim().toLowerCase();
-    document.querySelectorAll('[data-cms-editable="true"]').forEach(el => {
-      if (el.closest('.legend-cms-editor')) return;
-      const label = elementLabel(el);
-      if (filter && !label.toLowerCase().includes(filter)) return;
-      const row = document.createElement('div'); row.className = 'legend-cms-layer';
-      const select = document.createElement('button'); select.type = 'button';
-      select.textContent = label + (el.hidden ? ' · Hidden' : '');
-      select.setAttribute('aria-pressed', String(el === selected));
-      select.addEventListener('click', () => { setSelected(el); el.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); });
-      row.appendChild(select);
-      if (el.hidden) {
-        const restore = document.createElement('button'); restore.type = 'button'; restore.textContent = 'Show';
-        restore.setAttribute('aria-label', `Show ${label}`);
-        restore.addEventListener('click', () => {
-          setSelected(el); checkpoint(); const value = selectedOverride();
-          if (!value) return; value.hidden = false; el.hidden = false; markDirty(); syncEditorControls(); showPanel('layers');
-        });
+    const sections=pageLayerSections();
+    sections.forEach((section,index) => {
+      const heading=section.querySelector('h1,h2,h3');
+      const title=(heading?.textContent || '').trim().replace(/\s+/g,' ').slice(0,64);
+      const label=title ? `Section ${index+1} · ${title}` : `Section ${index+1}`;
+      if(filter && !label.toLowerCase().includes(filter)) return;
+      const row=document.createElement('div');
+      row.className='legend-cms-layer legend-cms-section-layer';
+      row.draggable=true;
+      row.dataset.sectionId=section.dataset.cmsSection || '';
+      const drag=document.createElement('span');
+      drag.className='legend-cms-layer-drag';
+      drag.textContent='⋮⋮';
+      drag.setAttribute('aria-hidden','true');
+      const select=document.createElement('button'); select.type='button';
+      select.textContent=label + (section.hidden ? ' · Hidden' : '');
+      select.setAttribute('aria-pressed',String(section===selected || section===selectedSection));
+      select.addEventListener('click',()=>{setSelected(section);section.scrollIntoView?.({block:'nearest',behavior:'smooth'});});
+      row.append(drag,select);
+      if(section.hidden){
+        const restore=document.createElement('button');restore.type='button';restore.textContent='Show';
+        restore.addEventListener('click',()=>{setSelected(section);checkpoint();const value=selectedOverride();if(!value)return;value.hidden=false;section.hidden=false;markDirty();syncEditorControls();showPanel('layers');});
         row.appendChild(restore);
       }
+      row.addEventListener('dragstart',event=>{
+        event.dataTransfer?.setData('text/plain',row.dataset.sectionId);
+        row.classList.add('legend-cms-layer-dragging');
+      });
+      row.addEventListener('dragend',()=>row.classList.remove('legend-cms-layer-dragging'));
+      row.addEventListener('dragover',event=>{event.preventDefault();row.classList.add('legend-cms-layer-drop');});
+      row.addEventListener('dragleave',()=>row.classList.remove('legend-cms-layer-drop'));
+      row.addEventListener('drop',event=>{
+        event.preventDefault();row.classList.remove('legend-cms-layer-drop');
+        const sourceId=event.dataTransfer?.getData('text/plain');
+        reorderSectionByLayer(sourceId,row.dataset.sectionId);
+      });
       list.appendChild(row);
     });
-    if (!list.children.length) { const empty = document.createElement('p'); empty.textContent = 'No matching content on this page.'; list.appendChild(empty); }
+    if (!list.children.length) { const empty = document.createElement('p'); empty.textContent = 'No matching sections on this page.'; list.appendChild(empty); }
   }
 
   function refreshHistoryControls() {
@@ -1298,6 +2599,7 @@
     const title = document.getElementById('legend-cms-page-title'), description = document.getElementById('legend-cms-page-description');
     if (title) title.value = page.title ?? document.title ?? '';
     if (description) description.value = page.description ?? document.querySelector('meta[name="description"]')?.content ?? '';
+    syncBusinessPageFields();
     updateSearchPreview();
   }
 
@@ -1332,6 +2634,38 @@
         checkpoint(); pageState()[key] = event.target.value; updateSearchPreview(); markDirty();
       });
     }
+    const pageNavInput=(id,apply)=>document.getElementById(id)?.addEventListener('input',event=>{ if(SITE_KEY!=='business') return; checkpoint(); const page=pageState(); page.navigation ||= {showInNavigation:true,order:0,isDeleted:false}; apply(page.navigation,event.target); markDirty(); renderPageManager(); });
+    pageNavInput('legend-cms-page-nav-label',(navigation,input)=>navigation.label=input.value);
+    pageNavInput('legend-cms-page-order',(navigation,input)=>navigation.order=Number(input.value)||0);
+    pageNavInput('legend-cms-page-nav-visible',(navigation,input)=>navigation.showInNavigation=input.checked);
+    pageNavInput('legend-cms-page-parent',(navigation,input)=>navigation.parentPath=normalizePageRoute(input.value));
+    document.getElementById('legend-cms-page-create')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return; const route=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(!route || route==='/' || websitePageEntries(true).some(entry=>entry.route===route)){ alert('Enter a unique website route such as /team or /services/commercial.'); return; }
+      checkpoint(); const label=(document.getElementById('legend-cms-page-nav-label')?.value || route.split('/').filter(Boolean).at(-1) || 'Page').trim();
+      const sectionId=crypto.randomUUID(); const textId=crypto.randomUUID();
+      documentState.pages[route]={title:label,description:'',templatePath:null,navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},elements:{},sectionOrder:{},extras:[{id:sectionId,type:'section',sectionId:'custom.root',style:{}},{id:textId,type:'text',sectionId:'extra:'+sectionId,text:label,style:{}}]};
+      markDirty(); await navigateToEditorPage(route);
+    });
+    document.getElementById('legend-cms-page-duplicate')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return; const sourceRoute=currentPageRoute(); const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(!target || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){ alert('Enter a unique route for the duplicate.'); return; }
+      checkpoint(); const source=JSON.parse(JSON.stringify(pageState())); const template=templatePageEntries().has(sourceRoute)?sourceRoute:(normalizePageRoute(source.templatePath)||null);
+      source.templatePath=template; source.navigation={...(source.navigation||{}),label:(source.navigation?.label||source.title||'Copy')+' copy',isDeleted:false,order:websitePageEntries(true).length*10};
+      documentState.pages[target]=source; markDirty(); await navigateToEditorPage(target);
+    });
+    document.getElementById('legend-cms-page-rename')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return; const sourceRoute=currentPageRoute(); const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(sourceRoute==='/' || !target || target==='/' || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){ alert('Enter a unique route. The home page route cannot be renamed.'); return; }
+      checkpoint(); const source=JSON.parse(JSON.stringify(pageState())); const template=templatePageEntries().has(sourceRoute)?sourceRoute:(normalizePageRoute(source.templatePath)||null); source.templatePath=template;
+      documentState.pages[target]=source; const tombstone=ensurePageRecord(sourceRoute); tombstone.navigation={...(tombstone.navigation||{}),showInNavigation:false,isDeleted:true}; tombstone.elements={}; tombstone.sectionOrder={}; tombstone.extras=[];
+      markDirty(); await navigateToEditorPage(target);
+    });
+    document.getElementById('legend-cms-page-delete')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return; const route=currentPageRoute(); if(route==='/') return; checkpoint(); const page=ensurePageRecord(route);
+      page.navigation ||= {showInNavigation:true,order:0,isDeleted:false}; page.navigation.isDeleted=!page.navigation.isDeleted; if(page.navigation.isDeleted) page.navigation.showInNavigation=false; markDirty();
+      if(page.navigation.isDeleted) await navigateToEditorPage('/'); else syncPageControls();
+    });
     document.getElementById('legend-cms-duplicate').addEventListener('click', () => {
       if (!selected || !selectedSection) return;
       const sourceExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
@@ -1488,6 +2822,9 @@
   function addBlock(type) {
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
+    const sectionAnchor = type === 'section'
+      ? (selectedSection && !selectedSection.matches('.site-header,.site-footer') ? selectedSection : pageLayerSections()[0] || null)
+      : null;
     const action = type === 'button' ? preferredCtaOption() : null;
     if (type === 'button' && !action) { alert('Configure a working website action before adding this button.'); return; }
     checkpoint();
@@ -1505,7 +2842,14 @@
       const container = selectedFlowContainer(section);
       if (container) extra.placement = { sectionId: section.dataset.cmsSection, containerId: container.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
     }
-    pageState().extras.push(extra); const el = createExtra(extra); if (extra.placement) applyPlacement(el, extra.placement); setSelected(el); markDirty();
+    pageState().extras.push(extra);
+    const el = createExtra(extra);
+    if (type === 'section' && el && sectionAnchor?.parentElement === el.parentElement) {
+      el.parentElement.insertBefore(el, sectionAnchor.nextSibling);
+      syncSectionOrderFromDom();
+    }
+    if (extra.placement) applyPlacement(el, extra.placement);
+    setSelected(el); markDirty();
     if (type === 'code') openCodeEditor();
   }
   function enhanceEditor(panel, preview) {
@@ -1515,19 +2859,34 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="ai">AI Assist</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="collaboration">Collaborate</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Position & size</h2><p>Use the Move and resize handles on the page. The canvas shows a 12-column horizontal grid, vertical rhythm lines, and center snap guides while you move or resize.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
-      <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
-      <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
+      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Use the Move and resize handles on the page for Free Canvas positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
+      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Create page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
     signals.innerHTML = '<h2>Analytics & Meta</h2><p>Choose what this interaction means. Draft changes take effect when published.</p><div id="legend-cms-signal-controls"></div>';
     tools.appendChild(signals);
+    const motion = document.createElement('section'); motion.dataset.cmsView='motion'; motion.hidden=true;
+    motion.innerHTML='<h2>Motion & interactions</h2><p>Declarative visual motion only. These effects never create analytics, leads, bookings, purchases, or other business outcomes.</p><small id="legend-cms-motion-status">Select an element to configure motion.</small><div id="legend-cms-motion-controls"></div>';
+    tools.appendChild(motion);
+
+    const ai = document.createElement('section'); ai.dataset.cmsView='ai'; ai.hidden=true;
+    ai.innerHTML='<h2>AI creation assistant</h2><p>AI proposes typed changes only. Nothing is saved or published until you apply the proposal and use the normal draft/publish controls.</p><label class="legend-cms-group">Mode<select id="legend-cms-ai-mode"><option value="responsive">Responsive improvement</option><option value="create">Content / section creation</option></select></label><label class="legend-cms-group">Instruction<textarea id="legend-cms-ai-prompt" rows="5" maxlength="2000" placeholder="Example: make this section cleaner on mobile without changing the wording"></textarea></label><button id="legend-cms-ai-generate" type="button">Generate proposal</button><small id="legend-cms-ai-status" role="status">No proposal generated.</small><div id="legend-cms-ai-proposal"></div><div class="legend-cms-row"><button id="legend-cms-ai-apply" type="button" disabled>Apply proposal to draft</button><button id="legend-cms-ai-discard" type="button" disabled>Discard</button></div>';
+    tools.appendChild(ai);
+
+    const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
+    quality.innerHTML = '<h2>Quality inspector</h2><p>Saved draft checks and live canvas checks are different evidence sources. The server remains authoritative for saved state and publication.</p><h3>Saved draft checks (server)</h3><small id="legend-cms-quality-saved-meta">Open Quality to inspect the persisted draft.</small><div id="legend-cms-quality-saved" class="legend-cms-quality-list"></div><h3>Live page checks (rendered canvas)</h3><small id="legend-cms-quality-live-meta">Open Quality to inspect the rendered canvas.</small><div id="legend-cms-quality-live" class="legend-cms-quality-list"></div><button id="legend-cms-quality-refresh" type="button">Run checks again</button>';
+    tools.appendChild(quality);
+
+    const collaboration = document.createElement('section'); collaboration.dataset.cmsView='collaboration'; collaboration.hidden=true;
+    collaboration.innerHTML='<h2>Collaboration</h2><p>Private review comments stay in Website Studio and never publish into the website document.</p><small id="legend-cms-collaboration-role">Loading role…</small><div id="legend-cms-collaboration-roster" class="legend-cms-collaboration-roster"></div><label class="legend-cms-group">Comment<textarea id="legend-cms-collaboration-body" rows="4" maxlength="4000" placeholder="Leave a review note for this page or selected element"></textarea></label><small id="legend-cms-collaboration-reply"></small><div class="legend-cms-row"><button id="legend-cms-collaboration-add" type="button">Comment on selection</button><button id="legend-cms-collaboration-page" type="button">Comment on page</button></div><div id="legend-cms-collaboration-comments" class="legend-cms-collaboration-comments"></div>';
+    tools.appendChild(collaboration);
 
 
     const layoutView = tools.querySelector('[data-cms-view="layout"]');
@@ -1544,6 +2903,89 @@
     const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Select a working action already connected to this website. You can edit the button wording in Content at any time.</small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
+    syncBreakpointControls();
+    document.getElementById('legend-cms-data-source')?.addEventListener('change',renderDataControls);
+    document.getElementById('legend-cms-dynamic-source')?.addEventListener('change',renderDataControls);
+    document.getElementById('legend-cms-data-bind')?.addEventListener('click',()=>{
+      if(SITE_KEY!=='business' || !selected) return;
+      const sourceKey=document.getElementById('legend-cms-data-source')?.value;
+      const field=document.getElementById('legend-cms-data-field')?.value;
+      const target=document.getElementById('legend-cms-data-target')?.value || 'text';
+      const source=approvedDataSources().find(value=>value.key===sourceKey);
+      if(!source || !source.fields?.includes(field)) return;
+      if(target==='image' && !(selected instanceof HTMLImageElement)){ alert('Image data can only bind to an image.'); return; }
+      if(target==='href' && selected.tagName!=='A'){ alert('Link destinations can only bind to a link.'); return; }
+      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[field]); const override=selectedOverride(); if(!collection || !override) return;
+      override.dataBinding={collectionId:collection.id,field,target}; applyElementOverride(selected,override); markDirty(); renderDataControls();
+    });
+    document.getElementById('legend-cms-data-clear')?.addEventListener('click',()=>{
+      const override=selectedOverride(); if(!override?.dataBinding) return; checkpoint(); delete override.dataBinding; applyElementOverride(selected,override); markDirty(); renderDataControls();
+    });
+    document.getElementById('legend-cms-dynamic-apply')?.addEventListener('click',()=>{
+      if(SITE_KEY!=='business') return;
+      const sourceKey=document.getElementById('legend-cms-dynamic-source')?.value;
+      const itemKeyField=document.getElementById('legend-cms-dynamic-key')?.value;
+      const routePattern=document.getElementById('legend-cms-dynamic-pattern')?.value?.trim();
+      const source=approvedDataSources().find(value=>value.key===sourceKey && value.isList===true);
+      if(!source || !source.fields?.includes(itemKeyField) || !/^\/(?:[a-z0-9_-]+\/)*\{item\}\/?$/i.test(routePattern||'')){ alert('Choose a list source, a valid key field, and a route pattern such as /products/{item}.'); return; }
+      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[itemKeyField]); if(!collection) return;
+      pageState().dynamicBinding={collectionId:collection.id,itemKeyField,routePattern:routePattern.toLowerCase()}; dynamicCollectionItem=null; markDirty(); renderDataControls();
+    });
+    document.getElementById('legend-cms-dynamic-clear')?.addEventListener('click',()=>{
+      if(!pageState().dynamicBinding) return; checkpoint(); pageState().dynamicBinding=null; dynamicCollectionItem=null; refreshResponsiveOverrides(); markDirty(); renderDataControls();
+    });
+    document.getElementById('legend-cms-dynamic-preview')?.addEventListener('change',event=>{
+      const binding=pageState().dynamicBinding; const projection=binding?collectionData.get(binding.collectionId):null;
+      const item=(projection?.items||[]).find(value=>value.key===event.target.value);
+      dynamicCollectionItem=item?{collectionId:binding.collectionId,key:item.key,fields:item.fields}:null; refreshResponsiveOverrides(); renderDataControls();
+    });
+    document.getElementById('legend-cms-collaboration-add')?.addEventListener('click',()=>void createCollaborationComment(false));
+    document.getElementById('legend-cms-collaboration-page')?.addEventListener('click',()=>void createCollaborationComment(true));
+    document.getElementById('legend-cms-ai-generate')?.addEventListener('click',()=>void requestAiProposal());
+    document.getElementById('legend-cms-ai-apply')?.addEventListener('click',applyAiProposal);
+    document.getElementById('legend-cms-ai-discard')?.addEventListener('click',()=>{ pendingAiProposal=null; renderAiProposal(); });
+    document.getElementById('legend-cms-component-save')?.addEventListener('click',()=>{
+      const status=document.getElementById('legend-cms-component-status');
+      const name=document.getElementById('legend-cms-component-name')?.value?.trim();
+      const definition=captureReusableDefinition(name);
+      if(!definition){ if(status) status.textContent='Select an added block or added section. Template content stays linked to its template authority.'; return; }
+      checkpoint(); documentState.reusableComponents ||= {}; documentState.reusableComponents[definition.id]=definition;
+      if(status) status.textContent=`Saved ${definition.name}.`; markDirty(); renderReusableComponents();
+    });
+    document.getElementById('legend-cms-media-refresh')?.addEventListener('click',()=>void refreshMediaLibrary());
+    document.getElementById('legend-cms-media-search')?.addEventListener('input',()=>void refreshMediaLibrary());
+    document.getElementById('legend-cms-media-kind')?.addEventListener('change',()=>void refreshMediaLibrary());
+    document.getElementById('legend-cms-media-upload')?.addEventListener('change',async event=>{ const file=event.target.files?.[0]; if(!file) return; const url=await uploadMedia(file); event.target.value=''; if(url) await refreshMediaLibrary(); });
+    document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void refreshQualityInspector());
+    document.getElementById('legend-cms-breakpoint')?.addEventListener('change', event => { editorBreakpointKey=event.target.value; applyBreakpointPreview(); syncBreakpointControls(); });
+    document.getElementById('legend-cms-breakpoint-add')?.addEventListener('click', () => {
+      const key=safeId(document.getElementById('legend-cms-breakpoint-key')?.value);
+      const label=(document.getElementById('legend-cms-breakpoint-label')?.value || key).trim();
+      const min=Number(document.getElementById('legend-cms-breakpoint-min')?.value);
+      const maxRaw=document.getElementById('legend-cms-breakpoint-max')?.value;
+      const max=maxRaw === '' ? null : Number(maxRaw);
+      if (!key || (documentState.breakpoints||[]).some(value=>value.key===key) || !Number.isFinite(min) || min<0 || (max!=null && (!Number.isFinite(max) || max<min))) { alert('Enter a unique breakpoint key and a valid minimum/maximum width.'); return; }
+      checkpoint(); documentState.breakpoints ||= defaultBreakpoints(); documentState.breakpoints.push({key,label:label||key,minWidth:min,maxWidth:max,isSystem:false}); editorBreakpointKey=key; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
+    });
+    document.getElementById('legend-cms-breakpoint-remove')?.addEventListener('click', () => {
+      const current=(documentState.breakpoints||[]).find(value=>value.key===editorBreakpointKey); if (!current || current.isSystem) return;
+      checkpoint(); const key=current.key; documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
+      forEachDocumentOverride(override=>{ if(override?.breakpointStyles) delete override.breakpointStyles[key]; if(override?.breakpointLayouts) delete override.breakpointLayouts[key]; });
+      editorBreakpointKey='base'; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
+    });
+    const layoutHandlers={
+      'legend-cms-layout-mode':['mode',value=>value],
+      'legend-cms-layout-direction':['direction',value=>value],
+      'legend-cms-layout-gap':['gapPx',value=>value===''?null:Number(value)],
+      'legend-cms-layout-columns':['columns',value=>value===''?null:Number(value)],
+      'legend-cms-layout-min':['minItemWidthPx',value=>value===''?null:Number(value)],
+      'legend-cms-layout-align':['alignItems',value=>value||null],
+      'legend-cms-layout-justify':['justifyContent',value=>value||null],
+      'legend-cms-layout-wrap':['wrap',value=>value||null]
+    };
+    Object.entries(layoutHandlers).forEach(([id,[field,convert]])=>document.getElementById(id)?.addEventListener('input',event=>{
+      if(!selected) return; checkpoint(); const override=selectedOverride(); if(!override) return; const layout=editingLayout(override,true); const value=convert(event.target.value); if(value==null) delete layout[field]; else layout[field]=value; applyElementOverride(selected,override); updateDirectCanvasUi(); markDirty();
+    }));
     installStudioControls(panel);
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
@@ -1591,23 +3033,24 @@
   function injectEditorStyles() {
     const style = document.createElement('style');
     style.textContent = `
-      .legend-cms-selected{outline:3px solid #f0cf78;outline-offset:4px}
+      .legend-cms-selected{outline:none}
       [data-cms-editable="true"]{cursor:pointer}
       .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
       .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
-      .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad45a0;background-image:linear-gradient(to right,#d4ad454d 1px,transparent 1px),linear-gradient(to bottom,#d4ad4538 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px;box-shadow:inset 0 0 0 1px #081a3a24}
-      .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;background:#4cc9f0b8}
-      .legend-cms-grid-overlay::before{left:50%;top:0;bottom:0;width:2px;transform:translateX(-1px)}
-      .legend-cms-grid-overlay::after{top:50%;left:0;right:0;height:2px;transform:translateY(-1px)}
-      .legend-cms-grid-overlay.legend-cms-snap-x::before,.legend-cms-grid-overlay.legend-cms-snap-y::after{background:#f0cf78;box-shadow:0 0 0 2px #081a3a99}
-      .legend-cms-selection-frame{position:absolute;z-index:2147482500;pointer-events:none;border:2px solid #d4ad45;box-shadow:0 0 0 1px #081a3a80}
-      .legend-cms-move-handle,.legend-cms-resize-handle{position:absolute;pointer-events:auto;touch-action:none;border:1px solid #d4ad45;background:#081a3a;color:#fff;box-shadow:0 3px 12px #0005}
-      .legend-cms-move-handle{left:0;top:-38px;min-height:32px;padding:6px 10px;border-radius:9px;font:700 12px/1 Inter,system-ui,sans-serif;cursor:move}
-      .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
-      .legend-cms-resize-handle{width:28px;height:28px;padding:0;border-radius:50%}
-      .legend-cms-resize-x{right:-15px;top:50%;transform:translateY(-50%);cursor:ew-resize}
-      .legend-cms-resize-y{left:50%;bottom:-15px;transform:translateX(-50%);cursor:ns-resize}
-      .legend-cms-resize-xy{right:-15px;bottom:-15px;cursor:nwse-resize}
+      .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad454d;background-color:#081a3a08;background-image:linear-gradient(to right,#d4ad4526 1px,transparent 1px),linear-gradient(to bottom,#d4ad4517 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px}
+      .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;opacity:0;background:#f0cf78;box-shadow:0 0 0 1px #081a3a66}
+      .legend-cms-grid-overlay::before{left:50%;top:0;bottom:0;width:1px;transform:translateX(-.5px)}
+      .legend-cms-grid-overlay::after{top:50%;left:0;right:0;height:1px;transform:translateY(-.5px)}
+      .legend-cms-grid-overlay.legend-cms-snap-x::before,.legend-cms-grid-overlay.legend-cms-snap-y::after{opacity:1}
+      .legend-cms-selection-frame{position:absolute;z-index:2147482500;pointer-events:none;border:1px solid #d4ad45;box-shadow:0 0 0 1px #081a3a26}
+      .legend-cms-edge-handle{position:absolute;pointer-events:auto;touch-action:none;margin:0;padding:0;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;min-height:0!important}
+      .legend-cms-edge-top,.legend-cms-edge-bottom{left:10px;right:10px;height:12px;cursor:ns-resize}
+      .legend-cms-edge-top{top:-6px}.legend-cms-edge-bottom{bottom:-6px}
+      .legend-cms-edge-left,.legend-cms-edge-right{top:10px;bottom:10px;width:12px;cursor:ew-resize}
+      .legend-cms-edge-left{left:-6px}.legend-cms-edge-right{right:-6px}
+      .legend-cms-corner-nw,.legend-cms-corner-ne,.legend-cms-corner-se,.legend-cms-corner-sw{width:14px;height:14px}
+      .legend-cms-corner-nw{left:-7px;top:-7px;cursor:nwse-resize}.legend-cms-corner-ne{right:-7px;top:-7px;cursor:nesw-resize}.legend-cms-corner-se{right:-7px;bottom:-7px;cursor:nwse-resize}.legend-cms-corner-sw{left:-7px;bottom:-7px;cursor:nesw-resize}
+      .legend-cms-edge-handle:hover{background:#d4ad451f!important}
       body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
       body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
       .legend-cms-preview{min-width:0;min-height:0;height:100%;overflow:auto;position:relative;transform:translateZ(0)}
@@ -1633,7 +3076,14 @@
       .legend-cms-panel button{cursor:pointer}.legend-cms-inline-help{margin:8px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a;color:#e7eef8}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}
       .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}
       .legend-cms-navigation{margin:0 0 20px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
-      #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
+      #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-section-layer{align-items:stretch}.legend-cms-layer-drag{display:grid;place-items:center;width:28px;flex:0 0 28px;border:1px solid #344766;border-radius:8px;color:#d4ad45;cursor:grab;user-select:none}.legend-cms-layer-dragging{opacity:.55}.legend-cms-layer-drop{outline:1px solid #d4ad45;outline-offset:2px}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
+      .legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:10px;border:1px solid #344766;border-radius:12px;background:#10284a}.legend-cms-media-card img,.legend-cms-media-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}
+      .legend-cms-component-list{display:grid;gap:8px;margin-top:12px}.legend-cms-component-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:7px;align-items:start;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-component-row>div{min-width:0}.legend-cms-component-row strong,.legend-cms-component-row small{display:block;overflow-wrap:anywhere}.legend-cms-component-row button{padding:7px 9px}.cms-reusable-instance{min-width:0}.legend-cms-reusable-missing{padding:12px;border:1px dashed #c98e8e;border-radius:8px;background:#2b1717;color:#f6dede}
+      .legend-cms-collaboration-roster,.legend-cms-collaboration-comments{display:grid;gap:8px;margin:10px 0 16px}.legend-cms-collaborator,.legend-cms-comment{display:grid;gap:6px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-collaborator small,.legend-cms-comment small{margin:0}.legend-cms-comment[data-depth="1"]{margin-left:18px;border-left:3px solid #d4ad45}.legend-cms-comment-head{display:flex;gap:8px;justify-content:space-between;align-items:center}.legend-cms-comment-head span{text-transform:capitalize;font-size:11px;color:#d4ad45}
+      .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
+      .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
+      .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
+      .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
       @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-panel{border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}.legend-cms-move-handle{min-height:38px;padding:8px 12px;top:-44px}.legend-cms-resize-handle{width:34px;height:34px}.legend-cms-resize-x{right:-18px}.legend-cms-resize-y{bottom:-18px}.legend-cms-resize-xy{right:-18px;bottom:-18px}}
     `;
@@ -1827,6 +3277,7 @@
       const payload = await response.json();
       if (payload.siteKey && payload.siteKey !== SITE_KEY) throw new Error('This edit session belongs to a different website. Open it from your profile.');
       bindBusiness(payload);
+      managementPayload = payload;
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
       if (customPage) {
         const pages = normalizeDocument(payload.document).pages;
@@ -1861,7 +3312,7 @@
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
       if (!editorMode) void startPublicRuntime();
-      window.addEventListener('resize', refreshScaledElements);
+      window.addEventListener('resize', refreshResponsiveOverrides);
       if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
     }
     return;

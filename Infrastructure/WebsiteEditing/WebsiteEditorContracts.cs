@@ -28,12 +28,15 @@ public sealed record WebsiteEditorTicket(
 
 public sealed class WebsiteContentDocument
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = WebsiteStudioContract.CurrentDocumentVersion;
     public string? FaviconImageDataUrl { get; set; }
+    public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteStudioContract.DefaultBreakpoints();
     public Dictionary<string, WebsitePageDocument> Pages { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteExtraComponent> Extras { get; set; } = new();
+    public Dictionary<string, WebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, WebsiteCollectionDefinition> Collections { get; set; } = new(StringComparer.Ordinal);
     public WebsiteThemeOverride Theme { get; set; } = new();
     public DateTime? UpdatedUtc { get; set; }
 }
@@ -51,6 +54,12 @@ public sealed class WebsiteElementOverride
     public string? VideoUrl { get; set; }
     public WebsitePlacement? Placement { get; set; }
     public WebsiteStyleOverride Style { get; set; } = new();
+    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteLayoutOverride Layout { get; set; } = new();
+    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
+    public List<WebsiteAnimationBinding> Animations { get; set; } = new();
+    public string? SyncSourceId { get; set; }
+    public WebsiteDataBinding? DataBinding { get; set; }
 }
 
 public sealed class WebsiteStyleOverride
@@ -104,6 +113,12 @@ public sealed class WebsiteExtraComponent
     public string? Text { get; set; }
     public string? ImageDataUrl { get; set; }
     public WebsiteStyleOverride Style { get; set; } = new();
+    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteLayoutOverride Layout { get; set; } = new();
+    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
+    public List<WebsiteAnimationBinding> Animations { get; set; } = new();
+    public string? SyncSourceId { get; set; }
+    public WebsiteDataBinding? DataBinding { get; set; }
 }
 
 public sealed class WebsiteThemeOverride
@@ -121,6 +136,91 @@ public sealed class WebsiteThemeOverride
 }
 
 
+public static class WebsiteStudioContract
+{
+    public const int CurrentDocumentVersion = 2;
+
+    public static List<WebsiteBreakpointDefinition> DefaultBreakpoints() =>
+    [
+        new() { Key = "mobile", Label = "Mobile", MinWidth = 0, MaxWidth = 767, IsSystem = true },
+        new() { Key = "tablet", Label = "Tablet", MinWidth = 768, MaxWidth = 1199, IsSystem = true },
+        new() { Key = "desktop", Label = "Desktop", MinWidth = 1200, MaxWidth = null, IsSystem = true }
+    ];
+}
+
+public sealed class WebsiteBreakpointDefinition
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int MinWidth { get; set; }
+    public int? MaxWidth { get; set; }
+    public bool IsSystem { get; set; }
+}
+
+public sealed class WebsiteLayoutOverride
+{
+    public string Mode { get; set; } = "free";
+    public string Direction { get; set; } = "column";
+    public decimal? GapPx { get; set; }
+    public int? Columns { get; set; }
+    public decimal? MinItemWidthPx { get; set; }
+    public string? AlignItems { get; set; }
+    public string? JustifyContent { get; set; }
+    public string? Wrap { get; set; }
+}
+
+public sealed class WebsiteAnimationBinding
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Trigger { get; set; } = "view";
+    public string Effect { get; set; } = "fade";
+    public int DurationMs { get; set; } = 400;
+    public int DelayMs { get; set; }
+    public decimal? DistancePx { get; set; }
+    public string Easing { get; set; } = "ease";
+    public bool Once { get; set; } = true;
+}
+
+public sealed class WebsitePageNavigation
+{
+    public string? Label { get; set; }
+    public bool ShowInNavigation { get; set; } = true;
+    public string? ParentPath { get; set; }
+    public int Order { get; set; }
+    public bool IsDeleted { get; set; }
+}
+
+public sealed class WebsiteReusableComponentDefinition
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "";
+    public string Kind { get; set; } = "section";
+    public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
+    public List<WebsiteExtraComponent> Extras { get; set; } = new();
+}
+
+public sealed class WebsiteCollectionDefinition
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Source { get; set; } = "business_facts";
+    public List<string> Fields { get; set; } = new();
+}
+
+public sealed class WebsiteDataBinding
+{
+    public string CollectionId { get; set; } = "";
+    public string Field { get; set; } = "";
+    public string Target { get; set; } = "text";
+}
+
+public sealed class WebsiteDynamicPageBinding
+{
+    public string CollectionId { get; set; } = "";
+    public string ItemKeyField { get; set; } = "";
+    public string? RoutePattern { get; set; }
+}
 public sealed record BusinessWebsiteProfileSummary(
     Guid BusinessId,
     string BusinessName,
@@ -131,6 +231,9 @@ public sealed class WebsitePageDocument
 {
     public string? Title { get; set; }
     public string? Description { get; set; }
+    public string? TemplatePath { get; set; }
+    public WebsitePageNavigation Navigation { get; set; } = new();
+    public WebsiteDynamicPageBinding? DynamicBinding { get; set; }
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteExtraComponent> Extras { get; set; } = new();

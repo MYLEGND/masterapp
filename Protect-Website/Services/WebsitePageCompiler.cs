@@ -13,7 +13,19 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
     private static readonly Encoding ProcessUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
     public const int MaxOutputCharacters = 32_000_000;
 
-    public async Task<string> CompileAsync(WebsiteContentDocument document, CommerceBusiness business, WebsiteBusinessFacts facts, CancellationToken cancellationToken)
+    public Task<string> CompileAsync(
+        WebsiteContentDocument document,
+        CommerceBusiness business,
+        WebsiteBusinessFacts facts,
+        CancellationToken cancellationToken) =>
+        CompileAsync(document, business, facts, new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal), cancellationToken);
+
+    public async Task<string> CompileAsync(
+        WebsiteContentDocument document,
+        CommerceBusiness business,
+        WebsiteBusinessFacts facts,
+        IReadOnlyDictionary<string, WebsiteCollectionProjection> collections,
+        CancellationToken cancellationToken)
     {
         var root = configuration["WebsitePublishing:CompilerRoot"]
             ?? Path.Combine(environment.ContentRootPath, "WebsiteCompiler");
@@ -41,7 +53,8 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
                 document,
                 business = new { id = business.Id, displayName = business.DisplayName, legalName = business.LegalName,
                     businessType = business.BusinessType, contactEmail = facts.ContactEmail, contactPhone = facts.Phone,
-                    hours = facts.Hours, locations = facts.Locations, services = facts.Services }
+                    hours = facts.Hours, locations = facts.Locations, services = facts.Services },
+                collections = collections.Values
             }, JsonOptions);
             await process.StandardInput.WriteAsync(input.AsMemory(), bounded.Token);
             process.StandardInput.Close();

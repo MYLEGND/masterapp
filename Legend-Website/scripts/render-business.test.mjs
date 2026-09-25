@@ -72,6 +72,116 @@ test('published text, URLs, section color and imported page are rendered before 
   assert.ok(!parseHTML(result.pages['/team/history'].html).document.querySelector('main .hero'));
 });
 
+
+test('route manifest honors navigation order visibility nesting deletion and custom routes',async()=>{
+  const value=document();
+  value.pages['/']={title:'Home',navigation:{label:'Start',showInNavigation:true,order:20},elements:{},sectionOrder:{},extras:[]};
+  value.pages['/about']={title:'About',navigation:{label:'About us',showInNavigation:false,order:10},elements:{},sectionOrder:{},extras:[]};
+  value.pages['/services']={title:'Services',navigation:{label:'Work',showInNavigation:true,order:30,isDeleted:true},elements:{},sectionOrder:{},extras:[]};
+  value.pages['/team']={title:'Team',navigation:{label:'Team',showInNavigation:true,parentPath:'/about',order:15},elements:{},sectionOrder:{},extras:[{id:'team-section',type:'section',sectionId:'home.root',style:{}},{id:'team-text',type:'text',sectionId:'extra:team-section',text:'Our team',style:{}}]};
+  const result=await compileBusiness({business,document:value});
+  assert.equal(result.version,2);
+  assert.deepEqual(Object.keys(result.pages),['/','/about','/contact','/team']);
+  assert.deepEqual(result.manifest.map(page=>page.route),['/contact','/about','/team','/']);
+  assert.equal(result.manifest.find(page=>page.route==='/team').parentPath,'/about');
+  assert.equal(result.manifest.some(page=>page.route==='/services'),false);
+  const home=parseHTML(result.pages['/'].html).document;
+  const links=[...home.querySelectorAll('.nav a')];
+  assert.deepEqual(links.map(link=>link.textContent),['Contact','Team','Start']);
+  assert.equal(links.find(link=>link.textContent==='Team').getAttribute('data-nav-parent'),'/about');
+  assert.equal(links.some(link=>link.textContent==='About us'),false);
+  assert.equal(result.pages['/services'],undefined);
+  assert.match(result.pages['/team'].html,/Our team/);
+});
+
+test('template route can be renamed by tombstoning the old path and publishing the new path',async()=>{
+  const value=document();
+  value.pages['/services']={navigation:{isDeleted:true},elements:{},sectionOrder:{},extras:[]};
+  value.pages['/work']={title:'Our work',templatePath:'/services',navigation:{label:'Our work',showInNavigation:true,order:5},elements:{},sectionOrder:{},extras:[{id:'work-text',type:'text',sectionId:'services.section.1',text:'Renamed services content',style:{}}]};
+  const result=await compileBusiness({business,document:value});
+  assert.equal(result.pages['/services'],undefined);
+  assert.ok(result.pages['/work']);
+  assert.equal(result.manifest.some(page=>page.route==='/services'),false);
+  assert.equal(result.manifest.some(page=>page.route==='/work'),true);
+  const work=parseHTML(result.pages['/work'].html).document;
+  assert.ok(work.querySelector('.card-grid'));
+  assert.match(result.pages['/work'].html,/Renamed services content/);
+});
+
+
+test('published reusable component resolves from one definition without copying component content into page extras',async()=>{
+  const value=document();
+  value.reusableComponents={
+    'shared-callout':{
+      id:'shared-callout',name:'Shared callout',kind:'block',elements:{},sectionOrder:{},
+      extras:[{id:'root',type:'text',sectionId:'component.root',text:'One synchronized message',style:{widthPercent:80}}]
+    }
+  };
+  value.pages['/']={
+    title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},sectionOrder:{},
+    extras:[{id:'callout-instance',type:'reusable',sectionId:'home.section.1',syncSourceId:'shared-callout',style:{widthPercent:100}}]
+  };
+  const result=await compileBusiness({business,document:value});
+  const home=parseHTML(result.pages['/'].html).document;
+  assert.match(home.querySelector('.cms-reusable-instance').textContent,/One synchronized message/);
+  const embedded=JSON.parse(home.querySelector('#legend-cms-published-document').textContent).document;
+  assert.equal(embedded.pages['/'].extras.filter(extra=>extra.type==='reusable').length,1);
+  assert.equal(embedded.pages['/'].extras.some(extra=>extra.text==='One synchronized message'),false);
+  assert.equal(embedded.reusableComponents['shared-callout'].extras[0].text,'One synchronized message');
+});
+
+
+test('dynamic product collection expands scoped item routes and binds each item without using the first row globally',async()=>{
+  const value=document();
+  value.collections={
+    products:{id:'products',name:'Products',source:'commerce_products',fields:['slug','name','description']}
+  };
+  value.pages['/catalog']={
+    title:'Catalog template',
+    navigation:{label:'Catalog',showInNavigation:false,order:50},
+    dynamicBinding:{collectionId:'products',itemKeyField:'slug',routePattern:'/products/{item}'},
+    elements:{},sectionOrder:{},
+    extras:[
+      {id:'catalog-section',type:'section',sectionId:'catalog.root',style:{}},
+      {id:'product-name',type:'text',sectionId:'extra:catalog-section',text:'Product name',dataBinding:{collectionId:'products',field:'name',target:'text'},style:{}},
+      {id:'product-description',type:'text',sectionId:'extra:catalog-section',text:'Product description',dataBinding:{collectionId:'products',field:'description',target:'text'},style:{}}
+    ]
+  };
+  const collections=[{
+    id:'products',source:'commerce_products',isList:true,
+    items:[
+      {key:'red-shirt',fields:{slug:'red-shirt',name:'Red Shirt',description:'Red product'}},
+      {key:'blue-shirt',fields:{slug:'blue-shirt',name:'Blue Shirt',description:'Blue product'}}
+    ]
+  }];
+  const result=await compileBusiness({business,document:value,collections});
+  assert.ok(result.pages['/products/red-shirt']);
+  assert.ok(result.pages['/products/blue-shirt']);
+  assert.match(result.pages['/products/red-shirt'].html,/Red Shirt/);
+  assert.match(result.pages['/products/red-shirt'].html,/Red product/);
+  assert.doesNotMatch(result.pages['/products/red-shirt'].html,/Blue product/);
+  assert.match(result.pages['/products/blue-shirt'].html,/Blue Shirt/);
+  assert.equal(result.manifest.find(page=>page.route==='/products/red-shirt').dynamic,true);
+  assert.equal(result.manifest.find(page=>page.route==='/products/red-shirt').showInNavigation,false);
+});
+
+test('dynamic route compilation fails closed on unavailable collection invalid key or route collision',async()=>{
+  const base=document();
+  base.collections={products:{id:'products',name:'Products',source:'commerce_products',fields:['slug','name']}};
+  base.pages['/catalog']={title:'Catalog',navigation:{showInNavigation:false},dynamicBinding:{collectionId:'products',itemKeyField:'slug',routePattern:'/products/{item}'},elements:{},sectionOrder:{},extras:[]};
+  await assert.rejects(()=>compileBusiness({business,document:base,collections:[]}),/Dynamic website collection is unavailable/);
+
+  await assert.rejects(()=>compileBusiness({business,document:base,collections:[{
+    id:'products',source:'commerce_products',isList:true,items:[{key:'bad',fields:{slug:'bad/slug',name:'Bad'}}]
+  }]}),/Dynamic website route key is invalid/);
+
+  const collision=structuredClone(base);
+  collision.pages['/products/red']={title:'Static collision',elements:{},sectionOrder:{},extras:[]};
+  await assert.rejects(()=>compileBusiness({business,document:collision,collections:[{
+    id:'products',source:'commerce_products',isList:true,items:[{key:'red',fields:{slug:'red',name:'Red'}}]
+  }]}),/Dynamic website route conflicts/);
+});
+
 test('untrusted business facts remain text and unsafe page routes reject publication',async()=>{
   const result=await compileBusiness({business:{...business,displayName:'</script><script>alert(1)</script>'},document:document()});
   const dom=parseHTML(result.pages['/'].html).document;

@@ -546,6 +546,7 @@
       highIntentThreshold: Number(rawConfig?.highIntentThreshold || 70),
       leadReadyThreshold: Number(rawConfig?.leadReadyThreshold || 90),
       browserEventNames: new Set(Array.isArray(rawConfig?.browserEventNames) ? rawConfig.browserEventNames : DEFAULT_META_BROWSER_EVENTS),
+      browserSignalEventNames: new Set(Array.isArray(rawConfig?.browserSignalEventNames) ? rawConfig.browserSignalEventNames : (Array.isArray(rawConfig?.browserEventNames) ? rawConfig.browserEventNames : DEFAULT_META_BROWSER_EVENTS)),
       leadSignalRules: Object.assign({
         leadReadyRequiresContactStep: true,
         leadReadyRequiresValidPhone: true,
@@ -570,6 +571,7 @@
       trackSubmitAttempt() {},
       trackBacktrack() {},
       trackDeadClick() {},
+      trackConfiguredEvent() { return null; },
       markSubmitted() {},
       getState() {
         return null;
@@ -1361,7 +1363,9 @@
         buildLearningEnrichment(eventName, score, clientContext, attribution, metadata)
       );
       const browserPixelPayload = buildPixelPayload(stepNumber, stepName, score, enrichedMetadata, attribution);
-      const browserDispatchStatus = fireBrowserPixel(eventName, eventId, browserPixelPayload);
+      const browserDispatchStatus = options.sendBrowserPixel === false
+        ? 'suppressed_by_mapping'
+        : fireBrowserPixel(eventName, eventId, browserPixelPayload);
       const browserEventSent = browserDispatchStatus === 'invoked';
       enrichedMetadata.browserDispatchStatus = browserDispatchStatus;
       const payload = {
@@ -1872,6 +1876,23 @@
       },
       trackDeadClick(metadata = {}) {
         return emitSignal('DeadClick', { metadata });
+      },
+      trackConfiguredEvent(eventName, options = {}) {
+        const normalizedEventName = asTrimmed(eventName);
+        if (!normalizedEventName || !config.browserSignalEventNames.has(normalizedEventName)) {
+          debug('Configured website signal blocked by browser catalog', { eventName: normalizedEventName || null });
+          return null;
+        }
+        const deliveryMode = options.deliveryMode === 'meta' ? 'meta' : 'analytics';
+        return emitSignal(normalizedEventName, {
+          onceKey: asTrimmed(options.onceKey) || null,
+          metadata: Object.assign({}, options.metadata || {}, {
+            configuredWebsiteSignal: true,
+            configuredDeliveryMode: deliveryMode
+          }),
+          sendBrowserPixel: deliveryMode === 'meta',
+          skipThresholds: true
+        });
       },
       markSubmitted(metadata = {}) {
         state.submitted = true;
