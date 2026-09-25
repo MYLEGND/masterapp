@@ -5,6 +5,8 @@
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
     var storeRoot = ViewData["StoreRootPath"] as string ?? "/store";
+    var productBase = ViewData["StoreProductBasePath"] as string ?? (storeRoot + "/product");
+    var previewQuery = ViewData["StorePreviewQuery"] as string ?? "";
 
     static string ImageDisplayStyle(string? fit, int positionX, int positionY, decimal zoom)
     {
@@ -28,7 +30,7 @@
             @foreach (var product in Model.Products)
             {
                 <article class="sp-shop-card">
-                    <a class="sp-shop-media" href="@($"{storeRoot}/product/{product.Slug}")" aria-label="View @product.Name">
+                    <a class="sp-shop-media" href="@($"{productBase}/{product.Slug}{previewQuery}")" aria-label="View @product.Name">
                         @if (!string.IsNullOrWhiteSpace(product.Badge))
                         {
                             <span class="sp-shop-badge">@product.Badge</span>
@@ -58,7 +60,7 @@
                         </div>
 
                         <div class="sp-shop-actions">
-                            <a class="sp-button sp-button--primary sp-shop-link" href="@($"{storeRoot}/product/{product.Slug}")">View Product</a>
+                            <a class="sp-button sp-button--primary sp-shop-link" href="@($"{productBase}/{product.Slug}{previewQuery}")">View Product</a>
                         </div>
                     </div>
                 </article>
