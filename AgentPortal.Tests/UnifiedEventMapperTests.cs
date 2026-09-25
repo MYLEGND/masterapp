@@ -13,6 +13,7 @@ public class UnifiedEventMapperTests
         Assert.Equal("Infrastructure", typeof(UnifiedEventContext).Assembly.GetName().Name);
         Assert.Equal("Infrastructure", typeof(UnifiedEventMapper).Assembly.GetName().Name);
         Assert.Equal("Infrastructure", typeof(UnifiedAnalyticsWriter).Assembly.GetName().Name);
+        Assert.Equal("Infrastructure", typeof(MetaSignalCrmOutcomeService).Assembly.GetName().Name);
     }
 
     [Fact]
