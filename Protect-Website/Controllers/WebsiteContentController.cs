@@ -290,6 +290,14 @@ public sealed class WebsiteContentController : ControllerBase
         string? SelectedSectionId = null,
         string? SelectedText = null);
 
+    public sealed record WebsiteSignalTestRequest(
+        string Ticket,
+        long ExpectedRevision,
+        string PagePath,
+        string ElementId,
+        string BindingId);
+
+
     public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null);
     public sealed record ProfileRequest(string Ticket, BusinessWebsiteProfileInput Settings);
     private object SignalCatalogPayload() => new { events = WebsiteSignalBindingPolicy.Options, matchingFields = WebsiteSignalBindingPolicy.ApprovedMatchingFields, runtimeEnabled = _configuration.GetValue<bool>("WebsiteMarketing:Enabled") };
@@ -300,6 +308,120 @@ public sealed class WebsiteContentController : ControllerBase
     {
         if (await AuthorizeAsync(ticket, cancellationToken) is null) return Unauthorized();
         return Ok(SignalCatalogPayload());
+    }
+
+    [HttpGet("manage/signals/health")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> SignalHealth(
+        [FromQuery] string ticket,
+        [FromQuery] string pagePath,
+        [FromQuery] string elementId,
+        [FromQuery] string bindingId,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        if (!TryFindSignalBinding(document, pagePath, elementId, bindingId, out var binding))
+            return NotFound(new { error = "website_signal_binding_not_found" });
+        if (!Shared.Analytics.MetaSignalEventCatalog.TryGet(binding.EventName, out var definition))
+            return BadRequest(new { error = "website_signal_event_invalid" });
+
+        var destination = await ResolveSignalDestinationAsync(actor, cancellationToken);
+        var analyticsRows = new List<AnalyticsEvent>();
+        var metaRows = new List<MetaSignalEvent>();
+        if (state.PublishedVersionId.HasValue)
+        {
+            analyticsRows = await _db.AnalyticsEvents.AsNoTracking()
+                .Where(row => row.WebsiteContentVersionId == state.PublishedVersionId &&
+                              row.WebsiteBindingId == binding.Id)
+                .OrderByDescending(row => row.Id)
+                .Take(10)
+                .ToListAsync(cancellationToken);
+            metaRows = await _db.MetaSignalEvents.AsNoTracking()
+                .Where(row => row.WebsiteContentVersionId == state.PublishedVersionId &&
+                              row.WebsiteBindingId == binding.Id)
+                .OrderByDescending(row => row.Id)
+                .Take(10)
+                .ToListAsync(cancellationToken);
+        }
+
+        return Ok(new
+        {
+            source = "website_signal_existing_authorities",
+            state.Revision,
+            publishedVersionId = state.PublishedVersionId,
+            binding = SignalBindingPayload(binding, definition, destination),
+            destination = SignalDestinationPayload(destination),
+            analytics = analyticsRows.Select(row => new
+            {
+                row.EventType,
+                row.ReceivedUtc,
+                row.EventUtc,
+                row.PageKey,
+                row.Path,
+                row.WebsiteContentVersionId,
+                row.WebsiteBindingId
+            }),
+            meta = metaRows.Select(row => new
+            {
+                row.EventName,
+                row.CreatedUtc,
+                row.MetaBrowserSent,
+                row.MetaServerSent,
+                row.WebsiteContentVersionId,
+                row.WebsiteBindingId,
+                dispatch = SafeDispatchMetadata(row.MetadataJson)
+            })
+        });
+    }
+
+    [HttpPost("manage/signals/test")]
+    public async Task<IActionResult> SignalDryRun(
+        [FromBody] WebsiteSignalTestRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+        var document = Read(state.DraftJson);
+        if (!TryFindSignalBinding(document, request.PagePath, request.ElementId, request.BindingId, out var binding))
+            return NotFound(new { error = "website_signal_binding_not_found" });
+        if (!Shared.Analytics.MetaSignalEventCatalog.TryGet(binding.EventName, out var definition))
+            return BadRequest(new { error = "website_signal_event_invalid" });
+
+        var destination = await ResolveSignalDestinationAsync(actor, cancellationToken);
+        var serverAuthority = Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(binding.EventName);
+        var browserTrigger = binding.Trigger is "viewed" or "click" or "form_started" or "submit_attempt"
+            or "field_started" or "validation_failed" or "field_completed" or "scroll_threshold";
+        var analyticsWouldAccept = binding.DeliveryMode is "analytics" or "meta" && browserTrigger && !serverAuthority;
+        var pixelWouldInvoke = binding.DeliveryMode == "meta" && browserTrigger &&
+            definition.AllowBrowserPixel && destination.HasBrowserPixel;
+        var serverCapiRequiresVerifiedOutcome = binding.DeliveryMode == "meta" && serverAuthority;
+
+        return Ok(new
+        {
+            source = "website_signal_private_dry_run",
+            dryRun = true,
+            persisted = false,
+            metaDispatched = false,
+            state.Revision,
+            binding = SignalBindingPayload(binding, definition, destination),
+            destination = SignalDestinationPayload(destination),
+            stages = new
+            {
+                mappingValidated = true,
+                browserTriggerSupported = browserTrigger,
+                browserAnalyticsWouldBeAccepted = analyticsWouldAccept,
+                browserPixelWouldInvoke = pixelWouldInvoke,
+                serverOutcomeRequired = serverAuthority,
+                serverCapiWouldRequireVerifiedOutcome = serverCapiRequiresVerifiedOutcome,
+                serverCapiDestinationReady = serverCapiRequiresVerifiedOutcome && destination.HasServerCapiCredentials
+            }
+        });
     }
 
     [HttpGet("manage/quality")]
@@ -948,6 +1070,137 @@ public sealed class WebsiteContentController : ControllerBase
         }
 
         return WebsiteCallToActionCatalog.Build(siteKey, phone, email, bookingUrl);
+    }
+
+    private async Task<ProtectWebsite.Services.Meta.ResolvedMetaPixelContext> ResolveSignalDestinationAsync(
+        WebsiteEditorTicket actor,
+        CancellationToken cancellationToken)
+    {
+        var resolver = HttpContext.RequestServices
+            .GetRequiredService<ProtectWebsite.Services.Meta.IMetaPixelResolutionService>();
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue)
+            return await resolver.ResolveForBusinessAsync(actor.CommerceBusinessId.Value, cancellationToken);
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Legend)
+            return await resolver.ResolveForLeadAsync(null, null, isFounderPath: true, cancellationToken);
+        return await resolver.ResolveForLeadAsync(null, actor.AgentSlug, isFounderPath: false, cancellationToken);
+    }
+
+    private static bool TryFindSignalBinding(
+        WebsiteContentDocument document,
+        string? pagePath,
+        string? elementId,
+        string? bindingId,
+        out WebsiteSignalBinding binding)
+    {
+        binding = null!;
+        if (string.IsNullOrWhiteSpace(pagePath) || string.IsNullOrWhiteSpace(elementId) ||
+            string.IsNullOrWhiteSpace(bindingId) || !document.Pages.TryGetValue(pagePath, out var page))
+            return false;
+
+        IEnumerable<WebsiteSignalBinding>? bindings = null;
+        if (elementId.StartsWith("extra:", StringComparison.Ordinal))
+        {
+            var id = elementId.Split(':', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
+            bindings = page.Extras.FirstOrDefault(extra => extra.Id == id)?.Signals;
+        }
+        else if (page.Elements.TryGetValue(elementId, out var element))
+        {
+            bindings = element.Signals;
+        }
+
+        var matches = (bindings ?? []).Where(value => value.Id == bindingId).Take(2).ToArray();
+        if (matches.Length != 1) return false;
+        binding = matches[0];
+        return true;
+    }
+
+    private static object SignalBindingPayload(
+        WebsiteSignalBinding binding,
+        Shared.Analytics.MetaSignalEventDefinition definition,
+        ProtectWebsite.Services.Meta.ResolvedMetaPixelContext destination) => new
+    {
+        binding.Id,
+        binding.Trigger,
+        binding.EventName,
+        binding.DeliveryMode,
+        binding.OncePerSession,
+        binding.MatchingFields,
+        browserSignal = !Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(binding.EventName),
+        browserPixelEligible = definition.AllowBrowserPixel,
+        serverForwardEligible = definition.AllowServerForward,
+        serverOutcomeRequired = Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(binding.EventName),
+        matchingConsent = binding.MatchingFields.Count == 0 ? "not_requested" : "verified_server_outcome_required",
+        destinationReady = binding.DeliveryMode != "meta" ||
+            (definition.AllowBrowserPixel ? destination.HasBrowserPixel : destination.HasServerCapiCredentials)
+    };
+
+    private static object SignalDestinationPayload(
+        ProtectWebsite.Services.Meta.ResolvedMetaPixelContext destination) => new
+    {
+        ownerType = destination.PixelOwnerType,
+        browserPixelConfigured = destination.HasBrowserPixel,
+        serverCapiConfigured = destination.HasServerCapiCredentials,
+        testEventCodeConfigured = !string.IsNullOrWhiteSpace(destination.TestEventCode)
+    };
+
+    private static object SafeDispatchMetadata(string? json)
+    {
+        string? StringValue(string name)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                using var parsed = JsonDocument.Parse(json);
+                return parsed.RootElement.TryGetProperty(name, out var value) &&
+                       value.ValueKind == JsonValueKind.String
+                    ? value.GetString()
+                    : null;
+            }
+            catch (JsonException) { return null; }
+        }
+
+        int? IntValue(string name)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                using var parsed = JsonDocument.Parse(json);
+                if (!parsed.RootElement.TryGetProperty(name, out var value)) return null;
+                if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)) return number;
+                return value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out number)
+                    ? number : null;
+            }
+            catch (JsonException) { return null; }
+        }
+
+        bool? BoolValue(string name)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                using var parsed = JsonDocument.Parse(json);
+                if (!parsed.RootElement.TryGetProperty(name, out var value)) return null;
+                if (value.ValueKind is JsonValueKind.True or JsonValueKind.False) return value.GetBoolean();
+                return value.ValueKind == JsonValueKind.String && bool.TryParse(value.GetString(), out var boolean)
+                    ? boolean : null;
+            }
+            catch (JsonException) { return null; }
+        }
+
+        return new
+        {
+            attempted = BoolValue("metaServerAttempted"),
+            sent = BoolValue("metaServerSent"),
+            status = StringValue("metaServerStatus"),
+            retryable = BoolValue("metaServerRetryable"),
+            retryExhausted = BoolValue("metaServerRetryExhausted"),
+            attemptCount = IntValue("metaServerAttemptCount"),
+            httpStatusCode = IntValue("metaServerHttpStatusCode"),
+            eventsReceived = IntValue("metaServerEventsReceived"),
+            traceId = StringValue("metaServerTraceId"),
+            nextAttemptUtc = StringValue("metaServerNextAttemptUtc"),
+            dispatchedUtc = StringValue("metaServerDispatchedUtc")
+        };
     }
 
     private async Task<bool> CanPublishAsync(WebsiteEditorTicket actor, CancellationToken cancellationToken) =>
