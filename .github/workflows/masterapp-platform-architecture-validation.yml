@@ -5,6 +5,7 @@ on:
     branches:
       - architecture/masterapp-platform-ownership-20260925
       - architecture/masterapp-authority-completion-20260925
+      - architecture/consolidated-platform-domain-release-20260925
     paths-ignore:
       - 'Docs/**'
   workflow_dispatch:
@@ -63,7 +64,10 @@ jobs:
       - name: Run Meta authority regressions
         run: >
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
-          --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests"
+          --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
+
+      - name: Verify consolidated release scope and routing policy
+        run: python3 scripts/test-release-policy.py
 
       - name: Run booking authority regressions
         run: >

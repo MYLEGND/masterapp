@@ -90,8 +90,8 @@ def main():
         routing_apps = {row[0] for row in targets}
         if not {'protect', 'parfait'}.issubset(routing_apps):
             raise ValueError('Cloudflare website commerce routing releases must include masterapp-protect and masterapp-parfait')
-        if not routing_apps.issubset({'portal', 'client', 'protect', 'parfait'}):
-            raise ValueError('Cloudflare website routing may be combined only with AgentPortal, ClientApp, Protect, and Parfait in one reviewed release')
+        if not (routing_apps.issubset({'portal', 'client', 'protect', 'parfait'}) or routing_apps == {row[0] for row in TARGETS}):
+            raise ValueError('Cloudflare website routing requires the reviewed commerce scope or the complete web release inventory')
     website_routing_canary = ''
     if website_routing:
         website_routing_canary = str(request.get('websiteRoutingCanaryHost') or '').strip().lower().rstrip('.')

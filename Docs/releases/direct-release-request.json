@@ -1,15 +1,17 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completion of the canonical storefront routing release. Preserve the already-successful Protect and Parfait deployments at fc495d8f6f2d5c477c85c9f32a64fd113d507b8c; retry only the existing Cloudflare business website router with a stable bounded custom-domain proof. Do not rebuild, redeploy, migrate, or mutate unrelated applications or production data.",
-  "purpose": "Retry only the edge cutover after the prior Worker version was automatically restored on a one-shot custom-domain 404. Require the verified CAMO business binding and camoexterior.com/store to both stabilize at HTTP 200 without redirect before accepting the new Worker; otherwise restore the prior Worker again.",
-  "requestId": "commerce-custom-domain-store-routing-recovery-2-20260925",
+  "authorization": "Founder authorized one consolidated release of the validated MasterApp central website ownership changes and the queued canonical custom-domain storefront routing changes. Require the full production gates, rollback packages, verified CAMO business binding and camoexterior.com/store before accepting the Cloudflare Worker; restore the prior Worker on failed routing proof.",
+  "purpose": "Release the centralized analytics, Meta signals, website runtime and publishing ownership with the canonical storefront domain routing in one approved release. Fix contract tests to read the shared source files, and deploy the complete web inventory and Cloudflare router through the existing checked production workflow.",
+  "requestId": "masterapp-centralization-and-custom-domain-consolidated-20260925",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-portal",
+    "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait"
+    "masterapp-parfait",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": true,
   "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": true,
-  "preserveLiveRevision": "fc495d8f6f2d5c477c85c9f32a64fd113d507b8c"
+  "preserveLiveTargets": false
 }

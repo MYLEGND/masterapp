@@ -187,7 +187,7 @@ public class AnalyticsEventCatalogTests
             Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Commercial.cshtml"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Disability.cshtml"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "DentalVisionHearing.cshtml"),
-            Path.Combine(GetRepoRoot(), "Protect-Website", "wwwroot", "js", "tracking.js"),
+            Path.Combine(GetRepoRoot(), "SHARED", "WebsitePlatform", "tracking.js"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "AutoQuoteController.cs"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "HomeQuoteController.cs"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "DentalVisionHearingQuoteController.cs"),

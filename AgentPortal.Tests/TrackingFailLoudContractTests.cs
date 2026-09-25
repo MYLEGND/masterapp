@@ -10,7 +10,7 @@ public class TrackingFailLoudContractTests
     [Fact]
     public void TrackingJs_RetainsFailLoudQueueAndFlushGuards()
     {
-        var file = Path.Combine(GetRepoRoot(), "Protect-Website", "wwwroot", "js", "tracking.js");
+        var file = Path.Combine(GetRepoRoot(), "SHARED", "WebsitePlatform", "tracking.js");
         var content = File.ReadAllText(file);
 
         Assert.Contains("const TRACKING_MAX_RETRIES = 3;", content, StringComparison.Ordinal);
