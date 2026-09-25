@@ -11,6 +11,7 @@
     }
   ],
   "vars": {
-    "LEGEND_WEBSITE_ORIGIN": "https://masterapp-protect.azurewebsites.net"
+    "LEGEND_WEBSITE_ORIGIN": "https://masterapp-protect.azurewebsites.net",
+    "LEGEND_COMMERCE_ORIGIN": "https://masterapp-parfait.azurewebsites.net"
   }
 }
