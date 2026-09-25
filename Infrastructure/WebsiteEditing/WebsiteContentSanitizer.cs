@@ -52,8 +52,8 @@ public static class WebsiteContentSanitizer
                 Placement = SanitizePlacement(extra.Placement),
                 ImageDataUrl = type == "image" ? SanitizeImage(extra.ImageDataUrl) : null,
                 Style = SanitizeStyle(extra.Style),
-                Layout = SanitizeLayout(extra.Layout),
-                Responsive = SanitizeResponsive(extra.Responsive, breakpointIds)
+                Layout = SanitizeLayout(extra.Layout, WebsiteComponentCatalog.Find(type)?.LayoutModes),
+                Responsive = SanitizeResponsive(extra.Responsive, breakpointIds, WebsiteComponentCatalog.Find(type)?.LayoutModes)
             });
         }
 
@@ -183,7 +183,8 @@ public static class WebsiteContentSanitizer
 
     private static Dictionary<string, WebsiteResponsiveOverride> SanitizeResponsive(
         Dictionary<string, WebsiteResponsiveOverride>? source,
-        HashSet<string> breakpointIds)
+        HashSet<string> breakpointIds,
+        IReadOnlyList<string>? allowedLayoutModes = null)
     {
         var result = new Dictionary<string, WebsiteResponsiveOverride>(StringComparer.Ordinal);
         foreach (var pair in source ?? new())
@@ -194,17 +195,19 @@ public static class WebsiteContentSanitizer
             {
                 Hidden = pair.Value.Hidden,
                 Style = SanitizeStyle(pair.Value.Style),
-                Layout = SanitizeLayout(pair.Value.Layout)
+                Layout = SanitizeLayout(pair.Value.Layout, allowedLayoutModes)
             };
         }
         return result;
     }
 
-    private static WebsiteLayoutOverride SanitizeLayout(WebsiteLayoutOverride? source)
+    private static WebsiteLayoutOverride SanitizeLayout(WebsiteLayoutOverride? source, IReadOnlyList<string>? allowedModes = null)
     {
         source ??= new WebsiteLayoutOverride();
         var mode = (source.Mode ?? string.Empty).Trim().ToLowerInvariant();
-        if (!WebsiteLayoutModeCatalog.IsAllowed(mode)) mode = string.Empty;
+        if (!WebsiteLayoutModeCatalog.IsAllowed(mode) ||
+            allowedModes is not null && !allowedModes.Contains(mode, StringComparer.Ordinal))
+            mode = string.Empty;
         var direction = (source.Direction ?? string.Empty).Trim().ToLowerInvariant();
         if (direction is not ("row" or "column")) direction = string.Empty;
         var align = (source.AlignItems ?? string.Empty).Trim().ToLowerInvariant();
