@@ -158,27 +158,253 @@ public sealed class WebsiteInquiriesController : ControllerBase
         return scope.SiteKey switch
         {
             WebsiteEditorSiteKeys.Business when scope.CommerceBusinessId.HasValue && scope.PublishedVersion is not null =>
-                await SubmitBusinessAsync(scope, request, lead, firstName, lastName, phone, email, message, path, cancellationToken),
+                await SubmitBusinessAsync(scope, request, lead, firstName, lastName, phone, email, message, path, "website_inquiry", cancellationToken),
             WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Protect =>
-                await SubmitOwnerAsync(scope, request, lead, firstName, lastName, phone, email, message, path, cancellationToken),
+                await SubmitOwnerAsync(scope, request, lead, firstName, lastName, phone, email, message, path, "website_inquiry", cancellationToken),
             _ => NotFound(new { error = "published_website_required" })
         };
     }
 
+    private sealed record ValidatedFormValues(
+        Dictionary<string, string> Values,
+        string FirstName,
+        string LastName,
+        string Phone,
+        string Email,
+        string Message);
+
+    [HttpPost("public/form")]
+    [RequestSizeLimit(65536)]
+    [EnableRateLimiting(PlatformRateLimiting.PublicFormPolicy)]
+    public async Task<IActionResult> SubmitCustomForm(
+        [FromBody] CustomFormRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!PublicWebsiteRuntimeScopeResolver.HasValidPublicOrigin(HttpContext))
+            return BadRequest(new { error = "verified_website_origin_required" });
+        if (request is null || request.SubmissionId == Guid.Empty || !request.Consent)
+            return BadRequest(new { error = "invalid_form_submission" });
+
+        var path = request.SourcePath?.Trim() ?? "/";
+        var scope = await _publicScopes.ResolveInquiryAsync(HttpContext, path, cancellationToken);
+        if (scope?.PublishedVersion is null ||
+            !PublicWebsiteRuntimeScopeResolver.IsPublishedPath(scope, path))
+            return NotFound(new { error = "published_website_required" });
+
+        WebsiteContentDocument? published;
+        try
+        {
+            published = JsonSerializer.Deserialize<WebsiteContentDocument>(
+                scope.PublishedVersion.DocumentJson,
+                WebsiteJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return NotFound(new { error = "published_form_unavailable" });
+        }
+
+        var definitionId = (request.FormDefinitionId ?? string.Empty).Trim();
+        if (published?.Forms is null ||
+            !published.Forms.TryGetValue(definitionId, out var form))
+            return NotFound(new { error = "published_form_unavailable" });
+
+        if (!TryValidateFormValues(form, request.Fields, out var values, out var validationMessage))
+            return BadRequest(new { error = "invalid_form_submission", message = validationMessage });
+
+        var bindingId = "form:" + definitionId;
+        if (bindingId.Length > 120) bindingId = bindingId[..120];
+        var notes = BuildFormNotes(form, values);
+        var customFields = form.Fields
+            .Where(field => field.Role == "custom")
+            .Select(field => new
+            {
+                field.Id,
+                field.Label,
+                field.Type,
+                Value = values.Values.GetValueOrDefault(field.Id, "")
+            })
+            .ToArray();
+
+        var lead = BuildLead(
+            scope,
+            request,
+            values.FirstName,
+            values.LastName,
+            values.Phone,
+            values.Email,
+            notes,
+            path,
+            interestType: "WebsiteForm",
+            bindingId,
+            formMetadata: new
+            {
+                FormDefinitionId = definitionId,
+                FormName = form.Name,
+                CustomFields = customFields
+            });
+
+        var formKey = "website_form:" + definitionId;
+        return scope.SiteKey switch
+        {
+            WebsiteEditorSiteKeys.Business when scope.CommerceBusinessId.HasValue =>
+                await SubmitBusinessAsync(
+                    scope, request, lead,
+                    values.FirstName, values.LastName, values.Phone, values.Email,
+                    notes, path, formKey, cancellationToken),
+            WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Protect =>
+                await SubmitOwnerAsync(
+                    scope, request, lead,
+                    values.FirstName, values.LastName, values.Phone, values.Email,
+                    notes, path, formKey, cancellationToken),
+            _ => NotFound(new { error = "published_website_required" })
+        };
+    }
+
+    private static bool TryValidateFormValues(
+        WebsiteFormDefinition form,
+        Dictionary<string, string?>? submitted,
+        out ValidatedFormValues values,
+        out string error)
+    {
+        values = new(new(StringComparer.Ordinal), "", "", "", "", "");
+        error = "Check the required form fields and try again.";
+        if (submitted is null || submitted.Count > WebsiteFormFieldCatalog.MaxFields)
+            return false;
+
+        var definitions = form.Fields.ToDictionary(field => field.Id, StringComparer.Ordinal);
+        if (submitted.Keys.Any(key => !definitions.ContainsKey(key)))
+            return false;
+
+        var clean = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var field in form.Fields)
+        {
+            submitted.TryGetValue(field.Id, out var raw);
+            if (!TryNormalizeFormValue(field, raw, out var value))
+                return false;
+
+            if (field.Required)
+            {
+                if (field.Type == "checkbox" && value != "true")
+                    return false;
+                if (field.Type != "checkbox" && string.IsNullOrWhiteSpace(value))
+                    return false;
+            }
+            clean[field.Id] = value;
+        }
+
+        string Role(string role) => form.Fields
+            .Where(field => field.Role == role)
+            .Select(field => clean.GetValueOrDefault(field.Id, ""))
+            .FirstOrDefault() ?? "";
+
+        var firstName = Role("firstName").Trim();
+        var lastName = Role("lastName").Trim();
+        var phone = Role("phone").Trim();
+        var email = Role("email").Trim();
+        var message = Role("message").Trim();
+
+        var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
+        if (firstName.Length is < 1 or > 120 ||
+            lastName.Length > 120 ||
+            email.Length is < 3 or > 254 ||
+            !new EmailAddressAttribute().IsValid(email) ||
+            (phone.Length > 0 && (phone.Length > 64 || phoneDigits.Length is < 10 or > 15)))
+            return false;
+
+        values = new(clean, firstName, lastName, phone, email, message);
+        error = "";
+        return true;
+    }
+
+    private static bool TryNormalizeFormValue(
+        WebsiteFormFieldDefinition field,
+        string? raw,
+        out string value)
+    {
+        value = (raw ?? string.Empty).Trim();
+        var allowsLines = field.Type == "textarea";
+        if (value.Any(character => char.IsControl(character) &&
+            !(allowsLines && character is '\n' or '\r' or '\t')))
+            return false;
+
+        var maximum = field.Type switch
+        {
+            "email" => 254,
+            "tel" => 64,
+            "url" => 2048,
+            "textarea" => 12000,
+            "select" => 160,
+            "date" => 32,
+            "number" => 64,
+            "checkbox" => 5,
+            _ => 1000
+        };
+        if (value.Length > maximum)
+            return false;
+
+        switch (field.Type)
+        {
+            case "email":
+                return value.Length == 0 || new EmailAddressAttribute().IsValid(value);
+            case "url":
+                return value.Length == 0 ||
+                    Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+                    uri.Scheme == Uri.UriSchemeHttps;
+            case "number":
+                return value.Length == 0 ||
+                    decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out _);
+            case "date":
+                return value.Length == 0 ||
+                    DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+            case "select":
+                return value.Length == 0 || field.Options.Contains(value, StringComparer.Ordinal);
+            case "checkbox":
+                if (value.Length == 0 || value is "false" or "0") { value = "false"; return true; }
+                if (value is "true" or "1" or "on") { value = "true"; return true; }
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    private static string BuildFormNotes(WebsiteFormDefinition form, ValidatedFormValues values)
+    {
+        var lines = new List<string>();
+        if (!string.IsNullOrWhiteSpace(values.Message))
+            lines.Add(values.Message.Trim());
+
+        foreach (var field in form.Fields.Where(field => field.Role == "custom"))
+        {
+            var value = values.Values.GetValueOrDefault(field.Id, "");
+            if (!string.IsNullOrWhiteSpace(value))
+                lines.Add(field.Label + ": " + value);
+        }
+
+        var result = string.Join("\n", lines);
+        if (result.Length == 0)
+            result = "Website form submission: " + form.Name;
+        return result.Length <= 12000 ? result : result[..12000];
+    }
+
     private WebsiteLead BuildLead(
         PublicWebsiteRuntimeScope scope,
-        PublicRequest request,
+        IPublicWebsiteSubmission request,
         string firstName,
         string lastName,
         string phone,
         string email,
         string message,
-        string path)
+        string path,
+        string? interestType = null,
+        string? bindingId = null,
+        object? formMetadata = null)
     {
         var lead = new WebsiteLead
         {
             LeadId = Guid.NewGuid(),
             CommerceBusinessId = scope.CommerceBusinessId,
+            AgentTrackingProfileId = scope.AgentTrackingProfileId,
+            AgentSlug = scope.AgentSlug,
             WebsiteContentVersionId = scope.PublishedVersion?.Id,
             FirstName = firstName,
             LastName = lastName,
@@ -186,9 +412,14 @@ public sealed class WebsiteInquiriesController : ControllerBase
             Email = email,
             Notes = message,
             SourcePageKey = path.Length <= 120 ? path : scope.SiteKey + "-inquiry",
-            SourceCtaKey = Optional(request.SourceActionKey, 120),
-            WebsiteBindingId = Optional(request.SourceActionKey, 120),
-            InterestType = scope.SiteKey == WebsiteEditorSiteKeys.Business ? "BusinessInquiry" : "LegendInquiry",
+            SourceCtaKey = Optional(bindingId ?? request.SourceActionKey, 120),
+            WebsiteBindingId = Optional(bindingId ?? request.SourceActionKey, 120),
+            InterestType = interestType ?? (scope.SiteKey switch
+            {
+                WebsiteEditorSiteKeys.Business => "BusinessInquiry",
+                WebsiteEditorSiteKeys.Protect => "ProtectInquiry",
+                _ => "LegendInquiry"
+            }),
             TermsAccepted = request.Consent,
             // Sharing an inquiry is not separate marketing or call/text permission.
             MarketingEmailConsent = false,
@@ -217,7 +448,8 @@ public sealed class WebsiteInquiriesController : ControllerBase
             SourceActionKey = lead.SourceCtaKey,
             UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
-            PublishedWebsiteVersionId = scope.PublishedVersion?.Id
+            PublishedWebsiteVersionId = scope.PublishedVersion?.Id,
+            Form = formMetadata
         });
         lead.LeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));
         return lead;
@@ -225,7 +457,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
 
     private async Task<IActionResult> SubmitBusinessAsync(
         PublicWebsiteRuntimeScope scope,
-        PublicRequest request,
+        IPublicWebsiteSubmission request,
         WebsiteLead lead,
         string firstName,
         string lastName,
@@ -233,6 +465,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
         string email,
         string message,
         string path,
+        string formKey,
         CancellationToken cancellationToken)
     {
         var businessId = scope.CommerceBusinessId!.Value;
@@ -280,7 +513,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
                 });
 
             if (created)
-                WriteLeadAnalytics(scope, lead, request);
+                WriteLeadAnalytics(scope, lead, request, formKey);
 
             // The inquiry row is durable independently of whether an idempotent
             // WebsiteLead already existed from the same scoped submission.
@@ -304,7 +537,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
         return Ok(new { accepted = true });
     }
 
-    private async Task<IActionResult> SubmitFounderAsync(
+    private async Task<IActionResult> SubmitOwnerAsync(
         PublicWebsiteRuntimeScope scope,
         PublicRequest request,
         WebsiteLead lead,
@@ -314,6 +547,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
         string email,
         string message,
         string path,
+        string formKey,
         CancellationToken cancellationToken)
     {
         var created = await WebsiteLeadSubmission.TryCreateAsync(
@@ -323,7 +557,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
             cancellationToken,
             async ct =>
             {
-                WriteLeadAnalytics(scope, lead, request);
+                WriteLeadAnalytics(scope, lead, request, formKey);
                 await _db.SaveChangesAsync(ct);
             });
 
@@ -342,11 +576,11 @@ public sealed class WebsiteInquiriesController : ControllerBase
             lead = existing;
         }
 
-        var notificationSent = await TryNotifyFounderAsync(lead, cancellationToken);
+        var notificationSent = await TryNotifyOwnerAsync(scope, lead, cancellationToken);
         return Ok(new { accepted = true, notificationSent });
     }
 
-    private void WriteLeadAnalytics(PublicWebsiteRuntimeScope scope, WebsiteLead lead, PublicRequest request)
+    private void WriteLeadAnalytics(PublicWebsiteRuntimeScope scope, WebsiteLead lead, IPublicWebsiteSubmission request, string formKey)
     {
         if (!AnalyticsEventCatalog.TryGet("website_lead_submitted", out var leadEvent))
             throw new InvalidOperationException("Canonical lead analytics event is unavailable.");
@@ -364,7 +598,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
             SessionId = lead.SessionId,
             VisitorId = lead.VisitorId,
             PageKey = lead.SourcePageKey,
-            FormKey = "website_inquiry",
+            FormKey = formKey,
             UtmSource = lead.UtmSource,
             UtmMedium = lead.UtmMedium,
             UtmCampaign = lead.UtmCampaign,
@@ -378,6 +612,8 @@ public sealed class WebsiteInquiriesController : ControllerBase
             MetaAdId = lead.MetaAdId,
             UserAgent = lead.ClientUserAgent,
             IpAddress = lead.ClientIpAddress,
+            AgentTrackingProfileId = scope.AgentTrackingProfileId,
+            AgentSlug = scope.AgentSlug,
             Host = lead.Host,
             Environment = lead.Environment,
             IsBrowserSignal = false,
@@ -395,7 +631,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
         UnifiedAnalyticsWriter.Write(_db, analytics);
     }
 
-    private async Task<bool> TryNotifyFounderAsync(WebsiteLead lead, CancellationToken cancellationToken)
+    private async Task<bool> TryNotifyOwnerAsync(PublicWebsiteRuntimeScope scope, WebsiteLead lead, CancellationToken cancellationToken)
     {
         if (lead.NotificationSentUtc.HasValue)
             return true;
@@ -404,7 +640,10 @@ public sealed class WebsiteInquiriesController : ControllerBase
         if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, trackedLead, cancellationToken))
             return trackedLead.NotificationSentUtc.HasValue;
 
-        var recipient = await _recipients.ResolveAsync(MarketingOwnerScope.Founder, cancellationToken);
+        var owner = scope.SiteKey == WebsiteEditorSiteKeys.Protect && scope.AgentTrackingProfileId.HasValue
+            ? MarketingOwnerScope.Agent(scope.AgentTrackingProfileId.Value)
+            : MarketingOwnerScope.Founder;
+        var recipient = await _recipients.ResolveAsync(owner, cancellationToken);
         var sent = false;
         if (!string.IsNullOrWhiteSpace(recipient))
         {
@@ -418,7 +657,9 @@ public sealed class WebsiteInquiriesController : ControllerBase
             {
                 sent = await _emailSender.TrySendAsync(
                     recipient,
-                    "New LEGEND® website inquiry",
+                    scope.SiteKey == WebsiteEditorSiteKeys.Protect
+                        ? "New LEGEND® protection website inquiry"
+                        : "New LEGEND® website inquiry",
                     html,
                     replyToEmail: trackedLead.Email,
                     cancellationToken: cancellationToken);
