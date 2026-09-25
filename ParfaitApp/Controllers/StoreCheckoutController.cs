@@ -399,6 +399,7 @@ public sealed class StoreCheckoutController : Controller
         return Task.FromResult<CommerceStoreContext?>(new CommerceStoreContext(
             businessId,
             WebsiteContentVersionId: null,
+            AgentTrackingProfileId: null,
             WebsiteSiteKey: "ParfaitApp",
             BusinessKey: "parfait",
             StoreName: "Parfait",
@@ -431,6 +432,7 @@ public sealed class StoreCheckoutController : Controller
         string? Cookie(string name) => Request.Cookies.TryGetValue(name, out var value) ? value : null;
         return new CommerceSignalContext(
             store.CommerceBusinessId,
+            store.AgentTrackingProfileId,
             store.WebsiteContentVersionId,
             store.WebsiteSiteKey,
             store.BusinessKey,
