@@ -83,6 +83,7 @@ public sealed class WebsiteLayoutOverride
 public sealed class WebsiteElementOverride
 {
     public List<WebsiteSignalBinding> Signals { get; set; } = new();
+    public List<WebsiteMotionInteraction> Interactions { get; set; } = new();
     public string? Text { get; set; }
     public string? ImageDataUrl { get; set; }
     public bool? Hidden { get; set; }
@@ -158,6 +159,7 @@ public sealed class WebsitePlacement
 public sealed class WebsiteExtraComponent
 {
     public List<WebsiteSignalBinding> Signals { get; set; } = new();
+    public List<WebsiteMotionInteraction> Interactions { get; set; } = new();
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string SectionId { get; set; } = "";
     public string Type { get; set; } = "text";
@@ -225,6 +227,62 @@ public static class WebsiteLayoutModeCatalog
     public const string Free = "free";
     public static IReadOnlyList<string> All { get; } = [Flow, Grid, Flex, Stack, Free];
     public static bool IsAllowed(string? value) => All.Contains(value ?? string.Empty, StringComparer.Ordinal);
+}
+
+public sealed class WebsiteMotionInteraction
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Trigger { get; set; } = "enter-view";
+    public string Effect { get; set; } = "fade";
+    public int DurationMs { get; set; } = 500;
+    public int DelayMs { get; set; }
+    public string Easing { get; set; } = "ease-out";
+    public bool Once { get; set; } = true;
+    public string? Direction { get; set; }
+    public decimal? DistancePx { get; set; }
+    public decimal? Amount { get; set; }
+}
+
+public sealed record WebsiteMotionOption(string Key, string Label);
+
+public static class WebsiteMotionCatalog
+{
+    public const int MaxInteractionsPerElement = 8;
+    public static IReadOnlyList<WebsiteMotionOption> Triggers { get; } =
+    [
+        new("load", "Page load"),
+        new("enter-view", "Enter viewport"),
+        new("hover", "Hover"),
+        new("click", "Click")
+    ];
+    public static IReadOnlyList<WebsiteMotionOption> Effects { get; } =
+    [
+        new("fade", "Fade"),
+        new("slide", "Slide"),
+        new("scale", "Scale"),
+        new("rotate", "Rotate"),
+        new("blur", "Blur")
+    ];
+    public static IReadOnlyList<WebsiteMotionOption> Easings { get; } =
+    [
+        new("linear", "Linear"),
+        new("ease", "Ease"),
+        new("ease-in", "Ease in"),
+        new("ease-out", "Ease out"),
+        new("ease-in-out", "Ease in/out")
+    ];
+    public static IReadOnlyList<WebsiteMotionOption> Directions { get; } =
+    [
+        new("up", "Up"),
+        new("down", "Down"),
+        new("left", "Left"),
+        new("right", "Right")
+    ];
+
+    public static bool AllowsTrigger(string? value) => Triggers.Any(x => x.Key == value);
+    public static bool AllowsEffect(string? value) => Effects.Any(x => x.Key == value);
+    public static bool AllowsEasing(string? value) => Easings.Any(x => x.Key == value);
+    public static bool AllowsDirection(string? value) => Directions.Any(x => x.Key == value);
 }
 
 public sealed record WebsiteComponentCapability(
