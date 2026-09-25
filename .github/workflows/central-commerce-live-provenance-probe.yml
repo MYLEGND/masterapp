@@ -11,7 +11,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     environment: Production
     steps:
       - name: Authenticate to Azure for read-only diagnostics
@@ -21,15 +21,12 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Compare Parfait identity and Data Protection RBAC with Portal
+      - name: Identify canonical Data Protection scopes and roles
         shell: bash
         run: |
           set -euo pipefail
-          portal_settings="$RUNNER_TEMP/portal-settings.json"
-          parfait_settings="$RUNNER_TEMP/parfait-settings.json"
-          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
-          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
-
+          settings="$RUNNER_TEMP/portal-settings.json"
+          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$settings"
           resolve_value() {
             local file="$1"; shift
             for key in "$@"; do
@@ -38,59 +35,27 @@ jobs:
             done
             return 1
           }
-
-          blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
-          portal_founder="$(resolve_value "$portal_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
-          parfait_blob="$(resolve_value "$parfait_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-          parfait_keyvault="$(resolve_value "$parfait_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
-          parfait_founder="$(resolve_value "$parfait_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
-          [ -n "$blob" ] && [ -n "$keyvault" ] && [ -n "$portal_founder" ]
-
-          portal_identity="$(az webapp show -g masterapp-rg -n masterapp-portal --query identity -o json)"
-          parfait_identity="$(az webapp show -g masterapp-rg -n masterapp-parfait --query identity -o json)"
-          portal_pid="$(jq -r '.principalId // empty' <<<"$portal_identity")"
-          parfait_pid="$(jq -r '.principalId // empty' <<<"$parfait_identity")"
-          portal_type="$(jq -r '.type // "None"' <<<"$portal_identity")"
-          parfait_type="$(jq -r '.type // "None"' <<<"$parfait_identity")"
-
-          BLOB_URI="$blob" KEY_URI="$keyvault" python3 - <<'PY' > "$RUNNER_TEMP/resource-names.txt"
+          blob="$(resolve_value "$settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(resolve_value "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          portal_pid="$(az webapp show -g masterapp-rg -n masterapp-portal --query identity.principalId -o tsv)"
+          BLOB_URI="$blob" KEY_URI="$keyvault" python3 - <<'PY'
           import os, urllib.parse
-          blob = urllib.parse.urlparse(os.environ["BLOB_URI"])
-          key = urllib.parse.urlparse(os.environ["KEY_URI"])
-          print(blob.hostname.split(".")[0] if blob.hostname else "")
-          print(key.hostname.split(".")[0] if key.hostname else "")
+          for label, value in (("blob", os.environ["BLOB_URI"]), ("keyvault", os.environ["KEY_URI"])):
+              uri = urllib.parse.urlparse(value)
+              host = uri.hostname or ""
+              print(f"{label}_host={host}")
+              print(f"{label}_resource_name={host.split('.')[0] if host else ''}")
           PY
-          storage_name="$(sed -n '1p' "$RUNNER_TEMP/resource-names.txt")"
-          vault_name="$(sed -n '2p' "$RUNNER_TEMP/resource-names.txt")"
-          storage_id="$(az storage account list --query "[?name=='$storage_name'].id | [0]" -o tsv)"
-          vault_id="$(az keyvault list --query "[?name=='$vault_name'].id | [0]" -o tsv)"
-
-          echo "portal_identity_type=$portal_type"
-          echo "parfait_identity_type=$parfait_type"
-          echo "portal_identity_present=$([ -n "$portal_pid" ] && echo true || echo false)"
-          echo "parfait_identity_present=$([ -n "$parfait_pid" ] && echo true || echo false)"
-          echo "parfait_dp_blob_matches_portal=$([ "$parfait_blob" = "$blob" ] && echo true || echo false)"
-          echo "parfait_dp_key_matches_portal=$([ "$parfait_keyvault" = "$keyvault" ] && echo true || echo false)"
-          echo "parfait_founder_matches_portal=$([ -n "$parfait_founder" ] && [ "$parfait_founder" = "$portal_founder" ] && echo true || echo false)"
-          echo "storage_scope_resolved=$([ -n "$storage_id" ] && echo true || echo false)"
-          echo "vault_scope_resolved=$([ -n "$vault_id" ] && echo true || echo false)"
-
-          if [ -n "$portal_pid" ] && [ -n "$storage_id" ]; then
-            echo "portal_storage_roles=$(az role assignment list --assignee "$portal_pid" --scope "$storage_id" --include-inherited --query '[].roleDefinitionName' -o tsv | sort -u | paste -sd ',' -)"
-          fi
-          if [ -n "$parfait_pid" ] && [ -n "$storage_id" ]; then
-            echo "parfait_storage_roles=$(az role assignment list --assignee "$parfait_pid" --scope "$storage_id" --include-inherited --query '[].roleDefinitionName' -o tsv | sort -u | paste -sd ',' -)"
-          else
-            echo "parfait_storage_roles="
-          fi
-          if [ -n "$portal_pid" ] && [ -n "$vault_id" ]; then
-            echo "portal_vault_roles=$(az role assignment list --assignee "$portal_pid" --scope "$vault_id" --include-inherited --query '[].roleDefinitionName' -o tsv | sort -u | paste -sd ',' -)"
-          fi
-          if [ -n "$parfait_pid" ] && [ -n "$vault_id" ]; then
-            echo "parfait_vault_roles=$(az role assignment list --assignee "$parfait_pid" --scope "$vault_id" --include-inherited --query '[].roleDefinitionName' -o tsv | sort -u | paste -sd ',' -)"
-          else
-            echo "parfait_vault_roles="
-          fi
-
-          rm -f "$portal_settings" "$parfait_settings" "$RUNNER_TEMP/resource-names.txt"
+          az role assignment list --assignee "$portal_pid" --all -o json > "$RUNNER_TEMP/portal-roles.json"
+          python3 - <<'PY'
+          import json, os, re
+          rows=json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"portal-roles.json"),encoding="utf-8"))
+          for row in rows:
+              role=row.get("roleDefinitionName") or ""
+              if not (role.startswith("Storage Blob Data") or role.startswith("Key Vault")):
+                  continue
+              scope=row.get("scope") or ""
+              clean=re.sub(r"^/subscriptions/[^/]+","/subscriptions/[subscription]",scope,flags=re.I)
+              print(f"portal_role={role} scope={clean}")
+          PY
+          rm -f "$settings" "$RUNNER_TEMP/portal-roles.json"
