@@ -70,21 +70,24 @@ public sealed class CommerceStoreContextService(
         var draft = Deserialize(state.DraftJson);
         if (draft.Store?.Enabled != true) return null;
 
-        return await BuildAsync(business, publishedOnly: false, ct, draft);
+        return await BuildAsync(business, publishedOnly: false, ct, draft, actor.SiteKey);
     }
 
     private async Task<CommerceStoreContext?> BuildAsync(
         CommerceBusiness business,
         bool publishedOnly,
         CancellationToken ct,
-        WebsiteContentDocument? explicitDocument = null)
+        WebsiteContentDocument? explicitDocument = null,
+        string? explicitSiteKey = null)
     {
         var settings = await db.CommerceBusinessStorefrontSettings.AsNoTracking()
             .SingleOrDefaultAsync(x => x.CommerceBusinessId == business.Id, ct);
 
         WebsiteContentDocument? websiteDocument = explicitDocument;
         Guid? publishedVersionId = null;
-        var websiteSiteKey = isParfaitKey(business.Key) ? "ParfaitApp" : "business";
+        var websiteSiteKey = !string.IsNullOrWhiteSpace(explicitSiteKey)
+            ? explicitSiteKey.Trim().ToLowerInvariant()
+            : isParfaitKey(business.Key) ? "ParfaitApp" : "business";
         if (websiteDocument is null)
         {
             var state = await db.Set<WebsiteContentState>().AsNoTracking()
