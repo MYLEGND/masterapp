@@ -1,11 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized a non-deploying Protect Website-only validation after completing the exact EF WebsiteStudioComments alignment: migration, model snapshot, canonical model table mapping, and pre-Azure pending-model-changes gate. LEGEND Website already deployed successfully in #155 and must not be redeployed.",
-  "purpose": "Validate only the remaining Protect Website candidate, including build, Website Studio contract checks, EF model/snapshot consistency, and immutable package creation. Do not mutate Azure or deploy any application.",
-  "requestId": "protect-only-validate-after-complete-ef-alignment-20260924",
-  "releaseMode": "validate-only",
+  "authorization": "Founder explicitly authorized direct deployment of the combined validated Website Studio recovery through legend/approved-changes. Deploy only Protect Website and LEGEND Website. Preserve all existing scoped website drafts, published versions, tenant ownership, CRM, analytics, Meta, subscription, authentication, and unrelated application flows. No AgentPortal, ClientApp, Parfait, or Cloudflare router deployment.",
+  "purpose": "Release the previously validated Protect EF alignment together with the surgical Website Studio state-retention, free-drag placement, mobile inquiry layout, immediate scoped inquiry-email delivery, canonical form creation, and autonomous analytics/Meta wiring corrections. Standard forms and managed buttons must require no manual event mapping.",
+  "requestId": "website-studio-state-drag-form-autonomous-release-20260925",
+  "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect"
+    "masterapp-protect",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false
 }
