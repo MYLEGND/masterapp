@@ -67,6 +67,7 @@ public sealed class CommerceManagementController(
         ApplyFramePolicy();
         ApplyStoreViewData(store);
         ViewData["StoreRootPath"] = "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket);
+        ViewData["StorePreviewMode"] = true;
         return View("~/Views/Store/Product.cshtml", product);
     }
 
