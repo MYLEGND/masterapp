@@ -107,5 +107,10 @@ jobs:
 
           echo "Renderer suite failure is pre-existing and all renderer inputs touched by this ownership move are byte-identical to the approved baseline."
 
+      - name: Install canonical shared CMS test dependencies
+        working-directory: tests/website
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
       - name: Run canonical shared CMS tests
-        run: node --test tests/website/legend-public-cms.test.mjs
+        working-directory: tests/website
+        run: npm test
