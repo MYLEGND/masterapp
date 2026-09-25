@@ -25,7 +25,8 @@ public sealed class ParfaitBusinessProfileService(
     ParfaitMetaCapiCredentialProtector legacyProtector,
     ParfaitBusinessScopeService businessScope,
     MasterAppDbContext db,
-    MarketingConnectionStore connections) : IParfaitBusinessProfileService
+    MarketingConnectionStore connections,
+    ILogger<ParfaitBusinessProfileService> logger) : IParfaitBusinessProfileService
 {
     private async Task<(CommerceBusiness Business, CommerceBusinessStorefrontSettings Settings)> LoadAsync(CancellationToken ct)
     {
@@ -39,9 +40,17 @@ public sealed class ParfaitBusinessProfileService(
             ? JsonSerializer.Deserialize<ParfaitBusinessProfileStore>(await File.ReadAllTextAsync(storagePaths.BusinessProfilePath, ct))
                 ?? throw new InvalidOperationException("The legacy business profile cannot be read.")
             : new ParfaitBusinessProfileStore();
-        var token = legacyProtector.Unprotect(legacy.MetaCapiAccessTokenCiphertext);
+        var token = legacyProtector.Unprotect(legacy.MetaCapiAccessTokenCiphertext, logger);
         if (!string.IsNullOrEmpty(legacy.MetaCapiAccessTokenCiphertext) && string.IsNullOrEmpty(token))
-            throw new InvalidOperationException("The legacy Meta credential must be recovered before migration.");
+        {
+            // An unreadable legacy token is not allowed to hold the entire Parfait app hostage.
+            // Import the non-secret profile into the canonical owner-scoped authority and require
+            // a fresh Meta reconnect for the credential itself. The legacy file is not retained as
+            // an active authority after this migration marker is committed.
+            logger.LogWarning(
+                "Parfait legacy Meta credential could not be decrypted during canonical migration; " +
+                "continuing without the credential so storefront and internal operations remain available.");
+        }
         MetaAdsConnectionRecord? record = string.IsNullOrEmpty(token) ? null : new()
         {
             AccessToken = token, AccessTokenExpiresUtc = legacy.MetaAccessTokenExpiresUtc,
