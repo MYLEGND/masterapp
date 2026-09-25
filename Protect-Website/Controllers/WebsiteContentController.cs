@@ -148,6 +148,7 @@ public sealed class WebsiteContentController : ControllerBase
         IReadOnlyDictionary<string, WebsiteCollectionProjection> publicCollections = business is null
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
             : await new WebsiteCollectionProjectionService(_db).LoadAsync(document, business.Id, cancellationToken);
+        var publicStoreScope = await PublishedStoreScopeAsync(ownerKey, siteKey, document, cancellationToken);
         return Ok(new
         {
             siteKey,
@@ -155,6 +156,7 @@ public sealed class WebsiteContentController : ControllerBase
             businessName = business?.DisplayName,
             facts = publicFacts,
             collections = publicCollections.Values,
+            store = StorePayload(document, publicStoreScope, ticket: null),
             document
         });
     }
@@ -1903,10 +1905,11 @@ public sealed class WebsiteContentController : ControllerBase
 
         var state = await _db.Set<WebsiteContentState>().AsNoTracking()
             .SingleOrDefaultAsync(x => x.OwnerKey == ownerKey && x.SiteKey == siteKey, cancellationToken);
-        if (!state?.CommerceBusinessId.HasValue == true) return null;
+        if (state?.CommerceBusinessId is not Guid commerceBusinessId || commerceBusinessId == Guid.Empty)
+            return null;
 
         var business = await _db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(
-            x => x.Id == state.CommerceBusinessId.Value &&
+            x => x.Id == commerceBusinessId &&
                  x.IsActive &&
                  x.Status.ToLower() == "active",
             cancellationToken);
