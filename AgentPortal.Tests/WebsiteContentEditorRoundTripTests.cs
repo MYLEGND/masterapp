@@ -416,6 +416,77 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public async Task WebsiteStudioAiProposal_IsRevisionLockedAndNeverPersistsUntilUserSaves()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Title = "Home",
+            Elements = new(StringComparer.Ordinal)
+            {
+                [ElementId] = new WebsiteElementOverride { Text = "Original heading" }
+            }
+        };
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        fixture.Db.ChangeTracker.Clear();
+        var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        var beforeJson = before.DraftJson;
+        var beforeRevision = before.Revision;
+
+        var response = Assert.IsType<OkObjectResult>(await fixture.CreateController().WebsiteStudioAiProposal(
+            new WebsiteContentController.WebsiteStudioAiRequest(
+                ticket,
+                beforeRevision,
+                "create",
+                "Improve the heading.",
+                "/",
+                ElementId,
+                "home.section.1",
+                "Original heading"),
+            CancellationToken.None));
+
+        var envelope = JsonSerializer.SerializeToElement(response.Value, JsonOptions);
+        Assert.Equal("ai_proposal_preview", envelope.GetProperty("source").GetString());
+        Assert.False(envelope.GetProperty("persisted").GetBoolean());
+        Assert.False(envelope.GetProperty("published").GetBoolean());
+        Assert.Equal(beforeRevision, envelope.GetProperty("baseRevision").GetInt64());
+        var proposed = envelope.GetProperty("proposedDocument")
+            .Deserialize<WebsiteContentDocument>(JsonOptions)!;
+        Assert.Equal("AI proposed heading", proposed.Pages["/"].Elements[ElementId].Text);
+
+        fixture.Db.ChangeTracker.Clear();
+        var after = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(beforeRevision, after.Revision);
+        Assert.Equal(beforeJson, after.DraftJson);
+        Assert.Null(after.PublishedVersionId);
+
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().WebsiteStudioAiProposal(
+            new WebsiteContentController.WebsiteStudioAiRequest(
+                ticket,
+                beforeRevision - 1,
+                "create",
+                "Stale request",
+                "/",
+                ElementId,
+                "home.section.1",
+                "Original heading"),
+            CancellationToken.None));
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().WebsiteStudioAiProposal(
+            new WebsiteContentController.WebsiteStudioAiRequest(
+                "invalid-ticket",
+                beforeRevision,
+                "create",
+                "Unauthorized request",
+                "/",
+                ElementId,
+                "home.section.1",
+                "Original heading"),
+            CancellationToken.None));
+    }
+
+    [Fact]
     public async Task DraftQuality_ReadsOnlyAuthorizedPersistedDraftAndReportsServerSource()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
@@ -536,8 +607,21 @@ public sealed class WebsiteContentEditorRoundTripTests
                 Db.SaveChanges();
             }
             var environment = Mock.Of<IWebHostEnvironment>(e => e.ContentRootPath == AppContext.BaseDirectory);
-            _services = new ServiceCollection().AddSingleton(new WebsitePageCompiler(environment, _configuration)).BuildServiceProvider();
+            _services = new ServiceCollection()
+                .AddSingleton(new WebsitePageCompiler(environment, _configuration))
+                .AddSingleton<ProtectWebsite.Services.IWebsiteStudioAiProposalService>(new FixtureWebsiteStudioAi())
+                .BuildServiceProvider();
             Controller = CreateController();
+        }
+
+        private sealed class FixtureWebsiteStudioAi : ProtectWebsite.Services.IWebsiteStudioAiProposalService
+        {
+            public Task<ProtectWebsite.Services.WebsiteStudioAiProviderProposal> ProposeAsync(
+                ProtectWebsite.Services.WebsiteStudioAiProviderRequest request,
+                CancellationToken cancellationToken = default) =>
+                Task.FromResult(new ProtectWebsite.Services.WebsiteStudioAiProviderProposal(
+                    "Improve the selected heading.",
+                    [new WebsiteStudioAiOperation { Kind = "set_text", Text = "AI proposed heading" }]));
         }
 
         public WebsiteContentController CreateController() => new(Db, _tickets, _configuration) { ControllerContext = new() { HttpContext = new DefaultHttpContext { RequestServices = _services! } } };
