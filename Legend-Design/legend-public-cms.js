@@ -2076,7 +2076,7 @@
       .legend-cms-selected{outline:3px solid #f0cf78;outline-offset:4px}
       [data-cms-editable="true"]{cursor:pointer}
       .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
-      .legend-cms-locked{outline:2px dashed #7d8ba3!important;outline-offset:4px!important;cursor:not-allowed!important}.legend-cms-locked::after{content:"Locked";position:absolute;right:4px;top:4px;padding:3px 6px;border-radius:6px;background:#081a3ae8;color:#fff;font:700 10px/1 Inter,system-ui,sans-serif;pointer-events:none}
+      .legend-cms-locked{outline:2px dashed #7d8ba3!important;outline-offset:4px!important;cursor:not-allowed!important}
       .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
       .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad45a0;background-image:linear-gradient(to right,#d4ad454d 1px,transparent 1px),linear-gradient(to bottom,#d4ad4538 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px;box-shadow:inset 0 0 0 1px #081a3a24}
       .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;background:#4cc9f0b8}
