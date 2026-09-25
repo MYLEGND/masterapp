@@ -111,6 +111,9 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal("legend_contact", lead.WebsiteBindingId);
         Assert.Equal("www.mylegnd.com", lead.Host);
         Assert.Equal("Please contact me.", lead.Notes);
+        Assert.True(lead.TermsAccepted);
+        Assert.False(lead.MarketingEmailConsent);
+        Assert.False(lead.CallTextConsent);
 
         var analytics = Assert.Single(await f.Db.AnalyticsEvents
             .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
