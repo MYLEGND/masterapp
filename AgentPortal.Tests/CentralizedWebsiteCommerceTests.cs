@@ -63,7 +63,7 @@ public sealed class CentralizedWebsiteCommerceTests
                 WebsiteEditorSiteKeys.Protect,
                 "website-store-protect",
                 "Protect Store",
-                "https://shop.example.test/store/s/protect/checkout"),
+                "https://protect.mylegnd.com/store/s/protect/checkout"),
             new CommerceSignalProduct("p1", "Product", "product", "M", 1, 2500),
             new CommerceSignalCustomer("Jane", "Buyer", "jane@example.test", "5551234567", "Phoenix", "AZ", "85001"),
             "PF-1");
@@ -97,7 +97,7 @@ public sealed class CentralizedWebsiteCommerceTests
                 WebsiteEditorSiteKeys.Legend,
                 "website-store-founder",
                 "LEGEND Store",
-                "https://shop.example.test/store/s/legend/checkout"),
+                "https://mylegnd.com/store/checkout"),
             new CommerceSignalProduct("p1", "Product", "product", "L", 1, 5000));
 
         var row = await db.MetaSignalEvents.SingleAsync();
@@ -123,7 +123,7 @@ public sealed class CentralizedWebsiteCommerceTests
             WebsiteEditorSiteKeys.Business,
             "camo-exterior",
             "CAMO Exterior",
-            "https://shop.example.test/store/s/camo-exterior/product/window-cleaning");
+            "https://camoexterior.com/store/product/window-cleaning");
 
         var first = await service.RecordAsync(
             "AddToCart",
