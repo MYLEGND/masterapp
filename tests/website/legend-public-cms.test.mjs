@@ -31,6 +31,7 @@ const componentCatalogFixture = [
   {type:'video',label:'Video',group:'Media',inlineText:false,supportsMedia:true,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
   {type:'card',label:'Card',group:'Layout',inlineText:true,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack'],triggers:['viewed','click']},
   {type:'group',label:'Group',group:'Layout',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack','free'],triggers:['viewed']},
+  {type:'reusable',label:'Synced component',group:'Reusable',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack','free'],triggers:['viewed'],directAdd:false},
   {type:'section',label:'Section',group:'Layout',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack','free'],triggers:['viewed','scroll_threshold']},
   {type:'code',label:'Code / embed',group:'Advanced',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']}
 ];
@@ -344,7 +345,7 @@ test('canonical public stylesheet preserves authored spaces, tabs and line break
 test('Add panel is rendered from the authenticated component capability catalog',async()=>{
   const f=await domFixture();
   try {
-    assert.equal(f.w.document.querySelectorAll('#legend-cms-add-components [data-add]').length, componentCatalogFixture.filter(x=>x.type!=='image').length);
+    assert.equal(f.w.document.querySelectorAll('#legend-cms-add-components [data-add]').length, componentCatalogFixture.filter(x=>x.type!=='image'&&x.directAdd!==false).length);
     assert.equal(f.w.document.querySelector('#legend-cms-new-image')?.textContent,'Image');
     assert.equal(source.includes('<button data-add="text">Text</button>'),false);
     assert.ok(editorContractsSource.includes('WebsiteComponentCatalog'));
@@ -688,6 +689,87 @@ test('responsive anchors pin elements to edges center and stretch from the canon
     assert.match(heading.style.transform,/translateX\(-50%\)/);
     assert.match(heading.style.transform,/rotate\(5deg\)/);
   } finally { mobile.close(); }
+});
+
+test('synced component conversion shares content but keeps each instance geometry local',async()=>{
+  const f=await domFixture(); let synced; let resized; let detached;
+  try {
+    f.click('[data-open="add"]');
+    f.click('[data-add="heading"]');
+    f.click('[data-open="add"]');
+    f.click('[data-add="text"]');
+
+    f.click('.cms-extra-heading');
+    f.click('.cms-extra-text',{shiftKey:true});
+    f.click('#legend-cms-group-selection');
+
+    assert.equal(f.w.document.querySelector('#legend-cms-save-reusable').disabled,false);
+    f.click('#legend-cms-save-reusable');
+    const dialog=f.w.document.querySelector('#legend-cms-reusable-dialog');
+    assert.ok(dialog);
+    const name=dialog.querySelector('input');
+    name.value='Shared promo';
+    const saveReusable=[...dialog.querySelectorAll('button')].find(button=>button.textContent==='Save synced component');
+    saveReusable.click();
+
+    assert.equal(f.w.document.querySelectorAll('.cms-extra-reusable').length,1);
+    f.click('[data-open="add"]');
+    const libraryButton=f.w.document.querySelector('[data-add-reusable]');
+    assert.ok(libraryButton);
+    assert.equal(libraryButton.textContent,'Shared promo');
+    libraryButton.click();
+    assert.equal(f.w.document.querySelectorAll('.cms-extra-reusable').length,2);
+
+    const wrappers=[...f.w.document.querySelectorAll('.cms-extra-reusable')];
+    const firstHeading=wrappers[0].querySelector('.cms-extra-heading');
+    const secondHeading=wrappers[1].querySelector('.cms-extra-heading');
+    assert.ok(firstHeading); assert.ok(secondHeading);
+    f.click('.cms-extra-reusable:first-of-type .cms-extra-heading');
+    f.editSelected('One shared headline');
+    assert.equal(firstHeading.textContent,'One shared headline');
+    assert.equal(secondHeading.textContent,'One shared headline');
+
+    synced=await f.save();
+    const definition=Object.values(synced.reusableComponents)[0];
+    assert.equal(definition.name,'Shared promo');
+    assert.equal(definition.components.find(item=>item.type==='heading').text,'One shared headline');
+    assert.equal(synced.pages['/'].extras.filter(item=>item.type==='reusable').length,2);
+
+    const currentWrappers=[...f.w.document.querySelectorAll('.cms-extra-reusable')];
+    currentWrappers[0].dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    f.input('#legend-cms-width','61');
+    resized=await f.save();
+    const instances=resized.pages['/'].extras.filter(item=>item.type==='reusable');
+    assert.equal(instances.filter(item=>item.style?.widthPercent===61).length,1);
+    assert.equal(instances.filter(item=>item.style?.widthPercent===61).length,1);
+    assert.equal(Object.values(resized.reusableComponents)[0].style?.widthPercent,undefined);
+
+    const afterResize=[...f.w.document.querySelectorAll('.cms-extra-reusable')];
+    afterResize[0].dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    assert.equal(f.w.document.querySelector('#legend-cms-detach-reusable').disabled,false);
+    f.click('#legend-cms-detach-reusable');
+    detached=await f.save();
+
+    assert.equal(detached.pages['/'].extras.filter(item=>item.type==='reusable').length,1);
+    assert.ok(detached.pages['/'].extras.some(item=>['group','container'].includes(item.type)));
+    assert.equal(Object.keys(detached.reusableComponents).length,1);
+  } finally { f.close(); }
+});
+
+test('synced components are library-only and never appear as an empty direct-add primitive',async()=>{
+  const doc={
+    reusableComponents:{
+      shared:{id:'shared',name:'Reusable CTA',rootType:'group',style:{},layout:{mode:'flow'},responsive:{},components:[]}
+    },
+    pages:{'/':{elements:{},sectionOrder:{},extras:[]}}
+  };
+  const f=await domFixture({doc});
+  try {
+    assert.equal(f.w.document.querySelector('[data-add="reusable"]'),null);
+    const library=f.w.document.querySelector('[data-add-reusable="shared"]');
+    assert.ok(library);
+    assert.equal(library.textContent,'Reusable CTA');
+  } finally { f.close(); }
 });
 
 test('custom breakpoint manager persists document breakpoints without a parallel preference store',async()=>{
