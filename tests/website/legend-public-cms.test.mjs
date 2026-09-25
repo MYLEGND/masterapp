@@ -285,8 +285,8 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],qualityPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
-  const dom = new JSDOM(html, {url:'https://site.example/'+search,runScripts:'outside-only'});
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],qualityPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+  const dom = new JSDOM(html, {url:'https://site.example'+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
@@ -657,6 +657,100 @@ for (const siteKey of ['legend', 'protect', 'business']) {
     } finally { f.close(); }
   });
 }
+
+
+test('business Pages manager stores navigation metadata in the canonical document', async()=>{
+  const f=await domFixture({
+    siteKey:'business',
+    business:{id:'business-id',displayName:'Fixture business'},
+    pages:[{path:'/',label:'Home'},{path:'/about',label:'About'},{path:'/services',label:'Services'}]
+  });
+  try {
+    f.click('[data-open="page"]');
+    assert.equal(f.w.document.querySelector('#legend-cms-page-business-tools').hidden,false);
+    f.input('#legend-cms-page-nav-label','Start Here');
+    f.input('#legend-cms-page-order','25');
+    const visible=f.w.document.querySelector('#legend-cms-page-nav-visible');
+    visible.checked=false;
+    visible.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    f.change('#legend-cms-page-parent','/about');
+    const saved=await f.save();
+    assert.equal(saved.pages['/'].navigation.label,'Start Here');
+    assert.equal(saved.pages['/'].navigation.order,25);
+    assert.equal(saved.pages['/'].navigation.showInNavigation,false);
+    assert.equal(saved.pages['/'].navigation.parentPath,'/about');
+  } finally { f.close(); }
+});
+
+test('business Pages manager creates a real custom page draft and saves before navigation', async()=>{
+  const f=await domFixture({
+    siteKey:'business',
+    business:{id:'business-id',displayName:'Fixture business'},
+    pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}]
+  });
+  try {
+    f.click('[data-open="page"]');
+    f.input('#legend-cms-page-nav-label','Team');
+    f.input('#legend-cms-page-slug','/team');
+    f.click('#legend-cms-page-create');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
+    assert.ok(saveCall);
+    const saved=JSON.parse(saveCall.body).document;
+    assert.equal(saved.pages['/team'].title,'Team');
+    assert.equal(saved.pages['/team'].navigation.label,'Team');
+    assert.equal(saved.pages['/team'].navigation.isDeleted,false);
+    assert.ok(saved.pages['/team'].extras.some(extra=>extra.type==='section'));
+    assert.ok(saved.pages['/team'].extras.some(extra=>extra.type==='text'&&extra.text==='Team'));
+  } finally { f.close(); }
+});
+
+test('business Pages manager renames a template route with a tombstone and template identity', async()=>{
+  const html='<!doctype html><html><head></head><body data-page-key="services"><main><section><h1>Services</h1></section></main></body></html>';
+  const f=await domFixture({
+    siteKey:'business',
+    business:{id:'business-id',displayName:'Fixture business'},
+    pathname:'/business-preview/services/',
+    pages:[{path:'/',label:'Home'},{path:'/services',label:'Services'}],
+    html
+  });
+  try {
+    f.click('[data-open="page"]');
+    f.input('#legend-cms-page-slug','/work');
+    f.click('#legend-cms-page-rename');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
+    assert.ok(saveCall);
+    const saved=JSON.parse(saveCall.body).document;
+    assert.equal(saved.pages['/work'].templatePath,'/services');
+    assert.equal(saved.pages['/services'].navigation.isDeleted,true);
+    assert.equal(saved.pages['/services'].navigation.showInNavigation,false);
+  } finally { f.close(); }
+});
+
+test('business Pages manager cannot delete or rename the home route', async()=>{
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages:[{path:'/',label:'Home'}]});
+  try {
+    f.click('[data-open="page"]');
+    const remove=f.w.document.querySelector('#legend-cms-page-delete');
+    assert.equal(remove.disabled,true);
+    f.input('#legend-cms-page-slug','/new-home');
+    f.click('#legend-cms-page-rename');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage')),false);
+  } finally { f.close(); }
+});
+
+test('LEGEND and Protect Pages views do not advertise arbitrary route creation before publication support exists', async()=>{
+  for(const siteKey of ['legend','protect']){
+    const f=await domFixture({siteKey,pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}]});
+    try{
+      f.click('[data-open="page"]');
+      assert.equal(f.w.document.querySelector('#legend-cms-page-business-tools').hidden,true);
+      assert.equal(f.w.document.querySelector('#legend-cms-page-fixed-notice').hidden,false);
+    } finally { f.close(); }
+  }
+});
 
 test('quality inspector keeps saved-server checks separate from rendered-canvas checks', async () => {
   const html='<!doctype html><html><head></head><body data-page-key="home"><main><section><h1 id="duplicate">Title</h1><p id="duplicate">Copy</p><img src="https://images.example/a.png"><a href="#">Broken</a><input name="email"></section></main></body></html>';
