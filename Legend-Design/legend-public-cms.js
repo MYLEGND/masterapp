@@ -1223,6 +1223,7 @@
     const hidden = document.getElementById('legend-cms-hidden');
     const lockButton = document.getElementById('legend-cms-lock');
     const renameButton = document.getElementById('legend-cms-layer-rename');
+    const removeButton = document.getElementById('legend-cms-remove');
     const selectionCount = selectionItems().length;
     const multi = selectionCount > 1;
 
@@ -1234,6 +1235,7 @@
       if (codeGroup) codeGroup.hidden = true;
       if (lockButton) { lockButton.disabled = true; lockButton.textContent = 'Lock selected'; }
       if (renameButton) renameButton.disabled = true;
+      if (removeButton) { removeButton.disabled = true; removeButton.textContent = 'Delete selected'; }
       syncMultiSelectionControls();
       return;
     }
@@ -1246,6 +1248,7 @@
       if (codeGroup) codeGroup.hidden = true;
       if (lockButton) { lockButton.disabled = true; lockButton.textContent = 'Lock selected'; }
       if (renameButton) renameButton.disabled = true;
+      if (removeButton) { removeButton.disabled = false; removeButton.textContent = `Delete ${selectionCount} selected`; }
       syncMultiSelectionControls();
       return;
     }
@@ -1280,7 +1283,6 @@
     const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
     const serviceCard = businessServiceCardFor(selected);
     const duplicateButton = document.getElementById('legend-cms-duplicate'); if (duplicateButton) duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate block';
-    const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
@@ -1924,6 +1926,54 @@
     document.querySelectorAll('[data-z-action]').forEach(button => { button.disabled = items.length !== 1; });
   }
 
+  function selectSiblingLayers() {
+    if (!selected) return false;
+    const parent = selected.parentElement;
+    if (!parent) return false;
+    const siblings = [...parent.children].filter(el =>
+      el.dataset?.cmsEditable === 'true' &&
+      el.dataset.cmsLocked !== 'true' &&
+      !el.hidden &&
+      !el.dataset.cmsSignalOnly
+    );
+    if (!siblings.length) return false;
+    selectedElements.clear();
+    siblings.forEach(el => selectedElements.add(el));
+    selected = siblings.at(-1) || null;
+    selectedSection = currentSectionFor(selected);
+    refreshSelectionClasses();
+    syncEditorControls();
+    renderSignalControls();
+    refreshLayers();
+    updateDirectCanvasUi();
+    return true;
+  }
+
+  function nudgeSelection(dx, dy) {
+    const items = selectionItems();
+    if (!items.length || !commonSelectionIsEditable()) return false;
+    const parent = items.length > 1 ? commonSelectionParent() : items[0].parentElement;
+    if (!parent || !items.every(el => el.parentElement === parent) || !freeCanvasParent(parent)) return false;
+    const parentRect = parent.getBoundingClientRect();
+    if (!parentRect.width) return false;
+    checkpoint();
+    for (const el of items) {
+      const rect = el.getBoundingClientRect();
+      const override = overrideForElement(el);
+      if (!override) continue;
+      const variant = editableVariant(override);
+      variant.style ||= {};
+      variant.style.positionMode = 'absolute';
+      variant.style.offsetXPercent = Math.round(((rect.left - parentRect.left + dx) / parentRect.width * 100) * 1000) / 1000;
+      variant.style.offsetYPx = Math.round((rect.top - parentRect.top + dy) * 1000) / 1000;
+      applyElementOverride(el, override);
+    }
+    updateDirectCanvasUi();
+    syncEditorControls();
+    markDirty();
+    return true;
+  }
+
   function adjustSelectedZ(action) {
     if (!selected) return;
     const parent = selected.parentElement;
@@ -2046,14 +2096,36 @@
       fontInput.replaceWith(select);
     }
     document.addEventListener('keydown', event => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const editingText = event.target.closest?.('input,textarea,select,[contenteditable="true"]');
+      const command = (event.ctrlKey || event.metaKey) && !event.altKey;
       const key = event.key.toLowerCase();
-      if (key === 's') { event.preventDefault(); chooseDraft(); return; }
-      if (event.target.closest?.('input,textarea,select,[contenteditable="true"]')) return;
-      if (key === 'z' || key === 'y') {
+
+      if (command && key === 's') { event.preventDefault(); chooseDraft(); return; }
+      if (editingText) return;
+
+      if (event.key === 'Escape') { if (selectionItems().length) { event.preventDefault(); setSelected(null); } return; }
+      if (command && key === 'a') { if (selectSiblingLayers()) event.preventDefault(); return; }
+      if (command && key === 'g') {
+        event.preventDefault();
+        if (event.shiftKey) ungroupSelected();
+        else groupSelection();
+        return;
+      }
+      if (command && (key === 'z' || key === 'y')) {
         event.preventDefault();
         if (key === 'y' || event.shiftKey) restoreHistory(redoStack, undoStack);
         else restoreHistory(undoStack, redoStack);
+        return;
+      }
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (selectionItems().length) { event.preventDefault(); deleteSelection(); }
+        return;
+      }
+      const arrows = { ArrowLeft: [-1,0], ArrowRight: [1,0], ArrowUp: [0,-1], ArrowDown: [0,1] };
+      const delta = arrows[event.key];
+      if (delta) {
+        const step = event.shiftKey ? 10 : 1;
+        if (nudgeSelection(delta[0] * step, delta[1] * step)) event.preventDefault();
       }
     });
     refreshHistoryControls();
