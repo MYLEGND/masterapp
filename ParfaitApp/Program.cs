@@ -127,6 +127,11 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 });
 
 builder.Services.AddScoped<ICommerceBusinessProvisioningService, CommerceBusinessProvisioningService>();
+builder.Services.AddScoped<CommerceBusinessScopeResolver>();
+builder.Services.AddSingleton(sp =>
+    Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
 builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatformService>();
 builder.Services.AddScoped<ParfaitProductService>();
