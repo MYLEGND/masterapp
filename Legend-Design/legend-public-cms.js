@@ -1037,6 +1037,10 @@
     pageState().extras.forEach(extra => {
       applyElementOverride(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra);
     });
+    document.querySelectorAll('[data-cms-reusable-definition-id]').forEach(el => {
+      const override = overrideForElement(el, false);
+      if (override) applyElementOverride(el, override);
+    });
     updateDirectCanvasUi();
   }
 
