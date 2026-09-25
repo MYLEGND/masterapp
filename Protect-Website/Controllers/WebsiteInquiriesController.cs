@@ -254,7 +254,8 @@ public sealed class WebsiteInquiriesController : ControllerBase
             return await SubmissionResult(existing, firstName, lastName, phone, email, message, path, cancellationToken);
         }
 
-        return Ok(new { accepted = true });
+        var notificationSent = await TryNotifyBusinessAsync(inquiry.Id, cancellationToken);
+        return Ok(new { accepted = true, notificationSent });
     }
 
     private async Task<IActionResult> SubmitFounderAsync(
@@ -407,17 +408,39 @@ public sealed class WebsiteInquiriesController : ControllerBase
         var name = $"{firstName} {lastName}".Trim();
         var rowMatches = row.Name == name && row.Email == email && row.Message == message && row.SourcePath == path;
         if (!rowMatches) return Conflict(new { error = "submission_id_already_used" });
-        if (!row.WebsiteLeadId.HasValue) return Ok(new { accepted = true });
 
-        var lead = await _db.WebsiteLeads.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.LeadId == row.WebsiteLeadId.Value, cancellationToken);
-        return lead is not null &&
-               lead.FirstName == firstName &&
-               (lead.LastName ?? "") == lastName &&
-               (lead.Phone ?? "") == phone &&
-               lead.Email == email
-            ? Ok(new { accepted = true })
-            : Conflict(new { error = "submission_id_already_used" });
+        if (row.WebsiteLeadId.HasValue)
+        {
+            var lead = await _db.WebsiteLeads.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.LeadId == row.WebsiteLeadId.Value, cancellationToken);
+            if (lead is null ||
+                lead.FirstName != firstName ||
+                (lead.LastName ?? "") != lastName ||
+                (lead.Phone ?? "") != phone ||
+                lead.Email != email)
+                return Conflict(new { error = "submission_id_already_used" });
+        }
+
+        var notificationSent = await TryNotifyBusinessAsync(row.Id, cancellationToken);
+        return Ok(new { accepted = true, notificationSent });
+    }
+
+    private async Task<bool> TryNotifyBusinessAsync(Guid inquiryId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var service = HttpContext.RequestServices.GetRequiredService<BusinessInquiryNotificationService>();
+            return await service.DeliverOneAsync(inquiryId, cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The persisted CommerceWebsiteInquiry remains the durable retry queue.
+            return false;
+        }
     }
 
     [HttpGet("manage")]
