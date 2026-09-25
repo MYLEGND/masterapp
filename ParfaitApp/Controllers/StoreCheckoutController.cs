@@ -319,6 +319,7 @@ public sealed class StoreCheckoutController : Controller
             else
                 await _analytics.TrackPurchaseScopedAsync(
                     store.CommerceBusinessId,
+                    store.AgentTrackingProfileId,
                     store.WebsiteContentVersionId,
                     store.WebsiteSiteKey,
                     store.BusinessKey,
