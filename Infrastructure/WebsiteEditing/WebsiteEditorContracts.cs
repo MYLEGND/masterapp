@@ -86,6 +86,8 @@ public sealed class WebsiteElementOverride
     public string? Text { get; set; }
     public string? ImageDataUrl { get; set; }
     public bool? Hidden { get; set; }
+    public bool? EditorLocked { get; set; }
+    public string? EditorLabel { get; set; }
     public string? ActionKey { get; set; }
     public string? Href { get; set; }
     public string? Target { get; set; }
@@ -153,6 +155,8 @@ public sealed class WebsiteExtraComponent
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string SectionId { get; set; } = "";
     public string Type { get; set; } = "text";
+    public bool? EditorLocked { get; set; }
+    public string? EditorLabel { get; set; }
     public string? ActionKey { get; set; }
     public string? Href { get; set; }
     public string? Target { get; set; }
