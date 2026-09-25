@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Leads;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -13,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using ProtectWebsite.Controllers;
+using ProtectWebsite.Services.Communication;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -82,6 +84,48 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Null(analytics.AgentTrackingProfileId);
         Assert.IsType<ConflictObjectResult>(await f.Controller.Submit(request with { Message = "Different request" }, CancellationToken.None));
         Assert.IsType<ConflictObjectResult>(await f.Controller.Submit(request with { Phone = "(602) 555-0100" }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task FounderLegendOriginUsesTheSameCanonicalInquiryLeadWithoutCommerceDuplication()
+    {
+        using var f = new Fixture("https://www.mylegnd.com");
+        await f.SeedLegendPublishedAsync();
+        var request = f.Request() with
+        {
+            SourceActionKey = "legend_contact",
+            SessionId = "legend-session",
+            VisitorId = "legend-visitor"
+        };
+
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, CancellationToken.None));
+        var body = System.Text.Json.JsonSerializer.Serialize(result.Value);
+        Assert.Contains("\"accepted\":true", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Null(lead.CommerceBusinessId);
+        Assert.Null(lead.AgentTrackingProfileId);
+        Assert.Equal(f.VersionId, lead.WebsiteContentVersionId);
+        Assert.Equal("LegendInquiry", lead.InterestType);
+        Assert.Equal("legend_contact", lead.WebsiteBindingId);
+        Assert.Equal("www.mylegnd.com", lead.Host);
+        Assert.Equal("Please contact me.", lead.Notes);
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Null(analytics.CommerceBusinessId);
+        Assert.Equal(f.VersionId, analytics.WebsiteContentVersionId);
+        Assert.Contains("\"siteKey\":\"legend\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
+
+        f.EmailSender.Verify(sender => sender.TrySendAsync(
+            "founder@example.org",
+            It.Is<string>(subject => subject.Contains("LEGEND", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            "visitor@example.org",
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -184,13 +228,34 @@ public sealed class WebsiteInquiryIsolationTests
         public Guid BusinessId { get; } = Guid.NewGuid();
         public Guid VersionId { get; } = Guid.NewGuid();
         public WebsiteInquiriesController Controller { get; }
+        public Mock<IProtectEmailSender> EmailSender { get; } = new();
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());
         public Fixture(string origin = "https://business.example")
         {
-            var config = new ConfigurationBuilder().Build();
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
+            {
+                new System.Collections.Generic.KeyValuePair<string, string?>("Contact:RecipientEmail", "founder@example.org")
+            }).Build();
             var domains = new WebsiteDomainService(Db, Mock.Of<IHttpClientFactory>(), config);
-            Controller = new(Db, _tickets, config, domains,
-                new Infrastructure.Leads.WebsiteLifeLeadCaptureService(Db, Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Leads.WebsiteLifeLeadCaptureService>.Instance))
+            var scopes = new PublicWebsiteRuntimeScopeResolver(Db, domains, config);
+            var recipients = new WebsiteIntakeRecipientResolver(Db, config);
+            EmailSender.Setup(sender => sender.TrySendAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<bool>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
+            Controller = new(
+                Db,
+                _tickets,
+                config,
+                scopes,
+                new WebsiteLifeLeadCaptureService(Db, Microsoft.Extensions.Logging.Abstractions.NullLogger<WebsiteLifeLeadCaptureService>.Instance),
+                recipients,
+                EmailSender.Object)
                 { ControllerContext = new() { HttpContext = new DefaultHttpContext() } };
             Controller.Request.Headers.Origin = origin;
         }
@@ -198,6 +263,19 @@ public sealed class WebsiteInquiryIsolationTests
             Guid.NewGuid(), "Visitor", "Example", "(602) 555-0199", "visitor@example.org", "Please contact me.", "/contact", true,
             SourceActionKey: "business_contact", SessionId: "business-session", VisitorId: "business-visitor",
             UtmSource: "meta", UtmCampaign: "campaign-one", Fbclid: "fbclid-one");
+        public async Task SeedLegendPublishedAsync()
+        {
+            var state = new WebsiteContentState
+            {
+                OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey,
+                SiteKey = WebsiteEditorSiteKeys.Legend,
+                PublishedVersionId = VersionId
+            };
+            Db.Add(state);
+            Db.Add(new WebsiteContentVersion { Id = VersionId, StateId = state.Id });
+            await Db.SaveChangesAsync();
+        }
+
         public async Task SeedPublishedAsync()
         {
             Db.Add(new CommerceBusiness { Id = BusinessId, Key = "business", DisplayName = "Business" });
