@@ -547,6 +547,32 @@ test('professional keyboard shortcuts select siblings group ungroup delete and n
   } finally { f.close(); }
 });
 
+test('responsive anchors pin elements to edges center and stretch from the canonical style record',async()=>{
+  const doc={breakpoints:[{id:'tablet',label:'Tablet',maxWidthPx:1024},{id:'mobile',label:'Mobile',maxWidthPx:640}],pages:{'/':{elements:{'home.h1.template-title.1':{
+    style:{positionMode:'absolute',horizontalAnchor:'right',verticalAnchor:'bottom',insetRightPx:24,insetBottomPx:36,rotationDeg:5},
+    responsive:{mobile:{style:{horizontalAnchor:'center',verticalAnchor:'top',insetTopPx:18},layout:{}}}
+  }},sectionOrder:{},extras:[]}}};
+  const desktop=await domFixture({doc,search:'',innerWidth:1280});
+  try {
+    const heading=desktop.w.document.querySelector('main h1');
+    assert.equal(heading.style.position,'absolute');
+    assert.equal(heading.style.right,'24px');
+    assert.equal(heading.style.bottom,'36px');
+    assert.equal(heading.style.left,'');
+    assert.match(heading.style.transform,/rotate\(5deg\)/);
+  } finally { desktop.close(); }
+
+  const mobile=await domFixture({doc,search:'',innerWidth:500});
+  try {
+    const heading=mobile.w.document.querySelector('main h1');
+    assert.equal(heading.style.left,'50%');
+    assert.equal(heading.style.top,'18px');
+    assert.equal(heading.style.right,'');
+    assert.match(heading.style.transform,/translateX\(-50%\)/);
+    assert.match(heading.style.transform,/rotate\(5deg\)/);
+  } finally { mobile.close(); }
+});
+
 test('custom breakpoint manager persists document breakpoints without a parallel preference store',async()=>{
   const f=await domFixture(); let saved;
   try {
