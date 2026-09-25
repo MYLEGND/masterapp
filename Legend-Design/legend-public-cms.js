@@ -1076,6 +1076,8 @@
     const offsetY = document.getElementById('legend-cms-offset-y');
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
+    const lockButton = document.getElementById('legend-cms-lock');
+    const renameButton = document.getElementById('legend-cms-layer-rename');
 
     document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || !!selected.dataset.cmsSignalOnly; });
     if (!selected) {
@@ -1083,6 +1085,8 @@
       if (inlineHelp) inlineHelp.hidden = true;
       if (imageGroup) imageGroup.hidden = true;
       if (codeGroup) codeGroup.hidden = true;
+      if (lockButton) { lockButton.disabled = true; lockButton.textContent = 'Lock selected'; }
+      if (renameButton) renameButton.disabled = true;
       return;
     }
 
@@ -1102,6 +1106,11 @@
     const resolved = resolvedVariant(ov);
     const variantStyle = variant?.style || {};
     const resolvedStyle = resolved.style || {};
+    if (lockButton) {
+      lockButton.disabled = false;
+      lockButton.textContent = ov.editorLocked === true ? 'Unlock selected' : 'Lock selected';
+    }
+    if (renameButton) renameButton.disabled = false;
     const computed = getComputedStyle(selected);
     const parentStyle = selected.parentElement ? getComputedStyle(selected.parentElement) : null;
     const parentWidth = selected.parentElement
@@ -1283,6 +1292,9 @@
     if (selected instanceof HTMLImageElement) selected.src = original.src || '';
     else if (!selected.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName)) { setContentText(selected, original.text); }
     applyStyle(selected, null);
+    applyLayout(selected, null);
+    delete selected.dataset.cmsLocked;
+    selected.classList.remove('legend-cms-locked');
     syncEditorControls();
     markDirty();
   }
@@ -1359,7 +1371,7 @@
   function restoreHistory(from, to) {
     if (!from.length) return;
     to.push(JSON.stringify(documentState));
-    baselineNodes.forEach(({ el, parent, next }) => { if (el.dataset.cmsSignalOnly) return; if (parent) parent.insertBefore(el, next?.parentElement === parent ? next : null); const original = rememberOriginal(el); el.hidden = original.hidden; if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) { setContentText(el, original.text); } if (original.href != null) el.setAttribute('href',original.href); if (original.src != null) el.setAttribute('src',original.src); applyStyle(el, null); });
+    baselineNodes.forEach(({ el, parent, next }) => { if (el.dataset.cmsSignalOnly) return; if (parent) parent.insertBefore(el, next?.parentElement === parent ? next : null); const original = rememberOriginal(el); el.hidden = original.hidden; if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) { setContentText(el, original.text); } if (original.href != null) el.setAttribute('href',original.href); if (original.src != null) el.setAttribute('src',original.src); applyStyle(el, null); applyLayout(el, null); delete el.dataset.cmsLocked; el.classList.remove('legend-cms-locked'); });
     applyDocument(JSON.parse(from.pop())); setSelected(null); markDirty();
   }
   function safeUrl(value, media = false) {
@@ -2064,6 +2076,7 @@
       .legend-cms-selected{outline:3px solid #f0cf78;outline-offset:4px}
       [data-cms-editable="true"]{cursor:pointer}
       .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
+      .legend-cms-locked{outline:2px dashed #7d8ba3!important;outline-offset:4px!important;cursor:not-allowed!important}.legend-cms-locked::after{content:"Locked";position:absolute;right:4px;top:4px;padding:3px 6px;border-radius:6px;background:#081a3ae8;color:#fff;font:700 10px/1 Inter,system-ui,sans-serif;pointer-events:none}
       .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
       .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad45a0;background-image:linear-gradient(to right,#d4ad454d 1px,transparent 1px),linear-gradient(to bottom,#d4ad4538 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px;box-shadow:inset 0 0 0 1px #081a3a24}
       .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;background:#4cc9f0b8}
