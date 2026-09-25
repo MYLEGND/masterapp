@@ -297,6 +297,19 @@ public sealed class WebsiteContentController : ControllerBase
         string ElementId,
         string BindingId);
 
+    public sealed record WebsiteStudioCommentCreateRequest(
+        string Ticket,
+        long ExpectedRevision,
+        string PagePath,
+        string? ElementId,
+        string Body,
+        Guid? ParentCommentId = null);
+
+    public sealed record WebsiteStudioCommentStatusRequest(
+        string Ticket,
+        Guid CommentId,
+        string Status);
+
 
     public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null);
     public sealed record ProfileRequest(string Ticket, BusinessWebsiteProfileInput Settings);
@@ -421,6 +434,146 @@ public sealed class WebsiteContentController : ControllerBase
                 serverCapiWouldRequireVerifiedOutcome = serverCapiRequiresVerifiedOutcome,
                 serverCapiDestinationReady = serverCapiRequiresVerifiedOutcome && destination.HasServerCapiCredentials
             }
+        });
+    }
+
+    [HttpGet("manage/collaboration")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Collaboration(
+        [FromQuery] string ticket,
+        [FromQuery] string pagePath,
+        [FromQuery] string? elementId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        var route = NormalizeCollaborationPagePath(pagePath);
+        if (route is null || !document.Pages.ContainsKey(route))
+            return BadRequest(new { error = "invalid_collaboration_page" });
+
+        var role = await ResolveCollaborationRoleAsync(actor, cancellationToken);
+        var comments = await _db.Set<WebsiteStudioComment>().AsNoTracking()
+            .Where(comment =>
+                comment.WebsiteContentStateId == state.Id &&
+                comment.PagePath == route &&
+                (elementId == null || comment.ElementId == elementId))
+            .OrderBy(comment => comment.CreatedUtc)
+            .Take(250)
+            .ToListAsync(cancellationToken);
+        var collaborators = await CollaborationRosterAsync(actor, cancellationToken);
+
+        return Ok(new
+        {
+            source = "website_studio_collaboration",
+            revision = state.Revision,
+            publishedVersionId = state.PublishedVersionId,
+            role,
+            collaborators,
+            comments = comments.Select(comment => CommentPayload(
+                comment,
+                role.CanResolveAll || string.Equals(comment.AuthorUserId, actor.ActorUserId, StringComparison.OrdinalIgnoreCase)))
+        });
+    }
+
+    [HttpPost("manage/collaboration/comments")]
+    public async Task<IActionResult> CreateCollaborationComment(
+        [FromBody] WebsiteStudioCommentCreateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+
+        var document = Read(state.DraftJson);
+        var route = NormalizeCollaborationPagePath(request.PagePath);
+        if (route is null || !document.Pages.ContainsKey(route))
+            return BadRequest(new { error = "invalid_collaboration_page" });
+        var elementId = NormalizeCollaborationElementId(request.ElementId);
+        if (request.ElementId is not null && elementId is null)
+            return BadRequest(new { error = "invalid_collaboration_element" });
+        var body = request.Body?.Trim();
+        if (string.IsNullOrWhiteSpace(body) || body.Length > 4000)
+            return BadRequest(new { error = "invalid_collaboration_comment", message = "Comments must contain 1–4,000 characters." });
+
+        WebsiteStudioComment? parent = null;
+        if (request.ParentCommentId.HasValue)
+        {
+            parent = await _db.Set<WebsiteStudioComment>().AsNoTracking()
+                .SingleOrDefaultAsync(comment =>
+                    comment.Id == request.ParentCommentId.Value &&
+                    comment.WebsiteContentStateId == state.Id &&
+                    comment.PagePath == route,
+                    cancellationToken);
+            if (parent is null)
+                return BadRequest(new { error = "invalid_parent_comment" });
+            if (parent.ParentCommentId.HasValue)
+                return BadRequest(new { error = "nested_comment_depth_not_supported" });
+        }
+
+        var role = await ResolveCollaborationRoleAsync(actor, cancellationToken);
+        var comment = new WebsiteStudioComment
+        {
+            WebsiteContentStateId = state.Id,
+            WebsiteContentVersionId = state.PublishedVersionId,
+            AnchorRevision = state.Revision,
+            PagePath = route,
+            ElementId = elementId ?? parent?.ElementId,
+            ParentCommentId = parent?.Id,
+            Body = body,
+            Status = "open",
+            AuthorUserId = actor.ActorUserId!.Trim(),
+            AuthorEmail = string.IsNullOrWhiteSpace(actor.ActorEmail) ? null : actor.ActorEmail.Trim(),
+            AuthorRole = role.RoleKey,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        _db.Set<WebsiteStudioComment>().Add(comment);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
+        {
+            source = "website_studio_collaboration",
+            comment = CommentPayload(comment, canResolve: true)
+        });
+    }
+
+    [HttpPost("manage/collaboration/comments/status")]
+    public async Task<IActionResult> SetCollaborationCommentStatus(
+        [FromBody] WebsiteStudioCommentStatusRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var status = request.Status?.Trim().ToLowerInvariant();
+        if (status is not ("open" or "resolved"))
+            return BadRequest(new { error = "invalid_comment_status" });
+
+        var state = await StateAsync(actor, cancellationToken);
+        var comment = await _db.Set<WebsiteStudioComment>()
+            .SingleOrDefaultAsync(value =>
+                value.Id == request.CommentId &&
+                value.WebsiteContentStateId == state.Id,
+                cancellationToken);
+        if (comment is null) return NotFound();
+
+        var role = await ResolveCollaborationRoleAsync(actor, cancellationToken);
+        var isAuthor = string.Equals(comment.AuthorUserId, actor.ActorUserId, StringComparison.OrdinalIgnoreCase);
+        if (!role.CanResolveAll && !isAuthor) return Forbid();
+
+        comment.Status = status;
+        comment.UpdatedUtc = DateTime.UtcNow;
+        comment.ResolvedByUserId = status == "resolved" ? actor.ActorUserId : null;
+        comment.ResolvedUtc = status == "resolved" ? DateTime.UtcNow : null;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
+        {
+            source = "website_studio_collaboration",
+            comment = CommentPayload(comment, canResolve: true)
         });
     }
 
@@ -1077,6 +1230,145 @@ public sealed class WebsiteContentController : ControllerBase
         bool HasBrowserPixel,
         bool HasServerCapiCredentials,
         bool TestEventCodeConfigured);
+
+    private sealed record CollaborationRole(
+        string RoleKey,
+        string Label,
+        bool CanComment,
+        bool CanResolveAll,
+        bool CanPublish);
+
+    private async Task<CollaborationRole> ResolveCollaborationRoleAsync(
+        WebsiteEditorTicket actor,
+        CancellationToken cancellationToken)
+    {
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Legend)
+            return new("founder", "Founder", true, true, true);
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Protect)
+            return new("agent", "Agent", true, true, true);
+
+        if (!actor.CommerceBusinessId.HasValue || !actor.ActorClientProfileId.HasValue)
+            return new("member", "Member", false, false, false);
+
+        var member = await _db.CommerceBusinessMembers.AsNoTracking()
+            .SingleOrDefaultAsync(value =>
+                value.CommerceBusinessId == actor.CommerceBusinessId.Value &&
+                value.ClientProfileId == actor.ActorClientProfileId.Value &&
+                value.Status.ToLower() == "active",
+                cancellationToken);
+        if (member is null || !member.CanManageStorefront)
+            return new("member", "Member", false, false, false);
+
+        var canPublish = await WebsiteBusinessAccess.CanPublishAsync(
+            _db,
+            actor.CommerceBusinessId.Value,
+            actor.ActorClientProfileId.Value,
+            cancellationToken);
+        var roleKey = string.IsNullOrWhiteSpace(member.RoleKey)
+            ? "member"
+            : member.RoleKey.Trim().ToLowerInvariant();
+        var label = roleKey switch
+        {
+            "owner" => "Owner",
+            "account" => "Account manager",
+            "platform_owner" => "Platform owner",
+            _ => "Website editor"
+        };
+        return new(roleKey, label, true, canPublish, canPublish);
+    }
+
+    private async Task<object[]> CollaborationRosterAsync(
+        WebsiteEditorTicket actor,
+        CancellationToken cancellationToken)
+    {
+        if (actor.SiteKey != WebsiteEditorSiteKeys.Business || !actor.CommerceBusinessId.HasValue)
+        {
+            return
+            [
+                new
+                {
+                    roleKey = actor.SiteKey == WebsiteEditorSiteKeys.Legend ? "founder" : "agent",
+                    displayName = actor.SiteKey == WebsiteEditorSiteKeys.Legend ? "Founder" : "Agent",
+                    canManageStorefront = true,
+                    canPublish = true
+                }
+            ];
+        }
+
+        var rows = await (
+            from member in _db.CommerceBusinessMembers.AsNoTracking()
+            join profile in _db.ClientProfiles.AsNoTracking()
+                on member.ClientProfileId equals profile.Id
+            where member.CommerceBusinessId == actor.CommerceBusinessId.Value &&
+                  member.Status.ToLower() == "active" &&
+                  member.CanManageStorefront
+            orderby member.DisplayName, profile.FirstName, profile.LastName
+            select new
+            {
+                member.ClientProfileId,
+                member.RoleKey,
+                member.DisplayName,
+                member.CanManageStorefront,
+                profile.FirstName,
+                profile.LastName
+            }).ToListAsync(cancellationToken);
+
+        return rows.Select(row =>
+        {
+            var roleKey = string.IsNullOrWhiteSpace(row.RoleKey)
+                ? "member"
+                : row.RoleKey.Trim().ToLowerInvariant();
+            var displayName = string.IsNullOrWhiteSpace(row.DisplayName)
+                ? string.Join(' ', new[] { row.FirstName, row.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim()
+                : row.DisplayName.Trim();
+            return (object)new
+            {
+                row.ClientProfileId,
+                roleKey,
+                displayName = string.IsNullOrWhiteSpace(displayName) ? "Website collaborator" : displayName,
+                canManageStorefront = row.CanManageStorefront,
+                canPublish = roleKey is "owner" or "account"
+            };
+        }).ToArray();
+    }
+
+    private static object CommentPayload(WebsiteStudioComment comment, bool canResolve) => new
+    {
+        comment.Id,
+        comment.WebsiteContentVersionId,
+        comment.AnchorRevision,
+        comment.PagePath,
+        comment.ElementId,
+        comment.ParentCommentId,
+        comment.Body,
+        comment.Status,
+        comment.AuthorEmail,
+        comment.AuthorRole,
+        comment.CreatedUtc,
+        comment.UpdatedUtc,
+        comment.ResolvedUtc,
+        canResolve
+    };
+
+    private static string? NormalizeCollaborationPagePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var route = value.Trim().ToLowerInvariant();
+        if (!route.StartsWith('/') || route.StartsWith("//") || route.Contains('?') ||
+            route.Contains('#') || route.Contains("..") || route.Contains('\\') ||
+            route.Any(char.IsControl) || route.Length > 160)
+            return null;
+        return route.Length > 1 ? route.TrimEnd('/') : route;
+    }
+
+    private static string? NormalizeCollaborationElementId(string? value)
+    {
+        if (value is null) return null;
+        var id = value.Trim();
+        if (id.Length == 0 || id.Length > 200 || id.Any(char.IsControl))
+            return null;
+        return id;
+    }
 
     private async Task<SignalDestinationStatus> ResolveSignalDestinationAsync(
         WebsiteEditorTicket actor,
