@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder reported that Shop Parfait is still returning HTTP 500 on authenticated internal pages after the first public-render repair and requested the entire Parfait app be surgically fixed. Release only Parfait. Preserve AgentPortal, ClientApp, Protect, LEGEND Website, Cloudflare routing, billing, CRM, website editor state, and unrelated systems.",
-  "purpose": "Complete the Parfait HTTP 500 repair by removing the fatal legacy Meta credential migration throw from the canonical business-profile migration. If the old encrypted Meta token cannot be decrypted, migrate all non-secret Parfait profile settings into the existing owner-scoped MarketingConnection authority, leave the credential disconnected for explicit reconnect, and keep storefront plus internal operations available. No parallel authority and no legacy-file fallback after migration.",
-  "requestId": "parfait-internal-app-500-legacy-meta-migration-repair-retry-20260925",
+  "authorization": "Founder reported that Shop Parfait internal login is failing with HTTP 500 and explicitly requested a surgical app-wide fix. Deploy only Parfait. Preserve AgentPortal, ClientApp, Protect, LEGEND Website, Cloudflare routing, billing, CRM, editor state, and unrelated systems.",
+  "purpose": "Complete the planned Parfait Data Protection migration so OIDC state, nonce/correlation data, and ParfaitApp.InternalAuth survive deploys/restarts. Use the existing platform Data Protection authority and the canonical Portal Blob/Key Vault locations, isolated by the ParfaitApp application name. This is the one documented migration boundary; existing Parfait sessions may require one fresh sign-in and an unreadable legacy Meta credential may require reconnect.",
+  "requestId": "parfait-auth-data-protection-login-500-repair-20260925",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-parfait"
