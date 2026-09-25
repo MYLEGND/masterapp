@@ -16,13 +16,13 @@ test('publication compiler process consumes stdin and returns compiled pages',()
     maxBuffer:40*1024*1024
   });
   const result=JSON.parse(stdout);
-  assert.deepEqual(Object.keys(result.pages),['/','/about','/services','/contact']);
+  assert.deepEqual(Object.keys(result.pages),['/','/about','/contact','/services']);
 });
 
 
 test('all normal business pages use canonical components, actual scoped name and public navigation without LEGEND facts',async()=>{
   const result=await compileBusiness({business,document:document()});
-  assert.deepEqual(Object.keys(result.pages),['/','/about','/services','/contact']);
+  assert.deepEqual(Object.keys(result.pages),['/','/about','/contact','/services']);
   for(const page of Object.values(result.pages)){
     const dom=parseHTML(page.html).document;
     assert.equal(dom.querySelector('.brand strong').textContent,business.displayName);
