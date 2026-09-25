@@ -4,6 +4,7 @@
     ViewData["BodyClass"] = "sp-body";
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
+    var storeRoot = ViewData["StoreRootPath"] as string ?? "/store";
 
     static string ImageDisplayStyle(string? fit, int positionX, int positionY, decimal zoom)
     {
@@ -20,14 +21,14 @@
 <section class="sp-store-page">
     <div class="sp-shell sp-shell--wide">
         <header class="sp-store-hero sp-store-hero--collection">
-            <h1>Parfait Collection</h1>
+            <h1>@Model.StoreName</h1>
         </header>
 
-        <section class="sp-shop-grid" aria-label="Parfait products">
+        <section class="sp-shop-grid" aria-label="@Model.StoreName products">
             @foreach (var product in Model.Products)
             {
                 <article class="sp-shop-card">
-                    <a class="sp-shop-media" href="/store/product/@product.Slug" aria-label="View @product.Name">
+                    <a class="sp-shop-media" href="@($"{storeRoot}/product/{product.Slug}")" aria-label="View @product.Name">
                         @if (!string.IsNullOrWhiteSpace(product.Badge))
                         {
                             <span class="sp-shop-badge">@product.Badge</span>
@@ -57,7 +58,7 @@
                         </div>
 
                         <div class="sp-shop-actions">
-                            <a class="sp-button sp-button--primary sp-shop-link" href="/store/product/@product.Slug">View Product</a>
+                            <a class="sp-button sp-button--primary sp-shop-link" href="@($"{storeRoot}/product/{product.Slug}")">View Product</a>
                         </div>
                     </div>
                 </article>
