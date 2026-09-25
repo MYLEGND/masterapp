@@ -123,7 +123,7 @@ public sealed class CommerceStoreContextService(
             root + "/cart",
             root + "/checkout",
             root + "/success",
-            "legendCommerceCart:" + business.Key.ToLowerInvariant(),
+            isParfait ? "parfaitCart" : "legendCommerceCart:" + business.Key.ToLowerInvariant(),
             isParfait,
             settings?.AccentColor?.Trim() ?? "",
             string.IsNullOrWhiteSpace(settings?.LogoUrl) ? null : settings!.LogoUrl.Trim(),
