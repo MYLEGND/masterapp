@@ -96,6 +96,43 @@ public sealed class WebsiteStudioV2ContractTests
     }
 
     [Fact]
+    public void ReusableDefinitions_AreOneLevelAndMissingInstancesFailSavedDraftQuality()
+    {
+        var source = new WebsiteContentDocument();
+        source.ReusableComponents["shared-section"] = new WebsiteReusableComponentDefinition
+        {
+            Id = "shared-section",
+            Name = "Shared section",
+            Kind = "section",
+            Extras =
+            [
+                new WebsiteExtraComponent { Id = "root", Type = "section", SectionId = "component.root" },
+                new WebsiteExtraComponent { Id = "copy", Type = "text", SectionId = "extra:root", Text = "Shared copy" },
+                new WebsiteExtraComponent { Id = "nested", Type = "reusable", SectionId = "extra:root", SyncSourceId = "other-component" }
+            ]
+        };
+        source.Pages["/"] = new WebsitePageDocument
+        {
+            Title = "Home",
+            Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true },
+            Extras =
+            [
+                new WebsiteExtraComponent { Id = "valid-instance", Type = "reusable", SectionId = "home.section.1", SyncSourceId = "shared-section" },
+                new WebsiteExtraComponent { Id = "missing-instance", Type = "reusable", SectionId = "home.section.1", SyncSourceId = "missing-component" }
+            ]
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+        Assert.DoesNotContain(clean.ReusableComponents["shared-section"].Extras, extra => extra.Type == "reusable");
+        Assert.Contains(clean.Pages["/"].Extras, extra => extra.Id == "valid-instance" && extra.SyncSourceId == "shared-section");
+        Assert.Contains(clean.Pages["/"].Extras, extra => extra.Id == "missing-instance" && extra.SyncSourceId == "missing-component");
+
+        var report = WebsiteDraftQualityInspector.Inspect(clean);
+        Assert.DoesNotContain(report.Checks, check => check.ElementId == "extra:valid-instance" && check.Code == "sync_source_missing");
+        Assert.Contains(report.Checks, check => check.ElementId == "extra:missing-instance" && check.Code == "sync_source_missing" && check.Severity == "error");
+    }
+
+    [Fact]
     public void Sanitize_UpgradesLegacyDocumentWithoutInventingElementOverrides()
     {
         var source = new WebsiteContentDocument { Version = 1 };
