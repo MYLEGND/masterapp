@@ -161,10 +161,10 @@ public class MetaSignalAnalyticsBridgeTests
         source.AgentTrackingProfileId = null;
         source.AgentSlug = null;
 
-        var bridge = new ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge(
+        var bridge = new Infrastructure.Analytics.MetaSignalAnalyticsBridge(
             Mock.Of<IServiceScopeFactory>(),
             Options.Create(new Infrastructure.Analytics.MetaSignalIntelligenceOptions()),
-            NullLogger<ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge>.Instance);
+            NullLogger<Infrastructure.Analytics.MetaSignalAnalyticsBridge>.Instance);
 
         var bridgeRow = await InvokeTryBuildBridgeRowAsync(bridge, db, source);
 
@@ -196,10 +196,10 @@ public class MetaSignalAnalyticsBridgeTests
                 metaSingleTruthDispatchEligible: false,
                 metaPipelineOrigin: "unit_test"));
 
-        var bridge = new ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge(
+        var bridge = new Infrastructure.Analytics.MetaSignalAnalyticsBridge(
             Mock.Of<IServiceScopeFactory>(),
             Options.Create(new Infrastructure.Analytics.MetaSignalIntelligenceOptions()),
-            NullLogger<ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge>.Instance);
+            NullLogger<Infrastructure.Analytics.MetaSignalAnalyticsBridge>.Instance);
 
         var bridgeRow = await InvokeTryBuildBridgeRowAsync(bridge, db, source);
 
@@ -230,9 +230,9 @@ public class MetaSignalAnalyticsBridgeTests
         string trafficType,
         Guid? resolvedLeadId)
     {
-        var helperType = typeof(ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge)
+        var helperType = typeof(Infrastructure.Analytics.MetaSignalAnalyticsBridge)
             .Assembly
-            .GetType("ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridgeMetadata");
+            .GetType("Infrastructure.Analytics.MetaSignalAnalyticsBridgeMetadata");
         Assert.NotNull(helperType);
 
         var method = helperType!.GetMethod(
@@ -271,11 +271,11 @@ public class MetaSignalAnalyticsBridgeTests
     }
 
     private static async Task<MetaSignalEvent?> InvokeTryBuildBridgeRowAsync(
-        ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge bridge,
+        Infrastructure.Analytics.MetaSignalAnalyticsBridge bridge,
         Infrastructure.Data.MasterAppDbContext db,
         AnalyticsEvent source)
     {
-        var method = typeof(ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge)
+        var method = typeof(Infrastructure.Analytics.MetaSignalAnalyticsBridge)
             .GetMethod("TryBuildBridgeRowAsync", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);
 
