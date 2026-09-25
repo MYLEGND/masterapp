@@ -6,6 +6,7 @@ public static class WebsiteContentSanitizer
     private const int MaxExtras = 120;
     private const int MaxReusableDefinitions = 40;
     private const int MaxReusableComponents = 80;
+    private const int MaxForms = 30;
     private const int MaxTextLength = 12000;
     private const int MaxCodeLength = 100000;
     private const int MaxImageDataUrlLength = 3500000;
@@ -18,6 +19,15 @@ public static class WebsiteContentSanitizer
             Breakpoints = SanitizeBreakpoints(source.Breakpoints)
         };
         var breakpointIds = clean.Breakpoints.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var pair in (source.Forms ?? new()).Take(MaxForms))
+        {
+            var id = SanitizeId(string.IsNullOrWhiteSpace(pair.Key) ? pair.Value?.Id : pair.Key);
+            var form = SanitizeForm(pair.Value, id);
+            if (form is not null && !clean.Forms.ContainsKey(form.Id))
+                clean.Forms[form.Id] = form;
+        }
+        var formDefinitionIds = clean.Forms.Keys.ToHashSet(StringComparer.Ordinal);
 
         foreach (var pair in (source.ReusableComponents ?? new()).Take(MaxReusableDefinitions))
         {
@@ -43,7 +53,7 @@ public static class WebsiteContentSanitizer
 
             foreach (var component in (pair.Value.Components ?? new()).Take(MaxReusableComponents))
             {
-                var cleanComponent = SanitizeExtra(component, breakpointIds, reusableDefinitionIds: null, allowReusable: false);
+                var cleanComponent = SanitizeExtra(component, breakpointIds, reusableDefinitionIds: null, formDefinitionIds, allowReusable: false);
                 if (cleanComponent is null || cleanComponent.Type == "section") continue;
                 cleanComponent.SectionId = "__reusable__";
                 definition.Components.Add(cleanComponent);
@@ -88,7 +98,7 @@ public static class WebsiteContentSanitizer
 
         foreach (var extra in (source.Extras ?? new()).Take(MaxExtras))
         {
-            var cleanExtra = SanitizeExtra(extra, breakpointIds, reusableDefinitionIds, allowReusable: true);
+            var cleanExtra = SanitizeExtra(extra, breakpointIds, reusableDefinitionIds, formDefinitionIds, allowReusable: true);
             if (cleanExtra is not null) clean.Extras.Add(cleanExtra);
         }
 
@@ -131,6 +141,7 @@ public static class WebsiteContentSanitizer
         WebsiteExtraComponent? extra,
         HashSet<string> breakpointIds,
         HashSet<string>? reusableDefinitionIds,
+        HashSet<string> formDefinitionIds,
         bool allowReusable)
     {
         if (extra is null) return null;
@@ -150,12 +161,21 @@ public static class WebsiteContentSanitizer
                 return null;
         }
 
+        string? formDefinitionId = null;
+        if (type == "form")
+        {
+            formDefinitionId = SanitizeId(extra.FormDefinitionId);
+            if (formDefinitionId.Length == 0 || !formDefinitionIds.Contains(formDefinitionId))
+                return null;
+        }
+
         return new WebsiteExtraComponent
         {
             Id = id,
             SectionId = sectionId,
             Type = type,
             ReusableDefinitionId = reusableDefinitionId,
+            FormDefinitionId = formDefinitionId,
             EditorLocked = extra.EditorLocked,
             EditorLabel = ClampText(extra.EditorLabel),
             Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
@@ -175,6 +195,85 @@ public static class WebsiteContentSanitizer
             Responsive = SanitizeResponsive(extra.Responsive, breakpointIds, capability.LayoutModes)
         };
     }
+
+    private static WebsiteFormDefinition? SanitizeForm(WebsiteFormDefinition? source, string id)
+    {
+        if (source is null || id.Length == 0) return null;
+
+        var fields = new List<WebsiteFormFieldDefinition>();
+        var usedIds = new HashSet<string>(StringComparer.Ordinal);
+        var usedRoles = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var field in (source.Fields ?? []).Take(WebsiteFormFieldCatalog.MaxFields))
+        {
+            if (field is null) continue;
+            var fieldId = SanitizeId(field.Id);
+            var label = ClampLimitedText(field.Label, 160);
+            var type = (field.Type ?? string.Empty).Trim().ToLowerInvariant();
+            var role = (field.Role ?? "custom").Trim();
+
+            if (fieldId.Length == 0 || label is null || !usedIds.Add(fieldId) ||
+                !WebsiteFormFieldCatalog.AllowsType(type) ||
+                !WebsiteFormFieldCatalog.AllowsRole(role))
+                continue;
+
+            if (role != "custom" && !usedRoles.Add(role))
+                continue;
+
+            if (!FormRoleAllowsType(role, type))
+                continue;
+
+            var options = type == "select"
+                ? (field.Options ?? [])
+                    .Select(option => ClampLimitedText(option, 160))
+                    .Where(option => !string.IsNullOrWhiteSpace(option))
+                    .Select(option => option!)
+                    .Distinct(StringComparer.Ordinal)
+                    .Take(WebsiteFormFieldCatalog.MaxOptionsPerField)
+                    .ToList()
+                : [];
+
+            if (type == "select" && options.Count == 0)
+                continue;
+
+            fields.Add(new WebsiteFormFieldDefinition
+            {
+                Id = fieldId,
+                Label = label,
+                Type = type,
+                Role = role,
+                Required = field.Required || role is "firstName" or "email",
+                Placeholder = ClampLimitedText(field.Placeholder, 240),
+                Step = Math.Clamp(field.Step, 1, WebsiteFormFieldCatalog.MaxSteps),
+                Span = Math.Clamp(field.Span, 1, 12),
+                Options = options
+            });
+        }
+
+        if (!usedRoles.Contains("firstName") || !usedRoles.Contains("email"))
+            return null;
+
+        return new WebsiteFormDefinition
+        {
+            Id = id,
+            Name = ClampLimitedText(source.Name, 100) ?? "Lead form",
+            SubmitLabel = ClampLimitedText(source.SubmitLabel, 80) ?? "Send",
+            SuccessMessage = ClampLimitedText(source.SuccessMessage, 500) ?? "Thanks — your inquiry has been received.",
+            ConsentText = ClampLimitedText(source.ConsentText, 1000) ?? "I agree to share this inquiry with this website.",
+            RequireConsent = source.RequireConsent,
+            Fields = fields.OrderBy(field => field.Step).ToList()
+        };
+    }
+
+    private static bool FormRoleAllowsType(string role, string type) => role switch
+    {
+        "firstName" or "lastName" => type == "text",
+        "email" => type == "email",
+        "phone" => type == "tel",
+        "message" => type is "text" or "textarea",
+        "custom" => true,
+        _ => false
+    };
 
     private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source, HashSet<string> breakpointIds) => new()
     {
@@ -400,6 +499,15 @@ public static class WebsiteContentSanitizer
 
     private static decimal? BoundedSigned(decimal? value, decimal max) =>
         value.HasValue && value.Value >= -max && value.Value <= max ? value : null;
+
+    private static string? ClampLimitedText(string? value, int maximum)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var normalized = value.Replace("\0", string.Empty).Trim();
+        if (normalized.Any(ch => ch != '\n' && ch != '\t' && char.IsControl(ch)))
+            normalized = new string(normalized.Where(ch => ch is '\n' or '\t' || !char.IsControl(ch)).ToArray());
+        return normalized.Length <= maximum ? normalized : normalized[..maximum];
+    }
 
     private static string? ClampContentText(string? value)
     {
