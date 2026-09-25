@@ -46,6 +46,8 @@
   let editorPreview = null;
   let selectionFrame = null;
   let gridOverlay = null;
+  let marqueeOverlay = null;
+  let marqueeGesture = null;
   let directGesture = null;
   let inlineEditNode = null;
   let inlineEditCheckpointed = false;
@@ -1000,6 +1002,10 @@
     gridOverlay.className = 'legend-cms-grid-overlay';
     gridOverlay.hidden = true;
     gridOverlay.setAttribute('aria-hidden', 'true');
+    marqueeOverlay = document.createElement('div');
+    marqueeOverlay.className = 'legend-cms-marquee';
+    marqueeOverlay.hidden = true;
+    marqueeOverlay.setAttribute('aria-hidden', 'true');
     selectionFrame = document.createElement('div');
     selectionFrame.className = 'legend-cms-selection-frame';
     selectionFrame.hidden = true;
@@ -1009,7 +1015,77 @@
       <button type="button" class="legend-cms-resize-handle legend-cms-resize-y" data-cms-gesture="resize-y" aria-label="Resize selected block height" title="Resize height"></button>
       <button type="button" class="legend-cms-resize-handle legend-cms-resize-xy" data-cms-gesture="resize-xy" aria-label="Resize selected block width and height" title="Resize width and height"></button>`;
     preview.appendChild(gridOverlay);
+    preview.appendChild(marqueeOverlay);
     preview.appendChild(selectionFrame);
+
+    const previewPoint = event => {
+      const rect = preview.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left + preview.scrollLeft,
+        y: event.clientY - rect.top + preview.scrollTop
+      };
+    };
+
+    const updateMarquee = event => {
+      if (!marqueeGesture) return;
+      const point = previewPoint(event);
+      const left = Math.min(marqueeGesture.start.x, point.x);
+      const top = Math.min(marqueeGesture.start.y, point.y);
+      const right = Math.max(marqueeGesture.start.x, point.x);
+      const bottom = Math.max(marqueeGesture.start.y, point.y);
+      marqueeGesture.rect = { left, top, width: right - left, height: bottom - top };
+      marqueeOverlay.hidden = false;
+      marqueeOverlay.style.left = `${left}px`;
+      marqueeOverlay.style.top = `${top}px`;
+      marqueeOverlay.style.width = `${right-left}px`;
+      marqueeOverlay.style.height = `${bottom-top}px`;
+    };
+
+    const finishMarquee = () => {
+      if (!marqueeGesture) return;
+      const gesture = marqueeGesture;
+      marqueeGesture = null;
+      marqueeOverlay.hidden = true;
+      const rect = gesture.rect;
+      if (!rect || rect.width < 4 || rect.height < 4) return;
+      const matches = [...preview.querySelectorAll('[data-cms-editable="true"]')].filter(el => {
+        if (el.closest('.legend-cms-editor') || el.dataset.cmsSignalOnly || el.dataset.cmsLocked === 'true' || el.hidden) return false;
+        if (el.dataset.cmsSection) return false;
+        if (['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) && !el.classList.contains('cms-extra-group')) return false;
+        const item = previewRelativeRect(el);
+        if (!item) return false;
+        return item.left < rect.left + rect.width && item.left + item.width > rect.left &&
+          item.top < rect.top + rect.height && item.top + item.height > rect.top;
+      });
+      selectedElements.clear();
+      if (gesture.additive) gesture.initial.forEach(el => selectedElements.add(el));
+      matches.forEach(el => selectedElements.add(el));
+      selected = selectionItems().at(-1) || null;
+      const sections = new Set(selectionItems().map(currentSectionFor).filter(Boolean));
+      selectedSection = sections.size === 1 ? [...sections][0] : currentSectionFor(selected);
+      refreshSelectionClasses();
+      syncEditorControls();
+      renderSignalControls();
+      refreshLayers();
+      updateDirectCanvasUi();
+      if (selected) showPanel('content');
+    };
+
+    preview.addEventListener('pointerdown', event => {
+      if (event.button !== undefined && event.button !== 0) return;
+      if (event.target.closest?.('[data-cms-editable="true"],.legend-cms-editor,[data-cms-gesture]')) return;
+      const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+      marqueeGesture = {
+        start: previewPoint(event),
+        rect: null,
+        additive,
+        initial: additive ? new Set(selectionItems()) : new Set()
+      };
+      event.preventDefault();
+    });
+    window.addEventListener('pointermove', updateMarquee, { passive: false });
+    window.addEventListener('pointerup', finishMarquee);
+    window.addEventListener('pointercancel', finishMarquee);
 
     const startGesture = event => {
       const handle = event.target.closest?.('[data-cms-gesture]');
@@ -2417,6 +2493,7 @@
       .legend-cms-locked{outline:2px dashed #7d8ba3!important;outline-offset:4px!important;cursor:not-allowed!important}
       .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
       .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad45a0;background-image:linear-gradient(to right,#d4ad454d 1px,transparent 1px),linear-gradient(to bottom,#d4ad4538 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px;box-shadow:inset 0 0 0 1px #081a3a24}
+      .legend-cms-marquee{position:absolute;z-index:2147482400;pointer-events:none;border:1px solid #4cc9f0;background:#4cc9f026;box-shadow:0 0 0 1px #081a3a66 inset}
       .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;background:#4cc9f0b8}
       .legend-cms-grid-overlay::before{left:50%;top:0;bottom:0;width:2px;transform:translateX(-1px)}
       .legend-cms-grid-overlay::after{top:50%;left:0;right:0;height:2px;transform:translateY(-1px)}
