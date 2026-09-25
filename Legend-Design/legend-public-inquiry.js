@@ -47,6 +47,7 @@
         message: String(fields.get('Message') || ''),
         sourcePath: location.pathname,
         sourceActionKey,
+        sourceFormElementId: form.dataset.cmsExtraId ? `extra:${form.dataset.cmsExtraId}` : (form.dataset.cmsId || null),
         consent: fields.get('consent') === 'on',
         sessionId: analytics?.ids?.getSessionId?.() || null,
         visitorId: analytics?.ids?.getVisitorId?.() || null,
