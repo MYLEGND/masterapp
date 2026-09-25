@@ -616,7 +616,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             WebsiteBindingId = bindingId,
             MetaBrowserSent = false,
             MetaServerSent = false,
-            MetadataJson = "{"metaServerAttempted":true,"metaServerSent":false,"metaServerStatus":"retry_scheduled","metaServerRetryable":true,"metaServerAttemptCount":2,"metaServerHttpStatusCode":503,"metaServerTraceId":"trace-safe"}"
+            MetadataJson = "{\"metaServerAttempted\":true,\"metaServerSent\":false,\"metaServerStatus\":\"retry_scheduled\",\"metaServerRetryable\":true,\"metaServerAttemptCount\":2,\"metaServerHttpStatusCode\":503,\"metaServerTraceId\":\"trace-safe\"}"
         });
         fixture.Db.AnalyticsEvents.Add(new AnalyticsEvent
         {
