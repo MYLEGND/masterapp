@@ -280,6 +280,59 @@ public sealed class WebsiteContentEditorRoundTripTests
 
 
     [Fact]
+    public async Task MediaLibrary_IsOwnerScopedSearchableAndRejectsInvalidTickets()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ownerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(fixture.BusinessId!.Value);
+        var ownImage = new WebsiteMediaAsset
+        {
+            OwnerKey = ownerKey,
+            SourceUrl = "team-logo.png",
+            Sha256 = new string('a', 64),
+            StorageKey = "website/team-logo.png",
+            ContentType = "image/png",
+            SizeBytes = 1200,
+            CreatedUtc = DateTime.UtcNow
+        };
+        var ownVideo = new WebsiteMediaAsset
+        {
+            OwnerKey = ownerKey,
+            SourceUrl = "welcome-video.mp4",
+            Sha256 = new string('b', 64),
+            StorageKey = "website/welcome-video.mp4",
+            ContentType = "video/mp4",
+            SizeBytes = 2200,
+            CreatedUtc = DateTime.UtcNow.AddMinutes(-1)
+        };
+        fixture.Db.AddRange(ownImage, ownVideo, new WebsiteMediaAsset
+        {
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(Guid.NewGuid()),
+            SourceUrl = "other-logo.png",
+            Sha256 = new string('c', 64),
+            StorageKey = "website/other-logo.png",
+            ContentType = "image/png",
+            SizeBytes = 900
+        });
+        await fixture.Db.SaveChangesAsync();
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+
+        var imageResult = Assert.IsType<OkObjectResult>(await fixture.Controller.MediaLibrary(ticket, "logo", "image", CancellationToken.None));
+        var imageJson = JsonSerializer.SerializeToElement(imageResult.Value, JsonOptions);
+        var assets = imageJson.GetProperty("assets").EnumerateArray().ToArray();
+        var image = Assert.Single(assets);
+        Assert.Equal(ownImage.Id, image.GetProperty("id").GetGuid());
+        Assert.Equal("team-logo.png", image.GetProperty("name").GetString());
+        Assert.Equal("image/png", image.GetProperty("contentType").GetString());
+
+        var videoResult = Assert.IsType<OkObjectResult>(await fixture.Controller.MediaLibrary(ticket, null, "video", CancellationToken.None));
+        var videoJson = JsonSerializer.SerializeToElement(videoResult.Value, JsonOptions);
+        Assert.Equal(ownVideo.Id, Assert.Single(videoJson.GetProperty("assets").EnumerateArray()).GetProperty("id").GetGuid());
+
+        Assert.IsType<BadRequestObjectResult>(await fixture.Controller.MediaLibrary(ticket, null, "audio", CancellationToken.None));
+        Assert.IsType<UnauthorizedResult>(await fixture.Controller.MediaLibrary("invalid-ticket", null, "all", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task DraftQuality_ReadsOnlyAuthorizedPersistedDraftAndReportsServerSource()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
