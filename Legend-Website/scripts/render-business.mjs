@@ -22,7 +22,9 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   if(routeSet.size>100)throw new Error('Website page limit exceeded.');
   const routeMeta=route=> {
     const page=documents[route]||{};
-    const built=templateByRoute.get(route);
+    const page=documents[route]||{};
+    const templateRoute=typeof page.templatePath==='string'&&templateByRoute.has(normalizeRoute(page.templatePath))?normalizeRoute(page.templatePath):route;
+    const built=templateByRoute.get(templateRoute);
     const navigation=page.navigation||{};
     return {
       route,
@@ -61,7 +63,6 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     window.LEGEND_PUBLIC_CMS_RENDER_INPUT={document:input.document,business:input.business,pageKey:key,server:true};
     vm.runInNewContext(cms,sandbox,{timeout:3000,filename:'legend-public-cms.js'});
     if(window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE!==true)throw new Error('Canonical renderer did not complete.');
-    const page=documents[route]||documents[key]||{};
     const title=page.title||`${input.business.displayName}${key==='home'?'':' | '+(built?.label||key)}`;
     const description=page.description||'';
     doc.title=title;
