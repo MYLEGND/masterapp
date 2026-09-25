@@ -42,9 +42,13 @@ public static class WebsiteQualityAnalyzer
         {
             AnalyzePageMetadata(pages, issues);
             foreach (var pair in pages)
+            {
+                AnalyzeElements(pair.Value?.Elements, pair.Key, issues);
                 AnalyzeComponents(pair.Value?.Extras, pair.Key, issues);
+            }
         }
 
+        AnalyzeElements(document.Elements, "Legacy/global content", issues);
         AnalyzeComponents(document.Extras, "Legacy/global content", issues);
 
         foreach (var definition in (document.ReusableComponents ?? new(StringComparer.Ordinal)).Values)
@@ -122,6 +126,28 @@ public static class WebsiteQualityAnalyzer
         foreach (var duplicate in descriptions.Where(pair => pair.Value.Count > 1))
             foreach (var path in duplicate.Value)
                 Add(issues, "seo_description_duplicate", "info", "SEO", path, "This search description is reused on another page. Unique descriptions help distinguish pages.");
+    }
+
+    private static void AnalyzeElements(
+        Dictionary<string, WebsiteElementOverride>? elements,
+        string scope,
+        List<WebsiteQualityIssue> issues)
+    {
+        foreach (var pair in elements ?? new(StringComparer.Ordinal))
+        {
+            var id = pair.Key;
+            var element = pair.Value;
+            if (element is null) continue;
+            var elementScope = $"{scope} · {Clean(element.EditorLabel, 80) ?? id}";
+            var looksLikeImage = element.ImageDataUrl is not null ||
+                id.Contains(".img.", StringComparison.OrdinalIgnoreCase) ||
+                id.Contains(".image.", StringComparison.OrdinalIgnoreCase);
+            if (looksLikeImage && element.IsDecorative != true && string.IsNullOrWhiteSpace(element.Alt))
+                Add(issues, "a11y_image_alt_missing", "warning", "Accessibility", elementScope,
+                    "Add image description text or mark this image decorative.");
+
+            AnalyzeMotion(element.Interactions, elementScope, issues);
+        }
     }
 
     private static void AnalyzeComponents(
