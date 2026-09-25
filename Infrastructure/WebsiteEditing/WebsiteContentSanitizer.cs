@@ -38,13 +38,13 @@ public static class WebsiteContentSanitizer
             var id = SanitizeId(extra.Id);
             var sectionId = SanitizeId(extra.SectionId);
             var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "code")) continue;
+            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "code" or "reusable")) continue;
             clean.Extras.Add(new WebsiteExtraComponent
             {
                 Id = id,
                 SectionId = sectionId,
                 Type = type,
-                Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
+                Signals = type == "reusable" ? new List<WebsiteSignalBinding>() : WebsiteSignalBindingPolicy.Validate(extra.Signals),
                 ActionKey = SanitizeActionKey(extra.ActionKey),
                 Title = ClampContentText(extra.Title),
                 Text = type == "code" ? ClampCodeText(extra.Text) : ClampContentText(extra.Text),
@@ -57,7 +57,7 @@ public static class WebsiteContentSanitizer
                 Layout = SanitizeLayout(extra.Layout),
                 BreakpointLayouts = SanitizeLayoutMap(extra.BreakpointLayouts, breakpointKeys),
                 Animations = SanitizeAnimations(extra.Animations),
-                SyncSourceId = NullIfEmpty(SanitizeId(extra.SyncSourceId))
+                SyncSourceId = type == "reusable" ? NullIfEmpty(SanitizeId(extra.SyncSourceId)) : NullIfEmpty(SanitizeId(extra.SyncSourceId))
             });
         }
 
@@ -142,11 +142,11 @@ public static class WebsiteContentSanitizer
             var id = SanitizeId(extra.Id);
             var sectionId = SanitizeId(extra.SectionId);
             var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "code")) continue;
+            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "code" or "reusable")) continue;
             clean.Extras.Add(new WebsiteExtraComponent
             {
                 Id = id, SectionId = sectionId, Type = type,
-                Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
+                Signals = type == "reusable" ? new List<WebsiteSignalBinding>() : WebsiteSignalBindingPolicy.Validate(extra.Signals),
                 ActionKey = SanitizeActionKey(extra.ActionKey),
                 Title = ClampContentText(extra.Title),
                 Text = type == "code" ? ClampCodeText(extra.Text) : ClampContentText(extra.Text),
