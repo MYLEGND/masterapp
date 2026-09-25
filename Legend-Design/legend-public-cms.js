@@ -736,9 +736,9 @@
         }
       }
     }
-    const sourceExtras = pageState().extras.filter(extra => sourceIds.has(extra.id));
-    const idMap = new Map();
-    sourceExtras.forEach((extra, index) => idMap.set(extra.id, index === 0 ? 'root' : `item-${index}`));
+    const sourceExtras = [source, ...pageState().extras.filter(extra => extra.id !== source.id && sourceIds.has(extra.id))];
+    const idMap = new Map([[source.id, 'root']]);
+    sourceExtras.slice(1).forEach((extra, index) => idMap.set(extra.id, `item-${index + 1}`));
     const extras = sourceExtras.map(extra => {
       const copy = JSON.parse(JSON.stringify(extra));
       const oldId = extra.id;
