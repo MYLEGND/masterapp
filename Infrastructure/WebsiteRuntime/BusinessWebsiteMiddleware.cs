@@ -1,3 +1,7 @@
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using System.Net;
 using System.Text.Json;
 using System.Xml.Linq;
