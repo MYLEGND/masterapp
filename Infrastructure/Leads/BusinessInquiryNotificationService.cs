@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System.Net;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -5,11 +8,11 @@ using Infrastructure.Leads;
 using Microsoft.EntityFrameworkCore;
 using Shared.Analytics;
 
-namespace ProtectWebsite.Services.Communication;
+namespace Infrastructure.Leads;
 
 // The persisted inquiry is the durable delivery queue; no second copy of customer data.
 public sealed class BusinessInquiryNotificationService(MasterAppDbContext db,
-    WebsiteIntakeRecipientResolver recipients, IProtectEmailSender sender)
+    WebsiteIntakeRecipientResolver recipients, IWebsiteInquiryEmailSender sender)
 {
     public async Task DeliverPendingAsync(CancellationToken ct)
     {
