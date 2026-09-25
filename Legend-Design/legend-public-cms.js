@@ -715,6 +715,100 @@
     section.appendChild(el); applyElementOverride(el, extra); return el;
   }
 
+  function selectedAddedExtra() {
+    const id = selected?.dataset?.cmsExtraId;
+    return id ? pageState().extras.find(extra => extra.id === id) || null : null;
+  }
+
+  function captureReusableDefinition(name, existingId = null) {
+    const source = selectedAddedExtra();
+    if (!source || source.type === 'reusable') return null;
+    const componentId = existingId || crypto.randomUUID().replaceAll('-', '');
+    const sourceIds = new Set([source.id]);
+    if (source.type === 'section') {
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const extra of pageState().extras) {
+          const sectionId = String(extra.sectionId || '');
+          const parent = sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
+          if (parent && sourceIds.has(parent) && !sourceIds.has(extra.id)) { sourceIds.add(extra.id); changed = true; }
+        }
+      }
+    }
+    const sourceExtras = pageState().extras.filter(extra => sourceIds.has(extra.id));
+    const idMap = new Map();
+    sourceExtras.forEach((extra, index) => idMap.set(extra.id, index === 0 ? 'root' : `item-${index}`));
+    const extras = sourceExtras.map(extra => {
+      const copy = JSON.parse(JSON.stringify(extra));
+      const oldId = extra.id;
+      const sectionId = String(extra.sectionId || '');
+      const parent = sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
+      copy.id = idMap.get(oldId);
+      copy.sectionId = oldId === source.id ? 'component.root' : parent && idMap.has(parent) ? `extra:${idMap.get(parent)}` : 'component.root';
+      copy.placement = null; copy.signals = []; copy.syncSourceId = null; delete copy.hidden;
+      return copy;
+    });
+    return { id: componentId, name: (name || 'Reusable component').trim().slice(0, 120), kind: source.type === 'section' ? 'section' : 'block', elements: {}, sectionOrder: {}, extras };
+  }
+
+  function componentInUse(componentId) {
+    let used = false;
+    const inspect = extras => { if ((extras || []).some(extra => extra.type === 'reusable' && extra.syncSourceId === componentId)) used = true; };
+    inspect(documentState.extras);
+    Object.values(documentState.pages || {}).forEach(page => inspect(page?.extras));
+    return used;
+  }
+
+  function refreshReusableInstances(componentId = null) {
+    document.querySelectorAll('.cms-reusable-instance[data-cms-extra-id]').forEach(wrapper => {
+      const instance = pageState().extras.find(extra => extra.id === wrapper.dataset.cmsExtraId);
+      if (!instance || (componentId && instance.syncSourceId !== componentId)) return;
+      renderReusableInstance(wrapper, instance);
+    });
+    updateDirectCanvasUi();
+  }
+
+  function renderReusableComponents() {
+    const host = document.getElementById('legend-cms-component-list');
+    const status = document.getElementById('legend-cms-component-status');
+    if (!host?.replaceChildren) return;
+    host.replaceChildren();
+    const definitions = Object.values(documentState.reusableComponents || {}).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+    for (const definition of definitions) {
+      const row = document.createElement('div'); row.className = 'legend-cms-component-row';
+      const info = document.createElement('div');
+      const title = document.createElement('strong'); title.textContent = definition.name || definition.id;
+      const meta = document.createElement('small'); meta.textContent = `${definition.kind || 'block'} · ${definition.id}`;
+      info.append(title, meta);
+      const insert = document.createElement('button'); insert.type = 'button'; insert.textContent = 'Insert';
+      insert.addEventListener('click', () => {
+        const section = selectedSection || document.querySelector('[data-cms-section]');
+        if (!section) { if (status) status.textContent = 'Select a section before inserting a reusable component.'; return; }
+        checkpoint();
+        const instance = { id: crypto.randomUUID(), type: 'reusable', sectionId: section.dataset.cmsSection, syncSourceId: definition.id, style: { widthPercent: 100 }, signals: [] };
+        pageState().extras.push(instance);
+        const created = createExtra(instance); setSelected(created); markDirty(); renderReusableComponents();
+      });
+      const update = document.createElement('button'); update.type = 'button'; update.textContent = 'Update from selected';
+      const selectedSource = selectedAddedExtra(); update.disabled = !selectedSource || selectedSource.type === 'reusable';
+      update.addEventListener('click', () => {
+        const next = captureReusableDefinition(definition.name, definition.id);
+        if (!next) { if (status) status.textContent = 'Select an added block or added section to update this component.'; return; }
+        checkpoint(); documentState.reusableComponents[definition.id] = next;
+        refreshReusableInstances(definition.id); markDirty(); renderReusableComponents();
+      });
+      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Delete';
+      remove.disabled = componentInUse(definition.id);
+      remove.title = remove.disabled ? 'Remove every instance before deleting this reusable definition.' : '';
+      remove.addEventListener('click', () => {
+        if (componentInUse(definition.id)) return;
+        checkpoint(); delete documentState.reusableComponents[definition.id]; markDirty(); renderReusableComponents();
+      });
+      row.append(info, insert, update, remove); host.appendChild(row);
+    }
+    if (!definitions.length) { const empty = document.createElement('p'); empty.textContent = 'No reusable components yet.'; host.appendChild(empty); }
+  }
   function applyDocument(doc) {
     documentState = normalizeDocument(doc);
     applyTheme(documentState.theme);
