@@ -16,7 +16,17 @@
   --web-radius-lg:28px;
   --web-shadow:0 24px 70px rgba(8,26,58,.12);
   --web-font:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --web-heading-font:var(--web-font);
+  --web-heading-weight:800;
+  --web-body-size:16px;
+  --web-body-line-height:1.65;
+  --web-h1-size:clamp(45px,6.7vw,88px);
+  --web-h2-size:clamp(32px,4.2vw,56px);
+  --web-h3-size:22px;
   --web-page-pad:clamp(20px,6.5vw,108px);
+  --web-section-pad-y:clamp(72px,8.7vw,122px);
+  --web-content-gap:18px;
+  --web-button-radius:999px;
   --web-header-height:88px;
   --navy:var(--web-navy);
   --navy-deep:var(--web-navy-deep);
@@ -39,7 +49,7 @@
 *{box-sizing:border-box;scrollbar-width:none;-ms-overflow-style:none}
 *::-webkit-scrollbar{display:none;width:0;height:0}
 html{scroll-behavior:smooth}
-body{margin:0;min-width:320px;min-height:100dvh;background:var(--web-white);color:var(--web-ink);font-family:var(--web-font);line-height:1.65}
+body{margin:0;min-width:320px;min-height:100dvh;background:var(--web-white);color:var(--web-ink);font-family:var(--web-font);font-size:var(--web-body-size);line-height:var(--web-body-line-height)}
 button,input,select,textarea{font:inherit}
 img{max-width:100%}
 :focus-visible{outline:2px solid var(--web-gold);outline-offset:3px}
