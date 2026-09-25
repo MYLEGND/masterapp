@@ -1,3 +1,4 @@
+using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Configuration;
