@@ -21,41 +21,21 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Identify canonical Data Protection scopes and roles
+      - name: Inventory existing App Service managed identity shapes
         shell: bash
         run: |
           set -euo pipefail
-          settings="$RUNNER_TEMP/portal-settings.json"
-          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$settings"
-          resolve_value() {
-            local file="$1"; shift
-            for key in "$@"; do
-              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
-              if [ -n "$value" ]; then printf '%s' "$value"; return 0; fi
-            done
-            return 1
-          }
-          blob="$(resolve_value "$settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(resolve_value "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
-          portal_pid="$(az webapp show -g masterapp-rg -n masterapp-portal --query identity.principalId -o tsv)"
-          BLOB_URI="$blob" KEY_URI="$keyvault" python3 - <<'PY'
-          import os, urllib.parse
-          for label, value in (("blob", os.environ["BLOB_URI"]), ("keyvault", os.environ["KEY_URI"])):
-              uri = urllib.parse.urlparse(value)
-              host = uri.hostname or ""
-              print(f"{label}_host={host}")
-              print(f"{label}_resource_name={host.split('.')[0] if host else ''}")
+          for app in masterapp-portal masterapp-protect masterapp-client masterapp-parfait masterapp-website; do
+            identity="$RUNNER_TEMP/$app-identity.json"
+            az webapp show -g masterapp-rg -n "$app" --query identity -o json > "$identity"
+            APP="$app" FILE="$identity" python3 - <<'PY'
+          import json, os
+          data=json.load(open(os.environ["FILE"],encoding="utf-8")) if os.path.getsize(os.environ["FILE"]) else {}
+          assigned=data.get("userAssignedIdentities") or {}
+          print(f"app={os.environ['APP']} type={data.get('type') or 'None'} system_present={bool(data.get('principalId'))} user_assigned_count={len(assigned)}")
+          for resource_id, meta in assigned.items():
+              name=resource_id.rstrip('/').split('/')[-1]
+              print(f"app={os.environ['APP']} user_identity={name} client_id_present={bool((meta or {}).get('clientId'))}")
           PY
-          az role assignment list --assignee "$portal_pid" --all -o json > "$RUNNER_TEMP/portal-roles.json"
-          python3 - <<'PY'
-          import json, os, re
-          rows=json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"portal-roles.json"),encoding="utf-8"))
-          for row in rows:
-              role=row.get("roleDefinitionName") or ""
-              if not (role.startswith("Storage Blob Data") or role.startswith("Key Vault")):
-                  continue
-              scope=row.get("scope") or ""
-              clean=re.sub(r"^/subscriptions/[^/]+","/subscriptions/[subscription]",scope,flags=re.I)
-              print(f"portal_role={role} scope={clean}")
-          PY
-          rm -f "$settings" "$RUNNER_TEMP/portal-roles.json"
+            rm -f "$identity"
+          done
