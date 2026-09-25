@@ -1013,8 +1013,8 @@ test('selected blocks use one sharp border with invisible directional resize zon
  }finally{f.close();}
 });
 
-test('sandboxed code block saves source and previews without same-origin access',async()=>{
- const f=await domFixture();try {
+test('sandboxed code block stays isolated, transparent, and receives the scoped website theme',async()=>{
+ const f=await domFixture({doc:{theme:{navy:'#123456',navyDeep:'#102030',gold:'#d4ad45',goldStrong:'#b88922',surface:'#faf7ef',text:'#18233f',muted:'#64708a',fontFamily:'Georgia',fontSize:18,borderRadius:30}}});try {
   f.click('main h1');f.click('[data-add="code"]');
   const dialog=f.w.document.querySelector('.legend-cms-code-dialog');
   assert.ok(dialog);
@@ -1024,10 +1024,36 @@ test('sandboxed code block saves source and previews without same-origin access'
   const block=f.w.document.querySelector('.cms-extra-code');
   const frame=block.querySelector('iframe');
   assert.ok(frame.src.startsWith('data:text/html;charset=utf-8,'));
-  assert.equal(decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1)),sourceInput.value);
+  const rendered=decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1));
+  assert.ok(rendered.includes(sourceInput.value));
+  assert.ok(rendered.includes('data-legend-code-theme'));
+  assert.ok(rendered.includes('--theme-primary:#123456'));
+  assert.ok(rendered.includes('--theme-accent:#d4ad45'));
+  assert.ok(rendered.includes('--theme-surface:#faf7ef'));
+  assert.ok(rendered.includes('--theme-font:Georgia'));
+  assert.ok(rendered.includes('html,body{background:transparent}'));
   assert.equal(frame.getAttribute('sandbox').includes('allow-same-origin'),false);
+  assert.match(source,/\.cms-extra-code\{[^}]*background:transparent/);
+  assert.match(source,/\.cms-extra-code iframe\{[^}]*background:transparent/);
+  assert.equal(source.includes('.cms-extra-code{display:block;width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}'),false);
   const saved=await f.save();const extra=saved.pages['/'].extras.find(x=>x.type==='code');
   assert.ok(extra);assert.equal(extra.text,sourceInput.value);assert.equal(extra.style.widthPercent,100);assert.equal(extra.style.heightPx,320);
+ }finally{f.close();}
+});
+
+test('code block preview refreshes when the scoped site theme changes',async()=>{
+ const f=await domFixture({doc:{theme:{navy:'#112244',gold:'#cc9900',surface:'#ffffff',text:'#14203d',muted:'#596985'}}});try {
+  f.click('main h1'); f.click('[data-add="code"]');
+  const dialog=f.w.document.querySelector('.legend-cms-code-dialog');
+  dialog.querySelector('.legend-cms-code-source').value='<div style="color:var(--theme-primary)">Theme me</div>';
+  f.click('.legend-cms-code-actions button');
+  const frame=f.w.document.querySelector('.cms-extra-code iframe');
+  const before=decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1));
+  assert.ok(before.includes('--theme-primary:#112244'));
+  f.click('[data-open="theme"]');
+  f.input('[data-theme-key="navy"]','#334466');
+  const after=decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1));
+  assert.ok(after.includes('--theme-primary:#334466'));
  }finally{f.close();}
 });
 
