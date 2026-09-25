@@ -353,7 +353,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         var json = JsonSerializer.SerializeToElement(manage.Value, JsonOptions);
         var projections = json.GetProperty("collections").EnumerateArray().ToArray();
         var projection = Assert.Single(
-            projections.Where(value => value.GetProperty("id").GetString() == "products"));
+            projections.Where(value => value.GetProperty("id").GetString() == "commerce_products"));
         Assert.Contains(
             projections,
             value => value.GetProperty("id").GetString() == "business_facts");
