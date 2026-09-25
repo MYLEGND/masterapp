@@ -252,7 +252,9 @@ public sealed class WebsiteContentController : ControllerBase
         var business = actor.CommerceBusinessId.HasValue ? await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken) : null;
         var facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken);
-        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = Read(state.DraftJson),
+        var document = Read(state.DraftJson);
+        var quality = WebsiteQualityAnalyzer.Analyze(document);
+        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document,
             revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
             facts,
             ctaCatalog = new { options = ctaOptions },
@@ -270,7 +272,16 @@ public sealed class WebsiteContentController : ControllerBase
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
             history, signalCatalog = SignalCatalogPayload(), capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken), canDelete = await CanPublishAsync(actor, cancellationToken) },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
-            readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
+            quality,
+            readiness = new
+            {
+                checks = new[]
+                {
+                    new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." },
+                    new { passed = !quality.HasBlockingIssues, message = quality.HasBlockingIssues ? "Resolve blocking website quality issues before publishing." : "No server-detected blocking website quality issues." }
+                },
+                quality
+            } });
     }
 
     public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null);
@@ -349,7 +360,7 @@ public sealed class WebsiteContentController : ControllerBase
         state.UpdatedUtc = DateTime.UtcNow;
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
-        return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
+        return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, quality = WebsiteQualityAnalyzer.Analyze(document), drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
     }
 
     private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state) =>
@@ -438,6 +449,9 @@ public sealed class WebsiteContentController : ControllerBase
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken);
         var ctaError = WebsiteCallToActionCatalog.PrepareForPublish(document, ctaOptions);
         if (ctaError is not null) return BadRequest(new { error = "button_destination_required", message = ctaError });
+        var quality = WebsiteQualityAnalyzer.Analyze(document);
+        if (quality.HasBlockingIssues)
+            return BadRequest(new { error = "website_quality_blocked", message = "Resolve the blocking website quality issues before publishing.", quality });
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
         var version = new WebsiteContentVersion { StateId = state.Id, Revision = state.Revision + 1,
             DocumentJson = state.DraftJson, ImportReportJson = state.ImportReportJson, ActorUserId = actor.ActorUserId! };
@@ -456,7 +470,7 @@ public sealed class WebsiteContentController : ControllerBase
         state.UpdatedUtc = DateTime.UtcNow;
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
-        return Ok(new { revision = state.Revision, publishedRevision = version.Revision, versionId = version.Id });
+        return Ok(new { revision = state.Revision, publishedRevision = version.Revision, versionId = version.Id, quality });
     }
 
     [HttpPost("manage/rollback")]
