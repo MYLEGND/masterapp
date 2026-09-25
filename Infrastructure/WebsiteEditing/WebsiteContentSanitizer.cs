@@ -38,7 +38,7 @@ public static class WebsiteContentSanitizer
             foreach (var component in (pair.Value.Components ?? new()).Take(MaxReusableComponents))
             {
                 var cleanComponent = SanitizeExtra(component, breakpointIds, reusableDefinitionIds: null, allowReusable: false);
-                if (cleanComponent is null) continue;
+                if (cleanComponent is null || cleanComponent.Type == "section") continue;
                 cleanComponent.SectionId = "__reusable__";
                 definition.Components.Add(cleanComponent);
             }
