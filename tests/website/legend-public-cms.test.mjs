@@ -7,6 +7,7 @@ const source = readFileSync(new URL('../../Legend-Design/legend-public-cms.js', 
 const publicCss = readFileSync(new URL('../../Legend-Design/legend-public-web.css', import.meta.url), 'utf8');
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
 const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
+const metaSignalSource = readFileSync(new URL('../../Protect-Website/wwwroot/js/meta-signal-intelligence.js', import.meta.url), 'utf8');
 const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
 const businessMiddlewareSource = readFileSync(new URL('../../Protect-Website/Services/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
@@ -305,6 +306,99 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
   return {w,calls,animations,click,input,change,editSelected,save,close:()=>w.close()};
 }
+async function metaSignalFixture() {
+  const dom=new JSDOM('<!doctype html><html><body data-page-key="home"></body></html>',{url:'https://site.example/',runScripts:'outside-only'});
+  const {window:w}=dom;
+  const requests=[],pixels=[];
+  w.fetch=async(url,init={})=>{
+    requests.push({url:String(url),body:init.body?JSON.parse(init.body):null});
+    return {ok:true,json:async()=>({accepted:true,metaServerStatus:'accepted_for_test'})};
+  };
+  w.fbq=(...args)=>pixels.push(args);
+  w.eval(metaSignalSource);
+  const session=w.metaSignalIntelligence.createLandingSession({
+    enabled:true,
+    sendBrowserEvents:true,
+    sendServerEvents:true,
+    persistEvents:true,
+    endpoint:'https://site.example/analytics/meta-signal',
+    siteKey:'legend',
+    quoteType:'legend',
+    pageKey:'home',
+    effectivePageKey:'home',
+    browserEventNames:['LeadFormStart'],
+    browserSignalEventNames:['ViewContent','LeadFormStart','SubmitAttempt']
+  });
+  await new Promise(resolve=>setTimeout(resolve,0));
+  requests.length=0;
+  pixels.length=0;
+  return {w,session,requests,pixels,close:()=>w.close()};
+}
+
+
+test('configured signal runtime suppresses Pixel for analytics-only and allows only Pixel-eligible Meta events',async()=>{
+  const f=await metaSignalFixture();
+  try{
+    const analyticsId=await f.session.trackConfiguredEvent('SubmitAttempt',{
+      deliveryMode:'analytics',
+      onceKey:'website-binding:analytics-one',
+      metadata:{websiteBindingId:'binding-analytics',elementId:'home.form',trigger:'submit_attempt',source:'website_signal_binding'}
+    });
+    assert.ok(analyticsId);
+    assert.equal(f.pixels.length,0);
+    assert.equal(f.requests.length,1);
+    assert.equal(f.requests[0].body.eventName,'SubmitAttempt');
+    assert.equal(f.requests[0].body.websiteBindingId,'binding-analytics');
+    assert.equal(f.requests[0].body.metadata.browserDispatchStatus,'suppressed_by_mapping');
+    assert.equal(f.requests[0].body.metadata.configuredWebsiteSignal,true);
+    assert.equal(f.requests[0].body.metadata.configuredDeliveryMode,'analytics');
+
+    f.requests.length=0;
+    const metaId=await f.session.trackConfiguredEvent('LeadFormStart',{
+      deliveryMode:'meta',
+      onceKey:'website-binding:meta-one',
+      metadata:{websiteBindingId:'binding-meta',elementId:'home.form',trigger:'form_started',source:'website_signal_binding'}
+    });
+    assert.ok(metaId);
+    assert.equal(f.requests.length,1);
+    assert.equal(f.requests[0].body.eventName,'LeadFormStart');
+    assert.equal(f.pixels.length,1);
+    assert.equal(f.pixels[0][0],'trackCustom');
+    assert.equal(f.pixels[0][1],'LeadFormStart');
+
+    const beforeRequests=f.requests.length,beforePixels=f.pixels.length;
+    const blocked=await f.session.trackConfiguredEvent('Lead',{
+      deliveryMode:'meta',
+      onceKey:'website-binding:server-only',
+      metadata:{websiteBindingId:'binding-server-only'}
+    });
+    assert.equal(blocked,null);
+    assert.equal(f.requests.length,beforeRequests);
+    assert.equal(f.pixels.length,beforePixels);
+  } finally { f.close(); }
+});
+
+test('configured signal once-per-session key deduplicates repeated browser observations',async()=>{
+  const f=await metaSignalFixture();
+  try{
+    const first=await f.session.trackConfiguredEvent('SubmitAttempt',{deliveryMode:'analytics',onceKey:'website-binding:once',metadata:{websiteBindingId:'binding-once'}});
+    const second=await f.session.trackConfiguredEvent('SubmitAttempt',{deliveryMode:'analytics',onceKey:'website-binding:once',metadata:{websiteBindingId:'binding-once'}});
+    assert.equal(first,second);
+    assert.equal(f.requests.length,1);
+  } finally { f.close(); }
+});
+
+test('published visual signal executor has no browser path for confirmed server outcomes',()=>{
+  assert.ok(source.includes("const allowedTriggers = new Set(["));
+  for(const trigger of ['viewed','click','form_started','submit_attempt','field_started','validation_failed','field_completed','scroll_threshold'])
+    assert.ok(source.includes(`'${trigger}'`));
+  assert.equal(source.includes("case 'submission_saved':"),false);
+  assert.equal(source.includes("case 'booking_confirmed':"),false);
+  assert.equal(source.includes("case 'payment_confirmed':"),false);
+  assert.ok(source.includes("websiteBindingId: binding.id"));
+  assert.ok(source.includes("source: 'website_signal_binding'"));
+});
+
 test('responsive V2 runtime inherits base style and switches breakpoint style and layout on resize',async()=>{
   const doc={
     breakpoints:[
