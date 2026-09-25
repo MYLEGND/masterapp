@@ -774,38 +774,43 @@ for (const siteKey of ['legend','protect','business']) {
     } finally { published.close(); }
   });
 }
-test('shared CTA dropdown creates a styled live button and keeps its label independently editable',async()=>{
+test('shared CTA chooser starts neutral, applies one canonical action, and keeps chosen wording independently editable',async()=>{
   const actions=[
-    {key:'business_contact',group:'Contact',label:'Contact form',defaultText:'Contact Us',href:'/contact',openInNewTab:false},
-    {key:'business_call',group:'Contact',label:'Call the business',defaultText:'Call Now',href:'tel:+16025550199',openInNewTab:false}
+    {key:'business_contact',group:'Contact',label:'Contact',defaultText:'Contact',textVariants:['Contact','Contact Us','Get in Touch'],href:'/contact',openInNewTab:false,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'},
+    {key:'business_call',group:'Call',label:'Call',defaultText:'Call',textVariants:['Call','Call Now','Call Us'],href:'tel:+16025550199',openInNewTab:false,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'}
   ];
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},ctaCatalog:actions,signalCatalog:{events:[],matchingFields:[],runtimeEnabled:true}});
   try {
     f.click('main h1'); f.click('[data-add="button"]');
     const button=f.w.document.querySelector('[data-cms-extra-id]');
     assert.ok(button.classList.contains('primary'));
-    assert.equal(button.getAttribute('href'),'/contact');
-    assert.equal(button.textContent,'Contact Us');
-    f.change('#legend-cms-action','business_call');
+    assert.equal(button.getAttribute('href'),null);
+    assert.equal(button.textContent,'Button');
+    assert.equal(f.w.document.querySelector('#legend-cms-action').value,'');
+
+    f.change('#legend-cms-action','managed:business_call:1');
     assert.equal(button.getAttribute('href'),'tel:+16025550199');
     assert.equal(button.textContent,'Call Now');
     f.editSelected('Talk with our team');
     assert.equal(button.textContent,'Talk with our team');
+
     f.click('[data-open="signals"]');
     assert.match(f.w.document.querySelector('#legend-cms-signal-controls').textContent,/Automatic button analytics \+ Meta/);
     const advanced=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')]
       .find(node=>node.textContent==='Add advanced custom mapping');
     assert.ok(advanced); assert.equal(advanced.hidden,true);
+
     const saved=await f.save(); const extra=saved.pages['/'].extras[0];
     assert.equal(extra.actionKey,'business_call');
     assert.equal(extra.href,'tel:+16025550199');
     assert.equal(extra.text,'Talk with our team');
   } finally { f.close(); }
 });
-test('button action picker keeps backend-wired presets separate from page navigation and explains automatic delivery',async()=>{
+test('button action picker groups human CTA phrases by one backend wiring contract and keeps navigation separate',async()=>{
   const actions=[
-    {key:'business_contact',group:'Contact',label:'Contact form',defaultText:'Contact Us',href:'/contact',openInNewTab:false,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'},
-    {key:'business_schedule',group:'Scheduling',label:'Schedule with the business',defaultText:'Schedule a Meeting',href:'https://book.example.test/',openInNewTab:true,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'}
+    {key:'business_contact',group:'Contact',label:'Contact',defaultText:'Contact',textVariants:['Contact','Contact Us','Get in Touch','Reach Out'],href:'/contact',openInNewTab:false,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'},
+    {key:'business_quote',group:'Quote',label:'Quote',defaultText:'Quote',textVariants:['Quote','Free Quote','Get a Quote','Get a Free Quote'],href:'/contact',openInNewTab:false,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'},
+    {key:'business_schedule',group:'Schedule',label:'Schedule',defaultText:'Schedule',textVariants:['Schedule','Book Now','Schedule a Meeting'],href:'https://book.example.test/',openInNewTab:true,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'}
   ];
   const pages=[{path:'/',label:'Home'},{path:'/contact',label:'Contact'}];
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages,ctaCatalog:actions});
@@ -813,22 +818,96 @@ test('button action picker keeps backend-wired presets separate from page naviga
     f.click('main h1'); f.click('[data-add="button"]');
     const select=f.w.document.querySelector('#legend-cms-action');
     const groups=[...select.querySelectorAll('optgroup')];
-    assert.equal(groups[0].label,'Preset actions · backend wired');
-    assert.equal(groups[1].label,'Navigate within this website');
-    const presetText=[...groups[0].querySelectorAll('option')].map(option=>option.textContent).join(' ');
-    assert.match(presetText,/Contact form · AUTO Analytics \+ Meta/);
-    assert.match(presetText,/Schedule with the business · AUTO Analytics \+ Meta/);
-    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Automatic wiring: cta_click \+ Meta ContactStepReached/);
+    assert.deepEqual(groups.map(group=>group.label),[
+      'CONTACT — Analytics + Meta',
+      'QUOTE — Analytics + Meta',
+      'SCHEDULE — Analytics + Meta',
+      'WEBSITE PAGES',
+      'OTHER'
+    ]);
+
+    const contactTexts=[...groups[0].querySelectorAll('option')].map(option=>option.textContent);
+    assert.deepEqual(contactTexts,['Contact','Contact Us','Get in Touch','Reach Out']);
+    const quoteTexts=[...groups[1].querySelectorAll('option')].map(option=>option.textContent);
+    assert.deepEqual(quoteTexts,['Quote','Free Quote','Get a Quote','Get a Free Quote']);
+    const allOptionText=[...select.querySelectorAll('option')].map(option=>option.textContent).join(' ');
+    assert.doesNotMatch(allOptionText,/AUTO|Contact LEGEND|Page ·|This website ·/);
+
+    f.change('#legend-cms-action','managed:business_quote:3');
+    const button=f.w.document.querySelector('[data-cms-extra-id]');
+    assert.equal(button.textContent,'Get a Free Quote');
+    assert.equal(button.getAttribute('href'),'/contact');
+    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Every phrase in this group uses the same destination and event contract/);
+
     f.change('#legend-cms-action','page:/contact');
-    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Navigation link/);
+    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Navigation only/);
+  }finally{f.close();}
+});
+
+test('selecting another canvas child preserves the active side-panel tool instead of forcing Content',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><main><section><a href="/contact"><span>Contact</span></a><h2>Heading</h2></section></main></body></html>';
+  const f=await domFixture({html});
+  try{
+    f.click('[data-open="appearance"]');
+    const appearance=f.w.document.querySelector('[data-cms-view="appearance"]');
+    const content=f.w.document.querySelector('[data-cms-view="content"]');
+    assert.equal(appearance.hidden,false);
+    f.click('main h2');
+    assert.equal(appearance.hidden,false);
+    assert.equal(content.hidden,true);
+    f.click('main a span');
+    assert.equal(appearance.hidden,false);
+    assert.equal(content.hidden,true);
+    assert.equal(f.w.document.querySelector('.legend-cms-selected').tagName,'A');
+
+    const same=f.w.document.querySelector('main a span');
+    same.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
+    assert.equal(content.hidden,false);
+  }finally{f.close();}
+});
+
+test('double-click text-edit mode disables move and resize gestures until editing ends',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    const heading=f.w.document.querySelector('main h1');
+    const section=heading.closest('[data-cms-section]');
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    heading.getBoundingClientRect=()=>({left:100,top:100,right:300,bottom:140,width:200,height:40});
+    section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
+    preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
+
+    heading.dispatchEvent(new f.w.MouseEvent('dblclick',{bubbles:true,cancelable:true}));
+    const frame=f.w.document.querySelector('.legend-cms-selection-frame');
+    assert.equal(frame.dataset.textEditing,'true');
+
+    const move=frame.querySelector('.legend-cms-move-handle');
+    move.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:180,clientY:150,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:180,clientY:150,button:0}));
+    let saved=await f.save();
+    let style=Object.values(saved.pages['/'].elements)[0]?.style || {};
+    assert.equal(style.offsetXPercent,undefined);
+    assert.equal(style.offsetYPx,undefined);
+
+    f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+    assert.equal(frame.dataset.textEditing,'false');
+    move.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:130,clientY:112,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:130,clientY:112,button:0}));
+    saved=await f.save();
+    style=Object.values(saved.pages['/'].elements)[0].style;
+    assert.equal(style.offsetXPercent,5);
+    assert.equal(style.offsetYPx,12);
   }finally{f.close();}
 });
 
 test('Duplicate selected is visible with the selected content controls and preserves managed CTA wiring',async()=>{
-  const actions=[{key:'legend_contact',group:'Contact',label:'Contact LEGEND®',defaultText:'Contact Us',href:'/contact',openInNewTab:false,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'}];
+  const actions=[{key:'legend_contact',group:'Contact',label:'Contact',defaultText:'Contact',textVariants:['Contact','Contact Us'],href:'/contact',openInNewTab:false,analyticsEventName:'cta_click',metaIntentEventName:'ContactStepReached'}];
   const f=await domFixture({ctaCatalog:actions});
   try{
     f.click('main h1'); f.click('[data-add="button"]');
+    f.change('#legend-cms-action','managed:legend_contact:1');
     const duplicate=f.w.document.querySelector('#legend-cms-duplicate');
     assert.equal(duplicate.closest('[data-cms-view="content"]')!==null,true);
     assert.equal(duplicate.disabled,false);
@@ -847,7 +926,7 @@ test('Duplicate selected is visible with the selected content controls and prese
 });
 
 test('manual destination remains available and intentionally leaves managed CTA routing',async()=>{
-  const actions=[{key:'legend_contact',group:'Contact',label:'Contact LEGEND®',defaultText:'Contact Us',href:'/contact',openInNewTab:false}];
+  const actions=[{key:'legend_contact',group:'Contact',label:'Contact',defaultText:'Contact',textVariants:['Contact','Contact Us'],href:'/contact',openInNewTab:false}];
   const f=await domFixture({ctaCatalog:actions});
   try {
     f.click('main h1'); f.click('[data-add="button"]');
