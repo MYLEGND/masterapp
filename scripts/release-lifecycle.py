@@ -120,14 +120,19 @@ def integrate(api, number):
     pr = api.api(f'pulls/{number}')
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
+    # An approved-only request is authorized only when the exact PR head changed
+    # the request file. Preserve that scope at dispatch time instead of expanding
+    # the release to every web target through automatic mode.
+    automatic = 'false' if direct_only_request(pr['head']['sha']) else 'true'
     # GitHub enforces any configured branch requirements. No force update.
     result = api.api(f'pulls/{number}/merge',
         {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
     if not result.get('merged'):
         raise RuntimeError('Merge did not complete; source branch retained')
     # GITHUB_TOKEN pushes do not trigger push workflows; explicitly dispatch.
-    api.dispatch(DIRECT, {'automatic': 'true'})
-    return {'mergedPr': number, 'sha': result['sha'], 'releaseDispatched': True}
+    api.dispatch(DIRECT, {'automatic': automatic})
+    return {'mergedPr': number, 'sha': result['sha'], 'releaseDispatched': True,
+            'automaticRelease': automatic == 'true'}
 
 
 def pending_updates(api):
@@ -148,11 +153,13 @@ def pending_updates(api):
                 old['head']['repo'] and old['head']['repo']['full_name'] == api.repo and
                 old['head']['ref'] == pr['head']['ref']]
             if any(ancestor(old['head']['sha'], pr['head']['sha']) for old in prior):
+                automatic = 'false' if direct_only_request(pr['head']['sha']) else 'true'
                 result = api.api(f"pulls/{pr['number']}/merge", {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
                 if not result.get('merged'):
                     raise RuntimeError('Correction merge remains blocked; source branch retained')
-                api.dispatch(DIRECT, {'automatic': 'true'})
-                return {'correctionPr': pr['number'], 'releaseDispatched': True}
+                api.dispatch(DIRECT, {'automatic': automatic})
+                return {'correctionPr': pr['number'], 'releaseDispatched': True,
+                        'automaticRelease': automatic == 'true'}
     open_names = {p['head']['ref'] for p in pulls if p['head']['repo'] and p['head']['repo']['full_name'] == api.repo}
     branches = {b['name']: b for b in api.pages('branches')}
     approved = api.ref(APPROVED)
@@ -174,11 +181,13 @@ def pending_updates(api):
                     'The direct release and checked production gates will rerun; branch deletion remains gated.'})
         # Creation by GITHUB_TOKEN has author_association NONE; the previous ready
         # collaborator PR plus ancestry is the authorization, not the bot identity.
+        automatic = 'false' if direct_only_request(head) else 'true'
         result = api.api(f"pulls/{correction['number']}/merge", {'merge_method': 'merge', 'sha': head}, method='PUT')
         if not result.get('merged'):
             raise RuntimeError('Correction merge failed; source branch retained')
-        api.dispatch(DIRECT, {'automatic': 'true'})
-        return {'correctionPr': correction['number'], 'releaseDispatched': True}
+        api.dispatch(DIRECT, {'automatic': automatic})
+        return {'correctionPr': correction['number'], 'releaseDispatched': True,
+                'automaticRelease': automatic == 'true'}
     return {'integration': 'no ready changes or retained-branch corrections'}
 
 
