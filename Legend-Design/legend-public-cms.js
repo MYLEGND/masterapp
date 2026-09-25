@@ -961,20 +961,35 @@
     gridOverlay.style.height = `${Math.max(rect.height, 120)}px`;
   }
 
+  function selectionBounds() {
+    const rects = selectionItems()
+      .filter(el => !el.dataset.cmsSignalOnly && !el.closest('.legend-cms-editor'))
+      .map(previewRelativeRect)
+      .filter(Boolean);
+    if (!rects.length) return null;
+    const left = Math.min(...rects.map(rect => rect.left));
+    const top = Math.min(...rects.map(rect => rect.top));
+    const right = Math.max(...rects.map(rect => rect.left + rect.width));
+    const bottom = Math.max(...rects.map(rect => rect.top + rect.height));
+    return { left, top, width: right - left, height: bottom - top };
+  }
+
   function updateDirectCanvasUi() {
-    if (!selectionFrame || !editorPreview || !selected || selected.dataset.cmsSignalOnly || selected.closest('.legend-cms-editor')) {
+    const items = selectionItems();
+    if (!selectionFrame || !editorPreview || !items.length) {
       if (selectionFrame) selectionFrame.hidden = true;
       if (gridOverlay && !directGesture) gridOverlay.hidden = true;
       return;
     }
-    const rect = previewRelativeRect(selected);
+    const rect = selectionBounds();
     if (!rect) { selectionFrame.hidden = true; return; }
     selectionFrame.hidden = false;
     selectionFrame.style.left = `${rect.left}px`;
     selectionFrame.style.top = `${rect.top}px`;
     selectionFrame.style.width = `${Math.max(rect.width, 1)}px`;
     selectionFrame.style.height = `${Math.max(rect.height, 1)}px`;
-    selectionFrame.dataset.sectionSelected = selected.dataset.cmsSection ? 'true' : 'false';
+    selectionFrame.dataset.sectionSelected = items.length === 1 && selected?.dataset.cmsSection ? 'true' : 'false';
+    selectionFrame.dataset.multiSelected = items.length > 1 ? 'true' : 'false';
     if (directGesture) positionGridOverlay(directGesture.section);
   }
 
@@ -2139,6 +2154,8 @@
       .legend-cms-move-handle,.legend-cms-resize-handle{position:absolute;pointer-events:auto;touch-action:none;border:1px solid #d4ad45;background:#081a3a;color:#fff;box-shadow:0 3px 12px #0005}
       .legend-cms-move-handle{left:0;top:-38px;min-height:32px;padding:6px 10px;border-radius:9px;font:700 12px/1 Inter,system-ui,sans-serif;cursor:move}
       .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
+      .legend-cms-selection-frame[data-multi-selected="true"] .legend-cms-move-handle,.legend-cms-selection-frame[data-multi-selected="true"] .legend-cms-resize-handle{display:none}
+      .legend-cms-multi-selected{outline:2px solid #4cc9f0;outline-offset:3px}
       .legend-cms-resize-handle{width:28px;height:28px;padding:0;border-radius:50%}
       .legend-cms-resize-x{right:-15px;top:50%;transform:translateY(-50%);cursor:ew-resize}
       .legend-cms-resize-y{left:50%;bottom:-15px;transform:translateX(-50%);cursor:ns-resize}
@@ -2273,12 +2290,14 @@
     document.addEventListener('click', event => {
       const target = (event.target.tagName === 'IMG' ? event.target.closest('[data-cms-editable="true"]') : event.target.closest('a[data-cms-editable="true"]')) || event.target.closest('[data-cms-editable="true"]');
       if (!target || target.closest('.legend-cms-editor') || target.dataset.cmsLocked === 'true') return;
-      const alreadySelected = target === selected;
-      if (!alreadySelected) setSelected(target);
+      const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+      const alreadySelected = selectedElements.has(target);
+      if (additive) setSelected(target, 'toggle');
+      else if (!alreadySelected || selectionItems().length > 1) setSelected(target);
       else activateInlineEditing(target);
       if (target.tagName === 'A' || target.tagName === 'BUTTON') event.preventDefault();
       event.stopPropagation();
-      if (isInlineEditable(target)) target.focus?.({ preventScroll: true });
+      if (!additive && selectionItems().length === 1 && isInlineEditable(target)) target.focus?.({ preventScroll: true });
     }, true);
 
     ['legend-cms-scale','legend-cms-width','legend-cms-height','legend-cms-padding-top','legend-cms-padding-bottom','legend-cms-offset-x','legend-cms-offset-y','legend-cms-align','legend-cms-hidden']
