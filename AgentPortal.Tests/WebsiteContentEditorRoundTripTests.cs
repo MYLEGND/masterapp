@@ -897,17 +897,17 @@ public sealed class WebsiteContentEditorRoundTripTests
             var environment = Mock.Of<IWebHostEnvironment>(e => e.ContentRootPath == AppContext.BaseDirectory);
             _services = new ServiceCollection()
                 .AddSingleton(new WebsitePageCompiler(environment, _configuration))
-                .AddSingleton<ProtectWebsite.Services.IWebsiteStudioAiProposalService>(new FixtureWebsiteStudioAi())
+                .AddSingleton<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService>(new FixtureWebsiteStudioAi())
                 .BuildServiceProvider();
             Controller = CreateController();
         }
 
-        private sealed class FixtureWebsiteStudioAi : ProtectWebsite.Services.IWebsiteStudioAiProposalService
+        private sealed class FixtureWebsiteStudioAi : Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService
         {
-            public Task<ProtectWebsite.Services.WebsiteStudioAiProviderProposal> ProposeAsync(
+            public Task<Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal> ProposeAsync(
                 ProtectWebsite.Services.WebsiteStudioAiProviderRequest request,
                 System.Threading.CancellationToken cancellationToken = default) =>
-                Task.FromResult(new ProtectWebsite.Services.WebsiteStudioAiProviderProposal(
+                Task.FromResult(new Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal(
                     "Improve the selected heading.",
                     [new WebsiteStudioAiOperation { Kind = "set_text", Text = "AI proposed heading" }]));
         }
