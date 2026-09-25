@@ -241,6 +241,10 @@ public sealed class WebsiteContentController : ControllerBase
                 endpoint = apiBase + "/analytics/meta-signal",
                 pixelId = pixel.HasBrowserPixel ? pixel.PixelId : null,
                 browserEventNames = Shared.Analytics.MetaSignalEventCatalog.BrowserPixelEventNames,
+                browserSignalEventNames = Shared.Analytics.MetaSignalEventCatalog.Definitions
+                    .Where(definition => !Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(definition.Name))
+                    .Select(definition => definition.Name)
+                    .ToArray(),
                 weights = metaOptions.Weights
             }
         });
