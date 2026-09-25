@@ -1509,7 +1509,7 @@
     if ([...select.options].some(option=>option.value===current)) select.value=current;
   }
 
-  function installPageSelector(payload) {
+  function installPageSelector() {
     const panel=document.querySelector('.legend-cms-panel'); if(!panel) return;
     const label=document.createElement('label'); label.className='legend-cms-group'; label.textContent='Website page';
     const select=document.createElement('select'); select.id='legend-cms-page-select'; select.setAttribute('aria-label','Website page'); label.appendChild(select);
@@ -3577,7 +3577,7 @@
       signalCatalog = Array.isArray(payload.signalCatalog?.events) && Array.isArray(payload.signalCatalog?.matchingFields)
         ? payload.signalCatalog : null;
       buildEditor();
-      installPageSelector(payload);
+      installPageSelector();
       renderSignalControls();
       const publishButton = document.getElementById('legend-cms-publish'); if (publishButton && payload.capabilities?.canPublish === false) { publishButton.disabled = true; publishButton.title = 'An owner must publish this draft.'; }
       document.documentElement.hidden = false;
