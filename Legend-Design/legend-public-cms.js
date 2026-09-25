@@ -946,6 +946,8 @@
       const selectedRect = selected.getBoundingClientRect();
       const sectionRect = section.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
+      const parentOverride = overrideForElement(parent, false);
+      const freeCanvas = resolvedVariant(parentOverride).layout?.mode === 'free';
       const override = selectedOverride();
       if (!override) return;
       const resolvedStyle = resolvedVariant(override).style || {};
@@ -955,7 +957,7 @@
       directGesture = {
         mode, target: selected, section, parent,
         startX: event.clientX, startY: event.clientY,
-        selectedRect, sectionRect, parentRect,
+        selectedRect, sectionRect, parentRect, freeCanvas,
         startWidthPercent: positiveNumber(resolvedStyle.widthPercent) ? Number(resolvedStyle.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
         startHeightPx: positiveNumber(resolvedStyle.heightPx) ? Number(resolvedStyle.heightPx) : Math.max(selectedRect.height, 24),
         startOffsetXPercent: Number.isFinite(Number(resolvedStyle.offsetXPercent)) ? Number(resolvedStyle.offsetXPercent) : 0,
@@ -1008,8 +1010,14 @@
           snappedDy += sectionCenterY - desiredCenterY;
           gridOverlay.classList.add('legend-cms-snap-y');
         }
-        style.offsetXPercent = Math.round((gesture.startOffsetXPercent + snappedDx / parentWidth * 100) * 1000) / 1000;
-        style.offsetYPx = Math.round((gesture.startOffsetYPx + snappedDy) * 1000) / 1000;
+        if (gesture.freeCanvas) {
+          style.positionMode = 'absolute';
+          style.offsetXPercent = Math.round(((gesture.selectedRect.left + snappedDx - gesture.parentRect.left) / parentWidth * 100) * 1000) / 1000;
+          style.offsetYPx = Math.round((gesture.selectedRect.top + snappedDy - gesture.parentRect.top) * 1000) / 1000;
+        } else {
+          style.offsetXPercent = Math.round((gesture.startOffsetXPercent + snappedDx / parentWidth * 100) * 1000) / 1000;
+          style.offsetYPx = Math.round((gesture.startOffsetYPx + snappedDy) * 1000) / 1000;
+        }
       } else {
         if (gesture.mode === 'resize-x' || gesture.mode === 'resize-xy') {
           const rawWidth = gesture.startWidthPercent + dx / parentWidth * 100;
@@ -1880,6 +1888,12 @@
       if (control.value === '') delete layout[key];
       else layout[key] = ['columns','rows','columnGap','rowGap'].includes(key) ? Number(control.value) : control.value;
     } else return;
+    if (key === 'mode' && control.value === 'free') {
+      variant.style ||= {};
+      if (!positiveNumber(variant.style.heightPx) && !positiveNumber(variant.style.minHeightPx)) {
+        variant.style.minHeightPx = Math.max(120, Math.round(selected.getBoundingClientRect?.().height || 320));
+      }
+    }
     applyElementOverride(selected, base);
     updateDirectCanvasUi();
     markDirty();
