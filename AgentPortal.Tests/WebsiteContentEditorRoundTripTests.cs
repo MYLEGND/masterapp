@@ -182,6 +182,132 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal(first, stillPublished.Url);
     }
 
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task ResponsiveLayoutContract_RoundTripsThroughTheSameDocumentForEveryScope(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var document = new WebsiteContentDocument
+        {
+            Breakpoints =
+            [
+                new() { Id = "tablet", Label = "Tablet", MaxWidthPx = 1024 },
+                new() { Id = "mobile", Label = "Mobile", MaxWidthPx = 640 }
+            ]
+        };
+        document.Elements[ElementId] = new WebsiteElementOverride
+        {
+            Style = new() { WidthPercent = 88, MaxWidthPx = 1200 },
+            Layout = new()
+            {
+                Mode = "grid", Columns = 12, ColumnGap = 24, RowGap = 18,
+                AlignItems = "stretch", JustifyContent = "space-between", Wrap = true
+            },
+            Responsive = new(StringComparer.Ordinal)
+            {
+                ["tablet"] = new()
+                {
+                    Style = new() { WidthPercent = 72, RotationDeg = 4, ZIndex = 7 },
+                    Layout = new() { Mode = "flex", Direction = "row", Wrap = true, ColumnGap = 16 }
+                },
+                ["mobile"] = new()
+                {
+                    Hidden = false,
+                    Style = new() { WidthPercent = 100, MarginTop = 12, AspectRatio = 1.5m },
+                    Layout = new() { Mode = "stack", RowGap = 12, AlignItems = "stretch" }
+                }
+            }
+        };
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        var element = saved.Elements[ElementId];
+
+        Assert.Equal(["tablet", "mobile"], saved.Breakpoints.Select(x => x.Id));
+        Assert.Equal("grid", element.Layout.Mode);
+        Assert.Equal(12, element.Layout.Columns);
+        Assert.Equal(72m, element.Responsive["tablet"].Style.WidthPercent);
+        Assert.Equal("flex", element.Responsive["tablet"].Layout.Mode);
+        Assert.Equal(100m, element.Responsive["mobile"].Style.WidthPercent);
+        Assert.Equal("stack", element.Responsive["mobile"].Layout.Mode);
+        Assert.Equal(1.5m, element.Responsive["mobile"].Style.AspectRatio);
+
+        fixture.Db.ChangeTracker.Clear();
+        var reloaded = ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId];
+        Assert.Equal(7, reloaded.Responsive["tablet"].Style.ZIndex);
+        Assert.Equal(12m, reloaded.Responsive["mobile"].Style.MarginTop);
+    }
+
+    [Fact]
+    public async Task ResponsiveLayoutSanitizer_DropsUnknownVariantsAndBoundsUnsafeGeometry()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var document = new WebsiteContentDocument
+        {
+            Breakpoints =
+            [
+                new() { Id = "tablet", Label = "Tablet", MaxWidthPx = 50000 },
+                new() { Id = "mobile", Label = "Mobile", MaxWidthPx = 200 }
+            ]
+        };
+        document.Elements[ElementId] = new WebsiteElementOverride
+        {
+            Layout = new()
+            {
+                Mode = "invalid", Columns = 99, Rows = -5, ColumnGap = -1,
+                Direction = "sideways", AlignItems = "wrong", JustifyContent = "wrong"
+            },
+            Responsive = new(StringComparer.Ordinal)
+            {
+                ["mobile"] = new()
+                {
+                    Style = new()
+                    {
+                        MaxWidthPx = 50001, Opacity = 2, ScaleX = 0,
+                        RotationDeg = 50000, ZIndex = 50000, AspectRatio = 100
+                    },
+                    Layout = new() { Mode = "grid", Columns = 4, RowGap = 12 }
+                },
+                ["unknown"] = new() { Style = new() { WidthPercent = 55 } }
+            }
+        };
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        Assert.Equal(WebsiteBreakpointCatalog.MaxBreakpointWidth, saved.Breakpoints[0].MaxWidthPx);
+        Assert.Equal(WebsiteBreakpointCatalog.MinBreakpointWidth, saved.Breakpoints[1].MaxWidthPx);
+
+        var element = saved.Elements[ElementId];
+        Assert.Null(element.Layout.Mode);
+        Assert.Null(element.Layout.Columns);
+        Assert.Null(element.Layout.Rows);
+        Assert.Null(element.Layout.ColumnGap);
+        Assert.False(element.Responsive.ContainsKey("unknown"));
+        var mobile = element.Responsive["mobile"];
+        Assert.Equal("grid", mobile.Layout.Mode);
+        Assert.Equal(4, mobile.Layout.Columns);
+        Assert.Null(mobile.Style.MaxWidthPx);
+        Assert.Null(mobile.Style.Opacity);
+        Assert.Null(mobile.Style.ScaleX);
+        Assert.Null(mobile.Style.RotationDeg);
+        Assert.Null(mobile.Style.ZIndex);
+        Assert.Null(mobile.Style.AspectRatio);
+    }
+
+    [Fact]
+    public async Task Manage_ExposesOneServerOwnedComponentCapabilityCatalog()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var result = Assert.IsType<OkObjectResult>(await fixture.Controller.Manage(fixture.Ticket(DateTime.UtcNow.AddMinutes(10))));
+        var json = JsonSerializer.Serialize(result.Value, JsonOptions);
+        Assert.Contains("\"componentCatalog\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"section\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"free\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("componentCatalogV2", json, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task InvalidNumericDomains_AreDiscardedWithoutInventingReplacementStyles()
     {
