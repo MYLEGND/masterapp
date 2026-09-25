@@ -534,6 +534,15 @@
     if (el?.dataset.cmsSignalOnly) return;
     if (!el || !override) return;
     const resolved = resolvedVariant(override);
+    if (editorMode) {
+      if (override.editorLocked === true) {
+        el.dataset.cmsLocked = 'true';
+        el.classList.add('legend-cms-locked');
+      } else {
+        delete el.dataset.cmsLocked;
+        el.classList.remove('legend-cms-locked');
+      }
+    }
     if (override.actionKey) el.dataset.websiteActionKey = override.actionKey;
     else delete el.dataset.websiteActionKey;
     if (resolved.hidden === true) el.hidden = true;
@@ -1388,7 +1397,9 @@
 
   function elementLabel(el) {
     const kind = el.dataset.cmsSection ? 'Section' : ({ A: 'Link', IMG: 'Image', VIDEO: 'Video', H1: 'Heading', H2: 'Heading', H3: 'Heading', P: 'Text' }[el.tagName] || 'Block');
-    const label = (el.getAttribute('alt') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 64);
+    const override = overrideForElement(el, false);
+    const custom = String(override?.editorLabel || '').trim().slice(0,64);
+    const label = custom || (el.getAttribute('alt') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 64);
     return label ? `${kind} · ${label}` : kind;
   }
 
@@ -1403,22 +1414,55 @@
       if (filter && !label.toLowerCase().includes(filter)) return;
       const row = document.createElement('div'); row.className = 'legend-cms-layer';
       const select = document.createElement('button'); select.type = 'button';
-      select.textContent = label + (el.hidden ? ' · Hidden' : '');
+      const value = overrideForElement(el, false);
+      select.textContent = label + (el.hidden ? ' · Hidden' : '') + (value?.editorLocked ? ' · Locked' : '');
       select.setAttribute('aria-pressed', String(el === selected));
       select.addEventListener('click', () => { setSelected(el); el.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); });
       row.appendChild(select);
+      const lock = document.createElement('button'); lock.type = 'button'; lock.textContent = value?.editorLocked ? 'Unlock' : 'Lock';
+      lock.setAttribute('aria-label', `${value?.editorLocked ? 'Unlock' : 'Lock'} ${label}`);
+      lock.addEventListener('click', () => {
+        setSelected(el); checkpoint(); const current = selectedOverride(); if (!current) return;
+        current.editorLocked = current.editorLocked !== true;
+        applyElementOverride(el, current); markDirty(); syncEditorControls(); refreshLayers();
+      });
+      row.appendChild(lock);
       if (el.hidden) {
         const restore = document.createElement('button'); restore.type = 'button'; restore.textContent = 'Show';
         restore.setAttribute('aria-label', `Show ${label}`);
         restore.addEventListener('click', () => {
           setSelected(el); checkpoint(); const value = selectedOverride();
-          if (!value) return; value.hidden = false; el.hidden = false; markDirty(); syncEditorControls(); showPanel('layers');
+          if (!value) return; const variant = editableVariant(value); variant.hidden = false; applyElementOverride(el, value); markDirty(); syncEditorControls(); showPanel('layers');
         });
         row.appendChild(restore);
       }
       list.appendChild(row);
     });
     if (!list.children.length) { const empty = document.createElement('p'); empty.textContent = 'No matching content on this page.'; list.appendChild(empty); }
+  }
+
+  function adjustSelectedZ(action) {
+    if (!selected) return;
+    const parent = selected.parentElement;
+    if (!parent) return;
+    const siblings = [...parent.children].filter(node => node.dataset?.cmsEditable === 'true');
+    const values = siblings.map(node => {
+      const ov = overrideForElement(node, false);
+      return Number(resolvedVariant(ov).style?.zIndex) || 0;
+    });
+    const base = selectedOverride();
+    if (!base) return;
+    const variant = editableVariant(base);
+    variant.style ||= {};
+    const current = Number(resolvedVariant(base).style?.zIndex) || 0;
+    checkpoint();
+    if (action === 'front') variant.style.zIndex = Math.min(10000, Math.max(0, ...values) + 1);
+    else if (action === 'back') variant.style.zIndex = Math.max(-10000, Math.min(0, ...values) - 1);
+    else if (action === 'forward') variant.style.zIndex = Math.min(10000, current + 1);
+    else if (action === 'backward') variant.style.zIndex = Math.max(-10000, current - 1);
+    applyElementOverride(selected, base);
+    syncEditorControls();
+    markDirty();
   }
 
   function refreshHistoryControls() {
@@ -1935,7 +1979,7 @@
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a component</h2><p>The available components come from the shared server capability registry. Add one, then position and resize it directly on the page.</p><div id="legend-cms-add-components" class="legend-cms-menu"></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Position & layout</h2><p>Move and resize on the canvas. For containers, choose Flow, Grid, Flex, Stack, or Free Canvas here. Layout changes are saved at the active breakpoint.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min width px<input data-geometry-key="minWidthPx" type="number" min="0" max="10000" step="any" placeholder="None"></label><label class="legend-cms-group">Max width px<input data-geometry-key="maxWidthPx" type="number" min="0" max="10000" step="any" placeholder="None"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min height px<input data-geometry-key="minHeightPx" type="number" min="0" max="10000" step="any" placeholder="None"></label><label class="legend-cms-group">Max height px<input data-geometry-key="maxHeightPx" type="number" min="0" max="10000" step="any" placeholder="None"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Aspect ratio<input data-geometry-key="aspectRatio" type="number" min="0.05" max="20" step="any" placeholder="Auto"></label><label class="legend-cms-group">Opacity<input data-geometry-key="opacity" type="number" min="0" max="1" step="0.01" placeholder="1"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Rotate °<input data-geometry-key="rotationDeg" type="number" min="-3600" max="3600" step="any" placeholder="0"></label><label class="legend-cms-group">Layer / z-index<input data-geometry-key="zIndex" type="number" min="-10000" max="10000" step="1" placeholder="Auto"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Scale X<input data-geometry-key="scaleX" type="number" min="0.01" max="20" step="any" placeholder="1"></label><label class="legend-cms-group">Scale Y<input data-geometry-key="scaleY" type="number" min="0.01" max="20" step="any" placeholder="1"></label></div><label class="legend-cms-group">Position mode<select data-geometry-key="positionMode"><option value="">Automatic</option><option value="flow">Flow</option><option value="relative">Relative</option><option value="absolute">Absolute</option><option value="sticky">Sticky</option><option value="fixed">Fixed to viewport</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Margin top<input data-geometry-key="marginTop" type="number" min="-2000" max="2000" step="any"></label><label class="legend-cms-group">Margin right<input data-geometry-key="marginRight" type="number" min="-2000" max="2000" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Margin bottom<input data-geometry-key="marginBottom" type="number" min="-2000" max="2000" step="any"></label><label class="legend-cms-group">Margin left<input data-geometry-key="marginLeft" type="number" min="-2000" max="2000" step="any"></label></div><label class="legend-cms-group">Container layout<select id="legend-cms-layout-mode" data-layout-control></select></label><div class="legend-cms-row"><label class="legend-cms-group">Columns<input id="legend-cms-layout-columns" data-layout-control type="number" min="1" max="24" value="12"></label><label class="legend-cms-group">Rows<input id="legend-cms-layout-rows" data-layout-control type="number" min="1" max="24" placeholder="Auto"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Column gap<input id="legend-cms-layout-column-gap" data-layout-control type="number" min="0" max="500" step="any"></label><label class="legend-cms-group">Row gap<input id="legend-cms-layout-row-gap" data-layout-control type="number" min="0" max="500" step="any"></label></div><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction" data-layout-control><option value="row">Row</option><option value="column">Column</option></select></label><label class="legend-cms-group">Align items<select id="legend-cms-layout-align" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option><option value="baseline">Baseline</option></select></label><label class="legend-cms-group">Distribute<select id="legend-cms-layout-justify" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label><label><input id="legend-cms-layout-wrap" data-layout-control type="checkbox" checked> Wrap children</label><label class="legend-cms-group">Overflow<select id="legend-cms-layout-overflow" data-layout-control><option value="visible">Visible</option><option value="hidden">Hidden</option><option value="clip">Clip</option><option value="auto">Auto</option><option value="scroll">Scroll</option></select></label><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Position & layout</h2><p>Move and resize on the canvas. For containers, choose Flow, Grid, Flex, Stack, or Free Canvas here. Layout changes are saved at the active breakpoint.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min width px<input data-geometry-key="minWidthPx" type="number" min="0" max="10000" step="any" placeholder="None"></label><label class="legend-cms-group">Max width px<input data-geometry-key="maxWidthPx" type="number" min="0" max="10000" step="any" placeholder="None"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min height px<input data-geometry-key="minHeightPx" type="number" min="0" max="10000" step="any" placeholder="None"></label><label class="legend-cms-group">Max height px<input data-geometry-key="maxHeightPx" type="number" min="0" max="10000" step="any" placeholder="None"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Aspect ratio<input data-geometry-key="aspectRatio" type="number" min="0.05" max="20" step="any" placeholder="Auto"></label><label class="legend-cms-group">Opacity<input data-geometry-key="opacity" type="number" min="0" max="1" step="0.01" placeholder="1"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Rotate °<input data-geometry-key="rotationDeg" type="number" min="-3600" max="3600" step="any" placeholder="0"></label><label class="legend-cms-group">Layer / z-index<input data-geometry-key="zIndex" type="number" min="-10000" max="10000" step="1" placeholder="Auto"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Scale X<input data-geometry-key="scaleX" type="number" min="0.01" max="20" step="any" placeholder="1"></label><label class="legend-cms-group">Scale Y<input data-geometry-key="scaleY" type="number" min="0.01" max="20" step="any" placeholder="1"></label></div><label class="legend-cms-group">Position mode<select data-geometry-key="positionMode"><option value="">Automatic</option><option value="flow">Flow</option><option value="relative">Relative</option><option value="absolute">Absolute</option><option value="sticky">Sticky</option><option value="fixed">Fixed to viewport</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Margin top<input data-geometry-key="marginTop" type="number" min="-2000" max="2000" step="any"></label><label class="legend-cms-group">Margin right<input data-geometry-key="marginRight" type="number" min="-2000" max="2000" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Margin bottom<input data-geometry-key="marginBottom" type="number" min="-2000" max="2000" step="any"></label><label class="legend-cms-group">Margin left<input data-geometry-key="marginLeft" type="number" min="-2000" max="2000" step="any"></label></div><label class="legend-cms-group">Container layout<select id="legend-cms-layout-mode" data-layout-control></select></label><div class="legend-cms-row"><label class="legend-cms-group">Columns<input id="legend-cms-layout-columns" data-layout-control type="number" min="1" max="24" value="12"></label><label class="legend-cms-group">Rows<input id="legend-cms-layout-rows" data-layout-control type="number" min="1" max="24" placeholder="Auto"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Column gap<input id="legend-cms-layout-column-gap" data-layout-control type="number" min="0" max="500" step="any"></label><label class="legend-cms-group">Row gap<input id="legend-cms-layout-row-gap" data-layout-control type="number" min="0" max="500" step="any"></label></div><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction" data-layout-control><option value="row">Row</option><option value="column">Column</option></select></label><label class="legend-cms-group">Align items<select id="legend-cms-layout-align" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option><option value="baseline">Baseline</option></select></label><label class="legend-cms-group">Distribute<select id="legend-cms-layout-justify" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label><label><input id="legend-cms-layout-wrap" data-layout-control type="checkbox" checked> Wrap children</label><label class="legend-cms-group">Overflow<select id="legend-cms-layout-overflow" data-layout-control><option value="visible">Visible</option><option value="hidden">Hidden</option><option value="clip">Clip</option><option value="auto">Auto</option><option value="scroll">Scroll</option></select></label><div class="legend-cms-row legend-cms-z-actions"><button type="button" data-z-action="front">Bring to front</button><button type="button" data-z-action="back">Send to back</button><button type="button" data-z-action="forward">Bring forward</button><button type="button" data-z-action="backward">Send backward</button></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
@@ -2088,6 +2132,7 @@
       <label class="legend-cms-group legend-cms-breakpoint-control" for="legend-cms-breakpoint">Responsive canvas<select id="legend-cms-breakpoint"></select><small id="legend-cms-breakpoint-note"></small><button id="legend-cms-manage-breakpoints" type="button">Manage breakpoints</button></label>
       <small id="legend-cms-selected-label">Select content on the page</small>
       <p id="legend-cms-inline-help" class="legend-cms-inline-help" hidden>Type directly on the selected page text. Highlight, replace, or delete words on the canvas; use this panel for controls and actions.</p>
+      <div class="legend-cms-row"><button id="legend-cms-lock" type="button" disabled>Lock selected</button><button id="legend-cms-layer-rename" type="button" disabled>Rename layer</button></div>
       <div id="legend-cms-code-group" class="legend-cms-group" hidden>
         <button id="legend-cms-edit-code" type="button">Edit code in modal</button>
         <small>Custom HTML, CSS, and browser JavaScript are previewed inside a sandboxed block. Resize the block directly on the page.</small>
@@ -2162,7 +2207,7 @@
 
     document.addEventListener('click', event => {
       const target = (event.target.tagName === 'IMG' ? event.target.closest('[data-cms-editable="true"]') : event.target.closest('a[data-cms-editable="true"]')) || event.target.closest('[data-cms-editable="true"]');
-      if (!target || target.closest('.legend-cms-editor')) return;
+      if (!target || target.closest('.legend-cms-editor') || target.dataset.cmsLocked === 'true') return;
       const alreadySelected = target === selected;
       if (!alreadySelected) setSelected(target);
       else activateInlineEditing(target);
@@ -2176,6 +2221,27 @@
     ['legend-cms-layout-mode','legend-cms-layout-columns','legend-cms-layout-rows','legend-cms-layout-column-gap','legend-cms-layout-row-gap','legend-cms-layout-direction','legend-cms-layout-align','legend-cms-layout-justify','legend-cms-layout-wrap','legend-cms-layout-overflow']
       .forEach(id => document.getElementById(id)?.addEventListener('input', updateLayoutFromControls));
     document.querySelectorAll('[data-geometry-key]').forEach(control => control.addEventListener('input', updateGeometryFromControls));
+
+    document.getElementById('legend-cms-lock')?.addEventListener('click', () => {
+      if (!selected) return;
+      checkpoint();
+      const ov = selectedOverride(); if (!ov) return;
+      ov.editorLocked = ov.editorLocked !== true;
+      applyElementOverride(selected, ov);
+      syncEditorControls();
+      refreshLayers();
+      markDirty();
+    });
+    document.getElementById('legend-cms-layer-rename')?.addEventListener('click', () => {
+      if (!selected) return;
+      const current = selectedOverride(); if (!current) return;
+      const next = window.prompt?.('Layer name', current.editorLabel || elementLabel(selected).replace(/^[^·]+·\s*/,'')) ?? null;
+      if (next === null) return;
+      checkpoint();
+      current.editorLabel = String(next).trim().slice(0,80) || null;
+      syncEditorControls(); refreshLayers(); markDirty();
+    });
+    document.querySelectorAll('[data-z-action]').forEach(button => button.addEventListener('click', () => adjustSelectedZ(button.dataset.zAction)));
 
     document.getElementById('legend-cms-image')?.addEventListener('change', e => {
       const file = e.target.files?.[0];
