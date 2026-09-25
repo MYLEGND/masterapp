@@ -210,12 +210,12 @@ public sealed class WebsiteContentController : ControllerBase
             facts,
             cancellationToken);
 
-        var metaResolver = HttpContext.RequestServices.GetRequiredService<ProtectWebsite.Services.Meta.IMetaPixelResolutionService>();
+        var metaResolver = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMetaPixelResolutionService>();
         var pixel = scope.CommerceBusinessId.HasValue
             ? await metaResolver.ResolveForBusinessAsync(scope.CommerceBusinessId.Value, cancellationToken)
             : await metaResolver.ResolveForLeadAsync(null, null, isFounderPath: true, cancellationToken);
         var metaOptions = HttpContext.RequestServices
-            .GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions>>()
+            .GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<Infrastructure.Analytics.MetaSignalIntelligenceOptions>>()
             .Value;
         var apiBase = WebsiteContentApiBaseUrl();
 
@@ -712,7 +712,7 @@ public sealed class WebsiteContentController : ControllerBase
             facts = await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken);
         }
 
-        var context = new ProtectWebsite.Services.WebsiteStudioAiContext(
+        var context = new Infrastructure.WebsiteEditing.WebsiteStudioAiContext(
             actor.SiteKey,
             request.PagePath,
             request.SelectedElementId,
@@ -729,9 +729,9 @@ public sealed class WebsiteContentController : ControllerBase
         try
         {
             var provider = HttpContext.RequestServices
-                .GetRequiredService<ProtectWebsite.Services.IWebsiteStudioAiProposalService>();
+                .GetRequiredService<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService>();
             var proposed = await provider.ProposeAsync(
-                new ProtectWebsite.Services.WebsiteStudioAiProviderRequest(
+                new Infrastructure.WebsiteEditing.WebsiteStudioAiProviderRequest(
                     request.Mode,
                     request.Instruction,
                     context),
@@ -1386,12 +1386,12 @@ public sealed class WebsiteContentController : ControllerBase
                 .FirstOrDefaultAsync(cancellationToken);
             phone = profile?.Phone;
             var resolver = ControllerContext.HttpContext?.RequestServices
-                .GetService(typeof(ProtectWebsite.Services.Booking.IPublicBookingResolver))
-                as ProtectWebsite.Services.Booking.IPublicBookingResolver;
+                .GetService(typeof(Infrastructure.Bookings.IPublicBookingResolver))
+                as Infrastructure.Bookings.IPublicBookingResolver;
             if (resolver is not null)
             {
                 var booking = await resolver.ResolveAsync(
-                    new ProtectWebsite.Services.Booking.PublicBookingResolveContext(
+                    new Infrastructure.Bookings.PublicBookingResolveContext(
                         AgentUserId: ownerUserId,
                         AgentSlug: agentSlug),
                     cancellationToken);
@@ -1569,15 +1569,15 @@ public sealed class WebsiteContentController : ControllerBase
             var connection = await _db.Set<MarketingConnection>().AsNoTracking()
                 .SingleOrDefaultAsync(row => row.OwnerKey == owner.Key && row.Provider == "meta", cancellationToken);
             if (connection?.DisconnectedUtc.HasValue == true)
-                return new(ProtectWebsite.Services.Meta.MetaPixelOwnerTypes.Agency, false, false, false);
+                return new(Infrastructure.Analytics.MetaPixelOwnerTypes.Agency, false, false, false);
             if (connection is not null && !string.IsNullOrWhiteSpace(connection.PixelId))
-                return FromConnection(connection, ProtectWebsite.Services.Meta.MetaPixelOwnerTypes.Agency);
+                return FromConnection(connection, Infrastructure.Analytics.MetaPixelOwnerTypes.Agency);
 
             var pixel = _configuration["Meta:PixelId"]?.Trim();
             var token = _configuration["Meta:AccessToken"]?.Trim();
             var test = _configuration["Meta:TestEventCode"]?.Trim();
             return new(
-                ProtectWebsite.Services.Meta.MetaPixelOwnerTypes.Agency,
+                Infrastructure.Analytics.MetaPixelOwnerTypes.Agency,
                 !string.IsNullOrWhiteSpace(pixel),
                 !string.IsNullOrWhiteSpace(pixel) && !string.IsNullOrWhiteSpace(token),
                 !string.IsNullOrWhiteSpace(test));
@@ -1588,7 +1588,7 @@ public sealed class WebsiteContentController : ControllerBase
             var owner = Shared.Analytics.MarketingOwnerScope.Business(actor.CommerceBusinessId.Value);
             var connection = await _db.Set<MarketingConnection>().AsNoTracking()
                 .SingleOrDefaultAsync(row => row.OwnerKey == owner.Key && row.Provider == "meta", cancellationToken);
-            return FromConnection(connection, ProtectWebsite.Services.Meta.MetaPixelOwnerTypes.Business);
+            return FromConnection(connection, Infrastructure.Analytics.MetaPixelOwnerTypes.Business);
         }
 
         if (actor.SiteKey == WebsiteEditorSiteKeys.Legend)
@@ -1607,9 +1607,9 @@ public sealed class WebsiteContentController : ControllerBase
         var agentConnection = await _db.Set<MarketingConnection>().AsNoTracking()
             .SingleOrDefaultAsync(row => row.OwnerKey == agentOwner.Key && row.Provider == "meta", cancellationToken);
         if (agentConnection?.DisconnectedUtc.HasValue == true)
-            return new(ProtectWebsite.Services.Meta.MetaPixelOwnerTypes.Agent, false, false, false);
+            return new(Infrastructure.Analytics.MetaPixelOwnerTypes.Agent, false, false, false);
         if (agentConnection is not null && !string.IsNullOrWhiteSpace(agentConnection.PixelId))
-            return FromConnection(agentConnection, ProtectWebsite.Services.Meta.MetaPixelOwnerTypes.Agent);
+            return FromConnection(agentConnection, Infrastructure.Analytics.MetaPixelOwnerTypes.Agent);
 
         var upn = tracking.AgentUpn?.Trim().ToUpperInvariant();
         var profile = await _db.AgentProfiles.AsNoTracking()
@@ -1622,7 +1622,7 @@ public sealed class WebsiteContentController : ControllerBase
             .FirstOrDefaultAsync(cancellationToken);
         if (!string.IsNullOrWhiteSpace(profile?.MetaPixelId))
             return new(
-                ProtectWebsite.Services.Meta.MetaPixelOwnerTypes.Agent,
+                Infrastructure.Analytics.MetaPixelOwnerTypes.Agent,
                 true,
                 !string.IsNullOrWhiteSpace(profile.MetaCapiAccessToken),
                 !string.IsNullOrWhiteSpace(profile.MetaTestEventCode));
