@@ -639,7 +639,7 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
-      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 10);
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 11);
       assert.ok(f.w.document.querySelector('[data-open="signals"]'));
       assert.ok(f.w.document.querySelector('[data-open="quality"]'));
       f.click('[data-open="page"]');
@@ -785,6 +785,87 @@ test('media library inserts existing video into selected section through Extras'
     assert.ok(video);
     assert.equal(video.videoUrl,assetUrl);
     assert.equal(JSON.stringify(saved).includes('ticket='),false);
+  } finally { f.close(); }
+});
+
+
+test('added block can become one reusable definition and inserted instances remain references', async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    f.click('[data-add="text"]');
+    f.editSelected('Reusable promise');
+    f.click('[data-open="components"]');
+    f.input('#legend-cms-component-name','Promise block');
+    f.click('#legend-cms-component-save');
+    const rows=f.w.document.querySelectorAll('.legend-cms-component-row');
+    assert.equal(rows.length,1);
+    rows[0].querySelectorAll('button')[0].dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    const saved=await f.save();
+    const definitions=Object.values(saved.reusableComponents);
+    assert.equal(definitions.length,1);
+    assert.equal(definitions[0].name,'Promise block');
+    assert.equal(definitions[0].kind,'block');
+    assert.equal(definitions[0].extras.length,1);
+    assert.equal(definitions[0].extras[0].text,'Reusable promise');
+    assert.deepEqual(definitions[0].extras[0].signals,[]);
+    const instances=saved.pages['/'].extras.filter(extra=>extra.type==='reusable');
+    assert.equal(instances.length,1);
+    assert.equal(instances[0].syncSourceId,definitions[0].id);
+    assert.equal(saved.pages['/'].extras.filter(extra=>extra.type==='text'&&extra.text==='Reusable promise').length,1);
+  } finally { f.close(); }
+});
+
+test('updating reusable definition refreshes rendered instances and definition cannot delete while used', async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    f.click('[data-add="text"]');
+    f.editSelected('First component copy');
+    f.click('[data-open="components"]');
+    f.input('#legend-cms-component-name','Shared text');
+    f.click('#legend-cms-component-save');
+    let row=f.w.document.querySelector('.legend-cms-component-row');
+    row.querySelectorAll('button')[0].dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    assert.equal(f.w.document.querySelector('.cms-reusable-instance').textContent,'First component copy');
+    const original=[...f.w.document.querySelectorAll('.cms-extra-text')].find(node=>!node.closest('.cms-reusable-instance'));
+    original.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    f.editSelected('Updated component copy');
+    f.click('[data-open="components"]');
+    row=f.w.document.querySelector('.legend-cms-component-row');
+    const buttons=row.querySelectorAll('button');
+    buttons[1].dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    assert.equal(f.w.document.querySelector('.cms-reusable-instance').textContent,'Updated component copy');
+    row=f.w.document.querySelector('.legend-cms-component-row');
+    assert.equal(row.querySelectorAll('button')[2].disabled,true);
+    const saved=await f.save();
+    assert.equal(Object.values(saved.reusableComponents)[0].extras[0].text,'Updated component copy');
+    assert.equal(saved.pages['/'].extras.filter(extra=>extra.type==='reusable').length,1);
+  } finally { f.close(); }
+});
+
+test('template content cannot be serialized into reusable component storage', async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    f.click('[data-open="components"]');
+    f.input('#legend-cms-component-name','Should not copy template');
+    f.click('#legend-cms-component-save');
+    assert.match(f.w.document.querySelector('#legend-cms-component-status').textContent,/Select an added block or added section/);
+    const saved=await f.save();
+    assert.deepEqual(saved.reusableComponents,{});
+  } finally { f.close(); }
+});
+
+test('missing reusable definition renders editor warning without copied fallback content', async()=>{
+  const doc={pages:{'/':{elements:{},sectionOrder:{},extras:[{id:'missing-instance',type:'reusable',sectionId:'home.section.1',syncSourceId:'missing-component',style:{}}]}}};
+  const f=await domFixture({doc});
+  try{
+    assert.match(f.w.document.querySelector('.cms-reusable-instance').textContent,/Reusable component is unavailable/);
+    const saved=await f.save();
+    const instance=saved.pages['/'].extras.find(extra=>extra.id==='missing-instance');
+    assert.equal(instance.syncSourceId,'missing-component');
+    assert.equal(saved.pages['/'].extras.length,1);
   } finally { f.close(); }
 });
 
