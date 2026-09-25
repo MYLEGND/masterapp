@@ -615,6 +615,8 @@ public sealed class ParfaitProductService
             .Select(x => x.Key)
             .Single();
 
+    public Guid GetDefaultBusinessId() => GetBusinessId();
+
     private Guid GetBusinessId()
     {
         var business = _db.CommerceBusinesses.SingleOrDefault(x => x.Key == ParfaitBusinessScopeService.ParfaitBusinessKey);
