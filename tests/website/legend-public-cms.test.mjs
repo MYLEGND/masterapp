@@ -305,7 +305,7 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
-  const click=selector=>w.document.querySelector(selector).dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true}));
+  const click=(selector,init={})=>w.document.querySelector(selector).dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true,...init}));
   const input=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
@@ -419,6 +419,76 @@ test('editor lock and z-order persist in the same selected element record',async
     assert.ok(element);
     assert.equal(element.editorLocked,true);
     assert.equal(element.style.zIndex,1);
+  } finally { f.close(); }
+});
+
+test('modifier multi-select groups through canonical placements and ungroup restores the parent container',async()=>{
+  const f=await domFixture(); let grouped;
+  try {
+    f.click('main h1');
+    f.click('main a',{shiftKey:true});
+    assert.equal(f.w.document.querySelector('.legend-cms-selection-frame').dataset.multiSelected,'true');
+    assert.equal(f.w.document.querySelector('#legend-cms-group-selection').disabled,false);
+    f.click('#legend-cms-group-selection');
+    grouped=await f.save();
+    const group=grouped.pages['/'].extras.find(item=>item.type==='group');
+    assert.ok(group);
+    const children=Object.values(grouped.pages['/'].elements).filter(item=>item.placement?.containerId===`extra:${group.id}`);
+    assert.equal(children.length,2);
+    assert.equal(group.layout.mode,'flow');
+
+    f.click('#legend-cms-ungroup-selection');
+    const ungrouped=await f.save();
+    assert.equal(ungrouped.pages['/'].extras.some(item=>item.type==='group'),false);
+    const restored=Object.values(ungrouped.pages['/'].elements).filter(item=>item.placement?.containerId?.startsWith('section:'));
+    assert.equal(restored.length>=2,true);
+  } finally { f.close(); }
+});
+
+test('align selection writes breakpoint-aware absolute positions only inside Free Canvas',async()=>{
+  const f=await domFixture(); let saved;
+  try {
+    const section=f.w.document.querySelector('main section');
+    const heading=f.w.document.querySelector('main h1');
+    const link=f.w.document.querySelector('main a');
+    section.getBoundingClientRect=()=>({left:0,top:0,width:1000,height:500,right:1000,bottom:500});
+    heading.getBoundingClientRect=()=>({left:100,top:100,width:200,height:60,right:300,bottom:160});
+    link.getBoundingClientRect=()=>({left:320,top:180,width:140,height:40,right:460,bottom:220});
+
+    f.click('main h1');
+    f.click('#legend-cms-container');
+    f.input('#legend-cms-layout-mode','free');
+    f.click('main h1');
+    f.click('main a',{shiftKey:true});
+    assert.equal(f.w.document.querySelector('[data-align-selection="left"]').disabled,false);
+    f.click('[data-align-selection="left"]');
+    saved=await f.save();
+
+    const positioned=Object.values(saved.pages['/'].elements).filter(item=>item.style?.positionMode==='absolute');
+    assert.equal(positioned.length,2);
+    assert.ok(positioned.every(item=>item.style.offsetXPercent===10));
+  } finally { f.close(); }
+});
+
+test('drag marquee uses the same transient multi-selection and ignores nested interactive text',async()=>{
+  const f=await domFixture();
+  try {
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    const heading=f.w.document.querySelector('main h1');
+    const link=f.w.document.querySelector('main a');
+    const span=f.w.document.querySelector('main a span');
+    preview.getBoundingClientRect=()=>({left:0,top:0,width:1000,height:700,right:1000,bottom:700});
+    heading.getBoundingClientRect=()=>({left:100,top:100,width:200,height:60,right:300,bottom:160});
+    link.getBoundingClientRect=()=>({left:340,top:120,width:180,height:50,right:520,bottom:170});
+    span.getBoundingClientRect=()=>({left:350,top:130,width:100,height:20,right:450,bottom:150});
+
+    preview.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,button:0,clientX:50,clientY:50}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:560,clientY:220}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:560,clientY:220}));
+
+    assert.equal(f.w.document.querySelector('.legend-cms-selection-frame').dataset.multiSelected,'true');
+    assert.equal(f.w.document.querySelector('#legend-cms-group-selection').disabled,false);
+    assert.equal(span.classList.contains('legend-cms-multi-selected'),false);
   } finally { f.close(); }
 });
 
