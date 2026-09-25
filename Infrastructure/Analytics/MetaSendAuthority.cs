@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
