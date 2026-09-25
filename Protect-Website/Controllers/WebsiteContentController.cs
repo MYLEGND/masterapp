@@ -699,8 +699,55 @@ public sealed class WebsiteContentController : ControllerBase
         using var buffer = new MemoryStream();
         await file.CopyToAsync(buffer, cancellationToken);
         var media = HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>();
-        var asset = await media.StoreAsync(actor.OwnerUserId, "", file.FileName, buffer.ToArray(), cancellationToken);
-        return Ok(new { url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id, sizeBytes = asset.SizeBytes });
+        var asset = await media.StoreAsync(actor.OwnerUserId, Path.GetFileName(file.FileName), file.FileName, buffer.ToArray(), cancellationToken);
+        return Ok(new { id = asset.Id, name = MediaDisplayName(asset), url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id, contentType = asset.ContentType, sizeBytes = asset.SizeBytes, createdUtc = asset.CreatedUtc });
+    }
+
+    [HttpGet("manage/media")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> MediaLibrary(
+        [FromQuery] string ticket,
+        [FromQuery] string? q = null,
+        [FromQuery] string? kind = null,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var query = _db.Set<WebsiteMediaAsset>().AsNoTracking().Where(asset => asset.OwnerKey == actor.OwnerUserId);
+        var search = q?.Trim();
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(asset => asset.SourceUrl.Contains(search) || asset.ContentType.Contains(search));
+        if (string.Equals(kind, "image", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(asset => asset.ContentType.StartsWith("image/"));
+        else if (string.Equals(kind, "video", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(asset => asset.ContentType.StartsWith("video/"));
+        else if (!string.IsNullOrWhiteSpace(kind) && !string.Equals(kind, "all", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "invalid_media_kind" });
+
+        var assets = await query.OrderByDescending(asset => asset.CreatedUtc).ThenByDescending(asset => asset.Id).Take(200).ToListAsync(cancellationToken);
+        return Ok(new
+        {
+            assets = assets.Select(asset => new
+            {
+                asset.Id,
+                name = MediaDisplayName(asset),
+                url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id,
+                asset.ContentType,
+                asset.SizeBytes,
+                asset.CreatedUtc
+            })
+        });
+    }
+
+    private static string MediaDisplayName(WebsiteMediaAsset asset)
+    {
+        if (string.IsNullOrWhiteSpace(asset.SourceUrl)) return asset.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? "Website video" : "Website image";
+        if (Uri.TryCreate(asset.SourceUrl, UriKind.Absolute, out var uri))
+        {
+            var name = Path.GetFileName(uri.LocalPath);
+            return string.IsNullOrWhiteSpace(name) ? uri.Host : name;
+        }
+        return Path.GetFileName(asset.SourceUrl);
     }
     [HttpPost("manage/import-file")]
     [RequestSizeLimit(52_000_000)]
