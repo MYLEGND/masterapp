@@ -41,6 +41,7 @@
   let ctaCatalog = [];
   let managementPayload = null;
   let pendingAiProposal = null;
+  let collaborationReplyTo = null;
   let collectionData = new Map();
   let dynamicCollectionItem = renderInput?.dynamicItem || null;
   let selected = null;
@@ -2204,8 +2205,146 @@
     if (name === 'page') syncPageControls();
     if (name === 'signals') renderSignalControls();
     if (name === 'quality') void refreshQualityInspector();
+    if (name === 'collaboration') void refreshCollaboration();
   }
 
+
+  function collaborationSelectedElementId() {
+    if (!selected) return null;
+    return selected.dataset.cmsExtraId ? `extra:${selected.dataset.cmsExtraId}` : selected.dataset.cmsId || null;
+  }
+
+  function collaborationAuthorLabel(comment) {
+    const role = comment?.authorRole ? String(comment.authorRole).replaceAll('_',' ') : 'editor';
+    return comment?.authorEmail ? `${comment.authorEmail} · ${role}` : role;
+  }
+
+  async function ensureSavedForCollaboration() {
+    if (!dirty) return true;
+    const role = document.getElementById('legend-cms-collaboration-role');
+    if (role) role.textContent='Saving the current draft before anchoring this comment…';
+    const saved = await save(false);
+    return Boolean(saved && !dirty);
+  }
+
+  async function refreshCollaboration() {
+    const commentsHost=document.getElementById('legend-cms-collaboration-comments');
+    const rosterHost=document.getElementById('legend-cms-collaboration-roster');
+    const roleHost=document.getElementById('legend-cms-collaboration-role');
+    if(!commentsHost || !rosterHost || !editorTicket) return;
+    commentsHost.replaceChildren();
+    rosterHost.replaceChildren();
+    if(roleHost) roleHost.textContent='Loading collaboration…';
+    try{
+      const url=new URL(`${API_BASE}/api/website-content/manage/collaboration`);
+      url.searchParams.set('ticket',editorTicket);
+      url.searchParams.set('pagePath',currentPageRoute());
+      const response=await fetch(url,{cache:'no-store'});
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(payload.message || payload.error || `Collaboration failed (${response.status})`);
+      if(payload.source!=='website_studio_collaboration') throw new Error('Collaboration response was invalid.');
+      const role=payload.role || {};
+      if(roleHost) roleHost.textContent=`${role.label || role.roleKey || 'Editor'} · ${role.canPublish?'can publish':'review/edit only'} · revision ${payload.revision}`;
+      for(const person of payload.collaborators || []){
+        const row=document.createElement('div'); row.className='legend-cms-collaborator';
+        const name=document.createElement('strong'); name.textContent=person.displayName || 'Website collaborator';
+        const meta=document.createElement('small'); meta.textContent=`${person.roleKey || 'member'} · ${person.canPublish?'publisher':'editor'}`;
+        row.append(name,meta); rosterHost.appendChild(row);
+      }
+      if(!(payload.collaborators || []).length){
+        const empty=document.createElement('p'); empty.textContent='No other website collaborators are currently assigned.'; rosterHost.appendChild(empty);
+      }
+
+      const comments=payload.comments || [];
+      const children=new Map();
+      for(const comment of comments){
+        const key=comment.parentCommentId || 'root';
+        if(!children.has(key)) children.set(key,[]);
+        children.get(key).push(comment);
+      }
+      const renderComment=(comment,depth=0)=>{
+        const row=document.createElement('article'); row.className='legend-cms-comment'; row.dataset.depth=String(depth);
+        const header=document.createElement('div'); header.className='legend-cms-comment-head';
+        const who=document.createElement('strong'); who.textContent=collaborationAuthorLabel(comment);
+        const status=document.createElement('span'); status.textContent=comment.status || 'open';
+        header.append(who,status);
+        const body=document.createElement('p'); body.textContent=comment.body || '';
+        const meta=document.createElement('small');
+        meta.textContent=`Revision ${comment.anchorRevision} · ${comment.elementId || 'page'} · ${comment.createdUtc || ''}`;
+        const actions=document.createElement('div'); actions.className='legend-cms-row';
+        if(comment.elementId){
+          const locate=document.createElement('button'); locate.type='button'; locate.textContent='Select on page';
+          locate.addEventListener('click',()=>{
+            const node=document.querySelector(`[data-cms-id="${CSS.escape(comment.elementId)}"]`);
+            if(node){ setSelected(node); node.scrollIntoView?.({block:'center',behavior:'smooth'}); }
+          });
+          actions.appendChild(locate);
+        }
+        if(!comment.parentCommentId){
+          const reply=document.createElement('button'); reply.type='button'; reply.textContent='Reply';
+          reply.addEventListener('click',()=>{
+            collaborationReplyTo=comment.id;
+            const replyStatus=document.getElementById('legend-cms-collaboration-reply');
+            if(replyStatus) replyStatus.textContent=`Replying to ${collaborationAuthorLabel(comment)}`;
+            document.getElementById('legend-cms-collaboration-body')?.focus();
+          });
+          actions.appendChild(reply);
+        }
+        if(comment.canResolve){
+          const toggle=document.createElement('button'); toggle.type='button'; toggle.textContent=comment.status==='resolved'?'Reopen':'Resolve';
+          toggle.addEventListener('click',()=>void setCollaborationCommentStatus(comment.id,comment.status==='resolved'?'open':'resolved'));
+          actions.appendChild(toggle);
+        }
+        row.append(header,body,meta,actions); commentsHost.appendChild(row);
+        for(const child of children.get(comment.id) || []) renderComment(child,depth+1);
+      };
+      for(const comment of children.get('root') || []) renderComment(comment,0);
+      if(!comments.length){
+        const empty=document.createElement('p'); empty.textContent='No review comments on this page yet.'; commentsHost.appendChild(empty);
+      }
+    }catch(error){
+      if(roleHost) roleHost.textContent=error?.message || 'Unable to load collaboration.';
+      commentsHost.replaceChildren();
+    }
+  }
+
+  async function createCollaborationComment(pageOnly=false) {
+    const input=document.getElementById('legend-cms-collaboration-body');
+    const body=input?.value?.trim() || '';
+    if(!body) return;
+    if(!await ensureSavedForCollaboration()) return;
+    const response=await fetch(`${API_BASE}/api/website-content/manage/collaboration/comments`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        ticket:editorTicket,
+        expectedRevision:revision,
+        pagePath:currentPageRoute(),
+        elementId:pageOnly?null:collaborationSelectedElementId(),
+        body,
+        parentCommentId:collaborationReplyTo
+      })
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      const role=document.getElementById('legend-cms-collaboration-role');
+      if(role) role.textContent=payload.message || payload.error || `Comment failed (${response.status})`;
+      return;
+    }
+    if(input) input.value='';
+    collaborationReplyTo=null;
+    const replyStatus=document.getElementById('legend-cms-collaboration-reply'); if(replyStatus) replyStatus.textContent='';
+    await refreshCollaboration();
+  }
+
+  async function setCollaborationCommentStatus(commentId,status) {
+    const response=await fetch(`${API_BASE}/api/website-content/manage/collaboration/comments/status`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ticket:editorTicket,commentId,status})
+    });
+    if(response.ok) await refreshCollaboration();
+  }
 
   async function refreshMediaLibrary() {
     const grid=document.getElementById('legend-cms-media-grid');
@@ -2641,7 +2780,7 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="ai">AI Assist</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="ai">AI Assist</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="collaboration">Collaborate</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
@@ -2665,6 +2804,10 @@
     const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
     quality.innerHTML = '<h2>Quality inspector</h2><p>Saved draft checks and live canvas checks are different evidence sources. The server remains authoritative for saved state and publication.</p><h3>Saved draft checks (server)</h3><small id="legend-cms-quality-saved-meta">Open Quality to inspect the persisted draft.</small><div id="legend-cms-quality-saved" class="legend-cms-quality-list"></div><h3>Live page checks (rendered canvas)</h3><small id="legend-cms-quality-live-meta">Open Quality to inspect the rendered canvas.</small><div id="legend-cms-quality-live" class="legend-cms-quality-list"></div><button id="legend-cms-quality-refresh" type="button">Run checks again</button>';
     tools.appendChild(quality);
+
+    const collaboration = document.createElement('section'); collaboration.dataset.cmsView='collaboration'; collaboration.hidden=true;
+    collaboration.innerHTML='<h2>Collaboration</h2><p>Private review comments stay in Website Studio and never publish into the website document.</p><small id="legend-cms-collaboration-role">Loading role…</small><div id="legend-cms-collaboration-roster" class="legend-cms-collaboration-roster"></div><label class="legend-cms-group">Comment<textarea id="legend-cms-collaboration-body" rows="4" maxlength="4000" placeholder="Leave a review note for this page or selected element"></textarea></label><small id="legend-cms-collaboration-reply"></small><div class="legend-cms-row"><button id="legend-cms-collaboration-add" type="button">Comment on selection</button><button id="legend-cms-collaboration-page" type="button">Comment on page</button></div><div id="legend-cms-collaboration-comments" class="legend-cms-collaboration-comments"></div>';
+    tools.appendChild(collaboration);
 
 
     const layoutView = tools.querySelector('[data-cms-view="layout"]');
@@ -2717,6 +2860,8 @@
       const item=(projection?.items||[]).find(value=>value.key===event.target.value);
       dynamicCollectionItem=item?{collectionId:binding.collectionId,key:item.key,fields:item.fields}:null; refreshResponsiveOverrides(); renderDataControls();
     });
+    document.getElementById('legend-cms-collaboration-add')?.addEventListener('click',()=>void createCollaborationComment(false));
+    document.getElementById('legend-cms-collaboration-page')?.addEventListener('click',()=>void createCollaborationComment(true));
     document.getElementById('legend-cms-ai-generate')?.addEventListener('click',()=>void requestAiProposal());
     document.getElementById('legend-cms-ai-apply')?.addEventListener('click',applyAiProposal);
     document.getElementById('legend-cms-ai-discard')?.addEventListener('click',()=>{ pendingAiProposal=null; renderAiProposal(); });
@@ -2854,6 +2999,7 @@
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
       .legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:10px;border:1px solid #344766;border-radius:12px;background:#10284a}.legend-cms-media-card img,.legend-cms-media-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-component-list{display:grid;gap:8px;margin-top:12px}.legend-cms-component-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:7px;align-items:start;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-component-row>div{min-width:0}.legend-cms-component-row strong,.legend-cms-component-row small{display:block;overflow-wrap:anywhere}.legend-cms-component-row button{padding:7px 9px}.cms-reusable-instance{min-width:0}.legend-cms-reusable-missing{padding:12px;border:1px dashed #c98e8e;border-radius:8px;background:#2b1717;color:#f6dede}
+      .legend-cms-collaboration-roster,.legend-cms-collaboration-comments{display:grid;gap:8px;margin:10px 0 16px}.legend-cms-collaborator,.legend-cms-comment{display:grid;gap:6px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-collaborator small,.legend-cms-comment small{margin:0}.legend-cms-comment[data-depth="1"]{margin-left:18px;border-left:3px solid #d4ad45}.legend-cms-comment-head{display:flex;gap:8px;justify-content:space-between;align-items:center}.legend-cms-comment-head span{text-transform:capitalize;font-size:11px;color:#d4ad45}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
