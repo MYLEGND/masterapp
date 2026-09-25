@@ -41,6 +41,7 @@
   let componentCatalog = [];
   let currentDesignBreakpoint = 'base';
   let selected = null;
+  const selectedElements = new Set();
   let selectedSection = null;
   let editorPreview = null;
   let selectionFrame = null;
@@ -583,6 +584,10 @@
         node.dataset.cmsId = `extra:${extra.id}:${field}`; node.dataset.cmsEditable = 'true';
       }
       el.append(heading, copy);
+    } else if (extra.type === 'group') {
+      el = document.createElement('div');
+      el.className = 'cms-extra cms-extra-group';
+      el.setAttribute('role', 'group');
     } else if (extra.type === 'button') {
       el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
     } else if (extra.type === 'code') {
@@ -1387,7 +1392,8 @@
     const container = placement.containerId ? document.querySelector(`[data-cms-id="${CSS.escape(placement.containerId)}"]`) : null;
     // Preserve the actual destination's flow instead of extracting a heading or button
     // into an unrelated grid at the end of its section.
-    if (placement.flow === true && container && section.contains(container) && !el.contains(container) && !container.closest(lockedSelector)) {
+    if (placement.flow === true && container && (container === section || section.contains(container)) && !el.contains(container) &&
+        (container === section || !container.closest(lockedSelector))) {
       container.insertBefore(el, anchor?.parentElement === container && anchor !== el ? anchor : null);
       el.style.removeProperty('--cms-column'); el.style.removeProperty('--cms-span');
       return;
