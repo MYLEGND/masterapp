@@ -311,7 +311,7 @@ public sealed class WebsiteContentController : ControllerBase
         string Status);
 
 
-    public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null);
+    public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null, IReadOnlyList<string>? DeletedKeys = null);
     public sealed record ProfileRequest(string Ticket, BusinessWebsiteProfileInput Settings);
     private object SignalCatalogPayload() => new { events = WebsiteSignalBindingPolicy.Options, matchingFields = WebsiteSignalBindingPolicy.ApprovedMatchingFields, runtimeEnabled = _configuration.GetValue<bool>("WebsiteMarketing:Enabled") };
 
@@ -726,7 +726,11 @@ public sealed class WebsiteContentController : ControllerBase
         var state = await StateAsync(actor, cancellationToken);
         if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict", revision = state.Revision });
         WebsiteContentDocument document;
-        try { document = WebsiteContentSanitizer.Sanitize(request.Document); }
+        try
+        {
+            document = WebsiteContentSanitizer.Sanitize(request.Document);
+            document = PreserveServerDraftContent(Read(state.DraftJson), document, request.DeletedKeys);
+        }
         catch (ArgumentException ex) { return BadRequest(new { error = "invalid_signal_binding", message = ex.Message }); }
         document.UpdatedUtc = DateTime.UtcNow;
         if (request.DraftId.HasValue || request.DraftName is not null)
@@ -753,6 +757,90 @@ public sealed class WebsiteContentController : ControllerBase
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
+    }
+
+    private static WebsiteContentDocument PreserveServerDraftContent(
+        WebsiteContentDocument current,
+        WebsiteContentDocument incoming,
+        IReadOnlyList<string>? deletedKeys)
+    {
+        // Ordinary browser saves may update existing content but may not silently drop
+        // server-persisted website structure. Exact removals require an explicit deletion
+        // key emitted by the editor action that the user chose.
+        var deleted = new HashSet<string>(
+            (deletedKeys ?? Array.Empty<string>())
+                .Where(value => !string.IsNullOrWhiteSpace(value) && value.Length <= 512)
+                .Take(512),
+            StringComparer.Ordinal);
+
+        static string PageKey(string path) => "page:" + path;
+        static string PageElementKey(string path, string id) => "page:" + path + "|element:" + id;
+        static string PageExtraKey(string path, string id) => "page:" + path + "|extra:" + id;
+
+        foreach (var (path, storedPage) in current.Pages)
+        {
+            if (!incoming.Pages.TryGetValue(path, out var incomingPage))
+            {
+                if (!deleted.Contains(PageKey(path)))
+                    incoming.Pages[path] = storedPage;
+                continue;
+            }
+
+            foreach (var (id, storedElement) in storedPage.Elements)
+                if (!incomingPage.Elements.ContainsKey(id) && !deleted.Contains(PageElementKey(path, id)))
+                    incomingPage.Elements[id] = storedElement;
+
+            foreach (var storedExtra in storedPage.Extras)
+                if (!incomingPage.Extras.Any(value => value.Id == storedExtra.Id) &&
+                    !deleted.Contains(PageExtraKey(path, storedExtra.Id)))
+                    incomingPage.Extras.Add(storedExtra);
+
+            foreach (var (id, order) in storedPage.SectionOrder)
+                if (!incomingPage.SectionOrder.ContainsKey(id))
+                    incomingPage.SectionOrder[id] = order;
+        }
+
+        foreach (var (id, storedElement) in current.Elements)
+            if (!incoming.Elements.ContainsKey(id) && !deleted.Contains("root|element:" + id))
+                incoming.Elements[id] = storedElement;
+
+        foreach (var storedExtra in current.Extras)
+            if (!incoming.Extras.Any(value => value.Id == storedExtra.Id) &&
+                !deleted.Contains("root|extra:" + storedExtra.Id))
+                incoming.Extras.Add(storedExtra);
+
+        foreach (var (id, storedComponent) in current.ReusableComponents)
+            if (!incoming.ReusableComponents.ContainsKey(id) && !deleted.Contains("component:" + id))
+                incoming.ReusableComponents[id] = storedComponent;
+
+        foreach (var (id, storedCollection) in current.Collections)
+            if (!incoming.Collections.ContainsKey(id) && !deleted.Contains("collection:" + id))
+                incoming.Collections[id] = storedCollection;
+
+        foreach (var storedBreakpoint in current.Breakpoints.Where(value => !value.IsSystem))
+            if (!incoming.Breakpoints.Any(value => value.Key == storedBreakpoint.Key) &&
+                !deleted.Contains("breakpoint:" + storedBreakpoint.Key))
+                incoming.Breakpoints.Add(storedBreakpoint);
+
+        if (incoming.FaviconImageDataUrl is null &&
+            current.FaviconImageDataUrl is not null &&
+            !deleted.Contains("site:favicon"))
+            incoming.FaviconImageDataUrl = current.FaviconImageDataUrl;
+
+        incoming.Theme ??= new WebsiteThemeOverride();
+        var storedTheme = current.Theme ?? new WebsiteThemeOverride();
+        incoming.Theme.Navy ??= storedTheme.Navy;
+        incoming.Theme.NavyDeep ??= storedTheme.NavyDeep;
+        incoming.Theme.Gold ??= storedTheme.Gold;
+        incoming.Theme.GoldStrong ??= storedTheme.GoldStrong;
+        incoming.Theme.Muted ??= storedTheme.Muted;
+        incoming.Theme.Surface ??= storedTheme.Surface;
+        incoming.Theme.Text ??= storedTheme.Text;
+        incoming.Theme.FontFamily ??= storedTheme.FontFamily;
+        incoming.Theme.FontSize ??= storedTheme.FontSize;
+        incoming.Theme.BorderRadius ??= storedTheme.BorderRadius;
+
+        return incoming;
     }
 
     private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state) =>
