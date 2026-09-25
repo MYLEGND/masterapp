@@ -325,6 +325,7 @@ test('Founder and business websites use one shared inquiry runtime with no hard-
   assert.ok(businessBuildSource.includes('/legend-public-inquiry.js?v='));
   assert.equal(businessBuildSource.includes('mailto:connect@mylegnd.com'),false);
   assert.equal(editorContractsSource.includes('legend_email'),false);
+  assert.ok(publicInquirySource.includes("new URLSearchParams(location.search).has('legendEdit')"));
   assert.ok(publicInquirySource.includes("document.querySelectorAll('[data-website-inquiry]:not([data-preview])')"));
   assert.ok(publicInquirySource.includes("new URL('/api/website-inquiries/public', apiBase)"));
 });
