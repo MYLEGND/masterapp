@@ -1845,6 +1845,7 @@
       const node = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
       if (node) {
         override.hidden = true;
+        override.placement = null;
         applyElementOverride(node, override);
       }
     });
