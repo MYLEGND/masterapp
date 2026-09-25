@@ -869,19 +869,51 @@
     }
   }
 
-  function setSelected(el) {
+  function selectionItems() {
+    return [...selectedElements].filter(el => el?.isConnected !== false);
+  }
+
+  function refreshSelectionClasses() {
+    document.querySelectorAll('.legend-cms-selected,.legend-cms-multi-selected').forEach(el => {
+      el.classList.remove('legend-cms-selected','legend-cms-multi-selected');
+    });
+    const items = selectionItems();
+    for (const el of items) el.classList.add(items.length > 1 ? 'legend-cms-multi-selected' : 'legend-cms-selected');
+    if (selected && items.includes(selected)) selected.classList.add('legend-cms-selected');
+  }
+
+  function setSelected(el, mode = 'replace') {
     const previous = selected;
-    if (previous && previous !== el) deactivateInlineEditing(previous);
-    document.querySelectorAll('.legend-cms-selected').forEach(x => x.classList.remove('legend-cms-selected'));
-    selected = el;
-    selectedSection = currentSectionFor(el);
+    if (inlineEditNode && (mode !== 'replace' || previous !== el)) deactivateInlineEditing(inlineEditNode);
+
+    if (!el) {
+      selectedElements.clear();
+      selected = null;
+    } else if (mode === 'toggle') {
+      if (selectedElements.has(el)) selectedElements.delete(el);
+      else selectedElements.add(el);
+      selected = selectedElements.has(el) ? el : selectionItems().at(-1) || null;
+    } else if (mode === 'add') {
+      selectedElements.add(el);
+      selected = el;
+    } else {
+      selectedElements.clear();
+      selectedElements.add(el);
+      selected = el;
+    }
+
+    const items = selectionItems();
+    const sections = new Set(items.map(currentSectionFor).filter(Boolean));
+    selectedSection = sections.size === 1 ? [...sections][0] : currentSectionFor(selected);
+    refreshSelectionClasses();
+
     if (selected) {
-      selected.classList.add('legend-cms-selected');
       selected.draggable = false;
-      activateInlineEditing(selected);
+      if (items.length === 1) activateInlineEditing(selected);
     } else if (previous) {
       deactivateInlineEditing(previous);
     }
+
     syncEditorControls();
     renderSignalControls();
     showPanel('content');
@@ -891,6 +923,20 @@
 
   function selectedOverride() {
     return overrideForElement(selected);
+  }
+
+  function commonSelectionParent() {
+    const items = selectionItems();
+    if (items.length < 2) return null;
+    const parent = items[0].parentElement;
+    return parent && items.every(el => el.parentElement === parent) ? parent : null;
+  }
+
+  function commonSelectionIsEditable() {
+    return selectionItems().every(el => {
+      const ov = overrideForElement(el, false);
+      return ov?.editorLocked !== true && el.dataset.cmsLocked !== 'true';
+    });
   }
 
   function previewRelativeRect(el) {
