@@ -86,6 +86,56 @@
     showStep(form, current + (next ? 1 : -1));
   });
 
+  function formKey(form) {
+    return form?.dataset?.formKey || form?.getAttribute?.('data-form-key') || '';
+  }
+
+  function trackFormStart(form) {
+    const key = formKey(form);
+    if (!key) return;
+    try { window.legendFormTracking?.trackStart?.(key); } catch {}
+  }
+
+  function trackSubmitAttempt(form, valid, errorCount = 0) {
+    const key = formKey(form);
+    if (!key) return;
+    if (typeof form._trackSubmitAttempt === 'function') {
+      try { form._trackSubmitAttempt(Boolean(valid), Number(errorCount) || 0); } catch {}
+      return;
+    }
+    try {
+      window.LegendAnalytics?.trackEvent?.(
+        'form_submit_attempt',
+        { valid: Boolean(valid), errorCount: Number(errorCount) || 0, source: 'website_studio_form' },
+        { FormKey: key }
+      );
+    } catch {}
+  }
+
+  function trackSubmitOutcome(form, accepted) {
+    const key = formKey(form);
+    if (!key) return;
+    const eventType = accepted ? 'lead_form_submit_success' : 'lead_form_submit_failure';
+    try {
+      window.LegendAnalytics?.trackEvent?.(
+        eventType,
+        { source: 'website_studio_form' },
+        { FormKey: key, SubmitOutcome: accepted ? 'success' : 'failure' }
+      );
+    } catch {}
+  }
+
+  document.addEventListener('focusin', event => {
+    const form = event.target?.closest?.('form[data-form-key]');
+    if (!form || form.hasAttribute('data-preview')) return;
+    trackFormStart(form);
+  }, true);
+  document.addEventListener('change', event => {
+    const form = event.target?.closest?.('form[data-form-key]');
+    if (!form || form.hasAttribute('data-preview')) return;
+    trackFormStart(form);
+  }, true);
+
   function fixedPayload(form) {
     const fields = new FormData(form);
     return {
@@ -129,6 +179,7 @@
     const status = form.querySelector('[data-form-status],[role="status"]');
     if (button) button.disabled = true;
     if (status) status.textContent = 'Sending your inquiry…';
+    trackSubmitAttempt(form, true, 0);
 
     try {
       const response = await fetch(endpoint, {
@@ -140,6 +191,7 @@
       if (!response.ok || !result?.accepted) throw new Error(result?.message || 'inquiry_failed');
 
       if (status) status.textContent = form.dataset.successMessage || 'Your inquiry has been sent.';
+      trackSubmitOutcome(form, true);
       window.LEGEND_PUBLIC_META_SESSION?.markSubmitted?.({
         websiteLeadSaved: true,
         sourceActionKey: values.sourceActionKey || null
@@ -148,6 +200,7 @@
       submissionState.delete(form);
       if (form.matches('[data-website-custom-form]')) showStep(form, 0);
     } catch {
+      trackSubmitOutcome(form, false);
       if (status) status.textContent = 'Your inquiry could not be confirmed. Please try again.';
     } finally {
       if (button) button.disabled = false;
@@ -162,7 +215,11 @@
     if (!custom && !fixed) return;
 
     event.preventDefault();
-    if (!form.reportValidity()) return;
+    if (!form.reportValidity()) {
+      const invalidCount = form.querySelectorAll(':invalid').length;
+      trackSubmitAttempt(form, false, invalidCount);
+      return;
+    }
 
     if (custom) {
       const steps = [...form.querySelectorAll('[data-form-step]')];
