@@ -2,13 +2,37 @@
     var bodyClass = ViewData["BodyClass"] as string ?? "";
     var contentContainerClass = ViewData["ContentContainerClass"] as string ?? "container";
     var layoutContentClass = ViewData["LayoutContentClass"] as string ?? "";
+    var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var isScopedStore = commerce is { IsParfait: false };
+    var storeRoot = commerce?.StoreRootPath ?? "/store";
+    var storeCart = commerce?.CartPath ?? "/store/cart";
+    var storeLabel = commerce?.NavigationLabel ?? "Shop";
+    var storeName = commerce?.StoreName ?? "Parfait";
+    var theme = commerce?.Theme;
+    var primary = theme?.GoldStrong ?? theme?.Gold ?? commerce?.AccentColor;
+    var secondary = theme?.NavyDeep ?? theme?.Navy;
+    var surface = theme?.Surface;
+    var text = theme?.Text;
+    var muted = theme?.Muted;
+    var font = theme?.FontFamily;
+    var radius = theme?.BorderRadius;
+    var commerceStyle = commerce is null ? "" : string.Join(";", new[]
+    {
+        string.IsNullOrWhiteSpace(primary) ? null : $"--sp-theme-primary:{primary}",
+        string.IsNullOrWhiteSpace(secondary) ? null : $"--sp-theme-secondary:{secondary}",
+        string.IsNullOrWhiteSpace(surface) ? null : $"--sp-theme-surface:{surface}",
+        string.IsNullOrWhiteSpace(text) ? null : $"--sp-theme-text:{text}",
+        string.IsNullOrWhiteSpace(muted) ? null : $"--sp-theme-muted:{muted}",
+        string.IsNullOrWhiteSpace(font) ? null : $"--sp-theme-font:{font}",
+        radius.HasValue ? $"--sp-theme-radius:{radius.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px" : null
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
 }
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@Html.Raw(ViewData["Title"]) - Parfait</title>
+    <title>@Html.Raw(ViewData["Title"]) - @storeName</title>
 
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
@@ -23,20 +47,33 @@
     @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
 </head>
 
-<body class="d-flex flex-column min-vh-100 @bodyClass">
+<body class="d-flex flex-column min-vh-100 @bodyClass" data-commerce-business-key="@(commerce?.BusinessKey ?? "parfait")" style="@commerceStyle">
 
 <header class="site-header">
     <nav class="navbar">
         <!-- TOP ROW: LOGO LEFT, NAV LINKS RIGHT -->
         <div class="navbar-top">
-            <a class="navbar-brand" asp-controller="Home" asp-action="Index" aria-label="Parfait home">
-                <span class="navbar-brand-mark" aria-hidden="true">
-                    <img src="~/images/favicon/parfait-logo.png" alt="" />
-                </span>
-                <span class="navbar-brand-copy">
-                    <span class="title-nunito-expanded">Parfait</span>
-                </span>
-            </a>
+            @if (isScopedStore)
+            {
+                <a class="navbar-brand" href="@storeRoot" aria-label="@storeName store home">
+                    @if (!string.IsNullOrWhiteSpace(commerce?.LogoUrl))
+                    {
+                        <span class="navbar-brand-mark" aria-hidden="true"><img src="@commerce.LogoUrl" alt="" /></span>
+                    }
+                    <span class="navbar-brand-copy"><span class="title-nunito-expanded">@storeName</span></span>
+                </a>
+            }
+            else
+            {
+                <a class="navbar-brand" asp-controller="Home" asp-action="Index" aria-label="Parfait home">
+                    <span class="navbar-brand-mark" aria-hidden="true">
+                        <img src="~/images/favicon/parfait-logo.png" alt="" />
+                    </span>
+                    <span class="navbar-brand-copy">
+                        <span class="title-nunito-expanded">Parfait</span>
+                    </span>
+                </a>
+            }
 
             <button class="nav-toggle" id="parfaitNavToggle" aria-label="Toggle navigation" aria-expanded="false">
                 <span class="nav-toggle-bars"></span>
@@ -49,27 +86,40 @@
                     string Active(string c) => c == currentController ? "active" : "";
                 }
 
-                <a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index" data-parfait-nav-tab="true">Home</a>
-                <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index" target="_blank" rel="noopener" data-parfait-nav-tab="true">Training</a>
-                <a class="nav-link @Active("Contact")" asp-controller="Contact" asp-action="Index" target="_blank" rel="noopener" data-parfait-nav-tab="true">Contact</a>
-                <a class="nav-link @Active("About")" asp-controller="About" asp-action="About" target="_blank" rel="noopener" data-parfait-nav-tab="true">About Us</a>
-
-                <!-- Store + Login (same right-side group) -->
-                <a class="nav-link @Active("Store")" href="/store" target="_blank" rel="noopener" data-parfait-nav-tab="true">Shop</a>
-                <a class="nav-link nav-icon-link pf-store-cart-link" href="/store/cart" target="_blank" rel="noopener" aria-label="Shopping cart" data-parfait-nav-tab="true">
-                    <svg class="nav-icon pf-cart-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        <circle cx="9.8" cy="20" r="1.2" stroke-width="2"/>
-                        <circle cx="17.6" cy="20" r="1.2" stroke-width="2"/>
-                    </svg>
-                    <span class="pf-cart-count" id="pfStoreCartCount">0</span>
-                </a>
-                <a class="nav-link nav-icon-link login-link" href="/internal/login" target="_blank" rel="noopener" aria-label="Team login" data-parfait-nav-tab="true">
-                    <svg class="nav-icon pf-account-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <circle cx="12" cy="8" r="4" stroke-width="2"/>
-                        <path d="M4.5 21a7.5 7.5 0 0 1 15 0" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </a>
+                @if (isScopedStore)
+                {
+                    <a class="nav-link active" href="@storeRoot" data-parfait-nav-tab="true">@storeLabel</a>
+                    <a class="nav-link nav-icon-link pf-store-cart-link" href="@storeCart" aria-label="Shopping cart" data-parfait-nav-tab="true">
+                        <svg class="nav-icon pf-cart-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="9.8" cy="20" r="1.2" stroke-width="2"/>
+                            <circle cx="17.6" cy="20" r="1.2" stroke-width="2"/>
+                        </svg>
+                        <span class="pf-cart-count" id="pfStoreCartCount">0</span>
+                    </a>
+                }
+                else
+                {
+                    <a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index" data-parfait-nav-tab="true">Home</a>
+                    <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index" target="_blank" rel="noopener" data-parfait-nav-tab="true">Training</a>
+                    <a class="nav-link @Active("Contact")" asp-controller="Contact" asp-action="Index" target="_blank" rel="noopener" data-parfait-nav-tab="true">Contact</a>
+                    <a class="nav-link @Active("About")" asp-controller="About" asp-action="About" target="_blank" rel="noopener" data-parfait-nav-tab="true">About Us</a>
+                    <a class="nav-link @Active("Store")" href="/store" target="_blank" rel="noopener" data-parfait-nav-tab="true">Shop</a>
+                    <a class="nav-link nav-icon-link pf-store-cart-link" href="/store/cart" target="_blank" rel="noopener" aria-label="Shopping cart" data-parfait-nav-tab="true">
+                        <svg class="nav-icon pf-cart-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="9.8" cy="20" r="1.2" stroke-width="2"/>
+                            <circle cx="17.6" cy="20" r="1.2" stroke-width="2"/>
+                        </svg>
+                        <span class="pf-cart-count" id="pfStoreCartCount">0</span>
+                    </a>
+                    <a class="nav-link nav-icon-link login-link" href="/internal/login" target="_blank" rel="noopener" aria-label="Team login" data-parfait-nav-tab="true">
+                        <svg class="nav-icon pf-account-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <circle cx="12" cy="8" r="4" stroke-width="2"/>
+                            <path d="M4.5 21a7.5 7.5 0 0 1 15 0" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </a>
+                }
             </div>
         </div>
     </nav>
@@ -84,7 +134,7 @@
 <footer class="footer mt-auto">
     <div class="footer-inner">
         <div class="footer-copy">
-            <span class="footer-brand">&copy; 2025 MYLEGND, LLC</span>
+            <span class="footer-brand">&copy; @DateTime.UtcNow.Year @(isScopedStore ? storeName : "MYLEGND, LLC")</span>
             <span class="footer-rights">All rights reserved.</span>
         </div>
         <nav class="footer-links" aria-label="Footer links">
@@ -96,6 +146,16 @@
 </footer>
 
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script>window.PARFAIT_COMMERCE_CONTEXT = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+        businessKey = commerce?.BusinessKey ?? "parfait",
+        storeName,
+        storeRootPath = storeRoot,
+        cartPath = storeCart,
+        checkoutPath = commerce?.CheckoutPath ?? "/store/checkout",
+        successPath = commerce?.SuccessPath ?? "/store/success",
+        cartStorageKey = commerce?.CartStorageKey ?? "parfaitCart",
+        isParfait = commerce?.IsParfait ?? true
+    }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));</script>
 <script src="~/js/storefront.js" asp-append-version="true"></script>
 <script>
     (function () {
