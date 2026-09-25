@@ -3353,6 +3353,20 @@
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
     const action = type === 'button' ? preferredCtaOption() : null;
+    let formDefinitionId = null;
+    if (type === 'form') {
+      const source = formCatalog?.defaultDefinition;
+      if (!source || !Array.isArray(source.fields)) {
+        alert('The shared form catalog is unavailable. Reopen the editor and try again.');
+        return;
+      }
+      formDefinitionId = crypto.randomUUID();
+      const definition = cloneValue(source);
+      definition.id = formDefinitionId;
+      definition.name = 'Lead form';
+      documentState.forms ||= {};
+      documentState.forms[formDefinitionId] = definition;
+    }
     if (type === 'button' && !action) { alert('Configure a working website action before adding this button.'); return; }
     checkpoint();
     const defaultText = type === 'button' ? action.defaultText || action.label
@@ -3372,8 +3386,9 @@
       type,
       sectionId: section?.dataset.cmsSection || `${pageKey}.root`,
       text: defaultText,
-      style: defaultStyle,
-      layout: type === 'container' ? { mode: 'flow' } : {}
+      style: type === 'form' ? { widthPercent: 100 } : defaultStyle,
+      layout: type === 'container' ? { mode: 'flow' } : {},
+      ...(formDefinitionId ? { formDefinitionId } : {})
     };
     if (type === 'button') {
       extra.href = action.href;
@@ -3384,6 +3399,7 @@
     }
     pageState().extras.push(extra); const el = createExtra(extra); if (extra.placement) applyPlacement(el, extra.placement); setSelected(el); markDirty();
     if (type === 'code') openCodeEditor();
+    if (type === 'form') openFormEditor();
   }
   function renderComponentCatalog() {
     const host = document.getElementById('legend-cms-add-components');
