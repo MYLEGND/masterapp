@@ -369,7 +369,7 @@ public sealed class ParfaitProductService
             if (product is null)
                 return;
 
-            var productFolder = Path.Combine(UploadRoot, product.ExternalProductKey);
+            var productFolder = _storagePaths.GetUploadDirectory(GetBusinessKey(businessId), product.ExternalProductKey);
             if (Directory.Exists(productFolder))
                 Directory.Delete(productFolder, recursive: true);
 
@@ -413,12 +413,14 @@ public sealed class ParfaitProductService
         }
     }
 
-    public async Task UploadImagesAsync(string productId, IReadOnlyList<IFormFile> files)
+    public Task UploadImagesAsync(string productId, IReadOnlyList<IFormFile> files) =>
+        UploadImagesAsync(GetBusinessId(), productId, files);
+
+    public async Task UploadImagesAsync(Guid businessId, string productId, IReadOnlyList<IFormFile> files)
     {
         if (files.Count == 0)
             return;
 
-        var businessId = GetBusinessId();
         var product = _db.CommerceProducts
             .Include(x => x.Images)
             .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == productId);
@@ -426,7 +428,8 @@ public sealed class ParfaitProductService
         if (product is null)
             return;
 
-        var productFolder = Path.Combine(UploadRoot, product.ExternalProductKey);
+        var businessKey = GetBusinessKey(businessId);
+        var productFolder = _storagePaths.GetUploadDirectory(businessKey, product.ExternalProductKey);
         _storagePaths.EnsureInitialized();
         Directory.CreateDirectory(productFolder);
 
@@ -452,7 +455,7 @@ public sealed class ParfaitProductService
             {
                 ExternalImageKey = imageId,
                 FileName = safeFileName,
-                ImageUrl = _storagePaths.GetImageUrl(product.ExternalProductKey, safeFileName),
+                ImageUrl = _storagePaths.GetImageUrl(businessKey, product.ExternalProductKey, safeFileName),
                 AltText = product.Name,
                 IsPrimary = product.Images.Count == 0,
                 DisplayOrder = nextOrder,
@@ -474,11 +477,13 @@ public sealed class ParfaitProductService
         }
     }
 
-    public void DeleteImage(string productId, string imageId)
+    public void DeleteImage(string productId, string imageId) =>
+        DeleteImage(GetBusinessId(), productId, imageId);
+
+    public void DeleteImage(Guid businessId, string productId, string imageId)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var product = _db.CommerceProducts
                 .Include(x => x.Images)
                 .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == productId);
@@ -503,11 +508,13 @@ public sealed class ParfaitProductService
         }
     }
 
-    public void ReorderImages(string productId, IReadOnlyList<string> imageIds)
+    public void ReorderImages(string productId, IReadOnlyList<string> imageIds) =>
+        ReorderImages(GetBusinessId(), productId, imageIds);
+
+    public void ReorderImages(Guid businessId, string productId, IReadOnlyList<string> imageIds)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var product = _db.CommerceProducts
                 .Include(x => x.Images)
                 .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == productId);
@@ -535,11 +542,13 @@ public sealed class ParfaitProductService
         }
     }
 
-    public void SaveImageDisplaySettings(string productId, string imageId, string objectFit, int objectPositionX, int objectPositionY, decimal zoom)
+    public void SaveImageDisplaySettings(string productId, string imageId, string objectFit, int objectPositionX, int objectPositionY, decimal zoom) =>
+        SaveImageDisplaySettings(GetBusinessId(), productId, imageId, objectFit, objectPositionX, objectPositionY, zoom);
+
+    public void SaveImageDisplaySettings(Guid businessId, string productId, string imageId, string objectFit, int objectPositionX, int objectPositionY, decimal zoom)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var image = _db.CommerceProductImages
                 .Include(x => x.CommerceProduct)
                 .SingleOrDefault(x =>
@@ -563,14 +572,16 @@ public sealed class ParfaitProductService
         }
     }
 
-    public void CommitPaidInventory(IReadOnlyList<ParfaitValidatedCartItem> items)
+    public void CommitPaidInventory(IReadOnlyList<ParfaitValidatedCartItem> items) =>
+        CommitPaidInventory(GetBusinessId(), items);
+
+    public void CommitPaidInventory(Guid businessId, IReadOnlyList<ParfaitValidatedCartItem> items)
     {
         if (items.Count == 0)
             return;
 
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var updated = false;
 
             foreach (var item in items)
@@ -597,6 +608,12 @@ public sealed class ParfaitProductService
                 _db.SaveChanges();
         }
     }
+
+    private string GetBusinessKey(Guid businessId) =>
+        _db.CommerceBusinesses.AsNoTracking()
+            .Where(x => x.Id == businessId)
+            .Select(x => x.Key)
+            .Single();
 
     private Guid GetBusinessId()
     {
