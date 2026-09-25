@@ -12084,6 +12084,9 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("CommerceBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("DraftJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -12128,6 +12131,8 @@ namespace Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CommerceBusinessId");
 
                     b.HasIndex("OwnerKey", "SiteKey")
                         .IsUnique();
@@ -14171,6 +14176,14 @@ namespace Infrastructure.Migrations
                     b.Navigation("ClientSubscription");
 
                     b.Navigation("CommerceOrder");
+                });
+
+            modelBuilder.Entity("Domain.Entities.WebsiteContentState", b =>
+                {
+                    b.HasOne("Domain.Entities.CommerceBusiness", null)
+                        .WithMany()
+                        .HasForeignKey("CommerceBusinessId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Domain.Entities.WebsiteContentVersion", b =>

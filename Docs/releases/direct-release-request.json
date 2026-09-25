@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the already-validated centralized website commerce addition. Retry deployment after the scoped release-policy repair. Deploy only Parfait, Protect Website, and LEGEND Website. Preserve AgentPortal, ClientApp, Cloudflare routing, CRM, existing website drafts/published versions, authentication, billing authorities, marketing connections, and unrelated systems.",
-  "purpose": "Deploy the centralized Store capability already merged at the approved source: Website Studio Add/Remove Store and editable Store/Shop navigation, scoped cart and Parfait-hosted storefront, shared product/order/inventory/discount/checkout authorities, Parfait-style Manage Store workspace, compiled business Store navigation, and canonical analytics/Meta routing. Apply only the additive WebsiteContentState CommerceBusinessId migration. No mirrored storefront, no duplicate product/order store, no second Meta sender, and no stacked website override system.",
-  "requestId": "centralized-website-commerce-retry-20260925",
+  "authorization": "Founder explicitly authorized the already-validated centralized website commerce addition. Final scoped deployment after release-policy and EF migration-snapshot validation. Deploy only Parfait, Protect Website, and LEGEND Website. Preserve AgentPortal, ClientApp, Cloudflare routing, CRM, existing website drafts/published versions, authentication, billing authorities, marketing connections, and unrelated systems.",
+  "purpose": "Final scoped release of centralized Store capability. Apply the validated additive WebsiteContentState.CommerceBusinessId migration and deploy only Protect Website, Parfait, and LEGEND Website. No mirrored storefront, no duplicate product/order store, no second Meta sender, no stacked website override system.",
+  "requestId": "centralized-website-commerce-final-scoped-20260925",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
