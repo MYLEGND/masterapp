@@ -7,6 +7,7 @@ using Infrastructure.Analytics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
+using Shared.Crm;
 
 namespace AgentPortal.Tests;
 
@@ -119,6 +120,78 @@ public sealed class CanonicalCrmOutcomeLineageTests
                 Assert.False(paid.MetaBrowserSent);
                 Assert.False(paid.MetaServerSent);
             });
+    }
+
+    [Fact]
+    public async Task ConvertedClientPolicyOutcomeKeepsOriginalWebsiteLeadLineage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var websiteLeadId = Guid.NewGuid();
+        var trackingId = Guid.NewGuid();
+        var clientUserId = Guid.NewGuid().ToString();
+
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+        {
+            Id = trackingId,
+            AgentUserId = "agent-client-lineage",
+            AgentUpn = "agent-client@example.test",
+            Slug = "agent-client",
+            Status = "active",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.WebsiteLeads.Add(new WebsiteLead
+        {
+            LeadId = websiteLeadId,
+            AgentTrackingProfileId = trackingId,
+            AgentSlug = "agent-client",
+            FirstName = "Converted",
+            Email = "converted@example.test",
+            CreatedUtc = DateTime.UtcNow
+        });
+        db.WebsiteLeadIntakeLinks.Add(new WebsiteLeadIntakeLink
+        {
+            Id = Guid.NewGuid(),
+            WebsiteLeadPublicId = websiteLeadId,
+            WorkstationLeadId = "source-workstation-lead",
+            AgentUserId = "agent-client-lineage",
+            SubmittedUtc = DateTime.UtcNow,
+            CapturedUtc = DateTime.UtcNow
+        });
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = clientUserId,
+            FirstName = "Converted",
+            LastName = "Client",
+            Email = "converted@example.test",
+            CrmNotes = ClientCrmMetaSerializer.Serialize(new ClientCrmMeta
+            {
+                RecordType = "Client",
+                SourceWorkstationLeadId = "source-workstation-lead"
+            })
+        });
+        await db.SaveChangesAsync();
+
+        var service = new MetaSignalCrmOutcomeService(
+            db,
+            NullLogger<MetaSignalCrmOutcomeService>.Instance);
+
+        await service.RecordProductionOutcomeAsync(
+            Guid.NewGuid(),
+            "agent-client-lineage",
+            ProductionSide.Client,
+            ProductionStatus.Paid,
+            null,
+            clientUserId,
+            100000m,
+            900m,
+            "paid");
+
+        var paid = await db.MetaSignalEvents.SingleAsync(x => x.EventName == "PolicyPaid");
+        Assert.Equal(websiteLeadId, paid.LeadId);
+        Assert.Equal(trackingId, paid.AgentTrackingProfileId);
+        Assert.Equal("agent-client", paid.AgentSlug);
     }
 
     [Fact]
