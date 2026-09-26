@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the fully hardened centralized Cloudflare routing recovery. Preserve every successful application deployment. Use only CLOUDFLARE_WORKERS_API_TOKEN, run the centralized routing-authority capability audit, reconcile the single generic custom-host Browser Integrity policy, deploy the shared router, and require live homepage and /store proof. No legacy credential fallback, no per-domain exception, no application redeploy.",
-  "purpose": "Bring verified business custom-domain pages and stores live through the centralized Cloudflare authority and prove the hardened routing/security path end to end.",
-  "requestId": "scoped-commerce-routing-hardened-authority-20260926-r12",
+  "authorization": "Founder explicitly authorized failure-forward continuation of the hardened centralized Cloudflare routing recovery. Preserve all successful application deployments. Disable only unscopable Cloudflare Bot Fight Mode at the shared SaaS zone, retain the centralized WAF/config authority, deploy the shared router, and require live homepage and /store proof.",
+  "purpose": "Remove the proven botFight managed-challenge blocker for verified customer custom domains while preserving all successful application deployments and centralized routing authority.",
+  "requestId": "scoped-commerce-routing-hardened-authority-20260926-r15-botfight-off",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36218166686",
   "releaseMode": "approved-only",
   "targets": [

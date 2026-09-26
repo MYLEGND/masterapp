@@ -90,7 +90,10 @@ def phase_probe(token: str, zone: str, phase: str) -> str:
     except CloudflareError:
         raise
     # A 404/no-entrypoint is acceptable: authorization succeeded and no ruleset exists yet.
-    return payload.get("result", {}).get("id", "absent") if isinstance(payload, dict) else "absent"
+    if not isinstance(payload, dict):
+        return "absent"
+    result = payload.get("result")
+    return result.get("id", "absent") if isinstance(result, dict) else "absent"
 
 
 def audit(prove_cache_purge: bool) -> None:
@@ -120,12 +123,22 @@ def audit(prove_cache_purge: bool) -> None:
     api_request("GET", f"{API}/zones/{zone}/custom_hostnames?per_page=1", token)
     results["ssl_custom_hostnames"] = "ok"
 
-    api_request("GET", f"{API}/zones/{zone}/settings/browser_check", token)
-    api_request("GET", f"{API}/zones/{zone}/settings/security_level", token)
-    results["zone_settings"] = "ok"
+    bic = api_request("GET", f"{API}/zones/{zone}/settings/browser_check", token).get("result", {})
+    security = api_request("GET", f"{API}/zones/{zone}/settings/security_level", token).get("result", {})
+    results["zone_settings"] = {
+        "browser_check": bic.get("value"),
+        "security_level": security.get("value"),
+    }
 
-    api_request("GET", f"{API}/zones/{zone}/bot_management", token)
-    results["bot_management"] = "ok"
+    bot = api_request("GET", f"{API}/zones/{zone}/bot_management", token).get("result", {})
+    results["bot_management"] = {
+        "fight_mode": bot.get("fight_mode"),
+        "sbfm_definitely_automated": bot.get("sbfm_definitely_automated"),
+        "sbfm_likely_automated": bot.get("sbfm_likely_automated"),
+        "sbfm_verified_bots": bot.get("sbfm_verified_bots"),
+        "sbfm_static_resource_protection": bot.get("sbfm_static_resource_protection"),
+        "enable_js": bot.get("enable_js"),
+    }
 
     api_request("GET", f"{API}/zones/{zone}/rulesets", token)
     results["waf_rules"] = phase_probe(token, zone, "http_request_firewall_custom")
@@ -194,6 +207,28 @@ def audit(prove_cache_purge: bool) -> None:
     }, indent=2))
 
 
+def reconcile_bot_fight_mode() -> None:
+    token = required_env("CLOUDFLARE_API_TOKEN")
+    zone = required_env("CLOUDFLARE_ZONE_ID")
+    current = api_request("GET", f"{API}/zones/{zone}/bot_management", token).get("result", {})
+    if not isinstance(current, dict):
+        raise CloudflareError("Cloudflare Bot Management configuration is unavailable")
+
+    if current.get("fight_mode") is True:
+        api_request(
+            "PUT",
+            f"{API}/zones/{zone}/bot_management",
+            token,
+            {"fight_mode": False},
+        )
+
+    verified = api_request("GET", f"{API}/zones/{zone}/bot_management", token).get("result", {})
+    if not isinstance(verified, dict) or verified.get("fight_mode") is not False:
+        raise CloudflareError("Cloudflare Bot Fight Mode did not verify disabled")
+
+    print("Cloudflare Bot Fight Mode is disabled for the SaaS zone; controllable WAF/config security remains authoritative.")
+
+
 def reconcile_bic() -> None:
     token = required_env("CLOUDFLARE_API_TOKEN")
     zone = required_env("CLOUDFLARE_ZONE_ID")
@@ -258,18 +293,69 @@ def reconcile_bic() -> None:
     print("Cloudflare Browser Integrity Check remains enabled by zone policy and is disabled only on customer custom hostnames.")
 
 
+def challenge_events(host: str) -> None:
+    token = required_env("CLOUDFLARE_API_TOKEN")
+    zone = required_env("CLOUDFLARE_ZONE_ID")
+    end = dt.datetime.now(dt.timezone.utc)
+    start = end - dt.timedelta(minutes=20)
+    query = """query ChallengeEvents($zoneTag: string, $start: Time, $end: Time) {
+      viewer {
+        zones(filter:{zoneTag:$zoneTag}) {
+          firewallEventsAdaptive(filter:{datetime_geq:$start,datetime_leq:$end},limit:100,orderBy:[datetime_DESC]) {
+            action
+            source
+            description
+            clientRequestHTTPHost
+            clientRequestPath
+            datetime
+            userAgent
+          }
+        }
+      }
+    }"""
+    payload = graphql(
+        token,
+        query,
+        {
+            "zoneTag": zone,
+            "start": start.isoformat().replace("+00:00", "Z"),
+            "end": end.isoformat().replace("+00:00", "Z"),
+        },
+    )
+    events = []
+    for zone_row in payload.get("data", {}).get("viewer", {}).get("zones", []):
+        for event in zone_row.get("firewallEventsAdaptive", []):
+            if (event.get("clientRequestHTTPHost") or "").lower() == host.lower():
+                events.append({
+                    "datetime": event.get("datetime"),
+                    "action": event.get("action"),
+                    "source": event.get("source"),
+                    "description": event.get("description"),
+                    "path": event.get("clientRequestPath"),
+                    "userAgent": event.get("userAgent"),
+                })
+    print(json.dumps({"host": host, "events": events[:50]}, indent=2))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     audit_parser = sub.add_parser("audit")
     audit_parser.add_argument("--prove-cache-purge", action="store_true")
+    sub.add_parser("reconcile-bot-fight")
     sub.add_parser("reconcile-bic")
+    challenge_parser = sub.add_parser("challenge-events")
+    challenge_parser.add_argument("--host", required=True)
     args = parser.parse_args()
     try:
         if args.command == "audit":
             audit(args.prove_cache_purge)
+        elif args.command == "reconcile-bot-fight":
+            reconcile_bot_fight_mode()
         elif args.command == "reconcile-bic":
             reconcile_bic()
+        elif args.command == "challenge-events":
+            challenge_events(args.host)
         return 0
     except CloudflareError as error:
         print(f"::error::{error}", file=sys.stderr)
