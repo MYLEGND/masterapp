@@ -708,6 +708,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 scripts/cloudflare-routing-authority.py reconcile-bot-fight
           python3 scripts/cloudflare-routing-authority.py reconcile-bic
 
       - name: Deploy shared Cloudflare business website router
