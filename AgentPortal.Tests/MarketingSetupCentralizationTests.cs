@@ -42,6 +42,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("var secureCapi = adsConnected;", controller, StringComparison.Ordinal);
         Assert.Contains("profile.BookingEnabled = request.BookingEnabled", controller, StringComparison.Ordinal);
         Assert.Contains("metaCapiManagedAutomatically = true", controller, StringComparison.Ordinal);
+        Assert.Contains("MetaTestEventCode", controller, StringComparison.Ordinal);
+        Assert.Contains("metaTestEventCode = marketing.TestEventCode", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("replacementCapiToken", controller, StringComparison.OrdinalIgnoreCase);
 
         var titleIndex = view.IndexOf("Marketing Links", StringComparison.Ordinal);
@@ -50,6 +52,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("data-bs-target=\"#marketingSetupModal\"", view, StringComparison.Ordinal);
         Assert.Contains("modal-dialog-centered", view, StringComparison.Ordinal);
         Assert.Contains("Meta CAPI credentials are never entered here", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-test-code\"", view, StringComparison.Ordinal);
+        Assert.Contains("Meta Events Manager", view, StringComparison.Ordinal);
 
         Assert.Contains("marketingSetup: analyticsEndpoint('/marketing-setup')", js, StringComparison.Ordinal);
         Assert.Contains("state.agentProfileId || callerProfileId", js, StringComparison.Ordinal);
@@ -63,6 +67,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.True(deviceModuleIndex > firstModuleCloseAfterSetup);
         Assert.Contains("let marketingSetupLoaded = false;", js, StringComparison.Ordinal);
         Assert.Contains("marketingSetupSave.disabled = !marketingSetupLoaded", js, StringComparison.Ordinal);
+        Assert.Contains("marketing.metaTestEventCode", js, StringComparison.Ordinal);
+        Assert.Contains("metaTestEventCode: testEventCode || null", js, StringComparison.Ordinal);
         Assert.DoesNotContain("Reload Marketing Setup before saving.", js, StringComparison.Ordinal);
         Assert.DoesNotContain("capiToken", js, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(".marketing-setup-trigger", css, StringComparison.Ordinal);
@@ -110,6 +116,23 @@ public sealed class MarketingSetupCentralizationTests
             Assert.Contains(field, resolver, StringComparison.Ordinal);
             Assert.Contains(field, controller, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void PublishedCustomDomains_UseVerifiedHttpsAndCanonicalSeoAuthority()
+    {
+        var middleware = Read("Infrastructure", "WebsiteRuntime", "BusinessWebsiteMiddleware.cs");
+        var domains = Read("Infrastructure", "WebsiteEditing", "WebsiteDomainService.cs");
+        var health = Read("Infrastructure", "WebsiteEditing", "WebsiteDomainHealthWorker.cs");
+
+        Assert.Contains("binding.Status == \"active\" && binding.CertificateStatus == \"active\"", domains, StringComparison.Ordinal);
+        Assert.Contains("https://\" + binding.Hostname + \"/.well-known/legend-website", domains, StringComparison.Ordinal);
+        Assert.Contains("pendingCutoff = DateTime.UtcNow.AddMinutes(-10)", health, StringComparison.Ordinal);
+        Assert.Contains("X-Robots-Tag", middleware, StringComparison.Ordinal);
+        Assert.Contains("/sitemap.xml", middleware, StringComparison.Ordinal);
+        Assert.Contains("lastmod", middleware, StringComparison.Ordinal);
+        Assert.Contains("__LEGEND_CANONICAL_URL__", middleware, StringComparison.Ordinal);
+        Assert.Contains("PublishedBusinessAsync", middleware, StringComparison.Ordinal);
     }
 
     private static string Read(params string[] parts)
