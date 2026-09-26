@@ -313,6 +313,39 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Preserve targets already live at exact candidate
+        id: resumestate
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYRESUME'
+          import json, os, urllib.request
+          selected=set(json.loads(os.environ['SELECTED_TARGETS']))
+          expected=os.environ['APPLICATION_RELEASE_SHA']
+          inventory={
+              'portal':('masterapp-portal','https://portal.mylegnd.com/api/runtime-provenance',False),
+              'client':('masterapp-client','https://client.mylegnd.com/api/runtime-provenance',False),
+              'protect':('masterapp-protect','https://masterapp-protect.azurewebsites.net/api/runtime-provenance',False),
+              'parfait':('masterapp-parfait','https://masterapp-parfait.azurewebsites.net/api/runtime-provenance',False),
+              'website':('masterapp-website','https://masterapp-website.azurewebsites.net/_deployment-provenance.txt',True),
+          }
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              for key,(app,url,is_static) in inventory.items():
+                  live=False
+                  actual=None
+                  if app in selected:
+                      try:
+                          request=urllib.request.Request(url+'?release='+expected,headers={'Cache-Control':'no-cache'})
+                          with urllib.request.urlopen(request,timeout=15) as response:
+                              actual=response.read().decode().strip() if is_static else json.load(response).get('sourceRevision')
+                          live=actual==expected
+                      except Exception as error:
+                          actual=type(error).__name__
+                  output.write(f'{key}_live={str(live).lower()}\n')
+                  print(json.dumps({'target':app,'alreadyLive':live,'actual':actual,'expected':expected if app in selected else None}))
+          PYRESUME
+          echo "Exact-candidate live targets are preserved; only targets not already live may deploy."
       - name: Synchronize Protect shared website authorization and publisher runtime
         id: protectauth
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
@@ -617,7 +650,7 @@ jobs:
           PYMIGRATE
       - name: Direct deploy AgentPortal
         id: portal
-        if: ${{ env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') && !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') && steps.resumestate.outputs.portal_live != 'true' && !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -626,7 +659,7 @@ jobs:
           package: /tmp/agentportal-publish
       - name: Direct deploy ClientApp
         id: client
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.resumestate.outputs.client_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -653,7 +686,7 @@ jobs:
           exit 1
       - name: Direct deploy Protect immutable ZIP
         id: protect
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.resumestate.outputs.protect_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -695,7 +728,7 @@ jobs:
           exit 1
       - name: Direct deploy Parfait
         id: parfait
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.resumestate.outputs.parfait_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -713,7 +746,7 @@ jobs:
 
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || steps.resumestate.outputs.protect_live == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || steps.resumestate.outputs.parfait_live == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -808,7 +841,7 @@ jobs:
           echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
       - name: Direct deploy Website
         id: website
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.resumestate.outputs.website_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -1035,6 +1068,11 @@ jobs:
           CLIENT_ONLY: ${{ env.CLIENT_ONLY }}
           WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
           PRESERVE_LIVE_TARGETS: ${{ env.PRESERVE_LIVE_TARGETS }}
+          RESUME_PORTAL: ${{ steps.resumestate.outputs.portal_live }}
+          RESUME_CLIENT: ${{ steps.resumestate.outputs.client_live }}
+          RESUME_PROTECT: ${{ steps.resumestate.outputs.protect_live }}
+          RESUME_PARFAIT: ${{ steps.resumestate.outputs.parfait_live }}
+          RESUME_WEBSITE: ${{ steps.resumestate.outputs.website_live }}
         run: |
           python3 - <<'PYRESULT'
           import json,os
@@ -1078,8 +1116,21 @@ jobs:
               assert all(value=='success' for value in results.values())
               assert all(value=='skipped' for value in skipped_results.values()), 'Validation-only run executed a publish or deployment step'
           else:
-              required=['BASE','PACKAGE','AZURE','LIVE']+[apps[app] for app in selected]
+              required=['BASE','PACKAGE','AZURE','LIVE']
               excluded=[step for app,step in apps.items() if app not in selected]
+              resume={
+                  'masterapp-portal':os.environ.get('RESUME_PORTAL')=='true',
+                  'masterapp-client':os.environ.get('RESUME_CLIENT')=='true',
+                  'masterapp-protect':os.environ.get('RESUME_PROTECT')=='true',
+                  'masterapp-parfait':os.environ.get('RESUME_PARFAIT')=='true',
+                  'masterapp-website':os.environ.get('RESUME_WEBSITE')=='true',
+              }
+              for app in selected:
+                  step=apps[app]
+                  if resume[app]:
+                      assert os.environ[step]=='skipped', f'{app} was already live at the exact candidate but redeployed'
+                  else:
+                      required.append(step)
               (required if 'masterapp-protect' in selected else excluded).append('PROTECTAUTH')
               (required if any(app in selected for app in ('masterapp-protect','masterapp-parfait')) else excluded).append('EDITORAUTH')
               (excluded if selected == ['masterapp-website'] else required).append('BUILD')
@@ -1098,7 +1149,8 @@ jobs:
                   excluded.extend(routing_steps)
               results={key:os.environ[key] for key in required}
               skipped={key:os.environ[key] for key in excluded}
-              print(json.dumps({'mode':'approved-only','required':results,'unselected':skipped},indent=2))
+              preserved={app:resume[app] for app in selected if resume[app]}
+              print(json.dumps({'mode':'approved-only','required':results,'unselected':skipped,'preservedExactLiveTargets':preserved},indent=2))
               assert all(value=='success' for value in results.values())
               assert all(value=='skipped' for value in skipped.values()), 'Unselected release step unexpectedly executed'
           PYRESULT
