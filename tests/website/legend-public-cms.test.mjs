@@ -1871,6 +1871,78 @@ test('sections expand with content instead of creating internal scroll container
   }finally{f.close();}
 });
 
+test('published business hydration keeps the full custom-domain page catalog on every route',async()=>{
+  const pageCatalog=[
+    {route:'/',label:'Home',template:true,showInNavigation:true,order:0},
+    {route:'/about',label:'About',template:true,showInNavigation:true,order:10},
+    {route:'/services',label:'Services',template:true,showInNavigation:true,order:20},
+    {route:'/contact',label:'Contact',template:true,showInNavigation:true,order:30}
+  ];
+  const html='<!doctype html><html><body data-page-key="about"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>About</h1></section></main><footer class="site-footer"></footer><script id="legend-cms-published-document" type="application/json"></script></body></html>';
+  const dom=new JSDOM(html,{url:'https://camo.example/about',runScripts:'outside-only'});
+  const {window:w}=dom;
+  w.document.getElementById('legend-cms-published-document').textContent=JSON.stringify({
+    document:{pages:{'/about':{title:'About',navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}}}},
+    business:{id:'business-id',displayName:'CAMO'},
+    pageCatalog,
+    pageKey:'about',
+    server:false,
+    runtime:{apiBase:'https://protect.example.test'}
+  });
+  w.CSS={escape:value=>String(value)};
+  w.fetch=async()=>({ok:true,json:async()=>({})});
+  w.eval(source);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  try{
+    const links=[...w.document.querySelectorAll('#primary-nav>a[data-legend-page-nav="true"]')];
+    assert.deepEqual(links.map(link=>link.textContent),['Home','About','Services','Contact']);
+    assert.deepEqual(links.map(link=>new URL(link.href).origin),Array(4).fill('https://camo.example'));
+    assert.deepEqual(links.map(link=>new URL(link.href).pathname),['/','/about','/services','/contact']);
+  }finally{w.close();}
+});
+
+test('business editor navigation tabs do not follow links and drag order writes canonical page order',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const pages=[{path:'/',label:'Home'},{path:'/about',label:'About'},{path:'/services',label:'Services'}];
+  const doc={pages:{
+    '/':{navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
+    '/about':{navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}},
+    '/services':{navigation:{label:'Services',showInNavigation:true,order:20},elements:{},extras:[],sectionOrder:{}}
+  }};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'CAMO'},pages,doc,html});
+  try{
+    const nav=f.w.document.querySelector('#primary-nav');
+    const links=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
+    const clickEvent=new f.w.MouseEvent('click',{bubbles:true,cancelable:true});
+    assert.equal(links[1].dispatchEvent(clickEvent),false);
+
+    for(const [index,link] of links.entries()){
+      link.getBoundingClientRect=()=>({left:index*100,right:index*100+80,width:80,top:0,bottom:30,height:30});
+    }
+    const about=links[1];
+    about.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:140,clientY:15,button:0}));
+    nav.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:245,clientY:15,button:0}));
+    nav.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:245,clientY:15,button:0}));
+    assert.deepEqual([...nav.querySelectorAll('a[data-legend-page-nav="true"]')].map(link=>link.textContent),['Home','Services','About']);
+    const saved=await f.save();
+    assert.equal(saved.pages['/'].navigation.order,0);
+    assert.equal(saved.pages['/services'].navigation.order,10);
+    assert.equal(saved.pages['/about'].navigation.order,20);
+  }finally{f.close();}
+});
+
+test('editor navigation opens pages only on double-click and never normal-link navigates',()=>{
+  assert.match(source,/addEventListener\('dblclick',[\s\S]*navigateToEditorPage\(route\)/);
+  assert.match(source,/addEventListener\('click',[\s\S]*data-legend-page-nav[\s\S]*preventDefault\(\)/);
+});
+
+test('text scaling stays unbounded while sections remain content-sized and never become internal scrollers',()=>{
+  assert.match(source,/id="legend-cms-scale" type="number" min="0" step="any"/);
+  assert.doesNotMatch(source,/id="legend-cms-scale"[^>]*max=/);
+  assert.match(source,/scaledElements\.set\(el, style\.fontScale\)/);
+  assert.match(source,/el\.style\.height = 'auto';[\s\S]*el\.style\.overflow = 'visible';/);
+});
+
 test('business header navigation renders once from the canonical page catalog and discards stale DOM links',async()=>{
   const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav><a href="/">Stale Home</a><a href="/about">Stale About</a><a href="/">Duplicate Home</a><a href="/services">Stale Services</a></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
   const doc={pages:{
