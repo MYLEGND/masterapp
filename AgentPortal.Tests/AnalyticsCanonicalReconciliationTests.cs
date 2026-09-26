@@ -124,9 +124,9 @@ public sealed class AnalyticsCanonicalReconciliationTests
         var now = DateTime.UtcNow;
 
         db.AgentTrackingProfiles.AddRange(
-            new AgentTrackingProfile { Id = founderId, AgentUpn = "founder@example.org", AgentUserId = "founder-1" },
-            new AgentTrackingProfile { Id = founderAliasId, AgentUpn = "founder@example.org", AgentUserId = "founder-2" },
-            new AgentTrackingProfile { Id = otherAgentId, AgentUpn = "other@example.org", AgentUserId = "other" });
+            new AgentTrackingProfile { Id = founderId, AgentUpn = "founder@example.org", AgentUserId = "founder-1", Slug = "founder" },
+            new AgentTrackingProfile { Id = founderAliasId, AgentUpn = "founder@example.org", AgentUserId = "founder-2", Slug = "founder-alias" },
+            new AgentTrackingProfile { Id = otherAgentId, AgentUpn = "other@example.org", AgentUserId = "other", Slug = "other" });
 
         db.AnalyticsEvents.AddRange(
             new AnalyticsEvent
