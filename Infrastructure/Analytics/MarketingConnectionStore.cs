@@ -166,6 +166,7 @@ public static class MarketingServiceRegistration
         services.AddSingleton(sp => MarketingCredentialProtector.CreateShared(
             sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
         services.AddScoped<MarketingConnectionStore>();
+        services.AddScoped<MarketingMetaAdsOAuthService>();
         services.AddScoped<AgentMarketingProfileService>();
         services.AddScoped<Infrastructure.Leads.WebsiteIntakeRecipientResolver>();
         return services;
