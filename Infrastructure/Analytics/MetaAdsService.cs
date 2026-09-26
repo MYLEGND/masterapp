@@ -175,7 +175,15 @@ public sealed class MetaAdsService : IMetaAdsService
             .GroupBy(x => x.Name!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Id!, StringComparer.OrdinalIgnoreCase);
 
-        var leads = await BaseWebsiteLeads(range, scope, scopedAgentIds)
+        var rawLeads = await BaseWebsiteLeadsWithoutQualityFilter(range, scope, scopedAgentIds)
+            .ToListAsync(ct);
+        var rawEvents = await _analytics
+            .ScopedEvents(WithQualityMode(range, TrafficQualityMode.AllTraffic), scope, scopedAgentIds)
+            .ToListAsync(ct);
+        var leads = TrafficQualityBucketFilters.ApplyLeadBucketMembershipInMemory(
+                rawLeads,
+                rawEvents,
+                range.QualityMode)
             .Select(l => new WebsiteLeadAttributionSeed
             {
                 UtmCampaign = l.UtmCampaign,
@@ -183,7 +191,7 @@ public sealed class MetaAdsService : IMetaAdsService
                 MetaCampaignId = l.MetaCampaignId,
                 MetadataJson = l.MetadataJson
             })
-            .ToListAsync(ct);
+            .ToList();
 
         var counts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
@@ -336,12 +344,11 @@ public sealed class MetaAdsService : IMetaAdsService
                     ? e.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(e.AgentTrackingProfileId.Value)
                     : e.AgentTrackingProfileId == scope.AgentTrackingProfileId.Value);
 
-    private IQueryable<WebsiteLead> BaseWebsiteLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
+    private IQueryable<WebsiteLead> BaseWebsiteLeadsWithoutQualityFilter(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
         _db.WebsiteLeads.AsNoTracking()
             .Where(l => !l.IsDeleted)
             .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
-            .Where(LeadScopePredicate(scope, scopedAgentIds))
-            .Where(TrafficQualityBucketFilters.BuildLeadPredicate(range.QualityMode));
+            .Where(LeadScopePredicate(scope, scopedAgentIds));
 
     private async Task<IQueryable<MetaSignalEvent>> ApplyMetaSignalQualityFilterAsync(
         IQueryable<MetaSignalEvent> query,

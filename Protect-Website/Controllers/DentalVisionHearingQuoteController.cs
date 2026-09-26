@@ -76,6 +76,7 @@ namespace Protect_Website.Controllers
 
         // POST: /Quote/Dental-Vision-Hearing
         [HttpPost("Dental-Vision-Hearing")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public async Task<IActionResult> SubmitDentalVisionHearingQuote(DentalVisionHearingQuoteFormModel model)
         {
             var correlationId = Guid.NewGuid();

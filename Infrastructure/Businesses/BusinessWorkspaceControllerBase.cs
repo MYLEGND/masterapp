@@ -159,14 +159,13 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         DateTime? toUtc = null,
         TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
         string? timezoneId = null,
+        int? timezoneOffsetMinutes = null,
         CancellationToken cancellationToken = default)
     {
         if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
         try
         {
-            var timezone = string.IsNullOrWhiteSpace(timezoneId)
-                ? TimeZoneInfo.Utc
-                : TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
+            var timezone = AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes);
             var range = TimeRangeRequest.FromPreset(preset ?? "30d", fromUtc, toUtc, timezone, qualityMode);
             var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMetaAdsService>();
             return Json(await service.GetCampaignsAsync(range, ScopeContext.ForBusiness(businessId), cancellationToken));
@@ -279,14 +278,15 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     public async Task<IActionResult> AnalyticsData(Guid businessId, string section, string? preset = null,
         DateTime? fromUtc = null, DateTime? toUtc = null, TrafficType trafficType = TrafficType.All,
         TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic, string? timezoneId = null,
-        string? metric = null, string? visitorId = null, string? sessionId = null,
+        int? timezoneOffsetMinutes = null, string? metric = null, string? visitorId = null, string? sessionId = null,
+        string? quoteType = null, string? campaign = null, string? pageMode = null, string? scoreTier = null,
         CancellationToken cancellationToken = default)
     {
         if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
         TimeRangeRequest range;
         try
         {
-            var timezone = string.IsNullOrWhiteSpace(timezoneId) ? TimeZoneInfo.Utc : TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
+            var timezone = AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes);
             range = TimeRangeRequest.FromPreset(preset ?? "30d", fromUtc, toUtc, timezone, qualityMode);
         }
         catch (Exception ex) when (ex is ArgumentException or TimeZoneNotFoundException or InvalidTimeZoneException)
@@ -294,7 +294,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         try
         {
             var result = await workspace.AnalyticsDataAsync(businessId, section, range, trafficType,
-                metric, visitorId, sessionId, cancellationToken);
+                metric, visitorId, sessionId, quoteType, campaign, pageMode, scoreTier, cancellationToken);
             return result is null ? NotFound() : Json(result);
         }
         catch (ArgumentException ex) { return BadRequest(ex.Message); }

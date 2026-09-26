@@ -5,6 +5,8 @@ namespace Shared.Analytics;
 
 public sealed class SummaryKpiDto
 {
+    public bool IsAvailable { get; set; } = true;
+    public string? UnavailableReason { get; set; }
     public int PageViews { get; set; }
     public int UniqueVisitors { get; set; }
     public int Sessions { get; set; }

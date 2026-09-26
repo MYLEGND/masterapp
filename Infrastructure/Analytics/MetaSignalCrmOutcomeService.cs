@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
 using Domain.Entities;
 using Domain.Enums;
@@ -6,6 +8,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Shared.Analytics;
+using Shared.Crm;
 
 namespace Infrastructure.Analytics;
 
@@ -22,53 +25,129 @@ public sealed class MetaSignalCrmOutcomeService
         _logger = logger;
     }
 
+    public async Task RecordAppointmentOutcomeAsync(
+        LeadAppointment appointment,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(appointment);
+
+        var eventName = appointment.Status switch
+        {
+            LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed => AppointmentAnalyticsEventCatalog.Booked,
+            LeadAppointmentStatus.Rescheduled => AppointmentAnalyticsEventCatalog.Rescheduled,
+            LeadAppointmentStatus.Cancelled => AppointmentAnalyticsEventCatalog.Cancelled,
+            LeadAppointmentStatus.Completed => AppointmentAnalyticsEventCatalog.Completed,
+            LeadAppointmentStatus.NoShow => AppointmentAnalyticsEventCatalog.NoShow,
+            _ => null
+        };
+        if (eventName is null)
+            return;
+
+        var clientEventId = StableAppointmentEventId(appointment.Id, eventName);
+        if (_db.AnalyticsEvents.Local.Any(x => x.ClientEventId == clientEventId) ||
+            await _db.AnalyticsEvents.AsNoTracking().AnyAsync(x => x.ClientEventId == clientEventId, cancellationToken))
+            return;
+
+        var intakeLink = appointment.WebsiteLeadIntakeLinkId.HasValue
+            ? await _db.WebsiteLeadIntakeLinks.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == appointment.WebsiteLeadIntakeLinkId.Value, cancellationToken)
+            : null;
+
+        if (intakeLink is null && !string.IsNullOrWhiteSpace(appointment.WorkstationLeadId))
+        {
+            intakeLink = await _db.WebsiteLeadIntakeLinks.AsNoTracking()
+                .Where(x => x.WorkstationLeadId == appointment.WorkstationLeadId)
+                .OrderByDescending(x => x.SubmittedUtc)
+                .ThenByDescending(x => x.CapturedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        WebsiteLead? websiteLead = null;
+        if (intakeLink is not null)
+        {
+            websiteLead = await _db.WebsiteLeads.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.LeadId == intakeLink.WebsiteLeadPublicId, cancellationToken);
+        }
+
+        var metaEligible = appointment.Status is LeadAppointmentStatus.Booked
+            or LeadAppointmentStatus.Confirmed
+            or LeadAppointmentStatus.Completed;
+
+        var context = new UnifiedEventContext
+        {
+            EventId = $"appointment:{appointment.Id:N}:{eventName}",
+            EventName = eventName,
+            EventCategory = "appointment",
+            EventUtc = appointment.UpdatedUtc == default ? DateTime.UtcNow : appointment.UpdatedUtc,
+            SessionId = intakeLink?.SessionId ?? websiteLead?.SessionId,
+            VisitorId = intakeLink?.VisitorId ?? websiteLead?.VisitorId,
+            PageKey = intakeLink?.SourcePageKey ?? websiteLead?.SourcePageKey,
+            EffectivePageKey = intakeLink?.SourcePageKey ?? websiteLead?.SourcePageKey,
+            PageVariant = intakeLink?.PageVariant,
+            PageMode = intakeLink?.PageMode,
+            UtmSource = intakeLink?.UtmSource ?? websiteLead?.UtmSource,
+            UtmMedium = intakeLink?.UtmMedium ?? websiteLead?.UtmMedium,
+            UtmCampaign = intakeLink?.UtmCampaign ?? websiteLead?.UtmCampaign,
+            UtmId = intakeLink?.UtmId ?? websiteLead?.UtmId,
+            UtmContent = intakeLink?.UtmContent,
+            MetaCampaignId = intakeLink?.MetaCampaignId ?? websiteLead?.MetaCampaignId,
+            MetaAdSetId = intakeLink?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
+            MetaAdId = intakeLink?.MetaAdId ?? websiteLead?.MetaAdId,
+            Fbclid = intakeLink?.Fbclid ?? websiteLead?.Fbclid,
+            AgentTrackingProfileId = websiteLead?.CommerceBusinessId.HasValue == true
+                ? null
+                : websiteLead?.AgentTrackingProfileId,
+            AgentSlug = websiteLead?.CommerceBusinessId.HasValue == true
+                ? null
+                : websiteLead?.AgentSlug,
+            CommerceBusinessId = websiteLead?.CommerceBusinessId ?? intakeLink?.CommerceBusinessId,
+            WebsiteContentVersionId = websiteLead?.WebsiteContentVersionId,
+            WebsiteBindingId = websiteLead?.WebsiteBindingId,
+            Environment = websiteLead?.Environment,
+            Host = websiteLead?.Host,
+            QuoteType = intakeLink?.InterestType ?? intakeLink?.ProductType ?? websiteLead?.InterestType ?? "crm",
+            IsBrowserSignal = false,
+            IsServerAuthority = true,
+            MetaServerAuthorityEligible = metaEligible,
+            Metadata = new
+            {
+                LeadId = websiteLead?.LeadId ?? intakeLink?.WebsiteLeadPublicId,
+                AppointmentId = appointment.Id,
+                appointment.WorkstationLeadId,
+                appointment.OwnerAgentUserId,
+                appointment.CalendarEventId,
+                appointment.CalendarEventWebLink,
+                appointment.ScheduledStartUtc,
+                appointment.ScheduledEndUtc,
+                appointment.BookingSource,
+                appointment.ConfirmationSource,
+                AppointmentStatus = appointment.Status.ToString(),
+                appointment.LastSyncStatus
+            }
+        };
+
+        var analytics = UnifiedEventMapper.ToAnalytics(context);
+        analytics.ClientEventId = clientEventId;
+        UnifiedAnalyticsWriter.Write(_db, analytics);
+    }
+
+    private static Guid StableAppointmentEventId(Guid appointmentId, string eventName)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"appointment:v1|{appointmentId:N}|{eventName}"));
+        return new Guid(bytes.AsSpan(0, 16));
+    }
+
     public async Task RecordAppointmentCompletedAsync(LeadAppointment appointment, CancellationToken cancellationToken = default)
     {
         if (appointment.Status != LeadAppointmentStatus.Completed)
             return;
 
-        var dedupKey = $"AppointmentCompleted:{appointment.Id:N}";
-        if (await AlreadyRecordedAsync("AppointmentCompleted", dedupKey, cancellationToken))
-            return;
-
-        var websiteLeadId = await ResolveWebsiteLeadIdAsync(appointment.WorkstationLeadId, appointment.WebsiteLeadIntakeLinkId, cancellationToken);
-
-        var row = BuildRow(
-            eventName: "AppointmentCompleted",
-            eventId: $"appointment_completed_{appointment.Id:N}",
-            dedupKey: dedupKey,
-            websiteLeadId: websiteLeadId,
-            agentTrackingProfileId: null,
-            agentSlug: null,
-            quoteType: "crm",
-            funnelStep: 5,
-            stepName: "appointment_completed",
-            scoreTier: "AppointmentCompleted",
-            totalScore: 160,
-            metadata: new
-            {
-                appointmentId = appointment.Id,
-                appointment.WorkstationLeadId,
-                appointment.OwnerAgentUserId,
-                appointment.CalendarEventId,
-                appointment.ScheduledStartUtc,
-                appointment.ScheduledEndUtc,
-                appointment.CompletedUtc,
-                appointment.BookingSource,
-                appointment.ConfirmationSource
-            });
-
-        UnifiedMetaSignalWriter.Write(_db, row);
+        await RecordAppointmentOutcomeAsync(appointment, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation(
-            "MetaSignal CRM outcome recorded event={EventName} appointmentId={AppointmentId} leadId={LeadId}",
-            row.EventName,
-            appointment.Id,
-            websiteLeadId);
     }
 
     public async Task RecordProductionOutcomeAsync(
+        Guid productionRecordId,
         string agentUserId,
         ProductionSide side,
         ProductionStatus status,
@@ -94,7 +173,10 @@ public sealed class MetaSignalCrmOutcomeService
         if (string.IsNullOrWhiteSpace(contactKey))
             return;
 
-        var dedupKey = $"{eventName}:{side}:{contactKey}:{amount:0.00}:{personalAmount:0.00}";
+        if (productionRecordId == Guid.Empty)
+            throw new ArgumentException("A canonical production record id is required.", nameof(productionRecordId));
+
+        var dedupKey = $"{eventName}:production:{productionRecordId:N}";
         if (await AlreadyRecordedAsync(eventName, dedupKey, cancellationToken))
             return;
 
@@ -112,7 +194,7 @@ public sealed class MetaSignalCrmOutcomeService
 
         var row = BuildRow(
             eventName: eventName,
-            eventId: $"{eventName.ToLowerInvariant()}_{Guid.NewGuid():N}",
+            eventId: $"{eventName.ToLowerInvariant()}_{productionRecordId:N}",
             dedupKey: dedupKey,
             websiteLeadId: websiteLeadId,
             agentTrackingProfileId: trackingProfile?.Id,
@@ -142,6 +224,7 @@ public sealed class MetaSignalCrmOutcomeService
             },
             metadata: new
             {
+                productionRecordId,
                 agentUserId,
                 side = side.ToString(),
                 status = status.ToString(),
@@ -172,11 +255,31 @@ public sealed class MetaSignalCrmOutcomeService
         if (side == ProductionSide.Lead)
             return await ResolveWebsiteLeadIdAsync(leadId, null, cancellationToken);
 
-        // Many converted clients preserve the original workstation lead id as ClientUserId.
-        // This lets client-side production remain attributable to the original website lead.
-        var byClientUserId = await ResolveWebsiteLeadIdAsync(clientUserId, null, cancellationToken);
-        if (byClientUserId.HasValue)
-            return byClientUserId.Value;
+        // Converted clients preserve the canonical source lead in CRM metadata.
+        // ClientUserId itself is not required to equal the workstation lead id.
+        if (!string.IsNullOrWhiteSpace(clientUserId))
+        {
+            var client = await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(x => x.ClientUserId == clientUserId)
+                .Select(x => new { x.ClientUserId, x.CrmNotes })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (client is not null)
+            {
+                var meta = ClientCrmMetaSerializer.Deserialize(client.CrmNotes);
+                var sourceLeadId = meta?.SourceWorkstationLeadId;
+                var bySourceLead = await ResolveWebsiteLeadIdAsync(sourceLeadId, null, cancellationToken);
+                if (bySourceLead.HasValue)
+                    return bySourceLead.Value;
+            }
+
+            // Preserve compatibility for historical clients whose ClientUserId was
+            // itself the workstation lead id.
+            var byClientUserId = await ResolveWebsiteLeadIdAsync(clientUserId, null, cancellationToken);
+            if (byClientUserId.HasValue)
+                return byClientUserId.Value;
+        }
 
         // Defensive fallback for mixed caller paths where leadId may still be populated.
         return await ResolveWebsiteLeadIdAsync(leadId, null, cancellationToken);

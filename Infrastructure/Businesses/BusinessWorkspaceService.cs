@@ -56,7 +56,9 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
     }
 
     public async Task<object?> AnalyticsDataAsync(Guid businessId, string section, TimeRangeRequest range, TrafficType trafficType,
-        string? metric = null, string? visitorId = null, string? sessionId = null, CancellationToken ct = default)
+        string? metric = null, string? visitorId = null, string? sessionId = null,
+        string? quoteType = null, string? campaign = null, string? pageMode = null, string? scoreTier = null,
+        CancellationToken ct = default)
     {
         var scope = ScopeContext.ForBusiness(businessId);
         if (section is "kpi-detail" or "visitor-timeline")
@@ -75,7 +77,8 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
         }
         return section switch
         {
-            "meta-signal" => await new MetaSignalAnalyticsService(db, analytics).GetDashboardAsync(range, scope, trafficType),
+            "meta-signal" => await new MetaSignalAnalyticsService(db, analytics).GetDashboardAsync(
+                range, scope, trafficType, quoteType, campaign, pageMode, scoreTier, ct),
             "meta-signal-health" => await new MetaSignalAnalyticsService(db, analytics).GetHealthDashboardAsync(range, scope),
             "summary" => await analytics.GetSummaryAsync(range, scope, trafficType),
             "traffic" => await analytics.GetTrafficAsync(range, scope, trafficType),

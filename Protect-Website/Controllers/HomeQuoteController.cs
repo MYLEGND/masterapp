@@ -57,6 +57,7 @@ namespace Protect_Website.Controllers
 
         // POST: /Quote/Home
         [HttpPost("Home")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public async Task<IActionResult> SubmitHomeQuote(HomeQuoteFormModel model)
         {
             // Normalize disclaimer — wizard steps toggle disabled; read raw value directly

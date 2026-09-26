@@ -57,6 +57,7 @@ namespace Protect_Website.Controllers
         }
 
         [HttpPost("Commercial")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Commercial(CommercialQuoteFormModel model)
         {

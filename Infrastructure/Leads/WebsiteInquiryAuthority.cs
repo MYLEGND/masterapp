@@ -280,6 +280,22 @@ public class WebsiteInquiryAuthority : ControllerBase
             cancellationToken,
             async ct =>
             {
+                var founderRecipient = await _recipients.ResolveAsync(MarketingOwnerScope.Founder, ct);
+                var captured = await _capture.UpsertAsync(new WebsiteLifeLeadCaptureRequest
+                {
+                    WebsiteLeadId = lead.LeadId,
+                    SubmittedUtc = lead.CreatedUtc,
+                    ProductType = "legend_inquiry",
+                    OfferKey = "legend",
+                    FirstName = lead.FirstName,
+                    LastName = lead.LastName,
+                    Email = lead.Email,
+                    Phone = lead.Phone,
+                    RecipientEmail = founderRecipient
+                }, ct);
+                if (!captured.Captured)
+                    throw new InvalidOperationException("The LEGEND website inquiry could not be linked to CRM.");
+
                 WriteLeadAnalytics(scope, lead, request, submissionBinding);
                 await _db.SaveChangesAsync(ct);
             });

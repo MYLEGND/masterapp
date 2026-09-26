@@ -157,41 +157,19 @@ namespace AgentPortal.Controllers;
     // JSON endpoints -------------------------------------------------
     private TimeZoneInfo GetViewerTimeZone()
     {
-        // 1. Try IANA or Windows timezone ID (e.g. "America/Phoenix").
-        //    TimeZoneInfo.FindSystemTimeZoneById accepts both IANA and Windows IDs on .NET 6+.
+        string? timezoneId = null;
+        int? timezoneOffsetMinutes = null;
+
         if (Request.Query.TryGetValue("timezoneId", out var tzIdRaw))
-        {
-            var tzId = tzIdRaw.ToString().Trim();
-            if (!string.IsNullOrEmpty(tzId))
-            {
-                try { return TimeZoneInfo.FindSystemTimeZoneById(tzId); }
-                catch (TimeZoneNotFoundException) { }
-                catch (InvalidTimeZoneException) { }
-            }
-        }
+            timezoneId = tzIdRaw.ToString();
 
-        // 2. Fall back to browser UTC offset (minutes west of UTC — positive for UTC-7).
-        //    CreateCustomTimeZone expects offset FROM UTC, so invert the sign.
         if (Request.Query.TryGetValue("timezoneOffsetMinutes", out var offsetRaw) &&
-            int.TryParse(offsetRaw, out var offsetMinutes) &&
-            offsetMinutes >= -840 && offsetMinutes <= 840)
+            int.TryParse(offsetRaw, out var parsedOffset))
         {
-            try
-            {
-                return TimeZoneInfo.CreateCustomTimeZone(
-                    $"viewer-offset-{offsetMinutes}",
-                    TimeSpan.FromMinutes(-offsetMinutes),
-                    "Viewer Local",
-                    "Viewer Local");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Unable to create viewer offset timezone. Falling back to UTC.");
-            }
+            timezoneOffsetMinutes = parsedOffset;
         }
 
-        // 3. Safe fallback: UTC.
-        return TimeZoneInfo.Utc;
+        return AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes);
     }
 
     private static TrafficQualityMode ResolveInitialQualityMode(TrafficQualityMode? requestedQualityMode = null) =>
@@ -230,6 +208,8 @@ namespace AgentPortal.Controllers;
 
             return new SummaryKpiDto
             {
+                IsAvailable = false,
+                UnavailableReason = "Summary query timed out.",
                 RangeLabel = range.Label,
                 EnvironmentLabel = "Summary temporarily unavailable"
             };
@@ -239,11 +219,12 @@ namespace AgentPortal.Controllers;
     private async Task<List<VisitorConcentrationDto>> LoadVisitorConcentrationSafelyAsync(
         TimeRangeRequest range,
         ScopeContext scope,
+        TrafficType trafficType,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await _visitorConcentrationService.GetVisitorConcentrationAsync(range, scope, cancellationToken);
+            return await _visitorConcentrationService.GetVisitorConcentrationAsync(range, scope, trafficType, cancellationToken);
         }
         catch (Exception ex) when (IsAnalyticsTimeout(ex))
         {
@@ -445,6 +426,32 @@ namespace AgentPortal.Controllers;
                 if (lead == null)
                     return NotFound(new { message = "Lead not found." });
 
+                var cleanupSafety = await ReadCleanupSafetyAsync(
+                    conn,
+                    request.LeadId,
+                    leadColumns,
+                    isSqlite,
+                    cancellationToken);
+                if (!cleanupSafety.IsInternal &&
+                    !Infrastructure.Leads.WebsiteLeadCaptureSafety.IsLocalHost(cleanupSafety.Host))
+                {
+                    return BadRequest(new
+                    {
+                        message = "Only explicitly internal/local test leads can be removed from analytics. Production lead history must be retained."
+                    });
+                }
+
+                var crmLineage = await HasCrmLineageAsync(conn, request.LeadId, isSqlite, cancellationToken);
+                if (crmLineage != false)
+                {
+                    return Conflict(new
+                    {
+                        message = crmLineage == true
+                            ? "This test lead is linked to CRM and cannot be removed from Analytics independently."
+                            : "CRM lineage could not be verified, so cleanup was blocked."
+                    });
+                }
+
                 if (lead.IsDeleted)
                 {
                     return Json(new
@@ -537,6 +544,59 @@ namespace AgentPortal.Controllers;
                 request?.LeadId,
                 request);
             return StatusCode(500, new { message = "Unable to delete lead right now." });
+        }
+
+        static async Task<(bool IsInternal, string? Host)> ReadCleanupSafetyAsync(
+            DbConnection conn,
+            Guid leadId,
+            IReadOnlySet<string> columns,
+            bool isSqlite,
+            CancellationToken cancellationToken)
+        {
+            var hasInternal = columns.Contains("IsInternal");
+            var hasHost = columns.Contains("Host");
+            if (!hasInternal && !hasHost)
+                return (false, null);
+
+            await using var cmd = conn.CreateCommand();
+            var internalSql = hasInternal
+                ? (isSqlite ? "COALESCE(\"IsInternal\", 0)" : "CASE WHEN [IsInternal] = 1 THEN 1 ELSE 0 END")
+                : "0";
+            var hostSql = hasHost ? QuoteIdentifier("Host", isSqlite) : "NULL";
+            cmd.CommandText = isSqlite
+                ? $"""SELECT {internalSql} AS "IsInternal", {hostSql} AS "Host" FROM "WebsiteLeads" WHERE lower("LeadId") = lower(@leadId) LIMIT 1"""
+                : $"""SELECT TOP (1) {internalSql} AS [IsInternal], {hostSql} AS [Host] FROM [WebsiteLeads] WHERE [LeadId] = @leadId""";
+            AddParameter(cmd, "@leadId", isSqlite ? leadId.ToString() : leadId);
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+                return (false, null);
+            return (
+                ReadBoolean(reader, "IsInternal"),
+                reader.IsDBNull(reader.GetOrdinal("Host")) ? null : Convert.ToString(reader.GetValue(reader.GetOrdinal("Host")), CultureInfo.InvariantCulture));
+        }
+
+        static async Task<bool?> HasCrmLineageAsync(
+            DbConnection conn,
+            Guid leadId,
+            bool isSqlite,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = isSqlite
+                    ? """SELECT COUNT(1) FROM "WebsiteLeadIntakeLinks" WHERE lower("WebsiteLeadPublicId") = lower(@leadId)"""
+                    : """SELECT COUNT(1) FROM [WebsiteLeadIntakeLinks] WHERE [WebsiteLeadPublicId] = @leadId""";
+                AddParameter(cmd, "@leadId", isSqlite ? leadId.ToString() : leadId);
+                var scalar = await cmd.ExecuteScalarAsync(cancellationToken);
+                return Convert.ToInt64(scalar ?? 0, CultureInfo.InvariantCulture) > 0;
+            }
+            catch (Exception ex) when (
+                ex is Microsoft.Data.Sqlite.SqliteException ||
+                ex is Microsoft.Data.SqlClient.SqlException)
+            {
+                return null;
+            }
         }
 
         static async Task<WebsiteLeadDeleteLookup?> FindLeadAsync(
@@ -1023,21 +1083,14 @@ namespace AgentPortal.Controllers;
             });
         }
 
-        var hasConfiguredFallback = !string.IsNullOrWhiteSpace(_config["MetaAds:AccessToken"]) &&
-                                    !string.IsNullOrWhiteSpace(_config["MetaAds:DefaultAccountId"]);
         var record = await _metaAdsConnectionStore.GetAsync(agentId.Value, HttpContext.RequestAborted);
         if (record == null)
         {
             return Json(new MetaAdsConnectionStatusDto
             {
-                Connected = hasConfiguredFallback,
+                Connected = false,
                 AgentTrackingProfileId = agentId,
-                AccountId = hasConfiguredFallback ? _config["MetaAds:DefaultAccountId"] : null,
-                AccountName = hasConfiguredFallback ? "Configured fallback account" : null,
-                MetaUserName = hasConfiguredFallback ? "Configured fallback" : null,
-                Message = hasConfiguredFallback
-                    ? "Using the configured fallback Meta Ads account for the selected agent."
-                    : "Meta Ads not connected for the selected agent."
+                Message = "Meta Ads not connected for the selected agent."
             });
         }
 

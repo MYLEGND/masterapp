@@ -21,6 +21,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
     [
         "qualified_lead",
         AppointmentAnalyticsEventCatalog.Booked,
+        AppointmentAnalyticsEventCatalog.Completed,
         "application_submitted",
         "policy_issued",
         "policy_paid",
@@ -40,6 +41,9 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
 
     private static readonly BridgeMapping AppointmentBookedMapping =
         new("AppointmentBooked", "conversion", FunnelStep: 4, StepName: "appointment_booked", IntentScore: 120, EngagementScore: 120, QualificationScore: 120, FrictionScore: 0, ScoreTier: "AppointmentBooked");
+
+    private static readonly BridgeMapping AppointmentCompletedMapping =
+        new("AppointmentCompleted", "conversion", FunnelStep: 5, StepName: "appointment_completed", IntentScore: 160, EngagementScore: 160, QualificationScore: 160, FrictionScore: 0, ScoreTier: "AppointmentCompleted");
 
     private static readonly BridgeMapping ApplicationSubmittedMapping =
         new("ApplicationSubmitted", "conversion", FunnelStep: 6, StepName: "application_submitted", IntentScore: 220, EngagementScore: 220, QualificationScore: 220, FrictionScore: 0, ScoreTier: "ApplicationSubmitted");
@@ -538,6 +542,12 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         if (string.Equals(normalized, AppointmentAnalyticsEventCatalog.Booked, StringComparison.OrdinalIgnoreCase))
         {
             mapping = AppointmentBookedMapping;
+            return true;
+        }
+
+        if (string.Equals(normalized, AppointmentAnalyticsEventCatalog.Completed, StringComparison.OrdinalIgnoreCase))
+        {
+            mapping = AppointmentCompletedMapping;
             return true;
         }
 

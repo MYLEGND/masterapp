@@ -533,6 +533,7 @@
       persistEvents: rawConfig?.persistEvents !== false,
       debugMode: Boolean(rawConfig?.debugMode),
       endpoint: asTrimmed(rawConfig?.endpoint) || '/analytics/meta-signal',
+      pixelId: asTrimmed(rawConfig?.pixelId),
       siteKey: asTrimmed(rawConfig?.siteKey),
       quoteType: asTrimmed(rawConfig?.quoteType) || 'life',
       pageKey: asTrimmed(rawConfig?.pageKey),
@@ -1227,7 +1228,8 @@
       if (typeof window.fbq !== 'function') return 'pixel_unavailable';
 
       try {
-        window.fbq('trackCustom', eventName, pixelPayload, { eventID: eventId });
+        if (!config.pixelId) return 'pixel_unavailable';
+        window.fbq('trackSingleCustom', config.pixelId, eventName, pixelPayload, { eventID: eventId });
         // fbq can queue locally. Returning from it does not acknowledge delivery to Meta.
         return 'invoked';
       } catch {

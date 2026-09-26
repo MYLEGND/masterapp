@@ -109,6 +109,7 @@ builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
 builder.Services.AddScoped<IWebsiteInquiryEmailSender>(services => services.GetRequiredService<IProtectEmailSender>());
 builder.Services.AddScoped<BusinessInquiryNotificationService>();
 builder.Services.AddHostedService<BusinessInquiryNotificationWorker>();
+builder.Services.AddHostedService<WebsiteLeadNotificationRecoveryWorker>();
 
 builder.Services.AddScoped<Infrastructure.Analytics.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
@@ -118,6 +119,7 @@ builder.Services.AddScoped<Infrastructure.Analytics.IMetaSendAuthority, Infrastr
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
 builder.Services.AddScoped<IPublicBookingCalendarMatcher, MicrosoftGraphPublicBookingCalendarMatcher>();
+builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
 builder.Services.AddScoped<IPublicBookingConfirmationService, PublicBookingConfirmationService>();
 builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
