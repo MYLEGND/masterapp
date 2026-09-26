@@ -86,8 +86,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
 
         Assert.Contains("_automations.CaptureCheckoutLead(store.CommerceBusinessId", checkout, StringComparison.Ordinal);
         Assert.Contains("_automations.MarkOrderConverted(store.CommerceBusinessId", checkout, StringComparison.Ordinal);
-        Assert.Contains(""InitiateCheckout"", checkout, StringComparison.Ordinal);
-        Assert.Contains(""Purchase"", checkout, StringComparison.Ordinal);
+        Assert.Contains("\"InitiateCheckout\"", checkout, StringComparison.Ordinal);
+        Assert.Contains("\"Purchase\"", checkout, StringComparison.Ordinal);
         Assert.Contains("commerceSignals.RecordAsync", analyticsController, StringComparison.Ordinal);
         Assert.Contains("GetDueDispatchCandidatesForAllBusinesses", automations, StringComparison.Ordinal);
         Assert.Contains("GetDueDispatchCandidatesForAllBusinesses", hosted, StringComparison.Ordinal);
