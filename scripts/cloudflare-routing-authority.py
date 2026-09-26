@@ -178,9 +178,13 @@ def audit(prove_cache_purge: bool) -> None:
     else:
         results["cache_purge"] = "contract-required"
 
-    # Workers Tail has no non-mutating permission introspection endpoint. Keep it in
-    # the explicit contract; live tail creation is only exercised during diagnostics.
-    results["workers_tail"] = "contract-required"
+    api_request(
+        "GET",
+        f"{API}/accounts/{account}/workers/scripts/{ROUTER_SCRIPT}/tails",
+        token,
+        allow=(200, 404),
+    )
+    results["workers_tail"] = "ok"
 
     print(json.dumps({
         "authority": "LEGEND Cloudflare Production Routing",
