@@ -120,6 +120,36 @@
     return values;
   }
 
+  function constrainHorizontalStyleRecord(style) {
+    if (!style || typeof style !== 'object') return;
+    const rawWidth = Number(style.widthPercent);
+    const width = Number.isFinite(rawWidth) && rawWidth > 0 ? Math.min(100, rawWidth) : 100;
+    if (Number.isFinite(rawWidth) && rawWidth > 0) style.widthPercent = width;
+    const rawOffset = Number(style.offsetXPercent);
+    if (Number.isFinite(rawOffset)) style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - width), rawOffset));
+  }
+
+  function constrainOverrideGeometry(override) {
+    if (!override || typeof override !== 'object') return;
+    constrainHorizontalStyleRecord(override.style);
+    if (override.breakpointStyles && typeof override.breakpointStyles === 'object')
+      Object.values(override.breakpointStyles).forEach(constrainHorizontalStyleRecord);
+  }
+
+  function constrainDocumentGeometry(doc) {
+    Object.values(doc.elements || {}).forEach(constrainOverrideGeometry);
+    (doc.extras || []).forEach(constrainOverrideGeometry);
+    Object.values(doc.pages || {}).forEach(page => {
+      Object.values(page?.elements || {}).forEach(constrainOverrideGeometry);
+      (page?.extras || []).forEach(constrainOverrideGeometry);
+    });
+    Object.values(doc.reusableComponents || {}).forEach(component => {
+      Object.values(component?.elements || {}).forEach(constrainOverrideGeometry);
+      (component?.extras || []).forEach(constrainOverrideGeometry);
+    });
+    return doc;
+  }
+
   function normalizeDocument(input) {
     const pages = {};
     const sourcePages = input?.pages && typeof input.pages === 'object' ? input.pages : {};
@@ -136,7 +166,7 @@
         extras: [...new Map([...(previous.extras || []), ...(value.extras || [])].map(extra => [extra.id, extra])).values()]
       } : value;
     }
-    return {
+    const normalized = {
       version: 2,
       faviconImageDataUrl: typeof input?.faviconImageDataUrl === 'string' ? input.faviconImageDataUrl : null,
       breakpoints: normalizeBreakpoints(input?.breakpoints),
@@ -157,6 +187,7 @@
       },
       pages
     };
+    return constrainDocumentGeometry(normalized);
   }
 
   function normalizePageRoute(value) {
@@ -215,8 +246,12 @@
   }
 
   function editorSelectionTarget(node) {
-    if (!(node instanceof Element)) return null;
-    const candidate = node.closest('a[data-cms-editable="true"],[data-cms-editable="true"]');
+    if (!node?.closest) return null;
+    const entity = node.closest('[data-business-name][data-cms-editable="true"],[data-business-field][data-cms-editable="true"]');
+    if (entity instanceof HTMLElement) return entity;
+    const anchor = node.closest('a[data-cms-editable="true"]');
+    if (anchor instanceof HTMLElement) return anchor;
+    const candidate = node.closest('[data-cms-editable="true"]');
     return candidate instanceof HTMLElement ? candidate : null;
   }
 
@@ -657,15 +692,16 @@
       scaledElements.set(el, style.fontScale);
       refreshScale(el, style.fontScale);
     }
-    if (positiveNumber(style.widthPercent)) {
-      el.style.width = `${style.widthPercent}%`;
+    const sectionLocked = !!el.dataset.cmsSection;
+    if (!sectionLocked && positiveNumber(style.widthPercent)) {
+      el.style.width = `${Math.min(100, Number(style.widthPercent))}%`;
       el.style.maxWidth = '100%';
     }
     if (positiveNumber(style.heightPx)) {
       el.style.height = `${style.heightPx}px`;
       el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
     }
-    const hasOffsetX = style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
+    const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
     const hasOffsetY = style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
     if (hasOffsetX || hasOffsetY) {
       el.style.position = 'relative';
@@ -2254,6 +2290,10 @@
           }
         }
       }
+      const constrainedWidth = positiveNumber(style.widthPercent) ? Math.min(100, Number(style.widthPercent)) : 100;
+      if (positiveNumber(style.widthPercent)) style.widthPercent = constrainedWidth;
+      if (Number.isFinite(Number(style.offsetXPercent)))
+        style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - constrainedWidth), Number(style.offsetXPercent)));
       gesture.changed = true;
       applyElementOverride(selected, override);
       updateDirectCanvasUi();
@@ -2425,7 +2465,19 @@
       const style = editingStyle(ov, true);
       if (field) {
         if (control.value === '') delete style[field];
-        else style[field] = Number(control.value);
+        else if (field === 'widthPercent') {
+          style.widthPercent = Math.min(100, Number(control.value));
+          control.value = String(style.widthPercent);
+          if (Number.isFinite(Number(style.offsetXPercent))) {
+            style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - style.widthPercent), Number(style.offsetXPercent)));
+          }
+        } else if (field === 'offsetXPercent') {
+          const width = positiveNumber(style.widthPercent)
+            ? Math.min(100, Number(style.widthPercent))
+            : Math.min(100, actualWidth || 100);
+          style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - width), Number(control.value)));
+          control.value = String(style.offsetXPercent);
+        } else style[field] = Number(control.value);
       } else if (control.id === 'legend-cms-align') {
         if (control.value) style.textAlign = control.value;
         else delete style.textAlign;
