@@ -124,12 +124,13 @@
     if (!style || typeof style !== 'object') return;
     const rawWidth = Number(style.widthPercent);
     const hasWidth = Number.isFinite(rawWidth) && rawWidth > 0;
-    const width = hasWidth ? Math.min(100, rawWidth) : null;
-    if (hasWidth) style.widthPercent = width;
+    if (hasWidth) style.widthPercent = Math.min(100, rawWidth);
     const rawOffset = Number(style.offsetXPercent);
     if (Number.isFinite(rawOffset)) {
-      const maxOffset = width == null ? 100 : Math.max(0, 100 - width);
-      style.offsetXPercent = Math.max(0, Math.min(maxOffset, rawOffset));
+      // Position is independent from stored width. Rendering consumes the
+      // remaining section width so content can move freely without creating
+      // horizontal page overflow.
+      style.offsetXPercent = Math.max(0, Math.min(95, rawOffset));
     }
   }
 
@@ -715,9 +716,13 @@
       refreshScale(el, style.fontScale);
     }
     const sectionLocked = !!el.dataset.cmsSection;
+    const horizontalOffset = !sectionLocked && Number.isFinite(Number(style.offsetXPercent))
+      ? Math.max(0, Math.min(95, Number(style.offsetXPercent))) : 0;
     if (!sectionLocked && positiveNumber(style.widthPercent)) {
-      el.style.width = `${Math.min(100, Number(style.widthPercent))}%`;
-      el.style.maxWidth = '100%';
+      const requestedWidth = Math.min(100, Number(style.widthPercent));
+      const availableWidth = Math.max(5, 100 - horizontalOffset);
+      el.style.width = `${Math.min(requestedWidth, availableWidth)}%`;
+      el.style.maxWidth = `${availableWidth}%`;
     }
     if (positiveNumber(style.heightPx)) {
       if (sectionLocked) {
@@ -728,7 +733,9 @@
         el.style.overflow = 'visible';
       } else {
         el.style.height = `${style.heightPx}px`;
-        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+        // Ordinary website content never becomes its own scroll container.
+        // Code frames remain clipped to their explicit sandbox frame.
+        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'visible';
       }
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
@@ -1458,6 +1465,84 @@
     refreshLayers();
   }
 
+  let businessNavigationDrag = null;
+
+  function syncBusinessNavigationOrder(nav) {
+    const links=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
+    links.forEach((link,index)=>{
+      const route=normalizePageRoute(link.dataset.legendPageRoute);
+      if (!route) return;
+      const page=ensurePageRecord(route);
+      page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+      page.navigation.order=index * 10;
+    });
+    markDirty();
+    refreshPageSelector();
+    renderPageManager();
+  }
+
+  function installBusinessNavigationEditor(nav) {
+    if (!editorMode || !nav || nav.dataset.cmsPageOrderWired === 'true') return;
+    nav.dataset.cmsPageOrderWired='true';
+
+    nav.addEventListener('click',event=>{
+      const link=event.target.closest?.('a[data-legend-page-nav="true"]');
+      if (!link) return;
+      event.preventDefault();
+      event.stopPropagation();
+    },true);
+
+    nav.addEventListener('dblclick',event=>{
+      const link=event.target.closest?.('a[data-legend-page-nav="true"]');
+      if (!link) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const route=normalizePageRoute(link.dataset.legendPageRoute);
+      if (route) void navigateToEditorPage(route);
+    },true);
+
+    nav.addEventListener('pointerdown',event=>{
+      const link=event.target.closest?.('a[data-legend-page-nav="true"]');
+      if (!link || (event.button !== undefined && event.button !== 0)) return;
+      businessNavigationDrag={link,pointerId:event.pointerId,changed:false,checkpointed:false};
+      link.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    nav.addEventListener('pointermove',event=>{
+      const drag=businessNavigationDrag;
+      if (!drag || (drag.pointerId != null && event.pointerId != null && drag.pointerId !== event.pointerId)) return;
+      const siblings=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
+      const target=siblings.find(candidate=>{
+        if (candidate===drag.link) return false;
+        const rect=candidate.getBoundingClientRect();
+        return event.clientX >= rect.left && event.clientX <= rect.right;
+      });
+      if (!target) return;
+      const rect=target.getBoundingClientRect();
+      const before=event.clientX < rect.left + rect.width / 2;
+      const reference=before ? target : target.nextSibling;
+      if (reference === drag.link || (!reference && drag.link === nav.lastElementChild)) return;
+      if (!drag.checkpointed) { checkpoint(); drag.checkpointed=true; }
+      nav.insertBefore(drag.link,reference);
+      drag.changed=true;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    const finish=event=>{
+      const drag=businessNavigationDrag;
+      if (!drag || (drag.pointerId != null && event.pointerId != null && drag.pointerId !== event.pointerId)) return;
+      businessNavigationDrag=null;
+      if (drag.changed) syncBusinessNavigationOrder(nav);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    nav.addEventListener('pointerup',finish);
+    nav.addEventListener('pointercancel',finish);
+  }
+
   function applyBusinessPageNavigation() {
     if (SITE_KEY !== 'business') return;
     const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
@@ -1478,11 +1563,13 @@
       link.href=entry.route;
       link.textContent=entry.label;
       link.dataset.legendPageNav='true';
+      link.dataset.legendPageRoute=entry.route;
       link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
       link.dataset.cmsLocked='true';
       if (entry.route===current) link.setAttribute('aria-current','page');
       nav.appendChild(link);
     });
+    if (editorMode) installBusinessNavigationEditor(nav);
   }
 
   function applyDocument(doc) {
@@ -1655,11 +1742,20 @@
 
   function templatePageEntries() {
     const entries=new Map();
-    for (const page of context.pages || []) {
-      const route=normalizePageRoute(page?.path);
-      if (!route) continue;
-      entries.set(route,{route,label:page.label || route,template:true});
-    }
+    const catalog=Array.isArray(renderInput?.pageCatalog) ? renderInput.pageCatalog : (context.pages || []);
+    catalog.forEach((page,index) => {
+      const route=normalizePageRoute(page?.route || page?.path);
+      if (!route) return;
+      entries.set(route,{
+        route,
+        label:page.label || route,
+        template:page.template !== false,
+        showInNavigation:page.showInNavigation !== false,
+        parentPath:normalizePageRoute(page.parentPath),
+        order:Number.isFinite(Number(page.order)) ? Number(page.order) : index * 10,
+        deleted:page.deleted === true
+      });
+    });
     return entries;
   }
 
@@ -2443,8 +2539,11 @@
         ? Math.min(100, Number(style.widthPercent))
         : Math.min(100, gesture.startWidthPercent || 100);
       style.widthPercent = constrainedWidth;
-      if (Number.isFinite(Number(style.offsetXPercent)))
-        style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - constrainedWidth), Number(style.offsetXPercent)));
+      if (Number.isFinite(Number(style.offsetXPercent))) {
+        style.offsetXPercent = gesture.mode === 'move'
+          ? Math.max(0, Math.min(95, Number(style.offsetXPercent)))
+          : Math.max(0, Math.min(Math.max(0, 100 - constrainedWidth), Number(style.offsetXPercent)));
+      }
       gesture.changed = true;
       applyElementOverride(selected, override);
       updateDirectCanvasUi();
@@ -2627,10 +2726,7 @@
             style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - style.widthPercent), Number(style.offsetXPercent)));
           }
         } else if (field === 'offsetXPercent') {
-          const width = positiveNumber(style.widthPercent)
-            ? Math.min(100, Number(style.widthPercent))
-            : Math.min(100, actualWidth || 100);
-          style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - width), Number(control.value)));
+          style.offsetXPercent = Math.max(0, Math.min(95, Number(control.value)));
           control.value = String(style.offsetXPercent);
         } else style[field] = Number(control.value);
       } else if (control.id === 'legend-cms-align') {

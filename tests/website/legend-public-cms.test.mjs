@@ -1309,7 +1309,7 @@ test('generic template wrappers are not direct selections and blank-area selecti
   }finally{f.close();}
 });
 
-test('mobile runtime clamps inherited desktop geometry and contains every page section inside the viewport',async()=>{
+test('mobile runtime contains moved desktop geometry without creating horizontal page scroll',async()=>{
   const doc={
     breakpoints:[
       {key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},
@@ -1321,8 +1321,9 @@ test('mobile runtime clamps inherited desktop geometry and contains every page s
   const f=await domFixture({doc,search:'',viewportWidth:390});
   try{
     const heading=f.w.document.querySelector('main h1');
-    assert.equal(heading.style.width,'100%');
-    assert.equal(heading.style.left,'0%');
+    assert.equal(heading.style.width,'25%');
+    assert.equal(heading.style.maxWidth,'25%');
+    assert.equal(heading.style.left,'75%');
     assert.match(source,/html,body\{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none\}/);
     assert.match(source,/main,main>section,[^}]*overflow-x:clip/);
     assert.match(source,/body\{touch-action:pan-y pinch-zoom\}/);
@@ -1350,20 +1351,21 @@ test('editor preview is horizontally locked to the rendered website at every bre
   }finally{f.close();}
 });
 
-test('editor geometry is horizontally contained at every breakpoint and whole sections cannot shift sideways',async()=>{
+test('editor geometry can move anywhere inside the section while rendered width consumes remaining space',async()=>{
   const doc={pages:{'/':{elements:{'home.h1.template-title.1':{style:{widthPercent:80,offsetXPercent:75}}},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
   const f=await domFixture({doc,viewportWidth:1280});
   try{
     const heading=f.w.document.querySelector('main h1');
-    assert.equal(heading.style.width,'80%');
-    assert.equal(heading.style.left,'20%');
+    assert.equal(heading.style.width,'25%');
+    assert.equal(heading.style.maxWidth,'25%');
+    assert.equal(heading.style.left,'75%');
     f.click('main section');
     assert.equal(f.w.document.querySelector('#legend-cms-width').disabled,true);
     assert.equal(f.w.document.querySelector('#legend-cms-offset-x').disabled,true);
     assert.equal(f.w.document.querySelector('#legend-cms-width').value,'100');
     assert.equal(f.w.document.querySelector('#legend-cms-offset-x').value,'0');
-    assert.match(source,/const maxOffset = width == null \? 100 : Math\.max\(0, 100 - width\)/);
-    assert.doesNotMatch(source,/if \(key === 'mobile'\) \{/);
+    assert.match(source,/const availableWidth = Math\.max\(5, 100 - horizontalOffset\)/);
+    assert.match(source,/style\.offsetXPercent = Math\.max\(0, Math\.min\(95, rawOffset\)\)/);
   }finally{f.close();}
 });
 
@@ -1869,6 +1871,78 @@ test('sections expand with content instead of creating internal scroll container
     assert.equal(section.style.minHeight,'180px');
     assert.equal(section.style.overflow,'visible');
   }finally{f.close();}
+});
+
+test('published business hydration keeps the full custom-domain page catalog on every route',async()=>{
+  const pageCatalog=[
+    {route:'/',label:'Home',template:true,showInNavigation:true,order:0},
+    {route:'/about',label:'About',template:true,showInNavigation:true,order:10},
+    {route:'/services',label:'Services',template:true,showInNavigation:true,order:20},
+    {route:'/contact',label:'Contact',template:true,showInNavigation:true,order:30}
+  ];
+  const html='<!doctype html><html><body data-page-key="about"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>About</h1></section></main><footer class="site-footer"></footer><script id="legend-cms-published-document" type="application/json"></script></body></html>';
+  const dom=new JSDOM(html,{url:'https://camo.example/about',runScripts:'outside-only'});
+  const {window:w}=dom;
+  w.document.getElementById('legend-cms-published-document').textContent=JSON.stringify({
+    document:{pages:{'/about':{title:'About',navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}}}},
+    business:{id:'business-id',displayName:'CAMO'},
+    pageCatalog,
+    pageKey:'about',
+    server:false,
+    runtime:{apiBase:'https://protect.example.test'}
+  });
+  w.CSS={escape:value=>String(value)};
+  w.fetch=async()=>({ok:true,json:async()=>({})});
+  w.eval(source);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  try{
+    const links=[...w.document.querySelectorAll('#primary-nav>a[data-legend-page-nav="true"]')];
+    assert.deepEqual(links.map(link=>link.textContent),['Home','About','Services','Contact']);
+    assert.deepEqual(links.map(link=>new URL(link.href).origin),Array(4).fill('https://camo.example'));
+    assert.deepEqual(links.map(link=>new URL(link.href).pathname),['/','/about','/services','/contact']);
+  }finally{w.close();}
+});
+
+test('business editor navigation tabs do not follow links and drag order writes canonical page order',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const pages=[{path:'/',label:'Home'},{path:'/about',label:'About'},{path:'/services',label:'Services'}];
+  const doc={pages:{
+    '/':{navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
+    '/about':{navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}},
+    '/services':{navigation:{label:'Services',showInNavigation:true,order:20},elements:{},extras:[],sectionOrder:{}}
+  }};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'CAMO'},pages,doc,html});
+  try{
+    const nav=f.w.document.querySelector('#primary-nav');
+    const links=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
+    const clickEvent=new f.w.MouseEvent('click',{bubbles:true,cancelable:true});
+    assert.equal(links[1].dispatchEvent(clickEvent),false);
+
+    for(const [index,link] of links.entries()){
+      link.getBoundingClientRect=()=>({left:index*100,right:index*100+80,width:80,top:0,bottom:30,height:30});
+    }
+    const about=links[1];
+    about.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:140,clientY:15,button:0}));
+    nav.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:245,clientY:15,button:0}));
+    nav.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:245,clientY:15,button:0}));
+    assert.deepEqual([...nav.querySelectorAll('a[data-legend-page-nav="true"]')].map(link=>link.textContent),['Home','Services','About']);
+    const saved=await f.save();
+    assert.equal(saved.pages['/'].navigation.order,0);
+    assert.equal(saved.pages['/services'].navigation.order,10);
+    assert.equal(saved.pages['/about'].navigation.order,20);
+  }finally{f.close();}
+});
+
+test('editor navigation opens pages only on double-click and never normal-link navigates',()=>{
+  assert.match(source,/addEventListener\('dblclick',[\s\S]*navigateToEditorPage\(route\)/);
+  assert.match(source,/addEventListener\('click',[\s\S]*data-legend-page-nav[\s\S]*preventDefault\(\)/);
+});
+
+test('text scaling stays unbounded while sections remain content-sized and never become internal scrollers',()=>{
+  assert.match(source,/id="legend-cms-scale" type="number" min="0" step="any"/);
+  assert.doesNotMatch(source,/id="legend-cms-scale"[^>]*max=/);
+  assert.match(source,/scaledElements\.set\(el, style\.fontScale\)/);
+  assert.match(source,/el\.style\.height = 'auto';[\s\S]*el\.style\.overflow = 'visible';/);
 });
 
 test('business header navigation renders once from the canonical page catalog and discards stale DOM links',async()=>{
