@@ -214,35 +214,26 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
 
         try
         {
-            await _db.SaveChangesAsync(cancellationToken);
+            // Persist the verified booking outcome and its canonical analytics authority
+            // in the same database transaction. A booked appointment must never exist
+            // without the event that feeds analytics and the existing Meta bridge/outbox.
+            if (websiteLead != null)
+            {
+                var analyticsEvent = BuildAppointmentBookedAnalyticsEvent(
+                    websiteLead,
+                    appointment,
+                    resolution,
+                    leadProfile);
+                UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
+            }
 
-            try
-            {
-                if (websiteLead != null)
-                {
-                    var analyticsEvent = BuildAppointmentBookedAnalyticsEvent(
-                        websiteLead,
-                        appointment,
-                        resolution,
-                        leadProfile);
-                    UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
-                    await _db.SaveChangesAsync(cancellationToken);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "Appointment booked analytics write failed for WebsiteLead {LeadId} appointment {AppointmentId}.",
-                    context.WebsiteLeadId,
-                    appointment.Id);
-            }
+            await _db.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(
                 ex,
-                "Public booking confirmation save failed for WebsiteLead {LeadId} appointment {AppointmentId}.",
+                "Public booking confirmation and analytics save failed for WebsiteLead {LeadId} appointment {AppointmentId}.",
                 context.WebsiteLeadId,
                 appointment.Id);
             throw;
