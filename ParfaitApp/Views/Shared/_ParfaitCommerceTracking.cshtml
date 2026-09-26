@@ -1,4 +1,4 @@
-@inject ParfaitApp.Services.IParfaitBusinessProfileService BusinessProfileService
+@inject ParfaitApp.Services.ParfaitBusinessScopeService ParfaitScope
 @inject Infrastructure.Analytics.MarketingConnectionStore MarketingConnections
 @inject Microsoft.Extensions.Logging.ILoggerFactory LoggerFactory
 @{
@@ -31,8 +31,12 @@
         }
         else if (!isManagementPreview)
         {
-            var metaSettings = await BusinessProfileService.GetMetaSettingsAsync(Context.RequestAborted);
-            metaPixelId = (metaSettings.MetaPixelId ?? string.Empty).Trim();
+            var parfait = await ParfaitScope.GetParfaitAsync(Context.RequestAborted);
+            var connection = await MarketingConnections.GetStatusAsync(
+                Shared.Analytics.MarketingOwnerScope.Business(parfait.Id),
+                Context.RequestAborted);
+            if (connection?.DisconnectedUtc is null)
+                metaPixelId = (connection?.PixelId ?? string.Empty).Trim();
         }
     }
     catch (Exception ex)

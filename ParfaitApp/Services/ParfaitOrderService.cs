@@ -336,6 +336,8 @@ public sealed class ParfaitOrderService
         return paidOrders.Count == 0 ? 0 : (int)Math.Round(paidOrders.Average(order => order.NetRevenueCents));
     }
 
+    public Guid GetDefaultBusinessId() => GetBusinessId();
+
     private Guid GetBusinessId()
     {
         var business = _db.CommerceBusinesses.SingleOrDefault(x => x.Key == ParfaitBusinessScopeService.ParfaitBusinessKey);

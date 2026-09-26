@@ -25,6 +25,7 @@ public sealed class ParfaitInternalAnalyticsService
     private readonly IAnalyticsQueryService _analytics;
     private readonly IMetaSignalAnalyticsService _metaSignal;
     private readonly IParfaitBusinessProfileService _businessProfile;
+    private readonly MarketingConnectionStore _marketingConnections;
     private readonly ParfaitOrderService _orders;
     private readonly IMemoryCache _cache;
     private readonly ParfaitInternalAnalyticsCacheStamp _cacheStamp;
@@ -33,6 +34,7 @@ public sealed class ParfaitInternalAnalyticsService
         IAnalyticsQueryService analytics,
         IMetaSignalAnalyticsService metaSignal,
         IParfaitBusinessProfileService businessProfile,
+        MarketingConnectionStore marketingConnections,
         ParfaitOrderService orders,
         IMemoryCache cache,
         ParfaitInternalAnalyticsCacheStamp cacheStamp)
@@ -40,6 +42,7 @@ public sealed class ParfaitInternalAnalyticsService
         _analytics = analytics;
         _metaSignal = metaSignal;
         _businessProfile = businessProfile;
+        _marketingConnections = marketingConnections;
         _orders = orders;
         _cache = cache;
         _cacheStamp = cacheStamp;
@@ -47,7 +50,38 @@ public sealed class ParfaitInternalAnalyticsService
 
     public void InvalidateCache() => _cacheStamp.Bump();
 
+    public Task<ParfaitInternalWorkspaceAnalyticsSnapshot> GetWorkspaceSummaryAsync(
+        string? preset = "30d",
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        TimeZoneInfo? viewerTimeZone = null,
+        CancellationToken ct = default) =>
+        GetWorkspaceSummaryAsync(_orders.GetDefaultBusinessId(), preset, fromUtc, toUtc, qualityMode, viewerTimeZone, ct);
+
+    public Task<ParfaitInternalWorkspaceAnalyticsSnapshot> GetWorkspaceSummaryAsync(
+        Guid businessId,
+        string? preset = "30d",
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        TimeZoneInfo? viewerTimeZone = null,
+        CancellationToken ct = default) =>
+        GetWorkspaceSummaryAsync(
+            businessId,
+            ScopeContext.ForBusiness(businessId),
+            MarketingOwnerScope.Business(businessId),
+            preset,
+            fromUtc,
+            toUtc,
+            qualityMode,
+            viewerTimeZone,
+            ct);
+
     public async Task<ParfaitInternalWorkspaceAnalyticsSnapshot> GetWorkspaceSummaryAsync(
+        Guid businessId,
+        ScopeContext analyticsScope,
+        MarketingOwnerScope marketingOwner,
         string? preset = "30d",
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
@@ -61,19 +95,21 @@ public sealed class ParfaitInternalAnalyticsService
             toUtc,
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
-        var scope = ScopeContext.ForSite(SiteKey, SiteKey);
-        var cacheKey = BuildWorkspaceCacheKey(range);
+        var scope = analyticsScope;
+        var cacheKey = BuildWorkspaceCacheKey(businessId, marketingOwner.Key, scope, range);
 
         var cachedSnapshot = await _cache.GetOrCreateAsync(cacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = WorkspaceCacheDuration;
-            return await BuildWorkspaceSummaryAsync(range, scope, ct);
+            return await BuildWorkspaceSummaryAsync(businessId, marketingOwner, range, scope, ct);
         });
 
         return cachedSnapshot ?? new ParfaitInternalWorkspaceAnalyticsSnapshot();
     }
 
     private async Task<ParfaitInternalWorkspaceAnalyticsSnapshot> BuildWorkspaceSummaryAsync(
+        Guid businessId,
+        MarketingOwnerScope marketingOwner,
         TimeRangeRequest range,
         ScopeContext scope,
         CancellationToken ct)
@@ -83,7 +119,7 @@ public sealed class ParfaitInternalAnalyticsService
         var scopedEvents = await LoadScopedEventsAsync(range, scope, ct);
         var summary = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
         var devices = await _analytics.GetDeviceIntelligenceAsync(range, scope, TrafficType.All);
-        var metaSettings = await _businessProfile.GetMetaSettingsAsync(ct);
+        var metaSettings = await GetMetaSettingsAsync(businessId, marketingOwner, ct);
         var bucketEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(scopedEvents, range.QualityMode);
         var bucketSummary = BuildBucketSummary(bucketEvents);
         summary.Sessions = bucketSummary.Sessions;
@@ -118,7 +154,44 @@ public sealed class ParfaitInternalAnalyticsService
         };
     }
 
+    public Task<ParfaitInternalAnalyticsViewModel> GetDashboardAsync(
+        string? preset = "30d",
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        TimeZoneInfo? viewerTimeZone = null,
+        string? viewerTimeZoneId = null,
+        int? viewerTimeZoneOffsetMinutes = null,
+        CancellationToken ct = default) =>
+        GetDashboardAsync(_orders.GetDefaultBusinessId(), preset, fromUtc, toUtc, qualityMode, viewerTimeZone, viewerTimeZoneId, viewerTimeZoneOffsetMinutes, ct);
+
+    public Task<ParfaitInternalAnalyticsViewModel> GetDashboardAsync(
+        Guid businessId,
+        string? preset = "30d",
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        TimeZoneInfo? viewerTimeZone = null,
+        string? viewerTimeZoneId = null,
+        int? viewerTimeZoneOffsetMinutes = null,
+        CancellationToken ct = default) =>
+        GetDashboardAsync(
+            businessId,
+            ScopeContext.ForBusiness(businessId),
+            MarketingOwnerScope.Business(businessId),
+            preset,
+            fromUtc,
+            toUtc,
+            qualityMode,
+            viewerTimeZone,
+            viewerTimeZoneId,
+            viewerTimeZoneOffsetMinutes,
+            ct);
+
     public async Task<ParfaitInternalAnalyticsViewModel> GetDashboardAsync(
+        Guid businessId,
+        ScopeContext analyticsScope,
+        MarketingOwnerScope marketingOwner,
         string? preset = "30d",
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
@@ -134,8 +207,11 @@ public sealed class ParfaitInternalAnalyticsService
             toUtc,
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
-        var scope = ScopeContext.ForSite(SiteKey, SiteKey);
+        var scope = analyticsScope;
         var cacheKey = BuildDashboardCacheKey(
+            businessId,
+            marketingOwner.Key,
+            scope,
             range,
             viewerTimeZoneId,
             viewerTimeZoneOffsetMinutes,
@@ -146,6 +222,8 @@ public sealed class ParfaitInternalAnalyticsService
         {
             entry.AbsoluteExpirationRelativeToNow = DashboardCacheDuration;
             var dashboard = await BuildDashboardAsync(
+                businessId,
+                marketingOwner,
                 range,
                 scope,
                 fromUtc,
@@ -163,6 +241,8 @@ public sealed class ParfaitInternalAnalyticsService
     }
 
     private async Task<ParfaitInternalAnalyticsViewModel> BuildDashboardAsync(
+        Guid businessId,
+        MarketingOwnerScope marketingOwner,
         TimeRangeRequest range,
         ScopeContext scope,
         DateTime? fromUtc,
@@ -180,7 +260,7 @@ public sealed class ParfaitInternalAnalyticsService
         var devices = await _analytics.GetDeviceIntelligenceAsync(range, scope, TrafficType.All);
         var metaSignal = await _metaSignal.GetDashboardAsync(range, scope, TrafficType.All, ct: ct);
         var metaHealth = await _metaSignal.GetHealthDashboardAsync(range, scope, ct);
-        var metaSettings = await _businessProfile.GetMetaSettingsAsync(ct);
+        var metaSettings = await GetMetaSettingsAsync(businessId, marketingOwner, ct);
         var scopedEvents = await LoadScopedEventsAsync(range, scope, ct);
         var bucketEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(scopedEvents, range.QualityMode);
         var selectedBucketSummary = BuildBucketSummary(bucketEvents);
@@ -198,7 +278,7 @@ public sealed class ParfaitInternalAnalyticsService
             .Select(ParseEvent)
             .ToList();
 
-        var allOrders = _orders.GetAllOrders().ToList();
+        var allOrders = _orders.GetAllOrders(businessId).ToList();
         var ordersInRange = allOrders
             .Where(order => order.CreatedUtc >= range.FromUtc && order.CreatedUtc <= range.ToUtc)
             .OrderByDescending(order => order.CreatedUtc)
@@ -379,10 +459,54 @@ public sealed class ParfaitInternalAnalyticsService
         };
     }
 
-    private string BuildWorkspaceCacheKey(TimeRangeRequest range)
+    private async Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(
+        Guid commerceBusinessId,
+        MarketingOwnerScope owner,
+        CancellationToken ct)
+    {
+        if (owner.CommerceBusinessId == commerceBusinessId)
+            return await _businessProfile.GetMetaSettingsAsync(commerceBusinessId, ct);
+
+        var row = await _marketingConnections.GetStatusAsync(owner, ct);
+        if (row is null)
+        {
+            await _marketingConnections.ImportAsync(owner, null, ct: ct);
+            row = await _marketingConnections.GetStatusAsync(owner, ct);
+        }
+
+        if (row is null) return new ParfaitMetaAnalyticsSettingsViewModel();
+
+        var connected = row.DisconnectedUtc == null &&
+            row.AdsAccessTokenCiphertext != null &&
+            (!row.AccessTokenExpiresUtc.HasValue || row.AccessTokenExpiresUtc > DateTime.UtcNow);
+
+        return new ParfaitMetaAnalyticsSettingsViewModel
+        {
+            MetaPixelId = row.PixelId,
+            MetaTestEventCode = row.TestEventCode,
+            HasSecureMetaCapiAccessToken = row.CapiAccessTokenCiphertext != null || row.AdsAccessTokenCiphertext != null,
+            HasActiveMetaAdsConnection = connected,
+            MetaConnectionLabel = connected
+                ? $"Connected: {row.AdAccountName ?? row.AdAccountId ?? "Meta"}"
+                : "Meta Ads not connected or the connection has expired.",
+            AccountId = row.AdAccountId,
+            AccountName = row.AdAccountName,
+            BusinessId = row.MetaBusinessManagerId,
+            BusinessName = row.MetaBusinessManagerName,
+            MetaUserName = row.MetaUserName,
+            ConnectedUtc = row.ConnectedUtc,
+            AccessTokenExpiresUtc = row.AccessTokenExpiresUtc
+        };
+    }
+
+    private string BuildWorkspaceCacheKey(Guid businessId, string marketingOwnerKey, ScopeContext scope, TimeRangeRequest range)
     {
         return string.Join('|',
             "parfait-workspace",
+            businessId,
+            marketingOwnerKey,
+            scope.SiteKey ?? string.Empty,
+            scope.AgentTrackingProfileId?.ToString("N") ?? string.Empty,
             _cacheStamp.Version,
             range.Preset,
             range.FromUtc.Ticks,
@@ -391,6 +515,9 @@ public sealed class ParfaitInternalAnalyticsService
     }
 
     private string BuildDashboardCacheKey(
+        Guid businessId,
+        string marketingOwnerKey,
+        ScopeContext scope,
         TimeRangeRequest range,
         string? viewerTimeZoneId,
         int? viewerTimeZoneOffsetMinutes,
@@ -399,6 +526,10 @@ public sealed class ParfaitInternalAnalyticsService
     {
         return string.Join('|',
             "parfait-dashboard",
+            businessId,
+            marketingOwnerKey,
+            scope.SiteKey ?? string.Empty,
+            scope.AgentTrackingProfileId?.ToString("N") ?? string.Empty,
             _cacheStamp.Version,
             range.Preset,
             range.FromUtc.Ticks,

@@ -402,6 +402,38 @@ jobs:
           done
           echo "Selected marketing consumers use the shared key authority."
 
+      - name: Synchronize shared website editor ticket authority
+        id: editorauth
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' && (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait')) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          portal_settings=/tmp/portal-editor-ticket-authority.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
+          value() {
+            local file="$1"; shift
+            local key found
+            for key in "$@"; do
+              found="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
+              if [ -n "$found" ]; then printf '%s' "$found"; return 0; fi
+            done
+            return 1
+          }
+          blob="$(value "$portal_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri' DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(value "$portal_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId' DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          [ -n "$blob" ] && [ -n "$keyvault" ]
+          echo "::add-mask::$blob"
+          echo "::add-mask::$keyvault"
+          for app in masterapp-protect masterapp-parfait; do
+            if [[ "$SELECTED_TARGETS" != *"\"$app\""* ]]; then continue; fi
+            az webapp config appsettings set -g masterapp-rg -n "$app" --settings               "WebsiteEditorDataProtection__BlobUri=$blob"               "WebsiteEditorDataProtection__KeyVaultKeyId=$keyvault" --output none
+            settings="/tmp/$app-editor-ticket-authority.json"
+            az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings"
+            [ "$(value "$settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri')" = "$blob" ]
+            [ "$(value "$settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId')" = "$keyvault" ]
+          done
+          echo "Selected website and commerce runtimes share one editor-ticket key authority."
+
       - name: Prepare shared business website routing authority
         id: routingsecret
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.azure.outcome == 'success' && (steps.protectauth.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
@@ -566,7 +598,7 @@ jobs:
           exit 1
       - name: Direct deploy Protect immutable ZIP
         id: protect
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -608,7 +640,7 @@ jobs:
           exit 1
       - name: Direct deploy Parfait
         id: parfait
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -903,6 +935,7 @@ jobs:
           MIGRATE: ${{ steps.migrate.outcome }}
           PROTECT: ${{ steps.protect.outcome }}
           PROTECTAUTH: ${{ steps.protectauth.outcome }}
+          EDITORAUTH: ${{ steps.editorauth.outcome }}
           PARFAIT: ${{ steps.parfait.outcome }}
           WEBSITE: ${{ steps.website.outcome }}
           WEBSITECHECKS: ${{ steps.websitechecks.outcome }}
@@ -927,7 +960,7 @@ jobs:
           if preserve_live_targets:
               assert not validate_only and website_routing
               required=['BASE','AZURE','LIVE']+routing_steps
-              skipped=['BUILD','TESTS','WEB','PACKAGE','MIGRATE','PROTECTAUTH','PORTAL','CLIENT','PROTECT','PARFAIT','WEBSITE','WEBSITECHECKS']
+              skipped=['BUILD','TESTS','WEB','PACKAGE','MIGRATE','PROTECTAUTH','EDITORAUTH','PORTAL','CLIENT','PROTECT','PARFAIT','WEBSITE','WEBSITECHECKS']
               results={key:os.environ[key] for key in required}
               skipped_results={key:os.environ[key] for key in skipped}
               print(json.dumps({'mode':'preserve-live-routing-recovery','required':results,'preservedSteps':skipped_results},indent=2))
@@ -936,13 +969,13 @@ jobs:
           elif validate_only:
               if website_routing:
                   required=['BASE','BUILD','ROUTINGCHECKS','PACKAGE']
-                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']+list(apps.values())
+                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH','EDITORAUTH','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']+list(apps.values())
               elif set(selected) <= {'masterapp-protect','masterapp-website'}:
                   required=['BASE','BUILD','PACKAGE']
                   skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH']+routing_steps+list(apps.values())
               else:
                   required=['BASE','BUILD','TESTS','WEB','PACKAGE']
-                  skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH']+routing_steps+list(apps.values())
+                  skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH','EDITORAUTH']+routing_steps+list(apps.values())
               if 'masterapp-website' in selected:
                   required.append('WEBSITECHECKS')
               else:
@@ -956,6 +989,7 @@ jobs:
               required=['BASE','PACKAGE','AZURE','LIVE']+[apps[app] for app in selected]
               excluded=[step for app,step in apps.items() if app not in selected]
               (required if 'masterapp-protect' in selected else excluded).append('PROTECTAUTH')
+              (required if any(app in selected for app in ('masterapp-protect','masterapp-parfait')) else excluded).append('EDITORAUTH')
               (excluded if selected == ['masterapp-website'] else required).append('BUILD')
               if os.environ.get('CLIENT_ONLY') == 'true':
                   required.extend(['TESTS','WEB'])

@@ -156,6 +156,17 @@ public sealed class CommerceStoreContextService(
         WebsiteRequestHostResolver.Resolve(context, configuration, allowLegendCommerceHost: true);
 
     public async Task<string?> ResolveCanonicalPublicRootAsync(
+        Guid commerceBusinessId,
+        CancellationToken ct = default)
+    {
+        if (commerceBusinessId == Guid.Empty) return null;
+        var business = await businesses.ResolveActiveByIdAsync(commerceBusinessId, ct);
+        if (business is null) return null;
+        var store = await BuildAsync(business, publishedOnly: !IsParfaitKey(business.Key), ct);
+        return store is null ? null : await ResolveCanonicalPublicRootAsync(store, ct);
+    }
+
+    public async Task<string?> ResolveCanonicalPublicRootAsync(
         CommerceStoreContext store,
         CancellationToken ct = default)
     {

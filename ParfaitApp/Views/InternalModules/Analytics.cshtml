@@ -3,6 +3,10 @@
     ViewData["Title"] = "Analytics";
     Layout = "_InternalLayout";
 
+    var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
+    var scopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    var scopedStore = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var scopedStoreName = scopedStore?.StoreName ?? "Parfait";
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
     static string Rate(decimal value) => value.ToString("0.0") + "%";
     static string QualityModeLabel(string value) => (value ?? string.Empty).Trim().ToLowerInvariant() switch
@@ -60,12 +64,47 @@
         timezoneId = Model.ViewerTimeZoneId,
         timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
     };
-    var analyticsReturnUrl = Url.Action("Analytics", "InternalModules", CurrentAnalyticsRouteValues()) ?? "/internal/analytics";
-    var analyticsActionUrl = Url.Action("Analytics", "InternalModules") ?? "/internal/analytics";
-    var metaConnectUrl = Url.Action("MetaConnect", "InternalModules", new
-    {
-        returnUrl = analyticsReturnUrl
-    }) ?? "/internal/analytics/meta-connect";
+    string AnalyticsPresetUrl(string preset) => scopedCommerceManager
+        ? Url.Action("Analytics", "CommerceManagement", new
+        {
+            ticket = commerceManagerTicket,
+            preset,
+            qualityMode = Model.SelectedQualityMode,
+            timezoneId = Model.ViewerTimeZoneId,
+            timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
+        }) ?? "/commerce/manage/analytics"
+        : Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues(preset)) ?? "/internal/analytics";
+
+    var analyticsReturnUrl = scopedCommerceManager
+        ? Url.Action("Analytics", "CommerceManagement", new
+        {
+            ticket = commerceManagerTicket,
+            preset = Model.SelectedPreset,
+            fromUtc = string.IsNullOrWhiteSpace(Model.RangeFrom) ? null : Model.RangeFrom,
+            toUtc = string.IsNullOrWhiteSpace(Model.RangeTo) ? null : Model.RangeTo,
+            qualityMode = Model.SelectedQualityMode,
+            timezoneId = Model.ViewerTimeZoneId,
+            timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
+        }) ?? "/commerce/manage/analytics"
+        : Url.Action("Analytics", "InternalModules", CurrentAnalyticsRouteValues()) ?? "/internal/analytics";
+    var analyticsActionUrl = scopedCommerceManager
+        ? Url.Action("Analytics", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics"
+        : Url.Action("Analytics", "InternalModules") ?? "/internal/analytics";
+    var metaConnectUrl = scopedCommerceManager
+        ? Url.Action("MetaConnect", "CommerceManagement", new { ticket = commerceManagerTicket, returnUrl = analyticsReturnUrl }) ?? "/commerce/manage/analytics/meta-connect"
+        : Url.Action("MetaConnect", "InternalModules", new { returnUrl = analyticsReturnUrl }) ?? "/internal/analytics/meta-connect";
+    var metaConnectionStatusUrl = scopedCommerceManager
+        ? Url.Action("MetaConnectionStatus", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics/meta-connection-status"
+        : "/internal/analytics/meta-connection-status";
+    var metaCampaignsUrl = scopedCommerceManager
+        ? Url.Action("MetaCampaigns", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics/meta-campaigns"
+        : "/internal/analytics/meta-campaigns";
+    var metaDisconnectUrl = scopedCommerceManager
+        ? Url.Action("MetaDisconnect", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics/meta-disconnect"
+        : "/internal/analytics/meta-disconnect";
+    var healthMonitorUrl = scopedCommerceManager
+        ? Url.Action("AnalyticsHealthMonitor", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics/health-monitor"
+        : "/internal/analytics/health-monitor";
 
     var checkoutBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "checkout-started");
     var purchaseBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "purchase");
@@ -91,18 +130,23 @@
      data-to-utc="@Model.RangeTo"
      data-quality-mode="@Model.SelectedQualityMode"
      data-timezone-id="@Model.ViewerTimeZoneId"
-     data-timezone-offset-minutes="@Model.ViewerTimeZoneOffsetMinutes">
+     data-timezone-offset-minutes="@Model.ViewerTimeZoneOffsetMinutes"
+     data-meta-connect-endpoint="@metaConnectUrl"
+     data-meta-connection-status-endpoint="@metaConnectionStatusUrl"
+     data-meta-campaigns-endpoint="@metaCampaignsUrl"
+     data-meta-disconnect-endpoint="@metaDisconnectUrl"
+     data-health-monitor-endpoint="@healthMonitorUrl">
     <section class="wa-command-surface mb-3">
         <div class="wa-command-dashboard">
             <div class="wa-page-header">
                 <div class="wa-header-copy">
-                    <div class="wa-header-kicker">Parfait · Ecommerce Performance Intelligence</div>
+                    <div class="wa-header-kicker">@scopedStoreName · Ecommerce Performance Intelligence</div>
                     <h2 class="wa-header-title">Analytics</h2>
                     <p class="wa-header-sub">Storefront performance overview · <strong>@Model.RangeLabel</strong></p>
                 </div>
                 <div class="wa-header-right">
                     <div class="wa-header-rail-meta">
-                        <div class="fa-env-badge">Environment: Parfait Ecommerce</div>
+                        <div class="fa-env-badge">Environment: @scopedStoreName Ecommerce</div>
                         <button class="btn btn-sm wa-meta-signal-health-btn" type="button" data-bs-toggle="modal" data-bs-target="#pfMetaHealthModal">
                             Meta Signal Health
                         </button>
@@ -114,11 +158,11 @@
                 <div class="control-bar-group control-bar-presets">
                     <div class="control-bar-label">Quick Range</div>
                     <div class="btn-group btn-group-sm flex-shrink-0" role="group">
-                        <a class="btn btn-range @(Model.SelectedPreset=="today"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("today"))">Today</a>
-                        <a class="btn btn-range @(Model.SelectedPreset=="7d"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("7d"))">7 Days</a>
-                        <a class="btn btn-range @(Model.SelectedPreset=="30d"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("30d"))">30 Days</a>
-                        <a class="btn btn-range @(Model.SelectedPreset=="month"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("month"))">Month</a>
-                        <a class="btn btn-range @(Model.SelectedPreset=="year"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("year"))">Year</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="today"?"active":"")" href="@AnalyticsPresetUrl("today")">Today</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="7d"?"active":"")" href="@AnalyticsPresetUrl("7d")">7 Days</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="30d"?"active":"")" href="@AnalyticsPresetUrl("30d")">30 Days</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="month"?"active":"")" href="@AnalyticsPresetUrl("month")">Month</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="year"?"active":"")" href="@AnalyticsPresetUrl("year")">Year</a>
                     </div>
                 </div>
                 <div class="control-bar-group control-bar-status">
