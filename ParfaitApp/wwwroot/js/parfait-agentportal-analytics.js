@@ -48,11 +48,11 @@
     const viewerTimezone = persistBrowserTimezone();
 
     const endpoints = {
-        metaConnect: "/internal/analytics/meta-connect",
-        metaConnectionStatus: "/internal/analytics/meta-connection-status",
-        metaCampaigns: "/internal/analytics/meta-campaigns",
-        metaDisconnect: "/internal/analytics/meta-disconnect",
-        healthMonitor: "/internal/analytics/health-monitor"
+        metaConnect: pageRoot.dataset.metaConnectEndpoint || "/internal/analytics/meta-connect",
+        metaConnectionStatus: pageRoot.dataset.metaConnectionStatusEndpoint || "/internal/analytics/meta-connection-status",
+        metaCampaigns: pageRoot.dataset.metaCampaignsEndpoint || "/internal/analytics/meta-campaigns",
+        metaDisconnect: pageRoot.dataset.metaDisconnectEndpoint || "/internal/analytics/meta-disconnect",
+        healthMonitor: pageRoot.dataset.healthMonitorEndpoint || "/internal/analytics/health-monitor"
     };
 
     const connectBtn = document.getElementById("meta-connect-btn");
