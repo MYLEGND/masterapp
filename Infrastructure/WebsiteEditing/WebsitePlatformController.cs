@@ -1893,7 +1893,7 @@ public class WebsitePlatformController : ControllerBase
                 : CommercePublicBaseUrl() + "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket),
             managerUrl = string.IsNullOrWhiteSpace(ticket)
                 ? null
-                : CommercePublicBaseUrl() + "/commerce/manage/workspace?ticket=" + Uri.EscapeDataString(ticket)
+                : CommercePublicBaseUrl() + "/commerce/manage/products?ticket=" + Uri.EscapeDataString(ticket)
         };
     }
 
