@@ -564,15 +564,48 @@ jobs:
           done
           echo "::error::ClientApp deployment transport failed after three attempts with the same immutable package."
           exit 1
-      - name: Direct deploy Protect
+      - name: Direct deploy Protect immutable ZIP
         id: protect
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-protect
-          slot-name: Production
-          package: /tmp/protect-publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          package=/tmp/diagnostics-packages/protect.zip
+          [ -s "$package" ]
+          unzip -tq "$package" >/dev/null
+          test "$(unzip -p "$package" wwwroot/_deployment-provenance.json | jq -r .releaseSha)" = "$RELEASE_SHA"
+          grep -F "  $package" /tmp/diagnostics-packages/SHA256SUMS >/dev/null || grep -F "protect.zip" /tmp/diagnostics-packages/SHA256SUMS >/dev/null
+          expected="$(awk '$2 ~ /protect\.zip$/ {print $1}' /tmp/diagnostics-packages/SHA256SUMS)"
+          [ -n "$expected" ]
+          [ "$(sha256sum "$package" | awk '{print $1}')" = "$expected" ]
+
+          # Protect uses the same immutable ZIP transport proven by recovery run #187.
+          # Never rebuild or switch packages between retries.
+          for attempt in 1 2 3; do
+            echo "Protect immutable ZIP deployment attempt $attempt/3"
+            if az webapp deploy \
+              --resource-group masterapp-rg \
+              --name masterapp-protect \
+              --src-path "$package" \
+              --type zip \
+              --clean true \
+              --restart true \
+              --async false \
+              --timeout 600000 \
+              --enriched-errors true \
+              --only-show-errors \
+              --output none; then
+              echo "Protect ZIP deployment accepted on attempt $attempt."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Protect deployment transport failed on attempt $attempt; retrying the exact same immutable ZIP after Kudu settles."
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "::error::Protect deployment transport failed after three attempts with the same immutable package."
+          exit 1
       - name: Direct deploy Parfait
         id: parfait
         if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
