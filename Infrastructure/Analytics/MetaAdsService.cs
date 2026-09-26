@@ -21,7 +21,7 @@ public sealed class MetaAdsService : IMetaAdsService
     private readonly IConfiguration _config;
     private readonly MasterAppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IMetaAdsConnectionStore? _connectionStore;
+    private readonly IMetaAdsConnectionStore _connectionStore;
     private readonly ILogger<MetaAdsService> _logger;
     private readonly MarketingConnectionStore? _marketingConnections;
 
@@ -29,7 +29,7 @@ public sealed class MetaAdsService : IMetaAdsService
         IConfiguration config,
         MasterAppDbContext db,
         IHttpClientFactory httpClientFactory,
-        IMetaAdsConnectionStore? connectionStore = null,
+        IMetaAdsConnectionStore connectionStore,
         IAnalyticsQueryService analytics,
         ILogger<MetaAdsService> logger,
         MarketingConnectionStore? marketingConnections = null)
@@ -513,7 +513,7 @@ public sealed class MetaAdsService : IMetaAdsService
 
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue && scope.AgentTrackingProfileId.Value != Guid.Empty)
         {
-            var connection = _connectionStore is null ? null : await _connectionStore.GetAsync(scope.AgentTrackingProfileId.Value, ct);
+            var connection = await _connectionStore.GetAsync(scope.AgentTrackingProfileId.Value, ct);
             if (connection != null && !string.IsNullOrWhiteSpace(connection.AccessToken))
             {
                 var account = NormalizeAccountId(connection.AccountId);
@@ -524,7 +524,7 @@ public sealed class MetaAdsService : IMetaAdsService
         if (scope.HasSiteScope && !string.IsNullOrWhiteSpace(scope.SiteKey))
         {
             var siteScopeId = MetaAdsScopeKey.ForSite(scope.SiteKey);
-            var siteConnection = _connectionStore is null ? null : await _connectionStore.GetAsync(siteScopeId, ct);
+            var siteConnection = await _connectionStore.GetAsync(siteScopeId, ct);
             if (siteConnection != null && !string.IsNullOrWhiteSpace(siteConnection.AccessToken))
             {
                 var account = NormalizeAccountId(siteConnection.AccountId);
