@@ -362,7 +362,7 @@ public sealed class CommerceManagementController(
     private void ApplyFramePolicy()
     {
         Response.Headers["Content-Security-Policy"] =
-            "frame-ancestors 'self' https://mylegnd.com https://www.mylegnd.com https://protect.mylegnd.com https://masterapp-protect.azurewebsites.net";
+            "frame-ancestors 'self' https://mylegnd.com https://www.mylegnd.com https://protect.mylegnd.com https://portal.mylegnd.com https://client.mylegnd.com https://masterapp-protect.azurewebsites.net";
         Response.Headers["Referrer-Policy"] = "no-referrer";
         Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
         Response.Headers.Remove("X-Frame-Options");
