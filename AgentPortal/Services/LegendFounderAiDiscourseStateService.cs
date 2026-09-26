@@ -518,30 +518,14 @@ public sealed class LegendFounderAiDiscourseStateService
                 continue;
             }
 
-            var currentTurnSupersededCandidates = rule.ReplacesActiveBinding
-                ? ActiveMeaningGraphEntityCandidates(meaning)
-                    .Where(item =>
-                        string.Equals(
-                            item.Node.SemanticDimension,
-                            activeBinding.Candidate!.Node.SemanticDimension,
-                            StringComparison.Ordinal) &&
-                        string.Equals(
-                            item.Node.SemanticSignature,
-                            activeBinding.Candidate.Node.SemanticSignature,
-                            StringComparison.Ordinal) &&
-                        string.Equals(
-                            item.Node.SemanticValue,
-                            activeBinding.Candidate.Node.SemanticValue,
-                            StringComparison.Ordinal))
-                    .ToArray()
-                : Array.Empty<MeaningGraphEntityCandidate>();
-            if (currentTurnSupersededCandidates.Length > 1)
-            {
-                results.Add(Unresolved(selector, rule, "reference_current_turn_replacement_ambiguous"));
-                continue;
-            }
-
-            var currentTurnSuperseded = currentTurnSupersededCandidates.SingleOrDefault();
+            var currentTurnSuperseded = rule.ReplacesActiveBinding &&
+                TryResolveCurrentTurnSupersededOccurrence(
+                    meaning,
+                    selectorOccurrence.Index,
+                    activeBinding.Candidate!.Node,
+                    out var resolvedCurrentTurnSuperseded)
+                ? resolvedCurrentTurnSuperseded
+                : null;
             results.Add(new LegendFounderAiDiscourseReferenceBinding(
                 "bound",
                 "governed_reference_resolved",
@@ -573,11 +557,11 @@ public sealed class LegendFounderAiDiscourseStateService
                 rule.ReplacesActiveBinding ? selector.TokenLength : null,
                 currentTurnSuperseded is not null,
                 currentTurnSuperseded?.NodeIndex,
-                currentTurnSuperseded?.Node.SemanticSignature,
-                currentTurnSuperseded?.Node.SemanticDimension,
-                currentTurnSuperseded?.Node.SemanticValue,
-                currentTurnSuperseded?.Node.StartTokenIndex,
-                currentTurnSuperseded?.Node.TokenLength));
+                currentTurnSuperseded?.SemanticSignature,
+                currentTurnSuperseded?.SemanticDimension,
+                currentTurnSuperseded?.SemanticValue,
+                currentTurnSuperseded?.StartTokenIndex,
+                currentTurnSuperseded?.TokenLength));
         }
         return results;
     }
@@ -677,30 +661,6 @@ public sealed class LegendFounderAiDiscourseStateService
             yield return new DiscourseEntityCandidate(turn, graph.Nodes[nodeIndex], nodeIndex);
     }
 
-    private static IEnumerable<MeaningGraphEntityCandidate> ActiveMeaningGraphEntityCandidates(
-        LegendConnectUtteranceMeaningGraphSnapshot graph)
-    {
-        if (!graph.IsComposed || graph.Nodes.Count == 0)
-            yield break;
-        if (graph.Nodes.Count == 1 && graph.Relations.Count == 0)
-        {
-            yield return new MeaningGraphEntityCandidate(graph.Nodes[0], 0);
-            yield break;
-        }
-
-        var activeIndexes = new HashSet<int>();
-        foreach (var relation in graph.Relations)
-        {
-            if (relation.SourceNodeIndex < 0 || relation.SourceNodeIndex >= graph.Nodes.Count ||
-                relation.TargetNodeIndex < 0 || relation.TargetNodeIndex >= graph.Nodes.Count)
-                yield break;
-            activeIndexes.Add(relation.SourceNodeIndex);
-            activeIndexes.Add(relation.TargetNodeIndex);
-        }
-        foreach (var nodeIndex in activeIndexes.OrderBy(item => item))
-            yield return new MeaningGraphEntityCandidate(graph.Nodes[nodeIndex], nodeIndex);
-    }
-
     private async Task<LegendConnectUtteranceMeaningGraphSnapshot> ReadCurrentSourceSlotGraphAsync(
         LegendConnectUtteranceMeaningGraphSnapshot graph,
         CancellationToken cancellationToken)
@@ -762,26 +722,41 @@ public sealed class LegendFounderAiDiscourseStateService
         try
         {
             var persisted = JsonSerializer.Deserialize<PersistedMeaningGraph>(json);
-            return persisted is null ||
+            if (persisted is null ||
                 persisted.Nodes is null ||
                 persisted.Relations is null ||
-                persisted.Nodes.Any(item => item is null ||
-                    string.IsNullOrWhiteSpace(item.SemanticSignature) ||
-                    item.StartTokenIndex < 0 ||
-                    item.TokenLength <= 0) ||
                 persisted.Relations.Any(item => item is null ||
                     string.IsNullOrWhiteSpace(item.RelationSignature) ||
                     item.SourceNodeIndex < 0 ||
                     item.SourceNodeIndex >= persisted.Nodes.Count ||
                     item.TargetNodeIndex < 0 ||
-                    item.TargetNodeIndex >= persisted.Nodes.Count)
-                ? new LegendConnectUtteranceMeaningGraphSnapshot(false, [], [], [], "meaning_graph_state_invalid")
-                : new LegendConnectUtteranceMeaningGraphSnapshot(
-                    persisted.IsComposed,
-                    persisted.Nodes,
-                    persisted.Relations,
-                    [],
-                    persisted.ReasonCode);
+                    item.TargetNodeIndex >= persisted.Nodes.Count))
+            {
+                return new LegendConnectUtteranceMeaningGraphSnapshot(false, [], [], [], "meaning_graph_state_invalid");
+            }
+
+            for (var index = 0; index < persisted.Nodes.Count; index++)
+            {
+                var node = persisted.Nodes[index];
+                if (node is null ||
+                    string.IsNullOrWhiteSpace(node.SemanticSignature) ||
+                    node.StartTokenIndex < 0 ||
+                    node.TokenLength <= 0 ||
+                    !HasValidSupersededCurrentTurnOccurrence(
+                        persisted.Nodes,
+                        index,
+                        node.SupersededCurrentTurnOccurrence))
+                {
+                    return new LegendConnectUtteranceMeaningGraphSnapshot(false, [], [], [], "meaning_graph_state_invalid");
+                }
+            }
+
+            return new LegendConnectUtteranceMeaningGraphSnapshot(
+                persisted.IsComposed,
+                persisted.Nodes,
+                persisted.Relations,
+                [],
+                persisted.ReasonCode);
         }
         catch (JsonException)
         {
@@ -986,7 +961,7 @@ public sealed class LegendFounderAiDiscourseStateService
                         StringComparison.Ordinal) &&
                     graph.Nodes[nodeIndex].StartTokenIndex == binding.SelectorNodeStartTokenIndex &&
                     graph.Nodes[nodeIndex].TokenLength == binding.SelectorNodeTokenLength &&
-                    ValidateCurrentTurnSupersededEntityIdentity(binding, graph) &&
+                    ValidateCurrentTurnSupersededEntityIdentity(binding, graph, nodeIndex) &&
                     !conflictingOccurrences.Contains(identity);
                 return selectorIsValid
                     ? binding
@@ -1072,7 +1047,8 @@ public sealed class LegendFounderAiDiscourseStateService
 
     private static bool ValidateCurrentTurnSupersededEntityIdentity(
         LegendFounderAiDiscourseReferenceBinding binding,
-        LegendConnectUtteranceMeaningGraphSnapshot graph)
+        LegendConnectUtteranceMeaningGraphSnapshot graph,
+        int selectorNodeIndex)
     {
         var carriesIdentity =
             binding.SupersededCurrentTurnNodeIndex is not null ||
@@ -1083,26 +1059,104 @@ public sealed class LegendFounderAiDiscourseStateService
             binding.SupersededCurrentTurnNodeTokenLength is not null;
         if (!binding.HasSupersededCurrentTurnEntity)
             return !carriesIdentity;
+        var occurrence = graph.Nodes[selectorNodeIndex].SupersededCurrentTurnOccurrence;
+        if (occurrence is null ||
+            !HasValidSupersededCurrentTurnOccurrence(
+                graph.Nodes,
+                selectorNodeIndex,
+                occurrence))
+        {
+            return false;
+        }
         if (binding.SupersededCurrentTurnNodeIndex is not int nodeIndex ||
             nodeIndex < 0 || nodeIndex >= graph.Nodes.Count ||
             string.IsNullOrWhiteSpace(binding.SupersededCurrentTurnSemanticSignature) ||
             string.IsNullOrWhiteSpace(binding.SupersededCurrentTurnSemanticDimension) ||
+            string.IsNullOrWhiteSpace(binding.SupersededCurrentTurnSemanticValue) ||
+            occurrence.NodeIndex != nodeIndex ||
+            !string.Equals(occurrence.SemanticSignature, binding.SupersededCurrentTurnSemanticSignature, StringComparison.Ordinal) ||
+            !string.Equals(occurrence.SemanticDimension, binding.SupersededCurrentTurnSemanticDimension, StringComparison.Ordinal) ||
+            !string.Equals(occurrence.SemanticValue, binding.SupersededCurrentTurnSemanticValue, StringComparison.Ordinal) ||
+            occurrence.StartTokenIndex != binding.SupersededCurrentTurnNodeStartTokenIndex ||
+            occurrence.TokenLength != binding.SupersededCurrentTurnNodeTokenLength ||
             !string.Equals(
                 binding.SupersededCurrentTurnSemanticDimension,
                 binding.EntitySemanticDimension,
                 StringComparison.Ordinal))
             return false;
-        var candidates = ActiveMeaningGraphEntityCandidates(graph)
-            .Where(item => item.NodeIndex == nodeIndex)
-            .ToArray();
-        if (candidates.Length != 1)
-            return false;
-        var node = candidates[0].Node;
+        var node = graph.Nodes[nodeIndex];
         return string.Equals(node.SemanticSignature, binding.SupersededCurrentTurnSemanticSignature, StringComparison.Ordinal) &&
             string.Equals(node.SemanticDimension, binding.SupersededCurrentTurnSemanticDimension, StringComparison.Ordinal) &&
             string.Equals(node.SemanticValue, binding.SupersededCurrentTurnSemanticValue, StringComparison.Ordinal) &&
             node.StartTokenIndex == binding.SupersededCurrentTurnNodeStartTokenIndex &&
             node.TokenLength == binding.SupersededCurrentTurnNodeTokenLength;
+    }
+
+    private static bool TryResolveCurrentTurnSupersededOccurrence(
+        LegendConnectUtteranceMeaningGraphSnapshot graph,
+        int selectorNodeIndex,
+        LegendConnectUtteranceMeaningNode target,
+        out LegendConnectCurrentTurnOccurrenceSnapshot? occurrence)
+    {
+        occurrence = null;
+        if (!graph.IsComposed ||
+            graph.Nodes.Count == 0 ||
+            selectorNodeIndex < 0 ||
+            selectorNodeIndex >= graph.Nodes.Count ||
+            string.IsNullOrWhiteSpace(target.SemanticSignature) ||
+            string.IsNullOrWhiteSpace(target.SemanticDimension) ||
+            string.IsNullOrWhiteSpace(target.SemanticValue))
+        {
+            return false;
+        }
+
+        var selector = graph.Nodes[selectorNodeIndex];
+        var occurrenceSnapshot = selector.SupersededCurrentTurnOccurrence;
+        if (occurrenceSnapshot is null ||
+            !HasValidSupersededCurrentTurnOccurrence(
+                graph.Nodes,
+                selectorNodeIndex,
+                occurrenceSnapshot))
+        {
+            return false;
+        }
+
+        if (!string.Equals(occurrenceSnapshot.SemanticSignature, target.SemanticSignature, StringComparison.Ordinal) ||
+            !string.Equals(occurrenceSnapshot.SemanticDimension, target.SemanticDimension, StringComparison.Ordinal) ||
+            !string.Equals(occurrenceSnapshot.SemanticValue, target.SemanticValue, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        occurrence = occurrenceSnapshot;
+        return true;
+    }
+
+    private static bool HasValidSupersededCurrentTurnOccurrence(
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> nodes,
+        int selectorNodeIndex,
+        LegendConnectCurrentTurnOccurrenceSnapshot? occurrence)
+    {
+        if (occurrence is null)
+            return true;
+        if (occurrence.NodeIndex < 0 ||
+            occurrence.NodeIndex >= nodes.Count ||
+            occurrence.NodeIndex == selectorNodeIndex ||
+            string.IsNullOrWhiteSpace(occurrence.SemanticSignature) ||
+            string.IsNullOrWhiteSpace(occurrence.SemanticDimension) ||
+            string.IsNullOrWhiteSpace(occurrence.SemanticValue) ||
+            occurrence.StartTokenIndex < 0 ||
+            occurrence.TokenLength <= 0)
+        {
+            return false;
+        }
+
+        var node = nodes[occurrence.NodeIndex];
+        return string.Equals(node.SemanticSignature, occurrence.SemanticSignature, StringComparison.Ordinal) &&
+            string.Equals(node.SemanticDimension, occurrence.SemanticDimension, StringComparison.Ordinal) &&
+            string.Equals(node.SemanticValue, occurrence.SemanticValue, StringComparison.Ordinal) &&
+            node.StartTokenIndex == occurrence.StartTokenIndex &&
+            node.TokenLength == occurrence.TokenLength;
     }
 
     private static bool IsMalformedBindingState(
@@ -1216,10 +1270,6 @@ public sealed class LegendFounderAiDiscourseStateService
 
     private sealed record DiscourseEntityCandidate(
         LegendFounderAiDiscourseTurn Turn,
-        LegendConnectUtteranceMeaningNode Node,
-        int NodeIndex);
-
-    private sealed record MeaningGraphEntityCandidate(
         LegendConnectUtteranceMeaningNode Node,
         int NodeIndex);
 
