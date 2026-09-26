@@ -3,6 +3,15 @@
 @{
     ViewData["Title"] = "Orders";
     Layout = "_InternalLayout";
+    var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
+    var isScopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    string CommerceAction(string internalPath, string scopedPath) =>
+        isScopedCommerceManager
+            ? scopedPath + "?ticket=" + Uri.EscapeDataString(commerceManagerTicket!)
+            : internalPath;
+    var productsUrl = CommerceAction("/internal/commerce/products", "/commerce/manage/products");
+    var orderUpdateAction = CommerceAction("/internal/commerce/orders/update", "/commerce/manage/order");
+    var orderReceiptAction = CommerceAction("/internal/commerce/orders/receipt", "/commerce/manage/order/receipt");
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
     static string MoneyField(int cents) => cents <= 0 ? "" : (cents / 100m).ToString("0.00");
@@ -20,13 +29,13 @@
 <section class="pf-command-page pf-orders-admin">
     <header class="pf-orders-head">
         <div>
-            <p class="pf-orders-eyebrow">Parfait Operations</p>
+            <p class="pf-orders-eyebrow">@((ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext)?.StoreName ?? "Parfait") Operations</p>
             <h1>Orders</h1>
             <p>Payment, fulfillment, returns, tracking, and receipts in one compact control surface.</p>
         </div>
         <div class="pf-orders-head-actions">
-            <a class="pf-secondary-action" href="/internal/commerce/products">Products</a>
-            <a class="pf-secondary-action" href="/internal/analytics">Analytics</a>
+            <a class="pf-secondary-action" href="@productsUrl">Products</a>
+            @if (!isScopedCommerceManager) { <a class="pf-secondary-action" href="/internal/analytics">Analytics</a> }
         </div>
     </header>
 
@@ -166,7 +175,7 @@
                         <article class="pf-order-detail-panel">
                             <div class="pf-order-panel-head"><h3>Workflow</h3></div>
 
-                            <form method="post" action="/internal/commerce/orders/update" class="pf-order-form" data-pf-order-form>
+                            <form method="post" action="@orderUpdateAction" class="pf-order-form" data-pf-order-form>
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="OrderNumber" value="@order.OrderNumber" />
 
@@ -220,7 +229,7 @@
                                 </div>
                             </form>
 
-                            <form method="post" action="/internal/commerce/orders/receipt" class="pf-order-receipt-form">
+                            <form method="post" action="@orderReceiptAction" class="pf-order-receipt-form">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="orderNumber" value="@order.OrderNumber" />
                                 <button type="submit" class="pf-secondary-action">Resend Receipt</button>
