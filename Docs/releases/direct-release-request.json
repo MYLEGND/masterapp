@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the final failure-forward storefront routing completion after the unified current-head web deployment. Preserve every application and website target at a74648c9178be29843a45a2d6596c388af8715a3; deploy only the shared Cloudflare website-commerce routing authority and prove the verified custom-domain homepage, store, and same-origin commerce-management transport. No application redeployments, no per-domain application logic, no legacy token fallback.",
-  "purpose": "Complete the current-head scoped storefront release by activating the already-validated /commerce/manage/* Cloudflare transport after all five web targets are live at the same revision. Preserve the successful Portal, ClientApp, Protect, Parfait, and LEGEND Website deployments.",
-  "requestId": "scoped-storefront-routing-preserve-live-20260926-r1",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36231021723",
+  "authorization": "Founder authorized failure-forward routing completion after #215 proved all five web targets live at a8585b03a435f0d9f19d1cf427cebab277ac6779. Declare the complete web inventory only to satisfy the canonical routing release policy. Preserve every application/site at that exact live revision; deploy only the validated Cloudflare website-commerce router. No application rebuild, migration, auth mutation, or redeployment.",
+  "purpose": "Complete the Website Studio Store/Manage Store repair by activating first-party /store* and /commerce/manage/* Worker routes. All five web targets are declared because the canonical routing policy requires complete inventory when the Website target is in scope; preserve-live mode must skip every application deployment.",
+  "requestId": "website-studio-store-manager-routing-preserve-live-20260926-r2",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36237501297",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
@@ -15,5 +15,5 @@
   "cloudflareWebsiteRouting": true,
   "websiteRoutingCanaryHost": "camoexterior.com",
   "preserveLiveTargets": true,
-  "preserveLiveRevision": "a74648c9178be29843a45a2d6596c388af8715a3"
+  "preserveLiveRevision": "a8585b03a435f0d9f19d1cf427cebab277ac6779"
 }
