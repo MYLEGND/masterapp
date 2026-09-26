@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder explicitly requested failure-forward recovery for the completed full scoped Parfait commerce release. Preserve every successful Portal, ClientApp, Protect, and Parfait deployment from direct release #192; do not rebuild or redeploy successful application targets. Recover only the shared Cloudflare business website routing layer and its live custom-domain proof.",
   "purpose": "Failure-forward routing recovery for direct release #192: retain the already-live centralized commerce application revision and repair only the shared custom-domain router/proof path so owner-scoped custom domains serve homepage and /store without restarting successful deployments.",
-  "requestId": "scoped-commerce-routing-failure-forward-20260925",
+  "requestId": "scoped-commerce-routing-failure-forward-20260925-r2",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36218166686",
   "releaseMode": "approved-only",
   "targets": [
@@ -13,5 +13,6 @@
   ],
   "cloudflareWebsiteRouting": true,
   "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": true
+  "preserveLiveTargets": true,
+  "preserveLiveRevision": "7157590505518009246abfcd5f9022ea9a8f6559"
 }
