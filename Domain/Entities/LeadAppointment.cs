@@ -11,6 +11,7 @@ public class LeadAppointment
     public WorkstationLeadProfile? WorkstationLead { get; set; }
 
     public string OwnerAgentUserId { get; set; } = "";
+    public Guid? CommerceBusinessId { get; set; }
 
     public Guid? WebsiteLeadIntakeLinkId { get; set; }
     public WebsiteLeadIntakeLink? WebsiteLeadIntakeLink { get; set; }

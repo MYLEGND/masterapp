@@ -11,6 +11,7 @@
     var quoteType = ((string?)ViewData["QuoteTypeForTracking"] ?? pageKey).Trim();
     var agentSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
     var formId = ((string?)ViewData["MetaSignalFormId"] ?? string.Empty).Trim();
+    var resolvedMetaPixelId = ((string?)ViewData["ResolvedMetaPixelId"] ?? string.Empty).Trim();
     var requiredContactFieldNames = new[] { "FirstName", "Phone" };
 
     var metaSignalConfigJson = JsonSerializer.Serialize(new
@@ -23,6 +24,7 @@
         highIntentThreshold = metaSignalOptions.HighIntentThreshold,
         leadReadyThreshold = metaSignalOptions.LeadReadyThreshold,
         endpoint = Url.Content("~/analytics/meta-signal"),
+        pixelId = string.IsNullOrWhiteSpace(resolvedMetaPixelId) ? null : resolvedMetaPixelId,
         quoteType,
         pageKey,
         effectivePageKey = pageKey,

@@ -227,6 +227,7 @@ public class IdentityHardeningTests
             AgentUpn = "zac.owen@mylegnd.com",
             NormalizedEmail = "zac.owen@mylegnd.com",
             FullName = "Directory Display Name",
+            BookingEnabled = true,
             IsActive = true
         });
         await db.SaveChangesAsync();
@@ -259,13 +260,15 @@ public class IdentityHardeningTests
             Phone = "480-555-0100",
             ShortBio = "Founder",
             Npn = "1234567",
-            BookingEnabled = true
+            BookingEnabled = false
         });
 
         Assert.Equal(nameof(AccountController.ManageProfile), Assert.IsType<RedirectToActionResult>(result).ActionName);
 
         // The authenticated-request registry runs before the redirected GET.
         // It must not replace an explicit profile setting with the Azure name claim.
+        // Booking is now owned by Website Analytics > Marketing Setup, so an
+        // ordinary profile save must preserve the existing canonical booking state.
         await BuildRegistry(db).UpsertAgentProfileAsync(user);
 
         var profile = await db.AgentProfiles.SingleAsync(x => x.AgentUserId == "agent-oid-managed-name");

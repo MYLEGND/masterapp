@@ -211,8 +211,9 @@
       bio.value = settings.shortBio || ''; bioLabel.append(bio); panel.append(bioLabel);
       panel.append(el('h4', 'Marketing'), el('p', profile.adsConnected ? `Connected account: ${profile.connectedAccount || 'Meta'}` : 'No active Meta Ads connection.'));
       const pixel = field('Meta Pixel ID'); pixel.value = settings.metaPixelId || ''; pixel.inputMode = 'numeric';
-      panel.append(el('p', profile.hasSecureCapiToken ? 'Meta CAPI: configured securely' : 'Meta CAPI: not configured'));
-      const token = field('Replace secure CAPI token (leave blank to keep)', 'password'); token.autocomplete = 'new-password';
+      panel.append(el('p', profile.hasSecureCapiToken
+        ? 'Meta CAPI: configured securely through the scoped Meta Ads connection.'
+        : 'Meta CAPI: connect Meta Ads to configure securely and automatically.'));
       const test = field('Meta Test Event Code (optional)'); test.value = settings.metaTestEventCode || '';
       panel.append(el('h4', 'Booking'));
       const enabled = field('Enable this business scheduler', 'checkbox'); enabled.checked = settings.bookingEnabled;
@@ -225,9 +226,9 @@
           profileRevision: settings.profileRevision, connectionRevision: settings.connectionRevision,
           shortBio: bio.value, bookingEnabled: enabled.checked, bookingEmbedUrl: embed.value,
           bookingFallbackUrl: fallback.value, bookingMailboxId: mailbox.value, bookingCalendarEmail: calendar.value || null,
-          metaPixelId: pixel.value, metaTestEventCode: test.value, replacementCapiToken: token.value || null
+          metaPixelId: pixel.value, metaTestEventCode: test.value
         } });
-        token.value = ''; settings.profileRevision = result.settings.profileRevision; settings.connectionRevision = result.settings.connectionRevision;
+        settings.profileRevision = result.settings.profileRevision; settings.connectionRevision = result.settings.connectionRevision;
         status.textContent = 'Marketing and booking settings saved.';
       }), true));
       status.textContent = '';

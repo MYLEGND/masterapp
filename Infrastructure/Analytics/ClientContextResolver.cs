@@ -1,4 +1,4 @@
-namespace ProtectWebsite.Services.Tracking;
+namespace Infrastructure.Analytics;
 
 public sealed record ClientContextResolution
 {

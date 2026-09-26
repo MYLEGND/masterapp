@@ -15,7 +15,15 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
 {
     public async Task InvokeAsync(HttpContext context, MasterAppDbContext db, WebsiteDomainService domains)
     {
+        // The proof endpoint must reach the binding authority before the active-domain
+        // publication gate. This also covers path segments normalized by the host proxy.
+        if (context.Request.Path.StartsWithSegments("/.well-known/legend-website", StringComparison.OrdinalIgnoreCase))
+        {
+            await next(context);
+            return;
+        }
         var host = WebsiteRequestHostResolver.Resolve(context, configuration);
+        var bridged = !string.Equals(host, context.Request.Host.Host.TrimEnd('.'), StringComparison.OrdinalIgnoreCase);
         var originHost = configuration["WEBSITE_HOSTNAME"];
         if (host == "protect.mylegnd.com" || host == "masterapp-protect.azurewebsites.net" || host == originHost || environment.IsDevelopment() && (host == "localhost" || host == "127.0.0.1"))
         {
@@ -24,19 +32,10 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         }
         var path = context.Request.Path.Value ?? "/";
 
-        // Domain activation proof must be reachable while the binding is still pending.
-        // The controller verifies the exact binding/business pair; all other custom-host
-        // traffic still requires active provider evidence and a published website.
-        if (string.Equals(path, "/.well-known/legend-website", StringComparison.Ordinal))
-        {
-            await next(context);
-            return;
-        }
-
         var binding = await domains.ResolveAsync(host, context.RequestAborted);
-        if (binding is null) { await Unavailable(context); return; }
+        if (binding is null) { await Unavailable(context, bridged, "binding"); return; }
         var version = await WebsiteContentStore.PublishedBusinessAsync(db, binding.Value, context.RequestAborted);
-        if (string.IsNullOrWhiteSpace(version?.CompiledPagesJson)) { await Unavailable(context); return; }
+        if (string.IsNullOrWhiteSpace(version?.CompiledPagesJson)) { await Unavailable(context, bridged, "publication"); return; }
         // APIs retain their own authenticated/business-scoped authorities. Resolve the host first.
         if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) ||
             path == "/api/website-inquiries/public" ||
@@ -57,12 +56,12 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
             ? apiUri.GetLeftPart(UriPartial.Authority)
             : "https://masterapp-protect.azurewebsites.net";
         context.Response.Headers["Content-Security-Policy"] =
-            $"default-src 'self'; script-src 'self' https://connect.facebook.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' {publicApiOrigin} https://www.facebook.com https://connect.facebook.net; frame-src data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+            $"default-src 'self'; script-src 'self' https://connect.facebook.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' {publicApiOrigin} https://www.facebook.com https://connect.facebook.net; frame-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
         if (path is "/site.css" or "/legend-public-web.js" or "/legend-public-inquiry.js" or "/legend-public-cms.js" or
             "/legend-public-tracking.js" or "/legend-public-meta-signal-intelligence.js")
         {
             var asset = Path.Combine(environment.ContentRootPath, "WebsiteCompiler", "dist", path.TrimStart('/'));
-            if (!File.Exists(asset)) { await Unavailable(context); return; }
+            if (!File.Exists(asset)) { await Unavailable(context, bridged, "asset"); return; }
             context.Response.ContentType = path.EndsWith(".css", StringComparison.Ordinal) ? "text/css; charset=utf-8" : "text/javascript; charset=utf-8";
             if (!HttpMethods.IsHead(context.Request.Method)) await context.Response.SendFileAsync(asset, context.RequestAborted);
             return;
@@ -86,15 +85,17 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         }
         var normalized = path.TrimEnd('/');
         if (normalized.Length == 0) normalized = "/";
-        if (!pages.TryGetProperty(normalized, out var page)) { await Unavailable(context); return; }
+        if (!pages.TryGetProperty(normalized, out var page)) { await Unavailable(context, bridged, "page"); return; }
         var html = page.GetProperty("html").GetString() ?? "";
         html = html.Replace("__LEGEND_CANONICAL_URL__", WebUtility.HtmlEncode(origin + normalized), StringComparison.Ordinal);
         context.Response.ContentType = "text/html; charset=utf-8";
         if (!HttpMethods.IsHead(context.Request.Method)) await context.Response.WriteAsync(html, context.RequestAborted);
     }
 
-    private static Task Unavailable(HttpContext context)
+    private static Task Unavailable(HttpContext context, bool bridged, string reason)
     {
+        if (bridged)
+            context.Response.Headers["X-Legend-Website-Route"] = reason + ":" + context.Request.Path.Value;
         context.Response.StatusCode = StatusCodes.Status404NotFound;
         context.Response.ContentType = "text/plain; charset=utf-8";
         context.Response.Headers.CacheControl = "no-store";

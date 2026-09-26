@@ -3,7 +3,9 @@ using Domain.Entities;
 using Infrastructure.Businesses;
 using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace ParfaitApp.Services;
 
@@ -15,6 +17,7 @@ public sealed record CommerceStoreContext(
     string BusinessKey,
     string StoreName,
     string NavigationLabel,
+    string CartIcon,
     string Headline,
     string Subheadline,
     string StoreRootPath,
@@ -26,32 +29,95 @@ public sealed record CommerceStoreContext(
     string AccentColor,
     string? LogoUrl,
     string? GlobalCheckoutUrl,
-    WebsiteThemeOverride Theme);
+    WebsiteThemeOverride Theme,
+    string? WebsiteShellPrefix,
+    string? WebsiteShellSuffix);
 
 /// <summary>
 /// One public storefront scope resolver for Parfait and every website-linked commerce tenant.
-/// Public non-Parfait stores are available only when the linked published website has Store.Enabled.
-/// Commerce owns products/orders; the linked website owner remains the marketing/analytics authority.
+/// Normal public storefronts resolve from the authenticated public hostname and therefore live
+/// at /store on that hostname. The scoped /store/s/{businessKey} route is retained only for
+/// Protect's shared agent host and legacy compatibility.
 /// </summary>
 public sealed class CommerceStoreContextService(
     MasterAppDbContext db,
     CommerceBusinessScopeResolver businesses,
-    ParfaitBusinessScopeService parfaitScope)
+    ParfaitBusinessScopeService parfaitScope,
+    WebsiteDomainService domains,
+    IConfiguration configuration)
 {
+    private static readonly HashSet<string> LegendHosts =
+        new(StringComparer.OrdinalIgnoreCase) { "mylegnd.com", "www.mylegnd.com" };
+    private const string ProtectHost = "protect.mylegnd.com";
+    private const string ParfaitAzureHost = "masterapp-parfait.azurewebsites.net";
+
     public async Task<CommerceStoreContext?> ResolvePublicAsync(string? businessKey, CancellationToken ct = default)
     {
-        var normalized = (businessKey ?? "").Trim().ToLowerInvariant();
+        var normalized = NormalizeKey(businessKey);
         CommerceBusiness? business;
         if (string.IsNullOrWhiteSpace(normalized) ||
             normalized == ParfaitBusinessScopeService.ParfaitBusinessKey)
         {
             business = await parfaitScope.GetParfaitAsync(ct);
-            return await BuildAsync(business, publishedOnly: false, ct);
+            return await BuildAsync(business, publishedOnly: false, ct, useScopedPath: false);
         }
 
         business = await businesses.ResolveActiveByKeyAsync(normalized, ct);
         if (business is null) return null;
-        return await BuildAsync(business, publishedOnly: true, ct);
+        return await BuildAsync(business, publishedOnly: true, ct, useScopedPath: true);
+    }
+
+    public async Task<CommerceStoreContext?> ResolvePublicAsync(
+        HttpContext context,
+        string? businessKey,
+        CancellationToken ct = default)
+    {
+        var normalized = NormalizeKey(businessKey);
+        if (!string.IsNullOrWhiteSpace(normalized))
+            return await ResolvePublicAsync(normalized, ct);
+
+        var host = WebsiteRequestHostResolver.Resolve(context, configuration, allowLegendCommerceHost: true);
+        if (IsParfaitHost(host))
+        {
+            var parfait = await parfaitScope.GetParfaitAsync(ct);
+            return await BuildAsync(parfait, publishedOnly: false, ct, useScopedPath: false);
+        }
+
+        if (LegendHosts.Contains(host))
+        {
+            var state = await db.Set<WebsiteContentState>().AsNoTracking()
+                .SingleOrDefaultAsync(
+                    x => x.OwnerKey == WebsiteEditorSiteKeys.GlobalOwnerKey &&
+                         x.SiteKey == WebsiteEditorSiteKeys.Legend,
+                    ct);
+            if (state?.CommerceBusinessId is not Guid legendBusinessId || legendBusinessId == Guid.Empty)
+                return null;
+
+            var business = await businesses.ResolveActiveByIdAsync(legendBusinessId, ct);
+            if (business is null) return null;
+
+            return await BuildAsync(
+                business,
+                publishedOnly: true,
+                ct,
+                explicitSiteKey: WebsiteEditorSiteKeys.Legend,
+                explicitState: state,
+                useScopedPath: false);
+        }
+
+        // Protect is the one shared-host exception. It must retain an explicit scoped
+        // business key so one agent cannot select another agent's store by hostname alone.
+        if (string.Equals(host, ProtectHost, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var businessId = await domains.ResolveAsync(host, ct);
+        if (!businessId.HasValue || businessId == Guid.Empty)
+            return null;
+
+        var scopedBusiness = await businesses.ResolveActiveByIdAsync(businessId.Value, ct);
+        if (scopedBusiness is null) return null;
+
+        return await BuildAsync(scopedBusiness, publishedOnly: true, ct, useScopedPath: false);
     }
 
     public async Task<CommerceStoreContext?> ResolveForWebsiteTicketAsync(
@@ -79,7 +145,59 @@ public sealed class CommerceStoreContextService(
             ct,
             explicitDocument: draft,
             explicitSiteKey: actor.SiteKey,
-            explicitState: state);
+            explicitState: state,
+            useScopedPath: true);
+    }
+
+    public bool IsCentralCommerceHost(HttpContext context)
+    {
+        var host = WebsiteRequestHostResolver.Resolve(context, configuration, allowLegendCommerceHost: true);
+        return IsParfaitHost(host);
+    }
+
+    public string ResolveEffectivePublicHost(HttpContext context) =>
+        WebsiteRequestHostResolver.Resolve(context, configuration, allowLegendCommerceHost: true);
+
+    public async Task<string?> ResolveCanonicalPublicRootAsync(
+        Guid commerceBusinessId,
+        CancellationToken ct = default)
+    {
+        if (commerceBusinessId == Guid.Empty) return null;
+        var business = await businesses.ResolveActiveByIdAsync(commerceBusinessId, ct);
+        if (business is null) return null;
+        var store = await BuildAsync(business, publishedOnly: !IsParfaitKey(business.Key), ct);
+        return store is null ? null : await ResolveCanonicalPublicRootAsync(store, ct);
+    }
+
+    public async Task<string?> ResolveCanonicalPublicRootAsync(
+        CommerceStoreContext store,
+        CancellationToken ct = default)
+    {
+        if (store.IsParfait)
+            return PublicBase("Commerce:PublicBaseUrl", "https://shopparfait.com") + "/store";
+
+        if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
+            return PublicBase("Commerce:LegendPublicBaseUrl", "https://mylegnd.com") + "/store";
+
+        if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase))
+            return PublicBase("Commerce:ProtectPublicBaseUrl", "https://protect.mylegnd.com") +
+                   "/store/s/" + Uri.EscapeDataString(store.BusinessKey);
+
+        if (!string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Business, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var hostname = await db.Set<WebsiteDomainBinding>().AsNoTracking()
+            .Where(x =>
+                x.CommerceBusinessId == store.CommerceBusinessId &&
+                x.Status == "active" &&
+                x.CertificateStatus == "active" &&
+                x.LastCheckedUtc >= cutoff)
+            .OrderBy(x => x.CreatedUtc)
+            .Select(x => x.Hostname)
+            .FirstOrDefaultAsync(ct);
+
+        return string.IsNullOrWhiteSpace(hostname) ? null : "https://" + hostname + "/store";
     }
 
     private async Task<CommerceStoreContext?> BuildAsync(
@@ -88,7 +206,8 @@ public sealed class CommerceStoreContextService(
         CancellationToken ct,
         WebsiteContentDocument? explicitDocument = null,
         string? explicitSiteKey = null,
-        WebsiteContentState? explicitState = null)
+        WebsiteContentState? explicitState = null,
+        bool useScopedPath = false)
     {
         var settings = await db.CommerceBusinessStorefrontSettings.AsNoTracking()
             .SingleOrDefaultAsync(x => x.CommerceBusinessId == business.Id, ct);
@@ -98,6 +217,8 @@ public sealed class CommerceStoreContextService(
 
         WebsiteContentDocument? websiteDocument = explicitDocument;
         Guid? publishedVersionId = null;
+        string? websiteShellPrefix = null;
+        string? websiteShellSuffix = null;
         var websiteSiteKey = !string.IsNullOrWhiteSpace(explicitSiteKey)
             ? explicitSiteKey.Trim().ToLowerInvariant()
             : linkedState?.SiteKey?.Trim().ToLowerInvariant()
@@ -116,6 +237,7 @@ public sealed class CommerceStoreContextService(
                 publishedVersionId = version.Id;
                 websiteDocument = Deserialize(version.DocumentJson);
                 if (websiteDocument.Store?.Enabled != true) return null;
+                TryExtractPublishedWebsiteShell(version.CompiledPagesJson, out websiteShellPrefix, out websiteShellSuffix);
             }
             else
             {
@@ -144,8 +266,12 @@ public sealed class CommerceStoreContextService(
 
         var label = websiteDocument?.Store?.NavigationLabel?.Trim();
         if (string.IsNullOrWhiteSpace(label)) label = isParfait ? "Shop" : "Store";
+        var cartIcon = websiteDocument?.Store?.CartIcon?.Trim().ToLowerInvariant();
+        if (cartIcon is not ("cart" or "bag" or "basket")) cartIcon = "cart";
 
-        var root = isParfait ? "/store" : "/store/s/" + Uri.EscapeDataString(business.Key);
+        var root = !isParfait && useScopedPath
+            ? "/store/s/" + Uri.EscapeDataString(business.Key)
+            : "/store";
         var theme = websiteDocument?.Theme ?? new WebsiteThemeOverride();
 
         return new CommerceStoreContext(
@@ -156,6 +282,7 @@ public sealed class CommerceStoreContextService(
             business.Key,
             business.DisplayName,
             label,
+            cartIcon,
             string.IsNullOrWhiteSpace(settings?.BrandHeadline) ? business.DisplayName : settings!.BrandHeadline,
             string.IsNullOrWhiteSpace(settings?.BrandSubheadline)
                 ? business.DisplayName + " storefront."
@@ -169,8 +296,79 @@ public sealed class CommerceStoreContextService(
             settings?.AccentColor?.Trim() ?? "",
             string.IsNullOrWhiteSpace(settings?.LogoUrl) ? null : settings!.LogoUrl.Trim(),
             string.IsNullOrWhiteSpace(settings?.GlobalStoreCheckoutUrl) ? null : settings!.GlobalStoreCheckoutUrl.Trim(),
-            theme);
+            theme,
+            isParfait ? null : websiteShellPrefix,
+            isParfait ? null : websiteShellSuffix);
     }
+
+
+    private static void TryExtractPublishedWebsiteShell(
+        string? compiledPagesJson,
+        out string? prefix,
+        out string? suffix)
+    {
+        prefix = null;
+        suffix = null;
+        if (string.IsNullOrWhiteSpace(compiledPagesJson)) return;
+
+        try
+        {
+            using var compiled = JsonDocument.Parse(compiledPagesJson);
+            if (!compiled.RootElement.TryGetProperty("pages", out var pages) ||
+                !pages.TryGetProperty("/", out var home) ||
+                !home.TryGetProperty("html", out var htmlValue))
+                return;
+
+            var html = htmlValue.GetString();
+            if (string.IsNullOrWhiteSpace(html)) return;
+
+            var mainStart = html.IndexOf("<main", StringComparison.OrdinalIgnoreCase);
+            if (mainStart < 0) return;
+            var mainOpenEnd = html.IndexOf('>', mainStart);
+            if (mainOpenEnd < 0) return;
+            var mainClose = html.IndexOf("</main>", mainOpenEnd + 1, StringComparison.OrdinalIgnoreCase);
+            if (mainClose < 0) return;
+
+            prefix = html[..(mainOpenEnd + 1)];
+            suffix = html[(mainClose + "</main>".Length)..];
+
+            var headClose = prefix.LastIndexOf("</head>", StringComparison.OrdinalIgnoreCase);
+            if (headClose >= 0)
+            {
+                const string storeStyle = "<link rel=\"stylesheet\" href=\"/store-assets/css/storefront.css\" />";
+                prefix = prefix.Insert(headClose, storeStyle);
+            }
+        }
+        catch (JsonException)
+        {
+            prefix = null;
+            suffix = null;
+        }
+    }
+
+    private string PublicBase(string key, string fallback)
+    {
+        var configured = configuration[key]?.Trim();
+        if (!string.IsNullOrWhiteSpace(configured) &&
+            Uri.TryCreate(configured, UriKind.Absolute, out var uri) &&
+            uri.Scheme == Uri.UriSchemeHttps &&
+            string.IsNullOrWhiteSpace(uri.UserInfo))
+            return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+        return fallback;
+    }
+
+    private bool IsParfaitHost(string host)
+    {
+        if (string.Equals(host, ParfaitAzureHost, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var configured = PublicBase("Commerce:PublicBaseUrl", "https://shopparfait.com");
+        return Uri.TryCreate(configured, UriKind.Absolute, out var uri) &&
+               (string.Equals(host, uri.IdnHost, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(host, "www." + uri.IdnHost, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeKey(string? value) => (value ?? "").Trim().ToLowerInvariant();
 
     private static bool IsParfaitKey(string? key) =>
         string.Equals(key, ParfaitBusinessScopeService.ParfaitBusinessKey, StringComparison.OrdinalIgnoreCase);

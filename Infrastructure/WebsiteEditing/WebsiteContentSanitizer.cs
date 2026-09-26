@@ -18,7 +18,9 @@ public static class WebsiteContentSanitizer
             Store = new WebsiteStoreSettings
             {
                 Enabled = source.Store?.Enabled == true,
-                NavigationLabel = SanitizeStoreLabel(source.Store?.NavigationLabel)
+                NavigationLabel = SanitizeStoreLabel(source.Store?.NavigationLabel),
+                CartIcon = SanitizeCartIcon(source.Store?.CartIcon),
+                CartIconSizePx = Math.Clamp(source.Store?.CartIconSizePx ?? 28, 16, 96)
             },
             Breakpoints = breakpoints
         };
@@ -49,6 +51,7 @@ public static class WebsiteContentSanitizer
                 Id = id,
                 SectionId = sectionId,
                 Type = type,
+                TemplateSectionId = type == "section" ? NullIfEmpty(SanitizeId(extra.TemplateSectionId)) : null,
                 Signals = type == "reusable" ? new List<WebsiteSignalBinding>() : WebsiteSignalBindingPolicy.Validate(extra.Signals),
                 ActionKey = SanitizeActionKey(extra.ActionKey),
                 Title = ClampContentText(extra.Title),
@@ -321,6 +324,12 @@ public static class WebsiteContentSanitizer
         if (label.Length == 0) label = "Store";
         if (label.Length > 40) label = label[..40];
         return label;
+    }
+
+    private static string SanitizeCartIcon(string? value)
+    {
+        var icon = (value ?? "cart").Trim().ToLowerInvariant();
+        return icon is "cart" or "bag" or "basket" ? icon : "cart";
     }
 
     private static string? SanitizeDynamicRoutePattern(string? value)

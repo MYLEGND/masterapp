@@ -8,6 +8,15 @@ namespace AgentPortal.Tests;
 public class UnifiedEventMapperTests
 {
     [Fact]
+    public void UnifiedAnalyticsAuthority_IsOwnedBySharedInfrastructure()
+    {
+        Assert.Equal("Infrastructure", typeof(UnifiedEventContext).Assembly.GetName().Name);
+        Assert.Equal("Infrastructure", typeof(UnifiedEventMapper).Assembly.GetName().Name);
+        Assert.Equal("Infrastructure", typeof(UnifiedAnalyticsWriter).Assembly.GetName().Name);
+        Assert.Equal("Infrastructure", typeof(MetaSignalCrmOutcomeService).Assembly.GetName().Name);
+    }
+
+    [Fact]
     public void ToAnalytics_CarriesBehaviorFieldsThroughUnifiedPipeline()
     {
         var eventUtc = new DateTime(2026, 6, 18, 16, 30, 0, DateTimeKind.Utc);

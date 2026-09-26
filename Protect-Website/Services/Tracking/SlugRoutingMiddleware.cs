@@ -16,7 +16,7 @@ public sealed class SlugRoutingMiddleware : IMiddleware
     {
         _resolver = resolver;
         _logger = logger;
-        _founderUpn = config["Founder:Upn"] ?? "zac.owen@mylegnd.com";
+        _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
     }
 
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)

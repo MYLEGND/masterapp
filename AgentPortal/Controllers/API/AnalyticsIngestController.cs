@@ -3,6 +3,7 @@ using System.Text.Json;
 using AgentPortal.Security;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Authorization;
@@ -159,91 +160,95 @@ public class AnalyticsIngestController : ControllerBase
         if (existing != null)
             return Ok(new { status = "duplicate_ignored" });
 
-        var ev = new AnalyticsEvent
+        var unifiedContext = new UnifiedEventContext
         {
-            EventId = Guid.NewGuid(),
-            ClientEventId = req.ClientEventId,
-            SchemaVersion = req.SchemaVersion ?? 1,
-            TrackingVersion = TrimOrNull(req.TrackingVersion),
-            EventType = req.EventType.Trim(),
-            PageKey = TrimOrNull(req.PageKey),
-            SectionKey = TrimOrNull(req.SectionKey),
-            ElementKey = TrimOrNull(req.ElementKey),
-            ButtonLabel = TrimOrNull(req.ButtonLabel),
-            FormKey = TrimOrNull(req.FormKey),
-            QuoteType = TrimOrNull(req.QuoteType),
-            Url = TrimOrNull(req.Url),
-            Path = TrimOrNull(req.Path),
-            Referrer = TrimOrNull(req.Referrer),
+            EventId = req.ClientEventId.ToString("N"),
+            EventName = req.EventType.Trim(),
+            EventCategory = eventDefinition.Category,
+            EventUtc = req.EventUtc ?? DateTime.UtcNow,
             SessionId = TrimOrNull(req.SessionId),
             VisitorId = TrimOrNull(req.VisitorId),
-            UtmSource = TrimOrNull(req.UtmSource),
-            UtmMedium = TrimOrNull(req.UtmMedium),
-            UtmCampaign = TrimOrNull(req.UtmCampaign),
-            UtmId = TrimOrNull(req.UtmId),
-            Fbclid = TrimOrNull(req.Fbclid),
-            Environment = ResolveEnvironment(req.Environment),
-            Host = string.IsNullOrWhiteSpace(req.Host) ? Request.Host.ToString() : req.Host,
-            EventUtc = req.EventUtc ?? DateTime.UtcNow,
-            ReceivedUtc = DateTime.UtcNow,
-            SubmitOutcome = TrimOrNull(req.SubmitOutcome),
-            MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
-                eventName: req.EventType.Trim(),
-                leadId: null,
-                sessionId: TrimOrNull(req.SessionId),
-                payload: ParseMetadataPayload(req.MetadataJson),
-                isBrowserSignal: true,
-                isServerAuthority: false,
-                metaServerAuthorityEligible: false,
-                metaSingleTruthDispatchEligible: false,
-                metaPipelineOrigin: "browser_analytics_ingest"),
-            IsInternal = req.IsInternal || FounderGuard.IsFounder(User),
-            AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,
-            AgentSlug = resolved.Found ? resolved.CanonicalSlug : null,
-            // Behavior Intelligence fields
+            Url = TrimOrNull(req.Url),
+            Referrer = TrimOrNull(req.Referrer),
             ReferrerHost = TrimOrNull(req.ReferrerHost) ?? ParseReferrerHost(req.Referrer),
+            PageKey = TrimOrNull(req.PageKey),
+            FormKey = TrimOrNull(req.FormKey),
+            ElementKey = TrimOrNull(req.ElementKey),
+            ButtonLabel = TrimOrNull(req.ButtonLabel),
             DeviceType = TrimOrNull(req.DeviceType),
             Browser = TrimOrNull(req.Browser),
             OperatingSystem = TrimOrNull(req.OperatingSystem),
             UserAgent = TrimOrNull(req.UserAgent) ?? TrimOrNull(Request.Headers.UserAgent.ToString()),
             IpAddress = TrimOrNull(req.IpAddress) ?? ResolveClientIp(),
+            ViewportWidth = req.ViewportWidth,
+            ViewportHeight = req.ViewportHeight,
+            ScreenWidth = req.ScreenWidth,
+            ScreenHeight = req.ScreenHeight,
             WebDriver = req.WebDriver,
             IsHeadless = req.IsHeadless,
             MouseMoveCount = req.MouseMoveCount.HasValue && req.MouseMoveCount.Value >= 0 ? req.MouseMoveCount : null,
             HumanInteractionCount = req.HumanInteractionCount.HasValue && req.HumanInteractionCount.Value >= 0 ? req.HumanInteractionCount : null,
             VisibilityChangeCount = req.VisibilityChangeCount.HasValue && req.VisibilityChangeCount.Value >= 0 ? req.VisibilityChangeCount : null,
-            TimeZone = TrimOrNull(req.TimeZone),
-            Language = TrimOrNull(req.Language),
-            ScreenWidth = req.ScreenWidth,
-            ScreenHeight = req.ScreenHeight,
-            ViewportWidth = req.ViewportWidth,
-            ViewportHeight = req.ViewportHeight,
             ScrollPercent = req.ScrollPercent.HasValue ? Math.Clamp(req.ScrollPercent.Value, 0, 100) : null,
             DwellMilliseconds = req.DwellMilliseconds.HasValue && req.DwellMilliseconds.Value >= 0 ? req.DwellMilliseconds : null,
             EngagedMilliseconds = req.EngagedMilliseconds.HasValue && req.EngagedMilliseconds.Value >= 0 ? req.EngagedMilliseconds : null,
             IsBounceCandidate = req.IsBounceCandidate,
             IsExitPage = req.IsExitPage,
-            UtmTerm = TrimOrNull(req.UtmTerm),
+            Language = TrimOrNull(req.Language),
+            TimeZone = TrimOrNull(req.TimeZone),
+            UtmSource = TrimOrNull(req.UtmSource),
+            UtmMedium = TrimOrNull(req.UtmMedium),
+            UtmCampaign = TrimOrNull(req.UtmCampaign),
+            UtmId = TrimOrNull(req.UtmId),
             UtmContent = TrimOrNull(req.UtmContent),
             MetaCampaignId = TrimOrNull(req.MetaCampaignId),
-            MetaCampaignName = TrimOrNull(req.MetaCampaignName),
             MetaAdSetId = TrimOrNull(req.MetaAdSetId),
-            MetaAdSetName = TrimOrNull(req.MetaAdSetName),
             MetaAdId = TrimOrNull(req.MetaAdId),
-            MetaAdName = TrimOrNull(req.MetaAdName),
-            Placement = TrimOrNull(req.Placement),
-            FormId = TrimOrNull(req.FormId),
-            // FieldName accepted only for field-level event types; never store free-form values
-            FieldName = IsFieldLevelEvent(req.EventType) ? TrimOrNull(req.FieldName) : null,
-            ElementId = TrimOrNull(req.ElementId)
+            Fbclid = TrimOrNull(req.Fbclid),
+            AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,
+            AgentSlug = resolved.Found ? resolved.CanonicalSlug : null,
+            IsInternal = req.IsInternal || FounderGuard.IsFounder(User),
+            Environment = ResolveEnvironment(req.Environment),
+            Host = string.IsNullOrWhiteSpace(req.Host) ? Request.Host.ToString() : req.Host,
+            QuoteType = TrimOrNull(req.QuoteType),
+            IsBrowserSignal = true,
+            IsServerAuthority = false,
+            MetaServerAuthorityEligible = false,
+            Metadata = ParseMetadataPayload(req.MetadataJson)
         };
+
+        var ev = UnifiedEventMapper.ToAnalytics(unifiedContext);
+        ev.ClientEventId = req.ClientEventId;
+        ev.SchemaVersion = req.SchemaVersion ?? 1;
+        ev.TrackingVersion = TrimOrNull(req.TrackingVersion);
+        ev.SectionKey = TrimOrNull(req.SectionKey);
+        ev.Path = TrimOrNull(req.Path);
+        ev.SubmitOutcome = TrimOrNull(req.SubmitOutcome);
+        ev.UtmTerm = TrimOrNull(req.UtmTerm);
+        ev.MetaCampaignName = TrimOrNull(req.MetaCampaignName);
+        ev.MetaAdSetName = TrimOrNull(req.MetaAdSetName);
+        ev.MetaAdName = TrimOrNull(req.MetaAdName);
+        ev.Placement = TrimOrNull(req.Placement);
+        ev.FormId = TrimOrNull(req.FormId);
+        ev.FieldName = IsFieldLevelEvent(req.EventType) ? TrimOrNull(req.FieldName) : null;
+        ev.ElementId = TrimOrNull(req.ElementId);
+        ev.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+            eventName: req.EventType.Trim(),
+            leadId: null,
+            sessionId: TrimOrNull(req.SessionId),
+            payload: ParseMetadataPayload(req.MetadataJson),
+            isBrowserSignal: true,
+            isServerAuthority: false,
+            metaServerAuthorityEligible: false,
+            metaSingleTruthDispatchEligible: false,
+            metaPipelineOrigin: "browser_analytics_ingest");
 
         // SQLite local dev: bigint PK is not auto-generated, so assign a unique Id.
         // Use millisecond timestamp + random suffix to avoid concurrent-insert PK collisions.
         if (IsSqliteProvider())
             ev.Id = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000L + Random.Shared.Next(1000);
 
-        _db.AnalyticsEvents.Add(ev);
+        UnifiedAnalyticsWriter.Write(_db, ev);
         try
         {
             await _db.SaveChangesAsync();

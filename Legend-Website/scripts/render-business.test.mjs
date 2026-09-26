@@ -34,7 +34,10 @@ test('all normal business pages use canonical components, actual scoped name and
     for(const link of dom.querySelectorAll('.nav a'))assert.match(link.getAttribute('href'),/^\/(?:about|contact|services)?\/?$/);
     const published=dom.querySelector('#legend-cms-published-document');
     assert.ok(published);
-    const runtime=JSON.parse(published.textContent).runtime;
+    const publishedPayload=JSON.parse(published.textContent);
+    assert.deepEqual(publishedPayload.pageCatalog.map(item=>item.route),['/','/about','/contact','/services']);
+    assert.ok(publishedPayload.pageCatalog.every(item=>item.showInNavigation===true));
+    const runtime=publishedPayload.runtime;
     assert.equal(runtime.apiBase,'https://masterapp-protect.azurewebsites.net');
     assert.equal(runtime.trackingAsset,'/legend-public-tracking.js');
     assert.equal(runtime.metaSignalAsset,'/legend-public-meta-signal-intelligence.js');
@@ -55,12 +58,13 @@ test('published text, URLs, section color and imported page are rendered before 
   const link=dom.querySelector('.hero .actions a').dataset.cmsId;
   const value=document();
   value.faviconImageDataUrl='https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111';
-  value.pages['/']={title:'Custom title',description:'Verified description',elements:{[heading]:{text:'Actual business headline'},[link]:{text:'Book an appointment',href:'https://example.com/book'},'section:home.section.1':{style:{backgroundColor:'#123456'}}},sectionOrder:{},extras:[]};
+  value.pages['/']={title:'Custom title',description:'Verified description',elements:{[heading]:{text:'Attempted name override',style:{fontScale:1.2,fontFamily:'Georgia'}},[link]:{text:'Book an appointment',href:'https://example.com/book'},'section:home.section.1':{style:{backgroundColor:'#123456'}}},sectionOrder:{},extras:[]};
   value.pages['/team/history']={title:'Our history',description:'Our actual story',elements:{},sectionOrder:{},extras:[{id:'imported-section',type:'section',sectionId:'',style:{}},{id:'imported-text',type:'text',sectionId:'extra:imported-section',text:'Verified imported information',style:{}}]};
   const result=await compileBusiness({business,document:value});
   const page=parseHTML(result.pages['/'].html).document;
   assert.equal(page.title,'Custom title');
-  assert.equal(page.querySelector('h1').textContent,'Actual business headline');
+  assert.equal(page.querySelector('h1').textContent,business.displayName);
+  assert.equal(page.querySelector('h1').style.fontFamily,'Georgia');
   assert.equal(page.querySelector('.hero .actions a').href,'https://example.com/book');
   assert.equal(page.querySelector('.hero').style.backgroundColor,'#123456');
   assert.equal(page.querySelector('.hero').style.backgroundImage,'none');
@@ -88,6 +92,13 @@ test('route manifest honors navigation order visibility nesting deletion and cus
   const home=parseHTML(result.pages['/'].html).document;
   const links=[...home.querySelectorAll('.nav a')];
   assert.deepEqual(links.map(link=>link.textContent),['Contact','Team','Start']);
+  const embeddedCatalog=JSON.parse(home.querySelector('#legend-cms-published-document').textContent).pageCatalog;
+  assert.deepEqual(embeddedCatalog.map(item=>[item.route,item.showInNavigation,item.parentPath,item.order]),[
+    ['/contact',true,null,0],
+    ['/about',false,null,10],
+    ['/team',true,'/about',15],
+    ['/',true,null,20]
+  ]);
   assert.equal(links.find(link=>link.textContent==='Team').getAttribute('data-nav-parent'),'/about');
   assert.equal(links.some(link=>link.textContent==='About us'),false);
   assert.equal(result.pages['/services'],undefined);

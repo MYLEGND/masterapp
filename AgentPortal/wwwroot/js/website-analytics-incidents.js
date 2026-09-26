@@ -1,4 +1,6 @@
 (() => {
+  const shell = document.querySelector('.fa-shell');
+  if (shell?.dataset.canIncidentMonitor === 'false') return;
   const modalEl = document.getElementById('analyticsIncidentModal');
   if (!modalEl) return;
 

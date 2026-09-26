@@ -1,7 +1,7 @@
 using Domain.Entities;
 using Shared.Analytics;
 
-namespace ProtectWebsite.Services.Tracking;
+namespace Infrastructure.Analytics;
 
 /// <summary>
 /// SINGLE SOURCE OF TRUTH:

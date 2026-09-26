@@ -1,4 +1,4 @@
-namespace ProtectWebsite.Services;
+namespace Infrastructure.Analytics;
 
 public static class EnvironmentLabelResolver
 {

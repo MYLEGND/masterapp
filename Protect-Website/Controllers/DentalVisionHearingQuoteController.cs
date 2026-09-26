@@ -76,6 +76,7 @@ namespace Protect_Website.Controllers
 
         // POST: /Quote/Dental-Vision-Hearing
         [HttpPost("Dental-Vision-Hearing")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public async Task<IActionResult> SubmitDentalVisionHearingQuote(DentalVisionHearingQuoteFormModel model)
         {
             var correlationId = Guid.NewGuid();
@@ -463,13 +464,19 @@ await TryWriteLeadEventAsync(
 
             if (!string.IsNullOrWhiteSpace(primary))
             {
-                var agentEmailSent = await _emailSender.TrySendAsync(
+                var notification = await WebsiteLeadNotificationAuthority.DeliverAsync(
+                    _db,
+                    lead,
                     primary,
-                    $"[DVH QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
-                    BuildLeadNotificationEmailBody(model),
-                    replyToEmail: model.Email,
-                    saveToSentItems: true,
-                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+                    token => _emailSender.TrySendAsync(
+                        primary,
+                        $"[DVH QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
+                        BuildLeadNotificationEmailBody(model),
+                        replyToEmail: model.Email,
+                        saveToSentItems: true,
+                        cancellationToken: token),
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                var agentEmailSent = notification.Sent;
 
                 if (agentEmailSent)
                 {
@@ -1099,32 +1106,13 @@ Review summary only. Final plan availability, pricing, provider networks, and el
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
         {
-            var slug = ResolveExplicitAgentSlugFromRequest();
-
-            if (!string.IsNullOrWhiteSpace(slug))
-            {
-                var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
-                if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug, false);
-            }
-
-            var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
-            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
-                trackingProfileObj is AgentTrackingProfile trackingProfile)
-            {
-                var trackingSlug = HttpContext?.Items["TrackingSlug"] as string;
-                var trackingRecipient = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn)
-                    ? trackingProfile.AgentUpn.Trim()
-                    : recipientEmail;
-
-                return (
-                    isFounderPath ? recipientEmail : trackingRecipient,
-                    trackingProfile.Id,
-                    string.IsNullOrWhiteSpace(trackingSlug) ? trackingProfile.Slug : trackingSlug,
-                    isFounderPath);
-            }
-
-            return (recipientEmail, null, null, isFounderPath);
+            var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
+                HttpContext,
+                _resolver,
+                recipientEmail,
+                ResolveExplicitAgentSlugFromRequest(),
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+            return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
         }
 
         private static string? ExtractSlugFromPath(string? pathOrUrl)

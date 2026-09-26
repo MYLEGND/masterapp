@@ -18,6 +18,12 @@
 
   const shell = document.querySelector('.fa-shell');
   const canDeleteLeads = shell?.dataset.canDeleteLeads === 'true';
+  const capabilities = {
+    metaAds: shell?.dataset.canMetaAds !== 'false',
+    aiReview: shell?.dataset.canAiReview !== 'false',
+    agentPerformance: shell?.dataset.canAgentPerformance !== 'false',
+    incidentMonitor: shell?.dataset.canIncidentMonitor !== 'false'
+  };
   const landingRoutes = (() => {
     const raw = shell?.dataset.landingRoutes || '[]';
     try {
@@ -32,7 +38,7 @@
     preset: initialPreset,
     from: initialFrom,
     to: initialTo,
-    pollMs: 45000,
+    pollMs: 1500,
     qualityMode: initialQualityMode,
     dashboardTrafficType: 'all',
     controllers: {},
@@ -134,6 +140,7 @@
     metaConnect: analyticsEndpoint('/meta-connect'),
     metaConnectionStatus: analyticsEndpoint('/meta-connection-status'),
     metaDisconnect: analyticsEndpoint('/meta-disconnect'),
+    marketingSetup: analyticsEndpoint('/marketing-setup'),
     behaviorSummary: analyticsEndpoint('/behavior/summary'),
     behaviorTime: analyticsEndpoint('/behavior/time-on-page'),
     behaviorExit: analyticsEndpoint('/behavior/exit-analysis'),
@@ -624,7 +631,39 @@
     return 'Selected lead';
   }
 
+  function renderSummaryUnavailable(data, message = null) {
+    state.cache.summary = null;
+    state.scope.scopeLabel = data?.scopeLabel || state.scope.scopeLabel || 'Global';
+    [
+      'kpi-pageviews',
+      'kpi-visitors',
+      'kpi-sessions',
+      'kpi-leads',
+      'kpi-intent',
+      'kpi-session',
+      'kpi-top-page',
+      'kpi-top-cta'
+    ].forEach(id => setText(id, '—'));
+    setText('kpi-intent-sub', 'Unavailable');
+    ['kpi-pv-delta', 'kpi-vis-delta', 'kpi-ses-delta', 'kpi-leads-delta'].forEach(id => setText(id, '—'));
+    ['kpi-pv-spark', 'kpi-vis-spark', 'kpi-ses-spark', 'kpi-leads-spark'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
+    const env = document.getElementById('fa-env-label');
+    if (env) env.textContent = 'Analytics unavailable';
+    const label = document.getElementById('fa-range-label');
+    if (label) label.textContent = data?.rangeLabel || state.scope.preset || 'Current Range';
+    setSummaryRefreshStatus(message || data?.unavailableReason || 'Summary data is unavailable.', true);
+    updateFounderScopeUi();
+  }
+
   function renderSummary(data) {
+    if (data?.isAvailable === false) {
+      renderSummaryUnavailable(data);
+      return;
+    }
+
     state.cache.summary = data;
     state.scope.scopeLabel = data.scopeLabel || state.scope.scopeLabel || 'Global';
     setText('kpi-pageviews', data.pageViews);
@@ -2787,6 +2826,7 @@ function escapeHtml(value) {
   }
 
   async function loadAiReviewSnapshot() {
+    if (!capabilities.aiReview) return;
     const textEl = document.getElementById('ai-snapshot-text');
     const copyBtn = document.getElementById('ai-snapshot-copy');
     const renderEl = document.getElementById('ai-snapshot-render');
@@ -2917,7 +2957,7 @@ function escapeHtml(value) {
       if (requestId !== summaryRequestId) return;
 
       const message = (err && err.message) ? err.message : 'Unable to refresh the current summary.';
-      setSummaryRefreshStatus(`Live refresh warning: ${message} Showing the last successfully loaded summary.`, true);
+      renderSummaryUnavailable({ rangeLabel: state.cache.summary?.rangeLabel || '' }, `Live summary unavailable: ${message}`);
       console.error(err);
     }
   }
@@ -2934,7 +2974,16 @@ function escapeHtml(value) {
       }
       setTableMessage('mh-errors-body', 8, (err && err.message) ? err.message : 'Unable to load marketing health.', 'text-danger');
       setText('mh-verdict', 'Unavailable');
-      setText('mh-score', '—');
+      [
+        'mh-score',
+        'mh-client-errors',
+        'mh-inferred-starts',
+        'mh-lead-persisted',
+        'mh-workstation-success',
+        'mh-workstation-failures',
+        'mh-unknown-attribution',
+        'mh-no-owner'
+      ].forEach(id => setText(id, '—'));
       console.error(err);
     }
   }
@@ -2953,8 +3002,8 @@ function escapeHtml(value) {
       setTableMessage('traffic-top-campaigns-body', 2, message, 'text-danger');
       setTableMessage('traffic-activity-body', 6, message, 'text-danger');
       setTableMessage('traffic-exited-before-start-body', 4, message, 'text-danger');
-      setText('traffic-exited-before-start-count', '0');
-      setText('traffic-exited-before-start-modal-count', '0');
+      setText('traffic-exited-before-start-count', '—');
+      setText('traffic-exited-before-start-modal-count', '—');
       console.error(err);
     }
   }
@@ -3353,6 +3402,22 @@ function escapeHtml(value) {
       setText('metasignal-range-label', 'Unavailable');
       setText('metasignal-scope-note', message);
       [
+        'metasignal-total-events',
+        'metasignal-total-visitors',
+        'metasignal-high-intent',
+        'metasignal-lead-ready',
+        'metasignal-submitted',
+        'metasignal-submit-attempts-no-lead',
+        'metasignal-high-intent-abandons',
+        'metasignal-contact-abandons',
+        'metasignal-excluded-events',
+        'metasignal-excluded-visitors',
+        'metasignal-signal-conv',
+        'metasignal-optimize',
+        'metasignal-best-variant',
+        'metasignal-worst-friction'
+      ].forEach(id => setText(id, '—'));
+      [
         ['metasignal-quote-body', 2],
         ['metasignal-campaign-body', 2],
         ['metasignal-tier-body', 2],
@@ -3558,6 +3623,10 @@ function escapeHtml(value) {
   }
 
   async function loadAgentPerf() {
+    if (!capabilities.agentPerformance) {
+      renderAgentPerfDisabledState();
+      return;
+    }
     if (isFounder && !isGlobalScope()) {
       renderAgentPerfDisabledState();
       return;
@@ -3820,6 +3889,7 @@ function escapeHtml(value) {
   }
 
   async function loadMetaCampaigns() {
+    if (!capabilities.metaAds) return;
     try {
       const data = await fetchJson('metacampaigns', endpoints.metaCampaigns, rangeParams());
       if (!data) return;
@@ -3844,6 +3914,10 @@ function escapeHtml(value) {
   }
 
   async function loadMetaConnectionStatus() {
+    if (!capabilities.metaAds) {
+      document.querySelector('.wa-kpi-meta-dock')?.setAttribute('hidden', 'hidden');
+      return;
+    }
     const statusEl = document.getElementById('meta-connection-status');
     const connectBtn = document.getElementById('meta-connect-btn');
     const disconnectBtn = document.getElementById('meta-disconnect-btn');
@@ -3907,6 +3981,7 @@ function escapeHtml(value) {
   }
 
   async function handleMetaDisconnect() {
+    if (!capabilities.metaAds) return;
     try {
       await fetchPostJson('meta-disconnect', buildUrlWithParams(endpoints.metaDisconnect, currentMetaScopeParams()));
       await loadMetaConnectionStatus();
@@ -4167,10 +4242,18 @@ function escapeHtml(value) {
     }
   }
 
+  function refreshLiveAnalytics() {
+    loadSummary();
+    if (state.openModal) refreshOpenModal();
+  }
+
   function initPolling() {
-    setInterval(() => {
-      refreshOpenModal();
-    }, state.pollMs);
+    setInterval(refreshLiveAnalytics, state.pollMs);
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshLiveAnalytics();
+    });
+    window.addEventListener('focus', refreshLiveAnalytics);
   }
 
   function initModules() {
@@ -4268,11 +4351,23 @@ function escapeHtml(value) {
       },
       getRangeParams(options) {
         return rangeParams(options || {});
+      },
+      endpoint(path) {
+        return analyticsEndpoint(path);
       }
     };
   }
 
   async function init() {
+    if (!capabilities.aiReview) {
+      document.querySelectorAll('[data-ai-drawer-trigger], #ai-review-snapshot-btn, [data-bs-target="#aiReviewSnapshotModal"]').forEach(el => {
+        el.hidden = true;
+        el.setAttribute('aria-hidden', 'true');
+      });
+    }
+    if (!capabilities.agentPerformance) {
+      document.getElementById('mod-agentperf')?.setAttribute('hidden', 'hidden');
+    }
     const tzTextEl = document.getElementById('wa-tz-text');
     if (tzTextEl) {
       tzTextEl.textContent = viewerTz.id || 'Local Timezone';
@@ -4869,6 +4964,177 @@ function escapeHtml(value) {
     if (baseOpen) baseOpen.href = base;
     rerenderProductLinks();
   }
+
+
+  // Centralized marketing + booking configuration. This UI reads/writes the
+  // existing canonical MarketingConnection and AgentProfile authorities only.
+  const marketingSetupModal = document.getElementById('marketingSetupModal');
+  const marketingSetupForm = document.getElementById('marketing-setup-form');
+  const marketingSetupStatus = document.getElementById('marketing-setup-status');
+  const marketingSetupSave = document.getElementById('marketing-setup-save');
+  let marketingSetupLoaded = false;
+
+  function marketingSetupAgentProfileId() {
+    const selected = document.getElementById('wa-scope-select')?.value || '';
+    return selected || state.agentProfileId || callerProfileId || '';
+  }
+
+  function setMarketingSetupStatus(message, kind = '') {
+    if (!marketingSetupStatus) return;
+    marketingSetupStatus.textContent = message || '';
+    marketingSetupStatus.classList.toggle('is-error', kind === 'error');
+    marketingSetupStatus.classList.toggle('is-success', kind === 'success');
+  }
+
+  function setMarketingSetupChip(key, value, goodLabel, emptyLabel, warn = false) {
+    const chip = document.querySelector(`[data-status-key="${key}"]`);
+    if (!chip) return;
+    const strong = chip.querySelector('strong');
+    if (strong) strong.textContent = value ? goodLabel : emptyLabel;
+    chip.classList.toggle('is-good', !!value);
+    chip.classList.toggle('is-warn', !value && warn);
+    chip.classList.toggle('is-neutral', !value && !warn);
+  }
+
+  function marketingSetupConnectUrl(profileId) {
+    const params = new URLSearchParams();
+    params.set('returnUrl', window.location.pathname + window.location.search);
+    if (profileId) params.set('agentProfileId', profileId);
+    return `${endpoints.metaConnect}?${params.toString()}`;
+  }
+
+  function renderMarketingSetup(payload) {
+    if (!payload) return;
+    const status = payload.status || {};
+    const marketing = payload.marketing || {};
+    const booking = payload.booking || {};
+    const profileId = payload.agentProfileId || marketingSetupAgentProfileId();
+
+    const scopeLabel = document.getElementById('marketing-setup-scope-label');
+    if (scopeLabel) scopeLabel.textContent = payload.agentName
+      ? `Configuring ${payload.agentName}`
+      : 'Scoped marketing configuration';
+
+    setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
+    setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
+    setMarketingSetupChip(
+      'bookingPersonalLive',
+      status.bookingPersonalLive,
+      'Personal live',
+      booking.enabled ? 'Needs scheduler' : 'Shared scheduler',
+      booking.enabled && !status.bookingPersonalLive);
+    setMarketingSetupChip('calendarLinked', status.calendarLinked, 'Linked', 'Not linked');
+
+    const revision = document.getElementById('marketing-setup-revision');
+    if (revision) revision.value = marketing.revision || '';
+    const pixel = document.getElementById('marketing-setup-pixel');
+    if (pixel) pixel.value = marketing.metaPixelId || '';
+    const enabled = document.getElementById('marketing-setup-booking-enabled');
+    if (enabled) enabled.checked = booking.enabled === true;
+    const embed = document.getElementById('marketing-setup-embed');
+    if (embed) embed.value = booking.microsoftBookingsEmbedUrl || '';
+    const fallback = document.getElementById('marketing-setup-fallback');
+    if (fallback) fallback.value = booking.fallbackBookingUrl || '';
+    const mailbox = document.getElementById('marketing-setup-mailbox');
+    if (mailbox) mailbox.value = booking.bookingPageIdOrMailbox || '';
+    const calendar = document.getElementById('marketing-setup-calendar');
+    if (calendar) calendar.value = booking.calendarEmail || '';
+
+    const account = document.getElementById('marketing-setup-meta-account');
+    if (account) account.textContent = marketing.metaAdsConnected
+      ? `Meta Ads connected · ${marketing.metaAccount || 'Scoped account'}`
+      : 'Meta Ads not connected for this scope';
+
+    const capi = document.getElementById('marketing-setup-capi-status');
+    if (capi) capi.textContent = marketing.metaCapiConfiguredSecurely
+      ? 'Configured securely through the scoped Meta Ads connection'
+      : 'Connect Meta Ads to configure CAPI securely and automatically';
+
+    const connect = document.getElementById('marketing-setup-meta-connect');
+    if (connect) {
+      connect.href = marketingSetupConnectUrl(profileId);
+      connect.textContent = marketing.metaAdsConnected ? 'Reconnect Meta Ads' : 'Connect Meta Ads';
+    }
+  }
+
+  async function loadMarketingSetup() {
+    if (!marketingSetupForm) return false;
+    marketingSetupLoaded = false;
+    setMarketingSetupStatus('Loading centralized setup…');
+    if (marketingSetupSave) marketingSetupSave.disabled = true;
+    try {
+      const profileId = marketingSetupAgentProfileId();
+      const payload = await fetchJson(
+        'marketingSetup',
+        endpoints.marketingSetup,
+        profileId ? { agentProfileId: profileId } : {});
+      if (!payload) return false;
+      renderMarketingSetup(payload);
+      const revision = document.getElementById('marketing-setup-revision')?.value || '';
+      if (!revision) throw new Error('Canonical marketing settings did not return a revision.');
+      marketingSetupLoaded = true;
+      setMarketingSetupStatus('Loaded from the canonical marketing and booking authorities.');
+      return true;
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to load Marketing Setup.', 'error');
+      return false;
+    } finally {
+      if (marketingSetupSave) marketingSetupSave.disabled = !marketingSetupLoaded;
+    }
+  }
+
+  async function saveMarketingSetup(event) {
+    event?.preventDefault?.();
+    if (!marketingSetupForm || !marketingSetupSave) return;
+
+    let revision = document.getElementById('marketing-setup-revision')?.value || '';
+    if (!marketingSetupLoaded || !revision) {
+      const loaded = await loadMarketingSetup();
+      revision = document.getElementById('marketing-setup-revision')?.value || '';
+      if (!loaded || !revision) {
+        setMarketingSetupStatus('Unable to load the canonical Marketing Setup. Nothing was saved.', 'error');
+        return;
+      }
+    }
+
+    const pixel = (document.getElementById('marketing-setup-pixel')?.value || '').trim();
+    if (pixel && !/^\d{1,32}$/.test(pixel)) {
+      setMarketingSetupStatus('Meta Pixel ID must contain only digits.', 'error');
+      return;
+    }
+
+    const body = {
+      agentProfileId: marketingSetupAgentProfileId() || null,
+      marketingRevision: revision,
+      metaPixelId: pixel || null,
+      bookingEnabled: document.getElementById('marketing-setup-booking-enabled')?.checked === true,
+      microsoftBookingsEmbedUrl: (document.getElementById('marketing-setup-embed')?.value || '').trim() || null,
+      fallbackBookingUrl: (document.getElementById('marketing-setup-fallback')?.value || '').trim() || null,
+      bookingPageIdOrMailbox: (document.getElementById('marketing-setup-mailbox')?.value || '').trim() || null,
+      calendarEmail: (document.getElementById('marketing-setup-calendar')?.value || '').trim() || null
+    };
+
+    marketingSetupSave.disabled = true;
+    setMarketingSetupStatus('Saving centralized setup…');
+    try {
+      const payload = await fetchPostJson('marketingSetupSave', endpoints.marketingSetup, body);
+      renderMarketingSetup(payload);
+      setMarketingSetupStatus('Marketing Setup saved.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to save Marketing Setup.', 'error');
+    } finally {
+      marketingSetupSave.disabled = false;
+    }
+  }
+
+  marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
+  marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
+  document.getElementById('wa-scope-select')?.addEventListener('change', () => {
+    marketingSetupLoaded = false;
+    if (marketingSetupSave) marketingSetupSave.disabled = true;
+    if (marketingSetupModal?.classList.contains('show')) void loadMarketingSetup();
+  });
+
 })();
 
 ;(() => {
@@ -5013,7 +5279,11 @@ function escapeHtml(value) {
     const content = document.getElementById('deviceIntelligenceContent');
     if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
 
-    const deviceUrl = `${analyticsEndpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
+    const endpoint = window.websiteAnalyticsBridge?.endpoint;
+    if (typeof endpoint !== 'function') {
+      throw new Error('Analytics endpoint authority is unavailable.');
+    }
+    const deviceUrl = `${endpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
     const res = await fetchCachedDeviceRequest(deviceUrl, () => fetch(deviceUrl, {
       headers: { 'Accept': 'application/json' }
     }));
@@ -5090,4 +5360,5 @@ function escapeHtml(value) {
       window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
     });
   });
+
 })();

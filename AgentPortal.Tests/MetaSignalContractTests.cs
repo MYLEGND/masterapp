@@ -14,7 +14,7 @@ public class MetaSignalContractTests
     [Fact]
     public void MetaSignalFrontendEmits_OnlyCatalogedSignals()
     {
-        var file = Path.Combine(GetRepoRoot(), "Protect-Website", "wwwroot", "js", "meta-signal-intelligence.js");
+        var file = Path.Combine(GetRepoRoot(), "SHARED", "WebsitePlatform", "meta-signal-intelligence.js");
         var content = File.ReadAllText(file);
 
         var emittedSignals = Regex.Matches(content, @"emitSignal\('([A-Za-z][A-Za-z0-9]+)'")
@@ -33,7 +33,7 @@ public class MetaSignalContractTests
     [Fact]
     public void MetaSignalBrowserPixelAllowlist_StaysCatalogAligned()
     {
-        var file = Path.Combine(GetRepoRoot(), "Protect-Website", "wwwroot", "js", "meta-signal-intelligence.js");
+        var file = Path.Combine(GetRepoRoot(), "SHARED", "WebsitePlatform", "meta-signal-intelligence.js");
         var content = File.ReadAllText(file);
         var match = Regex.Match(content, @"const DEFAULT_META_BROWSER_EVENTS = \[(.*?)\];", RegexOptions.Singleline);
         Assert.True(match.Success, "Could not locate DEFAULT_META_BROWSER_EVENTS.");
@@ -54,7 +54,7 @@ public class MetaSignalContractTests
     [Fact]
     public void MetaSignalFrontend_ContainsLearningEnrichmentFields()
     {
-        var file = Path.Combine(GetRepoRoot(), "Protect-Website", "wwwroot", "js", "meta-signal-intelligence.js");
+        var file = Path.Combine(GetRepoRoot(), "SHARED", "WebsitePlatform", "meta-signal-intelligence.js");
         var content = File.ReadAllText(file);
 
         Assert.Contains("engagementIntensityScore", content, StringComparison.Ordinal);

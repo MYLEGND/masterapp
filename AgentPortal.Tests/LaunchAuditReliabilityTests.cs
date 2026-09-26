@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Infrastructure.Analytics;
+using Domain.Entities;
 using Protect_Website.Models;
 using Shared.Analytics;
 using Xunit;
@@ -86,6 +87,47 @@ public sealed class LaunchAuditReliabilityTests
         Assert.Single(await db.AnalyticsEvents.ToListAsync());
         request.SessionId = "different-session";
         Assert.IsType<ConflictObjectResult>(await controller.MetaSignal(request, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ProtectBrowserMetaIngestIgnoresSpoofedAgentOwnerAndUsesServerScope()
+    {
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var serverAgent = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "server-agent",
+            AgentUpn = "server@example.test",
+            Slug = "server-scope",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        var http = new DefaultHttpContext();
+        http.Items["TrackingProfile"] = serverAgent;
+        http.Items["TrackingSlug"] = serverAgent.Slug;
+
+        var controller = new Protect_Website.Controllers.AnalyticsController(db,
+            NullLogger<Protect_Website.Controllers.AnalyticsController>.Instance)
+        { ControllerContext = new ControllerContext { HttpContext = http } };
+
+        var request = new MetaSignalIngestRequest
+        {
+            EventId = Guid.NewGuid().ToString("N"),
+            EventName = "ViewContent",
+            SessionId = "server-owned-session",
+            VisitorId = "server-owned-visitor",
+            AgentTrackingProfileId = Guid.NewGuid(),
+            AgentSlug = "spoofed-agent"
+        };
+
+        Assert.IsType<JsonResult>(await controller.MetaSignal(request, CancellationToken.None));
+
+        var row = await db.AnalyticsEvents.SingleAsync();
+        Assert.Equal(serverAgent.Id, row.AgentTrackingProfileId);
+        Assert.Equal(serverAgent.Slug, row.AgentSlug);
+        Assert.NotEqual(request.AgentTrackingProfileId, row.AgentTrackingProfileId);
+        Assert.NotEqual(request.AgentSlug, row.AgentSlug);
     }
 
     [Theory]

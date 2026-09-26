@@ -1,6 +1,6 @@
 using System;
 
-namespace ProtectWebsite.Services.Tracking;
+namespace Infrastructure.Analytics;
 
 /// <summary>
 /// SINGLE SOURCE OF TRUTH EVENT CONTRACT

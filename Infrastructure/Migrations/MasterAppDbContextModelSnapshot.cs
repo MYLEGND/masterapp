@@ -1056,6 +1056,9 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("CommerceBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("AgentUserId")
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
@@ -1113,6 +1116,8 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AppointmentId");
+
+                    b.HasIndex("CommerceBusinessId");
 
                     b.HasIndex("CreatedUtc");
 
@@ -4255,6 +4260,9 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("CommerceBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("AgentUserId")
                         .IsRequired()
                         .HasMaxLength(450)
@@ -4316,6 +4324,8 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("AgentUserId", "CalendarEmail");
+
+                    b.HasIndex("CommerceBusinessId", "CalendarEmail");
 
                     b.HasIndex("IsActive", "ExpirationUtc");
 
@@ -4988,6 +4998,9 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime?>("BookedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("CommerceBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("BookingAgentSlug")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -5139,6 +5152,8 @@ namespace Infrastructure.Migrations
                     b.HasIndex("WorkstationLeadId", "UpdatedUtc");
 
                     b.HasIndex("OwnerAgentUserId", "Status", "ScheduledStartUtc");
+
+                    b.HasIndex("CommerceBusinessId", "Status", "ScheduledStartUtc");
 
                     b.ToTable("LeadAppointments", (string)null);
                 });
@@ -10019,6 +10034,16 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(220)
                         .HasColumnType("nvarchar(220)");
 
+                    b.Property<string>("MetaDispatchClaimToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("MetaDispatchClaimedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("MetaDispatchClaimExpiresUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("MetaServerSent")
                         .HasColumnType("bit");
 
@@ -10164,6 +10189,8 @@ namespace Infrastructure.Migrations
                     b.HasIndex("CommerceBusinessId", "CreatedUtc");
 
                     b.HasIndex("EventName", "CreatedUtc");
+
+                    b.HasIndex("MetaServerSent", "MetaDispatchClaimExpiresUtc");
 
                     b.HasIndex("SessionId", "QuoteType", "CreatedUtc");
 

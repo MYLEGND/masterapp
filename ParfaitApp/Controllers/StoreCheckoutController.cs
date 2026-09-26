@@ -18,11 +18,8 @@ public sealed class StoreCheckoutController : Controller
     private readonly ParfaitCustomerAutomationService _automations;
     private readonly IBillingOrchestrator _billingOrchestrator;
     private readonly IGraphMailService _mail;
-    private readonly IParfaitAnalyticsService _analytics;
     private readonly CommerceSignalService? _commerceSignals;
     private readonly CommerceStoreContextService? _stores;
-    private readonly ParfaitMetaSignalBridgeService? _legacyMetaSignalBridge;
-    private readonly bool _legacyCompatibility;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public StoreCheckoutController(
@@ -32,7 +29,6 @@ public sealed class StoreCheckoutController : Controller
         ParfaitCustomerAutomationService automations,
         IBillingOrchestrator billingOrchestrator,
         IGraphMailService mail,
-        IParfaitAnalyticsService analytics,
         CommerceSignalService commerceSignals,
         CommerceStoreContextService stores)
     {
@@ -42,7 +38,6 @@ public sealed class StoreCheckoutController : Controller
         _automations = automations;
         _billingOrchestrator = billingOrchestrator;
         _mail = mail;
-        _analytics = analytics;
         _commerceSignals = commerceSignals;
         _stores = stores;
     }
@@ -56,8 +51,7 @@ public sealed class StoreCheckoutController : Controller
         ParfaitCustomerAutomationService automations,
         IBillingOrchestrator billingOrchestrator,
         IGraphMailService mail,
-        IParfaitAnalyticsService analytics,
-        ParfaitMetaSignalBridgeService metaSignalBridge)
+        CommerceSignalService commerceSignals)
     {
         _squareOptions = squareOptions;
         _products = products;
@@ -65,9 +59,7 @@ public sealed class StoreCheckoutController : Controller
         _automations = automations;
         _billingOrchestrator = billingOrchestrator;
         _mail = mail;
-        _analytics = analytics;
-        _legacyMetaSignalBridge = metaSignalBridge;
-        _legacyCompatibility = true;
+        _commerceSignals = commerceSignals;
     }
 
     [NonAction]
@@ -137,6 +129,9 @@ public sealed class StoreCheckoutController : Controller
         var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
+        var redirect = await CanonicalizeScopedRequestAsync(store, businessKey, "/checkout", ct);
+        if (redirect is not null) return redirect;
+
         ApplyStoreContext(store);
         ViewBag.SquareApplicationId = _squareOptions.ApplicationId;
         ViewBag.SquareLocationId = _squareOptions.LocationId;
@@ -169,10 +164,9 @@ public sealed class StoreCheckoutController : Controller
         request.Items ??= [];
         var quote = _products.QuoteCart(store.CommerceBusinessId, request.Items, request.DiscountCode);
 
-        // Parfait retains its existing automation authority. Website-scoped stores
-        // use the existing website/CRM authorities and do not receive Parfait-branded automation.
-        if (store.IsParfait)
-            _automations.CaptureCheckoutLead(request, quote);
+        // The canonical automation engine is commerce-business scoped. Every storefront
+        // uses the same workflow authority without crossing tenant data.
+        _automations.CaptureCheckoutLead(store.CommerceBusinessId, request, quote);
 
         return NoContent();
     }
@@ -310,48 +304,19 @@ public sealed class StoreCheckoutController : Controller
 
         var paidOrder = _orders.GetOrder(store.CommerceBusinessId, order.OrderNumber) ?? order;
 
-        if (store.IsParfait)
-            _automations.MarkOrderConverted(paidOrder);
+        _automations.MarkOrderConverted(store.CommerceBusinessId, paidOrder);
 
         try
         {
-            if (_legacyCompatibility)
-                await _analytics.TrackPurchaseAsync(paidOrder, HttpContext, ct);
-            else
-                await _analytics.TrackPurchaseScopedAsync(
-                    store.CommerceBusinessId,
-                    store.AgentTrackingProfileId,
-                    store.WebsiteContentVersionId,
-                    store.WebsiteSiteKey,
-                    store.BusinessKey,
-                    store.CheckoutPath,
-                    paidOrder,
-                    HttpContext,
-                    ct);
-        }
-        catch
-        {
-            // Payment authority is independent from optional analytics.
-        }
-
-        try
-        {
-            if (_commerceSignals is not null)
-            {
-                await _commerceSignals.RecordAsync(
-                    "Purchase",
-                    paidOrder.OrderNumber,
-                    signalContext,
-                    firstItem is null ? null : ProductSignal(firstItem),
-                    CustomerSignal(request.Customer),
-                    paidOrder.OrderNumber,
-                    validatedItems.Select(ProductSignal).ToArray(),
-                    ct);
-            }
-            else if (_legacyMetaSignalBridge is not null)
-            {
-                await _legacyMetaSignalBridge.RecordPurchaseAsync(paidOrder, HttpContext, ct);
-            }
+            await _commerceSignals!.RecordAsync(
+                "Purchase",
+                paidOrder.OrderNumber,
+                signalContext,
+                firstItem is null ? null : ProductSignal(firstItem),
+                CustomerSignal(request.Customer),
+                paidOrder.OrderNumber,
+                validatedItems.Select(ProductSignal).ToArray(),
+                ct);
         }
         catch
         {
@@ -380,6 +345,10 @@ public sealed class StoreCheckoutController : Controller
         var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
+        var suffix = "/success?orderNumber=" + Uri.EscapeDataString(orderNumber ?? string.Empty);
+        var redirect = await CanonicalizeScopedRequestAsync(store, businessKey, suffix, ct);
+        if (redirect is not null) return redirect;
+
         ApplyStoreContext(store);
         return View("~/Views/Store/Success.cshtml", new ParfaitOrderSuccessViewModel
         {
@@ -392,7 +361,7 @@ public sealed class StoreCheckoutController : Controller
     private Task<CommerceStoreContext?> ResolveStoreAsync(string? businessKey, CancellationToken ct)
     {
         if (_stores is not null)
-            return _stores.ResolvePublicAsync(businessKey, ct);
+            return _stores.ResolvePublicAsync(HttpContext, businessKey, ct);
 
         if (!string.IsNullOrWhiteSpace(businessKey))
             return Task.FromResult<CommerceStoreContext?>(null);
@@ -406,6 +375,7 @@ public sealed class StoreCheckoutController : Controller
             BusinessKey: "parfait",
             StoreName: "Parfait",
             NavigationLabel: "Shop",
+            CartIcon: "cart",
             Headline: "Parfait",
             Subheadline: "Parfait storefront.",
             StoreRootPath: "/store",
@@ -417,7 +387,27 @@ public sealed class StoreCheckoutController : Controller
             AccentColor: "",
             LogoUrl: null,
             GlobalCheckoutUrl: null,
-            Theme: new WebsiteThemeOverride()));
+            Theme: new WebsiteThemeOverride(),
+            WebsiteShellPrefix: null,
+            WebsiteShellSuffix: null));
+    }
+
+    private async Task<IActionResult?> CanonicalizeScopedRequestAsync(
+        CommerceStoreContext store,
+        string? businessKey,
+        string suffix,
+        CancellationToken ct)
+    {
+        if (_stores is null ||
+            string.IsNullOrWhiteSpace(businessKey) ||
+            store.IsParfait ||
+            !_stores.IsCentralCommerceHost(HttpContext))
+            return null;
+
+        var canonicalRoot = await _stores.ResolveCanonicalPublicRootAsync(store, ct);
+        return string.IsNullOrWhiteSpace(canonicalRoot)
+            ? null
+            : RedirectPermanent(canonicalRoot + suffix);
     }
 
     private void ApplyStoreContext(CommerceStoreContext store)
@@ -439,7 +429,7 @@ public sealed class StoreCheckoutController : Controller
             store.WebsiteSiteKey,
             store.BusinessKey,
             store.StoreName,
-            $"{Request.Scheme}://{Request.Host}{store.CheckoutPath}",
+            $"{Request.Scheme}://{(_stores?.ResolveEffectivePublicHost(HttpContext) ?? Request.Host.Host)}{store.CheckoutPath}",
             Cookie("pf_sid"),
             Cookie("pf_vid"),
             Request.Headers.Referer.ToString(),

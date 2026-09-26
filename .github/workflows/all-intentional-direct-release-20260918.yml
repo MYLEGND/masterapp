@@ -50,6 +50,7 @@ jobs:
           python3 scripts/approved-release-baseline.py "${args[@]}" --output "$GITHUB_OUTPUT"
   preserve-rollback:
     needs: discover-live
+    if: needs.discover-live.outputs.preserve_live_targets != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -91,6 +92,7 @@ jobs:
           if-no-files-found: error
   release:
     needs: [discover-live, preserve-rollback]
+    if: ${{ always() && needs.discover-live.result == 'success' && (needs.preserve-rollback.result == 'success' || needs.preserve-rollback.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: Production
@@ -209,9 +211,16 @@ jobs:
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo \
             --filter 'FullyQualifiedName~WebsiteDomainImportTests' \
             -p:TreatWarningsAsErrors=true
+          dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
           npm ci --prefix Legend-Cloudflare
           npm --prefix Legend-Cloudflare run test:website-routing
           npm --prefix Legend-Cloudflare run check:website-routing
+          python3 -m py_compile scripts/cloudflare-routing-authority.py
+          legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
+          if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
+            echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
+            exit 1
+          fi
       - name: Verify localization retention privacy limits and original delivery
         id: tests
         if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && steps.build.outcome == 'success'
@@ -304,6 +313,39 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Preserve targets already live at exact candidate
+        id: resumestate
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYRESUME'
+          import json, os, urllib.request
+          selected=set(json.loads(os.environ['SELECTED_TARGETS']))
+          expected=os.environ['APPLICATION_RELEASE_SHA']
+          inventory={
+              'portal':('masterapp-portal','https://portal.mylegnd.com/api/runtime-provenance',False),
+              'client':('masterapp-client','https://client.mylegnd.com/api/runtime-provenance',False),
+              'protect':('masterapp-protect','https://masterapp-protect.azurewebsites.net/api/runtime-provenance',False),
+              'parfait':('masterapp-parfait','https://masterapp-parfait.azurewebsites.net/api/runtime-provenance',False),
+              'website':('masterapp-website','https://masterapp-website.azurewebsites.net/_deployment-provenance.txt',True),
+          }
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              for key,(app,url,is_static) in inventory.items():
+                  live=False
+                  actual=None
+                  if app in selected:
+                      try:
+                          request=urllib.request.Request(url+'?release='+expected,headers={'Cache-Control':'no-cache'})
+                          with urllib.request.urlopen(request,timeout=15) as response:
+                              actual=response.read().decode().strip() if is_static else json.load(response).get('sourceRevision')
+                          live=actual==expected
+                      except Exception as error:
+                          actual=type(error).__name__
+                  output.write(f'{key}_live={str(live).lower()}\n')
+                  print(json.dumps({'target':app,'alreadyLive':live,'actual':actual,'expected':expected if app in selected else None}))
+          PYRESUME
+          echo "Exact-candidate live targets are preserved; only targets not already live may deploy."
       - name: Synchronize Protect shared website authorization and publisher runtime
         id: protectauth
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
@@ -391,29 +433,46 @@ jobs:
               current="$(resolve_value "$settings_file" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
               if [ "$current" != "$expected" ]; then marketing_updates+=("${key:-MarketingDataProtection__$pair}=$expected"); fi
             done
-            if [ "$app" = masterapp-parfait ]; then
-              # Parfait authentication now uses the existing platform Data Protection
-              # authority. Reuse the canonical Portal Blob/Key Vault locations while
-              # keeping purpose isolation through application name "ParfaitApp".
-              for pair in BlobUri KeyVaultKeyId; do
-                expected="$blob"; if [ "$pair" = KeyVaultKeyId ]; then expected="$keyvault"; fi
-                key="$(resolve_key "$settings_file" "DataProtection__$pair" "DataProtection:$pair" || true)"
-                current="$(resolve_value "$settings_file" "DataProtection__$pair" "DataProtection:$pair" || true)"
-                if [ "$current" != "$expected" ]; then marketing_updates+=("${key:-DataProtection__$pair}=$expected"); fi
-              done
-            fi
             if [ "${#marketing_updates[@]}" -gt 0 ]; then
               az webapp config appsettings set -g masterapp-rg -n "$app" --settings "${marketing_updates[@]}" --output none
             fi
             az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings_file"
             [ "$(resolve_value "$settings_file" MarketingDataProtection__BlobUri 'MarketingDataProtection:BlobUri')" = "$blob" ]
             [ "$(resolve_value "$settings_file" MarketingDataProtection__KeyVaultKeyId 'MarketingDataProtection:KeyVaultKeyId')" = "$keyvault" ]
-            if [ "$app" = masterapp-parfait ]; then
-              [ "$(resolve_value "$settings_file" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
-              [ "$(resolve_value "$settings_file" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
-            fi
           done
           echo "Selected marketing consumers use the shared key authority."
+
+      - name: Synchronize shared website editor ticket authority
+        id: editorauth
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' && (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait')) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          portal_settings=/tmp/portal-editor-ticket-authority.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
+          value() {
+            local file="$1"; shift
+            local key found
+            for key in "$@"; do
+              found="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
+              if [ -n "$found" ]; then printf '%s' "$found"; return 0; fi
+            done
+            return 1
+          }
+          blob="$(value "$portal_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri' DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(value "$portal_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId' DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          [ -n "$blob" ] && [ -n "$keyvault" ]
+          echo "::add-mask::$blob"
+          echo "::add-mask::$keyvault"
+          for app in masterapp-protect masterapp-parfait; do
+            if [[ "$SELECTED_TARGETS" != *"\"$app\""* ]]; then continue; fi
+            az webapp config appsettings set -g masterapp-rg -n "$app" --settings               "WebsiteEditorDataProtection__BlobUri=$blob"               "WebsiteEditorDataProtection__KeyVaultKeyId=$keyvault" --output none
+            settings="/tmp/$app-editor-ticket-authority.json"
+            az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings"
+            [ "$(value "$settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri')" = "$blob" ]
+            [ "$(value "$settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId')" = "$keyvault" ]
+          done
+          echo "Selected website and commerce runtimes share one editor-ticket key authority."
 
       - name: Prepare shared business website routing authority
         id: routingsecret
@@ -421,13 +480,12 @@ jobs:
         shell: bash
         env:
           PRIMARY_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
-          FALLBACK_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CONFIGURED_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          token="${PRIMARY_CLOUDFLARE_TOKEN:-${FALLBACK_CLOUDFLARE_TOKEN:-}}"
+          token="${PRIMARY_CLOUDFLARE_TOKEN:-}"
           if [ -z "$token" ]; then
-            echo "::error::Cloudflare Workers deployment credential is not configured. Add the dedicated Production secret CLOUDFLARE_WORKERS_API_TOKEN using the Cloudflare Edit Workers template scoped to this account and mylegnd.com."
+            echo "::error::Central Cloudflare routing authority is not configured. Set the Production secret CLOUDFLARE_WORKERS_API_TOKEN to the scoped LEGEND Cloudflare Production Routing token."
             exit 1
           fi
           echo "::add-mask::$token"
@@ -477,7 +535,86 @@ jobs:
           az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
           persisted="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
           [ "$persisted" = "$bridge_secret" ]
-          echo "Shared website routing authority is present in Protect without exposing its value."
+          protect_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)"
+          if [ "$protect_origin" != "masterapp-protect.azurewebsites.net" ]; then
+            if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
+              echo "::error::Preserve-live routing recovery requires Protect's existing bridge origin host."
+              exit 1
+            fi
+            az webapp config appsettings set -g masterapp-rg -n masterapp-protect \
+              --settings "WebsiteRouting__BridgeOriginHost=masterapp-protect.azurewebsites.net" --output none
+          fi
+          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
+          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)" = "masterapp-protect.azurewebsites.net" ]
+
+          parfait_settings=/tmp/parfait-website-routing.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
+          parfait_bridge="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$parfait_settings" | head -n 1)"
+          parfait_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)"
+          if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
+            [ "$parfait_bridge" = "$bridge_secret" ] || { echo "::error::Preserve-live routing recovery requires Parfait to already share the website bridge authority."; exit 1; }
+            [ "$parfait_origin" = "masterapp-parfait.azurewebsites.net" ] || { echo "::error::Preserve-live routing recovery requires Parfait's existing bridge origin host."; exit 1; }
+          else
+            parfait_updates=()
+            if [ "$parfait_bridge" != "$bridge_secret" ]; then parfait_updates+=("WebsiteRouting__BridgeSecret=$bridge_secret"); fi
+            if [ "$parfait_origin" != "masterapp-parfait.azurewebsites.net" ]; then parfait_updates+=("WebsiteRouting__BridgeOriginHost=masterapp-parfait.azurewebsites.net"); fi
+            if [ "${#parfait_updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g masterapp-rg -n masterapp-parfait --settings "${parfait_updates[@]}" --output none
+            fi
+          fi
+          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
+          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$parfait_settings" | head -n 1)" = "$bridge_secret" ]
+          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)" = "masterapp-parfait.azurewebsites.net" ]
+          echo "Shared website routing authority is present in Protect and Parfait without exposing its value."
+
+      - name: Audit centralized Cloudflare routing authority
+        id: routingauthority
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/cloudflare-routing-authority.py audit --prove-cache-purge
+
+      - name: Diagnose preserve-live routing origin acceptance
+        id: routingorigin
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Azure front-door summaries (no secrets):"
+          for app in masterapp-protect masterapp-parfait; do
+            echo "=== $app ==="
+            az webapp show -g masterapp-rg -n "$app" --query '{publicNetworkAccess:publicNetworkAccess,httpsOnly:httpsOnly,state:state}' -o json
+            az webapp config access-restriction show -g masterapp-rg -n "$app" \
+              --query '{mainSiteAccessRestrictions:ipSecurityRestrictions,mainSiteDefaultAction:ipSecurityRestrictionsDefaultAction,scmSiteDefaultAction:scmIpSecurityRestrictionsDefaultAction}' -o json
+            az webapp auth show -g masterapp-rg -n "$app" \
+              --query '{enabled:platform.enabled,requireAuthentication:globalValidation.requireAuthentication,unauthenticatedClientAction:globalValidation.unauthenticatedClientAction,excludedPaths:globalValidation.excludedPaths}' -o json || true
+          done
+
+          probe() {
+            app="$1"
+            path="$2"
+            body="/tmp/${app}-origin-body"
+            headers="/tmp/${app}-origin-headers"
+            status="$(curl --silent --show-error --max-time 30 \
+              --output "$body" --dump-header "$headers" --write-out '%{http_code}' \
+              -H "X-Legend-Original-Host: $WEBSITE_ROUTING_CANARY" \
+              -H "X-Legend-Website-Bridge: $LEGEND_WEBSITE_BRIDGE_SECRET" \
+              -H "User-Agent: LEGEND-routing-origin-diagnostic/1.0" \
+              "https://${app}.azurewebsites.net${path}")"
+            echo "${app}${path} direct-origin status=${status} bytes=$(wc -c < "$body")"
+            grep -Ei '^(server|x-|location|content-type|date):' "$headers" || true
+            sha256sum "$body"
+            python3 - "$body" <<'PYORIGIN'
+          import pathlib,sys
+          raw=pathlib.Path(sys.argv[1]).read_bytes()[:512]
+          text=raw.decode('utf-8','replace').replace('\r',' ').replace('\n',' ')
+          print('body-prefix:',text)
+          PYORIGIN
+          }
+          probe masterapp-protect /
+          probe masterapp-parfait /store
+
 
 
       - name: Apply additive diagnostics migrations before restarting apps
@@ -513,7 +650,7 @@ jobs:
           PYMIGRATE
       - name: Direct deploy AgentPortal
         id: portal
-        if: ${{ env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') && !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') && steps.resumestate.outputs.portal_live != 'true' && !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -522,7 +659,7 @@ jobs:
           package: /tmp/agentportal-publish
       - name: Direct deploy ClientApp
         id: client
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.resumestate.outputs.client_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -547,18 +684,77 @@ jobs:
           done
           echo "::error::ClientApp deployment transport failed after three attempts with the same immutable package."
           exit 1
-      - name: Direct deploy Protect
+      - name: Refresh Azure OIDC before late deployments
+        id: azuredeploy
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website')) }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Direct deploy Protect immutable ZIP
         id: protect
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.resumestate.outputs.protect_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          package=/tmp/diagnostics-packages/protect.zip
+          [ -s "$package" ]
+          unzip -tq "$package" >/dev/null
+          test "$(unzip -p "$package" wwwroot/_deployment-provenance.json | jq -r .releaseSha)" = "$RELEASE_SHA"
+          grep -F "  $package" /tmp/diagnostics-packages/SHA256SUMS >/dev/null || grep -F "protect.zip" /tmp/diagnostics-packages/SHA256SUMS >/dev/null
+          expected="$(awk '$2 ~ /protect\.zip$/ {print $1}' /tmp/diagnostics-packages/SHA256SUMS)"
+          [ -n "$expected" ]
+          [ "$(sha256sum "$package" | awk '{print $1}')" = "$expected" ]
+
+          # Protect uses the same immutable ZIP transport proven by recovery run #187.
+          # Never rebuild or switch packages between retries.
+          for attempt in 1 2 3; do
+            echo "Protect immutable ZIP deployment attempt $attempt/3"
+            if az webapp deploy \
+              --resource-group masterapp-rg \
+              --name masterapp-protect \
+              --src-path "$package" \
+              --type zip \
+              --clean true \
+              --restart true \
+              --async false \
+              --timeout 600000 \
+              --enriched-errors true \
+              --only-show-errors \
+              --output none; then
+              echo "Protect ZIP deployment accepted on attempt $attempt."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Protect deployment transport failed on attempt $attempt; retrying the exact same immutable ZIP after Kudu settles."
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "::error::Protect deployment transport failed after three attempts with the same immutable package."
+          exit 1
+      - name: Direct deploy Parfait
+        id: parfait
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.resumestate.outputs.parfait_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
-          app-name: masterapp-protect
+          app-name: masterapp-parfait
           slot-name: Production
-          package: /tmp/protect-publish
+          package: /tmp/parfait-publish
+      - name: Reconcile public custom-hostname Cloudflare policy
+        id: routingpolicy
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/cloudflare-routing-authority.py reconcile-bot-fight
+          python3 scripts/cloudflare-routing-authority.py reconcile-bic
+
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || steps.resumestate.outputs.protect_live == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || steps.resumestate.outputs.parfait_live == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -572,7 +768,7 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/legend-business-website-router/deployments?per_page=1")"
           case "$deployments_status" in
             200)
-              previous_version="$(jq -r 'select(.success == true) | .result[0].versions[0].version_id // empty' "$deployments_file")"
+              previous_version="$(jq -r 'select(.success == true) | .result.deployments[0].versions[0].version_id // empty' "$deployments_file")"
               ;;
             404)
               previous_version=""
@@ -651,27 +847,50 @@ jobs:
             exit 1
           fi
           echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
-      - name: Direct deploy Parfait
-        id: parfait
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
-        continue-on-error: true
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-parfait
-          slot-name: Production
-          package: /tmp/parfait-publish
-      - name: Direct deploy Website
+      - name: Direct deploy Website immutable ZIP
         id: website
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.resumestate.outputs.website_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
         continue-on-error: true
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-website
-          slot-name: Production
-          package: /tmp/diagnostics-packages/website.zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          package=/tmp/diagnostics-packages/website.zip
+          [ -s "$package" ]
+          unzip -tq "$package" >/dev/null
+          expected="$(awk '$2 ~ /website\.zip$/ {print $1}' /tmp/diagnostics-packages/SHA256SUMS)"
+          [ -n "$expected" ]
+          [ "$(sha256sum "$package" | awk '{print $1}')" = "$expected" ]
+
+          # Deploy the exact retained Website artifact. A transient OneDeploy ZIP
+          # extraction fault retries the same immutable package; it never rebuilds,
+          # substitutes artifacts, or creates an alternate deployment authority.
+          for attempt in 1 2 3; do
+            echo "Website immutable ZIP deployment attempt $attempt/3"
+            if az webapp deploy \
+              --resource-group masterapp-rg \
+              --name masterapp-website \
+              --src-path "$package" \
+              --type zip \
+              --clean true \
+              --restart true \
+              --async false \
+              --timeout 600000 \
+              --enriched-errors true \
+              --only-show-errors \
+              --output none; then
+              echo "Website ZIP deployment accepted on attempt $attempt."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Website deployment transport failed on attempt $attempt; retrying the exact same immutable ZIP after Kudu settles."
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "::error::Website deployment transport failed after three attempts with the same immutable package."
+          exit 1
       - name: Verify custom-domain bridge end to end
         id: routinglive
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -701,30 +920,127 @@ jobs:
             done
           }
 
+          portal_connection="$(az webapp config connection-string list -g masterapp-rg -n masterapp-portal -o json | jq -r '.[] | select(.name=="MasterAppDb") | .value' | head -n 1)"
+          if [ -z "$portal_connection" ] || [ "$portal_connection" = null ]; then
+            portal_connection="$(az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json | jq -r '.[] | select(.name=="ConnectionStrings__MasterAppDb" or .name=="MasterAppDb" or .name=="SQLCONNSTR_MasterAppDb") | .value' | head -n 1)"
+          fi
+          protect_settings=/tmp/protect-domain-refresh.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
+          domain_token="$(jq -r '.[] | select(.name=="WebsiteDomains__ApiToken" or .name=="WebsiteDomains:ApiToken") | .value' "$protect_settings" | head -n 1)"
+          cname_target="$(jq -r '.[] | select(.name=="WebsiteDomains__CnameTarget" or .name=="WebsiteDomains:CnameTarget") | .value' "$protect_settings" | head -n 1)"
+          if [ -z "$portal_connection" ] || [ "$portal_connection" = null ] ||
+             [ -z "$domain_token" ] || [ "$domain_token" = null ] ||
+             [ -z "$cname_target" ] || [ "$cname_target" = null ]; then
+            echo "::error::Shared domain authority configuration is unavailable."
+            restore_router
+            exit 1
+          fi
+          echo "::add-mask::$portal_connection"
+          echo "::add-mask::$domain_token"
+          if ! LEGEND_RELEASE_DOMAIN="$WEBSITE_ROUTING_CANARY" \
+               LEGEND_RELEASE_DB_CONNECTION="$portal_connection" \
+               LEGEND_RELEASE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
+               LEGEND_RELEASE_DOMAIN_TOKEN="$domain_token" \
+               LEGEND_RELEASE_CNAME_TARGET="$cname_target" \
+               dotnet run --project scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --no-restore; then
+            restore_router
+            exit 1
+          fi
+
           if ! python3 - <<'PYCUSTOM'
-          import http.client, json, os, ssl
+          import http.client, json, os, ssl, time
           host=os.environ['WEBSITE_ROUTING_CANARY']
-          conn=http.client.HTTPSConnection(host,443,timeout=30,context=ssl.create_default_context())
-          try:
-              conn.request('GET','/.well-known/legend-website',headers={'User-Agent':'LEGEND-worker-release-proof/1.0','Cache-Control':'no-cache','Accept':'application/json'})
-              response=conn.getresponse()
-              body=response.read(4097)
-              print(host,response.status,len(body))
-              if response.status != 200 or len(body) > 4096:
-                  raise SystemExit(f'Custom-domain routing proof failed: HTTP {response.status}')
-              receipt=json.loads(body)
-              for key in ('businessId','bindingId'):
-                  value=receipt.get(key)
-                  if not isinstance(value,str) or len(value) < 32:
-                      raise SystemExit(f'Custom-domain routing proof missing {key}')
-          finally:
-              conn.close()
+          context=ssl.create_default_context()
+
+          def request(path, accept=None):
+              conn=http.client.HTTPSConnection(host,443,timeout=20,context=context)
+              try:
+                  headers={'User-Agent':'LEGEND-commerce-domain-proof/1.0','Cache-Control':'no-cache'}
+                  if accept: headers['Accept']=accept
+                  conn.request('GET',path,headers=headers)
+                  response=conn.getresponse()
+                  body=response.read(8193)
+                  edge_headers={key.lower(): value for key,value in response.getheaders()}
+                  if response.status >= 400:
+                      print('edge-diagnostic', json.dumps({
+                          'path': path,
+                          'status': response.status,
+                          'bytes': len(body),
+                          'server': edge_headers.get('server'),
+                          'cf-ray': edge_headers.get('cf-ray'),
+                          'cf-cache-status': edge_headers.get('cf-cache-status'),
+                          'x-azure-ref': edge_headers.get('x-azure-ref'),
+                          'x-ms-forbidden-ip': edge_headers.get('x-ms-forbidden-ip'),
+                          'content-type': edge_headers.get('content-type'),
+                          'bodyPrefix': body[:768].decode('utf-8','replace').replace('\\r',' ').replace('\\n',' ')
+                      }))
+                  return response.status, body, response.getheader('Location')
+              finally:
+                  conn.close()
+
+          binding_ok=False
+          store_ok=False
+          home_ok=False
+          last_binding=None
+          last_store=None
+          last_home=None
+          for attempt in range(1,9):
+              try:
+                  status,body,location=request('/.well-known/legend-website','application/json')
+                  last_binding=(status,len(body),location)
+                  print(host,'binding',attempt,status,len(body),location or '')
+                  if status==200 and len(body)<=4096 and not location:
+                      receipt=json.loads(body)
+                      if all(isinstance(receipt.get(key),str) and len(receipt.get(key))>=32 for key in ('businessId','bindingId')):
+                          binding_ok=True
+              except Exception as error:
+                  last_binding=(type(error).__name__,0,None)
+                  print(host,'binding',attempt,type(error).__name__)
+
+              try:
+                  status,body,location=request('/')
+                  last_home=(status,len(body),location)
+                  print(host,'/',attempt,status,len(body),location or '')
+                  home_ok=status==200 and len(body)>0 and not location
+              except Exception as error:
+                  last_home=(type(error).__name__,0,None)
+                  print(host,'/',attempt,type(error).__name__)
+                  home_ok=False
+
+              try:
+                  status,body,location=request('/store')
+                  last_store=(status,len(body),location)
+                  print(host,'/store',attempt,status,len(body),location or '')
+                  store_ok=status==200 and not location
+              except Exception as error:
+                  last_store=(type(error).__name__,0,None)
+                  print(host,'/store',attempt,type(error).__name__)
+                  store_ok=False
+
+              if binding_ok and home_ok and store_ok:
+                  break
+              time.sleep(5)
+
+          if not binding_ok:
+              raise SystemExit(f'Custom-domain routing proof did not stabilize: {last_binding}')
+          if not home_ok:
+              raise SystemExit(f'Custom-domain homepage did not stabilize: {last_home}')
+          if not store_ok:
+              raise SystemExit(f'Custom-domain store proof did not stabilize: {last_store}')
           PYCUSTOM
           then
             restore_router
             exit 1
           fi
           echo "Custom-domain Worker bridge reached the exact LEGEND business binding proof."
+
+      - name: Capture exact Cloudflare challenge event after failed live proof
+        id: routingchallenge
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome == 'failure' && steps.routingauthority.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/cloudflare-routing-authority.py challenge-events --host "$WEBSITE_ROUTING_CANARY"
 
       - name: Verify every deployed target and collect all failures
         id: live
@@ -778,17 +1094,25 @@ jobs:
           MIGRATE: ${{ steps.migrate.outcome }}
           PROTECT: ${{ steps.protect.outcome }}
           PROTECTAUTH: ${{ steps.protectauth.outcome }}
+          EDITORAUTH: ${{ steps.editorauth.outcome }}
           PARFAIT: ${{ steps.parfait.outcome }}
           WEBSITE: ${{ steps.website.outcome }}
           WEBSITECHECKS: ${{ steps.websitechecks.outcome }}
           ROUTINGCHECKS: ${{ steps.routingchecks.outcome }}
           ROUTINGSECRET: ${{ steps.routingsecret.outcome }}
+          ROUTINGAUTH: ${{ steps.routingauthority.outcome }}
+          ROUTINGPOLICY: ${{ steps.routingpolicy.outcome }}
           ROUTINGDEPLOY: ${{ steps.routingdeploy.outcome }}
           ROUTINGLIVE: ${{ steps.routinglive.outcome }}
           VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
           CLIENT_ONLY: ${{ env.CLIENT_ONLY }}
           WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
           PRESERVE_LIVE_TARGETS: ${{ env.PRESERVE_LIVE_TARGETS }}
+          RESUME_PORTAL: ${{ steps.resumestate.outputs.portal_live }}
+          RESUME_CLIENT: ${{ steps.resumestate.outputs.client_live }}
+          RESUME_PROTECT: ${{ steps.resumestate.outputs.protect_live }}
+          RESUME_PARFAIT: ${{ steps.resumestate.outputs.parfait_live }}
+          RESUME_WEBSITE: ${{ steps.resumestate.outputs.website_live }}
         run: |
           python3 - <<'PYRESULT'
           import json,os
@@ -798,11 +1122,15 @@ jobs:
           validate_only=os.environ.get('VALIDATE_ONLY')=='true'
           website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
           preserve_live_targets=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
-          routing_steps=['ROUTINGCHECKS','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']
+          routing_steps=['ROUTINGCHECKS','ROUTINGSECRET','ROUTINGAUTH','ROUTINGPOLICY','ROUTINGDEPLOY','ROUTINGLIVE']
           if preserve_live_targets:
               assert not validate_only and website_routing
               required=['BASE','AZURE','LIVE']+routing_steps
-              skipped=['BUILD','TESTS','WEB','PACKAGE','MIGRATE','PROTECTAUTH','PORTAL','CLIENT','PROTECT','PARFAIT','WEBSITE','WEBSITECHECKS']
+              skipped=['BUILD','TESTS','WEB','PACKAGE','MIGRATE','PROTECTAUTH','EDITORAUTH','PORTAL','CLIENT','PROTECT','PARFAIT','WEBSITE']
+              if 'masterapp-website' in selected:
+                  required.append('WEBSITECHECKS')
+              else:
+                  skipped.append('WEBSITECHECKS')
               results={key:os.environ[key] for key in required}
               skipped_results={key:os.environ[key] for key in skipped}
               print(json.dumps({'mode':'preserve-live-routing-recovery','required':results,'preservedSteps':skipped_results},indent=2))
@@ -811,13 +1139,13 @@ jobs:
           elif validate_only:
               if website_routing:
                   required=['BASE','BUILD','ROUTINGCHECKS','PACKAGE']
-                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']+list(apps.values())
+                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH','EDITORAUTH','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']+list(apps.values())
               elif set(selected) <= {'masterapp-protect','masterapp-website'}:
                   required=['BASE','BUILD','PACKAGE']
                   skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH']+routing_steps+list(apps.values())
               else:
                   required=['BASE','BUILD','TESTS','WEB','PACKAGE']
-                  skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH']+routing_steps+list(apps.values())
+                  skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH','EDITORAUTH']+routing_steps+list(apps.values())
               if 'masterapp-website' in selected:
                   required.append('WEBSITECHECKS')
               else:
@@ -828,9 +1156,23 @@ jobs:
               assert all(value=='success' for value in results.values())
               assert all(value=='skipped' for value in skipped_results.values()), 'Validation-only run executed a publish or deployment step'
           else:
-              required=['BASE','PACKAGE','AZURE','LIVE']+[apps[app] for app in selected]
+              required=['BASE','PACKAGE','AZURE','LIVE']
               excluded=[step for app,step in apps.items() if app not in selected]
+              resume={
+                  'masterapp-portal':os.environ.get('RESUME_PORTAL')=='true',
+                  'masterapp-client':os.environ.get('RESUME_CLIENT')=='true',
+                  'masterapp-protect':os.environ.get('RESUME_PROTECT')=='true',
+                  'masterapp-parfait':os.environ.get('RESUME_PARFAIT')=='true',
+                  'masterapp-website':os.environ.get('RESUME_WEBSITE')=='true',
+              }
+              for app in selected:
+                  step=apps[app]
+                  if resume[app]:
+                      assert os.environ[step]=='skipped', f'{app} was already live at the exact candidate but redeployed'
+                  else:
+                      required.append(step)
               (required if 'masterapp-protect' in selected else excluded).append('PROTECTAUTH')
+              (required if any(app in selected for app in ('masterapp-protect','masterapp-parfait')) else excluded).append('EDITORAUTH')
               (excluded if selected == ['masterapp-website'] else required).append('BUILD')
               if os.environ.get('CLIENT_ONLY') == 'true':
                   required.extend(['TESTS','WEB'])
@@ -847,7 +1189,8 @@ jobs:
                   excluded.extend(routing_steps)
               results={key:os.environ[key] for key in required}
               skipped={key:os.environ[key] for key in excluded}
-              print(json.dumps({'mode':'approved-only','required':results,'unselected':skipped},indent=2))
+              preserved={app:resume[app] for app in selected if resume[app]}
+              print(json.dumps({'mode':'approved-only','required':results,'unselected':skipped,'preservedExactLiveTargets':preserved},indent=2))
               assert all(value=='success' for value in results.values())
               assert all(value=='skipped' for value in skipped.values()), 'Unselected release step unexpectedly executed'
           PYRESULT

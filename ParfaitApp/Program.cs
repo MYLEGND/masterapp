@@ -133,6 +133,7 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 
 builder.Services.AddScoped<ICommerceBusinessProvisioningService, CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<CommerceBusinessScopeResolver>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
 builder.Services.AddSingleton(sp =>
     Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
         sp.GetRequiredService<IConfiguration>(),
@@ -154,18 +155,14 @@ builder.Services.AddSingleton<ParfaitStoragePaths>();
 builder.Services.AddScoped<ParfaitAnalyticsService>();
 builder.Services.AddScoped<IParfaitAnalyticsService>(serviceProvider => serviceProvider.GetRequiredService<ParfaitAnalyticsService>());
 builder.Services.AddScoped<Infrastructure.Commerce.CommerceSignalService>();
-builder.Services.AddScoped<ParfaitMetaSignalBridgeService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
-builder.Services.AddScoped<IMetaAdsConnectionStore, ParfaitMetaAdsConnectionStoreAdapter>();
-builder.Services.AddScoped<IMetaAdsService, MetaAdsService>();
 builder.Services.AddSingleton<ParfaitInternalAnalyticsCacheStamp>();
 builder.Services.AddScoped<ParfaitInternalAnalyticsService>();
 builder.Services.AddScoped<ParfaitInternalWorkspaceService>();
 builder.Services.AddScoped<IGraphMailService, GraphMailService>();
 builder.Services.AddSingleton<ParfaitMetaCapiCredentialProtector>();
 builder.Services.AddScoped<IParfaitBusinessProfileService, ParfaitBusinessProfileService>();
-builder.Services.AddScoped<IParfaitMetaAdsOAuthService, ParfaitMetaAdsOAuthService>();
 builder.Services.AddHostedService<ParfaitCustomerAutomationHostedService>();
 
 static bool TryResolveCanonicalHost(HttpRequest request, out HostString host)
@@ -356,6 +353,12 @@ app.Use(async (context, next) =>
 
     await next();
 });
+var webRoot = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+app.UseStaticFiles(new StaticFileOptions
+{
+    RequestPath = "/store-assets",
+    FileProvider = new PhysicalFileProvider(webRoot)
+});
 app.UseStaticFiles(new StaticFileOptions
 {
     RequestPath = "/uploads/parfait-products",
@@ -379,6 +382,19 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     context.Response.Headers["Content-Security-Policy"] = "upgrade-insecure-requests; block-all-mixed-content";
+
+    if (context.Request.Path.StartsWithSegments("/commerce/manage"))
+    {
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.Remove("X-Frame-Options");
+            context.Response.Headers["Content-Security-Policy"] =
+                "frame-ancestors 'self' https://mylegnd.com https://www.mylegnd.com https://protect.mylegnd.com https://portal.mylegnd.com https://client.mylegnd.com https://masterapp-protect.azurewebsites.net; upgrade-insecure-requests; block-all-mixed-content";
+            context.Response.Headers["Referrer-Policy"] = "no-referrer";
+            return Task.CompletedTask;
+        });
+    }
+
     await next();
 });
 

@@ -1,0 +1,46 @@
+@using System.Text.Encodings.Web
+@using System.Text.RegularExpressions
+@{
+    var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext
+        ?? throw new InvalidOperationException("Scoped website storefront context is required.");
+    var prefix = commerce.WebsiteShellPrefix
+        ?? throw new InvalidOperationException("Published website shell is unavailable.");
+    var suffix = commerce.WebsiteShellSuffix
+        ?? throw new InvalidOperationException("Published website shell is unavailable.");
+    var canonical = $"{Context.Request.Scheme}://{Context.Request.Host}{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
+    var encodedCanonical = HtmlEncoder.Default.Encode(canonical);
+    prefix = prefix.Replace("__LEGEND_CANONICAL_URL__", encodedCanonical, StringComparison.Ordinal);
+    suffix = suffix.Replace("__LEGEND_CANONICAL_URL__", encodedCanonical, StringComparison.Ordinal);
+    var pageTitle = $"{ViewData["Title"] ?? "Store"} - {commerce.StoreName}";
+    prefix = Regex.Replace(
+        prefix,
+        "<title>.*?</title>",
+        $"<title>{HtmlEncoder.Default.Encode(pageTitle)}</title>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    IgnoreSection("Styles");
+}
+@Html.Raw(prefix)
+@RenderBody()
+</main>
+<script>
+window.PARFAIT_COMMERCE_CONTEXT = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+    commerceBusinessId = commerce.CommerceBusinessId,
+    agentTrackingProfileId = commerce.AgentTrackingProfileId,
+    websiteContentVersionId = commerce.WebsiteContentVersionId,
+    websiteSiteKey = commerce.WebsiteSiteKey,
+    businessKey = commerce.BusinessKey,
+    storeName = commerce.StoreName,
+    storeRootPath = commerce.StoreRootPath,
+    cartPath = commerce.CartPath,
+    checkoutPath = commerce.CheckoutPath,
+    successPath = commerce.SuccessPath,
+    analyticsEndpoint = $"/parfait-analytics/s/{Uri.EscapeDataString(commerce.BusinessKey)}/track",
+    cartStorageKey = commerce.CartStorageKey,
+    isParfait = false,
+    cartIcon = commerce.CartIcon
+}, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+</script>
+<script src="/store-assets/js/storefront.js"></script>
+@await RenderSectionAsync("Scripts", required: false)
+@await Html.PartialAsync("_ParfaitCommerceTracking")
+@Html.Raw(suffix)

@@ -7,28 +7,6 @@
         ? "A"
         : Model.FullName.Trim().Substring(0, 1).ToUpperInvariant();
 
-    var publicProfileReady =
-        !string.IsNullOrWhiteSpace(Model.FullName) &&
-        !string.IsNullOrWhiteSpace(Model.Phone);
-
-    var marketingLabel = string.IsNullOrWhiteSpace(Model.MetaPixelId)
-        ? "Legend default"
-        : "Custom pixel";
-
-    var bookingLabel = Model.BookingEnabled
-        ? (string.IsNullOrWhiteSpace(Model.MicrosoftBookingsEmbedUrl) ? "Needs embed" : "Personal live")
-        : "Shared scheduler";
-
-    var calendarLabel = string.IsNullOrWhiteSpace(Model.CalendarEmail)
-        ? "Not linked"
-        : "Linked";
-
-    var publicStatusClass = publicProfileReady ? "is-good" : "is-warn";
-    var marketingStatusClass = string.IsNullOrWhiteSpace(Model.MetaPixelId) ? "is-neutral" : "is-good";
-    var bookingStatusClass = !Model.BookingEnabled
-        ? "is-neutral"
-        : string.IsNullOrWhiteSpace(Model.MicrosoftBookingsEmbedUrl) ? "is-warn" : "is-good";
-    var calendarStatusClass = string.IsNullOrWhiteSpace(Model.CalendarEmail) ? "is-neutral" : "is-good";
     var accountLifecycleState = ViewBag.AccountLifecycle?.State as string ?? "Active";
     var canResumeAccount = ViewBag.AccountLifecycle?.CanResume is bool canResume && canResume;
     var accountIsRestricted = !string.Equals(accountLifecycleState, "Active", StringComparison.OrdinalIgnoreCase);
@@ -500,27 +478,9 @@
                 <span class="profile-eyebrow">Agent Portal</span>
                 <div>
                     <h1 class="profile-title">Agent Profile</h1>
-                    <p class="profile-sub">Manage the details behind your public handoff, tracking, and scheduling.</p>
+                    <p class="profile-sub">Manage the identity and public profile details tied to your LEGEND account.</p>
                 </div>
 
-                <div class="profile-status-strip" aria-label="Profile status">
-                    <div class="profile-status-chip @publicStatusClass">
-                        <span class="profile-status-chip-label">Public</span>
-                        <strong>@(publicProfileReady ? "Ready" : "Needs attention")</strong>
-                    </div>
-                    <div class="profile-status-chip @marketingStatusClass">
-                        <span class="profile-status-chip-label">Meta</span>
-                        <strong>@marketingLabel</strong>
-                    </div>
-                    <div class="profile-status-chip @bookingStatusClass">
-                        <span class="profile-status-chip-label">Booking</span>
-                        <strong>@bookingLabel</strong>
-                    </div>
-                    <div class="profile-status-chip @calendarStatusClass">
-                        <span class="profile-status-chip-label">Calendar</span>
-                        <strong>@calendarLabel</strong>
-                    </div>
-                </div>
             </div>
 
             <aside class="profile-panel profile-avatar-panel">
@@ -622,60 +582,6 @@
                         <label asp-for="Npn" class="profile-label"></label>
                         <input asp-for="Npn" class="profile-input" autocomplete="off" placeholder="National Producer Number" />
                         <span asp-validation-for="Npn" class="profile-validation"></span>
-                    </div>
-                </div>
-            </section>
-
-            <section class="profile-panel profile-section">
-                <div class="profile-section-head">
-                    <h2 class="profile-section-title">Marketing</h2>
-                    <p class="profile-section-sub">Leave blank to keep using the default Legend tracking setup.</p>
-                </div>
-                <div class="profile-fields">
-                    <div class="profile-field profile-field-full">
-                        <div class="profile-inline-note">Meta CAPI: @(Model.HasSecureMetaCapiAccessToken ? "Configured securely" : "Using shared/default setup")</div>
-                    </div>
-                    <div class="profile-field profile-field-full">
-                        <label asp-for="MetaPixelId" class="profile-label"></label>
-                        <input asp-for="MarketingRevision" type="hidden" />
-                        <input asp-for="MetaPixelId" class="profile-input" autocomplete="off" inputmode="numeric" placeholder="Numeric Meta Pixel ID" />
-                        <span asp-validation-for="MetaPixelId" class="profile-validation"></span>
-                    </div>
-                </div>
-            </section>
-
-            <section class="profile-panel profile-section">
-                <div class="profile-section-head">
-                    <h2 class="profile-section-title">Booking</h2>
-                    <p class="profile-section-sub">Use your own Bookings setup only if you want a personal scheduler in public quote flows.</p>
-                </div>
-                <div class="profile-fields">
-                    <div class="profile-field profile-field-full">
-                        <label class="profile-label" asp-for="BookingEnabled"></label>
-                        <label class="profile-toggle">
-                            <input asp-for="BookingEnabled" type="checkbox" />
-                            <span>Use my personal scheduler on public quote handoff flows</span>
-                        </label>
-                    </div>
-                    <div class="profile-field">
-                        <label asp-for="MicrosoftBookingsEmbedUrl" class="profile-label">Embed URL</label>
-                        <input asp-for="MicrosoftBookingsEmbedUrl" class="profile-input" autocomplete="off" placeholder="https://outlook.office.com/bookings/..." />
-                        <span asp-validation-for="MicrosoftBookingsEmbedUrl" class="profile-validation"></span>
-                    </div>
-                    <div class="profile-field">
-                        <label asp-for="FallbackBookingUrl" class="profile-label">Fallback URL</label>
-                        <input asp-for="FallbackBookingUrl" class="profile-input" autocomplete="off" placeholder="Optional backup scheduler link" />
-                        <span asp-validation-for="FallbackBookingUrl" class="profile-validation"></span>
-                    </div>
-                    <div class="profile-field">
-                        <label asp-for="BookingPageIdOrMailbox" class="profile-label">Mailbox / Page ID</label>
-                        <input asp-for="BookingPageIdOrMailbox" class="profile-input" autocomplete="off" placeholder="Mailbox, page ID, or calendar handle" />
-                        <span asp-validation-for="BookingPageIdOrMailbox" class="profile-validation"></span>
-                    </div>
-                    <div class="profile-field">
-                        <label asp-for="CalendarEmail" class="profile-label"></label>
-                        <input asp-for="CalendarEmail" class="profile-input" autocomplete="email" placeholder="calendar@example.com" />
-                        <span asp-validation-for="CalendarEmail" class="profile-validation"></span>
                     </div>
                 </div>
             </section>

@@ -13,6 +13,16 @@ internal static class AnalyticsScopeQueryExtensions
             return scope.CommerceBusinessId is { } businessId && businessId != Guid.Empty && !scope.AgentTrackingProfileId.HasValue
                 ? query.Where(x => x.CommerceBusinessId == businessId && x.AgentTrackingProfileId == null)
                 : query.Where(x => false);
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (scope.CommerceBusinessId.HasValue || !scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)
+                return query.Where(x => false);
+
+            // Founder profile aliases are resolved by the query service using the
+            // canonical UPN authority. Keep this first-stage filter tenant-safe
+            // without prematurely excluding a historical Founder profile row.
+            return query.Where(x => x.CommerceBusinessId == null);
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return query.Where(x => false);
@@ -52,6 +62,16 @@ internal static class AnalyticsScopeQueryExtensions
             return scope.CommerceBusinessId is { } businessId && businessId != Guid.Empty && !scope.AgentTrackingProfileId.HasValue
                 ? query.Where(x => x.CommerceBusinessId == businessId && x.AgentTrackingProfileId == null)
                 : query.Where(x => false);
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (scope.CommerceBusinessId.HasValue || !scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)
+                return query.Where(x => false);
+
+            // Founder profile aliases are resolved by the query service using the
+            // canonical UPN authority. Keep this first-stage filter tenant-safe
+            // without prematurely excluding a historical Founder profile row.
+            return query.Where(x => x.CommerceBusinessId == null);
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return query.Where(x => false);

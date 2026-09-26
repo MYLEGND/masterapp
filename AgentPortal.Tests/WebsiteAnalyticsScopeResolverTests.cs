@@ -37,7 +37,7 @@ public class WebsiteAnalyticsScopeResolverTests : IDisposable
 
         var result = await resolver.ResolveAsync(http, null, team);
 
-        Assert.Equal(team ? ScopeType.Global : ScopeType.Agent, result.ScopeType);
+        Assert.Equal(team ? ScopeType.Global : ScopeType.Founder, result.ScopeType);
         Assert.Equal(team ? (Guid?)null : profile.Id, result.AgentTrackingProfileId);
     }
 

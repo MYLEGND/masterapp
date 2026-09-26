@@ -34,6 +34,39 @@ class ReleaseScopeSelection(unittest.TestCase):
                 'targets': ['masterapp-client', 'masterapp-parfait']
             })
 
+    def test_complete_inventory_can_include_cloudflare_routing_in_one_release(self):
+        request = {
+            'releaseMode': 'approved-only',
+            'cloudflareWebsiteRouting': True,
+            'websiteRoutingCanaryHost': 'camoexterior.com',
+            'targets': ['masterapp-portal', 'masterapp-client', 'masterapp-protect',
+                        'masterapp-parfait', 'masterapp-website'],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'release-outputs'
+            with patch('sys.argv', ['baseline', '--output', str(output)]), \
+                 patch.object(self.baseline, 'read_request', return_value=request), \
+                 patch.object(self.baseline, 'observe', side_effect=lambda target: dict(app=target[0], revision='a' * 40)), \
+                 patch.object(self.baseline.subprocess, 'check_output', return_value='b' * 40), \
+                 patch.object(self.baseline.subprocess, 'run'), patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
+                self.baseline.main()
+            values = output.read_text()
+            self.assertIn('website_routing=true', values)
+            self.assertIn('"masterapp-website"', values)
+
+
+class ApprovedReleaseResumePolicy(unittest.TestCase):
+    def test_exact_live_targets_are_preserved_across_retries(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        self.assertIn('Preserve targets already live at exact candidate', workflow)
+        self.assertIn("steps.resumestate.outputs.portal_live != 'true'", workflow)
+        self.assertIn("steps.resumestate.outputs.client_live != 'true'", workflow)
+        self.assertIn("steps.resumestate.outputs.protect_live != 'true'", workflow)
+        self.assertIn("steps.resumestate.outputs.parfait_live != 'true'", workflow)
+        self.assertIn("steps.resumestate.outputs.website_live != 'true'", workflow)
+        self.assertIn("preservedExactLiveTargets", workflow)
+        self.assertIn("was already live at the exact candidate but redeployed", workflow)
+
 
 class ReleasePolicy(unittest.TestCase):
     def test_hold_survives_descendant_until_explicit_release(self):

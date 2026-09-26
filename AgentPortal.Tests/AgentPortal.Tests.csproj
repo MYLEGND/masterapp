@@ -40,6 +40,9 @@
     <None Include="..\\.github\\workflows\\agentportal-production-deploy.yml"
           Link="agentportal-production-deploy.yml"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\.github\\workflows\\all-intentional-direct-release-20260918.yml"
+          Link="all-intentional-direct-release-20260918.yml"
+          CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\.github\\workflows\\legend-production-readonly-diagnostic.yml"
           Link="legend-production-readonly-diagnostic.yml"
           CopyToOutputDirectory="PreserveNewest" />

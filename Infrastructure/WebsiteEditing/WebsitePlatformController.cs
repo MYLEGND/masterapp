@@ -157,7 +157,7 @@ public class WebsitePlatformController : ControllerBase
             businessName = business?.DisplayName,
             facts = publicFacts,
             collections = publicCollections.Values,
-            store = StorePayload(document, publicStoreScope, ticket: null),
+            store = StorePayload(siteKey, document, publicStoreScope, ticket: null),
             document
         });
     }
@@ -279,7 +279,7 @@ public class WebsitePlatformController : ControllerBase
             dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
             collections = collectionData.Values,
             ctaCatalog = new { options = ctaOptions },
-            store = StorePayload(draft, commerceScope, ticket),
+            store = StorePayload(actor.SiteKey, draft, commerceScope, ticket),
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
@@ -291,7 +291,9 @@ public class WebsitePlatformController : ControllerBase
     public sealed record StoreActionRequest(
         string Ticket,
         long ExpectedRevision,
-        string? NavigationLabel = null);
+        string? NavigationLabel = null,
+        string? CartIcon = null,
+        int? CartIconSizePx = null);
 
     [HttpPost("manage/store/enable")]
     public async Task<IActionResult> EnableStore(
@@ -313,6 +315,10 @@ public class WebsitePlatformController : ControllerBase
         document.Store.Enabled = true;
         if (!string.IsNullOrWhiteSpace(request.NavigationLabel))
             document.Store.NavigationLabel = request.NavigationLabel.Trim();
+        if (!string.IsNullOrWhiteSpace(request.CartIcon))
+            document.Store.CartIcon = request.CartIcon.Trim();
+        if (request.CartIconSizePx.HasValue)
+            document.Store.CartIconSizePx = request.CartIconSizePx.Value;
 
         document = WebsiteContentSanitizer.Sanitize(document);
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
@@ -330,7 +336,7 @@ public class WebsitePlatformController : ControllerBase
         {
             document,
             revision = state.Revision,
-            store = StorePayload(document, scope, request.Ticket)
+            store = StorePayload(actor.SiteKey, document, scope, request.Ticket)
         });
     }
 
@@ -367,7 +373,7 @@ public class WebsitePlatformController : ControllerBase
         {
             document,
             revision = state.Revision,
-            store = StorePayload(document, scope, request.Ticket)
+            store = StorePayload(actor.SiteKey, document, scope, request.Ticket)
         });
     }
 
@@ -1779,15 +1785,6 @@ public class WebsitePlatformController : ControllerBase
         return Ok(new { revision = state.Revision, schedule = new { publishUtc = state.ScheduledPublishUtc } });
     }
 
-    [HttpGet("/.well-known/legend-website")]
-    public async Task<IActionResult> DomainProof(CancellationToken cancellationToken = default)
-    {
-        var host = WebsiteRequestHostResolver.Resolve(HttpContext, _configuration);
-        var binding = await _db.Set<WebsiteDomainBinding>().AsNoTracking().SingleOrDefaultAsync(d => d.Hostname == host && d.Status != "removing", cancellationToken);
-        if (binding is null || !await _db.CommerceBusinesses.AnyAsync(b => b.Id == binding.CommerceBusinessId && b.IsActive && b.Status == "Active", cancellationToken)) return NotFound();
-        return Ok(new { businessId = binding.CommerceBusinessId, bindingId = binding.Id });
-    }
-
     private Task<WebsiteEditorTicket?> AuthorizeAsync(string token, CancellationToken cancellationToken) =>
         WebsiteTicketAuthorization.ResolveAsync(_db, _tickets, _configuration, token, cancellationToken);
 
@@ -1863,6 +1860,7 @@ public class WebsitePlatformController : ControllerBase
         (_configuration["Commerce:PublicBaseUrl"] ?? "https://shopparfait.com").TrimEnd('/');
 
     private object StorePayload(
+        string siteKey,
         WebsiteContentDocument document,
         WebsiteCommerceScope? scope,
         string? ticket)
@@ -1876,6 +1874,8 @@ public class WebsitePlatformController : ControllerBase
             {
                 enabled = document.Store.Enabled,
                 label,
+                cartIcon = document.Store.CartIcon,
+                cartIconSizePx = document.Store.CartIconSizePx,
                 commerceBusinessId = (Guid?)null,
                 businessKey = (string?)null,
                 storefrontUrl = (string?)null,
@@ -1884,21 +1884,26 @@ public class WebsitePlatformController : ControllerBase
                 managerUrl = (string?)null
             };
 
-        var root = CommercePublicBaseUrl() + "/store/s/" + Uri.EscapeDataString(scope.BusinessKey);
+        var root = siteKey == WebsiteEditorSiteKeys.Protect
+            ? (_configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') +
+              "/store/s/" + Uri.EscapeDataString(scope.BusinessKey)
+            : "/store";
         return new
         {
             enabled = document.Store.Enabled,
             label,
+            cartIcon = document.Store.CartIcon,
+            cartIconSizePx = document.Store.CartIconSizePx,
             commerceBusinessId = (Guid?)scope.CommerceBusinessId,
             businessKey = scope.BusinessKey,
             storefrontUrl = root,
             cartUrl = root + "/cart",
             previewUrl = string.IsNullOrWhiteSpace(ticket)
                 ? null
-                : CommercePublicBaseUrl() + "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket),
+                : "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket),
             managerUrl = string.IsNullOrWhiteSpace(ticket)
                 ? null
-                : CommercePublicBaseUrl() + "/commerce/manage/workspace?ticket=" + Uri.EscapeDataString(ticket)
+                : "/commerce/manage/products?ticket=" + Uri.EscapeDataString(ticket)
         };
     }
 

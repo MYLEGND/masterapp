@@ -120,6 +120,41 @@
     return values;
   }
 
+  function constrainHorizontalStyleRecord(style) {
+    if (!style || typeof style !== 'object') return;
+    const rawWidth = Number(style.widthPercent);
+    const hasWidth = Number.isFinite(rawWidth) && rawWidth > 0;
+    if (hasWidth) style.widthPercent = Math.min(100, rawWidth);
+    const rawOffset = Number(style.offsetXPercent);
+    if (Number.isFinite(rawOffset)) {
+      // Position is independent from stored width. Rendering consumes the
+      // remaining section width so content can move freely without creating
+      // horizontal page overflow.
+      style.offsetXPercent = Math.max(0, Math.min(95, rawOffset));
+    }
+  }
+
+  function constrainOverrideGeometry(override) {
+    if (!override || typeof override !== 'object') return;
+    constrainHorizontalStyleRecord(override.style);
+    if (override.breakpointStyles && typeof override.breakpointStyles === 'object')
+      Object.values(override.breakpointStyles).forEach(constrainHorizontalStyleRecord);
+  }
+
+  function constrainDocumentGeometry(doc) {
+    Object.values(doc.elements || {}).forEach(constrainOverrideGeometry);
+    (doc.extras || []).forEach(constrainOverrideGeometry);
+    Object.values(doc.pages || {}).forEach(page => {
+      Object.values(page?.elements || {}).forEach(constrainOverrideGeometry);
+      (page?.extras || []).forEach(constrainOverrideGeometry);
+    });
+    Object.values(doc.reusableComponents || {}).forEach(component => {
+      Object.values(component?.elements || {}).forEach(constrainOverrideGeometry);
+      (component?.extras || []).forEach(constrainOverrideGeometry);
+    });
+    return doc;
+  }
+
   function normalizeDocument(input) {
     const pages = {};
     const sourcePages = input?.pages && typeof input.pages === 'object' ? input.pages : {};
@@ -136,7 +171,7 @@
         extras: [...new Map([...(previous.extras || []), ...(value.extras || [])].map(extra => [extra.id, extra])).values()]
       } : value;
     }
-    return {
+    const normalized = {
       version: 2,
       faviconImageDataUrl: typeof input?.faviconImageDataUrl === 'string' ? input.faviconImageDataUrl : null,
       breakpoints: normalizeBreakpoints(input?.breakpoints),
@@ -150,10 +185,17 @@
         enabled: input?.store?.enabled === true,
         navigationLabel: typeof input?.store?.navigationLabel === 'string' && input.store.navigationLabel.trim()
           ? input.store.navigationLabel.trim().slice(0, 40)
-          : 'Store'
+          : 'Store',
+        cartIcon: ['cart','bag','basket'].includes(String(input?.store?.cartIcon || '').toLowerCase())
+          ? String(input.store.cartIcon).toLowerCase()
+          : 'cart',
+        cartIconSizePx: Number.isFinite(Number(input?.store?.cartIconSizePx))
+          ? Math.max(16, Math.min(96, Number(input.store.cartIconSizePx)))
+          : 28
       },
       pages
     };
+    return constrainDocumentGeometry(normalized);
   }
 
   function normalizePageRoute(value) {
@@ -195,6 +237,19 @@
       .slice(0, 160);
   }
 
+  function isSharedShellElement(el) {
+    return !!el?.closest?.('.site-header,.site-footer');
+  }
+
+  function globalShellOverride(id, create = true) {
+    if (!id) return null;
+    documentState.elements ||= {};
+    if (!documentState.elements[id] && create) documentState.elements[id] = { style: {} };
+    const value = documentState.elements[id] || null;
+    if (value && create) value.style ||= {};
+    return value;
+  }
+
   function canEditElement(el) {
     if (!(el instanceof HTMLElement)) return false;
     if (el.closest('.legend-cms-editor')) return false;
@@ -212,14 +267,19 @@
   }
 
   function editorSelectionTarget(node) {
-    if (!(node instanceof HTMLElement)) return null;
-    if (node.tagName === 'IMG') return node.closest('[data-cms-editable="true"]');
-    return node.closest('a[data-cms-editable="true"]') || node.closest('[data-cms-editable="true"]');
+    if (!node?.closest) return null;
+    const entity = node.closest('[data-business-name][data-cms-editable="true"],[data-business-field][data-cms-editable="true"]');
+    if (entity instanceof HTMLElement) return entity;
+    const anchor = node.closest('a[data-cms-editable="true"]');
+    if (anchor instanceof HTMLElement) return anchor;
+    const candidate = node.closest('[data-cms-editable="true"]');
+    return candidate instanceof HTMLElement ? candidate : null;
   }
 
   function prepareDom() {
     const roots = [
       document.querySelector('main'),
+      document.querySelector('.site-header'),
       document.querySelector('.nav'),
       document.querySelector('.site-footer')
     ].filter(Boolean);
@@ -227,7 +287,7 @@
     const sections = [...document.querySelectorAll(sectionCandidates), ...document.querySelectorAll('.site-header,.site-footer')];
     sections.forEach((section, index) => {
       if (!section.dataset.cmsSection) {
-        section.dataset.cmsSection = section.matches('.site-header') ? `${pageKey}.header` : section.matches('.site-footer') ? `${pageKey}.footer` : `${pageKey}.section.${index + 1}`;
+        section.dataset.cmsSection = section.matches('.site-header') ? 'shell.header' : section.matches('.site-footer') ? 'shell.footer' : `${pageKey}.section.${index + 1}`;
       }
       section.dataset.cmsId = `section:${section.dataset.cmsSection}`;
       section.dataset.cmsEditable = 'true';
@@ -245,7 +305,8 @@
           const href = el.getAttribute('href');
           const route = href ? new URL(href, location.origin).pathname : '';
           const semantic = SITE_KEY !== 'business' && legacy ? el.dataset.cta || href || el.textContent || el.tagName : el.dataset.businessField || (el.hasAttribute?.('data-business-name') ? 'business-name' : '') || el.dataset.businessRoute || el.dataset.cta || route || (['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) ? el.className || el.tagName : '') || el.textContent || el.tagName;
-          el.dataset.cmsId = `${pageKey}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
+          const shellPrefix = el.closest('.site-header') ? 'shell.header' : el.closest('.site-footer') ? 'shell.footer' : pageKey;
+          el.dataset.cmsId = `${shellPrefix}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
         }
         rememberOriginal(el);
         if (isDirectCanvasSelectable(el)) el.dataset.cmsEditable = 'true';
@@ -510,6 +571,9 @@
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
       else root.style.removeProperty(cssVar);
     });
+    if (Number.isFinite(Number(theme?.borderRadius)) && Number(theme.borderRadius) >= 0)
+      root.style.setProperty('--web-radius', `${Number(theme.borderRadius)}px`);
+    else root.style.removeProperty('--web-radius');
   }
 
   function responsiveViewportWidth() {
@@ -545,16 +609,13 @@
     const key = activeBreakpoint();
     const responsive = key && override?.breakpointStyles && typeof override.breakpointStyles[key] === 'object' ? override.breakpointStyles[key] : null;
     const style = responsive ? { ...base, ...responsive } : { ...base };
-    // Mobile may inherit desktop geometry, but it must never create a canvas
-    // wider than the mobile viewport or position content beyond its right edge.
-    if (key === 'mobile') {
-      const width = positiveNumber(style.widthPercent) ? Math.min(100, Number(style.widthPercent)) : null;
-      if (width != null) style.widthPercent = width;
-      if (style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent))) {
-        const maxOffset = Math.max(0, 100 - (width ?? 100));
-        style.offsetXPercent = Math.max(0, Math.min(maxOffset, Number(style.offsetXPercent)));
-      }
-    }
+    // Stored width and in-section position are independent. Rendering constrains
+    // the effective width to the remaining section space, so movement stays free
+    // without creating horizontal page overflow.
+    const width = positiveNumber(style.widthPercent) ? Math.min(100, Number(style.widthPercent)) : null;
+    if (width != null) style.widthPercent = width;
+    if (style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent)))
+      style.offsetXPercent = Math.max(0, Math.min(95, Number(style.offsetXPercent)));
     return style;
   }
 
@@ -653,15 +714,30 @@
       scaledElements.set(el, style.fontScale);
       refreshScale(el, style.fontScale);
     }
-    if (positiveNumber(style.widthPercent)) {
-      el.style.width = `${style.widthPercent}%`;
-      el.style.maxWidth = '100%';
+    const sectionLocked = !!el.dataset.cmsSection;
+    const horizontalOffset = !sectionLocked && Number.isFinite(Number(style.offsetXPercent))
+      ? Math.max(0, Math.min(95, Number(style.offsetXPercent))) : 0;
+    if (!sectionLocked && positiveNumber(style.widthPercent)) {
+      const requestedWidth = Math.min(100, Number(style.widthPercent));
+      const availableWidth = Math.max(5, 100 - horizontalOffset);
+      el.style.width = `${Math.min(requestedWidth, availableWidth)}%`;
+      el.style.maxWidth = `${availableWidth}%`;
     }
     if (positiveNumber(style.heightPx)) {
-      el.style.height = `${style.heightPx}px`;
-      el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+      if (sectionLocked) {
+        // Sections are content-sized canvases. Vertical resize changes only their
+        // minimum breathing room; content must never become an internal scroller.
+        el.style.minHeight = `${style.heightPx}px`;
+        el.style.height = 'auto';
+        el.style.overflow = 'visible';
+      } else {
+        el.style.height = `${style.heightPx}px`;
+        // Ordinary website content never becomes its own scroll container.
+        // Code frames remain clipped to their explicit sandbox frame.
+        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'visible';
+      }
     }
-    const hasOffsetX = style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
+    const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
     const hasOffsetY = style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
     if (hasOffsetX || hasOffsetY) {
       el.style.position = 'relative';
@@ -691,6 +767,10 @@
 
   function overrideForElement(el, create = true) {
     if (!el?.dataset?.cmsId) return null;
+    // Shared website shell edits are document-global and therefore render on
+    // every page. Page-specific content remains in the page record.
+    if (isSharedShellElement(el))
+      return globalShellOverride(el.dataset.cmsId, create);
     // An added composite block (for example a service card) owns its content,
     // but each selectable child owns its own geometry/style. This keeps one
     // canonical document store while allowing title/copy/etc. to move independently.
@@ -709,6 +789,9 @@
 
   function isInlineEditable(el) {
     if (!el || el.dataset.cmsSignalOnly || el.dataset.cmsSection) return false;
+    // Entity-owned names and commerce controls expose presentation editing only.
+    // Their text/destination remains owned by the Business Profile / Store contract.
+    if (el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field') || el.dataset.legendStoreNav) return false;
     if (['IMG','VIDEO','DIV','ARTICLE','HEADER','FOOTER','FORM','INPUT','SELECT','TEXTAREA'].includes(el.tagName)) return false;
     return editableTextTags.has(el.tagName) || editableInteractiveTags.has(el.tagName);
   }
@@ -1064,13 +1147,15 @@
     else if (override.hidden === false) el.hidden = false;
 
     const original = rememberOriginal(el);
+    const entityBound = el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field');
+    const commerceControl = !!el.dataset.legendStoreNav;
     if (el instanceof HTMLImageElement) {
       el.src = override.imageDataUrl ? mediaUrl(override.imageDataUrl) : (original.src || '');
-    } else if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
+    } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
       setContentText(el, override.text != null ? override.text : (original.text || ''), override.text != null);
     }
 
-    if (el.tagName === 'A') {
+    if (el.tagName === 'A' && !commerceControl) {
       const href = override.href != null && safeUrl(override.href) ? override.href : original.href;
       if (href) el.setAttribute('href', href); else el.removeAttribute('href');
       el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
@@ -1092,6 +1177,21 @@
       el = document.createElement('section');
       if (editable) el.dataset.cmsSection = `extra:${extra.id}`;
       el.className = 'cms-extra cms-extra-section';
+      if (extra.templateSectionId) {
+        const template=document.querySelector(`[data-cms-section="${CSS.escape(extra.templateSectionId)}"]:not(.cms-extra-section)`);
+        if (template) {
+          el.className=['cms-extra','cms-extra-section',...template.classList].filter((value,index,array)=>value && array.indexOf(value)===index).join(' ');
+          el.innerHTML=template.innerHTML;
+          let childIndex=0;
+          el.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article').forEach(child=>{
+            if (!canEditElement(child)) return;
+            if (!['IMG','VIDEO','A','DIV','ARTICLE'].includes(child.tagName) && child.children.length>0) return;
+            child.dataset.cmsId = `extra:${extra.id}:node:${++childIndex}`;
+            child.dataset.cmsEditable='true';
+            rememberOriginal(child);
+          });
+        }
+      }
     } else if (extra.type === 'video') {
       el = document.createElement('video'); el.controls = true; el.preload = 'metadata';
       if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
@@ -1364,10 +1464,113 @@
     refreshLayers();
   }
 
+  let businessNavigationDrag = null;
+
+  function syncBusinessNavigationOrder(nav) {
+    const links=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
+    links.forEach((link,index)=>{
+      const route=normalizePageRoute(link.dataset.legendPageRoute);
+      if (!route) return;
+      const page=ensurePageRecord(route);
+      page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+      page.navigation.order=index * 10;
+    });
+    markDirty();
+    refreshPageSelector();
+    renderPageManager();
+  }
+
+  function installBusinessNavigationEditor(nav) {
+    if (!editorMode || !nav || nav.dataset.cmsPageOrderWired === 'true') return;
+    nav.dataset.cmsPageOrderWired='true';
+
+    nav.addEventListener('pointerdown',event=>{
+      const link=event.target.closest?.('a[data-legend-page-nav="true"]');
+      if (!link || (event.button !== undefined && event.button !== 0)) return;
+      businessNavigationDrag={link,pointerId:event.pointerId,changed:false,checkpointed:false};
+      link.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    nav.addEventListener('pointermove',event=>{
+      const drag=businessNavigationDrag;
+      if (!drag || (drag.pointerId != null && event.pointerId != null && drag.pointerId !== event.pointerId)) return;
+      const siblings=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
+      const target=siblings.find(candidate=>{
+        if (candidate===drag.link) return false;
+        const rect=candidate.getBoundingClientRect();
+        return event.clientX >= rect.left && event.clientX <= rect.right;
+      });
+      if (!target) return;
+      const rect=target.getBoundingClientRect();
+      const before=event.clientX < rect.left + rect.width / 2;
+      const reference=before ? target : target.nextSibling;
+      if (reference === drag.link || (!reference && drag.link === nav.lastElementChild)) return;
+      if (!drag.checkpointed) { checkpoint(); drag.checkpointed=true; }
+      nav.insertBefore(drag.link,reference);
+      drag.changed=true;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    const finish=event=>{
+      const drag=businessNavigationDrag;
+      if (!drag || (drag.pointerId != null && event.pointerId != null && drag.pointerId !== event.pointerId)) return;
+      businessNavigationDrag=null;
+      if (drag.changed) syncBusinessNavigationOrder(nav);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    nav.addEventListener('pointerup',finish);
+    nav.addEventListener('pointercancel',finish);
+  }
+
+  function applyBusinessPageNavigation() {
+    if (SITE_KEY !== 'business') return;
+    const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
+    if (!nav) return;
+
+    // One authority only: the template route catalog plus this website's
+    // versioned page metadata. Never merge the already-rendered DOM back into
+    // the catalog; doing so lets stale/default links survive beside managed
+    // pages and creates duplicate banner tabs.
+    const entries=websitePageEntries(false)
+      .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
+      .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route));
+
+    nav.querySelectorAll('a:not([data-legend-store-nav])').forEach(node=>node.remove());
+    const current=currentPageRoute();
+    entries.forEach(entry=>{
+      const link=document.createElement('a');
+      link.href=entry.route;
+      link.textContent=entry.label;
+      link.dataset.legendPageNav='true';
+      link.dataset.legendPageRoute=entry.route;
+      link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
+      link.dataset.cmsLocked='true';
+      if (entry.route===current) link.setAttribute('aria-current','page');
+      if (editorMode) {
+        link.addEventListener('click',event=>{
+          event.preventDefault();
+          event.stopPropagation();
+        },true);
+        link.addEventListener('dblclick',event=>{
+          event.preventDefault();
+          event.stopPropagation();
+          void navigateToEditorPage(entry.route);
+        },true);
+      }
+      nav.appendChild(link);
+    });
+    if (editorMode) installBusinessNavigationEditor(nav);
+  }
+
   function applyDocument(doc) {
     documentState = normalizeDocument(doc);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
+    applyBusinessPageNavigation();
     applyStoreNavigation();
     const metadata = pageState();
     document.title = metadata.title ?? originalTitle;
@@ -1377,6 +1580,12 @@
     document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
     pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
     pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
+    // Shared shell overrides are document-global and always apply before the
+    // current page's local element map.
+    Object.entries(documentState.elements || {}).forEach(([id, override]) => {
+      const el = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
+      applyElementOverride(el, override);
+    });
     // Composite children do not exist until their parent extra is rendered.
     // Re-apply the one canonical page element map after extras exist.
     Object.entries(pageState().elements).forEach(([id, override]) => {
@@ -1418,34 +1627,51 @@
     return documentState.store?.enabled === true && storeContext?.enabled === true && !!storeContext?.storefrontUrl;
   }
 
-  function createStoreCartIcon() {
+  function effectiveCartIcon() {
+    const value=String(documentState.store?.cartIcon || storeContext?.cartIcon || 'cart').toLowerCase();
+    return ['cart','bag','basket'].includes(value) ? value : 'cart';
+  }
+
+  function effectiveCartIconSize() {
+    const value=Number(documentState.store?.cartIconSizePx ?? storeContext?.cartIconSizePx ?? 28);
+    return Number.isFinite(value) ? Math.max(16,Math.min(96,value)) : 28;
+  }
+
+  function createStoreCartIcon(iconKey=effectiveCartIcon(), size=effectiveCartIconSize()) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('viewBox','0 0 24 24');
-    svg.setAttribute('width','18');
-    svg.setAttribute('height','18');
+    svg.setAttribute('width',String(size));
+    svg.setAttribute('height',String(size));
+    svg.style.width=`${size}px`;
+    svg.style.height=`${size}px`;
     svg.setAttribute('fill','none');
     svg.setAttribute('aria-hidden','true');
+    svg.classList.add('legend-store-cart-icon');
     svg.style.stroke='currentColor';
     svg.style.strokeWidth='2';
     svg.style.strokeLinecap='round';
     svg.style.strokeLinejoin='round';
-    const path = document.createElementNS(svg.namespaceURI,'path');
-    path.setAttribute('d','M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3');
-    const first = document.createElementNS(svg.namespaceURI,'circle'); first.setAttribute('cx','9.8'); first.setAttribute('cy','20'); first.setAttribute('r','1.2');
-    const second = document.createElementNS(svg.namespaceURI,'circle'); second.setAttribute('cx','17.6'); second.setAttribute('cy','20'); second.setAttribute('r','1.2');
-    svg.append(path,first,second);
-    return svg;
-  }
 
-  function storeInsertionPoint(nav) {
-    const links=[...nav.querySelectorAll(':scope > a')];
-    if (SITE_KEY === 'business') {
-      const contact=links.find(link => /\bcontact\b/i.test(link.textContent || '') || /\/contact\/?$/i.test(link.getAttribute('href') || ''));
-      return contact?.nextSibling || null;
+    const addPath = d => {
+      const path=document.createElementNS(svg.namespaceURI,'path');
+      path.setAttribute('d',d);
+      svg.appendChild(path);
+    };
+    if (iconKey === 'bag') {
+      addPath('M5 8h14l-1 12H6L5 8Z');
+      addPath('M9 8a3 3 0 0 1 6 0');
+    } else if (iconKey === 'basket') {
+      addPath('M4 10h16l-1.5 10h-13L4 10Z');
+      addPath('M8 10l4-6 4 6');
+      addPath('M9 13v4M12 13v4M15 13v4');
+    } else {
+      // Default is exactly Parfait's canonical public cart glyph.
+      addPath('M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3');
+      const first = document.createElementNS(svg.namespaceURI,'circle'); first.setAttribute('cx','9.8'); first.setAttribute('cy','20'); first.setAttribute('r','1.2');
+      const second = document.createElementNS(svg.namespaceURI,'circle'); second.setAttribute('cx','17.6'); second.setAttribute('cy','20'); second.setAttribute('r','1.2');
+      svg.append(first,second);
     }
-    return links.find(link => /client login|legacy protection/i.test(link.textContent || ''))
-      || links.find(link => link.classList.contains('nav-cta'))
-      || null;
+    return svg;
   }
 
   function applyStoreNavigation() {
@@ -1454,11 +1680,16 @@
     const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
 
+    const cluster=document.createElement('span');
+    cluster.className='legend-store-nav-cluster';
+    cluster.dataset.legendStoreNav='cluster';
+
     const store=document.createElement('a');
     store.href=storeContext.storefrontUrl;
     store.textContent=effectiveStoreLabel();
     store.dataset.legendStoreNav='store';
-    store.dataset.cmsLocked='true';
+    store.dataset.cmsId=`${pageKey}.commerce.store-nav`;
+    store.dataset.cmsEditable='true';
     store.dataset.websiteAnalyticsEvent='cta_click';
     store.dataset.websiteBindingId='commerce_store_nav';
     store.dataset.cta='commerce_store';
@@ -1466,26 +1697,59 @@
     const cart=document.createElement('a');
     cart.href=storeContext.cartUrl;
     cart.dataset.legendStoreNav='cart';
-    cart.dataset.cmsLocked='true';
+    cart.dataset.cmsId=`${pageKey}.commerce.cart-nav`;
+    cart.dataset.cmsEditable='true';
     cart.dataset.websiteAnalyticsEvent='cta_click';
     cart.dataset.websiteBindingId='commerce_cart_nav';
     cart.dataset.cta='commerce_cart';
     cart.classList.add('legend-store-cart');
     cart.setAttribute('aria-label','Shopping cart');
     cart.appendChild(createStoreCartIcon());
+    const count=document.createElement('span');
+    count.className='pf-cart-count';
+    count.id='pfStoreCartCount';
+    count.textContent='0';
+    count.setAttribute('aria-hidden','true');
+    cart.appendChild(count);
 
-    const point=storeInsertionPoint(nav);
-    nav.insertBefore(store,point);
-    nav.insertBefore(cart,point);
+    cluster.append(store,cart);
+    nav.appendChild(cluster);
+    applyElementOverride(store, pageState().elements[store.dataset.cmsId]);
+    applyElementOverride(cart, pageState().elements[cart.dataset.cmsId]);
+    updateStoreCartCount();
+  }
+
+  function updateStoreCartCount() {
+    const count=document.getElementById('pfStoreCartCount');
+    if (!count || !storeContext?.businessKey) return;
+    const key=`legendCommerceCart:${String(storeContext.businessKey).toLowerCase()}`;
+    let items=[];
+    try {
+      const raw=window.localStorage?.getItem?.(key);
+      const parsed=raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) items=parsed;
+    } catch {}
+    const total=items.reduce((sum,item)=>sum+Math.max(0,Number(item?.quantity)||0),0);
+    count.textContent=String(total);
+    count.hidden=total<1;
   }
 
   function templatePageEntries() {
     const entries=new Map();
-    for (const page of context.pages || []) {
-      const route=normalizePageRoute(page?.path);
-      if (!route) continue;
-      entries.set(route,{route,label:page.label || route,template:true});
-    }
+    const catalog=Array.isArray(renderInput?.pageCatalog) ? renderInput.pageCatalog : (context.pages || []);
+    catalog.forEach((page,index) => {
+      const route=normalizePageRoute(page?.route || page?.path);
+      if (!route) return;
+      entries.set(route,{
+        route,
+        label:page.label || route,
+        template:page.template !== false,
+        showInNavigation:page.showInNavigation !== false,
+        parentPath:normalizePageRoute(page.parentPath),
+        order:Number.isFinite(Number(page.order)) ? Number(page.order) : index * 10,
+        deleted:page.deleted === true
+      });
+    });
     return entries;
   }
 
@@ -1550,14 +1814,61 @@
     const entries=websitePageEntries(true);
     for (const entry of entries) {
       const row=document.createElement('div'); row.className='legend-cms-page-row';
-      const open=document.createElement('button'); open.type='button'; open.textContent=`${entry.label} · ${entry.route}${entry.deleted?' · Deleted':''}`;
+      const open=document.createElement('button'); open.type='button'; open.textContent=entry.route;
       open.disabled=entry.deleted; open.setAttribute('aria-current',String(entry.route===current));
       open.addEventListener('click',()=>void navigateToEditorPage(entry.route)); row.appendChild(open);
-      if (SITE_KEY==='business' && entry.deleted) {
-        const restore=document.createElement('button'); restore.type='button'; restore.textContent='Restore';
-        restore.addEventListener('click',()=>{ checkpoint(); const page=ensurePageRecord(entry.route); page.navigation.isDeleted=false; markDirty(); syncPageControls(); });
-        row.appendChild(restore);
+
+      if (SITE_KEY==='business') {
+        const label=document.createElement('input');
+        label.type='text'; label.maxLength=120; label.value=entry.label; label.setAttribute('aria-label',`Navigation label for ${entry.route}`);
+        label.disabled=entry.deleted;
+        label.addEventListener('change',event=>{
+          const value=String(event.target.value||'').trim().slice(0,120);
+          if(!value){ event.target.value=entry.label; return; }
+          checkpoint();
+          const page=ensurePageRecord(entry.route);
+          page.navigation.label=value;
+          markDirty();
+          applyBusinessPageNavigation();
+          refreshPageSelector();
+          renderPageManager();
+        });
+        row.appendChild(label);
+
+        const visible=document.createElement('input');
+        visible.type='checkbox'; visible.checked=entry.showInNavigation!==false && !entry.deleted;
+        visible.disabled=entry.deleted;
+        visible.setAttribute('aria-label',`Show ${entry.label} in navigation`);
+        visible.addEventListener('change',event=>{
+          checkpoint();
+          const page=ensurePageRecord(entry.route);
+          page.navigation.showInNavigation=event.target.checked;
+          markDirty();
+          applyBusinessPageNavigation();
+          refreshPageSelector();
+        });
+        row.appendChild(visible);
+
+        const remove=document.createElement('button'); remove.type='button';
+        const home=entry.route==='/';
+        remove.disabled=home;
+        remove.textContent=entry.deleted?'Restore':'Delete';
+        remove.title=home?'The home page is required. Rename its navigation label or hide it from navigation instead.':'';
+        remove.addEventListener('click',async()=>{
+          if(home) return;
+          checkpoint();
+          const page=ensurePageRecord(entry.route);
+          page.navigation.isDeleted=!page.navigation.isDeleted;
+          if(page.navigation.isDeleted) page.navigation.showInNavigation=false;
+          markDirty();
+          applyBusinessPageNavigation();
+          refreshPageSelector();
+          renderPageManager();
+          if(page.navigation.isDeleted && entry.route===current) await navigateToEditorPage('/');
+        });
+        row.appendChild(remove);
       }
+
       host.appendChild(row);
     }
   }
@@ -1631,37 +1942,63 @@
     action.id='legend-cms-store-toggle';
     action.textContent=enabled?'Remove Store':'Add Store';
     action.addEventListener('click',()=>void updateStore(!enabled));
-    host.appendChild(action);
-
     if (!enabled) {
+      host.appendChild(action);
       const help=document.createElement('small');
       help.textContent='Adds one scoped Store page, Store/Shop navigation, cart, product catalog and centralized checkout. Products remain preserved if the Store page is later removed.';
       host.appendChild(help);
       return;
     }
 
+    const settings=document.createElement('div');
+    settings.className='legend-cms-store-settings';
+
     const label=document.createElement('label');
-    label.textContent='Store navigation name';
+    label.textContent='Navigation name';
     const input=document.createElement('input');
     input.id='legend-cms-store-label';
     input.type='text';
     input.maxLength=40;
     input.value=effectiveStoreLabel();
     input.placeholder='Store or Shop';
-    input.addEventListener('change',()=>void updateStore(true,input.value));
+    input.addEventListener('change',()=>void updateStore(true,input.value,effectiveCartIcon(),effectiveCartIconSize()));
     label.appendChild(input);
-    host.appendChild(label);
 
+    const iconLabel=document.createElement('label');
+    iconLabel.textContent='Cart icon';
+    const icon=document.createElement('select');
+    icon.id='legend-cms-store-cart-icon';
+    for(const [value,text] of [['cart','Cart · Parfait'],['bag','Shopping bag'],['basket','Basket']]) {
+      const option=document.createElement('option'); option.value=value; option.textContent=text; icon.appendChild(option);
+    }
+    icon.value=effectiveCartIcon();
+    icon.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),icon.value,effectiveCartIconSize()));
+    iconLabel.appendChild(icon);
+
+    const sizeLabel=document.createElement('label');
+    sizeLabel.textContent='Cart icon size';
+    const size=document.createElement('input');
+    size.id='legend-cms-store-cart-size';
+    size.type='number'; size.min='16'; size.max='96'; size.step='1';
+    size.value=String(effectiveCartIconSize());
+    size.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),effectiveCartIcon(),Number(size.value)));
+    sizeLabel.appendChild(size);
+    settings.append(label,iconLabel,sizeLabel);
+    host.appendChild(settings);
+
+    const actions=document.createElement('div');
+    actions.className='legend-cms-store-actions';
     const manage=document.createElement('button');
     manage.type='button';
     manage.id='legend-cms-manage-store';
-    manage.textContent='Manage Store';
+    manage.textContent='Manage products';
     manage.disabled=!storeContext?.managerUrl;
     manage.addEventListener('click',openStoreManager);
-    host.appendChild(manage);
+    actions.append(action,manage);
+    host.insertBefore(actions,settings);
   }
 
-  async function updateStore(enabled,labelValue=null) {
+  async function updateStore(enabled,labelValue=null,cartIconValue=null,cartIconSizeValue=null) {
     if (!editorMode || saving) return;
     const status=document.getElementById('legend-cms-status');
     if(status) status.textContent=enabled?'Setting up your store…':'Removing Store page…';
@@ -1669,7 +2006,7 @@
       const response=await fetch(`${API_BASE}/api/website-content/manage/store/${enabled?'enable':'remove'}`,{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel()})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel(),cartIcon:cartIconValue || effectiveCartIcon(),cartIconSizePx:Number.isFinite(Number(cartIconSizeValue))?Number(cartIconSizeValue):effectiveCartIconSize()})
       });
       const payload=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(payload.message || payload.error || `Store update failed (${response.status})`);
@@ -2059,8 +2396,8 @@
     if (directGesture) positionGridOverlay(directGesture.section);
   }
 
-  function lockMobilePreviewHorizontalScroll() {
-    if (!editorPreview || window.innerWidth > 800 || editorPreview.scrollLeft === 0) return;
+  function lockPreviewHorizontalScroll() {
+    if (!editorPreview || editorPreview.scrollLeft === 0) return;
     editorPreview.scrollLeft = 0;
   }
 
@@ -2099,11 +2436,14 @@
       if (!override) return false;
       const gestureStyle = editingStyle(override, true);
       checkpoint();
+      const measuredWidthPercent = parentRect.width > 0 ? Math.min(100, selectedRect.width / parentRect.width * 100) : 100;
+      const startWidthPercent = positiveNumber(gestureStyle.widthPercent) ? Math.min(100, Number(gestureStyle.widthPercent)) : measuredWidthPercent;
+      if (mode === 'move' && !positiveNumber(gestureStyle.widthPercent)) gestureStyle.widthPercent = startWidthPercent;
       directGesture = {
         mode, edge, target: selected, section, parent,
         startX: event.clientX, startY: event.clientY,
         selectedRect, sectionRect, parentRect,
-        startWidthPercent: positiveNumber(gestureStyle.widthPercent) ? Number(gestureStyle.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
+        startWidthPercent,
         startHeightPx: positiveNumber(gestureStyle.heightPx) ? Number(gestureStyle.heightPx) : Math.max(selectedRect.height, 24),
         startOffsetXPercent: Number.isFinite(Number(gestureStyle.offsetXPercent)) ? Number(gestureStyle.offsetXPercent) : 0,
         startOffsetYPx: Number.isFinite(Number(gestureStyle.offsetYPx)) ? Number(gestureStyle.offsetYPx) : 0,
@@ -2189,6 +2529,15 @@
           }
         }
       }
+      const constrainedWidth = positiveNumber(style.widthPercent)
+        ? Math.min(100, Number(style.widthPercent))
+        : Math.min(100, gesture.startWidthPercent || 100);
+      style.widthPercent = constrainedWidth;
+      if (Number.isFinite(Number(style.offsetXPercent))) {
+        style.offsetXPercent = gesture.mode === 'move'
+          ? Math.max(0, Math.min(95, Number(style.offsetXPercent)))
+          : Math.max(0, Math.min(Math.max(0, 100 - constrainedWidth), Number(style.offsetXPercent)));
+      }
       gesture.changed = true;
       applyElementOverride(selected, override);
       updateDirectCanvasUi();
@@ -2210,14 +2559,17 @@
     window.addEventListener('pointerup', finishGesture);
     window.addEventListener('pointercancel', finishGesture);
     preview.addEventListener('scroll', () => {
-      lockMobilePreviewHorizontalScroll();
+      lockPreviewHorizontalScroll();
       updateDirectCanvasUi();
     }, { passive: true });
+    preview.addEventListener('wheel', event => {
+      if (Math.abs(event.deltaX) > 0 || event.shiftKey) event.preventDefault();
+    }, { passive: false });
     window.addEventListener('resize', () => {
-      lockMobilePreviewHorizontalScroll();
+      lockPreviewHorizontalScroll();
       refreshResponsiveOverrides();
     });
-    lockMobilePreviewHorizontalScroll();
+    lockPreviewHorizontalScroll();
     updateDirectCanvasUi();
   }
 
@@ -2268,12 +2620,15 @@
     const serviceCard = businessServiceCardFor(selected);
     const duplicateButton = document.getElementById('legend-cms-duplicate');
     if (duplicateButton) {
-      duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate selected';
-      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM';
-      duplicateButton.title = selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
+      const immutableShell = selected.matches?.('.site-header,.site-footer');
+      duplicateButton.textContent = serviceCard ? 'Duplicate service' : selected.dataset.cmsSection ? 'Duplicate section' : 'Duplicate selected';
+      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM' || immutableShell;
+      duplicateButton.title = immutableShell ? 'The website banner and footer are shared shell authorities and cannot be duplicated.'
+        : selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
     }
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
+      const immutableShell = isSharedShellElement(selected);
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
@@ -2284,24 +2639,29 @@
         : ['A','BUTTON'].includes(selected.tagName) ? 'button'
         : ['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName) ? 'block'
         : 'element';
-      removeButton.textContent = `Delete ${kind}`;
-      removeButton.disabled = false;
+      removeButton.textContent = immutableShell ? 'Global shell · cannot delete' : `Delete ${kind}`;
+      removeButton.disabled = immutableShell;
+      removeButton.title = immutableShell ? 'The website banner and footer are global shell authorities shared by every page and cannot be deleted.' : '';
     }
+    const sectionSelected = !!selected.dataset.cmsSection;
     if (scale) scale.value = String(editStyle?.fontScale ?? 1);
-    if (width) width.value = displayNumber(editStyle?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
+    if (width) width.value = sectionSelected ? '100' : displayNumber(editStyle?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
     if (height) height.value = editStyle?.heightPx != null ? displayNumber(editStyle.heightPx) : '';
     if (top) top.value = displayNumber(editStyle?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
     if (bottom) bottom.value = displayNumber(editStyle?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
-    if (offsetX) offsetX.value = displayNumber(editStyle?.offsetXPercent ?? 0);
+    if (offsetX) offsetX.value = sectionSelected ? '0' : displayNumber(editStyle?.offsetXPercent ?? 0);
     if (offsetY) offsetY.value = displayNumber(editStyle?.offsetYPx ?? 0);
     if (align) align.value = editStyle?.textAlign ?? computed.textAlign ?? '';
     if (scale) scale.disabled = isImage || isCode;
+    if (width) width.disabled = sectionSelected;
+    if (offsetX) offsetX.disabled = sectionSelected;
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
     document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(editStyle?.[key] || computed[key]) : editStyle?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
     document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(editStyle?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
-    const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A';
-    if (selected.tagName === 'A') syncCtaControls(ov, values.href);
+    const isCommerceControl = !!selected.dataset.legendStoreNav;
+    const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A' || isCommerceControl;
+    if (selected.tagName === 'A' && !isCommerceControl) syncCtaControls(ov, values.href);
     const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
     const layoutMode = document.getElementById('legend-cms-layout-mode'); if (layoutMode) layoutMode.value = editLayout?.mode || 'free';
     const layoutDirection = document.getElementById('legend-cms-layout-direction'); if (layoutDirection) layoutDirection.value = editLayout?.direction || 'column';
@@ -2328,6 +2688,11 @@
       'legend-cms-offset-y': 'offsetYPx'
     };
     const field = fields[control.id];
+    if (selected.dataset.cmsSection && (field === 'widthPercent' || field === 'offsetXPercent')) {
+      control.value = field === 'widthPercent' ? '100' : '0';
+      control.setCustomValidity('');
+      return;
+    }
     if (field && control.value !== '') {
       const value = Number(control.value);
       const signed = field === 'offsetXPercent' || field === 'offsetYPx';
@@ -2348,7 +2713,15 @@
       const style = editingStyle(ov, true);
       if (field) {
         if (control.value === '') delete style[field];
-        else style[field] = Number(control.value);
+        else if (field === 'widthPercent') {
+          style.widthPercent = Math.min(100, Number(control.value));
+          control.value = String(style.widthPercent);
+          if (Number.isFinite(Number(style.offsetXPercent)))
+            style.offsetXPercent = Math.max(0, Math.min(95, Number(style.offsetXPercent)));
+        } else if (field === 'offsetXPercent') {
+          style.offsetXPercent = Math.max(0, Math.min(95, Number(control.value)));
+          control.value = String(style.offsetXPercent);
+        } else style[field] = Number(control.value);
       } else if (control.id === 'legend-cms-align') {
         if (control.value) style.textAlign = control.value;
         else delete style.textAlign;
@@ -3150,8 +3523,20 @@
       }
 
       if (selected.dataset.cmsSection) {
-        alert('Select an added section to duplicate the whole section, or select an individual item inside this template section.');
-        return;
+        if (selected.matches('.site-header,.site-footer')) return;
+        if (selected.querySelector?.('form[data-website-inquiry]')) {
+          alert('This section contains the canonical inquiry form. Move or redesign the section instead of creating a second live inquiry authority.');
+          return;
+        }
+        checkpoint();
+        const copy={
+          id:crypto.randomUUID(), type:'section', sectionId:selected.dataset.cmsSection,
+          templateSectionId:selected.dataset.cmsSection, style:{}, signals:[]
+        };
+        pageState().extras.push(copy);
+        const created=createExtra(copy);
+        if (created && selected.parentElement===created.parentElement) selected.parentElement.insertBefore(created,selected.nextSibling);
+        syncSectionOrderFromDom(); setSelected(created); markDirty(); return;
       }
       const supported = ['P','H1','H2','H3','H4','H5','H6','A','BUTTON','IMG','VIDEO','LI','SMALL','STRONG','SPAN'];
       if (!supported.includes(selected.tagName)) return;
@@ -3456,7 +3841,7 @@
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
       <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. Use X/Y offsets for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
-      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Create page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
+      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
@@ -3641,6 +4026,11 @@
       .cms-extra video,video.cms-extra{max-width:100%;height:auto}
       .cms-extra-code{display:block;width:100%;max-width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}
       .cms-extra-code iframe{display:block;width:100%;max-width:100%;height:100%;border:0;background:#fff}
+      .legend-store-nav-cluster{display:flex;align-items:center;gap:clamp(8px,1vw,14px);margin-left:auto;flex:0 0 auto;white-space:nowrap}
+      .legend-store-nav-cluster>a{display:inline-flex;align-items:center;justify-content:center}
+      .legend-store-cart{position:relative}
+      .legend-store-cart .pf-cart-count{position:absolute;right:-8px;top:-8px;display:grid;place-items:center;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--web-gold,#d4ad45);color:var(--web-navy-deep,#07152d);font:800 10px/1 Inter,system-ui,sans-serif}
+      .legend-store-cart-icon{display:block}
       @media(max-width:767px){
         html,body{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none}
         body{touch-action:pan-y pinch-zoom}
@@ -3668,7 +4058,8 @@
       .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-move-handle,
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-edge-handle{display:none!important;pointer-events:none!important}
-      .legend-cms-store-controls{display:grid;gap:8px;padding:10px;border:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 52%,transparent);border-radius:12px;background:color-mix(in srgb,var(--web-surface,#fff) 92%,var(--web-gold,#d4ad45) 8%)}
+      .legend-cms-store-controls{display:grid;gap:8px;padding:9px;border:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 60%,transparent);border-radius:10px;background:color-mix(in srgb,var(--web-navy,#081a3a) 88%,transparent);color:var(--web-surface,#fff)}
+      .legend-cms-store-settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px}.legend-cms-store-settings label{display:grid;gap:5px;margin:0;font-size:11px;font-weight:800;color:var(--web-gold,#d4ad45)}.legend-cms-store-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.legend-cms-store-actions button{min-height:34px!important;padding:7px 9px!important;border-color:color-mix(in srgb,var(--web-gold,#d4ad45) 62%,transparent)!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 84%,var(--web-gold,#d4ad45) 16%)!important;color:var(--web-surface,#fff)!important}.legend-cms-store-controls input,.legend-cms-store-controls select{min-height:34px!important;padding:6px 8px!important;border-color:color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent)!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 90%,transparent)!important;color:var(--web-surface,#fff)!important}
       .legend-cms-store-preview{position:absolute!important;inset:0!important;z-index:2147482400!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;background:var(--web-surface,#fff)!important;color:var(--web-ink,#101a35)!important;pointer-events:auto!important}
       .legend-cms-store-preview[hidden]{display:none!important}.legend-cms-store-preview-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 50%,transparent);background:var(--web-surface,#fff)}.legend-cms-store-preview-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
       .legend-cms-store-manager{position:fixed!important;inset:0!important;z-index:2147483640!important;display:grid!important;place-items:center!important;padding:2vmin!important;background:#0009!important;pointer-events:auto!important}.legend-cms-store-manager[hidden]{display:none!important}.legend-cms-store-manager-shell{width:min(98vw,1600px);height:96dvh;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border-radius:16px;background:var(--web-surface,#fff);box-shadow:0 24px 70px #0008}.legend-cms-store-manager-top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent);color:var(--web-ink,#101a35)}.legend-cms-store-manager-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
@@ -3682,7 +4073,7 @@
       .legend-cms-edge-handle:hover{background:#d4ad451f!important}
       body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
       body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
-      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;position:relative;transform:translateZ(0)}
+      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0);contain:inline-size}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
@@ -3894,7 +4285,7 @@
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
-      if (!selected) return;
+      if (!selected || isSharedShellElement(selected)) return;
       const serviceCard = businessServiceCardFor(selected);
       if (serviceCard) {
         if (serviceCard.dataset.cmsExtraId) { setSelected(serviceCard); removeSelected(); return; }
@@ -3947,6 +4338,13 @@
       alert(error?.message || 'Unable to open website editor.');
     }
   }
+
+  window.addEventListener('storage', event => {
+    if (!storeContext?.businessKey) return;
+    const key=`legendCommerceCart:${String(storeContext.businessKey).toLowerCase()}`;
+    if (!event.key || event.key === key) updateStoreCartCount();
+  });
+  window.addEventListener('parfait-cart-updated', updateStoreCartCount);
 
   if (renderInput) {
     bindBusiness(renderInput);

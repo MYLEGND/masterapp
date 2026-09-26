@@ -7,7 +7,7 @@ const source = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-
 const publicCss = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-web.css', import.meta.url), 'utf8');
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
 const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
-const metaSignalSource = readFileSync(new URL('../../Protect-Website/wwwroot/js/meta-signal-intelligence.js', import.meta.url), 'utf8');
+const metaSignalSource = readFileSync(new URL('../../SHARED/WebsitePlatform/meta-signal-intelligence.js', import.meta.url), 'utf8');
 const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
 const businessMiddlewareSource = readFileSync(new URL('../../Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
@@ -227,8 +227,8 @@ test('adjustments above former caps round-trip without changing unrelated fields
   f.ids.get('legend-cms-draft-name').value = 'Test variation';
   await f.ids.get('legend-cms-draft-submit').click();
   assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'].style,
-    { fontScale: 12.75, widthPercent: 250.25, paddingTop: 500.5, paddingBottom: 800 });
-  assert.equal(f.heading.style.width, '250.25%');
+    { fontScale: 12.75, widthPercent: 100, paddingTop: 500.5, paddingBottom: 800 });
+  assert.equal(f.heading.style.width, '100%');
   assert.equal(f.heading.style.maxWidth, '100%');
 });
 
@@ -294,7 +294,7 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,aiPayload=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},store=null,denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,aiPayload=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example'+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -303,7 +303,7 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/ai/propose')) return {ok:!denied,status:denied?401:200,json:async()=>aiPayload || {source:'ai_proposal_preview',baseRevision:'r1',summary:'No changes',operations:[],proposedDocument:doc,persisted:false,published:false}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/ai/propose')) return {ok:!denied,status:denied?401:200,json:async()=>aiPayload || {source:'ai_proposal_preview',baseRevision:'r1',summary:'No changes',operations:[],proposedDocument:doc,persisted:false,published:false}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -330,6 +330,7 @@ async function metaSignalFixture() {
     sendServerEvents:true,
     persistEvents:true,
     endpoint:'https://site.example/analytics/meta-signal',
+    pixelId:'pixel-legend',
     siteKey:'legend',
     quoteType:'legend',
     pageKey:'home',
@@ -381,8 +382,9 @@ test('configured signal runtime suppresses Pixel for analytics-only and allows o
     assert.equal(f.requests.length,1);
     assert.equal(f.requests[0].body.eventName,'LeadFormStart');
     assert.equal(f.pixels.length,1);
-    assert.equal(f.pixels[0][0],'trackCustom');
-    assert.equal(f.pixels[0][1],'LeadFormStart');
+    assert.equal(f.pixels[0][0],'trackSingleCustom');
+    assert.equal(f.pixels[0][1],'pixel-legend');
+    assert.equal(f.pixels[0][2],'LeadFormStart');
 
     const beforeRequests=f.requests.length,beforePixels=f.pixels.length;
     const blocked=await f.session.trackConfiguredEvent('Lead',{
@@ -742,7 +744,7 @@ test('published business rendering activates the shared inquiry path without inj
 test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
   assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source)"));
   assert.equal(source.includes('allow-same-origin'),false);
-  assert.ok(businessMiddlewareSource.includes("frame-src data:; object-src 'none'"));
+  assert.ok(businessMiddlewareSource.includes("frame-src 'self' data:; object-src 'none'"));
   const policy=businessMiddlewareSource.match(/default-src 'self'; script-src[^"]+/)?.[0] || '';
   assert.equal(policy.includes("script-src 'self' 'unsafe-inline'"),false);
   assert.equal(policy.includes("script-src 'self' 'unsafe-eval'"),false);
@@ -1307,7 +1309,7 @@ test('generic template wrappers are not direct selections and blank-area selecti
   }finally{f.close();}
 });
 
-test('mobile runtime clamps inherited desktop geometry and contains every page section inside the viewport',async()=>{
+test('mobile runtime contains moved desktop geometry without creating horizontal page scroll',async()=>{
   const doc={
     breakpoints:[
       {key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},
@@ -1319,20 +1321,21 @@ test('mobile runtime clamps inherited desktop geometry and contains every page s
   const f=await domFixture({doc,search:'',viewportWidth:390});
   try{
     const heading=f.w.document.querySelector('main h1');
-    assert.equal(heading.style.width,'100%');
-    assert.equal(heading.style.left,'0%');
+    assert.equal(heading.style.width,'25%');
+    assert.equal(heading.style.maxWidth,'25%');
+    assert.equal(heading.style.left,'75%');
     assert.match(source,/html,body\{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none\}/);
     assert.match(source,/main,main>section,[^}]*overflow-x:clip/);
     assert.match(source,/body\{touch-action:pan-y pinch-zoom\}/);
   }finally{f.close();}
 });
 
-test('mobile editor preview is horizontally locked to the viewport and cannot pan into blank canvas space',async()=>{
+test('editor preview is horizontally locked to the rendered website at every breakpoint',async()=>{
   const f=await domFixture({viewportWidth:390});
   try{
     const preview=f.w.document.querySelector('.legend-cms-preview');
     assert.ok(preview);
-    assert.equal(f.w.getComputedStyle(preview).overflowX,'hidden');
+    assert.equal(f.w.getComputedStyle(preview).overflowX,'clip');
     assert.equal(f.w.getComputedStyle(preview).maxWidth,'100%');
     preview.scrollLeft=140;
     preview.dispatchEvent(new f.w.Event('scroll'));
@@ -1340,13 +1343,83 @@ test('mobile editor preview is horizontally locked to the viewport and cannot pa
     f.w.innerWidth=1200;
     preview.scrollLeft=60;
     preview.dispatchEvent(new f.w.Event('scroll'));
-    assert.equal(preview.scrollLeft,60);
-    f.w.innerWidth=390;
+    assert.equal(preview.scrollLeft,0);
     f.w.dispatchEvent(new f.w.Event('resize'));
     assert.equal(preview.scrollLeft,0);
-    assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:hidden/);
-    assert.match(source,/@media\(max-width:800px\)[\s\S]*touch-action:pan-y/);
+    assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom;[^}]*contain:inline-size/);
+    assert.doesNotMatch(source,/window\.innerWidth > 800/);
   }finally{f.close();}
+});
+
+test('editor geometry can move anywhere inside the section while rendered width consumes remaining space',async()=>{
+  const doc={pages:{'/':{elements:{'home.h1.template-title.1':{style:{widthPercent:80,offsetXPercent:75}}},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
+  const f=await domFixture({doc,viewportWidth:1280});
+  try{
+    const heading=f.w.document.querySelector('main h1');
+    assert.equal(heading.style.width,'25%');
+    assert.equal(heading.style.maxWidth,'25%');
+    assert.equal(heading.style.left,'75%');
+    f.click('main section');
+    assert.equal(f.w.document.querySelector('#legend-cms-width').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-offset-x').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-width').value,'100');
+    assert.equal(f.w.document.querySelector('#legend-cms-offset-x').value,'0');
+    assert.match(source,/const availableWidth = Math\.max\(5, 100 - horizontalOffset\)/);
+    assert.match(source,/style\.offsetXPercent = Math\.max\(0, Math\.min\(95, rawOffset\)\)/);
+  }finally{f.close();}
+});
+
+test('business entity name remains profile-owned while typography stays editable',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><a class="brand"><strong data-business-name>Template business</strong></a></header><main><section><h1>Heading</h1></section></main></body></html>';
+  const doc={pages:{'/':{elements:{'home.strong.business-name.node1':{text:'Wrong saved name',style:{fontScale:2,fontFamily:'Georgia'}}},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Canonical Business Name'},doc,html});
+  try{
+    const name=f.w.document.querySelector('[data-business-name]');
+    assert.equal(name.textContent,'Canonical Business Name');
+    f.click('[data-business-name]');
+    assert.equal(f.w.document.querySelector('#legend-cms-inline-help').hidden,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-scale').disabled,false);
+    assert.equal(f.w.document.querySelector('#legend-cms-link-group').hidden,true);
+    assert.match(source,/entityBound = el\.hasAttribute\?\.\('data-business-name'\)/);
+  }finally{f.close();}
+});
+
+test('store and cart are presentation-editable controls and SVG clicks never navigate in edit mode',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Heading</h1></section></main></body></html>';
+  const doc={store:{enabled:true,navigationLabel:'Store',cartIcon:'cart'},pages:{'/':{elements:{},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
+  const store={enabled:true,label:'Store',businessKey:'fixture',storefrontUrl:'/store',cartUrl:'/store/cart'};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc,store,html});
+  try{
+    const storeLink=f.w.document.querySelector('[data-legend-store-nav="store"]');
+    const cart=f.w.document.querySelector('[data-legend-store-nav="cart"]');
+    assert.equal(storeLink.dataset.cmsEditable,'true');
+    assert.equal(cart.dataset.cmsEditable,'true');
+    assert.equal(storeLink.dataset.cmsLocked,undefined);
+    assert.equal(cart.dataset.cmsLocked,undefined);
+    const svgChild=cart.querySelector('path');
+    const event=new f.w.MouseEvent('click',{bubbles:true,cancelable:true});
+    assert.equal(svgChild.dispatchEvent(event),false);
+    assert.equal(f.w.document.querySelector('.legend-cms-selected'),cart);
+    assert.equal(f.w.document.querySelector('#legend-cms-link-group').hidden,true);
+    f.input('#legend-cms-width','65');
+    const saved=await f.save();
+    assert.equal(saved.pages['/'].elements['home.commerce.cart-nav'].style.widthPercent,65);
+  }finally{f.close();}
+});
+
+test('store navigation is one far-right website-owned cluster and defaults to the exact Parfait cart glyph',()=>{
+  assert.match(source,/cluster\.className='legend-store-nav-cluster'/);
+  assert.match(source,/cluster\.append\(store,cart\);\s*nav\.appendChild\(cluster\)/);
+  assert.match(source,/M6\.5 6\.5h15l-1\.8 8\.2a2 2 0 0 1-2 1\.6H9\.2a2 2 0 0 1-2-1\.7L5\.7 3\.8H3/);
+  assert.match(source,/\['cart','bag','basket'\]/);
+  assert.match(source,/id='legend-cms-store-cart-icon'/);
+  assert.equal((source.match(/\.legend-store-nav-cluster\{/g)||[]).length,1);
+});
+
+test('store cart icon is persisted in the canonical website document and sanitized server-side',()=>{
+  assert.match(editorContractsSource,/public string CartIcon \{ get; set; \} = "cart"/);
+  assert.match(source,/cartIcon:cartIconValue \|\| effectiveCartIcon\(\)/);
+  assert.match(businessRenderSource,/cartIcon:storeCartIcon/);
 });
 
 test('publish saves unsaved draft first then calls the explicit publish action',async()=>{
@@ -1786,6 +1859,196 @@ test('business navigation-label edits immediately repaint the shared page select
 test('business selector includes imported custom routes from only the authorized draft',async()=>{
  const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Home'}],doc:{pages:{'/special-offer':{title:'Special offer',elements:{},extras:[]}}}});
  try {assert.ok([...f.w.document.querySelector('#legend-cms-page-select').options].some(o=>o.value==='/special-offer'&&o.textContent==='Special offer'));}finally{f.close();}
+});
+
+
+test('sections expand with content instead of creating internal scroll containers',async()=>{
+  const doc={pages:{'/':{elements:{'section:home.section.1':{style:{heightPx:180}}},extras:[],sectionOrder:{}}}};
+  const f=await domFixture({doc});
+  try{
+    const section=f.w.document.querySelector('main section');
+    assert.equal(section.style.height,'auto');
+    assert.equal(section.style.minHeight,'180px');
+    assert.equal(section.style.overflow,'visible');
+  }finally{f.close();}
+});
+
+test('published business hydration keeps the full custom-domain page catalog on every route',async()=>{
+  const pageCatalog=[
+    {route:'/',label:'Home',template:true,showInNavigation:true,order:0},
+    {route:'/about',label:'About',template:true,showInNavigation:true,order:10},
+    {route:'/services',label:'Services',template:true,showInNavigation:true,order:20},
+    {route:'/contact',label:'Contact',template:true,showInNavigation:true,order:30}
+  ];
+  const html='<!doctype html><html><body data-page-key="about"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>About</h1></section></main><footer class="site-footer"></footer><script id="legend-cms-published-document" type="application/json"></script></body></html>';
+  const dom=new JSDOM(html,{url:'https://camo.example/about',runScripts:'outside-only'});
+  const {window:w}=dom;
+  w.document.getElementById('legend-cms-published-document').textContent=JSON.stringify({
+    document:{pages:{'/about':{title:'About',navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}}}},
+    business:{id:'business-id',displayName:'CAMO'},
+    pageCatalog,
+    pageKey:'about',
+    server:false,
+    runtime:{apiBase:'https://protect.example.test'}
+  });
+  w.CSS={escape:value=>String(value)};
+  w.fetch=async()=>({ok:true,json:async()=>({})});
+  w.eval(source);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  try{
+    const links=[...w.document.querySelectorAll('#primary-nav>a[data-legend-page-nav="true"]')];
+    assert.deepEqual(links.map(link=>link.textContent),['Home','About','Services','Contact']);
+    assert.deepEqual(links.map(link=>new URL(link.href).origin),Array(4).fill('https://camo.example'));
+    assert.deepEqual(links.map(link=>new URL(link.href).pathname),['/','/about','/services','/contact']);
+  }finally{w.close();}
+});
+
+test('business editor navigation tabs do not follow links and drag order writes canonical page order',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const pages=[{path:'/',label:'Home'},{path:'/about',label:'About'},{path:'/services',label:'Services'}];
+  const doc={pages:{
+    '/':{navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
+    '/about':{navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}},
+    '/services':{navigation:{label:'Services',showInNavigation:true,order:20},elements:{},extras:[],sectionOrder:{}}
+  }};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'CAMO'},pages,doc,html});
+  try{
+    const nav=f.w.document.querySelector('#primary-nav');
+    const links=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
+    const clickEvent=new f.w.MouseEvent('click',{bubbles:true,cancelable:true});
+    assert.equal(links[1].dispatchEvent(clickEvent),false);
+
+    for(const [index,link] of links.entries()){
+      link.getBoundingClientRect=()=>({left:index*100,right:index*100+80,width:80,top:0,bottom:30,height:30});
+    }
+    const about=links[1];
+    about.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:140,clientY:15,button:0}));
+    nav.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:245,clientY:15,button:0}));
+    nav.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:245,clientY:15,button:0}));
+    assert.deepEqual([...nav.querySelectorAll('a[data-legend-page-nav="true"]')].map(link=>link.textContent),['Home','Services','About']);
+    const saved=await f.save();
+    assert.equal(saved.pages['/'].navigation.order,0);
+    assert.equal(saved.pages['/services'].navigation.order,10);
+    assert.equal(saved.pages['/about'].navigation.order,20);
+  }finally{f.close();}
+});
+
+test('editor navigation opens pages only on double-click and never normal-link navigates',()=>{
+  assert.match(source,/addEventListener\('dblclick',[\s\S]*navigateToEditorPage\(route\)/);
+  assert.match(source,/addEventListener\('click',[\s\S]*data-legend-page-nav[\s\S]*preventDefault\(\)/);
+});
+
+test('text scaling stays unbounded while sections remain content-sized and never become internal scrollers',()=>{
+  assert.match(source,/id="legend-cms-scale" type="number" min="0" step="any"/);
+  assert.doesNotMatch(source,/id="legend-cms-scale"[^>]*max=/);
+  assert.match(source,/scaledElements\.set\(el, style\.fontScale\)/);
+  assert.match(source,/el\.style\.height = 'auto';[\s\S]*el\.style\.overflow = 'visible';/);
+});
+
+test('business header navigation renders once from the canonical page catalog and discards stale DOM links',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav><a href="/">Stale Home</a><a href="/about">Stale About</a><a href="/">Duplicate Home</a><a href="/services">Stale Services</a></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const doc={pages:{
+    '/':{title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
+    '/team':{title:'Team',navigation:{label:'Our Team',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}},
+    '/hidden':{title:'Hidden',navigation:{label:'Hidden',showInNavigation:false,order:20},elements:{},extras:[],sectionOrder:{}}
+  }};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages:[{path:'/',label:'Home'},{path:'/team',label:'Team'}],doc,html,search:''});
+  try{
+    const links=[...f.w.document.querySelectorAll('#primary-nav>a')];
+    assert.deepEqual(links.map(x=>x.textContent),['Home','Our Team']);
+    assert.equal(new Set(links.map(x=>x.getAttribute('href'))).size,links.length);
+    assert.equal(links.some(x=>x.textContent.startsWith('Stale')||x.textContent==='Duplicate Home'),false);
+  }finally{f.close();}
+});
+
+test('business page list directly manages navigation label visibility and deletion from one page record',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const doc={pages:{
+    '/':{title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
+    '/about':{title:'About',navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}}
+  }};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}],doc,html});
+  try{
+    const rows=[...f.w.document.querySelectorAll('#legend-cms-page-list .legend-cms-page-row')];
+    assert.equal(rows.length,2);
+    const about=rows.find(row=>row.querySelector('button')?.textContent==='/about');
+    assert.ok(about);
+    const label=about.querySelector('input[type="text"]');
+    label.value='Our Story';
+    label.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    assert.deepEqual([...f.w.document.querySelectorAll('#primary-nav>a')].map(x=>x.textContent),['Home','Our Story']);
+    const saved=await f.save();
+    assert.equal(saved.pages['/about'].navigation.label,'Our Story');
+    const refreshed=[...f.w.document.querySelectorAll('#legend-cms-page-list .legend-cms-page-row')].find(row=>row.querySelector('button')?.textContent==='/about');
+    refreshed.querySelector('button:last-child').click();
+    const deleted=await f.save();
+    assert.equal(deleted.pages['/about'].navigation.isDeleted,true);
+    assert.equal([...f.w.document.querySelectorAll('#primary-nav>a')].some(x=>x.getAttribute('href')==='/about'),false);
+  }finally{f.close();}
+});
+
+
+test('template sections duplicate into versioned extras while header and footer remain immutable',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><strong>Header</strong></header><main><section class="hero"><h1>Hero title</h1><p>Hero copy</p></section></main><footer class="site-footer">Footer</footer></body></html>';
+  const f=await domFixture({html});
+  try{
+    f.click('main section');
+    const duplicate=f.w.document.querySelector('#legend-cms-duplicate');
+    assert.equal(duplicate.disabled,false);
+    assert.equal(duplicate.textContent,'Duplicate section');
+    f.click('#legend-cms-duplicate');
+    const saved=await f.save();
+    const copy=saved.pages['/'].extras.find(x=>x.type==='section');
+    assert.ok(copy);
+    assert.equal(copy.templateSectionId,'home.section.1');
+    assert.equal(f.w.document.querySelectorAll('main>section').length,2);
+    f.click('.site-header');
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-remove').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-remove').textContent,'Global shell · cannot delete');
+    f.click('.site-footer');
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-remove').disabled,true);
+  }finally{f.close();}
+});
+
+test('shared public stylesheet keeps footer at viewport bottom without fixing it over content',()=>{
+  assert.match(publicCss,/body\{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip\}/);
+  assert.match(publicCss,/main,\.public-main,\.layout-content\{flex:1 0 auto;min-height:0\}/);
+  assert.match(publicCss,/\.site-footer\{flex:0 0 auto;margin-top:auto\}/);
+  assert.doesNotMatch(publicCss,/\.site-footer\{[^}]*position:fixed/);
+});
+
+test('header and footer edits persist in document-global shell authority across pages',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><a class="brand"><strong>Brand</strong></a></header><main><section><h1>Home</h1></section></main><footer class="site-footer"><p>Footer copy</p></footer></body></html>';
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Business'},pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}],html});
+  try{
+    f.click('.site-header strong'); f.input('[data-style-key="fontSize"]','31');
+    f.click('.site-footer p'); f.input('[data-style-key="fontSize"]','19');
+    const saved=await f.save();
+    const headerEntry=Object.entries(saved.elements).find(([key,value])=>key.startsWith('shell.header.') && value?.style?.fontSize===31);
+    const footerEntry=Object.entries(saved.elements).find(([key,value])=>key.startsWith('shell.footer.') && value?.style?.fontSize===19);
+    assert.ok(headerEntry); assert.ok(footerEntry);
+    assert.equal(saved.pages['/'].elements[headerEntry[0]],undefined);
+    assert.equal(saved.pages['/'].elements[footerEntry[0]],undefined);
+  }finally{f.close();}
+});
+
+test('cart icon launches larger and stores adjustable size through canonical store settings',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const doc={store:{enabled:true,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},pages:{'/':{elements:{},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
+  const store={enabled:true,label:'Store',cartIcon:'cart',cartIconSizePx:28,businessKey:'fixture',storefrontUrl:'/store',cartUrl:'/store/cart',managerUrl:'/commerce/manage/products?ticket=ticket'};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Business'},doc,store,html});
+  try{
+    const svg=f.w.document.querySelector('.legend-store-cart-icon');
+    assert.equal(svg.getAttribute('width'),'28');
+    assert.equal(svg.getAttribute('height'),'28');
+    f.change('#legend-cms-store-cart-size','42');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const call=f.calls.find(call=>call.method==='POST' && call.url.includes('/manage/store/enable'));
+    assert.ok(call);
+    assert.equal(JSON.parse(call.body).cartIconSizePx,42);
+  }finally{f.close();}
 });
 
 test('site palette does not retain the template blue gradient stop',async()=>{

@@ -5,7 +5,8 @@ import { buildBridgeRequest, handleWebsiteRouting } from '../../src/website-rout
 const secret = '0123456789abcdef0123456789abcdef';
 const env = {
   LEGEND_WEBSITE_BRIDGE_SECRET: secret,
-  LEGEND_WEBSITE_ORIGIN: 'https://masterapp-protect.azurewebsites.net'
+  LEGEND_WEBSITE_ORIGIN: 'https://masterapp-protect.azurewebsites.net',
+  LEGEND_COMMERCE_ORIGIN: 'https://masterapp-parfait.azurewebsites.net'
 };
 
 test('external SaaS hostname is bridged to the single Protect origin with authenticated original host', async () => {
@@ -46,6 +47,73 @@ test('LEGEND-owned hosts bypass the bridge unchanged', async () => {
   assert.equal(await response.text(), 'ok');
   assert.equal(seen.url, request.url);
   assert.equal(seen.headers.get('X-Legend-Original-Host'), null);
+});
+
+test('business custom-domain storefront stays on its domain while transport targets Parfait', async () => {
+  const request = new Request('https://camoexterior.com/store/product/window-cleaning?utm_source=test');
+  const result = buildBridgeRequest(request, env);
+  assert.equal(result.error, undefined);
+  assert.equal(result.commerce, true);
+  assert.equal(result.request.url, 'https://masterapp-parfait.azurewebsites.net/store/product/window-cleaning?utm_source=test');
+  assert.equal(result.request.headers.get('X-Legend-Original-Host'), 'camoexterior.com');
+  assert.equal(result.request.headers.get('X-Legend-Website-Bridge'), secret);
+});
+
+test('LEGEND storefront path is transported to Parfait without moving normal LEGEND pages', async () => {
+  const store = new Request('https://mylegnd.com/store/cart');
+  let storeSeen;
+  await handleWebsiteRouting(store, env, async forwarded => {
+    storeSeen = forwarded;
+    return new Response('store');
+  });
+  assert.equal(storeSeen.url, 'https://masterapp-parfait.azurewebsites.net/store/cart');
+  assert.equal(storeSeen.headers.get('X-Legend-Original-Host'), 'mylegnd.com');
+
+  const home = new Request('https://mylegnd.com/');
+  let homeSeen;
+  await handleWebsiteRouting(home, env, async forwarded => {
+    homeSeen = forwarded;
+    return new Response('home');
+  });
+  assert.equal(homeSeen.url, home.url);
+  assert.equal(homeSeen.headers.get('X-Legend-Original-Host'), null);
+});
+
+test('Protect keeps the scoped store path but transports it to Parfait on the Protect host', async () => {
+  const request = new Request('https://protect.mylegnd.com/store/s/agent-store/cart');
+  let seen;
+  await handleWebsiteRouting(request, env, async forwarded => {
+    seen = forwarded;
+    return new Response('ok');
+  });
+  assert.equal(seen.url, 'https://masterapp-parfait.azurewebsites.net/store/s/agent-store/cart');
+  assert.equal(seen.headers.get('X-Legend-Original-Host'), 'protect.mylegnd.com');
+});
+
+test('portal and client store-looking paths remain on their own applications', async () => {
+  for (const url of ['https://portal.mylegnd.com/store', 'https://client.mylegnd.com/store']) {
+    const request = new Request(url);
+    let seen;
+    await handleWebsiteRouting(request, env, async forwarded => {
+      seen = forwarded;
+      return new Response('ok');
+    });
+    assert.equal(seen.url, request.url);
+    assert.equal(seen.headers.get('X-Legend-Original-Host'), null);
+  }
+});
+
+test('storefront asset namespace is transported to Parfait without taking over generic website assets', async () => {
+  const storeAsset = buildBridgeRequest(new Request('https://camoexterior.com/store-assets/css/site.css'), env);
+  assert.equal(storeAsset.request.url, 'https://masterapp-parfait.azurewebsites.net/store-assets/css/site.css');
+
+  const manager = buildBridgeRequest(new Request('https://business.example/commerce/manage/products?ticket=test-ticket'), env);
+  assert.equal(manager.commerce, true);
+  assert.equal(manager.request.url, 'https://masterapp-parfait.azurewebsites.net/commerce/manage/products?ticket=test-ticket');
+  assert.equal(manager.request.headers.get('X-Legend-Original-Host'), 'business.example');
+
+  const websiteAsset = buildBridgeRequest(new Request('https://camoexterior.com/site.css'), env);
+  assert.equal(websiteAsset.request.url, 'https://masterapp-protect.azurewebsites.net/site.css');
 });
 
 test('external host fails closed when the shared bridge secret is unavailable', async () => {

@@ -1,13 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the already-validated centralized website commerce addition. Final scoped deployment after release-policy and EF migration-snapshot validation. Deploy only Parfait, Protect Website, and LEGEND Website. Preserve AgentPortal, ClientApp, Cloudflare routing, CRM, existing website drafts/published versions, authentication, billing authorities, marketing connections, and unrelated systems.",
-  "purpose": "Final scoped release of centralized Store capability. Apply the validated additive WebsiteContentState.CommerceBusinessId migration and deploy only Protect Website, Parfait, and LEGEND Website. No mirrored storefront, no duplicate product/order store, no second Meta sender, no stacked website override system.",
-  "requestId": "centralized-website-commerce-final-scoped-20260925",
+  "authorization": "Founder authorized completion of the canonical website analytics repair for ClientApp after the scoped AgentPortal + Protect release. Do not restart or redeploy AgentPortal or Protect. Deploy ClientApp only so business-scoped Website Analytics consumes the same canonical shared analytics assemblies and linked WebsiteAnalytics UI.",
+  "purpose": "Complete canonical analytics runtime parity for business clients. ClientApp hosts BusinessWorkspaceController over the shared BusinessWorkspaceControllerBase/BusinessWorkspaceService and links AgentPortal WebsiteAnalytics views and scripts, so it must receive the validated shared analytics changes without redeploying already-completed targets.",
+  "requestId": "canonical-live-analytics-clientapp-completion-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36273622780",
+  "queueBehindRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36275708976",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
+    "masterapp-client"
   ],
-  "cloudflareWebsiteRouting": false
+  "cloudflareWebsiteRouting": false,
+  "preserveLiveTargets": false
 }

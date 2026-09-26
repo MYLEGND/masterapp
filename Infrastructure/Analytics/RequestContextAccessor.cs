@@ -1,8 +1,7 @@
 
 using Microsoft.AspNetCore.Http;
-using ProtectWebsite.Services.Tracking;
 
-namespace ProtectWebsite.Services.Tracking;
+namespace Infrastructure.Analytics;
 
 public static class RequestContextAccessor
 {

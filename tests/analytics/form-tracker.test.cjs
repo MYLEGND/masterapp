@@ -4,7 +4,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const {webcrypto} = require('node:crypto');
 const repo=path.resolve(process.argv[2] || process.cwd());
-const script=fs.readFileSync(path.join(repo,'Protect-Website/wwwroot/js/tracking.js'),'utf8');
+const script=fs.readFileSync(path.join(repo,'SHARED/WebsitePlatform/tracking.js'),'utf8');
 const catalog=fs.readFileSync(path.join(repo,'SHARED/Analytics/AnalyticsEventCatalog.cs'),'utf8');
 const browserEvents=[...catalog.matchAll(/Define\("([^"]+)"[^\n]+allowBrowser: true/g)].map(m=>m[1]);
 const config={allowedBrowserEvents:browserEvents,criticalBrowserEvents:browserEvents};

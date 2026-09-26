@@ -53,6 +53,7 @@ public class PublicBookingConfirmationServiceTests
             db,
             matcher.Object,
             resolver.Object,
+            new MetaSignalCrmOutcomeService(db, NullLogger<MetaSignalCrmOutcomeService>.Instance),
             NullLogger<PublicBookingConfirmationService>.Instance);
 
         var result = await service.TryConfirmAsync(new PublicBookingContext(
@@ -121,6 +122,7 @@ public class PublicBookingConfirmationServiceTests
             db,
             matcher.Object,
             resolver.Object,
+            new MetaSignalCrmOutcomeService(db, NullLogger<MetaSignalCrmOutcomeService>.Instance),
             NullLogger<PublicBookingConfirmationService>.Instance);
 
         var result = await service.TryConfirmAsync(new PublicBookingContext(
@@ -150,7 +152,7 @@ public class PublicBookingConfirmationServiceTests
         var analyticsEvent = await db.AnalyticsEvents.SingleAsync();
         Assert.Equal(AppointmentAnalyticsEventCatalog.Booked, analyticsEvent.EventType);
         Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isBrowserSignal"));
-        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isServerAuthority"));
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isServerAuthority"));
         Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaServerAuthorityEligible"));
         Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaSingleTruthDispatchEligible"));
         Assert.Equal(
