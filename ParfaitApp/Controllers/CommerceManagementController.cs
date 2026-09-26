@@ -138,7 +138,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("product")]
     public async Task<IActionResult> SaveProduct(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] ParfaitProductEditorViewModel product,
         CancellationToken ct = default)
     {
@@ -172,7 +172,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("product/delete")]
     public async Task<IActionResult> DeleteProduct(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] string id,
         CancellationToken ct = default)
     {
@@ -186,7 +186,7 @@ public sealed class CommerceManagementController(
     [HttpPost("product/images/upload")]
     [RequestSizeLimit(26_000_000)]
     public async Task<IActionResult> UploadImages(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] string productId,
         [FromForm] List<IFormFile> images,
         CancellationToken ct = default)
@@ -200,7 +200,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("product/images/delete")]
     public async Task<IActionResult> DeleteImage(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] string productId,
         [FromForm] string imageId,
         CancellationToken ct = default)
@@ -214,7 +214,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("product/images/reorder")]
     public async Task<IActionResult> ReorderImages(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] string productId,
         [FromForm] List<string> imageIds,
         CancellationToken ct = default)
@@ -228,7 +228,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("product/images/display")]
     public async Task<IActionResult> SaveImageDisplay(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] string productId,
         [FromForm] string imageId,
         [FromForm] string objectFit,
@@ -246,7 +246,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("products/reorder")]
     public async Task<IActionResult> ReorderProducts(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] List<string> productIds,
         CancellationToken ct = default)
     {
@@ -259,7 +259,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("settings/commerce")]
     public async Task<IActionResult> SaveCommerceSettings(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] ParfaitCommerceSettingsViewModel settings,
         CancellationToken ct = default)
     {
@@ -274,7 +274,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("order")]
     public async Task<IActionResult> UpdateOrder(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] ParfaitOrderAdminUpdateRequest request,
         CancellationToken ct = default)
     {
@@ -288,7 +288,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("order/receipt")]
     public async Task<IActionResult> ResendOrderReceipt(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] string orderNumber,
         CancellationToken ct = default)
     {
@@ -312,7 +312,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("automations/workflows")]
     public async Task<IActionResult> SaveAutomationWorkflow(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] ParfaitAutomationWorkflowEditorInput input,
         CancellationToken ct = default)
     {
@@ -326,7 +326,7 @@ public sealed class CommerceManagementController(
 
     [HttpPost("automations/workflows/delete")]
     public async Task<IActionResult> DeleteAutomationWorkflow(
-        [FromForm] string ticket,
+        string ticket,
         [FromForm] Guid id,
         CancellationToken ct = default)
     {
