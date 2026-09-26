@@ -143,7 +143,135 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         ViewData["InitialRangeLabel"] = $"Last {days} days";
         ViewData["InitialSummaryJson"] = JsonSerializer.Serialize(model.Summary);
         ViewData["BusinessWorkspace"] = model;
+        ViewData["AnalyticsCanMetaAds"] = true;
+        ViewData["AnalyticsCanAiReview"] = false;
+        ViewData["AnalyticsCanAgentPerformance"] = false;
+        ViewData["AnalyticsCanIncidentMonitor"] = false;
         return View("~/Views/WebsiteAnalytics/Index.cshtml");
+    }
+
+    [HttpGet("analytics/meta-campaigns")]
+    public async Task<IActionResult> MetaCampaigns(
+        Guid businessId,
+        string? preset = null,
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        string? timezoneId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+        try
+        {
+            var timezone = string.IsNullOrWhiteSpace(timezoneId)
+                ? TimeZoneInfo.Utc
+                : TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
+            var range = TimeRangeRequest.FromPreset(preset ?? "30d", fromUtc, toUtc, timezone, qualityMode);
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMetaAdsService>();
+            return Json(await service.GetCampaignsAsync(range, ScopeContext.ForBusiness(businessId), cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or
+                                   TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("analytics/meta-connection-status")]
+    public async Task<IActionResult> MetaConnectionStatus(Guid businessId, CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+        var store = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
+        var row = await store.GetStatusAsync(MarketingOwnerScope.Business(businessId), cancellationToken);
+        var connected = row is not null &&
+            !row.DisconnectedUtc.HasValue &&
+            !string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext) &&
+            (!row.AccessTokenExpiresUtc.HasValue || row.AccessTokenExpiresUtc > DateTime.UtcNow);
+        return Json(new
+        {
+            connected,
+            requiresAgentScope = false,
+            accountId = row?.AdAccountId,
+            accountName = row?.AdAccountName,
+            businessId = row?.MetaBusinessManagerId,
+            businessName = row?.MetaBusinessManagerName,
+            metaUserName = row?.MetaUserName,
+            connectedUtc = row?.ConnectedUtc,
+            accessTokenExpiresUtc = row?.AccessTokenExpiresUtc,
+            message = connected ? null : "Meta Ads not connected for this business."
+        });
+    }
+
+    [HttpGet("analytics/meta-connect")]
+    public async Task<IActionResult> MetaConnect(
+        Guid businessId,
+        [FromQuery] string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+        var fallback = $"/business/{businessId:D}/analytics";
+        try
+        {
+            var callback = Url.ActionLink(
+                nameof(MetaCallback),
+                values: new { businessId },
+                protocol: Request.Scheme)
+                ?? $"{Request.Scheme}://{Request.Host}{Request.PathBase}/business/{businessId:D}/analytics/meta-callback";
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingMetaAdsOAuthService>();
+            var connect = oauth.BuildConnectUrl(
+                MarketingOwnerScope.Business(businessId),
+                string.IsNullOrWhiteSpace(returnUrl) ? fallback : returnUrl,
+                callback);
+            return Redirect(connect);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Redirect($"{fallback}?meta=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("analytics/meta-callback")]
+    public async Task<IActionResult> MetaCallback(
+        Guid businessId,
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
+        CancellationToken cancellationToken = default)
+    {
+        var fallback = $"/business/{businessId:D}/analytics";
+        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+            return Redirect($"{fallback}?meta=error&message={Uri.EscapeDataString(message)}");
+        }
+
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingMetaAdsOAuthService>();
+            var result = await oauth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, cancellationToken);
+            if (result.Owner.CommerceBusinessId != businessId || result.Owner.AgentTrackingProfileId.HasValue)
+                throw new InvalidOperationException("Meta OAuth owner scope does not match this business.");
+
+            var store = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
+            await store.SaveAdsAsync(result.Owner, result.Connection, cancellationToken);
+            return Redirect($"{result.ReturnUrl}{(result.ReturnUrl.Contains('?') ? '&' : '?')}meta=connected");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Redirect($"{fallback}?meta=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpPost("analytics/meta-disconnect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MetaDisconnect(Guid businessId, CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+        var store = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
+        await store.DisconnectAsync(MarketingOwnerScope.Business(businessId), cancellationToken);
+        return Json(new { ok = true });
     }
 
     [HttpGet("analytics/{**section}")]
