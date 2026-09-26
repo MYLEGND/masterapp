@@ -37,6 +37,9 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("[HttpPost(\"marketing-setup\")]", controller, StringComparison.Ordinal);
         Assert.Contains("AgentMarketingProfileService", controller, StringComparison.Ordinal);
         Assert.Contains("ResolveMarketingSetupTrackingAsync", controller, StringComparison.Ordinal);
+        Assert.Contains("_metaAdsConnectionStore.GetAsync(tracking.Id", controller, StringComparison.Ordinal);
+        Assert.Contains("var adsConnected = metaConnection is not null;", controller, StringComparison.Ordinal);
+        Assert.Contains("var secureCapi = adsConnected;", controller, StringComparison.Ordinal);
         Assert.Contains("profile.BookingEnabled = request.BookingEnabled", controller, StringComparison.Ordinal);
         Assert.Contains("metaCapiManagedAutomatically = true", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("replacementCapiToken", controller, StringComparison.OrdinalIgnoreCase);
@@ -51,8 +54,21 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("marketingSetup: analyticsEndpoint('/marketing-setup')", js, StringComparison.Ordinal);
         Assert.Contains("state.agentProfileId || callerProfileId", js, StringComparison.Ordinal);
         Assert.Contains("marketingSetupConnectUrl", js, StringComparison.Ordinal);
+        Assert.Contains("let marketingSetupLoaded = false;", js, StringComparison.Ordinal);
+        Assert.Contains("marketingSetupSave.disabled = !marketingSetupLoaded", js, StringComparison.Ordinal);
+        Assert.DoesNotContain("Reload Marketing Setup before saving.", js, StringComparison.Ordinal);
         Assert.DoesNotContain("capiToken", js, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(".marketing-setup-trigger", css, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LegacyProfileCapi_CannotOverrideOrBlockCanonicalOauthConnection()
+    {
+        var service = Read("Infrastructure", "Analytics", "AgentMarketingProfileService.cs");
+
+        Assert.Contains("string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext)", service, StringComparison.Ordinal);
+        Assert.Contains("catch (CryptographicException)", service, StringComparison.Ordinal);
+        Assert.Contains("Pixel/test-code migration must still complete", service, StringComparison.Ordinal);
     }
 
     [Fact]
