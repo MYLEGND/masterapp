@@ -12,10 +12,10 @@ namespace Infrastructure.Analytics;
 public sealed class AgentMarketingProfileService(MasterAppDbContext db, MarketingConnectionStore connections,
     IDataProtectionProvider legacyProvider)
 {
-    public async Task SavePixelAsync(AgentTrackingProfile tracking, string? pixelId, Guid revision, CancellationToken ct = default)
+    public async Task SavePixelAsync(AgentTrackingProfile tracking, string? pixelId, string? testEventCode, Guid revision, CancellationToken ct = default)
     {
-        var row = await GetAsync(tracking, ct);
-        await connections.SaveSettingsAsync(MarketingOwnerScope.Agent(tracking.Id), pixelId, row.TestEventCode, null, revision, ct);
+        await GetAsync(tracking, ct);
+        await connections.SaveSettingsAsync(MarketingOwnerScope.Agent(tracking.Id), pixelId, testEventCode, null, revision, ct);
     }
 
     public async Task<MarketingConnection> GetAsync(AgentTrackingProfile tracking, CancellationToken ct = default)

@@ -158,6 +158,7 @@ namespace AgentPortal.Controllers;
         Guid? AgentProfileId,
         Guid MarketingRevision,
         string? MetaPixelId,
+        string? MetaTestEventCode,
         bool BookingEnabled,
         string? MicrosoftBookingsEmbedUrl,
         string? FallbackBookingUrl,
@@ -201,6 +202,8 @@ namespace AgentPortal.Controllers;
             {
                 revision = marketing.Revision,
                 metaPixelId = marketing.PixelId,
+                metaTestEventCode = marketing.TestEventCode,
+                metaTestEventsConfigured = !string.IsNullOrWhiteSpace(marketing.TestEventCode),
                 metaAdsConnected = adsConnected,
                 metaAccount = adsConnected ? metaConnection!.AccountName ?? metaConnection.AccountId ?? "Meta Ads" : null,
                 metaCapiConfiguredSecurely = secureCapi,
@@ -229,6 +232,9 @@ namespace AgentPortal.Controllers;
         var pixel = string.IsNullOrWhiteSpace(request.MetaPixelId) ? null : request.MetaPixelId.Trim();
         if (pixel is not null && (pixel.Length > 32 || pixel.Any(ch => ch < '0' || ch > '9')))
             return BadRequest(new { message = "Meta Pixel ID must contain only digits." });
+        var testEventCode = string.IsNullOrWhiteSpace(request.MetaTestEventCode) ? null : request.MetaTestEventCode.Trim();
+        if (testEventCode is not null && testEventCode.Length > 100)
+            return BadRequest(new { message = "Meta Test Event Code is too long." });
 
         static string? Clean(string? value, int max) =>
             string.IsNullOrWhiteSpace(value) ? null : value.Trim().Length <= max ? value.Trim() : value.Trim()[..max];
@@ -266,7 +272,7 @@ namespace AgentPortal.Controllers;
             // through the same scoped DbContext SaveChanges transaction. No CAPI secret
             // is accepted here; OAuth-owned Meta Ads credentials remain the only active
             // secure CAPI authority.
-            await marketingService.SavePixelAsync(tracking, pixel, request.MarketingRevision, cancellationToken);
+            await marketingService.SavePixelAsync(tracking, pixel, testEventCode, request.MarketingRevision, cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
