@@ -53,7 +53,11 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
 
         ApplyManagementViewData(store, ticket, "dashboard");
-        return View("~/Views/Dashboard/Index.cshtml", await workspace.GetSnapshotAsync(store.CommerceBusinessId, ct));
+        return View("~/Views/Dashboard/Index.cshtml", await workspace.GetSnapshotAsync(
+            store.CommerceBusinessId,
+            ResolveAnalyticsScope(store),
+            ResolveMarketingOwner(store),
+            ct));
     }
 
     [HttpGet("analytics")]
