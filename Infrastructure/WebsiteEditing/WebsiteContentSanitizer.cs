@@ -19,7 +19,8 @@ public static class WebsiteContentSanitizer
             {
                 Enabled = source.Store?.Enabled == true,
                 NavigationLabel = SanitizeStoreLabel(source.Store?.NavigationLabel),
-                CartIcon = SanitizeCartIcon(source.Store?.CartIcon)
+                CartIcon = SanitizeCartIcon(source.Store?.CartIcon),
+                CartIconSizePx = Math.Clamp(source.Store?.CartIconSizePx ?? 28, 16, 96)
             },
             Breakpoints = breakpoints
         };
