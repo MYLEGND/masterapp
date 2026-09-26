@@ -1048,7 +1048,11 @@ jobs:
           if preserve_live_targets:
               assert not validate_only and website_routing
               required=['BASE','AZURE','LIVE']+routing_steps
-              skipped=['BUILD','TESTS','WEB','PACKAGE','MIGRATE','PROTECTAUTH','EDITORAUTH','PORTAL','CLIENT','PROTECT','PARFAIT','WEBSITE','WEBSITECHECKS']
+              skipped=['BUILD','TESTS','WEB','PACKAGE','MIGRATE','PROTECTAUTH','EDITORAUTH','PORTAL','CLIENT','PROTECT','PARFAIT','WEBSITE']
+              if 'masterapp-website' in selected:
+                  required.append('WEBSITECHECKS')
+              else:
+                  skipped.append('WEBSITECHECKS')
               results={key:os.environ[key] for key in required}
               skipped_results={key:os.environ[key] for key in skipped}
               print(json.dumps({'mode':'preserve-live-routing-recovery','required':results,'preservedSteps':skipped_results},indent=2))
