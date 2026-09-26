@@ -31,6 +31,7 @@ public sealed class WebsiteStoreSettings
     public bool Enabled { get; set; }
     public string NavigationLabel { get; set; } = "Store";
     public string CartIcon { get; set; } = "cart";
+    public int CartIconSizePx { get; set; } = 28;
 }
 
 public sealed class WebsiteContentDocument
