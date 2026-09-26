@@ -162,6 +162,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             if (!string.Equals(subscription.ClientState, clientState, StringComparison.Ordinal))
             {
                 syncLog.AgentUserId = subscription.AgentUserId;
+                syncLog.CommerceBusinessId = subscription.CommerceBusinessId;
                 syncLog.CalendarUserId = subscription.CalendarUserId;
                 syncLog.CalendarEmail = subscription.CalendarEmail;
                 syncLog.Error = "Client state mismatch.";
