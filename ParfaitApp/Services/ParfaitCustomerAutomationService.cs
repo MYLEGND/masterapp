@@ -13,35 +13,42 @@ public sealed class ParfaitCustomerAutomationService
     private readonly IConfiguration _configuration;
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitProductService _products;
+    private readonly Infrastructure.Data.MasterAppDbContext _db;
     private readonly object _lock = new();
 
     public ParfaitCustomerAutomationService(
         ParfaitStoragePaths storagePaths,
         IConfiguration configuration,
         ParfaitOrderService orders,
-        ParfaitProductService products)
+        ParfaitProductService products,
+        Infrastructure.Data.MasterAppDbContext db)
     {
         _storagePaths = storagePaths;
         _configuration = configuration;
         _orders = orders;
         _products = products;
+        _db = db;
     }
 
     private string DataPath => _storagePaths.CustomerAutomationsPath;
 
-    public ParfaitAutomationWorkspaceViewModel GetWorkspaceViewModel()
+    public ParfaitAutomationWorkspaceViewModel GetWorkspaceViewModel() =>
+        GetWorkspaceViewModel(_products.GetDefaultBusinessId());
+
+    public ParfaitAutomationWorkspaceViewModel GetWorkspaceViewModel(Guid businessId)
     {
+        var dataPath = DataPathForBusiness(businessId);
         lock (_lock)
         {
-            var store = LoadStoreUnsafe();
+            var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
 
-            var workflowDueCounts = BuildDueCountLookup(store, DateTime.UtcNow);
+            var workflowDueCounts = BuildDueCountLookup(store, DateTime.UtcNow, businessId);
             var sentLast7Days = store.Dispatches.Count(dispatch =>
                 string.Equals(dispatch.Status, "Sent", StringComparison.OrdinalIgnoreCase)
                 && dispatch.OccurredUtc >= DateTime.UtcNow.AddDays(-7));
 
-            var customers = BuildCustomers(store);
+            var customers = BuildCustomers(store, businessId);
             var activity = store.Dispatches
                 .OrderByDescending(dispatch => dispatch.OccurredUtc)
                 .Take(16)
@@ -104,7 +111,7 @@ public sealed class ParfaitCustomerAutomationService
                     .ToList(),
                 Customers = customers,
                 Activity = activity,
-                DiscountOptions = BuildDiscountOptions(),
+                DiscountOptions = BuildDiscountOptions(businessId),
                 NewWorkflow = CreateDefaultWorkflow(),
                 ActiveWorkflowCount = store.Workflows.Count(workflow => workflow.IsActive),
                 AudienceCount = customers.Count,
@@ -114,11 +121,15 @@ public sealed class ParfaitCustomerAutomationService
         }
     }
 
-    public void SaveWorkflow(ParfaitAutomationWorkflowEditorInput input)
+    public void SaveWorkflow(ParfaitAutomationWorkflowEditorInput input) =>
+        SaveWorkflow(_products.GetDefaultBusinessId(), input);
+
+    public void SaveWorkflow(Guid businessId, ParfaitAutomationWorkflowEditorInput input)
     {
+        var dataPath = DataPathForBusiness(businessId);
         lock (_lock)
         {
-            var store = LoadStoreUnsafe();
+            var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
 
             var workflow = NormalizeWorkflow(input);
@@ -133,17 +144,21 @@ public sealed class ParfaitCustomerAutomationService
                 store.Workflows.Add(workflow);
             }
 
-            SaveStoreUnsafe(store);
+            SaveStoreUnsafe(store, dataPath);
         }
     }
 
-    public void DeleteWorkflow(Guid id)
+    public void DeleteWorkflow(Guid id) =>
+        DeleteWorkflow(_products.GetDefaultBusinessId(), id);
+
+    public void DeleteWorkflow(Guid businessId, Guid id)
     {
+        var dataPath = DataPathForBusiness(businessId);
         lock (_lock)
         {
-            var store = LoadStoreUnsafe();
+            var store = LoadStoreUnsafe(dataPath);
             store.Workflows.RemoveAll(workflow => workflow.Id == id);
-            SaveStoreUnsafe(store);
+            SaveStoreUnsafe(store, dataPath);
         }
     }
 
@@ -246,7 +261,7 @@ public sealed class ParfaitCustomerAutomationService
             CleanupUnsafe(store, DateTime.UtcNow);
 
             var now = DateTime.UtcNow;
-            var orders = _orders.GetAllOrders();
+            var orders = _orders.GetAllOrders(businessId);
             var candidates = new List<ParfaitAutomationDispatchCandidate>();
 
             foreach (var workflow in store.Workflows.Where(item => item.IsActive))
@@ -397,10 +412,10 @@ public sealed class ParfaitCustomerAutomationService
         };
     }
 
-    private List<ParfaitAutomationDiscountOptionViewModel> BuildDiscountOptions()
+    private List<ParfaitAutomationDiscountOptionViewModel> BuildDiscountOptions(Guid businessId)
     {
         var options = new List<ParfaitAutomationDiscountOptionViewModel>();
-        var settings = _products.GetCommerceSettings();
+        var settings = _products.GetCommerceSettings(businessId);
         if (settings.HasActiveGlobalDiscount)
         {
             options.Add(new ParfaitAutomationDiscountOptionViewModel
@@ -410,7 +425,7 @@ public sealed class ParfaitCustomerAutomationService
             });
         }
 
-        options.AddRange(_products.GetAllProducts()
+        options.AddRange(_products.GetAllProducts(businessId)
             .SelectMany(product => product.DiscountCodes
                 .Where(code => code.IsActive && !string.IsNullOrWhiteSpace(code.Code) && code.Amount > 0)
                 .Select(code => new ParfaitAutomationDiscountOptionViewModel
@@ -426,7 +441,7 @@ public sealed class ParfaitCustomerAutomationService
             .ToList();
     }
 
-    private Dictionary<Guid, int> BuildDueCountLookup(ParfaitAutomationStoreRecord store, DateTime utcNow)
+    private Dictionary<Guid, int> BuildDueCountLookup(ParfaitAutomationStoreRecord store, DateTime utcNow, Guid businessId)
     {
         var lookup = store.Workflows.ToDictionary(workflow => workflow.Id, _ => 0);
         var orders = _orders.GetAllOrders();
@@ -454,9 +469,9 @@ public sealed class ParfaitCustomerAutomationService
         return lookup;
     }
 
-    private List<ParfaitAutomationCustomerViewModel> BuildCustomers(ParfaitAutomationStoreRecord store)
+    private List<ParfaitAutomationCustomerViewModel> BuildCustomers(ParfaitAutomationStoreRecord store, Guid businessId)
     {
-        var ordersByEmail = _orders.GetAllOrders()
+        var ordersByEmail = _orders.GetAllOrders(businessId)
             .Where(order => !string.IsNullOrWhiteSpace(order.Email))
             .GroupBy(order => NormalizeEmail(order.Email), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(order => order.CreatedUtc).ToList(), StringComparer.OrdinalIgnoreCase);
@@ -620,10 +635,12 @@ $"""
             .ToList();
     }
 
-    private ParfaitAutomationStoreRecord LoadStoreUnsafe()
+    private ParfaitAutomationStoreRecord LoadStoreUnsafe() => LoadStoreUnsafe(DataPath);
+
+    private ParfaitAutomationStoreRecord LoadStoreUnsafe(string dataPath)
     {
-        EnsureDataFile();
-        var json = File.ReadAllText(DataPath);
+        EnsureDataFile(dataPath);
+        var json = File.ReadAllText(dataPath);
         var store = JsonSerializer.Deserialize<ParfaitAutomationStoreRecord>(json) ?? new ParfaitAutomationStoreRecord();
         store.Workflows ??= [];
         store.CartLeads ??= [];
@@ -631,25 +648,41 @@ $"""
         return store;
     }
 
-    private void SaveStoreUnsafe(ParfaitAutomationStoreRecord store)
+    private void SaveStoreUnsafe(ParfaitAutomationStoreRecord store) => SaveStoreUnsafe(store, DataPath);
+
+    private void SaveStoreUnsafe(ParfaitAutomationStoreRecord store, string dataPath)
     {
         CleanupUnsafe(store, DateTime.UtcNow);
         store.UpdatedUtc = DateTime.UtcNow;
-        Directory.CreateDirectory(Path.GetDirectoryName(DataPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(dataPath)!);
         File.WriteAllText(
-            DataPath,
+            dataPath,
             JsonSerializer.Serialize(store, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    private void EnsureDataFile()
+    private void EnsureDataFile() => EnsureDataFile(DataPath);
+
+    private void EnsureDataFile(string dataPath)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(DataPath)!);
-        if (!File.Exists(DataPath))
+        Directory.CreateDirectory(Path.GetDirectoryName(dataPath)!);
+        if (!File.Exists(dataPath))
         {
             File.WriteAllText(
-                DataPath,
+                dataPath,
                 JsonSerializer.Serialize(new ParfaitAutomationStoreRecord(), new JsonSerializerOptions { WriteIndented = true }));
         }
+    }
+
+    private string DataPathForBusiness(Guid businessId)
+    {
+        if (businessId == Guid.Empty) throw new ArgumentException("A commerce business is required.", nameof(businessId));
+        var key = _db.CommerceBusinesses.AsNoTracking()
+            .Where(business => business.Id == businessId && business.IsActive && business.Status == "Active")
+            .Select(business => business.Key)
+            .SingleOrDefault();
+        if (string.IsNullOrWhiteSpace(key))
+            throw new InvalidOperationException("Commerce business is unavailable.");
+        return _storagePaths.GetCustomerAutomationsPath(key);
     }
 
     private string ResolvePublicBaseUrl()
