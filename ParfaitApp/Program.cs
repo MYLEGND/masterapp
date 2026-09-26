@@ -157,15 +157,12 @@ builder.Services.AddScoped<IParfaitAnalyticsService>(serviceProvider => serviceP
 builder.Services.AddScoped<Infrastructure.Commerce.CommerceSignalService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
-builder.Services.AddScoped<IMetaAdsConnectionStore, ParfaitMetaAdsConnectionStoreAdapter>();
-builder.Services.AddScoped<IMetaAdsService, MetaAdsService>();
 builder.Services.AddSingleton<ParfaitInternalAnalyticsCacheStamp>();
 builder.Services.AddScoped<ParfaitInternalAnalyticsService>();
 builder.Services.AddScoped<ParfaitInternalWorkspaceService>();
 builder.Services.AddScoped<IGraphMailService, GraphMailService>();
 builder.Services.AddSingleton<ParfaitMetaCapiCredentialProtector>();
 builder.Services.AddScoped<IParfaitBusinessProfileService, ParfaitBusinessProfileService>();
-builder.Services.AddScoped<IParfaitMetaAdsOAuthService, ParfaitMetaAdsOAuthService>();
 builder.Services.AddHostedService<ParfaitCustomerAutomationHostedService>();
 
 static bool TryResolveCanonicalHost(HttpRequest request, out HostString host)
