@@ -109,6 +109,7 @@ def main():
         allowed_control_files = {
             '.github/workflows/all-intentional-direct-release-20260918.yml',
             'scripts/approved-release-baseline.py',
+            'scripts/cloudflare-routing-authority.py',
             'Docs/releases/direct-release-request.json',
         }
         changed = subprocess.check_output(
