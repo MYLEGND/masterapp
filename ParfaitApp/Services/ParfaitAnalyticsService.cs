@@ -198,7 +198,7 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
         analyticsEvent.ClientEventId = Guid.TryParse(eventId, out var clientEventId) ? clientEventId : null;
         analyticsEvent.Path = sourcePath;
         analyticsEvent.SectionKey = request.SectionKey;
-        analyticsEvent.SourceApp = "ParfaitApp";
+        Set(analyticsEvent, "SourceApp", "ParfaitApp");
         analyticsEvent.TrackingVersion = Clean(request.TrackingVersion) ?? "parfait-commerce-tracking-v2";
         analyticsEvent.SchemaVersion = 2;
         analyticsEvent.MetadataJson = JsonSerializer.Serialize(metadata);
