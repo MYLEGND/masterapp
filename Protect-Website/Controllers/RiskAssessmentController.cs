@@ -106,15 +106,37 @@ namespace Protect_Website.Controllers
                     if (!captured.Captured && captured.Reason != "InternalTestLead")
                         throw new InvalidOperationException("The advisor handoff could not be completed.");
                 lead.Status = captured.Captured ? "New" : "InternalTestLead";
-                _db.AnalyticsEvents.Add(new AnalyticsEvent
+                var persistedEvent = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
                 {
-                    EventId = Guid.NewGuid(), EventType = "lead_persisted", PageKey = "risk_assessment",
-                    FormKey = "risk_assessment", QuoteType = "risk_assessment", SessionId = lead.SessionId,
-                    VisitorId = lead.VisitorId, AgentTrackingProfileId = lead.AgentTrackingProfileId,
-                    AgentSlug = lead.AgentSlug, EventUtc = lead.CreatedUtc, ReceivedUtc = DateTime.UtcNow,
-                    Environment = lead.Environment, Host = lead.Host, IsInternal = lead.IsInternal,
-                    MetadataJson = JsonSerializer.Serialize(new { LeadId = lead.LeadId, CrmCaptured = captured.Captured })
+                    EventName = "lead_persisted",
+                    EventCategory = "lead",
+                    EventUtc = lead.CreatedUtc,
+                    PageKey = "risk_assessment",
+                    FormKey = "risk_assessment",
+                    QuoteType = "risk_assessment",
+                    SessionId = lead.SessionId,
+                    VisitorId = lead.VisitorId,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug = lead.AgentSlug,
+                    Environment = lead.Environment,
+                    Host = lead.Host,
+                    IsInternal = lead.IsInternal,
+                    IsBrowserSignal = false,
+                    IsServerAuthority = false,
+                    MetaServerAuthorityEligible = true,
+                    Metadata = new { LeadId = lead.LeadId, CrmCaptured = captured.Captured }
                 });
+                persistedEvent.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                    eventName: "lead_persisted",
+                    leadId: lead.LeadId,
+                    sessionId: lead.SessionId,
+                    payload: new { LeadId = lead.LeadId, CrmCaptured = captured.Captured },
+                    isBrowserSignal: false,
+                    isServerAuthority: false,
+                    metaServerAuthorityEligible: true,
+                    metaSingleTruthDispatchEligible: false,
+                    metaPipelineOrigin: "risk_assessment");
+                UnifiedAnalyticsWriter.Write(_db, persistedEvent);
                 await _db.SaveChangesAsync(ct);
 
                 }))
