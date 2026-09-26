@@ -103,22 +103,25 @@ public sealed class MetaMarketingDestination(MarketingConnectionStore connection
 /// identity but deliberately fails closed. Account ownership, Pixel/CAPI, attribution,
 /// and delivery are added only by later validated steps.
 /// </summary>
-public sealed class OpenAiMarketingDestination : IMarketingDestination
+public sealed class OpenAiMarketingDestination(
+    IOpenAiAdsAccountConnectionAuthority connections) : IMarketingDestination
 {
     public string Key => MarketingDestinationKeys.OpenAi;
 
-    public ValueTask<MarketingDestinationDecision> EvaluateAsync(
+    public async ValueTask<MarketingDestinationDecision> EvaluateAsync(
         MarketingOwnerScope owner,
         MarketingOutcome outcome,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(outcome);
-        return ValueTask.FromResult(new MarketingDestinationDecision(
-            Key,
-            Supported: false,
-            Configured: false,
-            Eligible: false,
-            Reason: "destination_not_implemented"));
+
+        var connection = await connections.GetAsync(owner, cancellationToken);
+        if (!connection.Connected)
+            return new(Key, Supported: false, Configured: false, Eligible: false, Reason: "destination_not_configured");
+
+        // Step 2 establishes only account/measurement connection authority. Event mapping
+        // and delivery remain intentionally unavailable until their dedicated steps.
+        return new(Key, Supported: false, Configured: true, Eligible: false, Reason: "delivery_not_implemented");
     }
 }
