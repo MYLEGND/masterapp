@@ -1977,14 +1977,14 @@ test('business page list directly manages navigation label visibility and deleti
     const label=about.querySelector('input[type="text"]');
     label.value='Our Story';
     label.dispatchEvent(new f.w.Event('change',{bubbles:true}));
-    assert.deepEqual([...f.w.document.querySelectorAll('#primary-nav>a')].map(x=>x.textContent),['Home','Our Story']);
+    assert.deepEqual([...f.w.document.querySelectorAll('#primary-nav>[data-legend-page-nav="true"]')].map(x=>x.textContent),['Home','Our Story']);
     const saved=await f.save();
     assert.equal(saved.pages['/about'].navigation.label,'Our Story');
     const refreshed=[...f.w.document.querySelectorAll('#legend-cms-page-list .legend-cms-page-row')].find(row=>row.querySelector('button')?.textContent==='/about');
     refreshed.querySelector('button:last-child').click();
     const deleted=await f.save();
     assert.equal(deleted.pages['/about'].navigation.isDeleted,true);
-    assert.equal([...f.w.document.querySelectorAll('#primary-nav>a')].some(x=>x.getAttribute('href')==='/about'),false);
+    assert.equal([...f.w.document.querySelectorAll('#primary-nav>[data-legend-page-nav="true"]')].some(x=>x.dataset.legendPageRoute==='/about'),false);
   }finally{f.close();}
 });
 
