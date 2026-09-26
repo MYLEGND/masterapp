@@ -169,7 +169,7 @@ jobs:
                 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=latest" --jq '.jobs[] | [.name,.status,.conclusion] | @tsv'
                 if [ "$conclusion" != success ]; then
                   echo "::error::Approved direct release failed."
-                  gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --log-failed || true
+                  gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --log || true
                   exit 1
                 fi
                 echo "RUN_ID=$run_id" >> "$GITHUB_ENV"
