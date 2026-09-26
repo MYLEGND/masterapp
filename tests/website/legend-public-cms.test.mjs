@@ -330,6 +330,7 @@ async function metaSignalFixture() {
     sendServerEvents:true,
     persistEvents:true,
     endpoint:'https://site.example/analytics/meta-signal',
+    pixelId:'pixel-legend',
     siteKey:'legend',
     quoteType:'legend',
     pageKey:'home',
@@ -381,8 +382,9 @@ test('configured signal runtime suppresses Pixel for analytics-only and allows o
     assert.equal(f.requests.length,1);
     assert.equal(f.requests[0].body.eventName,'LeadFormStart');
     assert.equal(f.pixels.length,1);
-    assert.equal(f.pixels[0][0],'trackCustom');
-    assert.equal(f.pixels[0][1],'LeadFormStart');
+    assert.equal(f.pixels[0][0],'trackSingleCustom');
+    assert.equal(f.pixels[0][1],'pixel-legend');
+    assert.equal(f.pixels[0][2],'LeadFormStart');
 
     const beforeRequests=f.requests.length,beforePixels=f.pixels.length;
     const blocked=await f.session.trackConfiguredEvent('Lead',{
