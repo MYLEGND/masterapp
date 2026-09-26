@@ -68,7 +68,7 @@ public sealed class BusinessWebsiteProfileService(MasterAppDbContext db, Marketi
         settings.UpdatedUtc = DateTime.UtcNow;
         // Both tracked profile and connection changes commit together in the same SaveChanges transaction.
         await connections.SaveSettingsAsync(MarketingOwnerScope.Business(businessId), input.MetaPixelId,
-            input.MetaTestEventCode, replacementCapiToken: null, input.ConnectionRevision, ct);
+            input.MetaTestEventCode, null, input.ConnectionRevision, ct);
     }
 
     private async Task<CommerceBusinessStorefrontSettings> SettingsAsync(Guid businessId, CancellationToken ct)
