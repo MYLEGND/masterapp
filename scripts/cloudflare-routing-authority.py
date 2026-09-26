@@ -71,7 +71,7 @@ def api_request(method: str, url: str, token: str, body=None, *, allow=(200,)) -
         payload = json.loads(raw)
     except json.JSONDecodeError as error:
         raise CloudflareError(f"Cloudflare returned invalid JSON for {url.split('?')[0]}") from error
-    if isinstance(payload, dict) and payload.get("success") is False:
+    if status < 400 and isinstance(payload, dict) and payload.get("success") is False:
         raise CloudflareError(f"Cloudflare rejected {url.split('?')[0]}: {payload.get('errors')}")
     return payload
 
