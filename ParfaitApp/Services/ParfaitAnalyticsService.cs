@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.WebUtilities;
 using Shared.Analytics;
@@ -136,59 +137,76 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
 
         var metadata = BuildMetadata(request, httpContext, eventName, eventId, visitorId, sessionId, url, referrer, sourceHost, sourcePath, sourceQuery, siteKey, reportingOwner, commerceBusinessId, typedBusinessId, typedAgentId, websiteContentVersionId);
 
-        var analyticsEvent = new AnalyticsEvent();
-        Set(analyticsEvent, "EventId", Guid.TryParse(eventId, out var parsedEventId) ? parsedEventId : Guid.NewGuid());
-        Set(analyticsEvent, "ClientEventId", eventId);
-        Set(analyticsEvent, "EventType", eventName);
-        Set(analyticsEvent, "EventName", eventName);
-        Set(analyticsEvent, "EventUtc", now);
-        Set(analyticsEvent, "ReceivedUtc", now);
-        Set(analyticsEvent, "VisitorId", visitorId);
-        Set(analyticsEvent, "SessionId", sessionId);
-        Set(analyticsEvent, "Url", url);
+        AnalyticsEventDefinition? eventDefinition = null;
+        AnalyticsEventCatalog.TryGet(eventName, out eventDefinition!);
+        var analyticsEvent = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+        {
+            SiteKey = siteKey,
+            CommerceBusinessId = typedBusinessId,
+            WebsiteContentVersionId = websiteContentVersionId,
+            EventId = eventId,
+            EventName = eventName,
+            EventCategory = eventDefinition?.Category ?? "commerce",
+            EventUtc = now,
+            SessionId = sessionId,
+            VisitorId = visitorId,
+            Url = url,
+            Referrer = referrer,
+            ReferrerHost = referrerHost,
+            PageKey = pageKey,
+            ElementKey = request.ElementKey,
+            ButtonLabel = request.ButtonLabel,
+            DeviceType = request.DeviceType,
+            Browser = request.Browser,
+            OperatingSystem = request.OperatingSystem,
+            UserAgent = userAgent,
+            IpAddress = ip,
+            ScreenWidth = request.ScreenWidth,
+            ScreenHeight = request.ScreenHeight,
+            ViewportWidth = request.ViewportWidth,
+            ViewportHeight = request.ViewportHeight,
+            ScrollPercent = request.ScrollPercent,
+            DwellMilliseconds = request.DwellMilliseconds,
+            EngagedMilliseconds = request.EngagedMilliseconds,
+            IsBounceCandidate = request.IsBounceCandidate,
+            IsExitPage = request.IsExitPage,
+            WebDriver = request.WebDriver,
+            IsHeadless = request.IsHeadless,
+            MouseMoveCount = request.MouseMoveCount,
+            HumanInteractionCount = request.HumanInteractionCount,
+            VisibilityChangeCount = request.VisibilityChangeCount,
+            TimeZone = request.TimeZone,
+            Language = request.Language,
+            UtmSource = Read(sourceQuery, "utm_source"),
+            UtmMedium = Read(sourceQuery, "utm_medium"),
+            UtmCampaign = Read(sourceQuery, "utm_campaign"),
+            UtmId = Read(sourceQuery, "utm_id"),
+            UtmContent = Read(sourceQuery, "utm_content"),
+            Fbclid = Read(sourceQuery, "fbclid"),
+            Fbc = httpContext.Request.Cookies["_fbc"],
+            Fbp = httpContext.Request.Cookies["_fbp"],
+            AgentTrackingProfileId = typedAgentId,
+            IsInternal = isInternalTraffic,
+            Environment = environment,
+            Host = sourceHost,
+            IsBrowserSignal = eventDefinition?.AllowBrowser == true,
+            IsServerAuthority = eventDefinition?.AllowServer == true && eventDefinition?.AllowBrowser != true,
+            MetaServerAuthorityEligible = eventDefinition?.AllowServer == true,
+            Metadata = metadata
+        });
+        analyticsEvent.EventId = Guid.TryParse(eventId, out var parsedEventId) ? parsedEventId : Guid.NewGuid();
+        analyticsEvent.ClientEventId = Guid.TryParse(eventId, out var clientEventId) ? clientEventId : null;
+        analyticsEvent.Path = sourcePath;
+        analyticsEvent.SectionKey = request.SectionKey;
+        analyticsEvent.SourceApp = "ParfaitApp";
+        analyticsEvent.TrackingVersion = Clean(request.TrackingVersion) ?? "parfait-commerce-tracking-v2";
+        analyticsEvent.SchemaVersion = 2;
+        analyticsEvent.MetadataJson = JsonSerializer.Serialize(metadata);
+        analyticsEvent.UtmTerm = Read(sourceQuery, "utm_term");
         Set(analyticsEvent, "PageUrl", url);
-        Set(analyticsEvent, "Path", sourcePath);
-        Set(analyticsEvent, "Host", sourceHost);
-        Set(analyticsEvent, "PageKey", pageKey);
-        Set(analyticsEvent, "SectionKey", request.SectionKey);
-        Set(analyticsEvent, "ElementKey", request.ElementKey);
-        Set(analyticsEvent, "ButtonLabel", request.ButtonLabel);
-        Set(analyticsEvent, "Referrer", referrer);
-        Set(analyticsEvent, "ReferrerHost", referrerHost);
-        Set(analyticsEvent, "UserAgent", userAgent);
-        Set(analyticsEvent, "IpAddress", ip);
-        Set(analyticsEvent, "IsInternal", isInternalTraffic);
-        Set(analyticsEvent, "Environment", environment);
-        Set(analyticsEvent, "SourceApp", "ParfaitApp");
-        Set(analyticsEvent, "CommerceBusinessId", typedBusinessId);
-        Set(analyticsEvent, "AgentTrackingProfileId", typedAgentId);
-        Set(analyticsEvent, "WebsiteContentVersionId", websiteContentVersionId);
-        Set(analyticsEvent, "DeviceType", request.DeviceType);
-        Set(analyticsEvent, "Browser", request.Browser);
-        Set(analyticsEvent, "OperatingSystem", request.OperatingSystem);
-        Set(analyticsEvent, "TimeZone", request.TimeZone);
-        Set(analyticsEvent, "Language", request.Language);
-        Set(analyticsEvent, "ScreenWidth", request.ScreenWidth);
-        Set(analyticsEvent, "ScreenHeight", request.ScreenHeight);
-        Set(analyticsEvent, "ViewportWidth", request.ViewportWidth);
-        Set(analyticsEvent, "ViewportHeight", request.ViewportHeight);
-        Set(analyticsEvent, "ScrollPercent", request.ScrollPercent);
-        Set(analyticsEvent, "DwellMilliseconds", request.DwellMilliseconds);
-        Set(analyticsEvent, "EngagedMilliseconds", request.EngagedMilliseconds);
-        Set(analyticsEvent, "IsBounceCandidate", request.IsBounceCandidate);
-        Set(analyticsEvent, "IsExitPage", request.IsExitPage);
-        Set(analyticsEvent, "WebDriver", request.WebDriver);
-        Set(analyticsEvent, "IsHeadless", request.IsHeadless);
-        Set(analyticsEvent, "MouseMoveCount", request.MouseMoveCount);
-        Set(analyticsEvent, "HumanInteractionCount", request.HumanInteractionCount);
-        Set(analyticsEvent, "VisibilityChangeCount", request.VisibilityChangeCount);
-        Set(analyticsEvent, "TrackingVersion", Clean(request.TrackingVersion) ?? "parfait-commerce-tracking-v2");
-        Set(analyticsEvent, "SchemaVersion", 2);
-        Set(analyticsEvent, "MetadataJson", JsonSerializer.Serialize(metadata));
-        Set(analyticsEvent, "PipelineStamp", "ParfaitApp>CommerceAnalytics");
         SetUtmAndMetaFields(analyticsEvent, httpContext, sourceQuery);
 
-        _db.AnalyticsEvents.Add(analyticsEvent);
+        UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 
         await _db.SaveChangesAsync(ct);
     }
