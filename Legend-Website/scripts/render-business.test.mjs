@@ -34,7 +34,10 @@ test('all normal business pages use canonical components, actual scoped name and
     for(const link of dom.querySelectorAll('.nav a'))assert.match(link.getAttribute('href'),/^\/(?:about|contact|services)?\/?$/);
     const published=dom.querySelector('#legend-cms-published-document');
     assert.ok(published);
-    const runtime=JSON.parse(published.textContent).runtime;
+    const publishedPayload=JSON.parse(published.textContent);
+    assert.deepEqual(publishedPayload.pageCatalog.map(item=>item.route),['/','/about','/contact','/services']);
+    assert.ok(publishedPayload.pageCatalog.every(item=>item.showInNavigation===true));
+    const runtime=publishedPayload.runtime;
     assert.equal(runtime.apiBase,'https://masterapp-protect.azurewebsites.net');
     assert.equal(runtime.trackingAsset,'/legend-public-tracking.js');
     assert.equal(runtime.metaSignalAsset,'/legend-public-meta-signal-intelligence.js');
@@ -89,6 +92,13 @@ test('route manifest honors navigation order visibility nesting deletion and cus
   const home=parseHTML(result.pages['/'].html).document;
   const links=[...home.querySelectorAll('.nav a')];
   assert.deepEqual(links.map(link=>link.textContent),['Contact','Team','Start']);
+  const embeddedCatalog=JSON.parse(home.querySelector('#legend-cms-published-document').textContent).pageCatalog;
+  assert.deepEqual(embeddedCatalog.map(item=>[item.route,item.showInNavigation,item.parentPath,item.order]),[
+    ['/contact',true,null,0],
+    ['/about',false,null,10],
+    ['/team',true,'/about',15],
+    ['/',true,null,20]
+  ]);
   assert.equal(links.find(link=>link.textContent==='Team').getAttribute('data-nav-parent'),'/about');
   assert.equal(links.some(link=>link.textContent==='About us'),false);
   assert.equal(result.pages['/services'],undefined);

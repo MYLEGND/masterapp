@@ -377,22 +377,27 @@ jobs:
           }
 
           founder="$(resolve_value "$portal_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
+          founder_upn="$(resolve_value "$portal_settings" Founder__Upn 'Founder:Upn')"
           blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
           keyvault="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
-          [ -n "$founder" ] && [ -n "$blob" ] && [ -n "$keyvault" ]
+          [ -n "$founder" ] && [ -n "$founder_upn" ] && [ -n "$blob" ] && [ -n "$keyvault" ]
           echo "::add-mask::$founder"
+          echo "::add-mask::$founder_upn"
           echo "::add-mask::$blob"
           echo "::add-mask::$keyvault"
 
           protect_founder_key="$(resolve_key "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
+          protect_founder_upn_key="$(resolve_key "$protect_settings" Founder__Upn 'Founder:Upn' || true)"
           protect_blob_key="$(resolve_key "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
           protect_keyvault_key="$(resolve_key "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
           protect_founder="$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
+          protect_founder_upn="$(resolve_value "$protect_settings" Founder__Upn 'Founder:Upn' || true)"
           protect_blob="$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
           protect_keyvault="$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
 
           updates=()
           if [ "$protect_founder" != "$founder" ]; then updates+=("${protect_founder_key:-FOUNDER_OID}=$founder"); fi
+          if [ "$protect_founder_upn" != "$founder_upn" ]; then updates+=("${protect_founder_upn_key:-Founder__Upn}=$founder_upn"); fi
           if [ "$protect_blob" != "$blob" ]; then updates+=("${protect_blob_key:-DataProtection__BlobUri}=$blob"); fi
           if [ "$protect_keyvault" != "$keyvault" ]; then updates+=("${protect_keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault"); fi
           protect_node="$(resolve_value "$protect_settings" WEBSITE_NODE_DEFAULT_VERSION || true)"
@@ -403,6 +408,7 @@ jobs:
 
           az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
           [ "$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder" ]
+          [ "$(resolve_value "$protect_settings" Founder__Upn 'Founder:Upn')" = "$founder_upn" ]
           [ "$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
           [ "$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
           [ "$(resolve_value "$protect_settings" WEBSITE_NODE_DEFAULT_VERSION)" = "~24" ]

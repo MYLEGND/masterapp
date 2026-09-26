@@ -79,6 +79,14 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const manifest=[...descriptors.values()].map(descriptorMeta).filter(page=>!page.isDeleted)
     .sort((a,b)=>a.order-b.order||a.route.localeCompare(b.route));
   const navEntries=manifest.filter(page=>page.showInNavigation);
+  const pageCatalog=manifest.map(page=>({
+    route:page.route,
+    label:page.label,
+    template:page.template===true,
+    showInNavigation:page.showInNavigation!==false,
+    parentPath:page.parentPath || null,
+    order:Number.isFinite(Number(page.order)) ? Number(page.order) : 0
+  }));
   const storeEnabled=input.document?.store?.enabled===true && !!input.business?.key;
   const storeLabel=String(input.document?.store?.navigationLabel||'Store').trim().slice(0,40)||'Store';
   const storeRoot=storeEnabled?'/store':null;
@@ -127,7 +135,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
     window.LEGEND_PUBLIC_CMS_RENDER_INPUT={
       document:currentDocument,business:input.business,collections:input.collections||[],
-      store:storeContext,dynamicItem,pageKey:renderPageKey,server:true
+      store:storeContext,dynamicItem,pageKey:renderPageKey,pageCatalog,server:true
     };
     vm.runInNewContext(cms,sandbox,{timeout:3000,filename:'legend-public-cms.js'});
     if(window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE!==true)throw new Error('Canonical renderer did not complete.');
@@ -169,7 +177,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
       : (input.collections||[]);
     renderInput.textContent=JSON.stringify({
       document:currentDocument,business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
-      pageKey:renderPageKey,server:false,
+      pageKey:renderPageKey,pageCatalog,server:false,
       runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal}
     }).replace(/</g,'\\u003c');
     doc.body.insertBefore(renderInput,doc.querySelector('script[src^="/legend-public-cms.js"]'));
