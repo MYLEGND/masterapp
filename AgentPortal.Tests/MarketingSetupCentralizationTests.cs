@@ -94,7 +94,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.DoesNotContain("Replace secure CAPI token", management, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("replacementCapiToken", management, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ReplacementCapiToken", businessProfile, StringComparison.Ordinal);
-        Assert.Contains("replacementCapiToken: null", businessProfile, StringComparison.Ordinal);
+        Assert.Contains("connections.SaveSettingsAsync(MarketingOwnerScope.Business(businessId), input.MetaPixelId", businessProfile, StringComparison.Ordinal);
+        Assert.Contains("input.MetaTestEventCode, null, input.ConnectionRevision", businessProfile, StringComparison.Ordinal);
         Assert.Contains("row.CapiAccessTokenCiphertext ?? row.AdsAccessTokenCiphertext", connectionStore, StringComparison.Ordinal);
     }
 
