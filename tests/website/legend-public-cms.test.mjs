@@ -1859,6 +1859,92 @@ test('business selector includes imported custom routes from only the authorized
  try {assert.ok([...f.w.document.querySelector('#legend-cms-page-select').options].some(o=>o.value==='/special-offer'&&o.textContent==='Special offer'));}finally{f.close();}
 });
 
+
+test('sections expand with content instead of creating internal scroll containers',async()=>{
+  const doc={pages:{'/':{elements:{'section:home.section.1':{style:{heightPx:180}}},extras:[],sectionOrder:{}}}};
+  const f=await domFixture({doc});
+  try{
+    const section=f.w.document.querySelector('main section');
+    assert.equal(section.style.height,'auto');
+    assert.equal(section.style.minHeight,'180px');
+    assert.equal(section.style.overflow,'visible');
+  }finally{f.close();}
+});
+
+test('business custom pages are projected into the public header navigation from the canonical page catalog',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav><a href="/">Template Home</a></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const doc={pages:{
+    '/':{title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
+    '/team':{title:'Team',navigation:{label:'Our Team',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}},
+    '/hidden':{title:'Hidden',navigation:{label:'Hidden',showInNavigation:false,order:20},elements:{},extras:[],sectionOrder:{}}
+  }};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc,html,search:''});
+  try{
+    const labels=[...f.w.document.querySelectorAll('#primary-nav>a')].map(x=>x.textContent);
+    assert.deepEqual(labels,['Home','Our Team']);
+  }finally{f.close();}
+});
+
+test('template sections duplicate into versioned extras while header and footer remain immutable',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><strong>Header</strong></header><main><section class="hero"><h1>Hero title</h1><p>Hero copy</p></section></main><footer class="site-footer">Footer</footer></body></html>';
+  const f=await domFixture({html});
+  try{
+    f.click('main section');
+    const duplicate=f.w.document.querySelector('#legend-cms-duplicate');
+    assert.equal(duplicate.disabled,false);
+    assert.equal(duplicate.textContent,'Duplicate section');
+    f.click('#legend-cms-duplicate');
+    const saved=await f.save();
+    const copy=saved.pages['/'].extras.find(x=>x.type==='section');
+    assert.ok(copy);
+    assert.equal(copy.templateSectionId,'home.section.1');
+    assert.equal(f.w.document.querySelectorAll('main>section').length,2);
+    f.click('.site-header');
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
+    f.click('.site-footer');
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
+  }finally{f.close();}
+});
+
+test('shared public stylesheet keeps footer at viewport bottom without fixing it over content',()=>{
+  assert.match(publicCss,/body\{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip\}/);
+  assert.match(publicCss,/main,\.public-main,\.layout-content\{flex:1 0 auto;min-height:0\}/);
+  assert.match(publicCss,/\.site-footer\{flex:0 0 auto;margin-top:auto\}/);
+  assert.doesNotMatch(publicCss,/\.site-footer\{[^}]*position:fixed/);
+});
+
+test('header and footer edits persist in document-global shell authority across pages',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><a class="brand"><strong>Brand</strong></a></header><main><section><h1>Home</h1></section></main><footer class="site-footer"><p>Footer copy</p></footer></body></html>';
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Business'},pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}],html});
+  try{
+    f.click('.site-header strong'); f.input('[data-style-key="fontSize"]','31');
+    f.click('.site-footer p'); f.input('[data-style-key="fontSize"]','19');
+    const saved=await f.save();
+    const headerEntry=Object.entries(saved.elements).find(([key,value])=>key.startsWith('shell.header.') && value?.style?.fontSize===31);
+    const footerEntry=Object.entries(saved.elements).find(([key,value])=>key.startsWith('shell.footer.') && value?.style?.fontSize===19);
+    assert.ok(headerEntry); assert.ok(footerEntry);
+    assert.equal(saved.pages['/'].elements[headerEntry[0]],undefined);
+    assert.equal(saved.pages['/'].elements[footerEntry[0]],undefined);
+  }finally{f.close();}
+});
+
+test('cart icon launches larger and stores adjustable size through canonical store settings',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const doc={store:{enabled:true,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},pages:{'/':{elements:{},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
+  const store={enabled:true,label:'Store',cartIcon:'cart',cartIconSizePx:28,businessKey:'fixture',storefrontUrl:'/store',cartUrl:'/store/cart',managerUrl:'/commerce/manage/products?ticket=ticket'};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Business'},doc,store,html});
+  try{
+    const svg=f.w.document.querySelector('.legend-store-cart-icon');
+    assert.equal(svg.getAttribute('width'),'28');
+    assert.equal(svg.getAttribute('height'),'28');
+    f.change('#legend-cms-store-cart-size','42');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const call=f.calls.find(call=>call.method==='POST' && call.url.includes('/manage/store/enable'));
+    assert.ok(call);
+    assert.equal(JSON.parse(call.body).cartIconSizePx,42);
+  }finally{f.close();}
+});
+
 test('site palette does not retain the template blue gradient stop',async()=>{
  const f=await domFixture({doc:{theme:{navy:'#000000',navyDeep:'#000000'}}});
  try {assert.equal(f.w.document.documentElement.style.getPropertyValue('--web-navy-royal'),'#000000');}finally{f.close();}
