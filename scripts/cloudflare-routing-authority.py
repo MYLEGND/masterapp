@@ -207,6 +207,28 @@ def audit(prove_cache_purge: bool) -> None:
     }, indent=2))
 
 
+def reconcile_bot_fight_mode() -> None:
+    token = required_env("CLOUDFLARE_API_TOKEN")
+    zone = required_env("CLOUDFLARE_ZONE_ID")
+    current = api_request("GET", f"{API}/zones/{zone}/bot_management", token).get("result", {})
+    if not isinstance(current, dict):
+        raise CloudflareError("Cloudflare Bot Management configuration is unavailable")
+
+    if current.get("fight_mode") is True:
+        api_request(
+            "PUT",
+            f"{API}/zones/{zone}/bot_management",
+            token,
+            {"fight_mode": False},
+        )
+
+    verified = api_request("GET", f"{API}/zones/{zone}/bot_management", token).get("result", {})
+    if not isinstance(verified, dict) or verified.get("fight_mode") is not False:
+        raise CloudflareError("Cloudflare Bot Fight Mode did not verify disabled")
+
+    print("Cloudflare Bot Fight Mode is disabled for the SaaS zone; controllable WAF/config security remains authoritative.")
+
+
 def reconcile_bic() -> None:
     token = required_env("CLOUDFLARE_API_TOKEN")
     zone = required_env("CLOUDFLARE_ZONE_ID")
@@ -320,6 +342,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     audit_parser = sub.add_parser("audit")
     audit_parser.add_argument("--prove-cache-purge", action="store_true")
+    sub.add_parser("reconcile-bot-fight")
     sub.add_parser("reconcile-bic")
     challenge_parser = sub.add_parser("challenge-events")
     challenge_parser.add_argument("--host", required=True)
@@ -327,6 +350,8 @@ def main() -> int:
     try:
         if args.command == "audit":
             audit(args.prove_cache_purge)
+        elif args.command == "reconcile-bot-fight":
+            reconcile_bot_fight_mode()
         elif args.command == "reconcile-bic":
             reconcile_bic()
         elif args.command == "challenge-events":
