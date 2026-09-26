@@ -9,6 +9,7 @@ using Domain.Entities;
 using Infrastructure.Billing;
 using Infrastructure.Billing.Square;
 using Infrastructure.Data;
+using Infrastructure.Commerce;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
