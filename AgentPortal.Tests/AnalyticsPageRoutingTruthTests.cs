@@ -129,6 +129,86 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.DoesNotContain(campaign.EventsByCampaign, x => x.Label.Equals("campaign-life", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task VisitorConcentrationUsesTheSameSelectedTrafficSliceAsUniqueVisitors()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var businessId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(),
+                ClientEventId = Guid.NewGuid(),
+                CommerceBusinessId = businessId,
+                EventType = "page_engaged_15s",
+                EventUtc = now.AddMinutes(-2),
+                ReceivedUtc = now.AddMinutes(-2),
+                SessionId = "paid-session",
+                VisitorId = "paid-visitor",
+                PageKey = "/paid",
+                UtmSource = "facebook",
+                UtmMedium = "paid_social",
+                MetaCampaignId = "campaign-paid",
+                Environment = "production",
+                Host = "business.example.org",
+                UserAgent = "Mozilla/5.0",
+                EngagedMilliseconds = 15000,
+                DwellMilliseconds = 20000,
+                ScrollPercent = 80,
+                HumanInteractionCount = 5,
+                MouseMoveCount = 20
+            },
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(),
+                ClientEventId = Guid.NewGuid(),
+                CommerceBusinessId = businessId,
+                EventType = "page_engaged_15s",
+                EventUtc = now.AddMinutes(-1),
+                ReceivedUtc = now.AddMinutes(-1),
+                SessionId = "direct-session",
+                VisitorId = "direct-visitor",
+                PageKey = "/direct",
+                Environment = "production",
+                Host = "business.example.org",
+                UserAgent = "Mozilla/5.0",
+                EngagedMilliseconds = 15000,
+                DwellMilliseconds = 20000,
+                ScrollPercent = 80,
+                HumanInteractionCount = 5,
+                MouseMoveCount = 20
+            });
+        await db.SaveChangesAsync();
+
+        var analytics = new AnalyticsQueryService(db, new ConfigurationBuilder().Build());
+        var concentration = new AgentPortal.Services.Analytics.VisitorConcentrationService(
+            db,
+            new AgentPortal.Services.Analytics.VisitorTrustScoringService(),
+            analytics);
+        var range = new TimeRangeRequest
+        {
+            FromUtc = now.AddHours(-1),
+            ToUtc = now.AddHours(1),
+            QualityMode = TrafficQualityMode.RealHumanTraffic,
+            ViewerTimeZone = TimeZoneInfo.Utc,
+            Label = "test",
+            Preset = "custom"
+        };
+
+        var paidRows = await concentration.GetVisitorConcentrationAsync(
+            range, ScopeContext.ForBusiness(businessId), TrafficType.PaidAds);
+
+        var directRows = await concentration.GetVisitorConcentrationAsync(
+            range, ScopeContext.ForBusiness(businessId), TrafficType.NonPaid);
+
+        Assert.Single(paidRows);
+        Assert.Equal("paid-visitor", paidRows[0].VisitorId);
+        Assert.Single(directRows);
+        Assert.Equal("direct-visitor", directRows[0].VisitorId);
+    }
+
     private static MetaSignalEvent Signal(
         Guid businessId,
         DateTime createdUtc,
