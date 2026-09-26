@@ -188,6 +188,19 @@ public sealed class AnalyticsPageRoutingTruthTests
     }
 
     [Fact]
+    public void SharedAnalyticsTrackingHasNoUserSpecificFounderFallback()
+    {
+        var root = RepoRoot();
+        var proxy = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "WebsiteTrackingProxyAuthority.cs"));
+        var routing = File.ReadAllText(Path.Combine(root, "Protect-Website", "Services", "Tracking", "SlugRoutingMiddleware.cs"));
+
+        Assert.Contains("Founder:Upn configuration is required", proxy, StringComparison.Ordinal);
+        Assert.Contains("Founder:Upn configuration is required", routing, StringComparison.Ordinal);
+        Assert.DoesNotContain("zac.owen@mylegnd.com", proxy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("zac.owen@mylegnd.com", routing, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void PublicLeadSubmissionsAndNotificationRecoveryUseSharedAuthorities()
     {
         var root = RepoRoot();
