@@ -1385,12 +1385,3 @@ width: min(100%, 210px);
     }
 }
 
-/* Website-linked storefronts inherit the published website shell and theme authority. */
-html:has(window) {}
-body:not(.sp-body) .sp-store-page{background:transparent}
-body:not(.sp-body) .sp-shop-content,
-body:not(.sp-body) .sp-shop-card,
-body:not(.sp-body) .sp-product-story-section{background:var(--sp-theme-surface);color:var(--sp-theme-text)}
-body:not(.sp-body) .sp-flow-card,
-body:not(.sp-body) .sp-success-card,
-body:not(.sp-body) .sp-transaction-stack-card{background:color-mix(in srgb,var(--sp-theme-secondary) 92%,var(--sp-theme-surface) 8%);color:var(--sp-theme-on-primary)}
