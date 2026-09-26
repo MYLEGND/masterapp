@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized failure-forward continuation of the hardened centralized Cloudflare routing recovery. Preserve all successful application deployments and rerun only the routing control path after correcting the audit's handling of an authorized-but-absent Cloudflare ruleset entrypoint.",
-  "purpose": "Continue the centralized custom-domain routing recovery from the exact audit failure; no app redeployments, no legacy token fallback, no per-domain exception.",
-  "requestId": "scoped-commerce-routing-hardened-authority-20260926-r13-null-entrypoint-fix",
+  "authorization": "Founder explicitly authorized failure-forward continuation of the hardened centralized Cloudflare routing recovery. Preserve all successful application deployments. Fix only the release guard false-positive, capture the exact Cloudflare security event responsible for any remaining custom-domain challenge, and continue routing-only recovery.",
+  "purpose": "Identify and remove the remaining Cloudflare challenge source for verified customer custom hostnames without app redeployments, per-domain exceptions, or parallel routing authority.",
+  "requestId": "scoped-commerce-routing-hardened-authority-20260926-r14-challenge-source",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36218166686",
   "releaseMode": "approved-only",
   "targets": [
