@@ -58,7 +58,7 @@ public sealed class MetaSignalCrmOutcomeService
                 appointment.ConfirmationSource
             });
 
-        _db.MetaSignalEvents.Add(row);
+        UnifiedMetaSignalWriter.Write(_db, row);
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
@@ -152,7 +152,7 @@ public sealed class MetaSignalCrmOutcomeService
                 notes
             });
 
-        _db.MetaSignalEvents.Add(row);
+        UnifiedMetaSignalWriter.Write(_db, row);
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
@@ -226,32 +226,38 @@ public sealed class MetaSignalCrmOutcomeService
         string scoreTier,
         int totalScore,
         object metadata)
-        => new()
+        => UnifiedMetaSignalWriter.Create(new UnifiedEventContext
         {
-            CreatedUtc = DateTime.UtcNow,
             EventId = eventId,
             EventName = eventName,
             EventCategory = "conversion",
-            LeadId = websiteLeadId,
+            EventUtc = DateTime.UtcNow,
             QuoteType = quoteType,
-            TrafficType = "crm",
-            FunnelStep = funnelStep,
-            StepName = stepName,
-            IntentScore = totalScore,
-            EngagementScore = totalScore,
-            QualificationScore = totalScore,
-            FrictionScore = 0,
-            TotalSignalScore = totalScore,
-            ScoreTier = scoreTier,
-            MetaBrowserSent = false,
-            MetaServerSent = false,
-            MetaDeduplicationKey = dedupKey,
-            Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
-            Host = "AgentPortal",
             AgentTrackingProfileId = agentTrackingProfileId,
             AgentSlug = agentSlug,
-            MetadataJson = BuildMetadataJson(eventName, websiteLeadId, metadata)
-        };
+            Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
+            Host = "AgentPortal",
+            IsBrowserSignal = false,
+            IsServerAuthority = true,
+            MetaServerAuthorityEligible = true,
+            Metadata = metadata
+        }, row =>
+        {
+            row.LeadId = websiteLeadId;
+            row.TrafficType = "crm";
+            row.FunnelStep = funnelStep;
+            row.StepName = stepName;
+            row.IntentScore = totalScore;
+            row.EngagementScore = totalScore;
+            row.QualificationScore = totalScore;
+            row.FrictionScore = 0;
+            row.TotalSignalScore = totalScore;
+            row.ScoreTier = scoreTier;
+            row.MetaBrowserSent = false;
+            row.MetaServerSent = false;
+            row.MetaDeduplicationKey = dedupKey;
+            row.MetadataJson = BuildMetadataJson(eventName, websiteLeadId, metadata);
+        });
 
     private static string BuildMetadataJson(string eventName, Guid? websiteLeadId, object metadata)
         => MetaSignalSingleTruthPolicy.BuildMetadataJson(

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
 using Shared.Analytics;
@@ -132,48 +133,56 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
         };
 
         var now = DateTime.UtcNow;
-        var row = new MetaSignalEvent
+        var pageKey = "commerce_" + eventName.ToLowerInvariant();
+        var row = UnifiedMetaSignalWriter.Create(new UnifiedEventContext
         {
-            CreatedUtc = now,
+            SiteKey = context.SiteKey,
+            CommerceBusinessId = typedBusinessId,
+            WebsiteContentVersionId = context.WebsiteContentVersionId,
             EventId = eventId,
             EventName = eventName,
             EventCategory = definition.Category,
+            EventUtc = now,
             SessionId = NormalizeNullable(context.SessionId),
             VisitorId = NormalizeNullable(context.VisitorId),
-            QuoteType = "ecommerce",
-            PageKey = "commerce_" + eventName.ToLowerInvariant(),
-            EffectivePageKey = "commerce_" + eventName.ToLowerInvariant(),
+            Referrer = NormalizeNullable(context.Referrer),
+            PageKey = pageKey,
+            EffectivePageKey = pageKey,
             PageVariant = "store",
             PageMode = "store",
-            TrafficType = "ecommerce",
-            FunnelStep = eventName switch
+            QuoteType = "ecommerce",
+            UserAgent = NormalizeNullable(context.UserAgent),
+            Fbclid = NormalizeNullable(context.Fbclid),
+            Fbc = NormalizeNullable(context.Fbc),
+            Fbp = NormalizeNullable(context.Fbp),
+            AgentTrackingProfileId = typedAgentId,
+            Environment = ResolveEnvironment(context.EventSourceUrl),
+            Host = Uri.TryCreate(context.EventSourceUrl, UriKind.Absolute, out var uri) ? uri.Host : null,
+            IsBrowserSignal = false,
+            IsServerAuthority = true,
+            MetaServerAuthorityEligible = true,
+            Metadata = payload
+        }, row =>
+        {
+            row.TrafficType = "ecommerce";
+            row.FunnelStep = eventName switch
             {
                 "AddToCart" => 5,
                 "InitiateCheckout" => 6,
                 "Purchase" => 8,
                 _ => 4
-            },
-            StepName = eventName.ToLowerInvariant(),
-            IntentScore = eventName == "Purchase" ? 500 : 250,
-            EngagementScore = eventName == "Purchase" ? 500 : 250,
-            QualificationScore = eventName == "Purchase" ? 500 : 250,
-            FrictionScore = 0,
-            TotalSignalScore = eventName == "Purchase" ? 500 : 250,
-            ScoreTier = eventName == "Purchase" ? "Purchase" : "Commerce",
-            MetaBrowserSent = false,
-            MetaServerSent = false,
-            MetaDeduplicationKey = dedupe,
-            FbclidPresent = !string.IsNullOrWhiteSpace(context.Fbclid),
-            FbcPresent = !string.IsNullOrWhiteSpace(context.Fbc),
-            FbpPresent = !string.IsNullOrWhiteSpace(context.Fbp),
-            Referrer = NormalizeNullable(context.Referrer),
-            UserAgent = NormalizeNullable(context.UserAgent),
-            CommerceBusinessId = typedBusinessId,
-            AgentTrackingProfileId = typedAgentId,
-            WebsiteContentVersionId = context.WebsiteContentVersionId,
-            Environment = ResolveEnvironment(context.EventSourceUrl),
-            Host = Uri.TryCreate(context.EventSourceUrl, UriKind.Absolute, out var uri) ? uri.Host : null,
-            MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+            };
+            row.StepName = eventName.ToLowerInvariant();
+            row.IntentScore = eventName == "Purchase" ? 500 : 250;
+            row.EngagementScore = eventName == "Purchase" ? 500 : 250;
+            row.QualificationScore = eventName == "Purchase" ? 500 : 250;
+            row.FrictionScore = 0;
+            row.TotalSignalScore = eventName == "Purchase" ? 500 : 250;
+            row.ScoreTier = eventName == "Purchase" ? "Purchase" : "Commerce";
+            row.MetaBrowserSent = false;
+            row.MetaServerSent = false;
+            row.MetaDeduplicationKey = dedupe;
+            row.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
                 eventName,
                 leadId: null,
                 sessionId: context.SessionId,
@@ -182,10 +191,10 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
                 isServerAuthority: true,
                 metaServerAuthorityEligible: true,
                 metaSingleTruthDispatchEligible: true,
-                metaPipelineOrigin: "CommercePurchaseBridge")
-        };
+                metaPipelineOrigin: "CommercePurchaseBridge");
+        });
 
-        db.MetaSignalEvents.Add(row);
+        UnifiedMetaSignalWriter.Write(db, row);
         try
         {
             await db.SaveChangesAsync(ct);

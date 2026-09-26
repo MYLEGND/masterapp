@@ -17,6 +17,10 @@
     var agentOptionsJson = ViewData["AgentOptionsJson"] as string ?? "[]";
     var canViewFounderTeamUi = (ViewData["CanViewFounderTeamUi"] as bool?) ?? false;
     var canDeleteAnalyticsLeads = (ViewData["CanDeleteAnalyticsLeads"] as bool?) ?? false;
+    var analyticsCanMetaAds = (ViewData["AnalyticsCanMetaAds"] as bool?) ?? true;
+    var analyticsCanAiReview = (ViewData["AnalyticsCanAiReview"] as bool?) ?? true;
+    var analyticsCanAgentPerformance = (ViewData["AnalyticsCanAgentPerformance"] as bool?) ?? true;
+    var analyticsCanIncidentMonitor = (ViewData["AnalyticsCanIncidentMonitor"] as bool?) ?? true;
     var initialScopeProfileId = ViewData["InitialScopeProfileId"] as Guid?;
     var isFounder = agentOptionsJson != "[]";
     var landingRoutesJson = ViewData["LandingRoutesJson"] as string ?? "[]";
@@ -25,7 +29,7 @@
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
 <div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
     Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
 </div>

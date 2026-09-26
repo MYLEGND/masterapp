@@ -440,7 +440,8 @@ public class LifeQuoteControllerPublicBookingTests
         IWebsiteLifeLeadCaptureService? websiteLifeLeadCaptureService = null,
         IPublicBookingResolver? publicBookingResolver = null,
         IPublicBookingConfirmationService? publicBookingConfirmationService = null,
-        IPublicBookingContextProtector? publicBookingContextProtector = null)
+        IPublicBookingContextProtector? publicBookingContextProtector = null,
+        IProtectEmailSender? emailSender = null)
     {
         var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
 
@@ -453,7 +454,7 @@ public class LifeQuoteControllerPublicBookingTests
             publicBookingResolver ?? Mock.Of<IPublicBookingResolver>(),
             publicBookingConfirmationService ?? Mock.Of<IPublicBookingConfirmationService>(),
             publicBookingContextProtector ?? BuildBookingProtector(),
-            Mock.Of<IProtectEmailSender>(),
+            emailSender ?? BuildSuccessfulEmailSender(),
             NullLogger<LifeQuoteController>.Instance)
         {
             ControllerContext = new ControllerContext
@@ -472,10 +473,26 @@ public class LifeQuoteControllerPublicBookingTests
                 ["AzureAd:ClientId"] = "client",
                 ["AzureAd:ClientSecret"] = "secret",
                 ["Contact:SenderEmail"] = "",
-                ["Contact:RecipientEmail"] = "",
+                ["Contact:RecipientEmail"] = "founder@example.test",
                 ["Tracking:ApiBase"] = "https://portal.example.test"
             })
             .Build();
+    }
+
+    private static IProtectEmailSender BuildSuccessfulEmailSender()
+    {
+        var sender = new Mock<IProtectEmailSender>();
+        sender
+            .Setup(service => service.TrySendAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        return sender.Object;
     }
 
     private static IPublicBookingContextProtector BuildBookingProtector()

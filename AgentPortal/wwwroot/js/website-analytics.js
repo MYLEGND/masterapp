@@ -18,6 +18,12 @@
 
   const shell = document.querySelector('.fa-shell');
   const canDeleteLeads = shell?.dataset.canDeleteLeads === 'true';
+  const capabilities = {
+    metaAds: shell?.dataset.canMetaAds !== 'false',
+    aiReview: shell?.dataset.canAiReview !== 'false',
+    agentPerformance: shell?.dataset.canAgentPerformance !== 'false',
+    incidentMonitor: shell?.dataset.canIncidentMonitor !== 'false'
+  };
   const landingRoutes = (() => {
     const raw = shell?.dataset.landingRoutes || '[]';
     try {
@@ -2787,6 +2793,7 @@ function escapeHtml(value) {
   }
 
   async function loadAiReviewSnapshot() {
+    if (!capabilities.aiReview) return;
     const textEl = document.getElementById('ai-snapshot-text');
     const copyBtn = document.getElementById('ai-snapshot-copy');
     const renderEl = document.getElementById('ai-snapshot-render');
@@ -3558,6 +3565,10 @@ function escapeHtml(value) {
   }
 
   async function loadAgentPerf() {
+    if (!capabilities.agentPerformance) {
+      renderAgentPerfDisabledState();
+      return;
+    }
     if (isFounder && !isGlobalScope()) {
       renderAgentPerfDisabledState();
       return;
@@ -3820,6 +3831,7 @@ function escapeHtml(value) {
   }
 
   async function loadMetaCampaigns() {
+    if (!capabilities.metaAds) return;
     try {
       const data = await fetchJson('metacampaigns', endpoints.metaCampaigns, rangeParams());
       if (!data) return;
@@ -3844,6 +3856,10 @@ function escapeHtml(value) {
   }
 
   async function loadMetaConnectionStatus() {
+    if (!capabilities.metaAds) {
+      document.querySelector('.wa-kpi-meta-dock')?.setAttribute('hidden', 'hidden');
+      return;
+    }
     const statusEl = document.getElementById('meta-connection-status');
     const connectBtn = document.getElementById('meta-connect-btn');
     const disconnectBtn = document.getElementById('meta-disconnect-btn');
@@ -3907,6 +3923,7 @@ function escapeHtml(value) {
   }
 
   async function handleMetaDisconnect() {
+    if (!capabilities.metaAds) return;
     try {
       await fetchPostJson('meta-disconnect', buildUrlWithParams(endpoints.metaDisconnect, currentMetaScopeParams()));
       await loadMetaConnectionStatus();
@@ -4273,6 +4290,15 @@ function escapeHtml(value) {
   }
 
   async function init() {
+    if (!capabilities.aiReview) {
+      document.querySelectorAll('[data-ai-drawer-trigger], #ai-review-snapshot-btn, [data-bs-target="#aiReviewSnapshotModal"]').forEach(el => {
+        el.hidden = true;
+        el.setAttribute('aria-hidden', 'true');
+      });
+    }
+    if (!capabilities.agentPerformance) {
+      document.getElementById('mod-agentperf')?.setAttribute('hidden', 'hidden');
+    }
     const tzTextEl = document.getElementById('wa-tz-text');
     if (tzTextEl) {
       tzTextEl.textContent = viewerTz.id || 'Local Timezone';

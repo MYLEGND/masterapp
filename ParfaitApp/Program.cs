@@ -155,7 +155,6 @@ builder.Services.AddSingleton<ParfaitStoragePaths>();
 builder.Services.AddScoped<ParfaitAnalyticsService>();
 builder.Services.AddScoped<IParfaitAnalyticsService>(serviceProvider => serviceProvider.GetRequiredService<ParfaitAnalyticsService>());
 builder.Services.AddScoped<Infrastructure.Commerce.CommerceSignalService>();
-builder.Services.AddScoped<ParfaitMetaSignalBridgeService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
 builder.Services.AddScoped<IMetaAdsConnectionStore, ParfaitMetaAdsConnectionStoreAdapter>();
