@@ -157,41 +157,19 @@ namespace AgentPortal.Controllers;
     // JSON endpoints -------------------------------------------------
     private TimeZoneInfo GetViewerTimeZone()
     {
-        // 1. Try IANA or Windows timezone ID (e.g. "America/Phoenix").
-        //    TimeZoneInfo.FindSystemTimeZoneById accepts both IANA and Windows IDs on .NET 6+.
+        string? timezoneId = null;
+        int? timezoneOffsetMinutes = null;
+
         if (Request.Query.TryGetValue("timezoneId", out var tzIdRaw))
-        {
-            var tzId = tzIdRaw.ToString().Trim();
-            if (!string.IsNullOrEmpty(tzId))
-            {
-                try { return TimeZoneInfo.FindSystemTimeZoneById(tzId); }
-                catch (TimeZoneNotFoundException) { }
-                catch (InvalidTimeZoneException) { }
-            }
-        }
+            timezoneId = tzIdRaw.ToString();
 
-        // 2. Fall back to browser UTC offset (minutes west of UTC — positive for UTC-7).
-        //    CreateCustomTimeZone expects offset FROM UTC, so invert the sign.
         if (Request.Query.TryGetValue("timezoneOffsetMinutes", out var offsetRaw) &&
-            int.TryParse(offsetRaw, out var offsetMinutes) &&
-            offsetMinutes >= -840 && offsetMinutes <= 840)
+            int.TryParse(offsetRaw, out var parsedOffset))
         {
-            try
-            {
-                return TimeZoneInfo.CreateCustomTimeZone(
-                    $"viewer-offset-{offsetMinutes}",
-                    TimeSpan.FromMinutes(-offsetMinutes),
-                    "Viewer Local",
-                    "Viewer Local");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Unable to create viewer offset timezone. Falling back to UTC.");
-            }
+            timezoneOffsetMinutes = parsedOffset;
         }
 
-        // 3. Safe fallback: UTC.
-        return TimeZoneInfo.Utc;
+        return AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes);
     }
 
     private static TrafficQualityMode ResolveInitialQualityMode(TrafficQualityMode? requestedQualityMode = null) =>
