@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized failure-forward continuation of the hardened centralized Cloudflare routing recovery. Preserve all successful application deployments. Fix only the release guard false-positive, capture the exact Cloudflare security event responsible for any remaining custom-domain challenge, and continue routing-only recovery.",
-  "purpose": "Identify and remove the remaining Cloudflare challenge source for verified customer custom hostnames without app redeployments, per-domain exceptions, or parallel routing authority.",
-  "requestId": "scoped-commerce-routing-hardened-authority-20260926-r14-challenge-source",
+  "authorization": "Founder explicitly authorized failure-forward continuation of the hardened centralized Cloudflare routing recovery. Preserve all successful application deployments. Disable only unscopable Cloudflare Bot Fight Mode at the shared SaaS zone, retain the centralized WAF/config authority, deploy the shared router, and require live homepage and /store proof.",
+  "purpose": "Remove the proven botFight managed-challenge blocker for verified customer custom domains while preserving all successful application deployments and centralized routing authority.",
+  "requestId": "scoped-commerce-routing-hardened-authority-20260926-r15-botfight-off",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36218166686",
   "releaseMode": "approved-only",
   "targets": [
