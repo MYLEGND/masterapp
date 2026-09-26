@@ -464,13 +464,19 @@ await TryWriteLeadEventAsync(
 
             if (!string.IsNullOrWhiteSpace(primary))
             {
-                var agentEmailSent = await _emailSender.TrySendAsync(
+                var notification = await WebsiteLeadNotificationAuthority.DeliverAsync(
+                    _db,
+                    lead,
                     primary,
-                    $"[DISABILITY QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
-                    BuildLeadNotificationEmailBody(model),
-                    replyToEmail: model.Email,
-                    saveToSentItems: true,
-                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+                    token => _emailSender.TrySendAsync(
+                        primary,
+                        $"[DISABILITY QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
+                        BuildLeadNotificationEmailBody(model),
+                        replyToEmail: model.Email,
+                        saveToSentItems: true,
+                        cancellationToken: token),
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                var agentEmailSent = notification.Sent;
 
                 if (agentEmailSent)
                 {
