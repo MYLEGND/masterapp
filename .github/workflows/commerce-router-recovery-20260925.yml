@@ -98,6 +98,7 @@ jobs:
           using Domain.Entities;
           using Infrastructure.Data;
           using Microsoft.EntityFrameworkCore;
+          using System.Text.Json;
 
           var connection = Environment.GetEnvironmentVariable("MASTERAPP_PROBE_CONNECTION")
               ?? throw new InvalidOperationException("Missing connection.");
@@ -118,13 +119,28 @@ jobs:
                   x.Status,
                   x.CertificateStatus,
                   x.LastCheckedUtc,
-                  x.CreatedUtc
+                  x.CreatedUtc,
+                  x.VerificationJson
               })
               .ToListAsync();
 
           Console.WriteLine($"binding-count={bindings.Count}");
           foreach (var row in bindings)
+          {
               Console.WriteLine($"binding id={row.Id} business={row.CommerceBusinessId} host={row.Hostname} status={row.Status} certificate={row.CertificateStatus} lastChecked={row.LastCheckedUtc:O} created={row.CreatedUtc:O}");
+              if (!string.IsNullOrWhiteSpace(row.VerificationJson))
+              {
+                  using var detail = JsonDocument.Parse(row.VerificationJson);
+                  var root = detail.RootElement;
+                  var routing = root.TryGetProperty("routing", out var value) ? value : default;
+                  Console.WriteLine($"domain-diagnostic provider={Read(root, "providerStatus")} routing={Read(routing, "code")} http={Read(routing, "httpStatus")} summary={Read(root, "summary")} action={Read(root, "requiredAction")}");
+              }
+          }
+
+          static string Read(JsonElement value, string name) =>
+              value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var field)
+                  ? field.ToString()
+                  : "unavailable";
 
           var businessIds = bindings.Select(x => x.CommerceBusinessId).Distinct().ToArray();
           var linkedBusinesses = await db.CommerceBusinesses
