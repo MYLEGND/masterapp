@@ -112,6 +112,7 @@ public sealed class WebsiteExtraComponent
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string SectionId { get; set; } = "";
     public string Type { get; set; } = "text";
+    public string? TemplateSectionId { get; set; }
     public string? ActionKey { get; set; }
     public string? Href { get; set; }
     public string? Target { get; set; }
