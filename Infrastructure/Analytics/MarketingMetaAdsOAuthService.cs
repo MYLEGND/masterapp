@@ -260,7 +260,9 @@ public sealed class MarketingMetaAdsOAuthService(
         var trimmed = string.IsNullOrWhiteSpace(value) ? "/" : value.Trim();
         if (!trimmed.StartsWith("/", StringComparison.Ordinal) ||
             trimmed.StartsWith("//", StringComparison.Ordinal) ||
-            Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+            trimmed.Contains('\\') ||
+            trimmed.Any(char.IsControl) ||
+            trimmed.Contains("://", StringComparison.Ordinal))
             throw new InvalidOperationException("Meta OAuth return URL must be local.");
         return trimmed;
     }
