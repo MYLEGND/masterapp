@@ -187,7 +187,10 @@
           : 'Store',
         cartIcon: ['cart','bag','basket'].includes(String(input?.store?.cartIcon || '').toLowerCase())
           ? String(input.store.cartIcon).toLowerCase()
-          : 'cart'
+          : 'cart',
+        cartIconSizePx: Number.isFinite(Number(input?.store?.cartIconSizePx))
+          ? Math.max(16, Math.min(96, Number(input.store.cartIconSizePx)))
+          : 28
       },
       pages
     };
@@ -233,6 +236,19 @@
       .slice(0, 160);
   }
 
+  function isSharedShellElement(el) {
+    return !!el?.closest?.('.site-header,.site-footer');
+  }
+
+  function globalShellOverride(id, create = true) {
+    if (!id) return null;
+    documentState.elements ||= {};
+    if (!documentState.elements[id] && create) documentState.elements[id] = { style: {} };
+    const value = documentState.elements[id] || null;
+    if (value && create) value.style ||= {};
+    return value;
+  }
+
   function canEditElement(el) {
     if (!(el instanceof HTMLElement)) return false;
     if (el.closest('.legend-cms-editor')) return false;
@@ -270,7 +286,7 @@
     const sections = [...document.querySelectorAll(sectionCandidates), ...document.querySelectorAll('.site-header,.site-footer')];
     sections.forEach((section, index) => {
       if (!section.dataset.cmsSection) {
-        section.dataset.cmsSection = section.matches('.site-header') ? `${pageKey}.header` : section.matches('.site-footer') ? `${pageKey}.footer` : `${pageKey}.section.${index + 1}`;
+        section.dataset.cmsSection = section.matches('.site-header') ? 'shell.header' : section.matches('.site-footer') ? 'shell.footer' : `${pageKey}.section.${index + 1}`;
       }
       section.dataset.cmsId = `section:${section.dataset.cmsSection}`;
       section.dataset.cmsEditable = 'true';
@@ -288,7 +304,8 @@
           const href = el.getAttribute('href');
           const route = href ? new URL(href, location.origin).pathname : '';
           const semantic = SITE_KEY !== 'business' && legacy ? el.dataset.cta || href || el.textContent || el.tagName : el.dataset.businessField || (el.hasAttribute?.('data-business-name') ? 'business-name' : '') || el.dataset.businessRoute || el.dataset.cta || route || (['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) ? el.className || el.tagName : '') || el.textContent || el.tagName;
-          el.dataset.cmsId = `${pageKey}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
+          const shellPrefix = el.closest('.site-header') ? 'shell.header' : el.closest('.site-footer') ? 'shell.footer' : pageKey;
+          el.dataset.cmsId = `${shellPrefix}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
         }
         rememberOriginal(el);
         if (isDirectCanvasSelectable(el)) el.dataset.cmsEditable = 'true';
@@ -744,6 +761,10 @@
 
   function overrideForElement(el, create = true) {
     if (!el?.dataset?.cmsId) return null;
+    // Shared website shell edits are document-global and therefore render on
+    // every page. Page-specific content remains in the page record.
+    if (isSharedShellElement(el))
+      return globalShellOverride(el.dataset.cmsId, create);
     // An added composite block (for example a service card) owns its content,
     // but each selectable child owns its own geometry/style. This keeps one
     // canonical document store while allowing title/copy/etc. to move independently.
@@ -1465,6 +1486,12 @@
     document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
     pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
     pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
+    // Shared shell overrides are document-global and always apply before the
+    // current page's local element map.
+    Object.entries(documentState.elements || {}).forEach(([id, override]) => {
+      const el = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
+      applyElementOverride(el, override);
+    });
     // Composite children do not exist until their parent extra is rendered.
     // Re-apply the one canonical page element map after extras exist.
     Object.entries(pageState().elements).forEach(([id, override]) => {
@@ -1511,11 +1538,18 @@
     return ['cart','bag','basket'].includes(value) ? value : 'cart';
   }
 
-  function createStoreCartIcon(iconKey=effectiveCartIcon()) {
+  function effectiveCartIconSize() {
+    const value=Number(documentState.store?.cartIconSizePx ?? storeContext?.cartIconSizePx ?? 28);
+    return Number.isFinite(value) ? Math.max(16,Math.min(96,value)) : 28;
+  }
+
+  function createStoreCartIcon(iconKey=effectiveCartIcon(), size=effectiveCartIconSize()) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('viewBox','0 0 24 24');
-    svg.setAttribute('width','18');
-    svg.setAttribute('height','18');
+    svg.setAttribute('width',String(size));
+    svg.setAttribute('height',String(size));
+    svg.style.width=`${size}px`;
+    svg.style.height=`${size}px`;
     svg.setAttribute('fill','none');
     svg.setAttribute('aria-hidden','true');
     svg.classList.add('legend-store-cart-icon');
@@ -1777,7 +1811,7 @@
     input.maxLength=40;
     input.value=effectiveStoreLabel();
     input.placeholder='Store or Shop';
-    input.addEventListener('change',()=>void updateStore(true,input.value,effectiveCartIcon()));
+    input.addEventListener('change',()=>void updateStore(true,input.value,effectiveCartIcon(),effectiveCartIconSize()));
     label.appendChild(input);
 
     const iconLabel=document.createElement('label');
@@ -1788,9 +1822,18 @@
       const option=document.createElement('option'); option.value=value; option.textContent=text; icon.appendChild(option);
     }
     icon.value=effectiveCartIcon();
-    icon.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),icon.value));
+    icon.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),icon.value,effectiveCartIconSize()));
     iconLabel.appendChild(icon);
-    settings.append(label,iconLabel);
+
+    const sizeLabel=document.createElement('label');
+    sizeLabel.textContent='Cart icon size';
+    const size=document.createElement('input');
+    size.id='legend-cms-store-cart-size';
+    size.type='number'; size.min='16'; size.max='96'; size.step='1';
+    size.value=String(effectiveCartIconSize());
+    size.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),effectiveCartIcon(),Number(size.value)));
+    sizeLabel.appendChild(size);
+    settings.append(label,iconLabel,sizeLabel);
     host.appendChild(settings);
 
     const actions=document.createElement('div');
@@ -1805,7 +1848,7 @@
     host.insertBefore(actions,settings);
   }
 
-  async function updateStore(enabled,labelValue=null,cartIconValue=null) {
+  async function updateStore(enabled,labelValue=null,cartIconValue=null,cartIconSizeValue=null) {
     if (!editorMode || saving) return;
     const status=document.getElementById('legend-cms-status');
     if(status) status.textContent=enabled?'Setting up your store…':'Removing Store page…';
@@ -1813,7 +1856,7 @@
       const response=await fetch(`${API_BASE}/api/website-content/manage/store/${enabled?'enable':'remove'}`,{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel(),cartIcon:cartIconValue || effectiveCartIcon()})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel(),cartIcon:cartIconValue || effectiveCartIcon(),cartIconSizePx:Number.isFinite(Number(cartIconSizeValue))?Number(cartIconSizeValue):effectiveCartIconSize()})
       });
       const payload=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(payload.message || payload.error || `Store update failed (${response.status})`);
