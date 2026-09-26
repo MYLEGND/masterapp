@@ -1639,7 +1639,7 @@ test('template sections duplicate into versioned extras while header and footer 
     const saved=await f.save();
     const copy=saved.pages['/'].extras.find(x=>x.type==='section');
     assert.ok(copy);
-    assert.match(copy.templateHtml,/Hero title/);
+    assert.equal(copy.templateSectionId,'home.section.1');
     assert.equal(f.w.document.querySelectorAll('main>section').length,2);
     f.click('.site-header');
     assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
@@ -1910,6 +1910,42 @@ test('business navigation-label edits immediately repaint the shared page select
 test('business selector includes imported custom routes from only the authorized draft',async()=>{
  const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Home'}],doc:{pages:{'/special-offer':{title:'Special offer',elements:{},extras:[]}}}});
  try {assert.ok([...f.w.document.querySelector('#legend-cms-page-select').options].some(o=>o.value==='/special-offer'&&o.textContent==='Special offer'));}finally{f.close();}
+});
+
+test('header and footer edits persist in document-global shell authority across pages',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><a class="brand"><strong>Brand</strong></a></header><main><section><h1>Home</h1></section></main><footer class="site-footer"><p>Footer copy</p></footer></body></html>';
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Business'},pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}],html});
+  try{
+    f.click('.site-header strong');
+    f.input('[data-style-key="fontSize"]','31');
+    f.click('.site-footer p');
+    f.input('[data-style-key="fontSize"]','19');
+    const saved=await f.save();
+    assert.equal(saved.elements['shell.header.strong.brand.node1'].style.fontSize,31);
+    assert.equal(saved.elements['shell.footer.p.footer-copy.node2'].style.fontSize,19);
+    assert.equal(saved.pages['/'].elements['shell.header.strong.brand.node1'],undefined);
+    assert.equal(saved.pages['/'].elements['shell.footer.p.footer-copy.node2'],undefined);
+  }finally{f.close();}
+});
+
+test('cart icon launches larger and stores adjustable size through canonical store settings',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const doc={store:{enabled:true,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},pages:{'/':{elements:{},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
+  const store={enabled:true,label:'Store',cartIcon:'cart',cartIconSizePx:28,businessKey:'fixture',storefrontUrl:'/store',cartUrl:'/store/cart',managerUrl:'/commerce/manage/products?ticket=ticket'};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Business'},doc,store,html});
+  try{
+    const svg=f.w.document.querySelector('.legend-store-cart-icon');
+    assert.equal(svg.getAttribute('width'),'28');
+    assert.equal(svg.getAttribute('height'),'28');
+    f.click('[data-open="page"]');
+    const storeControls=[...f.w.document.querySelectorAll('input')].find(x=>x.id==='legend-cms-store-cart-size');
+    assert.ok(storeControls);
+    f.change('#legend-cms-store-cart-size','42');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const call=f.calls.find(call=>call.method==='POST' && call.url.includes('/manage/store/enable'));
+    assert.ok(call);
+    assert.equal(JSON.parse(call.body).cartIconSizePx,42);
+  }finally{f.close();}
 });
 
 test('site palette does not retain the template blue gradient stop',async()=>{
