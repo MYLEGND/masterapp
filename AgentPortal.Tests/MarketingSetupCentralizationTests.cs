@@ -54,6 +54,13 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("marketingSetup: analyticsEndpoint('/marketing-setup')", js, StringComparison.Ordinal);
         Assert.Contains("state.agentProfileId || callerProfileId", js, StringComparison.Ordinal);
         Assert.Contains("marketingSetupConnectUrl", js, StringComparison.Ordinal);
+        var fetchHelperIndex = js.IndexOf("async function fetchJson", StringComparison.Ordinal);
+        var marketingSetupIndex = js.IndexOf("// Centralized marketing + booking configuration.", StringComparison.Ordinal);
+        var firstModuleCloseAfterSetup = js.IndexOf("})();", marketingSetupIndex, StringComparison.Ordinal);
+        var deviceModuleIndex = js.IndexOf(";(() => {", firstModuleCloseAfterSetup, StringComparison.Ordinal);
+        Assert.True(fetchHelperIndex >= 0 && marketingSetupIndex > fetchHelperIndex);
+        Assert.True(firstModuleCloseAfterSetup > marketingSetupIndex);
+        Assert.True(deviceModuleIndex > firstModuleCloseAfterSetup);
         Assert.Contains("let marketingSetupLoaded = false;", js, StringComparison.Ordinal);
         Assert.Contains("marketingSetupSave.disabled = !marketingSetupLoaded", js, StringComparison.Ordinal);
         Assert.DoesNotContain("Reload Marketing Setup before saving.", js, StringComparison.Ordinal);
