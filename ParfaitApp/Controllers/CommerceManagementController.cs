@@ -29,7 +29,6 @@ public sealed class CommerceManagementController(
     ParfaitCustomerAutomationService automations,
     ParfaitInternalAnalyticsService internalAnalytics,
     ParfaitInternalWorkspaceService workspace,
-    IParfaitBusinessProfileService businessProfile,
     MarketingConnectionStore marketingConnections,
     MarketingMetaAdsOAuthService metaAdsOAuth,
     IMetaAdsService metaAds,
