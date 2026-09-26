@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested failure-forward recovery for the completed full scoped Parfait commerce release. Preserve every successful Portal, ClientApp, Protect, and Parfait deployment from direct release #192; do not rebuild or redeploy successful application targets. Recover only the shared Cloudflare business website routing layer and its live custom-domain proof.",
-  "purpose": "Failure-forward routing recovery for direct release #192: retain the already-live centralized commerce application revision and repair only the shared custom-domain router/proof path so owner-scoped custom domains serve homepage and /store without restarting successful deployments.",
-  "requestId": "scoped-commerce-routing-failure-forward-20260925-r7-security-authority",
+  "authorization": "Founder explicitly requested failure-forward recovery of the full scoped commerce release. Preserve all successful Portal, ClientApp, Protect, and Parfait deployments from #192. Repair only the shared Cloudflare custom-hostname security/routing authority so public customer domains and /store routes are not challenged by Browser Integrity Check; retain LEGEND-owned host security settings and keep the fix generic for every custom hostname.",
+  "purpose": "Preserve the live commerce application revision while applying one centralized Cloudflare configuration rule that disables Browser Integrity Check only for customer vanity domains, then deploy/verify the existing shared router and prove binding, homepage, and /store end to end.",
+  "requestId": "scoped-commerce-routing-failure-forward-20260925-r8-disable-bic-custom-hostnames",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36218166686",
   "releaseMode": "approved-only",
   "targets": [
