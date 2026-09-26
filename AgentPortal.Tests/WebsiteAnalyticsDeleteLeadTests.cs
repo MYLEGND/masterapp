@@ -45,14 +45,19 @@ public class WebsiteAnalyticsDeleteLeadTests
                     "Email" TEXT NOT NULL,
                     "CreatedUtc" TEXT NOT NULL,
                     "Status" TEXT NOT NULL,
+                    "IsInternal" INTEGER NOT NULL DEFAULT 0,
                     "IsDeleted" INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE "WebsiteLeadIntakeLinks" (
+                    "Id" TEXT NOT NULL PRIMARY KEY,
+                    "WebsiteLeadPublicId" TEXT NOT NULL
                 );
                 """);
 
             var leadId = Guid.NewGuid();
             await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO "WebsiteLeads" ("LeadId", "FirstName", "Email", "CreatedUtc", "Status", "IsDeleted")
-                VALUES ({leadId}, {"Test"}, {"test@example.com"}, {DateTime.UtcNow}, {"New"}, {0});
+                INSERT INTO "WebsiteLeads" ("LeadId", "FirstName", "Email", "CreatedUtc", "Status", "IsInternal", "IsDeleted")
+                VALUES ({leadId}, {"Test"}, {"test@example.com"}, {DateTime.UtcNow}, {"New"}, {1}, {0});
                 """);
 
             var controller = BuildController(db, "admin-oid");
@@ -101,14 +106,19 @@ public class WebsiteAnalyticsDeleteLeadTests
                     "FirstName" TEXT NOT NULL,
                     "Email" TEXT NOT NULL,
                     "CreatedUtc" TEXT NOT NULL,
-                    "Status" TEXT NOT NULL
+                    "Status" TEXT NOT NULL,
+                    "IsInternal" INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE "WebsiteLeadIntakeLinks" (
+                    "Id" TEXT NOT NULL PRIMARY KEY,
+                    "WebsiteLeadPublicId" TEXT NOT NULL
                 );
                 """);
 
             var leadId = Guid.NewGuid();
             await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO "WebsiteLeads" ("LeadId", "FirstName", "Email", "CreatedUtc", "Status")
-                VALUES ({leadId}, {"Test"}, {"test@example.com"}, {DateTime.UtcNow}, {"New"});
+                INSERT INTO "WebsiteLeads" ("LeadId", "FirstName", "Email", "CreatedUtc", "Status", "IsInternal")
+                VALUES ({leadId}, {"Test"}, {"test@example.com"}, {DateTime.UtcNow}, {"New"}, {1});
                 """);
 
             var controller = BuildController(db, "admin-oid");
