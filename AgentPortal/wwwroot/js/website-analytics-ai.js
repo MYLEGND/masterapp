@@ -5,7 +5,9 @@
   'use strict';
 
   // ── Constants ─────────────────────────────────────────────────────────────
-  var analyticsBase = document.querySelector('.fa-shell')?.dataset.analyticsBase || '/website-analytics';
+  var analyticsShell = document.querySelector('.fa-shell');
+  if (analyticsShell?.dataset.canAiReview === 'false') return;
+  var analyticsBase = analyticsShell?.dataset.analyticsBase || '/website-analytics';
   var REVIEW_ENDPOINT = analyticsBase + '/ai/review';
   var FOLLOWUP_ENDPOINT = analyticsBase + '/ai/followup';
   var DRAWER_ID = 'aiInsightsDrawer';
