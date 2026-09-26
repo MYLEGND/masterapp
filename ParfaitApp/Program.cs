@@ -383,6 +383,17 @@ app.Use(async (context, next) =>
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     context.Response.Headers["Content-Security-Policy"] = "upgrade-insecure-requests; block-all-mixed-content";
     await next();
+
+    // The scoped Website Studio commerce manager is intentionally embedded by the
+    // first-party LEGEND website origins. Apply this after MVC so no upstream,
+    // platform, or earlier middleware header can silently re-block the frame.
+    if (context.Request.Path.StartsWithSegments("/commerce/manage"))
+    {
+        context.Response.Headers.Remove("X-Frame-Options");
+        context.Response.Headers["Content-Security-Policy"] =
+            "frame-ancestors 'self' https://mylegnd.com https://www.mylegnd.com https://protect.mylegnd.com https://portal.mylegnd.com https://client.mylegnd.com https://masterapp-protect.azurewebsites.net; upgrade-insecure-requests; block-all-mixed-content";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    }
 });
 
 app.MapControllerRoute(
