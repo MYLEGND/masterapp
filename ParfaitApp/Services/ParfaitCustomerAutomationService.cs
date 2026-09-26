@@ -262,7 +262,7 @@ public sealed class ParfaitCustomerAutomationService
             CleanupUnsafe(store, DateTime.UtcNow);
 
             var now = DateTime.UtcNow;
-            var orders = _orders.GetAllOrders(businessId);
+            var orders = _orders.GetAllOrders();
             var candidates = new List<ParfaitAutomationDispatchCandidate>();
 
             foreach (var workflow in store.Workflows.Where(item => item.IsActive))
