@@ -288,6 +288,20 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (scope.ScopeType == ScopeType.Business)
             return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
+                return e => false;
+
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            return e => e.CommerceBusinessId == null &&
+                ((e.AgentTrackingProfileId.HasValue && founderIds.Contains(e.AgentTrackingProfileId.Value)) ||
+                 (!e.AgentTrackingProfileId.HasValue && e.MetadataJson != null &&
+                  (e.MetadataJson.Contains("\"siteKey\":\"legend\"") ||
+                   e.MetadataJson.Contains("\"reportingOwner\":\"founder\""))));
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return e => false;
@@ -313,6 +327,19 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (scope.ScopeType == ScopeType.Business)
             return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
+                return e => false;
+
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            return l => l.CommerceBusinessId == null &&
+                ((l.AgentTrackingProfileId.HasValue && founderIds.Contains(l.AgentTrackingProfileId.Value)) ||
+                 (!l.AgentTrackingProfileId.HasValue && l.MetadataJson != null &&
+                  l.MetadataJson.Contains("\"SiteKey\":\"legend\"")));
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return e => false;
@@ -338,7 +365,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     /// </summary>
     private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope)
     {
-        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
+        if ((scope.ScopeType != ScopeType.Agent && scope.ScopeType != ScopeType.Founder) || !scope.AgentTrackingProfileId.HasValue)
             return null;
 
         var selectedId = scope.AgentTrackingProfileId.Value;
