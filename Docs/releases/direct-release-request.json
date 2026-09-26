@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized failure-forward routing completion after #215 proved all five web targets live at a8585b03a435f0d9f19d1cf427cebab277ac6779. Declare the complete web inventory only to satisfy the canonical routing release policy. Preserve every application/site at that exact live revision; deploy only the validated Cloudflare website-commerce router. No application rebuild, migration, auth mutation, or redeployment.",
-  "purpose": "Complete the Website Studio Store/Manage Store repair by activating first-party /store* and /commerce/manage/* Worker routes. All five web targets are declared because the canonical routing policy requires complete inventory when the Website target is in scope; preserve-live mode must skip every application deployment.",
-  "requestId": "website-studio-store-manager-routing-preserve-live-20260926-r2",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36237501297",
+  "authorization": "Founder authorized direct production release of the fully validated canonical analytics, CRM, Meta, booking, website runtime, and notification hardening candidate after exact combined-head architecture validation completed green.",
+  "purpose": "Deploy the approved canonical end-to-end platform repair across every affected web target. Shared Domain, Infrastructure, SHARED runtime, AgentPortal, ClientApp, Protect, Parfait dependencies, and the static website renderer changed together, so all five web targets must advance to the same approved source revision.",
+  "requestId": "canonical-analytics-crm-meta-booking-release-20260926",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36256776427",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
@@ -12,8 +12,6 @@
     "masterapp-parfait",
     "masterapp-website"
   ],
-  "cloudflareWebsiteRouting": true,
-  "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": true,
-  "preserveLiveRevision": "a8585b03a435f0d9f19d1cf427cebab277ac6779"
+  "cloudflareWebsiteRouting": false,
+  "preserveLiveTargets": false
 }
