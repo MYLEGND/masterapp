@@ -5029,6 +5029,8 @@ function escapeHtml(value) {
     if (revision) revision.value = marketing.revision || '';
     const pixel = document.getElementById('marketing-setup-pixel');
     if (pixel) pixel.value = marketing.metaPixelId || '';
+    const testCode = document.getElementById('marketing-setup-test-code');
+    if (testCode) testCode.value = marketing.metaTestEventCode || '';
     const enabled = document.getElementById('marketing-setup-booking-enabled');
     if (enabled) enabled.checked = booking.enabled === true;
     const embed = document.getElementById('marketing-setup-embed');
@@ -5103,10 +5105,17 @@ function escapeHtml(value) {
       return;
     }
 
+    const testEventCode = (document.getElementById('marketing-setup-test-code')?.value || '').trim();
+    if (testEventCode.length > 100) {
+      setMarketingSetupStatus('Meta Test Event Code is too long.', 'error');
+      return;
+    }
+
     const body = {
       agentProfileId: marketingSetupAgentProfileId() || null,
       marketingRevision: revision,
       metaPixelId: pixel || null,
+      metaTestEventCode: testEventCode || null,
       bookingEnabled: document.getElementById('marketing-setup-booking-enabled')?.checked === true,
       microsoftBookingsEmbedUrl: (document.getElementById('marketing-setup-embed')?.value || '').trim() || null,
       fallbackBookingUrl: (document.getElementById('marketing-setup-fallback')?.value || '').trim() || null,
