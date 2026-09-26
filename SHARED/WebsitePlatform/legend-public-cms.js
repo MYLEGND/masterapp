@@ -1170,17 +1170,21 @@
     } else if (extra.type === 'section') {
       el = document.createElement('section');
       if (editable) el.dataset.cmsSection = `extra:${extra.id}`;
-      el.className = ['cms-extra','cms-extra-section',extra.sourceClassName || ''].filter(Boolean).join(' ');
-      if (typeof extra.templateHtml === 'string' && extra.templateHtml) {
-        el.innerHTML = extra.templateHtml;
-        let childIndex=0;
-        el.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article').forEach(child=>{
-          if (!canEditElement(child)) return;
-          if (!['IMG','VIDEO','A','DIV','ARTICLE'].includes(child.tagName) && child.children.length>0) return;
-          child.dataset.cmsId = `extra:${extra.id}:node:${++childIndex}`;
-          child.dataset.cmsEditable='true';
-          rememberOriginal(child);
-        });
+      el.className = 'cms-extra cms-extra-section';
+      if (extra.templateSectionId) {
+        const template=document.querySelector(`[data-cms-section="${CSS.escape(extra.templateSectionId)}"]:not(.cms-extra-section)`);
+        if (template) {
+          el.className=['cms-extra','cms-extra-section',...template.classList].filter((value,index,array)=>value && array.indexOf(value)===index).join(' ');
+          el.innerHTML=template.innerHTML;
+          let childIndex=0;
+          el.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article').forEach(child=>{
+            if (!canEditElement(child)) return;
+            if (!['IMG','VIDEO','A','DIV','ARTICLE'].includes(child.tagName) && child.children.length>0) return;
+            child.dataset.cmsId = `extra:${extra.id}:node:${++childIndex}`;
+            child.dataset.cmsEditable='true';
+            rememberOriginal(child);
+          });
+        }
       }
     } else if (extra.type === 'video') {
       el = document.createElement('video'); el.controls = true; el.preload = 'metadata';
@@ -3378,15 +3382,9 @@
           return;
         }
         checkpoint();
-        const clone=selected.cloneNode(true);
-        clone.querySelectorAll('[data-cms-id],[data-cms-editable],[data-cms-section],[contenteditable]').forEach(node=>{
-          node.removeAttribute('data-cms-id'); node.removeAttribute('data-cms-editable'); node.removeAttribute('data-cms-section'); node.removeAttribute('contenteditable');
-        });
-        clone.querySelectorAll('.legend-cms-editor,.legend-cms-selection-frame,.legend-cms-grid-overlay').forEach(node=>node.remove());
         const copy={
           id:crypto.randomUUID(), type:'section', sectionId:selected.dataset.cmsSection,
-          sourceClassName:[...selected.classList].filter(name=>!name.startsWith('legend-cms-') && name!=='cms-extra').join(' '),
-          templateHtml:clone.innerHTML, style:{}, signals:[]
+          templateSectionId:selected.dataset.cmsSection, style:{}, signals:[]
         };
         pageState().extras.push(copy);
         const created=createExtra(copy);
