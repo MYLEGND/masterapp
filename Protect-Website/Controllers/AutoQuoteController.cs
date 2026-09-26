@@ -65,6 +65,7 @@ namespace Protect_Website.Controllers
         }
 
         [HttpPost("Auto")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Auto(AutoQuoteFormModel model)
         {
