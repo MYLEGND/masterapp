@@ -34,6 +34,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             var allowed = ids is { Length: > 0 } ? ids : new[] { scope.AgentTrackingProfileId ?? Guid.Empty };
             query = query.Where(x => x.AgentTrackingProfileId.HasValue && allowed.Contains(x.AgentTrackingProfileId.Value));
         }
+        else if (scope.ScopeType == ScopeType.Founder)
+        {
+            var allowed = ids is { Length: > 0 } ? ids : new[] { scope.AgentTrackingProfileId ?? Guid.Empty };
+            query = query.Where(x =>
+                (x.AgentTrackingProfileId.HasValue && allowed.Contains(x.AgentTrackingProfileId.Value)) ||
+                (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
+                 (x.MetadataJson.Contains("\"siteKey\":\"legend\"") ||
+                  x.MetadataJson.Contains("\"reportingOwner\":\"founder\""))));
+        }
         var sessions = events.Select(x => x.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         var visitors = events.Select(x => x.VisitorId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         return await query.Where(x => (!string.IsNullOrWhiteSpace(x.SessionId) && sessions.Contains(x.SessionId)) ||
