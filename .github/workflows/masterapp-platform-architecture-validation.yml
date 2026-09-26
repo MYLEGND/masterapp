@@ -11,6 +11,7 @@ on:
       - architecture/consolidated-platform-domain-release-20260925
       - architecture/protect-domain-proof-20260925
       - architecture/analytics-meta-scope-completion-20260925
+      - validation/scoped-store-baseline-20260926
     paths-ignore:
       - 'Docs/**'
   pull_request:
