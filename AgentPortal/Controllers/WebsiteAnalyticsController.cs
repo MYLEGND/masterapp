@@ -230,6 +230,8 @@ namespace AgentPortal.Controllers;
 
             return new SummaryKpiDto
             {
+                IsAvailable = false,
+                UnavailableReason = "Summary query timed out.",
                 RangeLabel = range.Label,
                 EnvironmentLabel = "Summary temporarily unavailable"
             };
