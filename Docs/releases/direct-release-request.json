@@ -1,15 +1,17 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized fail-forward completion of ClientApp analytics parity only. Supersede accidental broad automatic release #237 before deployment. AgentPortal and Protect are already live and must remain untouched; do not deploy Parfait or LEGEND Website.",
-  "purpose": "Complete ClientApp business-scoped Website Analytics parity using the already-approved canonical shared analytics services and linked WebsiteAnalytics UI. Do not redeploy or roll back AgentPortal, Protect, Parfait, or LEGEND Website.",
-  "requestId": "canonical-live-analytics-clientapp-completion-20260926-r3",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36273622780",
-  "preserveSuccessfulRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36275708976",
+  "authorization": "Founder authorized fail-forward completion of canonical analytics parity for Parfait only. AgentPortal, Protect, and ClientApp are already live and must remain untouched. Do not deploy LEGEND Website.",
+  "purpose": "Deploy the validated Parfait analytics cleanup that removes the stale 45-second Parfait reporting cache while preserving the shared IAnalyticsQueryService and IMetaSignalAnalyticsService as the only reporting authorities.",
+  "requestId": "canonical-live-analytics-parfait-completion-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36279049511",
+  "preserveSuccessfulReleases": [
+    "https://github.com/MYLEGND/masterapp/actions/runs/36275708976",
+    "https://github.com/MYLEGND/masterapp/actions/runs/36278375950"
+  ],
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-client"
+    "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "supersedesRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36278311858"
+  "preserveLiveTargets": false
 }
