@@ -219,11 +219,12 @@ namespace AgentPortal.Controllers;
     private async Task<List<VisitorConcentrationDto>> LoadVisitorConcentrationSafelyAsync(
         TimeRangeRequest range,
         ScopeContext scope,
+        TrafficType trafficType,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await _visitorConcentrationService.GetVisitorConcentrationAsync(range, scope, cancellationToken);
+            return await _visitorConcentrationService.GetVisitorConcentrationAsync(range, scope, trafficType, cancellationToken);
         }
         catch (Exception ex) when (IsAnalyticsTimeout(ex))
         {
