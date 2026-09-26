@@ -1,16 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized one consolidated release of the validated MasterApp central website ownership changes and the queued canonical custom-domain storefront routing changes. Require the full production gates, rollback packages, verified CAMO business binding and camoexterior.com/store before accepting the Cloudflare Worker; restore the prior Worker on failed routing proof.",
-  "purpose": "Release the centralized analytics, Meta signals, website runtime and publishing ownership with the canonical storefront domain routing in one approved release. Fix contract tests to read the shared source files, and deploy the complete web inventory and Cloudflare router through the existing checked production workflow.",
-  "requestId": "masterapp-centralization-and-custom-domain-consolidated-20260925",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36202582806",
+  "authorization": "Founder directed recovery of the failed custom-domain proof from approved direct release #185 while preserving the successful Portal, Client and Website deployments. Release only the coupled Protect and Parfait commerce origins and Cloudflare router through the existing approved production gates. Require a verified business binding receipt, homepage and /store on the configured canary hostname; restore the previous Worker if route proof fails.",
+  "purpose": "Complete the queued business-scoped custom-domain storefront routing in one scoped recovery release. Retain the shared MasterApp domain authority and existing Cloudflare secrets; avoid redeploying the successful Portal, Client and standalone Website targets.",
+  "requestId": "masterapp-custom-domain-scoped-recovery-20260926",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36205924484",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
+    "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": true,
   "websiteRoutingCanaryHost": "camoexterior.com",
