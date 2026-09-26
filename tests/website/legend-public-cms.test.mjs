@@ -1600,6 +1600,61 @@ test('LEGEND and Protect Pages views do not advertise arbitrary route creation b
 });
 
 
+test('sections expand with content instead of creating internal scroll containers',async()=>{
+  const doc={pages:{'/':{elements:{'section:home.section.1':{style:{heightPx:180}}},extras:[],sectionOrder:{}}}};
+  const f=await domFixture({doc});
+  try{
+    const section=f.w.document.querySelector('main section');
+    assert.equal(section.style.height,'auto');
+    assert.equal(section.style.minHeight,'180px');
+    assert.equal(section.style.overflow,'visible');
+    assert.match(source,/Sections are content-sized canvases/);
+  }finally{f.close();}
+});
+
+test('business custom pages are projected into the public header navigation from the canonical page catalog',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav><a href="/">Template Home</a></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const doc={pages:{
+    '/':{title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
+    '/team':{title:'Team',navigation:{label:'Our Team',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}},
+    '/hidden':{title:'Hidden',navigation:{label:'Hidden',showInNavigation:false,order:20},elements:{},extras:[],sectionOrder:{}}
+  }};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc,html,search:''});
+  try{
+    const labels=[...f.w.document.querySelectorAll('#primary-nav>a')].map(x=>x.textContent);
+    assert.deepEqual(labels,['Home','Our Team']);
+    assert.equal(f.w.document.querySelector('#primary-nav a[href="/team"]').dataset.businessRoute,'team');
+  }finally{f.close();}
+});
+
+test('template sections duplicate into versioned extras while header and footer remain immutable',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><strong>Header</strong></header><main><section class="hero"><h1>Hero title</h1><p>Hero copy</p></section></main><footer class="site-footer">Footer</footer></body></html>';
+  const f=await domFixture({html});
+  try{
+    f.click('main section');
+    const duplicate=f.w.document.querySelector('#legend-cms-duplicate');
+    assert.equal(duplicate.disabled,false);
+    assert.equal(duplicate.textContent,'Duplicate section');
+    f.click('#legend-cms-duplicate');
+    const saved=await f.save();
+    const copy=saved.pages['/'].extras.find(x=>x.type==='section');
+    assert.ok(copy);
+    assert.match(copy.templateHtml,/Hero title/);
+    assert.equal(f.w.document.querySelectorAll('main>section').length,2);
+    f.click('.site-header');
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
+    f.click('.site-footer');
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
+  }finally{f.close();}
+});
+
+test('shared public stylesheet keeps footer at viewport bottom without fixing it over content',()=>{
+  assert.match(publicCss,/body\{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip\}/);
+  assert.match(publicCss,/main,\.public-main,\.layout-content\{flex:1 0 auto;min-height:0\}/);
+  assert.match(publicCss,/\.site-footer\{flex:0 0 auto;margin-top:auto\}/);
+  assert.doesNotMatch(publicCss,/\.site-footer\{[^}]*position:fixed/);
+});
+
 test('media library reuses scoped image asset without persisting editor ticket', async()=>{
   const assetUrl='https://site.example/api/website-content/media/11111111-1111-1111-1111-111111111111';
   const f=await domFixture({mediaPayload:{assets:[{id:'11111111-1111-1111-1111-111111111111',name:'team-logo.png',url:assetUrl,contentType:'image/png',sizeBytes:2048,createdUtc:'2026-09-24T00:00:00Z'}]}});
