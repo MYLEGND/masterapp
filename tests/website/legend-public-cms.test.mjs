@@ -1871,19 +1871,48 @@ test('sections expand with content instead of creating internal scroll container
   }finally{f.close();}
 });
 
-test('business custom pages are projected into the public header navigation from the canonical page catalog',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav><a href="/">Template Home</a></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+test('business header navigation renders once from the canonical page catalog and discards stale DOM links',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav><a href="/">Stale Home</a><a href="/about">Stale About</a><a href="/">Duplicate Home</a><a href="/services">Stale Services</a></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
   const doc={pages:{
     '/':{title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
     '/team':{title:'Team',navigation:{label:'Our Team',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}},
     '/hidden':{title:'Hidden',navigation:{label:'Hidden',showInNavigation:false,order:20},elements:{},extras:[],sectionOrder:{}}
   }};
-  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc,html,search:''});
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages:[{path:'/',label:'Home'},{path:'/team',label:'Team'}],doc,html,search:''});
   try{
-    const labels=[...f.w.document.querySelectorAll('#primary-nav>a')].map(x=>x.textContent);
-    assert.deepEqual(labels,['Home','Our Team']);
+    const links=[...f.w.document.querySelectorAll('#primary-nav>a')];
+    assert.deepEqual(links.map(x=>x.textContent),['Home','Our Team']);
+    assert.equal(new Set(links.map(x=>x.getAttribute('href'))).size,links.length);
+    assert.equal(links.some(x=>x.textContent.startsWith('Stale')||x.textContent==='Duplicate Home'),false);
   }finally{f.close();}
 });
+
+test('business page list directly manages navigation label visibility and deletion from one page record',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+  const doc={pages:{
+    '/':{title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
+    '/about':{title:'About',navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}}
+  }};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}],doc,html});
+  try{
+    const rows=[...f.w.document.querySelectorAll('#legend-cms-page-list .legend-cms-page-row')];
+    assert.equal(rows.length,2);
+    const about=rows.find(row=>row.querySelector('button')?.textContent==='/about');
+    assert.ok(about);
+    const label=about.querySelector('input[type="text"]');
+    label.value='Our Story';
+    label.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    assert.deepEqual([...f.w.document.querySelectorAll('#primary-nav>a')].map(x=>x.textContent),['Home','Our Story']);
+    const saved=await f.save();
+    assert.equal(saved.pages['/about'].navigation.label,'Our Story');
+    const refreshed=[...f.w.document.querySelectorAll('#legend-cms-page-list .legend-cms-page-row')].find(row=>row.querySelector('button')?.textContent==='/about');
+    refreshed.querySelector('button:last-child').click();
+    const deleted=await f.save();
+    assert.equal(deleted.pages['/about'].navigation.isDeleted,true);
+    assert.equal([...f.w.document.querySelectorAll('#primary-nav>a')].some(x=>x.getAttribute('href')==='/about'),false);
+  }finally{f.close();}
+});
+
 
 test('template sections duplicate into versioned extras while header and footer remain immutable',async()=>{
   const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><strong>Header</strong></header><main><section class="hero"><h1>Hero title</h1><p>Hero copy</p></section></main><footer class="site-footer">Footer</footer></body></html>';
@@ -1901,8 +1930,11 @@ test('template sections duplicate into versioned extras while header and footer 
     assert.equal(f.w.document.querySelectorAll('main>section').length,2);
     f.click('.site-header');
     assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-remove').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-remove').textContent,'Global shell · cannot delete');
     f.click('.site-footer');
     assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-remove').disabled,true);
   }finally{f.close();}
 });
 
