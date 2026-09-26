@@ -101,19 +101,26 @@ public class WebsiteAnalyticsIngestAuthority : Controller
         {
             // Protect ownership is server-resolved from the verified request/referrer
             // context. Browser-supplied agent IDs/slugs are never an ownership authority.
-            var services = HttpContext?.RequestServices;
+            var httpContext = HttpContext;
+            if (httpContext is null)
+                return BadRequest(new { accepted = false, error = "Request context is required." });
+
+            IServiceProvider? services = httpContext.RequestServices;
             var pixelResolver = services is null ? null : services.GetService<IMetaPixelResolutionService>();
             if (pixelResolver is not null)
             {
-                resolvedProtectOwner = await pixelResolver.ResolveForCurrentRequestAsync(HttpContext, cancellationToken);
+                resolvedProtectOwner = await pixelResolver.ResolveForCurrentRequestAsync(httpContext, cancellationToken);
             }
             else
             {
-                var profile = HttpContext.Items["TrackingProfile"] as Domain.Entities.AgentTrackingProfile;
+                // Test/host fallback remains server-owned: only trusted HttpContext
+                // items may provide the resolved Protect owner. Browser request fields
+                // are never consulted for ownership.
+                var profile = httpContext.Items["TrackingProfile"] as Domain.Entities.AgentTrackingProfile;
                 resolvedProtectOwner = new ResolvedMetaPixelContext
                 {
                     AgentTrackingProfileId = profile?.Id,
-                    AgentSlug = Normalize(HttpContext.Items["TrackingSlug"] as string)
+                    AgentSlug = Normalize(httpContext.Items["TrackingSlug"] as string)
                 };
             }
         }

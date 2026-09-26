@@ -30,6 +30,93 @@
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
 <div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="modal fade fa-modal" id="marketingSetupModal" tabindex="-1" aria-labelledby="marketingSetupModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content marketing-setup-modal">
+            <div class="modal-header marketing-setup-modal-header">
+                <div>
+                    <div class="wa-modal-kicker">Centralized Marketing Authority</div>
+                    <h5 class="modal-title mb-0" id="marketingSetupModalLabel">Marketing Setup</h5>
+                    <div class="wa-modal-subtitle" id="marketing-setup-scope-label">Loading scoped setup…</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body marketing-setup-modal-body">
+                <form id="marketing-setup-form" novalidate>
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" id="marketing-setup-revision" />
+
+                    <div class="marketing-setup-status-grid" aria-label="Marketing setup status">
+                        <div class="marketing-setup-status" data-status-key="publicReady"><span>Public</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="metaCustomPixel"><span>Meta</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="bookingPersonalLive"><span>Booking</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="calendarLinked"><span>Calendar</span><strong>—</strong></div>
+                    </div>
+
+                    <section class="marketing-setup-section">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Marketing</div>
+                                <h6>Meta destination</h6>
+                            </div>
+                            <div class="marketing-setup-connection" id="marketing-setup-meta-account">Meta Ads status: —</div>
+                        </div>
+                        <p class="marketing-setup-help">Leave the Pixel ID blank to keep using the default LEGEND tracking setup. Meta CAPI credentials are never entered here; they are stored securely and managed automatically when the scoped Meta Ads account is connected.</p>
+                        <label class="marketing-setup-field" for="marketing-setup-pixel">
+                            <span>Meta Pixel ID</span>
+                            <input id="marketing-setup-pixel" type="text" inputmode="numeric" maxlength="32" autocomplete="off" placeholder="Optional custom Pixel ID" />
+                        </label>
+                        <div class="marketing-setup-secure-row">
+                            <div>
+                                <span class="marketing-setup-secure-label">Meta CAPI</span>
+                                <strong id="marketing-setup-capi-status">Checking secure connection…</strong>
+                            </div>
+                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="#">Connect Meta Ads</a>
+                        </div>
+                    </section>
+
+                    <section class="marketing-setup-section">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Booking</div>
+                                <h6>Personal scheduler</h6>
+                            </div>
+                        </div>
+                        <p class="marketing-setup-help">Use your own Bookings setup only when you want a personal scheduler in public quote handoff flows.</p>
+                        <label class="marketing-setup-toggle">
+                            <input id="marketing-setup-booking-enabled" type="checkbox" />
+                            <span>Use my personal scheduler on public quote handoff flows</span>
+                        </label>
+                        <div class="marketing-setup-field-grid">
+                            <label class="marketing-setup-field" for="marketing-setup-embed">
+                                <span>Embed URL</span>
+                                <input id="marketing-setup-embed" type="url" maxlength="2048" autocomplete="off" placeholder="https://outlook.office.com/bookings/..." />
+                            </label>
+                            <label class="marketing-setup-field" for="marketing-setup-fallback">
+                                <span>Fallback URL</span>
+                                <input id="marketing-setup-fallback" type="url" maxlength="2048" autocomplete="off" placeholder="Optional backup scheduler link" />
+                            </label>
+                            <label class="marketing-setup-field" for="marketing-setup-mailbox">
+                                <span>Mailbox / Page ID</span>
+                                <input id="marketing-setup-mailbox" type="text" maxlength="320" autocomplete="off" placeholder="Mailbox, page ID, or calendar handle" />
+                            </label>
+                            <label class="marketing-setup-field" for="marketing-setup-calendar">
+                                <span>Calendar email</span>
+                                <input id="marketing-setup-calendar" type="email" maxlength="320" autocomplete="email" placeholder="calendar@example.com" />
+                            </label>
+                        </div>
+                    </section>
+
+                    <div class="marketing-setup-save-row">
+                        <div id="marketing-setup-status" role="status" aria-live="polite"></div>
+                        <button type="submit" class="btn btn-gold" id="marketing-setup-save">Save Marketing Setup</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
     Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
 </div>
@@ -43,7 +130,17 @@
             <div class="hero-link-top">
                 <div class="hero-link-intro">
                     <div class="hero-link-kicker">Shared Command Area</div>
-                    <h3 class="hero-link-title">Marketing Links</h3>
+                    <div class="hero-link-title-row">
+                        <h3 class="hero-link-title">Marketing Links</h3>
+                        <button type="button"
+                                class="btn marketing-setup-trigger"
+                                id="marketing-setup-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#marketingSetupModal"
+                                aria-controls="marketingSetupModal">
+                            Marketing Setup
+                        </button>
+                    </div>
                     <div class="hero-link-subtitle text-silver">Open the website and jump into behavior review fast. Meta Ads controls now live inside Core Metrics for quicker access.</div>
                 </div>
             </div>

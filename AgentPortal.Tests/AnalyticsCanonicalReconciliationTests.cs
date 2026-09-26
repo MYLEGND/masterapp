@@ -82,6 +82,31 @@ public sealed class AnalyticsCanonicalReconciliationTests
         var conversions = await analytics.GetConversionsAsync(range, scope);
         var leads = await analytics.GetLeadsAsync(range, scope);
         var health = await analytics.GetMarketingHealthAsync(range, scope);
+        var quote = await analytics.GetQuoteFunnelAsync(range, scope);
+        var engagement = await analytics.GetEngagementSummaryAsync(range, scope);
+        var pageEngagement = await analytics.GetPageEngagementAsync(range, scope);
+        var timeOnPage = await analytics.GetTimeOnPageAsync(range, scope);
+        var exits = await analytics.GetExitAnalysisAsync(range, scope);
+        var scroll = await analytics.GetScrollAnalysisAsync(range, scope);
+        var journeys = await analytics.GetJourneyAnalysisAsync(range, scope);
+        var sources = await analytics.GetSourcePerformanceAsync(range, scope);
+        var landingPages = await analytics.GetLandingPagePerformanceAsync(range, scope);
+        var friction = await analytics.GetFormFrictionAsync(range, scope);
+        var abandonment = await analytics.GetFormAbandonmentAsync(range, scope);
+        var devices = await analytics.GetDeviceIntelligenceAsync(range, scope);
+
+        Assert.NotNull(quote);
+        Assert.NotNull(engagement);
+        Assert.NotNull(pageEngagement);
+        Assert.NotNull(timeOnPage);
+        Assert.NotNull(exits);
+        Assert.NotNull(scroll);
+        Assert.NotNull(journeys);
+        Assert.NotNull(sources);
+        Assert.NotNull(landingPages);
+        Assert.NotNull(friction);
+        Assert.NotNull(abandonment);
+        Assert.NotNull(devices);
 
         Assert.Equal(1, summary.PageViews);
         Assert.Equal(1, summary.Sessions);
@@ -111,6 +136,75 @@ public sealed class AnalyticsCanonicalReconciliationTests
         // consent/UTM hints that the browser session did not need for human proof.
         Assert.DoesNotContain(health.Warnings, x =>
             x.Contains("Unknown lead attribution remains on 2", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task FounderPersonalAggregatesProtectAndLegendButExcludesOtherOwners()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var founderId = Guid.NewGuid();
+        var founderAliasId = Guid.NewGuid();
+        var otherAgentId = Guid.NewGuid();
+        var businessId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        db.AgentTrackingProfiles.AddRange(
+            new AgentTrackingProfile { Id = founderId, AgentUpn = "founder@example.org", AgentUserId = "founder-1", Slug = "founder" },
+            new AgentTrackingProfile { Id = founderAliasId, AgentUpn = "founder@example.org", AgentUserId = "founder-2", Slug = "founder-alias" },
+            new AgentTrackingProfile { Id = otherAgentId, AgentUpn = "other@example.org", AgentUserId = "other", Slug = "other" });
+
+        db.AnalyticsEvents.AddRange(
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(), ClientEventId = Guid.NewGuid(), EventType = "page_view",
+                EventUtc = now.AddMinutes(-5), ReceivedUtc = now.AddMinutes(-5),
+                SessionId = "founder-protect", VisitorId = "founder-protect-v", PageKey = "protect_home",
+                AgentTrackingProfileId = founderAliasId, CommerceBusinessId = null,
+                Environment = "production", Host = "protect.mylegnd.com", MetadataJson = "{\"siteKey\":\"protect\",\"reportingOwner\":\"founder\"}"
+            },
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(), ClientEventId = Guid.NewGuid(), EventType = "page_view",
+                EventUtc = now.AddMinutes(-4), ReceivedUtc = now.AddMinutes(-4),
+                SessionId = "founder-legend", VisitorId = "founder-legend-v", PageKey = "legend_home",
+                AgentTrackingProfileId = null, CommerceBusinessId = null,
+                Environment = "production", Host = "mylegnd.com", MetadataJson = "{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\"}"
+            },
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(), ClientEventId = Guid.NewGuid(), EventType = "page_view",
+                EventUtc = now.AddMinutes(-3), ReceivedUtc = now.AddMinutes(-3),
+                SessionId = "other-agent", VisitorId = "other-agent-v", PageKey = "protect_home",
+                AgentTrackingProfileId = otherAgentId, CommerceBusinessId = null,
+                Environment = "production", Host = "protect.mylegnd.com", MetadataJson = "{\"siteKey\":\"protect\",\"reportingOwner\":\"agent\"}"
+            },
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(), ClientEventId = Guid.NewGuid(), EventType = "page_view",
+                EventUtc = now.AddMinutes(-2), ReceivedUtc = now.AddMinutes(-2),
+                SessionId = "business", VisitorId = "business-v", PageKey = "/",
+                AgentTrackingProfileId = null, CommerceBusinessId = businessId,
+                Environment = "production", Host = "business.example.org", MetadataJson = "{\"siteKey\":\"business\"}"
+            });
+
+        await db.SaveChangesAsync();
+
+        var analytics = new AnalyticsQueryService(db, new ConfigurationBuilder().Build());
+        var range = new TimeRangeRequest
+        {
+            FromUtc = now.AddHours(-1),
+            ToUtc = now.AddHours(1),
+            QualityMode = TrafficQualityMode.AllTraffic,
+            Label = "test",
+            Preset = "custom",
+            ViewerTimeZone = TimeZoneInfo.Utc
+        };
+
+        var summary = await analytics.GetSummaryAsync(range, ScopeContext.ForFounder(founderId));
+
+        Assert.Equal(2, summary.PageViews);
+        Assert.Equal(2, summary.Sessions);
+        Assert.Equal(2, summary.UniqueVisitors);
     }
 
     [Fact]

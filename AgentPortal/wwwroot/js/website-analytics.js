@@ -38,7 +38,7 @@
     preset: initialPreset,
     from: initialFrom,
     to: initialTo,
-    pollMs: 45000,
+    pollMs: 1500,
     qualityMode: initialQualityMode,
     dashboardTrafficType: 'all',
     controllers: {},
@@ -140,6 +140,7 @@
     metaConnect: analyticsEndpoint('/meta-connect'),
     metaConnectionStatus: analyticsEndpoint('/meta-connection-status'),
     metaDisconnect: analyticsEndpoint('/meta-disconnect'),
+    marketingSetup: analyticsEndpoint('/marketing-setup'),
     behaviorSummary: analyticsEndpoint('/behavior/summary'),
     behaviorTime: analyticsEndpoint('/behavior/time-on-page'),
     behaviorExit: analyticsEndpoint('/behavior/exit-analysis'),
@@ -4241,10 +4242,18 @@ function escapeHtml(value) {
     }
   }
 
+  function refreshLiveAnalytics() {
+    loadSummary();
+    if (state.openModal) refreshOpenModal();
+  }
+
   function initPolling() {
-    setInterval(() => {
-      refreshOpenModal();
-    }, state.pollMs);
+    setInterval(refreshLiveAnalytics, state.pollMs);
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshLiveAnalytics();
+    });
+    window.addEventListener('focus', refreshLiveAnalytics);
   }
 
   function initModules() {
@@ -4342,6 +4351,9 @@ function escapeHtml(value) {
       },
       getRangeParams(options) {
         return rangeParams(options || {});
+      },
+      endpoint(path) {
+        return analyticsEndpoint(path);
       }
     };
   }
@@ -4952,6 +4964,177 @@ function escapeHtml(value) {
     if (baseOpen) baseOpen.href = base;
     rerenderProductLinks();
   }
+
+
+  // Centralized marketing + booking configuration. This UI reads/writes the
+  // existing canonical MarketingConnection and AgentProfile authorities only.
+  const marketingSetupModal = document.getElementById('marketingSetupModal');
+  const marketingSetupForm = document.getElementById('marketing-setup-form');
+  const marketingSetupStatus = document.getElementById('marketing-setup-status');
+  const marketingSetupSave = document.getElementById('marketing-setup-save');
+  let marketingSetupLoaded = false;
+
+  function marketingSetupAgentProfileId() {
+    const selected = document.getElementById('wa-scope-select')?.value || '';
+    return selected || state.agentProfileId || callerProfileId || '';
+  }
+
+  function setMarketingSetupStatus(message, kind = '') {
+    if (!marketingSetupStatus) return;
+    marketingSetupStatus.textContent = message || '';
+    marketingSetupStatus.classList.toggle('is-error', kind === 'error');
+    marketingSetupStatus.classList.toggle('is-success', kind === 'success');
+  }
+
+  function setMarketingSetupChip(key, value, goodLabel, emptyLabel, warn = false) {
+    const chip = document.querySelector(`[data-status-key="${key}"]`);
+    if (!chip) return;
+    const strong = chip.querySelector('strong');
+    if (strong) strong.textContent = value ? goodLabel : emptyLabel;
+    chip.classList.toggle('is-good', !!value);
+    chip.classList.toggle('is-warn', !value && warn);
+    chip.classList.toggle('is-neutral', !value && !warn);
+  }
+
+  function marketingSetupConnectUrl(profileId) {
+    const params = new URLSearchParams();
+    params.set('returnUrl', window.location.pathname + window.location.search);
+    if (profileId) params.set('agentProfileId', profileId);
+    return `${endpoints.metaConnect}?${params.toString()}`;
+  }
+
+  function renderMarketingSetup(payload) {
+    if (!payload) return;
+    const status = payload.status || {};
+    const marketing = payload.marketing || {};
+    const booking = payload.booking || {};
+    const profileId = payload.agentProfileId || marketingSetupAgentProfileId();
+
+    const scopeLabel = document.getElementById('marketing-setup-scope-label');
+    if (scopeLabel) scopeLabel.textContent = payload.agentName
+      ? `Configuring ${payload.agentName}`
+      : 'Scoped marketing configuration';
+
+    setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
+    setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
+    setMarketingSetupChip(
+      'bookingPersonalLive',
+      status.bookingPersonalLive,
+      'Personal live',
+      booking.enabled ? 'Needs scheduler' : 'Shared scheduler',
+      booking.enabled && !status.bookingPersonalLive);
+    setMarketingSetupChip('calendarLinked', status.calendarLinked, 'Linked', 'Not linked');
+
+    const revision = document.getElementById('marketing-setup-revision');
+    if (revision) revision.value = marketing.revision || '';
+    const pixel = document.getElementById('marketing-setup-pixel');
+    if (pixel) pixel.value = marketing.metaPixelId || '';
+    const enabled = document.getElementById('marketing-setup-booking-enabled');
+    if (enabled) enabled.checked = booking.enabled === true;
+    const embed = document.getElementById('marketing-setup-embed');
+    if (embed) embed.value = booking.microsoftBookingsEmbedUrl || '';
+    const fallback = document.getElementById('marketing-setup-fallback');
+    if (fallback) fallback.value = booking.fallbackBookingUrl || '';
+    const mailbox = document.getElementById('marketing-setup-mailbox');
+    if (mailbox) mailbox.value = booking.bookingPageIdOrMailbox || '';
+    const calendar = document.getElementById('marketing-setup-calendar');
+    if (calendar) calendar.value = booking.calendarEmail || '';
+
+    const account = document.getElementById('marketing-setup-meta-account');
+    if (account) account.textContent = marketing.metaAdsConnected
+      ? `Meta Ads connected · ${marketing.metaAccount || 'Scoped account'}`
+      : 'Meta Ads not connected for this scope';
+
+    const capi = document.getElementById('marketing-setup-capi-status');
+    if (capi) capi.textContent = marketing.metaCapiConfiguredSecurely
+      ? 'Configured securely through the scoped Meta Ads connection'
+      : 'Connect Meta Ads to configure CAPI securely and automatically';
+
+    const connect = document.getElementById('marketing-setup-meta-connect');
+    if (connect) {
+      connect.href = marketingSetupConnectUrl(profileId);
+      connect.textContent = marketing.metaAdsConnected ? 'Reconnect Meta Ads' : 'Connect Meta Ads';
+    }
+  }
+
+  async function loadMarketingSetup() {
+    if (!marketingSetupForm) return false;
+    marketingSetupLoaded = false;
+    setMarketingSetupStatus('Loading centralized setup…');
+    if (marketingSetupSave) marketingSetupSave.disabled = true;
+    try {
+      const profileId = marketingSetupAgentProfileId();
+      const payload = await fetchJson(
+        'marketingSetup',
+        endpoints.marketingSetup,
+        profileId ? { agentProfileId: profileId } : {});
+      if (!payload) return false;
+      renderMarketingSetup(payload);
+      const revision = document.getElementById('marketing-setup-revision')?.value || '';
+      if (!revision) throw new Error('Canonical marketing settings did not return a revision.');
+      marketingSetupLoaded = true;
+      setMarketingSetupStatus('Loaded from the canonical marketing and booking authorities.');
+      return true;
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to load Marketing Setup.', 'error');
+      return false;
+    } finally {
+      if (marketingSetupSave) marketingSetupSave.disabled = !marketingSetupLoaded;
+    }
+  }
+
+  async function saveMarketingSetup(event) {
+    event?.preventDefault?.();
+    if (!marketingSetupForm || !marketingSetupSave) return;
+
+    let revision = document.getElementById('marketing-setup-revision')?.value || '';
+    if (!marketingSetupLoaded || !revision) {
+      const loaded = await loadMarketingSetup();
+      revision = document.getElementById('marketing-setup-revision')?.value || '';
+      if (!loaded || !revision) {
+        setMarketingSetupStatus('Unable to load the canonical Marketing Setup. Nothing was saved.', 'error');
+        return;
+      }
+    }
+
+    const pixel = (document.getElementById('marketing-setup-pixel')?.value || '').trim();
+    if (pixel && !/^\d{1,32}$/.test(pixel)) {
+      setMarketingSetupStatus('Meta Pixel ID must contain only digits.', 'error');
+      return;
+    }
+
+    const body = {
+      agentProfileId: marketingSetupAgentProfileId() || null,
+      marketingRevision: revision,
+      metaPixelId: pixel || null,
+      bookingEnabled: document.getElementById('marketing-setup-booking-enabled')?.checked === true,
+      microsoftBookingsEmbedUrl: (document.getElementById('marketing-setup-embed')?.value || '').trim() || null,
+      fallbackBookingUrl: (document.getElementById('marketing-setup-fallback')?.value || '').trim() || null,
+      bookingPageIdOrMailbox: (document.getElementById('marketing-setup-mailbox')?.value || '').trim() || null,
+      calendarEmail: (document.getElementById('marketing-setup-calendar')?.value || '').trim() || null
+    };
+
+    marketingSetupSave.disabled = true;
+    setMarketingSetupStatus('Saving centralized setup…');
+    try {
+      const payload = await fetchPostJson('marketingSetupSave', endpoints.marketingSetup, body);
+      renderMarketingSetup(payload);
+      setMarketingSetupStatus('Marketing Setup saved.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to save Marketing Setup.', 'error');
+    } finally {
+      marketingSetupSave.disabled = false;
+    }
+  }
+
+  marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
+  marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
+  document.getElementById('wa-scope-select')?.addEventListener('change', () => {
+    marketingSetupLoaded = false;
+    if (marketingSetupSave) marketingSetupSave.disabled = true;
+    if (marketingSetupModal?.classList.contains('show')) void loadMarketingSetup();
+  });
+
 })();
 
 ;(() => {
@@ -5096,7 +5279,11 @@ function escapeHtml(value) {
     const content = document.getElementById('deviceIntelligenceContent');
     if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
 
-    const deviceUrl = `${analyticsEndpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
+    const endpoint = window.websiteAnalyticsBridge?.endpoint;
+    if (typeof endpoint !== 'function') {
+      throw new Error('Analytics endpoint authority is unavailable.');
+    }
+    const deviceUrl = `${endpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
     const res = await fetchCachedDeviceRequest(deviceUrl, () => fetch(deviceUrl, {
       headers: { 'Accept': 'application/json' }
     }));
@@ -5173,4 +5360,5 @@ function escapeHtml(value) {
       window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
     });
   });
+
 })();

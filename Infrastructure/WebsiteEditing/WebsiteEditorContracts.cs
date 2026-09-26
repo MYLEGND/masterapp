@@ -31,6 +31,7 @@ public sealed class WebsiteStoreSettings
     public bool Enabled { get; set; }
     public string NavigationLabel { get; set; } = "Store";
     public string CartIcon { get; set; } = "cart";
+    public int CartIconSizePx { get; set; } = 28;
 }
 
 public sealed class WebsiteContentDocument
@@ -111,6 +112,7 @@ public sealed class WebsiteExtraComponent
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string SectionId { get; set; } = "";
     public string Type { get; set; } = "text";
+    public string? TemplateSectionId { get; set; }
     public string? ActionKey { get; set; }
     public string? Href { get; set; }
     public string? Target { get; set; }
