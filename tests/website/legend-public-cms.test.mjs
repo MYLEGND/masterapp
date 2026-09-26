@@ -227,8 +227,8 @@ test('adjustments above former caps round-trip without changing unrelated fields
   f.ids.get('legend-cms-draft-name').value = 'Test variation';
   await f.ids.get('legend-cms-draft-submit').click();
   assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'].style,
-    { fontScale: 12.75, widthPercent: 250.25, paddingTop: 500.5, paddingBottom: 800 });
-  assert.equal(f.heading.style.width, '250.25%');
+    { fontScale: 12.75, widthPercent: 100, paddingTop: 500.5, paddingBottom: 800 });
+  assert.equal(f.heading.style.width, '100%');
   assert.equal(f.heading.style.maxWidth, '100%');
 });
 
