@@ -27,7 +27,8 @@ public sealed class CentralizedWebsiteCommerceTests
             Store = new WebsiteStoreSettings
             {
                 Enabled = true,
-                NavigationLabel = "  Shop The Collection  "
+                NavigationLabel = "  Shop The Collection  ",
+                CartIcon = "basket"
             }
         };
 
@@ -35,14 +36,17 @@ public sealed class CentralizedWebsiteCommerceTests
 
         Assert.True(clean.Store.Enabled);
         Assert.Equal("Shop The Collection", clean.Store.NavigationLabel);
+        Assert.Equal("basket", clean.Store.CartIcon);
 
         input.Store.NavigationLabel = new string('X', 80);
         clean = WebsiteContentSanitizer.Sanitize(input);
         Assert.Equal(40, clean.Store.NavigationLabel.Length);
 
         input.Store.NavigationLabel = "   ";
+        input.Store.CartIcon = "not-a-cart";
         clean = WebsiteContentSanitizer.Sanitize(input);
         Assert.Equal("Store", clean.Store.NavigationLabel);
+        Assert.Equal("cart", clean.Store.CartIcon);
     }
 
     [Fact]
@@ -222,7 +226,17 @@ public sealed class CentralizedWebsiteCommerceTests
             StateId = state.Id,
             DocumentJson = JsonSerializer.Serialize(new WebsiteContentDocument
             {
-                Store = new WebsiteStoreSettings { Enabled = true, NavigationLabel = "Store" }
+                Store = new WebsiteStoreSettings { Enabled = true, NavigationLabel = "Store", CartIcon = "bag" }
+            }),
+            CompiledPagesJson = JsonSerializer.Serialize(new
+            {
+                pages = new Dictionary<string, object>
+                {
+                    ["/"] = new
+                    {
+                        html = "<!doctype html><html><head><title>Business Home</title></head><body><header id=\"site-shell\">Published header</header><main class=\"published-main\"><h1>Homepage</h1></main><footer id=\"site-footer\">Published footer</footer></body></html>"
+                    }
+                }
             })
         };
         state.PublishedVersionId = version.Id;
@@ -268,6 +282,14 @@ public sealed class CentralizedWebsiteCommerceTests
         Assert.Equal("/store", store.StoreRootPath);
         Assert.Equal("/store/cart", store.CartPath);
         Assert.Equal("/store/checkout", store.CheckoutPath);
+        Assert.Equal("bag", store.CartIcon);
+        Assert.NotNull(store.WebsiteShellPrefix);
+        Assert.NotNull(store.WebsiteShellSuffix);
+        Assert.Contains("Published header", store.WebsiteShellPrefix!, StringComparison.Ordinal);
+        Assert.Contains("<main class=\"published-main\">", store.WebsiteShellPrefix!, StringComparison.Ordinal);
+        Assert.DoesNotContain("<h1>Homepage</h1>", store.WebsiteShellPrefix!, StringComparison.Ordinal);
+        Assert.Contains("Published footer", store.WebsiteShellSuffix!, StringComparison.Ordinal);
+        Assert.Contains("/store-assets/css/storefront.css", store.WebsiteShellPrefix!, StringComparison.Ordinal);
         Assert.Equal("https://camoexterior.com/store", await service.ResolveCanonicalPublicRootAsync(store));
     }
 

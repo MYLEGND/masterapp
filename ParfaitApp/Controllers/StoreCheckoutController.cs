@@ -375,6 +375,7 @@ public sealed class StoreCheckoutController : Controller
             BusinessKey: "parfait",
             StoreName: "Parfait",
             NavigationLabel: "Shop",
+            CartIcon: "cart",
             Headline: "Parfait",
             Subheadline: "Parfait storefront.",
             StoreRootPath: "/store",
@@ -386,7 +387,9 @@ public sealed class StoreCheckoutController : Controller
             AccentColor: "",
             LogoUrl: null,
             GlobalCheckoutUrl: null,
-            Theme: new WebsiteThemeOverride()));
+            Theme: new WebsiteThemeOverride(),
+            WebsiteShellPrefix: null,
+            WebsiteShellSuffix: null));
     }
 
     private async Task<IActionResult?> CanonicalizeScopedRequestAsync(

@@ -17,6 +17,7 @@ function isCommerceTransportPath(pathname) {
   const path = pathname || "/";
   return path === "/store" ||
     path.startsWith("/store/") ||
+    path.startsWith("/commerce/manage/") ||
     path.startsWith("/store-assets/") ||
     path.startsWith("/uploads/parfait-products/") ||
     path.startsWith("/parfait-analytics/");
