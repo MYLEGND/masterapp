@@ -187,6 +187,7 @@ public static class MarketingServiceRegistration
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, MetaMarketingDestination>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, OpenAiMarketingDestination>());
         services.TryAddScoped<IMarketingDestinationRegistry, MarketingDestinationRegistry>();
+        services.AddScoped<IOpenAiAdsAccountConnectionAuthority, OpenAiAdsAccountConnectionAuthority>();
         services.AddScoped<MarketingMetaAdsOAuthService>();
         services.TryAddScoped<IMetaAdsConnectionStore, CanonicalMetaAdsConnectionStore>();
         services.TryAddScoped<IMetaAdsService, MetaAdsService>();
