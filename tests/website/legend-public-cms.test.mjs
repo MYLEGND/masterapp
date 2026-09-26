@@ -1914,9 +1914,9 @@ test('business editor navigation tabs do not follow links and drag order writes 
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'CAMO'},pages,doc,html});
   try{
     const nav=f.w.document.querySelector('#primary-nav');
-    const links=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
-    const clickEvent=new f.w.MouseEvent('click',{bubbles:true,cancelable:true});
-    assert.equal(links[1].dispatchEvent(clickEvent),false);
+    const links=[...nav.querySelectorAll('[data-legend-page-nav="true"]')];
+    assert.ok(links.every(link=>link.tagName==='BUTTON'));
+    assert.ok(links.every(link=>!link.hasAttribute('href')));
 
     for(const [index,link] of links.entries()){
       link.getBoundingClientRect=()=>({left:index*100,right:index*100+80,width:80,top:0,bottom:30,height:30});
@@ -1925,7 +1925,7 @@ test('business editor navigation tabs do not follow links and drag order writes 
     about.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:140,clientY:15,button:0}));
     nav.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:245,clientY:15,button:0}));
     nav.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:245,clientY:15,button:0}));
-    assert.deepEqual([...nav.querySelectorAll('a[data-legend-page-nav="true"]')].map(link=>link.textContent),['Home','Services','About']);
+    assert.deepEqual([...nav.querySelectorAll('[data-legend-page-nav="true"]')].map(link=>link.textContent),['Home','Services','About']);
     const saved=await f.save();
     assert.equal(saved.pages['/'].navigation.order,0);
     assert.equal(saved.pages['/services'].navigation.order,10);
@@ -1933,9 +1933,10 @@ test('business editor navigation tabs do not follow links and drag order writes 
   }finally{f.close();}
 });
 
-test('editor navigation opens pages only on double-click and never normal-link navigates',()=>{
-  assert.match(source,/addEventListener\('dblclick',[\s\S]*navigateToEditorPage\(route\)/);
-  assert.match(source,/addEventListener\('click',[\s\S]*data-legend-page-nav[\s\S]*preventDefault\(\)/);
+test('editor navigation uses non-link controls and opens pages only on double-click',()=>{
+  assert.match(source,/createElement\(editorMode \? 'button' : 'a'\)/);
+  assert.match(source,/link\.title='Drag to reorder · double-click to edit this page'/);
+  assert.match(source,/addEventListener\('dblclick',[\s\S]*navigateToEditorPage\(entry\.route\)/);
 });
 
 test('text scaling stays unbounded while sections remain content-sized and never become internal scrollers',()=>{
