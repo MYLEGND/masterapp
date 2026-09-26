@@ -1,5 +1,7 @@
 using System;
 using System.Threading.Tasks;
+using System.Reflection;
+using System.Collections;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
@@ -144,6 +146,13 @@ public class MetaSendAuthorityTests
                 Source = MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService
             });
             Assert.True(first.Allowed);
+
+            // Simulate a different app process. The production in-memory reservation
+            // cannot cross processes, so only the persisted lease should remain.
+            var reservationsField = typeof(MetaSendAuthority)
+                .GetField("Reservations", BindingFlags.NonPublic | BindingFlags.Static);
+            var reservations = Assert.IsAssignableFrom<IDictionary>(reservationsField?.GetValue(null));
+            reservations.Clear();
         }
 
         await using (var secondScope = provider.CreateAsyncScope())
