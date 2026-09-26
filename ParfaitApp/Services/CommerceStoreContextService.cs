@@ -17,6 +17,7 @@ public sealed record CommerceStoreContext(
     string BusinessKey,
     string StoreName,
     string NavigationLabel,
+    string CartIcon,
     string Headline,
     string Subheadline,
     string StoreRootPath,
@@ -28,7 +29,9 @@ public sealed record CommerceStoreContext(
     string AccentColor,
     string? LogoUrl,
     string? GlobalCheckoutUrl,
-    WebsiteThemeOverride Theme);
+    WebsiteThemeOverride Theme,
+    string? WebsiteShellPrefix,
+    string? WebsiteShellSuffix);
 
 /// <summary>
 /// One public storefront scope resolver for Parfait and every website-linked commerce tenant.
@@ -214,6 +217,8 @@ public sealed class CommerceStoreContextService(
 
         WebsiteContentDocument? websiteDocument = explicitDocument;
         Guid? publishedVersionId = null;
+        string? websiteShellPrefix = null;
+        string? websiteShellSuffix = null;
         var websiteSiteKey = !string.IsNullOrWhiteSpace(explicitSiteKey)
             ? explicitSiteKey.Trim().ToLowerInvariant()
             : linkedState?.SiteKey?.Trim().ToLowerInvariant()
@@ -232,6 +237,7 @@ public sealed class CommerceStoreContextService(
                 publishedVersionId = version.Id;
                 websiteDocument = Deserialize(version.DocumentJson);
                 if (websiteDocument.Store?.Enabled != true) return null;
+                TryExtractPublishedWebsiteShell(version.CompiledPagesJson, out websiteShellPrefix, out websiteShellSuffix);
             }
             else
             {
@@ -260,6 +266,8 @@ public sealed class CommerceStoreContextService(
 
         var label = websiteDocument?.Store?.NavigationLabel?.Trim();
         if (string.IsNullOrWhiteSpace(label)) label = isParfait ? "Shop" : "Store";
+        var cartIcon = websiteDocument?.Store?.CartIcon?.Trim().ToLowerInvariant();
+        if (cartIcon is not ("cart" or "bag" or "basket")) cartIcon = "cart";
 
         var root = !isParfait && useScopedPath
             ? "/store/s/" + Uri.EscapeDataString(business.Key)
@@ -274,6 +282,7 @@ public sealed class CommerceStoreContextService(
             business.Key,
             business.DisplayName,
             label,
+            cartIcon,
             string.IsNullOrWhiteSpace(settings?.BrandHeadline) ? business.DisplayName : settings!.BrandHeadline,
             string.IsNullOrWhiteSpace(settings?.BrandSubheadline)
                 ? business.DisplayName + " storefront."
@@ -287,7 +296,54 @@ public sealed class CommerceStoreContextService(
             settings?.AccentColor?.Trim() ?? "",
             string.IsNullOrWhiteSpace(settings?.LogoUrl) ? null : settings!.LogoUrl.Trim(),
             string.IsNullOrWhiteSpace(settings?.GlobalStoreCheckoutUrl) ? null : settings!.GlobalStoreCheckoutUrl.Trim(),
-            theme);
+            theme,
+            isParfait ? null : websiteShellPrefix,
+            isParfait ? null : websiteShellSuffix);
+    }
+
+
+    private static void TryExtractPublishedWebsiteShell(
+        string? compiledPagesJson,
+        out string? prefix,
+        out string? suffix)
+    {
+        prefix = null;
+        suffix = null;
+        if (string.IsNullOrWhiteSpace(compiledPagesJson)) return;
+
+        try
+        {
+            using var compiled = JsonDocument.Parse(compiledPagesJson);
+            if (!compiled.RootElement.TryGetProperty("pages", out var pages) ||
+                !pages.TryGetProperty("/", out var home) ||
+                !home.TryGetProperty("html", out var htmlValue))
+                return;
+
+            var html = htmlValue.GetString();
+            if (string.IsNullOrWhiteSpace(html)) return;
+
+            var mainStart = html.IndexOf("<main", StringComparison.OrdinalIgnoreCase);
+            if (mainStart < 0) return;
+            var mainOpenEnd = html.IndexOf('>', mainStart);
+            if (mainOpenEnd < 0) return;
+            var mainClose = html.IndexOf("</main>", mainOpenEnd + 1, StringComparison.OrdinalIgnoreCase);
+            if (mainClose < 0) return;
+
+            prefix = html[..(mainOpenEnd + 1)];
+            suffix = html[(mainClose + "</main>".Length)..];
+
+            var headClose = prefix.LastIndexOf("</head>", StringComparison.OrdinalIgnoreCase);
+            if (headClose >= 0)
+            {
+                const string storeStyle = "<link rel=\"stylesheet\" href=\"/store-assets/css/storefront.css\" />";
+                prefix = prefix.Insert(headClose, storeStyle);
+            }
+        }
+        catch (JsonException)
+        {
+            prefix = null;
+            suffix = null;
+        }
     }
 
     private string PublicBase(string key, string fallback)

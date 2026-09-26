@@ -107,6 +107,11 @@ test('storefront asset namespace is transported to Parfait without taking over g
   const storeAsset = buildBridgeRequest(new Request('https://camoexterior.com/store-assets/css/site.css'), env);
   assert.equal(storeAsset.request.url, 'https://masterapp-parfait.azurewebsites.net/store-assets/css/site.css');
 
+  const manager = buildBridgeRequest(new Request('https://business.example/commerce/manage/products?ticket=test-ticket'), env);
+  assert.equal(manager.commerce, true);
+  assert.equal(manager.request.url, 'https://masterapp-parfait.azurewebsites.net/commerce/manage/products?ticket=test-ticket');
+  assert.equal(manager.request.headers.get('X-Legend-Original-Host'), 'business.example');
+
   const websiteAsset = buildBridgeRequest(new Request('https://camoexterior.com/site.css'), env);
   assert.equal(websiteAsset.request.url, 'https://masterapp-protect.azurewebsites.net/site.css');
 });

@@ -30,6 +30,7 @@ public sealed class WebsiteStoreSettings
 {
     public bool Enabled { get; set; }
     public string NavigationLabel { get; set; } = "Store";
+    public string CartIcon { get; set; } = "cart";
 }
 
 public sealed class WebsiteContentDocument

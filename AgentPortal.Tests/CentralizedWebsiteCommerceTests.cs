@@ -27,7 +27,8 @@ public sealed class CentralizedWebsiteCommerceTests
             Store = new WebsiteStoreSettings
             {
                 Enabled = true,
-                NavigationLabel = "  Shop The Collection  "
+                NavigationLabel = "  Shop The Collection  ",
+                CartIcon = "basket"
             }
         };
 
@@ -35,14 +36,17 @@ public sealed class CentralizedWebsiteCommerceTests
 
         Assert.True(clean.Store.Enabled);
         Assert.Equal("Shop The Collection", clean.Store.NavigationLabel);
+        Assert.Equal("basket", clean.Store.CartIcon);
 
         input.Store.NavigationLabel = new string('X', 80);
         clean = WebsiteContentSanitizer.Sanitize(input);
         Assert.Equal(40, clean.Store.NavigationLabel.Length);
 
         input.Store.NavigationLabel = "   ";
+        input.Store.CartIcon = "not-a-cart";
         clean = WebsiteContentSanitizer.Sanitize(input);
         Assert.Equal("Store", clean.Store.NavigationLabel);
+        Assert.Equal("cart", clean.Store.CartIcon);
     }
 
     [Fact]
@@ -145,6 +149,60 @@ public sealed class CentralizedWebsiteCommerceTests
     }
 
     [Fact]
+    public async Task PurchaseWritesAnalyticsAndMetaAsOneCanonicalDedupedOutcome()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var service = new CommerceSignalService(db);
+        var businessId = Guid.NewGuid();
+        var context = new CommerceSignalContext(
+            businessId,
+            null,
+            Guid.NewGuid(),
+            WebsiteEditorSiteKeys.Business,
+            "business-store",
+            "Business Store",
+            "https://business.example.com/store/checkout",
+            SessionId: "session-1",
+            VisitorId: "visitor-1");
+
+        var first = await service.RecordAsync(
+            "Purchase",
+            "order-1001",
+            context,
+            new CommerceSignalProduct("p1", "Product", "product", "M", 1, 2500),
+            new CommerceSignalCustomer("Jane", "Buyer", "jane@example.test", "5551234567", "Phoenix", "AZ", "85001"),
+            "ORDER-1001");
+
+        var duplicate = await service.RecordAsync(
+            "Purchase",
+            "order-1001",
+            context,
+            new CommerceSignalProduct("p1", "Product", "product", "M", 1, 2500),
+            new CommerceSignalCustomer("Jane", "Buyer", "jane@example.test", "5551234567", "Phoenix", "AZ", "85001"),
+            "ORDER-1001");
+
+        Assert.True(first);
+        Assert.False(duplicate);
+
+        var analytics = await db.AnalyticsEvents.SingleAsync();
+        var meta = await db.MetaSignalEvents.SingleAsync();
+
+        Assert.Equal("Purchase", analytics.EventType);
+        Assert.Equal(businessId, analytics.CommerceBusinessId);
+        Assert.Null(analytics.AgentTrackingProfileId);
+        Assert.Equal("session-1", analytics.SessionId);
+        Assert.Equal("visitor-1", analytics.VisitorId);
+        Assert.NotNull(analytics.ClientEventId);
+        Assert.Equal("commerce-server-authority-v1", analytics.TrackingVersion);
+
+        Assert.Equal("Purchase", meta.EventName);
+        Assert.Equal(businessId, meta.CommerceBusinessId);
+        Assert.Null(meta.AgentTrackingProfileId);
+        Assert.StartsWith("commerce:", meta.MetaDeduplicationKey);
+        Assert.True(MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(meta.EventName, meta.MetadataJson));
+    }
+
+    [Fact]
     public async Task BusinessStoreResolvesFromAuthenticatedCustomDomainAtRootStorePath()
     {
         using var db = ControllerTestHelpers.BuildDb();
@@ -168,7 +226,17 @@ public sealed class CentralizedWebsiteCommerceTests
             StateId = state.Id,
             DocumentJson = JsonSerializer.Serialize(new WebsiteContentDocument
             {
-                Store = new WebsiteStoreSettings { Enabled = true, NavigationLabel = "Store" }
+                Store = new WebsiteStoreSettings { Enabled = true, NavigationLabel = "Store", CartIcon = "bag" }
+            }),
+            CompiledPagesJson = JsonSerializer.Serialize(new
+            {
+                pages = new Dictionary<string, object>
+                {
+                    ["/"] = new
+                    {
+                        html = "<!doctype html><html><head><title>Business Home</title></head><body><header id=\"site-shell\">Published header</header><main class=\"published-main\"><h1>Homepage</h1></main><footer id=\"site-footer\">Published footer</footer></body></html>"
+                    }
+                }
             })
         };
         state.PublishedVersionId = version.Id;
@@ -214,6 +282,14 @@ public sealed class CentralizedWebsiteCommerceTests
         Assert.Equal("/store", store.StoreRootPath);
         Assert.Equal("/store/cart", store.CartPath);
         Assert.Equal("/store/checkout", store.CheckoutPath);
+        Assert.Equal("bag", store.CartIcon);
+        Assert.NotNull(store.WebsiteShellPrefix);
+        Assert.NotNull(store.WebsiteShellSuffix);
+        Assert.Contains("Published header", store.WebsiteShellPrefix!, StringComparison.Ordinal);
+        Assert.Contains("<main class=\"published-main\">", store.WebsiteShellPrefix!, StringComparison.Ordinal);
+        Assert.DoesNotContain("<h1>Homepage</h1>", store.WebsiteShellPrefix!, StringComparison.Ordinal);
+        Assert.Contains("Published footer", store.WebsiteShellSuffix!, StringComparison.Ordinal);
+        Assert.Contains("/store-assets/css/storefront.css", store.WebsiteShellPrefix!, StringComparison.Ordinal);
         Assert.Equal("https://camoexterior.com/store", await service.ResolveCanonicalPublicRootAsync(store));
     }
 

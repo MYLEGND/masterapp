@@ -18,10 +18,8 @@ public sealed class StoreCheckoutController : Controller
     private readonly ParfaitCustomerAutomationService _automations;
     private readonly IBillingOrchestrator _billingOrchestrator;
     private readonly IGraphMailService _mail;
-    private readonly IParfaitAnalyticsService _analytics;
     private readonly CommerceSignalService? _commerceSignals;
     private readonly CommerceStoreContextService? _stores;
-    private readonly bool _legacyCompatibility;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public StoreCheckoutController(
@@ -31,7 +29,6 @@ public sealed class StoreCheckoutController : Controller
         ParfaitCustomerAutomationService automations,
         IBillingOrchestrator billingOrchestrator,
         IGraphMailService mail,
-        IParfaitAnalyticsService analytics,
         CommerceSignalService commerceSignals,
         CommerceStoreContextService stores)
     {
@@ -41,7 +38,6 @@ public sealed class StoreCheckoutController : Controller
         _automations = automations;
         _billingOrchestrator = billingOrchestrator;
         _mail = mail;
-        _analytics = analytics;
         _commerceSignals = commerceSignals;
         _stores = stores;
     }
@@ -55,7 +51,6 @@ public sealed class StoreCheckoutController : Controller
         ParfaitCustomerAutomationService automations,
         IBillingOrchestrator billingOrchestrator,
         IGraphMailService mail,
-        IParfaitAnalyticsService analytics,
         CommerceSignalService commerceSignals)
     {
         _squareOptions = squareOptions;
@@ -64,9 +59,7 @@ public sealed class StoreCheckoutController : Controller
         _automations = automations;
         _billingOrchestrator = billingOrchestrator;
         _mail = mail;
-        _analytics = analytics;
         _commerceSignals = commerceSignals;
-        _legacyCompatibility = true;
     }
 
     [NonAction]
@@ -315,27 +308,6 @@ public sealed class StoreCheckoutController : Controller
 
         try
         {
-            if (_legacyCompatibility)
-                await _analytics.TrackPurchaseAsync(paidOrder, HttpContext, ct);
-            else
-                await _analytics.TrackPurchaseScopedAsync(
-                    store.CommerceBusinessId,
-                    store.AgentTrackingProfileId,
-                    store.WebsiteContentVersionId,
-                    store.WebsiteSiteKey,
-                    store.BusinessKey,
-                    store.CheckoutPath,
-                    paidOrder,
-                    HttpContext,
-                    ct);
-        }
-        catch
-        {
-            // Payment authority is independent from optional analytics.
-        }
-
-        try
-        {
             await _commerceSignals!.RecordAsync(
                 "Purchase",
                 paidOrder.OrderNumber,
@@ -403,6 +375,7 @@ public sealed class StoreCheckoutController : Controller
             BusinessKey: "parfait",
             StoreName: "Parfait",
             NavigationLabel: "Shop",
+            CartIcon: "cart",
             Headline: "Parfait",
             Subheadline: "Parfait storefront.",
             StoreRootPath: "/store",
@@ -414,7 +387,9 @@ public sealed class StoreCheckoutController : Controller
             AccentColor: "",
             LogoUrl: null,
             GlobalCheckoutUrl: null,
-            Theme: new WebsiteThemeOverride()));
+            Theme: new WebsiteThemeOverride(),
+            WebsiteShellPrefix: null,
+            WebsiteShellSuffix: null));
     }
 
     private async Task<IActionResult?> CanonicalizeScopedRequestAsync(
