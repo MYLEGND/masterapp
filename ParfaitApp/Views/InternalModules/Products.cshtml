@@ -16,7 +16,7 @@
     var imageReorderAction = CommerceAction("/internal/commerce/products/images/reorder", "/commerce/manage/product/images/reorder");
     var productDeleteAction = CommerceAction("/internal/commerce/products/delete", "/commerce/manage/product/delete");
     var imageDisplayAction = CommerceAction("/internal/commerce/products/images/display", "/commerce/manage/product/images/display");
-    var imageDeleteAction = CommerceAction("/internal/commerce/products/images/delete", "/commerce/manage/product/images/delete");
+    var imageDeleteAction = CommerceAction("@imageDeleteAction", "/commerce/manage/product/images/delete");
 
     var newProduct = Model.NewProduct ?? new ParfaitProductEditorViewModel();
     var settings = Model.CommerceSettings ?? new ParfaitCommerceSettingsViewModel();
@@ -484,7 +484,7 @@
                                 <div class="pf-photo-grid"
                                      data-pf-photo-grid
                                      data-pf-product-id="@product.Id"
-                                     data-pf-sort-url="/internal/commerce/products/images/reorder">
+                                     data-pf-sort-url="@imageReorderAction">
                                     @foreach (var image in orderedImages)
                                     {
                                         var editorId = $"imageEditor{image.Id}";
