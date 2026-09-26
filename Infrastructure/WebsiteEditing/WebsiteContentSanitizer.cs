@@ -18,7 +18,8 @@ public static class WebsiteContentSanitizer
             Store = new WebsiteStoreSettings
             {
                 Enabled = source.Store?.Enabled == true,
-                NavigationLabel = SanitizeStoreLabel(source.Store?.NavigationLabel)
+                NavigationLabel = SanitizeStoreLabel(source.Store?.NavigationLabel),
+                CartIcon = SanitizeCartIcon(source.Store?.CartIcon)
             },
             Breakpoints = breakpoints
         };
@@ -321,6 +322,12 @@ public static class WebsiteContentSanitizer
         if (label.Length == 0) label = "Store";
         if (label.Length > 40) label = label[..40];
         return label;
+    }
+
+    private static string SanitizeCartIcon(string? value)
+    {
+        var icon = (value ?? "cart").Trim().ToLowerInvariant();
+        return icon is "cart" or "bag" or "basket" ? icon : "cart";
     }
 
     private static string? SanitizeDynamicRoutePattern(string? value)
