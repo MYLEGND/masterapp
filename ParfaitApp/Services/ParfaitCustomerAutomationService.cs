@@ -1,5 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
@@ -412,6 +413,9 @@ public sealed class ParfaitCustomerAutomationService
         };
     }
 
+    private List<ParfaitAutomationDiscountOptionViewModel> BuildDiscountOptions() =>
+        BuildDiscountOptions(_products.GetDefaultBusinessId());
+
     private List<ParfaitAutomationDiscountOptionViewModel> BuildDiscountOptions(Guid businessId)
     {
         var options = new List<ParfaitAutomationDiscountOptionViewModel>();
@@ -444,7 +448,7 @@ public sealed class ParfaitCustomerAutomationService
     private Dictionary<Guid, int> BuildDueCountLookup(ParfaitAutomationStoreRecord store, DateTime utcNow, Guid businessId)
     {
         var lookup = store.Workflows.ToDictionary(workflow => workflow.Id, _ => 0);
-        var orders = _orders.GetAllOrders();
+        var orders = _orders.GetAllOrders(businessId);
 
         foreach (var workflow in store.Workflows.Where(workflow => workflow.IsActive))
         {
