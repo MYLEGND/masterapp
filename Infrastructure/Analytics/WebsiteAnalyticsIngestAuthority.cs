@@ -105,13 +105,17 @@ public class WebsiteAnalyticsIngestAuthority : Controller
             if (httpContext is null)
                 return BadRequest(new { accepted = false, error = "Request context is required." });
 
-            var pixelResolver = httpContext.RequestServices.GetService<IMetaPixelResolutionService>();
+            IServiceProvider? services = httpContext.RequestServices;
+            var pixelResolver = services is null ? null : services.GetService<IMetaPixelResolutionService>();
             if (pixelResolver is not null)
             {
                 resolvedProtectOwner = await pixelResolver.ResolveForCurrentRequestAsync(httpContext, cancellationToken);
             }
             else
             {
+                // Test/host fallback remains server-owned: only trusted HttpContext
+                // items may provide the resolved Protect owner. Browser request fields
+                // are never consulted for ownership.
                 var profile = httpContext.Items["TrackingProfile"] as Domain.Entities.AgentTrackingProfile;
                 resolvedProtectOwner = new ResolvedMetaPixelContext
                 {
