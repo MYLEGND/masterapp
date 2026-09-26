@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized failure-forward continuation of the hardened centralized Cloudflare routing recovery. Preserve all successful application deployments. Disable only unscopable Cloudflare Bot Fight Mode at the shared SaaS zone, retain the centralized WAF/config authority, deploy the shared router, and require live homepage and /store proof.",
-  "purpose": "Remove the proven botFight managed-challenge blocker for verified customer custom domains while preserving all successful application deployments and centralized routing authority.",
-  "requestId": "scoped-commerce-routing-hardened-authority-20260926-r15-botfight-off",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36218166686",
+  "authorization": "Founder explicitly authorized completion and production deployment of the centralized website analytics and Meta source-of-truth repair after the architecture gate is green. Deploy only the affected .NET web applications and preserve unrelated targets.",
+  "purpose": "Release the validated centralized analytics ownership, Purchase atomicity/deduplication, and scoped Meta credential fail-closed fixes so website reporting and Meta authority use the shared MasterApp source of truth.",
+  "requestId": "centralized-analytics-meta-source-of-truth-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36230483568",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
@@ -11,8 +11,6 @@
     "masterapp-protect",
     "masterapp-parfait"
   ],
-  "cloudflareWebsiteRouting": true,
-  "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": true,
-  "preserveLiveRevision": "7157590505518009246abfcd5f9022ea9a8f6559"
+  "cloudflareWebsiteRouting": false,
+  "preserveLiveTargets": false
 }
