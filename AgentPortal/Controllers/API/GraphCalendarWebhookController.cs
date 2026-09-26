@@ -30,17 +30,20 @@ public sealed class GraphCalendarWebhookController : ControllerBase
     private readonly ILogger<GraphCalendarWebhookController> _logger;
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly MetaSignalCrmOutcomeService _outcomes;
 
     public GraphCalendarWebhookController(
         MasterAppDbContext db,
         ILogger<GraphCalendarWebhookController> logger,
         IConfiguration configuration,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        MetaSignalCrmOutcomeService outcomes)
     {
         _db = db;
         _logger = logger;
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
+        _outcomes = outcomes;
     }
 
     [HttpPost]
@@ -241,6 +244,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         appointment.UpdatedUtc = utcNow;
         appointment.ApplyStatus(LeadAppointmentStatus.Cancelled, utcNow);
         await SyncCrmStageFromAppointmentAsync(appointment, utcNow, cancellationToken);
+        await _outcomes.RecordAppointmentOutcomeAsync(appointment, cancellationToken);
 
         syncLog.AppointmentId = appointment.Id;
         syncLog.WorkstationLeadId = appointment.WorkstationLeadId;
@@ -325,11 +329,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         appointment.UpdatedUtc = utcNow;
         appointment.ApplyStatus(isReschedule ? LeadAppointmentStatus.Rescheduled : LeadAppointmentStatus.Booked, utcNow);
         await SyncCrmStageFromAppointmentAsync(appointment, utcNow, cancellationToken);
-
-        if (!isReschedule)
-        {
-            await TryRecordAppointmentBookedMetaSignalAsync(appointment, utcNow, cancellationToken);
-        }
+        await _outcomes.RecordAppointmentOutcomeAsync(appointment, cancellationToken);
 
         syncLog.AppointmentId = appointment.Id;
         syncLog.WorkstationLeadId = appointment.WorkstationLeadId;
@@ -444,107 +444,6 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
             profile.UpdatedUtc = utcNow;
         }
-    }
-
-    private async Task TryRecordAppointmentBookedMetaSignalAsync(
-        LeadAppointment appointment,
-        DateTime utcNow,
-        CancellationToken cancellationToken)
-    {
-        if (appointment.Id == Guid.Empty || string.IsNullOrWhiteSpace(appointment.WorkstationLeadId))
-            return;
-
-        if (!Guid.TryParse(appointment.WorkstationLeadId, out var workstationLeadGuid))
-            return;
-
-        var deduplicationKey = $"AppointmentBooked:{workstationLeadGuid:N}:{appointment.Id:N}";
-        var alreadyRecorded = await _db.MetaSignalEvents
-            .AsNoTracking()
-            .AnyAsync(x => x.EventName == "AppointmentBooked" && x.MetaDeduplicationKey == deduplicationKey, cancellationToken);
-
-        if (alreadyRecorded)
-            return;
-
-        var intakeLink = await _db.WebsiteLeadIntakeLinks
-            .AsNoTracking()
-            .Where(x =>
-                x.Id == appointment.WebsiteLeadIntakeLinkId ||
-                x.WorkstationLeadId == appointment.WorkstationLeadId)
-            .OrderByDescending(x => x.SubmittedUtc)
-            .ThenByDescending(x => x.CapturedUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var metaLeadId = intakeLink?.WebsiteLeadPublicId ?? workstationLeadGuid;
-
-        var metadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
-            eventName: "AppointmentBooked",
-            leadId: metaLeadId,
-            sessionId: intakeLink?.SessionId,
-            payload: new
-            {
-                appointmentId = appointment.Id,
-                appointment.WorkstationLeadId,
-                WebsiteLeadPublicId = intakeLink?.WebsiteLeadPublicId,
-                appointment.OwnerAgentUserId,
-                appointment.CalendarEventId,
-                appointment.CalendarEventWebLink,
-                appointment.ScheduledStartUtc,
-                appointment.ScheduledEndUtc,
-                appointment.BookingSource,
-                appointment.ConfirmationSource,
-                appointment.LastSyncStatus,
-                source = "graph_calendar_webhook",
-                metaServerStatus = "pending"
-            },
-            isBrowserSignal: false,
-            isServerAuthority: true,
-            metaServerAuthorityEligible: true,
-            metaSingleTruthDispatchEligible: true,
-            metaPipelineOrigin: "graph_calendar_webhook");
-
-        var row = UnifiedMetaSignalWriter.Create(new UnifiedEventContext
-        {
-            EventId = $"appointment_booked_{appointment.Id:N}",
-            EventName = "AppointmentBooked",
-            EventCategory = "conversion",
-            EventUtc = utcNow,
-            SessionId = intakeLink?.SessionId,
-            VisitorId = intakeLink?.VisitorId,
-            QuoteType = intakeLink?.InterestType ?? intakeLink?.ProductType ?? "crm",
-            PageKey = intakeLink?.SourcePageKey,
-            EffectivePageKey = intakeLink?.SourcePageKey,
-            PageVariant = intakeLink?.PageVariant,
-            PageMode = intakeLink?.PageMode,
-            UtmSource = intakeLink?.UtmSource,
-            UtmMedium = intakeLink?.UtmMedium,
-            UtmCampaign = intakeLink?.UtmCampaign,
-            UtmId = intakeLink?.UtmId,
-            UtmContent = intakeLink?.UtmContent,
-            Fbclid = intakeLink?.Fbclid,
-            Referrer = intakeLink?.ReferrerUrl,
-            Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
-            IsBrowserSignal = false,
-            IsServerAuthority = true,
-            MetaServerAuthorityEligible = true
-        }, signal =>
-        {
-            signal.LeadId = metaLeadId;
-            signal.TrafficType = "crm";
-            signal.FunnelStep = 4;
-            signal.StepName = "appointment_booked";
-            signal.IntentScore = 120;
-            signal.EngagementScore = 120;
-            signal.QualificationScore = 120;
-            signal.FrictionScore = 0;
-            signal.TotalSignalScore = 120;
-            signal.ScoreTier = "AppointmentBooked";
-            signal.MetaBrowserSent = false;
-            signal.MetaServerSent = false;
-            signal.MetaDeduplicationKey = deduplicationKey;
-            signal.MetadataJson = metadataJson;
-        });
-        UnifiedMetaSignalWriter.Write(_db, row);
-
     }
 
     private static string? ResolveSubscriptionCalendarIdentity(GraphCalendarSubscription subscription)
