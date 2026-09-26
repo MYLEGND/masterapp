@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested the fully certified centralized analytics, Meta, lead ownership, CRM, notification, booking, and Parfait architecture completion be deployed through the approved direct release lane. Deploy only the repository-approved affected application scope required for this shared release: Portal, ClientApp companion, Protect, and Parfait. Preserve LEGEND Website and Cloudflare routing.",
+  "authorization": "Founder explicitly requested the fully certified centralized analytics, Meta, lead ownership, CRM, notification, booking, and Parfait architecture completion be deployed through the approved direct release lane after the Risk Assessment retry gate repair. Deploy only the repository-approved affected application scope required for this shared release: Portal, ClientApp companion, Protect, and Parfait. Preserve LEGEND Website and Cloudflare routing.",
   "purpose": "Deploy the exact post-baseline-sync architecture candidate after full green validation and verify live analytics ingestion, owner-scoped persistence, dashboards, Meta signal dispatch, lead/CRM capture, and durable advisor notification state end to end.",
-  "requestId": "analytics-meta-architecture-live-proof-20260925-2057",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36216987262",
+  "requestId": "analytics-meta-architecture-live-proof-20260925-2129",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36217714092",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
