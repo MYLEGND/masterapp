@@ -38,7 +38,7 @@
     preset: initialPreset,
     from: initialFrom,
     to: initialTo,
-    pollMs: 45000,
+    pollMs: 1500,
     qualityMode: initialQualityMode,
     dashboardTrafficType: 'all',
     controllers: {},
@@ -4242,10 +4242,18 @@ function escapeHtml(value) {
     }
   }
 
+  function refreshLiveAnalytics() {
+    loadSummary();
+    if (state.openModal) refreshOpenModal();
+  }
+
   function initPolling() {
-    setInterval(() => {
-      refreshOpenModal();
-    }, state.pollMs);
+    setInterval(refreshLiveAnalytics, state.pollMs);
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshLiveAnalytics();
+    });
+    window.addEventListener('focus', refreshLiveAnalytics);
   }
 
   function initModules() {
