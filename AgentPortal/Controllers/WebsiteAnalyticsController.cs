@@ -174,10 +174,13 @@ namespace AgentPortal.Controllers;
         var profile = await ResolveMarketingSetupAgentProfileAsync(tracking, createIfMissing: false, cancellationToken);
         var marketingService = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.AgentMarketingProfileService>();
         var marketing = await marketingService.GetAsync(tracking, cancellationToken);
-        var adsConnected = marketing.DisconnectedUtc is null && !string.IsNullOrWhiteSpace(marketing.AdsAccessTokenCiphertext);
-        var secureCapi = marketing.DisconnectedUtc is null &&
-            (!string.IsNullOrWhiteSpace(marketing.CapiAccessTokenCiphertext) ||
-             !string.IsNullOrWhiteSpace(marketing.AdsAccessTokenCiphertext));
+
+        // Meta connection state has exactly one read authority: the same
+        // IMetaAdsConnectionStore used by the main Website Analytics Meta panel.
+        // Marketing Setup is only another presentation of that canonical state.
+        var metaConnection = await _metaAdsConnectionStore.GetAsync(tracking.Id, cancellationToken);
+        var adsConnected = metaConnection is not null;
+        var secureCapi = adsConnected;
         var bookingLive = profile?.BookingEnabled == true &&
             (!string.IsNullOrWhiteSpace(profile.MicrosoftBookingsEmbedUrl) ||
              !string.IsNullOrWhiteSpace(profile.FallbackBookingUrl));
@@ -199,7 +202,7 @@ namespace AgentPortal.Controllers;
                 revision = marketing.Revision,
                 metaPixelId = marketing.PixelId,
                 metaAdsConnected = adsConnected,
-                metaAccount = adsConnected ? marketing.AdAccountName ?? marketing.AdAccountId ?? "Meta Ads" : null,
+                metaAccount = adsConnected ? metaConnection!.AccountName ?? metaConnection.AccountId ?? "Meta Ads" : null,
                 metaCapiConfiguredSecurely = secureCapi,
                 metaCapiManagedAutomatically = true
             },

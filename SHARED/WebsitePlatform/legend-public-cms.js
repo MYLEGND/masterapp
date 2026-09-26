@@ -1463,41 +1463,26 @@
     const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
 
-    // The rendered template nav is the baseline catalog in server/public renders.
-    // Overlay the versioned document page metadata and custom pages onto that one
-    // list so custom routes join the banner without erasing template routes.
-    const entries=new Map();
-    [...nav.querySelectorAll('a:not([data-legend-store-nav])')].forEach((node,index)=>{
-      const route=normalizePageRoute(new URL(node.getAttribute('href') || '/',location.origin).pathname);
-      if (!route) return;
-      entries.set(route,{
-        route,
-        label:(node.textContent || route).trim(),
-        showInNavigation:true,
-        parentPath:null,
-        order:index*10
-      });
-    });
-    for (const entry of websitePageEntries(false)) {
-      const previous=entries.get(entry.route);
-      entries.set(entry.route,{...previous,...entry});
-    }
+    // One authority only: the template route catalog plus this website's
+    // versioned page metadata. Never merge the already-rendered DOM back into
+    // the catalog; doing so lets stale/default links survive beside managed
+    // pages and creates duplicate banner tabs.
+    const entries=websitePageEntries(false)
+      .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
+      .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route));
 
     nav.querySelectorAll('a:not([data-legend-store-nav])').forEach(node=>node.remove());
     const current=currentPageRoute();
-    [...entries.values()]
-      .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
-      .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route))
-      .forEach(entry=>{
-        const link=document.createElement('a');
-        link.href=entry.route;
-        link.textContent=entry.label;
-        link.dataset.legendPageNav='true';
-        link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
-        link.dataset.cmsLocked='true';
-        if (entry.route===current) link.setAttribute('aria-current','page');
-        nav.appendChild(link);
-      });
+    entries.forEach(entry=>{
+      const link=document.createElement('a');
+      link.href=entry.route;
+      link.textContent=entry.label;
+      link.dataset.legendPageNav='true';
+      link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
+      link.dataset.cmsLocked='true';
+      if (entry.route===current) link.setAttribute('aria-current','page');
+      nav.appendChild(link);
+    });
   }
 
   function applyDocument(doc) {
@@ -1739,14 +1724,61 @@
     const entries=websitePageEntries(true);
     for (const entry of entries) {
       const row=document.createElement('div'); row.className='legend-cms-page-row';
-      const open=document.createElement('button'); open.type='button'; open.textContent=`${entry.label} · ${entry.route}${entry.deleted?' · Deleted':''}`;
+      const open=document.createElement('button'); open.type='button'; open.textContent=entry.route;
       open.disabled=entry.deleted; open.setAttribute('aria-current',String(entry.route===current));
       open.addEventListener('click',()=>void navigateToEditorPage(entry.route)); row.appendChild(open);
-      if (SITE_KEY==='business' && entry.deleted) {
-        const restore=document.createElement('button'); restore.type='button'; restore.textContent='Restore';
-        restore.addEventListener('click',()=>{ checkpoint(); const page=ensurePageRecord(entry.route); page.navigation.isDeleted=false; markDirty(); syncPageControls(); });
-        row.appendChild(restore);
+
+      if (SITE_KEY==='business') {
+        const label=document.createElement('input');
+        label.type='text'; label.maxLength=120; label.value=entry.label; label.setAttribute('aria-label',`Navigation label for ${entry.route}`);
+        label.disabled=entry.deleted;
+        label.addEventListener('change',event=>{
+          const value=String(event.target.value||'').trim().slice(0,120);
+          if(!value){ event.target.value=entry.label; return; }
+          checkpoint();
+          const page=ensurePageRecord(entry.route);
+          page.navigation.label=value;
+          markDirty();
+          applyBusinessPageNavigation();
+          refreshPageSelector();
+          renderPageManager();
+        });
+        row.appendChild(label);
+
+        const visible=document.createElement('input');
+        visible.type='checkbox'; visible.checked=entry.showInNavigation!==false && !entry.deleted;
+        visible.disabled=entry.deleted;
+        visible.setAttribute('aria-label',`Show ${entry.label} in navigation`);
+        visible.addEventListener('change',event=>{
+          checkpoint();
+          const page=ensurePageRecord(entry.route);
+          page.navigation.showInNavigation=event.target.checked;
+          markDirty();
+          applyBusinessPageNavigation();
+          refreshPageSelector();
+        });
+        row.appendChild(visible);
+
+        const remove=document.createElement('button'); remove.type='button';
+        const home=entry.route==='/';
+        remove.disabled=home;
+        remove.textContent=entry.deleted?'Restore':'Delete';
+        remove.title=home?'The home page is required. Rename its navigation label or hide it from navigation instead.':'';
+        remove.addEventListener('click',async()=>{
+          if(home) return;
+          checkpoint();
+          const page=ensurePageRecord(entry.route);
+          page.navigation.isDeleted=!page.navigation.isDeleted;
+          if(page.navigation.isDeleted) page.navigation.showInNavigation=false;
+          markDirty();
+          applyBusinessPageNavigation();
+          refreshPageSelector();
+          renderPageManager();
+          if(page.navigation.isDeleted && entry.route===current) await navigateToEditorPage('/');
+        });
+        row.appendChild(remove);
       }
+
       host.appendChild(row);
     }
   }
@@ -2503,6 +2535,7 @@
     }
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
+      const immutableShell = isSharedShellElement(selected);
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
@@ -2513,8 +2546,9 @@
         : ['A','BUTTON'].includes(selected.tagName) ? 'button'
         : ['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName) ? 'block'
         : 'element';
-      removeButton.textContent = `Delete ${kind}`;
-      removeButton.disabled = false;
+      removeButton.textContent = immutableShell ? 'Global shell · cannot delete' : `Delete ${kind}`;
+      removeButton.disabled = immutableShell;
+      removeButton.title = immutableShell ? 'The website banner and footer are global shell authorities shared by every page and cannot be deleted.' : '';
     }
     const sectionSelected = !!selected.dataset.cmsSection;
     if (scale) scale.value = String(editStyle?.fontScale ?? 1);
@@ -3718,7 +3752,7 @@
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
       <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. Use X/Y offsets for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
-      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Create page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
+      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
@@ -4162,7 +4196,7 @@
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
-      if (!selected) return;
+      if (!selected || isSharedShellElement(selected)) return;
       const serviceCard = businessServiceCardFor(selected);
       if (serviceCard) {
         if (serviceCard.dataset.cmsExtraId) { setSelected(serviceCard); removeSelected(); return; }
