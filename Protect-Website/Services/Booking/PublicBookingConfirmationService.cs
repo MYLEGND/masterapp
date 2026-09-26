@@ -69,17 +69,20 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
     private readonly MasterAppDbContext _db;
     private readonly IPublicBookingCalendarMatcher _calendarMatcher;
     private readonly IPublicBookingResolver _publicBookingResolver;
+    private readonly MetaSignalCrmOutcomeService _outcomes;
     private readonly ILogger<PublicBookingConfirmationService> _logger;
 
     public PublicBookingConfirmationService(
         MasterAppDbContext db,
         IPublicBookingCalendarMatcher calendarMatcher,
         IPublicBookingResolver publicBookingResolver,
+        MetaSignalCrmOutcomeService outcomes,
         ILogger<PublicBookingConfirmationService> logger)
     {
         _db = db;
         _calendarMatcher = calendarMatcher;
         _publicBookingResolver = publicBookingResolver;
+        _outcomes = outcomes;
         _logger = logger;
     }
 
@@ -214,19 +217,9 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
 
         try
         {
-            // Persist the verified booking outcome and its canonical analytics authority
-            // in the same database transaction. A booked appointment must never exist
-            // without the event that feeds analytics and the existing Meta bridge/outbox.
-            if (websiteLead != null)
-            {
-                var analyticsEvent = BuildAppointmentBookedAnalyticsEvent(
-                    websiteLead,
-                    appointment,
-                    resolution,
-                    leadProfile);
-                UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
-            }
-
+            // One canonical lifecycle recorder owns booking analytics. It stages
+            // the event in the same unit of work as the verified appointment state.
+            await _outcomes.RecordAppointmentOutcomeAsync(appointment, cancellationToken);
             await _db.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -244,57 +237,6 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
             verified: true,
             pendingConfirmation: false,
             reason: calendarMatch.MatchReason);
-    }
-
-    private static AnalyticsEvent BuildAppointmentBookedAnalyticsEvent(
-        WebsiteLead websiteLead,
-        LeadAppointment appointment,
-        PublicBookingResolution resolution,
-        WorkstationLeadProfile? leadProfile)
-    {
-        var pageVariant = ReadTrackingMetadataValue(websiteLead.MetadataJson, "pageVariant") ?? "website";
-        var pageMode = ReadTrackingMetadataValue(websiteLead.MetadataJson, "pageMode") ?? "site_mode";
-        var trackingContext = UnifiedEventContextBuilder.Build(
-            httpContext: null,
-            eventName: AppointmentAnalyticsEventCatalog.Booked,
-            eventUtc: appointment.UpdatedUtc == default ? DateTime.UtcNow : appointment.UpdatedUtc,
-            sessionId: websiteLead.SessionId,
-            visitorId: websiteLead.VisitorId,
-            pageKey: websiteLead.SourcePageKey,
-            effectivePageKey: websiteLead.SourcePageKey,
-            pageVariant: pageVariant,
-            pageMode: pageMode,
-            utmSource: websiteLead.UtmSource,
-            utmMedium: websiteLead.UtmMedium,
-            utmCampaign: websiteLead.UtmCampaign,
-            utmId: websiteLead.UtmId,
-            metaCampaignId: websiteLead.MetaCampaignId,
-            metaAdSetId: websiteLead.MetaAdSetId,
-            metaAdId: websiteLead.MetaAdId,
-            fbclid: websiteLead.Fbclid,
-            agentSlug: websiteLead.AgentSlug ?? resolution.AgentSlug,
-            agentTrackingProfileId: websiteLead.AgentTrackingProfileId ?? resolution.AgentTrackingProfileId,
-            isInternal: websiteLead.IsInternal,
-            environment: websiteLead.Environment,
-            host: websiteLead.Host,
-            quoteType: websiteLead.InterestType,
-            isBrowserSignal: false,
-            metaServerAuthorityEligible: true,
-            metadata: new
-            {
-                LeadId = websiteLead.LeadId,
-                AppointmentId = appointment.Id,
-                CalendarEventId = appointment.CalendarEventId,
-                CalendarEventWebLink = appointment.CalendarEventWebLink,
-                ScheduledStartUtc = appointment.ScheduledStartUtc,
-                ScheduledEndUtc = appointment.ScheduledEndUtc,
-                BookingSource = appointment.BookingSource,
-                ConfirmationSource = appointment.ConfirmationSource,
-                Email = !string.IsNullOrWhiteSpace(websiteLead.Email) ? websiteLead.Email : leadProfile?.Email,
-                Phone = !string.IsNullOrWhiteSpace(websiteLead.Phone) ? websiteLead.Phone : leadProfile?.Phone
-            });
-
-        return UnifiedEventMapper.ToAnalytics(trackingContext);
     }
 
     private static bool IsTrustedBookedAppointment(LeadAppointment appointment)
