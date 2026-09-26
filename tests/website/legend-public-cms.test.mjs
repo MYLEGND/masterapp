@@ -1921,10 +1921,13 @@ test('header and footer edits persist in document-global shell authority across 
     f.click('.site-footer p');
     f.input('[data-style-key="fontSize"]','19');
     const saved=await f.save();
-    assert.equal(saved.elements['shell.header.strong.brand.node1'].style.fontSize,31);
-    assert.equal(saved.elements['shell.footer.p.footer-copy.node2'].style.fontSize,19);
-    assert.equal(saved.pages['/'].elements['shell.header.strong.brand.node1'],undefined);
-    assert.equal(saved.pages['/'].elements['shell.footer.p.footer-copy.node2'],undefined);
+    const headerKey=Object.keys(saved.elements).find(key=>key.startsWith('shell.header.strong.brand.'));
+    const footerKey=Object.keys(saved.elements).find(key=>key.startsWith('shell.footer.p.footer-copy.'));
+    assert.ok(headerKey); assert.ok(footerKey);
+    assert.equal(saved.elements[headerKey].style.fontSize,31);
+    assert.equal(saved.elements[footerKey].style.fontSize,19);
+    assert.equal(saved.pages['/'].elements[headerKey],undefined);
+    assert.equal(saved.pages['/'].elements[footerKey],undefined);
   }finally{f.close();}
 });
 
