@@ -82,8 +82,11 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const storeEnabled=input.document?.store?.enabled===true && !!input.business?.key;
   const storeLabel=String(input.document?.store?.navigationLabel||'Store').trim().slice(0,40)||'Store';
   const storeRoot=storeEnabled?'/store':null;
+  const storeCartIcon=['cart','bag','basket'].includes(String(input.document?.store?.cartIcon||'').toLowerCase())
+    ? String(input.document.store.cartIcon).toLowerCase()
+    : 'cart';
   const storeContext=storeEnabled?{
-    enabled:true,label:storeLabel,commerceBusinessId:input.business.id,businessKey:input.business.key,
+    enabled:true,label:storeLabel,cartIcon:storeCartIcon,commerceBusinessId:input.business.id,businessKey:input.business.key,
     storefrontUrl:storeRoot,cartUrl:storeRoot+'/cart'
   }:null;
 
