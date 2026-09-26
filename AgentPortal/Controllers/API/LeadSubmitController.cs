@@ -241,7 +241,7 @@ public class LeadSubmitController : ControllerBase
             await _db.SaveChangesAsync();
         }))
             lead = await _db.WebsiteLeads.SingleAsync(x => x.LeadId == lead.LeadId, HttpContext.RequestAborted);
-        if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, lead, HttpContext.RequestAborted))
+        if (!await WebsiteLeadNotificationAuthority.TryClaimAsync(_db, lead, HttpContext.RequestAborted))
             return Ok(new { status = "already_captured", captured = true, leadId = lead.LeadId,
                 notificationSent = lead.NotificationSentUtc != null, emailSent = lead.NotificationSentUtc != null });
         _logger.LogInformation(
@@ -355,7 +355,7 @@ Notes: {lead.Notes}";
             }
         }
 
-        await WebsiteLeadSubmission.CompleteNotificationAsync(_db, lead, emailSent, HttpContext.RequestAborted);
+        await WebsiteLeadNotificationAuthority.CompleteAsync(_db, lead, emailSent, HttpContext.RequestAborted);
         if (!emailSent)
         {
 
