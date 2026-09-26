@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Infrastructure.Analytics;
+using Domain.Entities;
 using Protect_Website.Models;
 using Shared.Analytics;
 using Xunit;
