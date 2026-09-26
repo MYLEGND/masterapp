@@ -73,8 +73,12 @@ public sealed class CommerceManagementController(
         var resolvedQualityMode = ResolveAnalyticsQualityMode(qualityMode);
         var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
         ApplyManagementViewData(store, ticket, "analytics");
+        var analyticsScope = ResolveAnalyticsScope(store);
+        var marketingOwner = ResolveMarketingOwner(store);
         return View("~/Views/InternalModules/Analytics.cshtml", await internalAnalytics.GetDashboardAsync(
             store.CommerceBusinessId,
+            analyticsScope,
+            marketingOwner,
             preset,
             fromUtc,
             toUtc,
@@ -99,7 +103,7 @@ public sealed class CommerceManagementController(
         try
         {
             return Redirect(metaAdsOAuth.BuildConnectUrl(
-                MarketingOwnerScope.Business(store.CommerceBusinessId),
+                ResolveMarketingOwner(store),
                 target,
                 redirectUri));
         }
@@ -133,8 +137,7 @@ public sealed class CommerceManagementController(
 
             var store = await ResolveAsync(ticket, ct);
             if (store is null ||
-                result.Owner.CommerceBusinessId != store.CommerceBusinessId ||
-                result.Owner.AgentTrackingProfileId.HasValue)
+                !string.Equals(result.Owner.Key, ResolveMarketingOwner(store).Key, StringComparison.Ordinal))
                 return Unauthorized();
 
             await marketingConnections.SaveAdsAsync(result.Owner, result.Connection, ct);
@@ -152,7 +155,9 @@ public sealed class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        return Json(await businessProfile.GetMetaConnectionStatusAsync(store.CommerceBusinessId, ct));
+        var owner = ResolveMarketingOwner(store);
+        var row = await marketingConnections.GetStatusAsync(owner, ct);
+        return Json(MarketingStatusPayload(row));
     }
 
     [HttpGet("analytics/meta-campaigns")]
@@ -178,7 +183,7 @@ public sealed class CommerceManagementController(
                 toUtc,
                 viewerTz: timezoneContext.ViewerTimeZone,
                 qualityMode: ResolveAnalyticsQualityMode(qualityMode));
-            return Json(await metaAds.GetCampaignsAsync(range, ScopeContext.ForBusiness(store.CommerceBusinessId), ct));
+            return Json(await metaAds.GetCampaignsAsync(range, ResolveAnalyticsScope(store), ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -203,6 +208,8 @@ public sealed class CommerceManagementController(
         var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
         var dashboard = await internalAnalytics.GetDashboardAsync(
             store.CommerceBusinessId,
+            ResolveAnalyticsScope(store),
+            ResolveMarketingOwner(store),
             preset,
             fromUtc,
             toUtc,
@@ -219,7 +226,7 @@ public sealed class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        await businessProfile.DisconnectMetaAsync(store.CommerceBusinessId, ct);
+        await marketingConnections.DisconnectAsync(ResolveMarketingOwner(store), ct);
         internalAnalytics.InvalidateCache();
         return Json(new { ok = true });
     }
@@ -527,6 +534,56 @@ public sealed class CommerceManagementController(
         TempData["AutomationStatus"] = "Automation deleted.";
         TempData["AutomationStatusTone"] = "success";
         return RedirectToAction(nameof(Automations), new { ticket });
+    }
+
+    private static ScopeContext ResolveAnalyticsScope(CommerceStoreContext store)
+    {
+        if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!store.AgentTrackingProfileId.HasValue)
+                throw new InvalidOperationException("Protect commerce analytics requires the canonical agent owner.");
+            return ScopeContext.ForAgent(store.AgentTrackingProfileId.Value);
+        }
+
+        if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
+            return ScopeContext.ForSite(store.WebsiteSiteKey, store.BusinessKey);
+
+        return ScopeContext.ForBusiness(store.CommerceBusinessId);
+    }
+
+    private static MarketingOwnerScope ResolveMarketingOwner(CommerceStoreContext store)
+    {
+        if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!store.AgentTrackingProfileId.HasValue)
+                throw new InvalidOperationException("Protect commerce marketing requires the canonical agent owner.");
+            return MarketingOwnerScope.Agent(store.AgentTrackingProfileId.Value);
+        }
+
+        if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
+            return MarketingOwnerScope.Founder;
+
+        return MarketingOwnerScope.Business(store.CommerceBusinessId);
+    }
+
+    private static object MarketingStatusPayload(MarketingConnection? row)
+    {
+        var connected = row is not null &&
+            row.DisconnectedUtc == null &&
+            row.AdsAccessTokenCiphertext != null &&
+            (!row.AccessTokenExpiresUtc.HasValue || row.AccessTokenExpiresUtc > DateTime.UtcNow);
+        return new
+        {
+            connected,
+            accountId = row?.AdAccountId,
+            accountName = row?.AdAccountName,
+            businessId = row?.MetaBusinessManagerId,
+            businessName = row?.MetaBusinessManagerName,
+            metaUserName = row?.MetaUserName,
+            connectedUtc = row?.ConnectedUtc,
+            accessTokenExpiresUtc = row?.AccessTokenExpiresUtc,
+            message = connected ? null : "Meta Ads not connected or the connection has expired."
+        };
     }
 
     private static TrafficQualityMode ResolveAnalyticsQualityMode(string? value) =>
