@@ -10019,6 +10019,16 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(220)
                         .HasColumnType("nvarchar(220)");
 
+                    b.Property<string>("MetaDispatchClaimToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("MetaDispatchClaimedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("MetaDispatchClaimExpiresUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("MetaServerSent")
                         .HasColumnType("bit");
 
@@ -10164,6 +10174,8 @@ namespace Infrastructure.Migrations
                     b.HasIndex("CommerceBusinessId", "CreatedUtc");
 
                     b.HasIndex("EventName", "CreatedUtc");
+
+                    b.HasIndex("MetaServerSent", "MetaDispatchClaimExpiresUtc");
 
                     b.HasIndex("SessionId", "QuoteType", "CreatedUtc");
 
