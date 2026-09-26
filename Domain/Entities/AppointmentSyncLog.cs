@@ -8,6 +8,7 @@ public class AppointmentSyncLog
     public string? WorkstationLeadId { get; set; }
     public string? ClientProfileId { get; set; }
     public string? AgentUserId { get; set; }
+    public Guid? CommerceBusinessId { get; set; }
 
     public string? CalendarUserId { get; set; }
     public string? CalendarEmail { get; set; }

@@ -82,6 +82,40 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
                     await EnsureSubscriptionForAgentAsync(db, accessToken, publicBaseUrl, agent, calendarIdentity, cancellationToken);
                 }
             }
+
+            var businessBookings = await (
+                from settings in db.CommerceBusinessStorefrontSettings.AsNoTracking()
+                join business in db.CommerceBusinesses.AsNoTracking()
+                    on settings.CommerceBusinessId equals business.Id
+                where settings.BookingEnabled &&
+                      business.IsActive &&
+                      business.Status == "Active" &&
+                      (settings.BookingCalendarEmail != null || settings.BookingMailboxId != null)
+                select new
+                {
+                    BusinessId = business.Id,
+                    settings.BookingCalendarEmail,
+                    settings.BookingMailboxId
+                }).ToListAsync(cancellationToken);
+
+            foreach (var business in businessBookings)
+            {
+                foreach (var calendarIdentity in new[] { business.BookingCalendarEmail, business.BookingMailboxId }
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value!.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    await EnsureSubscriptionForBusinessAsync(
+                        db,
+                        accessToken,
+                        publicBaseUrl,
+                        business.BusinessId,
+                        business.BookingCalendarEmail,
+                        business.BookingMailboxId,
+                        calendarIdentity,
+                        cancellationToken);
+                }
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -149,6 +183,135 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
                 agent.AgentUserId,
                 calendarIdentity,
                 created.LastError);
+        }
+    }
+
+    private async Task EnsureSubscriptionForBusinessAsync(
+        MasterAppDbContext db,
+        string accessToken,
+        string publicBaseUrl,
+        Guid businessId,
+        string? calendarEmail,
+        string? bookingMailboxId,
+        string calendarIdentity,
+        CancellationToken cancellationToken)
+    {
+        var resource = $"users/{calendarIdentity}/events";
+        var existing = await db.GraphCalendarSubscriptions
+            .Where(x => x.CommerceBusinessId == businessId &&
+                        x.AgentUserId == "" &&
+                        x.IsActive &&
+                        (x.Resource == resource ||
+                         x.CalendarUserId == calendarIdentity ||
+                         x.CalendarEmail == calendarIdentity))
+            .OrderByDescending(x => x.ExpirationUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var renewCutoff = DateTime.UtcNow.AddHours(12);
+        if (existing != null && existing.ExpirationUtc > renewCutoff)
+            return;
+
+        if (existing != null && !string.IsNullOrWhiteSpace(existing.GraphSubscriptionId))
+        {
+            var renewed = await TryRenewSubscriptionAsync(accessToken, existing, cancellationToken);
+            if (renewed)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            existing.IsActive = false;
+            existing.UpdatedUtc = DateTime.UtcNow;
+        }
+
+        var created = await TryCreateBusinessSubscriptionAsync(
+            accessToken,
+            publicBaseUrl,
+            businessId,
+            calendarEmail,
+            bookingMailboxId,
+            calendarIdentity,
+            cancellationToken);
+        if (!string.IsNullOrWhiteSpace(created.GraphSubscriptionId))
+        {
+            db.GraphCalendarSubscriptions.Add(created);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Business Graph calendar subscription was not persisted because Graph did not return a subscription id. business={BusinessId} calendar={CalendarIdentity} error={Error}",
+                businessId,
+                calendarIdentity,
+                created.LastError);
+        }
+    }
+
+    private async Task<GraphCalendarSubscription> TryCreateBusinessSubscriptionAsync(
+        string accessToken,
+        string publicBaseUrl,
+        Guid businessId,
+        string? calendarEmail,
+        string? bookingMailboxId,
+        string calendarIdentity,
+        CancellationToken cancellationToken)
+    {
+        var expiration = DateTime.UtcNow.AddHours(70);
+        var clientState = Guid.NewGuid().ToString("N");
+        var notificationUrl = $"{publicBaseUrl}/api/graph/calendar-webhook";
+        var resource = $"users/{calendarIdentity}/events";
+        var payload = JsonSerializer.Serialize(new
+        {
+            changeType = "created,updated,deleted",
+            notificationUrl,
+            resource,
+            expirationDateTime = expiration.ToString("o"),
+            clientState
+        });
+
+        var row = new GraphCalendarSubscription
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "",
+            CommerceBusinessId = businessId,
+            CalendarUserId = string.IsNullOrWhiteSpace(bookingMailboxId) ? null : bookingMailboxId.Trim(),
+            CalendarEmail = string.IsNullOrWhiteSpace(calendarEmail) ? null : calendarEmail.Trim(),
+            Resource = resource,
+            ChangeType = "created,updated,deleted",
+            ClientState = clientState,
+            ExpirationUtc = expiration,
+            IsActive = false,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("ResilientDefault");
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://graph.microsoft.com/v1.0/subscriptions");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+            using var response = await client.SendAsync(request, cancellationToken);
+            var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                row.LastError = $"Create failed: {(int)response.StatusCode} {responseText}";
+                return row;
+            }
+
+            var result = JsonSerializer.Deserialize<GraphSubscriptionResponse>(responseText, JsonOptions);
+            row.GraphSubscriptionId = result?.Id ?? "";
+            row.ExpirationUtc = ParseGraphDateTime(result?.ExpirationDateTime) ?? expiration;
+            row.LastRenewedUtc = DateTime.UtcNow;
+            row.IsActive = !string.IsNullOrWhiteSpace(row.GraphSubscriptionId);
+            row.LastError = null;
+            return row;
+        }
+        catch (Exception ex)
+        {
+            row.LastError = ex.Message;
+            return row;
         }
     }
 

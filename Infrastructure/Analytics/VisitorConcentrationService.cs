@@ -27,12 +27,13 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
     public async Task<List<VisitorConcentrationDto>> GetVisitorConcentrationAsync(
         TimeRangeRequest range,
         ScopeContext scope,
+        TrafficType trafficType,
         CancellationToken ct = default)
     {
         var payload = await GetVisitorConcentrationPayloadAsync(
             range,
             scope,
-            TrafficType.All,
+            trafficType,
             ct);
 
         return payload.Rows

@@ -80,6 +80,9 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("MarketingMetaAdsOAuthService", controller, StringComparison.Ordinal);
         Assert.Contains("MarketingConnectionStore", controller, StringComparison.Ordinal);
         Assert.Contains("MarketingConnections.GetStatusAsync", tracking, StringComparison.Ordinal);
+        Assert.Contains("context.Request.Path.StartsWithSegments(\"/commerce/manage\")", program, StringComparison.Ordinal);
+        Assert.Contains("context.Response.Headers.Remove(\"X-Frame-Options\")", program, StringComparison.Ordinal);
+        Assert.Contains("frame-ancestors 'self' https://mylegnd.com https://www.mylegnd.com", program, StringComparison.Ordinal);
         Assert.Contains("MetaSignalEventCatalog", signals, StringComparison.Ordinal);
         Assert.Contains("UnifiedMetaSignalWriter", signals, StringComparison.Ordinal);
     }

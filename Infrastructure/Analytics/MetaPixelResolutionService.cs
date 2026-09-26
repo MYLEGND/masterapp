@@ -163,20 +163,19 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
         bool isFounderPath,
         CancellationToken cancellationToken)
     {
-        var agencyFallback = await ResolveAgencyFallbackAsync(cancellationToken);
         if (isFounderPath)
-            return agencyFallback;
+            return await ResolveAgencyFallbackAsync(cancellationToken);
 
+        // Scoped agent traffic is tenant-owned. It must never inherit Founder/agency
+        // advertising credentials when the agent has not connected its own destination.
         if (trackingProfile == null)
-            return agencyFallback;
+            return new ResolvedMetaPixelContext();
 
         try
         {
             var connection = await _agentMarketing.GetAsync(trackingProfile, cancellationToken);
-            if (connection.DisconnectedUtc.HasValue)
+            if (connection.DisconnectedUtc.HasValue || string.IsNullOrWhiteSpace(connection.PixelId))
                 return MergeWithAgentContext(new ResolvedMetaPixelContext(), trackingProfile, agentSlug);
-            if (string.IsNullOrWhiteSpace(connection.PixelId))
-                return MergeWithAgentContext(agencyFallback, trackingProfile, agentSlug);
             var token = await _connections.GetCapiTokenAsync(MarketingOwnerScope.Agent(trackingProfile.Id), cancellationToken);
             return new ResolvedMetaPixelContext
             {

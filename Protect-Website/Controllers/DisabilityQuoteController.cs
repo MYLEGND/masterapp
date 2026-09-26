@@ -76,6 +76,7 @@ namespace Protect_Website.Controllers
 
         // POST: /Quote/Disability
         [HttpPost("Disability")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public async Task<IActionResult> SubmitDisabilityQuote(DisabilityQuoteFormModel model)
         {
             var correlationId = Guid.NewGuid();

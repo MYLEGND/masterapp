@@ -55,6 +55,19 @@ class ReleaseScopeSelection(unittest.TestCase):
             self.assertIn('"masterapp-website"', values)
 
 
+class ApprovedReleaseResumePolicy(unittest.TestCase):
+    def test_exact_live_targets_are_preserved_across_retries(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        self.assertIn('Preserve targets already live at exact candidate', workflow)
+        self.assertIn("steps.resumestate.outputs.portal_live != 'true'", workflow)
+        self.assertIn("steps.resumestate.outputs.client_live != 'true'", workflow)
+        self.assertIn("steps.resumestate.outputs.protect_live != 'true'", workflow)
+        self.assertIn("steps.resumestate.outputs.parfait_live != 'true'", workflow)
+        self.assertIn("steps.resumestate.outputs.website_live != 'true'", workflow)
+        self.assertIn("preservedExactLiveTargets", workflow)
+        self.assertIn("was already live at the exact candidate but redeployed", workflow)
+
+
 class ReleasePolicy(unittest.TestCase):
     def test_hold_survives_descendant_until_explicit_release(self):
         with tempfile.TemporaryDirectory() as directory:

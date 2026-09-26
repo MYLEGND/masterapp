@@ -244,6 +244,106 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
     }
 
     [Fact]
+    public async Task AgentWebsiteLeadRoutesCapiOnlyToThatAgentsResolvedDestination()
+    {
+        var agentId = Guid.NewGuid();
+        var leadId = Guid.NewGuid();
+        var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
+        var pixel = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
+
+        pixel.Setup(x => x.ResolveForLeadAsync(agentId, "agent-one", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedMetaPixelContext
+            {
+                PixelId = "agent-pixel",
+                AccessToken = "agent-token",
+                TestEventCode = "agent-test",
+                PixelOwnerType = MetaPixelOwnerTypes.Agent,
+                AgentTrackingProfileId = agentId,
+                AgentSlug = "agent-one"
+            });
+
+        capi.Setup(x => x.SendEventAsync(
+                It.Is<MetaConversionsApiEventRequest>(request =>
+                    request.EventName == "Lead" &&
+                    request.LeadId == leadId &&
+                    request.CommerceBusinessId == null &&
+                    request.AgentTrackingProfileId == agentId &&
+                    request.PixelId == "agent-pixel" &&
+                    request.AccessToken == "agent-token" &&
+                    request.TestEventCode == "agent-test" &&
+                    request.PixelOwnerType == MetaPixelOwnerTypes.Agent),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetaConversionsApiResult
+            {
+                Attempted = true,
+                Sent = true,
+                Status = "sent",
+                EventsReceived = 1,
+                PixelId = "agent-pixel",
+                PixelOwnerType = MetaPixelOwnerTypes.Agent
+            });
+
+        var database = Guid.NewGuid().ToString();
+        await using var provider = new ServiceCollection()
+            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
+            .AddSingleton(capi.Object)
+            .AddSingleton(pixel.Object)
+            .BuildServiceProvider();
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            db.WebsiteLeads.Add(new WebsiteLead
+            {
+                LeadId = leadId,
+                AgentTrackingProfileId = agentId,
+                AgentSlug = "agent-one",
+                FirstName = "Agent",
+                Email = "visitor@example.org",
+                InterestType = "LifeInsurance",
+                SourcePageKey = "quote_life",
+                SessionId = "agent-session",
+                TermsAccepted = true,
+                CreatedUtc = DateTime.UtcNow,
+                ClientIpAddress = "1.2.3.4",
+                ClientUserAgent = "browser-agent"
+            });
+            db.MetaSignalEvents.Add(new MetaSignalEvent
+            {
+                CreatedUtc = DateTime.UtcNow,
+                EventId = "agent-lead-event",
+                EventName = "Lead",
+                EventCategory = "conversion",
+                LeadId = leadId,
+                AgentTrackingProfileId = agentId,
+                AgentSlug = "agent-one",
+                SessionId = "agent-session",
+                TrafficType = "crm",
+                MetaDeduplicationKey = "Lead:" + leadId.ToString("N"),
+                MetadataJson = BuildBridgeOwnedServerMetadata(true)
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var dispatcher = new MetaSignalOutcomeDispatcherHostedService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new MetaSignalIntelligenceOptions { Enabled = true, SendServerEvents = true }),
+            NullLogger<MetaSignalOutcomeDispatcherHostedService>.Instance);
+
+        await InvokeDispatchBatchAsync(dispatcher);
+
+        await using var verification = provider.CreateAsyncScope();
+        var row = await verification.ServiceProvider.GetRequiredService<MasterAppDbContext>()
+            .MetaSignalEvents.SingleAsync();
+        Assert.True(row.MetaServerSent);
+        Assert.Equal(agentId, row.AgentTrackingProfileId);
+        Assert.Null(row.CommerceBusinessId);
+        Assert.Equal("sent", MetaSignalSingleTruthPolicy.ReadString(row.MetadataJson, "metaServerStatus"));
+        pixel.VerifyAll();
+        capi.VerifyAll();
+    }
+
+    [Fact]
     public async Task DispatchBatchRejectsMixedBusinessAndAgentOwnersBeforeResolvingOrSending()
     {
         var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);

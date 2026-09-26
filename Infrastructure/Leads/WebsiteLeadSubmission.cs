@@ -72,6 +72,10 @@ public static class WebsiteLeadSubmission
     public static async Task CompleteNotificationAsync(MasterAppDbContext db, WebsiteLead lead, bool accepted, CancellationToken ct = default)
     {
         lead.NotificationSentUtc = accepted ? DateTime.UtcNow : null;
+        // A transport failure must remain immediately retryable through the
+        // canonical lease. The background recovery worker applies its own
+        // 15-minute cutoff when choosing rows, so we do not change the core
+        // delivery contract here.
         lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : null;
         if (!accepted) lead.Status = "NotificationFailed";
         else if (lead.Status == "NotificationFailed") lead.Status = "New";

@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized failure-forward routing completion after #215 proved all five web targets live at a8585b03a435f0d9f19d1cf427cebab277ac6779. Declare the complete web inventory only to satisfy the canonical routing release policy. Preserve every application/site at that exact live revision; deploy only the validated Cloudflare website-commerce router. No application rebuild, migration, auth mutation, or redeployment.",
-  "purpose": "Complete the Website Studio Store/Manage Store repair by activating first-party /store* and /commerce/manage/* Worker routes. All five web targets are declared because the canonical routing policy requires complete inventory when the Website target is in scope; preserve-live mode must skip every application deployment.",
-  "requestId": "website-studio-store-manager-routing-preserve-live-20260926-r2",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36237501297",
+  "authorization": "Founder authorized direct production release of the canonical analytics, CRM, Meta, booking, website runtime, and notification hardening candidate after the release-only regressions were repaired exactly: nullable request-services fallback and immediately retryable notification lease semantics.",
+  "purpose": "Resume from the failed release tests only. Preserve all previously successful validation and rollback work, then package, migrate, deploy, and live-verify all five affected web targets from the corrected approved head.",
+  "requestId": "canonical-analytics-crm-meta-booking-release-20260926-r3",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36256776427",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
@@ -12,8 +12,13 @@
     "masterapp-parfait",
     "masterapp-website"
   ],
-  "cloudflareWebsiteRouting": true,
-  "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": true,
-  "preserveLiveRevision": "a8585b03a435f0d9f19d1cf427cebab277ac6779"
+  "cloudflareWebsiteRouting": false,
+  "preserveLiveTargets": false,
+  "failedReleaseRun": "https://github.com/MYLEGND/masterapp/actions/runs/36257385153",
+  "compileRepairCommit": "d5d0d5ef6f2ef4e1759f7b8c65fc7d329d57e114",
+  "releaseRegressionFixes": [
+    "710b4cd4812c739cb333601659f88f1765c093b4",
+    "b6fb2d46ac69c0c4d0934f3c93df3951f519ed75",
+    "e9559736e2a937f98fd9d67f8a0756015329f751"
+  ]
 }

@@ -88,6 +88,7 @@ public class WebsiteAnalyticsIngestAuthority : Controller
             return BadRequest(new { accepted = false, error = "Browser input cannot claim a verified conversion." });
 
         PublicWebsiteRuntimeScope? publicScope = null;
+        ResolvedMetaPixelContext? resolvedProtectOwner = null;
         if (request.SiteKey is WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Business)
         {
             var resolver = HttpContext.RequestServices.GetRequiredService<PublicWebsiteRuntimeScopeResolver>();
@@ -96,6 +97,33 @@ public class WebsiteAnalyticsIngestAuthority : Controller
             if (publicScope is null || !PublicWebsiteRuntimeScopeResolver.IsPublishedPath(publicScope, publicPath))
                 return BadRequest(new { accepted = false, error = "Published website scope is required." });
         }
+        else
+        {
+            // Protect ownership is server-resolved from the verified request/referrer
+            // context. Browser-supplied agent IDs/slugs are never an ownership authority.
+            var httpContext = HttpContext;
+            if (httpContext is null)
+                return BadRequest(new { accepted = false, error = "Request context is required." });
+
+            IServiceProvider? services = httpContext.RequestServices;
+            var pixelResolver = services is null ? null : services.GetService<IMetaPixelResolutionService>();
+            if (pixelResolver is not null)
+            {
+                resolvedProtectOwner = await pixelResolver.ResolveForCurrentRequestAsync(httpContext, cancellationToken);
+            }
+            else
+            {
+                // Test/host fallback remains server-owned: only trusted HttpContext
+                // items may provide the resolved Protect owner. Browser request fields
+                // are never consulted for ownership.
+                var profile = httpContext.Items["TrackingProfile"] as Domain.Entities.AgentTrackingProfile;
+                resolvedProtectOwner = new ResolvedMetaPixelContext
+                {
+                    AgentTrackingProfileId = profile?.Id,
+                    AgentSlug = Normalize(httpContext.Items["TrackingSlug"] as string)
+                };
+            }
+        }
 
         if (!Guid.TryParse(request.EventId, out var clientEventId) || clientEventId == Guid.Empty)
             return BadRequest(new { accepted = false, error = "A stable event ID is required." });
@@ -103,11 +131,11 @@ public class WebsiteAnalyticsIngestAuthority : Controller
         var existing = await _db.AnalyticsEvents.AsNoTracking()
             .FirstOrDefaultAsync(x => x.ClientEventId == clientEventId, cancellationToken);
         if (existing is not null)
-            return DuplicateResult(existing, request, eventName, clientEventId, publicScope);
+            return DuplicateResult(existing, request, eventName, clientEventId, publicScope, resolvedProtectOwner);
 
         try
         {
-            var trackingContext = BuildTrackingContext(request, eventName, definition, publicScope);
+            var trackingContext = BuildTrackingContext(request, eventName, definition, publicScope, resolvedProtectOwner);
             var analyticsEvent = UnifiedEventMapper.ToAnalytics(trackingContext);
             analyticsEvent.ClientEventId = clientEventId;
             UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
@@ -121,7 +149,7 @@ public class WebsiteAnalyticsIngestAuthority : Controller
                 var concurrent = await _db.AnalyticsEvents.AsNoTracking()
                     .FirstOrDefaultAsync(x => x.ClientEventId == clientEventId, cancellationToken);
                 if (concurrent is null) throw;
-                return DuplicateResult(concurrent, request, eventName, clientEventId, publicScope);
+                return DuplicateResult(concurrent, request, eventName, clientEventId, publicScope, resolvedProtectOwner);
             }
 
             return Json(new MetaSignalProcessResult
@@ -156,13 +184,14 @@ public class WebsiteAnalyticsIngestAuthority : Controller
     }
 
     private IActionResult DuplicateResult(Domain.Entities.AnalyticsEvent existing,
-        MetaSignalIngestRequest request, string eventName, Guid eventId, PublicWebsiteRuntimeScope? publicScope)
+        MetaSignalIngestRequest request, string eventName, Guid eventId, PublicWebsiteRuntimeScope? publicScope,
+        ResolvedMetaPixelContext? resolvedProtectOwner)
     {
         var ownerMatches = publicScope is not null
             ? existing.CommerceBusinessId == publicScope.CommerceBusinessId &&
               existing.WebsiteContentVersionId == publicScope.PublishedVersion?.Id
-            : existing.AgentTrackingProfileId == request.AgentTrackingProfileId &&
-              string.Equals(existing.AgentSlug, Normalize(request.AgentSlug), StringComparison.OrdinalIgnoreCase);
+            : existing.AgentTrackingProfileId == resolvedProtectOwner?.AgentTrackingProfileId &&
+              string.Equals(existing.AgentSlug, Normalize(resolvedProtectOwner?.AgentSlug), StringComparison.OrdinalIgnoreCase);
         if (!string.Equals(existing.EventType, eventName, StringComparison.OrdinalIgnoreCase) ||
             existing.SessionId != Normalize(request.SessionId) ||
             existing.VisitorId != Normalize(request.VisitorId) ||
@@ -179,7 +208,8 @@ public class WebsiteAnalyticsIngestAuthority : Controller
         MetaSignalIngestRequest request,
         string eventName,
         MetaSignalEventDefinition definition,
-        PublicWebsiteRuntimeScope? publicScope)
+        PublicWebsiteRuntimeScope? publicScope,
+        ResolvedMetaPixelContext? resolvedProtectOwner)
     {
         var attribution = request.Attribution;
         var clientContext = request.ClientContext;
@@ -231,8 +261,8 @@ public class WebsiteAnalyticsIngestAuthority : Controller
             MetaAdSetId = Normalize(attribution?.MetaAdSetId),
             MetaAdId = Normalize(attribution?.MetaAdId),
             Fbclid = Normalize(attribution?.Fbclid),
-            AgentSlug = publicScope is null ? Normalize(request.AgentSlug) : null,
-            AgentTrackingProfileId = publicScope is null ? request.AgentTrackingProfileId : null,
+            AgentSlug = publicScope is null ? Normalize(resolvedProtectOwner?.AgentSlug) : null,
+            AgentTrackingProfileId = publicScope is null ? resolvedProtectOwner?.AgentTrackingProfileId : null,
             IsInternal = publicScope is null && WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request?.Host.Host),
             Environment = EnvironmentLabelResolver.Resolve(),
             Host = publicScope?.OriginHost ?? Request?.Host.ToString(),

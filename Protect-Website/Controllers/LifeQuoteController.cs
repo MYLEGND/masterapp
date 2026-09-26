@@ -112,16 +112,22 @@ namespace Protect_Website.Controllers
 
         // ===================== POST =====================
         [HttpPost("Life")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, model.OfferKey ?? "life");
         [HttpPost("Term-Life")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitTermLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, "term");
         [HttpPost("Whole-Life")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitWholeLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, "wholelife");
         [HttpPost("Final-Expense")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitFinalExpenseQuote(LifeQuoteFormModel model) => SubmitInternal(model, "finalexpense");
         [HttpPost("Mortgage-Protection")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitMortgageQuote(LifeQuoteFormModel model) => SubmitInternal(model, "mortgage");
         [HttpPost("IUL")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitIulQuote(LifeQuoteFormModel model) => SubmitInternal(model, "iul");
         [HttpPost("Life/estimate-preview")]
         public IActionResult EstimatePreview(LifeQuoteFormModel model)

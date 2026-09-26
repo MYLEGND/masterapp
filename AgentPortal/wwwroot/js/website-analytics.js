@@ -630,7 +630,39 @@
     return 'Selected lead';
   }
 
+  function renderSummaryUnavailable(data, message = null) {
+    state.cache.summary = null;
+    state.scope.scopeLabel = data?.scopeLabel || state.scope.scopeLabel || 'Global';
+    [
+      'kpi-pageviews',
+      'kpi-visitors',
+      'kpi-sessions',
+      'kpi-leads',
+      'kpi-intent',
+      'kpi-session',
+      'kpi-top-page',
+      'kpi-top-cta'
+    ].forEach(id => setText(id, '—'));
+    setText('kpi-intent-sub', 'Unavailable');
+    ['kpi-pv-delta', 'kpi-vis-delta', 'kpi-ses-delta', 'kpi-leads-delta'].forEach(id => setText(id, '—'));
+    ['kpi-pv-spark', 'kpi-vis-spark', 'kpi-ses-spark', 'kpi-leads-spark'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
+    const env = document.getElementById('fa-env-label');
+    if (env) env.textContent = 'Analytics unavailable';
+    const label = document.getElementById('fa-range-label');
+    if (label) label.textContent = data?.rangeLabel || state.scope.preset || 'Current Range';
+    setSummaryRefreshStatus(message || data?.unavailableReason || 'Summary data is unavailable.', true);
+    updateFounderScopeUi();
+  }
+
   function renderSummary(data) {
+    if (data?.isAvailable === false) {
+      renderSummaryUnavailable(data);
+      return;
+    }
+
     state.cache.summary = data;
     state.scope.scopeLabel = data.scopeLabel || state.scope.scopeLabel || 'Global';
     setText('kpi-pageviews', data.pageViews);
@@ -2924,7 +2956,7 @@ function escapeHtml(value) {
       if (requestId !== summaryRequestId) return;
 
       const message = (err && err.message) ? err.message : 'Unable to refresh the current summary.';
-      setSummaryRefreshStatus(`Live refresh warning: ${message} Showing the last successfully loaded summary.`, true);
+      renderSummaryUnavailable({ rangeLabel: state.cache.summary?.rangeLabel || '' }, `Live summary unavailable: ${message}`);
       console.error(err);
     }
   }
@@ -2941,7 +2973,16 @@ function escapeHtml(value) {
       }
       setTableMessage('mh-errors-body', 8, (err && err.message) ? err.message : 'Unable to load marketing health.', 'text-danger');
       setText('mh-verdict', 'Unavailable');
-      setText('mh-score', '—');
+      [
+        'mh-score',
+        'mh-client-errors',
+        'mh-inferred-starts',
+        'mh-lead-persisted',
+        'mh-workstation-success',
+        'mh-workstation-failures',
+        'mh-unknown-attribution',
+        'mh-no-owner'
+      ].forEach(id => setText(id, '—'));
       console.error(err);
     }
   }
@@ -2960,8 +3001,8 @@ function escapeHtml(value) {
       setTableMessage('traffic-top-campaigns-body', 2, message, 'text-danger');
       setTableMessage('traffic-activity-body', 6, message, 'text-danger');
       setTableMessage('traffic-exited-before-start-body', 4, message, 'text-danger');
-      setText('traffic-exited-before-start-count', '0');
-      setText('traffic-exited-before-start-modal-count', '0');
+      setText('traffic-exited-before-start-count', '—');
+      setText('traffic-exited-before-start-modal-count', '—');
       console.error(err);
     }
   }
@@ -3359,6 +3400,22 @@ function escapeHtml(value) {
       const message = (err && err.message) ? err.message : 'Unable to load Meta Signal Intelligence.';
       setText('metasignal-range-label', 'Unavailable');
       setText('metasignal-scope-note', message);
+      [
+        'metasignal-total-events',
+        'metasignal-total-visitors',
+        'metasignal-high-intent',
+        'metasignal-lead-ready',
+        'metasignal-submitted',
+        'metasignal-submit-attempts-no-lead',
+        'metasignal-high-intent-abandons',
+        'metasignal-contact-abandons',
+        'metasignal-excluded-events',
+        'metasignal-excluded-visitors',
+        'metasignal-signal-conv',
+        'metasignal-optimize',
+        'metasignal-best-variant',
+        'metasignal-worst-friction'
+      ].forEach(id => setText(id, '—'));
       [
         ['metasignal-quote-body', 2],
         ['metasignal-campaign-body', 2],

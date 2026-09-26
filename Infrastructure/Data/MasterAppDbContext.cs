@@ -1550,6 +1550,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.TrafficType).HasMaxLength(40);
             e.Property(x => x.StepName).HasMaxLength(120);
             e.Property(x => x.ScoreTier).HasMaxLength(40);
+            e.Property(x => x.MetaDispatchClaimToken).HasMaxLength(64);
             e.Property(x => x.MetaDeduplicationKey).HasMaxLength(220);
             e.Property(x => x.UtmSource).HasMaxLength(160);
             e.Property(x => x.UtmMedium).HasMaxLength(160);
@@ -1577,6 +1578,7 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.AgentTrackingProfileId);
             e.HasIndex(x => x.AgentSlug);
             e.HasIndex(x => x.EventId).IsUnique();
+            e.HasIndex(x => new { x.MetaServerSent, x.MetaDispatchClaimExpiresUtc });
             e.HasIndex(x => new { x.SessionId, x.QuoteType, x.CreatedUtc });
             e.HasIndex(x => new { x.EventName, x.CreatedUtc });
         });
@@ -1845,6 +1847,7 @@ public class MasterAppDbContext : DbContext
 
             e.HasIndex(x => x.GraphSubscriptionId).IsUnique();
             e.HasIndex(x => new { x.AgentUserId, x.CalendarEmail });
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CalendarEmail });
             e.HasIndex(x => new { x.IsActive, x.ExpirationUtc });
         });
 
@@ -1865,6 +1868,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.DiagnosticJson).HasColumnType(unboundedTextColumnType);
 
             e.HasIndex(x => x.AppointmentId);
+            e.HasIndex(x => x.CommerceBusinessId);
             e.HasIndex(x => x.WorkstationLeadId);
             e.HasIndex(x => x.GraphEventId);
             e.HasIndex(x => x.CreatedUtc);
@@ -1900,6 +1904,7 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => new { x.WorkstationLeadId, x.UpdatedUtc });
             e.HasIndex(x => new { x.WorkstationLeadId, x.ScheduledStartUtc });
             e.HasIndex(x => new { x.OwnerAgentUserId, x.Status, x.ScheduledStartUtc });
+            e.HasIndex(x => new { x.CommerceBusinessId, x.Status, x.ScheduledStartUtc });
             e.HasIndex(x => x.CalendarEventId);
             e.HasIndex(x => x.WebsiteLeadIntakeLinkId);
             e.HasIndex(x => x.WebsiteLeadId);

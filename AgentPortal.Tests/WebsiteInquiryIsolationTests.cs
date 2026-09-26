@@ -78,6 +78,14 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal("(602) 555-0199", lead.Phone);
         Assert.Equal("visitor@example.org", lead.Email);
         Assert.Null(lead.AgentTrackingProfileId);
+        var businessCrm = Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Equal(f.BusinessId, businessCrm.CommerceBusinessId);
+        Assert.Equal("", businessCrm.AgentUserId);
+        Assert.Equal("Lead", businessCrm.CrmStatus);
+        var businessIntake = Assert.Single(await f.Db.WebsiteLeadIntakeLinks.ToListAsync());
+        Assert.Equal(lead.LeadId, businessIntake.WebsiteLeadPublicId);
+        Assert.Equal(businessCrm.LeadId, businessIntake.WorkstationLeadId);
+        Assert.Equal(f.BusinessId, businessIntake.CommerceBusinessId);
         var analytics = Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
         Assert.Equal(f.BusinessId, analytics.CommerceBusinessId);
         Assert.Equal(f.VersionId, analytics.WebsiteContentVersionId);
@@ -201,6 +209,15 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.True(lead.TermsAccepted);
         Assert.False(lead.MarketingEmailConsent);
         Assert.False(lead.CallTextConsent);
+
+        var founderCrm = Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Equal("founder-user", founderCrm.AgentUserId);
+        Assert.Null(founderCrm.CommerceBusinessId);
+        Assert.Equal("Lead", founderCrm.CrmStatus);
+        var founderIntake = Assert.Single(await f.Db.WebsiteLeadIntakeLinks.ToListAsync());
+        Assert.Equal(lead.LeadId, founderIntake.WebsiteLeadPublicId);
+        Assert.Equal(founderCrm.LeadId, founderIntake.WorkstationLeadId);
+        Assert.Null(founderIntake.CommerceBusinessId);
 
         var analytics = Assert.Single(await f.Db.AnalyticsEvents
             .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
@@ -355,6 +372,14 @@ public sealed class WebsiteInquiryIsolationTests
             UtmSource: "meta", UtmCampaign: "campaign-one", Fbclid: "fbclid-one");
         public async Task SeedLegendPublishedAsync()
         {
+            Db.Add(new AgentProfile
+            {
+                AgentUserId = "founder-user",
+                AgentUpn = "founder@example.org",
+                NormalizedEmail = "founder@example.org",
+                FullName = "Founder",
+                UpdatedUtc = DateTime.UtcNow
+            });
             var state = new WebsiteContentState
             {
                 OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey,

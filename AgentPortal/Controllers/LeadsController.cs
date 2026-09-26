@@ -2418,10 +2418,9 @@ public class LeadsController : Controller
         }
         appointment.ApplyStatus(nextStatus, nowUtc);
 
-        if (nextStatus == LeadAppointmentStatus.Completed)
-        {
-            await _metaSignalOutcomes.RecordAppointmentCompletedAsync(appointment);
-        }
+        await _metaSignalOutcomes.RecordAppointmentOutcomeAsync(
+            appointment,
+            HttpContext.RequestAborted);
 
         var meta = ReadLeadMeta(lead);
         meta.Activities ??= new List<ClientCrmActivity>();
