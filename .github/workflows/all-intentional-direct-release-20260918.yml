@@ -720,6 +720,112 @@ jobs:
           app-name: masterapp-parfait
           slot-name: Production
           package: /tmp/parfait-publish
+      - name: Preserve public custom hostnames from Browser Integrity challenges
+        id: routingpolicy
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' }}
+        shell: bash
+        env:
+          CLOUDFLARE_SECURITY_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4"
+          security_token="${CLOUDFLARE_SECURITY_API_TOKEN:-}"
+          if [ -z "$security_token" ]; then
+            echo "::error::Cloudflare security credential is unavailable; refusing to weaken the Worker deployment token or mutate the zone blindly."
+            exit 1
+          fi
+          echo "::add-mask::$security_token"
+          auth=(-H "Authorization: Bearer $security_token" -H "Content-Type: application/json")
+          expression='not (lower(http.host) eq "mylegnd.com" or ends_with(lower(http.host), ".mylegnd.com"))'
+          ref='legend_public_custom_hostname_disable_bic'
+
+          list_file=/tmp/cf-config-rulesets.json
+          list_status="$(curl --silent --show-error -o "$list_file" -w '%{http_code}' "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets")"
+          [ "$list_status" = 200 ] || {
+            echo "::error::Cloudflare configuration-rules discovery failed with HTTP $list_status."
+            cat "$list_file"
+            exit 1
+          }
+          ruleset_id="$(jq -r '.result[]? | select(.kind=="zone" and .phase=="http_config_settings") | .id' "$list_file" | head -n 1)"
+
+          rule_payload="$(jq -cn --arg expression "$expression" --arg ref "$ref" '{
+            action:"set_config",
+            expression:$expression,
+            description:"LEGEND public custom hostnames: disable Browser Integrity Check only for customer vanity domains",
+            ref:$ref,
+            enabled:true,
+            action_parameters:{bic:false}
+          }')"
+
+          if [ -z "$ruleset_id" ]; then
+            create_payload="$(jq -cn --argjson rule "$rule_payload" '{
+              name:"LEGEND public custom-host configuration",
+              description:"Central Cloudflare configuration authority for LEGEND-managed customer custom hostnames",
+              kind:"zone",
+              phase:"http_config_settings",
+              rules:[$rule]
+            }')"
+            dry_file=/tmp/cf-config-create-dry.json
+            dry_status="$(curl --silent --show-error -o "$dry_file" -w '%{http_code}' --request POST "${auth[@]}" --data "$create_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets?dry_run=true")"
+            if [ "$dry_status" != 200 ] || [ "$(jq -r '.success // false' "$dry_file")" != true ]; then
+              echo "::error::Cloudflare rejected the vanity-domain Browser Integrity configuration during dry-run validation."
+              cat "$dry_file"
+              exit 1
+            fi
+            create_file=/tmp/cf-config-create.json
+            create_status="$(curl --silent --show-error -o "$create_file" -w '%{http_code}' --request POST "${auth[@]}" --data "$create_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets")"
+            if [ "$create_status" != 200 ] || [ "$(jq -r '.success // false' "$create_file")" != true ]; then
+              echo "::error::Cloudflare failed to create the custom-hostname configuration authority."
+              cat "$create_file"
+              exit 1
+            fi
+            ruleset_id="$(jq -r '.result.id' "$create_file")"
+          else
+            current=/tmp/cf-config-current.json
+            curl --fail-with-body --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id" > "$current"
+            rule_id="$(jq -r --arg ref "$ref" '.result.rules[]? | select(.ref==$ref) | .id' "$current" | head -n 1)"
+            if [ -n "$rule_id" ]; then
+              dry_file=/tmp/cf-config-rule-dry.json
+              dry_status="$(curl --silent --show-error -o "$dry_file" -w '%{http_code}' --request PATCH "${auth[@]}" --data "$rule_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id/rules/$rule_id?dry_run=true")"
+              if [ "$dry_status" != 200 ] || [ "$(jq -r '.success // false' "$dry_file")" != true ]; then
+                echo "::error::Cloudflare rejected the existing vanity-domain Browser Integrity rule update during dry-run validation."
+                cat "$dry_file"
+                exit 1
+              fi
+              update_file=/tmp/cf-config-rule-update.json
+              update_status="$(curl --silent --show-error -o "$update_file" -w '%{http_code}' --request PATCH "${auth[@]}" --data "$rule_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id/rules/$rule_id")"
+              if [ "$update_status" != 200 ] || [ "$(jq -r '.success // false' "$update_file")" != true ]; then
+                echo "::error::Cloudflare failed to update the vanity-domain Browser Integrity rule."
+                cat "$update_file"
+                exit 1
+              fi
+            else
+              dry_file=/tmp/cf-config-rule-add-dry.json
+              dry_status="$(curl --silent --show-error -o "$dry_file" -w '%{http_code}' --request POST "${auth[@]}" --data "$rule_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id/rules?dry_run=true")"
+              if [ "$dry_status" != 200 ] || [ "$(jq -r '.success // false' "$dry_file")" != true ]; then
+                echo "::error::Cloudflare rejected the vanity-domain Browser Integrity rule during dry-run validation."
+                cat "$dry_file"
+                exit 1
+              fi
+              add_file=/tmp/cf-config-rule-add.json
+              add_status="$(curl --silent --show-error -o "$add_file" -w '%{http_code}' --request POST "${auth[@]}" --data "$rule_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id/rules")"
+              if [ "$add_status" != 200 ] || [ "$(jq -r '.success // false' "$add_file")" != true ]; then
+                echo "::error::Cloudflare failed to add the vanity-domain Browser Integrity rule."
+                cat "$add_file"
+                exit 1
+              fi
+            fi
+          fi
+
+          verify=/tmp/cf-config-verify.json
+          curl --fail-with-body --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id" > "$verify"
+          count="$(jq -r --arg ref "$ref" --arg expression "$expression" '[.result.rules[]? | select(.ref==$ref and .enabled==true and .action=="set_config" and .expression==$expression and .action_parameters.bic==false)] | length' "$verify")"
+          [ "$count" = 1 ] || {
+            echo "::error::Cloudflare custom-hostname Browser Integrity authority did not verify exactly once."
+            exit 1
+          }
+          echo "Cloudflare Browser Integrity Check remains zone-managed but is disabled only for non-LEGEND custom hostnames."
+
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
