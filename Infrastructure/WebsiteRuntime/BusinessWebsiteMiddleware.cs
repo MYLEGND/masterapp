@@ -71,6 +71,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         var origin = "https://" + host;
         if (path == "/robots.txt")
         {
+            context.Response.Headers["X-Robots-Tag"] = "index, follow";
             context.Response.ContentType = "text/plain; charset=utf-8";
             await context.Response.WriteAsync("User-agent: *\nAllow: /\nSitemap: " + origin + "/sitemap.xml\n", context.RequestAborted);
             return;
@@ -78,7 +79,12 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         if (path == "/sitemap.xml")
         {
             XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
-            var sitemap = new XDocument(new XElement(ns + "urlset", pages.EnumerateObject().Select(page => new XElement(ns + "url", new XElement(ns + "loc", origin + page.Name)))));
+            var lastModifiedUtc = version.CreatedUtc.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+            var sitemap = new XDocument(new XElement(ns + "urlset", pages.EnumerateObject().Select(page =>
+                new XElement(ns + "url",
+                    new XElement(ns + "loc", origin + page.Name),
+                    new XElement(ns + "lastmod", lastModifiedUtc)))));
+            context.Response.Headers["X-Robots-Tag"] = "index, follow";
             context.Response.ContentType = "application/xml; charset=utf-8";
             await context.Response.WriteAsync(sitemap.ToString(), context.RequestAborted);
             return;
@@ -88,6 +94,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         if (!pages.TryGetProperty(normalized, out var page)) { await Unavailable(context, bridged, "page"); return; }
         var html = page.GetProperty("html").GetString() ?? "";
         html = html.Replace("__LEGEND_CANONICAL_URL__", WebUtility.HtmlEncode(origin + normalized), StringComparison.Ordinal);
+        context.Response.Headers["X-Robots-Tag"] = "index, follow";
         context.Response.ContentType = "text/html; charset=utf-8";
         if (!HttpMethods.IsHead(context.Request.Method)) await context.Response.WriteAsync(html, context.RequestAborted);
     }
