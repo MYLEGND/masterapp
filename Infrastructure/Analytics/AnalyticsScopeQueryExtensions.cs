@@ -18,14 +18,10 @@ internal static class AnalyticsScopeQueryExtensions
             if (scope.CommerceBusinessId.HasValue || !scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)
                 return query.Where(x => false);
 
-            var founderId = scope.AgentTrackingProfileId.Value;
-            const string legendSiteMarker = "\"siteKey\":\"legend\"";
-            const string founderOwnerMarker = "\"reportingOwner\":\"founder\"";
-            return query.Where(x =>
-                x.CommerceBusinessId == null &&
-                (x.AgentTrackingProfileId == founderId ||
-                 (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
-                  (x.MetadataJson.Contains(legendSiteMarker) || x.MetadataJson.Contains(founderOwnerMarker)))));
+            // Founder profile aliases are resolved by the query service using the
+            // canonical UPN authority. Keep this first-stage filter tenant-safe
+            // without prematurely excluding a historical Founder profile row.
+            return query.Where(x => x.CommerceBusinessId == null);
         }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
@@ -71,14 +67,10 @@ internal static class AnalyticsScopeQueryExtensions
             if (scope.CommerceBusinessId.HasValue || !scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)
                 return query.Where(x => false);
 
-            var founderId = scope.AgentTrackingProfileId.Value;
-            const string legendSiteMarker = "\"siteKey\":\"legend\"";
-            const string founderOwnerMarker = "\"reportingOwner\":\"founder\"";
-            return query.Where(x =>
-                x.CommerceBusinessId == null &&
-                (x.AgentTrackingProfileId == founderId ||
-                 (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
-                  (x.MetadataJson.Contains(legendSiteMarker) || x.MetadataJson.Contains(founderOwnerMarker)))));
+            // Founder profile aliases are resolved by the query service using the
+            // canonical UPN authority. Keep this first-stage filter tenant-safe
+            // without prematurely excluding a historical Founder profile row.
+            return query.Where(x => x.CommerceBusinessId == null);
         }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
