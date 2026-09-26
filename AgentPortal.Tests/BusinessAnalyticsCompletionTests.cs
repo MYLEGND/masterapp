@@ -141,6 +141,44 @@ public sealed class BusinessAnalyticsCompletionTests
 
 
     [Fact]
+    public void ProtectLeadOwnershipAndNotificationStateHaveSingleAuthorities()
+    {
+        var root = RepoRoot();
+        var quoteControllers = new[]
+        {
+            "HomeQuoteController.cs",
+            "AutoQuoteController.cs",
+            "LifeQuoteController.cs",
+            "CommercialQuoteController.cs",
+            "DisabilityQuoteController.cs",
+            "DentalVisionHearingQuoteController.cs"
+        };
+
+        foreach (var fileName in quoteControllers)
+        {
+            var text = File.ReadAllText(Path.Combine(root, "Protect-Website", "Controllers", fileName));
+            Assert.Contains("WebsiteLeadOwnerAuthority.ResolveAsync(", text, StringComparison.Ordinal);
+            Assert.Contains("WebsiteLeadNotificationAuthority.DeliverAsync(", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("ResolveBySlugAsync(slug", text, StringComparison.Ordinal);
+        }
+
+        var risk = File.ReadAllText(Path.Combine(root, "Protect-Website", "Controllers", "RiskAssessmentController.cs"));
+        Assert.Contains("WebsiteLeadOwnerAuthority.ResolveAsync(", risk, StringComparison.Ordinal);
+        Assert.Contains("WebsiteLeadNotificationAuthority.TryClaimAsync(", risk, StringComparison.Ordinal);
+        Assert.Contains("WebsiteLeadNotificationAuthority.CompleteAsync(", risk, StringComparison.Ordinal);
+        Assert.DoesNotContain("WebsiteLeadSubmission.TryClaimNotificationAsync(", risk, StringComparison.Ordinal);
+        Assert.DoesNotContain("WebsiteLeadSubmission.CompleteNotificationAsync(", risk, StringComparison.Ordinal);
+
+        var leadSubmit = File.ReadAllText(Path.Combine(root, "AgentPortal", "Controllers", "API", "LeadSubmitController.cs"));
+        Assert.Contains("WebsiteLeadNotificationAuthority.TryClaimAsync(", leadSubmit, StringComparison.Ordinal);
+        Assert.Contains("WebsiteLeadNotificationAuthority.CompleteAsync(", leadSubmit, StringComparison.Ordinal);
+
+        var authority = File.ReadAllText(Path.Combine(root, "Infrastructure", "Leads", "WebsiteLeadNotificationAuthority.cs"));
+        Assert.Contains("WebsiteLeadSubmission.TryClaimNotificationAsync", authority, StringComparison.Ordinal);
+        Assert.Contains("WebsiteLeadSubmission.CompleteNotificationAsync", authority, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProductionAnalyticsAndMetaHaveSingleWriteAndRuntimeAuthorities()
     {
         var root = RepoRoot();
