@@ -1360,13 +1360,13 @@ test('editor geometry is horizontally contained at every breakpoint and whole se
     assert.equal(f.w.document.querySelector('#legend-cms-offset-x').disabled,true);
     assert.equal(f.w.document.querySelector('#legend-cms-width').value,'100');
     assert.equal(f.w.document.querySelector('#legend-cms-offset-x').value,'0');
-    assert.match(source,/const maxOffset = Math\.max\(0, 100 - \(width \?\? 100\)\)/);
+    assert.match(source,/const maxOffset = width == null \? 100 : Math\.max\(0, 100 - width\)/);
     assert.doesNotMatch(source,/if \(key === 'mobile'\) \{/);
   }finally{f.close();}
 });
 
 test('business entity name remains profile-owned while typography stays editable',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><header><a class="brand"><strong data-business-name>Template business</strong></a></header><main><section><h1>Heading</h1></section></main></body></html>';
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><a class="brand"><strong data-business-name>Template business</strong></a></header><main><section><h1>Heading</h1></section></main></body></html>';
   const doc={pages:{'/':{elements:{'home.strong.business-name.node1':{text:'Wrong saved name',style:{fontScale:2,fontFamily:'Georgia'}}},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Canonical Business Name'},doc,html});
   try{
