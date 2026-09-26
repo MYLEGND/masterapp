@@ -13,6 +13,9 @@ on:
       - architecture/analytics-meta-scope-completion-20260925
     paths-ignore:
       - 'Docs/**'
+  pull_request:
+    branches:
+      - legend/approved-changes
   workflow_dispatch:
 
 permissions:
