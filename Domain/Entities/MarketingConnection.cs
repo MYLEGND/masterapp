@@ -20,6 +20,18 @@ public sealed class MarketingConnection
     public string? MetaBusinessManagerName { get; set; }
     public string? MetaUserId { get; set; }
     public string? MetaUserName { get; set; }
+
+    // Provider-neutral account projection used by non-Meta destinations.
+    public string? ProviderAccountRole { get; set; }
+    public string? ProviderReviewStatus { get; set; }
+    public string? ProviderAuthorizationMethod { get; set; }
+    public string? ProviderUserId { get; set; }
+    public string? ProviderUserEmail { get; set; }
+    public string? ProviderPermissionsJson { get; set; }
+    public string? ProviderPixelId { get; set; }
+    public string? ProviderDataSourceId { get; set; }
+    public DateTime? LastVerifiedUtc { get; set; }
+
     public DateTime? ConnectedUtc { get; set; }
     public DateTime? DisconnectedUtc { get; set; }
     public DateTime? LegacyAdsImportedUtc { get; set; }
