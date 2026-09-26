@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized fail-forward completion of the canonical website analytics repair. AgentPortal and Protect are already live and must remain untouched. Deploy ClientApp only because its prior analytics parity release was cancelled before deployment.",
+  "authorization": "Founder authorized fail-forward completion of ClientApp analytics parity only. Supersede accidental broad automatic release #237 before deployment. AgentPortal and Protect are already live and must remain untouched; do not deploy Parfait or LEGEND Website.",
   "purpose": "Complete ClientApp business-scoped Website Analytics parity using the already-approved canonical shared analytics services and linked WebsiteAnalytics UI. Do not redeploy or roll back AgentPortal, Protect, Parfait, or LEGEND Website.",
-  "requestId": "canonical-live-analytics-clientapp-completion-20260926-r2",
+  "requestId": "canonical-live-analytics-clientapp-completion-20260926-r3",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36273622780",
   "preserveSuccessfulRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36275708976",
   "releaseMode": "approved-only",
@@ -10,5 +10,6 @@
     "masterapp-client"
   ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "supersedesRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36278311858"
 }
