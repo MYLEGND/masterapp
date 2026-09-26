@@ -1,12 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the fully validated combined Meta Test Events, custom-domain HTTPS/SEO, and canonical website navigation/editor repair for approved-only direct release. Preserve all successful prior deployments and do not redeploy ClientApp or Parfait. Queue behind the currently active approved release and fail forward only from concrete failed steps.",
-  "purpose": "Promote the Run #311 combined head containing the validated architecture/meta-test-events-seo-20260926 work plus the current approved custom-domain page-routing/editor repair. Deploy only AgentPortal for Website Analytics Marketing Setup/Test Event Code UI and authority wiring, Protect for the shared website/custom-domain runtime and domain health/SEO authority, and LEGEND Website for the canonical business publication compiler and published page catalog. No alternate Meta sender, credential store, SEO renderer, domain router, navigation store, or app-specific override.",
-  "requestId": "meta-test-events-seo-custom-domain-combined-20260926-r1",
+  "authorization": "Founder authorized fail-forward retry of the validated combined Meta Test Events, custom-domain HTTPS/SEO, and canonical website navigation/editor release after #241 failed before any build or deployment because the exact three-target scope was not yet in the reviewed release allowlist. Preserve successful prior deployments and do not deploy ClientApp or Parfait.",
+  "purpose": "Retry the exact combined approved head after adding only the reviewed release-policy allowance for AgentPortal + Protect + LEGEND Website. Application behavior remains the Run #311 validated code. Resume from release discovery forward; no rollback or redeployment of unrelated apps.",
+  "requestId": "meta-test-events-seo-custom-domain-combined-20260926-r2",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36279347194",
-  "queueBehindRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36279230586",
+  "resumeFailedRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36279653342",
   "preserveSuccessfulReleases": [
-    "https://github.com/MYLEGND/masterapp/actions/runs/36278375950"
+    "https://github.com/MYLEGND/masterapp/actions/runs/36278375950",
+    "https://github.com/MYLEGND/masterapp/actions/runs/36279230586"
   ],
   "releaseMode": "approved-only",
   "targets": [
