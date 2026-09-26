@@ -47,7 +47,17 @@ public sealed class ParfaitInternalAnalyticsService
 
     public void InvalidateCache() => _cacheStamp.Bump();
 
+    public Task<ParfaitInternalWorkspaceAnalyticsSnapshot> GetWorkspaceSummaryAsync(
+        string? preset = "30d",
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        TimeZoneInfo? viewerTimeZone = null,
+        CancellationToken ct = default) =>
+        GetWorkspaceSummaryAsync(_orders.GetDefaultBusinessId(), preset, fromUtc, toUtc, qualityMode, viewerTimeZone, ct);
+
     public async Task<ParfaitInternalWorkspaceAnalyticsSnapshot> GetWorkspaceSummaryAsync(
+        Guid businessId,
         string? preset = "30d",
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
@@ -61,19 +71,20 @@ public sealed class ParfaitInternalAnalyticsService
             toUtc,
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
-        var scope = ScopeContext.ForSite(SiteKey, SiteKey);
-        var cacheKey = BuildWorkspaceCacheKey(range);
+        var scope = ScopeContext.ForBusiness(businessId);
+        var cacheKey = BuildWorkspaceCacheKey(businessId, range);
 
         var cachedSnapshot = await _cache.GetOrCreateAsync(cacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = WorkspaceCacheDuration;
-            return await BuildWorkspaceSummaryAsync(range, scope, ct);
+            return await BuildWorkspaceSummaryAsync(businessId, range, scope, ct);
         });
 
         return cachedSnapshot ?? new ParfaitInternalWorkspaceAnalyticsSnapshot();
     }
 
     private async Task<ParfaitInternalWorkspaceAnalyticsSnapshot> BuildWorkspaceSummaryAsync(
+        Guid businessId,
         TimeRangeRequest range,
         ScopeContext scope,
         CancellationToken ct)
@@ -83,7 +94,7 @@ public sealed class ParfaitInternalAnalyticsService
         var scopedEvents = await LoadScopedEventsAsync(range, scope, ct);
         var summary = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
         var devices = await _analytics.GetDeviceIntelligenceAsync(range, scope, TrafficType.All);
-        var metaSettings = await _businessProfile.GetMetaSettingsAsync(ct);
+        var metaSettings = await _businessProfile.GetMetaSettingsAsync(businessId, ct);
         var bucketEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(scopedEvents, range.QualityMode);
         var bucketSummary = BuildBucketSummary(bucketEvents);
         summary.Sessions = bucketSummary.Sessions;
@@ -118,7 +129,19 @@ public sealed class ParfaitInternalAnalyticsService
         };
     }
 
+    public Task<ParfaitInternalAnalyticsViewModel> GetDashboardAsync(
+        string? preset = "30d",
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        TimeZoneInfo? viewerTimeZone = null,
+        string? viewerTimeZoneId = null,
+        int? viewerTimeZoneOffsetMinutes = null,
+        CancellationToken ct = default) =>
+        GetDashboardAsync(_orders.GetDefaultBusinessId(), preset, fromUtc, toUtc, qualityMode, viewerTimeZone, viewerTimeZoneId, viewerTimeZoneOffsetMinutes, ct);
+
     public async Task<ParfaitInternalAnalyticsViewModel> GetDashboardAsync(
+        Guid businessId,
         string? preset = "30d",
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
@@ -134,8 +157,9 @@ public sealed class ParfaitInternalAnalyticsService
             toUtc,
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
-        var scope = ScopeContext.ForSite(SiteKey, SiteKey);
+        var scope = ScopeContext.ForBusiness(businessId);
         var cacheKey = BuildDashboardCacheKey(
+            businessId,
             range,
             viewerTimeZoneId,
             viewerTimeZoneOffsetMinutes,
@@ -146,6 +170,7 @@ public sealed class ParfaitInternalAnalyticsService
         {
             entry.AbsoluteExpirationRelativeToNow = DashboardCacheDuration;
             var dashboard = await BuildDashboardAsync(
+                businessId,
                 range,
                 scope,
                 fromUtc,
@@ -163,6 +188,7 @@ public sealed class ParfaitInternalAnalyticsService
     }
 
     private async Task<ParfaitInternalAnalyticsViewModel> BuildDashboardAsync(
+        Guid businessId,
         TimeRangeRequest range,
         ScopeContext scope,
         DateTime? fromUtc,
@@ -180,7 +206,7 @@ public sealed class ParfaitInternalAnalyticsService
         var devices = await _analytics.GetDeviceIntelligenceAsync(range, scope, TrafficType.All);
         var metaSignal = await _metaSignal.GetDashboardAsync(range, scope, TrafficType.All, ct: ct);
         var metaHealth = await _metaSignal.GetHealthDashboardAsync(range, scope, ct);
-        var metaSettings = await _businessProfile.GetMetaSettingsAsync(ct);
+        var metaSettings = await _businessProfile.GetMetaSettingsAsync(businessId, ct);
         var scopedEvents = await LoadScopedEventsAsync(range, scope, ct);
         var bucketEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(scopedEvents, range.QualityMode);
         var selectedBucketSummary = BuildBucketSummary(bucketEvents);
@@ -198,7 +224,7 @@ public sealed class ParfaitInternalAnalyticsService
             .Select(ParseEvent)
             .ToList();
 
-        var allOrders = _orders.GetAllOrders().ToList();
+        var allOrders = _orders.GetAllOrders(businessId).ToList();
         var ordersInRange = allOrders
             .Where(order => order.CreatedUtc >= range.FromUtc && order.CreatedUtc <= range.ToUtc)
             .OrderByDescending(order => order.CreatedUtc)
@@ -379,10 +405,11 @@ public sealed class ParfaitInternalAnalyticsService
         };
     }
 
-    private string BuildWorkspaceCacheKey(TimeRangeRequest range)
+    private string BuildWorkspaceCacheKey(Guid businessId, TimeRangeRequest range)
     {
         return string.Join('|',
             "parfait-workspace",
+            businessId,
             _cacheStamp.Version,
             range.Preset,
             range.FromUtc.Ticks,
@@ -391,6 +418,7 @@ public sealed class ParfaitInternalAnalyticsService
     }
 
     private string BuildDashboardCacheKey(
+        Guid businessId,
         TimeRangeRequest range,
         string? viewerTimeZoneId,
         int? viewerTimeZoneOffsetMinutes,
@@ -399,6 +427,7 @@ public sealed class ParfaitInternalAnalyticsService
     {
         return string.Join('|',
             "parfait-dashboard",
+            businessId,
             _cacheStamp.Version,
             range.Preset,
             range.FromUtc.Ticks,
