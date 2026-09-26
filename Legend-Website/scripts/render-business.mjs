@@ -90,7 +90,8 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     storefrontUrl:storeRoot,cartUrl:storeRoot+'/cart'
   }:null;
 
-  for(const entry of manifest) {
+  const renderEntries=[...manifest].sort((a,b)=>(a.route==='/'?-1:b.route==='/'?1:a.route.localeCompare(b.route)));
+  for(const entry of renderEntries) {
     const {route,sourceRoute,dynamicItem}=entry;
     const page=documents[sourceRoute]||{};
     const built=entry.templateRoute?templateByRoute.get(entry.templateRoute):null;
@@ -139,7 +140,15 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     doc.querySelector('link[rel="canonical"]')?.setAttribute('href','__LEGEND_CANONICAL_URL__');
     doc.querySelector('meta[property="og:url"]')?.setAttribute('content','__LEGEND_CANONICAL_URL__');
     doc.querySelector('meta[name="robots"]')?.remove();
-    doc.querySelector('link[rel="icon"]')?.remove();
+    const faviconUrl=typeof input.document?.faviconImageDataUrl==='string' ? input.document.faviconImageDataUrl.trim() : '';
+    let favicon=doc.querySelector('link[rel~="icon"]');
+    if(faviconUrl){
+      if(!favicon){ favicon=doc.createElement('link'); favicon.setAttribute('rel','icon'); doc.head.appendChild(favicon); }
+      favicon.setAttribute('href',faviconUrl);
+      favicon.removeAttribute('type');
+    } else {
+      favicon?.remove();
+    }
     doc.querySelectorAll('script').forEach(script=>{
       if(!['/legend-public-web.js','/legend-public-cms.js'].some(path=>script.getAttribute('src')?.startsWith(path)))script.remove();
     });
@@ -153,8 +162,13 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     const renderInput=doc.createElement('script');
     renderInput.type='application/json';
     renderInput.id='legend-cms-published-document';
+    const runtimeCollections=dynamicItem
+      ? (input.collections||[]).map(collection=>collection?.id===dynamicItem.collectionId
+          ? {...collection,items:(Array.isArray(collection.items)?collection.items:[]).filter(item=>item?.key===dynamicItem.key)}
+          : collection)
+      : (input.collections||[]);
     renderInput.textContent=JSON.stringify({
-      document:currentDocument,business:input.business,collections:input.collections||[],store:storeContext,dynamicItem,
+      document:currentDocument,business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
       pageKey:renderPageKey,server:false,
       runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal}
     }).replace(/</g,'\\u003c');
