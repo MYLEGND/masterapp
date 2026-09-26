@@ -171,10 +171,9 @@ public sealed class StoreCheckoutController : Controller
         request.Items ??= [];
         var quote = _products.QuoteCart(store.CommerceBusinessId, request.Items, request.DiscountCode);
 
-        // Parfait retains its existing automation authority. Website-scoped stores
-        // use the existing website/CRM authorities and do not receive Parfait-branded automation.
-        if (store.IsParfait)
-            _automations.CaptureCheckoutLead(request, quote);
+        // The canonical automation engine is commerce-business scoped. Every storefront
+        // uses the same workflow authority without crossing tenant data.
+        _automations.CaptureCheckoutLead(store.CommerceBusinessId, request, quote);
 
         return NoContent();
     }
@@ -312,8 +311,7 @@ public sealed class StoreCheckoutController : Controller
 
         var paidOrder = _orders.GetOrder(store.CommerceBusinessId, order.OrderNumber) ?? order;
 
-        if (store.IsParfait)
-            _automations.MarkOrderConverted(paidOrder);
+        _automations.MarkOrderConverted(store.CommerceBusinessId, paidOrder);
 
         try
         {
