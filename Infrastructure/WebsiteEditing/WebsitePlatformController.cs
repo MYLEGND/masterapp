@@ -1779,15 +1779,6 @@ public class WebsitePlatformController : ControllerBase
         return Ok(new { revision = state.Revision, schedule = new { publishUtc = state.ScheduledPublishUtc } });
     }
 
-    [HttpGet("/.well-known/legend-website")]
-    public async Task<IActionResult> DomainProof(CancellationToken cancellationToken = default)
-    {
-        var host = WebsiteRequestHostResolver.Resolve(HttpContext, _configuration);
-        var binding = await _db.Set<WebsiteDomainBinding>().AsNoTracking().SingleOrDefaultAsync(d => d.Hostname == host && d.Status != "removing", cancellationToken);
-        if (binding is null || !await _db.CommerceBusinesses.AnyAsync(b => b.Id == binding.CommerceBusinessId && b.IsActive && b.Status == "Active", cancellationToken)) return NotFound();
-        return Ok(new { businessId = binding.CommerceBusinessId, bindingId = binding.Id });
-    }
-
     private Task<WebsiteEditorTicket?> AuthorizeAsync(string token, CancellationToken cancellationToken) =>
         WebsiteTicketAuthorization.ResolveAsync(_db, _tickets, _configuration, token, cancellationToken);
 
