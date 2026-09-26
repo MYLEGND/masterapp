@@ -534,17 +534,34 @@ public sealed class MetaAdsService : IMetaAdsService
                 var connection = await _marketingConnections.GetAdsAsync(owner, ct);
                 if (connection is not null && !string.IsNullOrWhiteSpace(connection.AccessToken))
                     return (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
+
+                // Agent-only compatibility is intentionally handled below so an
+                // owner-checked encrypted legacy connection can migrate into the
+                // canonical store. Business and Founder scopes must fail closed:
+                // they may never inherit process-global Meta credentials.
+                if (!string.Equals(owner.OwnerType, "agent", StringComparison.OrdinalIgnoreCase))
+                    return (string.Empty, string.Empty);
             }
         }
 
-        // Compatibility fallback only for hosts still completing migration into the
-        // durable MarketingConnectionStore. It is not the canonical owner authority.
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue && scope.AgentTrackingProfileId.Value != Guid.Empty)
+        // Compatibility migration path for an agent-scoped encrypted connection.
+        // This never permits a business/founder to inherit another owner's account.
+        if (scope.ScopeType == ScopeType.Agent &&
+            scope.AgentTrackingProfileId.HasValue &&
+            scope.AgentTrackingProfileId.Value != Guid.Empty)
         {
             var connection = await _connectionStore.GetAsync(scope.AgentTrackingProfileId.Value, ct);
             if (connection != null && !string.IsNullOrWhiteSpace(connection.AccessToken))
                 return (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
+
+            return (string.Empty, string.Empty);
         }
+
+        // A recognized scoped analytics owner without a canonical connection is
+        // explicitly disconnected. Global configuration is reserved for genuinely
+        // unscoped legacy/global callers and cannot satisfy a tenant-scoped request.
+        if (scope.ScopeType == ScopeType.Business || scope.HasSiteScope)
+            return (string.Empty, string.Empty);
 
         var token = (_config["MetaAds:AccessToken"] ?? string.Empty).Trim();
         var accountId = await ResolveAccountIdAsync(scope, ct);
