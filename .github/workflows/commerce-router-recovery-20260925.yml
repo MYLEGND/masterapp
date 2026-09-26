@@ -199,6 +199,9 @@ jobs:
           signed=(-H "X-Legend-Original-Host: $CAMO_HOST" -H "X-Legend-Website-Bridge: $LEGEND_WEBSITE_BRIDGE_SECRET" -H "Cache-Control: no-cache" -H "User-Agent: LEGEND-bridge-diagnostic/1.0")
 
           probe protect_signed_binding "https://masterapp-protect.azurewebsites.net/.well-known/legend-website" "${signed[@]}"
+          probe protect_signed_binding_slash "https://masterapp-protect.azurewebsites.net/.well-known/legend-website/" "${signed[@]}"
+          probe protect_signed_home "https://masterapp-protect.azurewebsites.net/" "${signed[@]}"
+          probe protect_signed_provenance "https://masterapp-protect.azurewebsites.net/api/runtime-provenance" "${signed[@]}"
           probe protect_unsigned_binding "https://masterapp-protect.azurewebsites.net/.well-known/legend-website" -H "Cache-Control: no-cache"
           probe parfait_signed_store "https://masterapp-parfait.azurewebsites.net/store" "${signed[@]}"
           probe parfait_unsigned_store "https://masterapp-parfait.azurewebsites.net/store" -H "Cache-Control: no-cache"
