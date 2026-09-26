@@ -56,7 +56,9 @@ public sealed class CanonicalCrmOutcomeLineageTests
             db,
             NullLogger<MetaSignalCrmOutcomeService>.Instance);
 
+        var issuedRecordId = Guid.NewGuid();
         await service.RecordProductionOutcomeAsync(
+            issuedRecordId,
             "agent-lineage",
             ProductionSide.Lead,
             ProductionStatus.Issued,
@@ -66,7 +68,9 @@ public sealed class CanonicalCrmOutcomeLineageTests
             1200m,
             "issued");
 
+        var paidRecordId = Guid.NewGuid();
         await service.RecordProductionOutcomeAsync(
+            paidRecordId,
             "agent-lineage",
             ProductionSide.Lead,
             ProductionStatus.Paid,
@@ -78,6 +82,7 @@ public sealed class CanonicalCrmOutcomeLineageTests
 
         // Replay must not create a duplicate paid outcome.
         await service.RecordProductionOutcomeAsync(
+            paidRecordId,
             "agent-lineage",
             ProductionSide.Lead,
             ProductionStatus.Paid,
