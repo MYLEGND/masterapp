@@ -1,15 +1,17 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized deployment of the fully validated Website Studio storefront/frame repair. Deploy only Protect, LEGEND Website, and the shared Cloudflare website router. Preserve Portal, ClientApp, Parfait, analytics/Meta authorities, CRM, and all other successful live targets. No duplicate editor/runtime, no override CSS layer, no per-customer hardcoding.",
-  "purpose": "Publish the canonical Website Studio repair: universal horizontal frame containment, profile-owned business-name text with presentation-only editing, Store/cart presentation editing without navigation in edit mode, and first-party /store* plus /commerce/manage/* Worker routing to the existing Parfait commerce authority.",
-  "requestId": "website-studio-store-frame-lock-20260926-r1",
+  "authorization": "Founder authorized failure-forward routing completion after #215 proved Portal, Client, Protect, Parfait, and LEGEND Website live at a8585b03a435f0d9f19d1cf427cebab277ac6779. Preserve those live targets exactly. Deploy only the validated shared Cloudflare website-commerce routing update. No application rebuild, migration, auth mutation, or redeployment.",
+  "purpose": "Complete the Website Studio Store/Manage Store repair by activating first-party /store* and /commerce/manage/* Worker routes. Protect and Parfait are declared because they are the canonical website and commerce origins; their already-live application revisions must remain untouched.",
+  "requestId": "website-studio-store-manager-routing-preserve-live-20260926-r1",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36237501297",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
+    "masterapp-parfait",
     "masterapp-website"
   ],
   "cloudflareWebsiteRouting": true,
   "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": false
+  "preserveLiveTargets": true,
+  "preserveLiveRevision": "a8585b03a435f0d9f19d1cf427cebab277ac6779"
 }
