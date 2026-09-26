@@ -82,6 +82,31 @@ public sealed class AnalyticsCanonicalReconciliationTests
         var conversions = await analytics.GetConversionsAsync(range, scope);
         var leads = await analytics.GetLeadsAsync(range, scope);
         var health = await analytics.GetMarketingHealthAsync(range, scope);
+        var quote = await analytics.GetQuoteFunnelAsync(range, scope);
+        var engagement = await analytics.GetEngagementSummaryAsync(range, scope);
+        var pageEngagement = await analytics.GetPageEngagementAsync(range, scope);
+        var timeOnPage = await analytics.GetTimeOnPageAsync(range, scope);
+        var exits = await analytics.GetExitAnalysisAsync(range, scope);
+        var scroll = await analytics.GetScrollAnalysisAsync(range, scope);
+        var journeys = await analytics.GetJourneyAnalysisAsync(range, scope);
+        var sources = await analytics.GetSourcePerformanceAsync(range, scope);
+        var landingPages = await analytics.GetLandingPagePerformanceAsync(range, scope);
+        var friction = await analytics.GetFormFrictionAsync(range, scope);
+        var abandonment = await analytics.GetFormAbandonmentAsync(range, scope);
+        var devices = await analytics.GetDeviceIntelligenceAsync(range, scope);
+
+        Assert.NotNull(quote);
+        Assert.NotNull(engagement);
+        Assert.NotNull(pageEngagement);
+        Assert.NotNull(timeOnPage);
+        Assert.NotNull(exits);
+        Assert.NotNull(scroll);
+        Assert.NotNull(journeys);
+        Assert.NotNull(sources);
+        Assert.NotNull(landingPages);
+        Assert.NotNull(friction);
+        Assert.NotNull(abandonment);
+        Assert.NotNull(devices);
 
         Assert.Equal(1, summary.PageViews);
         Assert.Equal(1, summary.Sessions);
