@@ -529,36 +529,13 @@ jobs:
           [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)" = "masterapp-parfait.azurewebsites.net" ]
           echo "Shared website routing authority is present in Protect and Parfait without exposing its value."
 
-      - name: Inspect Cloudflare challenge policy for custom hostnames
-        id: cloudflaresecurity
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' }}
+      - name: Audit centralized Cloudflare routing authority
+        id: routingauthority
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          api="https://api.cloudflare.com/client/v4"
-          auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
-
-          echo "Bot Fight Mode:"
-          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/settings/bot_fight_mode" | jq '{success,errors,result}'
-
-          echo "Browser Integrity Check:"
-          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/settings/browser_check" | jq '{success,errors,result}'
-
-          echo "Security Level:"
-          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/settings/security_level" | jq '{success,errors,result}'
-
-          echo "Custom WAF entrypoint:"
-          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/phases/http_request_firewall_custom/entrypoint" \
-            | jq '{success,errors,result:{id:.result.id,name:.result.name,phase:.result.phase,rules:[.result.rules[]? | {id,description,action,enabled,expression,action_parameters}]}}'
-
-          echo "Super Bot Fight Mode entrypoint:"
-          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/phases/http_request_sbfm/entrypoint" \
-            | jq '{success,errors,result:{id:.result.id,name:.result.name,phase:.result.phase,rules:[.result.rules[]? | {id,description,action,enabled,expression,action_parameters}]}}'
-
-          echo "Managed WAF entrypoint:"
-          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/phases/http_request_firewall_managed/entrypoint" \
-            | jq '{success,errors,result:{id:.result.id,name:.result.name,phase:.result.phase,rules:[.result.rules[]? | {id,description,action,enabled,expression,action_parameters}]}}'
-
+          python3 scripts/cloudflare-routing-authority.py audit --prove-cache-purge
 
       - name: Diagnose preserve-live routing origin acceptance
         id: routingorigin
@@ -720,113 +697,17 @@ jobs:
           app-name: masterapp-parfait
           slot-name: Production
           package: /tmp/parfait-publish
-      - name: Preserve public custom hostnames from Browser Integrity challenges
+      - name: Reconcile public custom-hostname Cloudflare policy
         id: routingpolicy
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          api="https://api.cloudflare.com/client/v4"
-          security_token="${CLOUDFLARE_API_TOKEN:-}"
-          if [ -z "$security_token" ]; then
-            echo "::error::Central Cloudflare routing authority is unavailable."
-            exit 1
-          fi
-          echo "::add-mask::$security_token"
-          auth=(-H "Authorization: Bearer $security_token" -H "Content-Type: application/json")
-          expression='not (lower(http.host) eq "mylegnd.com" or ends_with(lower(http.host), ".mylegnd.com"))'
-          ref='legend_public_custom_hostname_disable_bic'
-
-          list_file=/tmp/cf-config-rulesets.json
-          list_status="$(curl --silent --show-error -o "$list_file" -w '%{http_code}' "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets")"
-          [ "$list_status" = 200 ] || {
-            echo "::error::Cloudflare configuration-rules discovery failed with HTTP $list_status."
-            cat "$list_file"
-            exit 1
-          }
-          ruleset_id="$(jq -r '.result[]? | select(.kind=="zone" and .phase=="http_config_settings") | .id' "$list_file" | head -n 1)"
-
-          rule_payload="$(jq -cn --arg expression "$expression" --arg ref "$ref" '{
-            action:"set_config",
-            expression:$expression,
-            description:"LEGEND public custom hostnames: disable Browser Integrity Check only for customer vanity domains",
-            ref:$ref,
-            enabled:true,
-            action_parameters:{bic:false}
-          }')"
-
-          if [ -z "$ruleset_id" ]; then
-            create_payload="$(jq -cn --argjson rule "$rule_payload" '{
-              name:"LEGEND public custom-host configuration",
-              description:"Central Cloudflare configuration authority for LEGEND-managed customer custom hostnames",
-              kind:"zone",
-              phase:"http_config_settings",
-              rules:[$rule]
-            }')"
-            dry_file=/tmp/cf-config-create-dry.json
-            dry_status="$(curl --silent --show-error -o "$dry_file" -w '%{http_code}' --request POST "${auth[@]}" --data "$create_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets?dry_run=true")"
-            if [ "$dry_status" != 200 ] || [ "$(jq -r '.success // false' "$dry_file")" != true ]; then
-              echo "::error::Cloudflare rejected the vanity-domain Browser Integrity configuration during dry-run validation."
-              cat "$dry_file"
-              exit 1
-            fi
-            create_file=/tmp/cf-config-create.json
-            create_status="$(curl --silent --show-error -o "$create_file" -w '%{http_code}' --request POST "${auth[@]}" --data "$create_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets")"
-            if [ "$create_status" != 200 ] || [ "$(jq -r '.success // false' "$create_file")" != true ]; then
-              echo "::error::Cloudflare failed to create the custom-hostname configuration authority."
-              cat "$create_file"
-              exit 1
-            fi
-            ruleset_id="$(jq -r '.result.id' "$create_file")"
-          else
-            current=/tmp/cf-config-current.json
-            curl --fail-with-body --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id" > "$current"
-            rule_id="$(jq -r --arg ref "$ref" '.result.rules[]? | select(.ref==$ref) | .id' "$current" | head -n 1)"
-            if [ -n "$rule_id" ]; then
-              dry_file=/tmp/cf-config-rule-dry.json
-              dry_status="$(curl --silent --show-error -o "$dry_file" -w '%{http_code}' --request PATCH "${auth[@]}" --data "$rule_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id/rules/$rule_id?dry_run=true")"
-              if [ "$dry_status" != 200 ] || [ "$(jq -r '.success // false' "$dry_file")" != true ]; then
-                echo "::error::Cloudflare rejected the existing vanity-domain Browser Integrity rule update during dry-run validation."
-                cat "$dry_file"
-                exit 1
-              fi
-              update_file=/tmp/cf-config-rule-update.json
-              update_status="$(curl --silent --show-error -o "$update_file" -w '%{http_code}' --request PATCH "${auth[@]}" --data "$rule_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id/rules/$rule_id")"
-              if [ "$update_status" != 200 ] || [ "$(jq -r '.success // false' "$update_file")" != true ]; then
-                echo "::error::Cloudflare failed to update the vanity-domain Browser Integrity rule."
-                cat "$update_file"
-                exit 1
-              fi
-            else
-              dry_file=/tmp/cf-config-rule-add-dry.json
-              dry_status="$(curl --silent --show-error -o "$dry_file" -w '%{http_code}' --request POST "${auth[@]}" --data "$rule_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id/rules?dry_run=true")"
-              if [ "$dry_status" != 200 ] || [ "$(jq -r '.success // false' "$dry_file")" != true ]; then
-                echo "::error::Cloudflare rejected the vanity-domain Browser Integrity rule during dry-run validation."
-                cat "$dry_file"
-                exit 1
-              fi
-              add_file=/tmp/cf-config-rule-add.json
-              add_status="$(curl --silent --show-error -o "$add_file" -w '%{http_code}' --request POST "${auth[@]}" --data "$rule_payload" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id/rules")"
-              if [ "$add_status" != 200 ] || [ "$(jq -r '.success // false' "$add_file")" != true ]; then
-                echo "::error::Cloudflare failed to add the vanity-domain Browser Integrity rule."
-                cat "$add_file"
-                exit 1
-              fi
-            fi
-          fi
-
-          verify=/tmp/cf-config-verify.json
-          curl --fail-with-body --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/$ruleset_id" > "$verify"
-          count="$(jq -r --arg ref "$ref" --arg expression "$expression" '[.result.rules[]? | select(.ref==$ref and .enabled==true and .action=="set_config" and .expression==$expression and .action_parameters.bic==false)] | length' "$verify")"
-          [ "$count" = 1 ] || {
-            echo "::error::Cloudflare custom-hostname Browser Integrity authority did not verify exactly once."
-            exit 1
-          }
-          echo "Cloudflare Browser Integrity Check remains zone-managed but is disabled only for non-LEGEND custom hostnames."
+          python3 scripts/cloudflare-routing-authority.py reconcile-bic
 
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && (env.PRESERVE_LIVE_TARGETS != 'true' || steps.routingpolicy.outcome == 'success') && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1074,37 +955,6 @@ jobs:
           fi
           echo "Custom-domain Worker bridge reached the exact LEGEND business binding proof."
 
-      - name: Identify Cloudflare challenge authority
-        id: routingchallenge
-        if: ${{ always() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingdeploy.outcome == 'success' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          security_token="${CLOUDFLARE_API_TOKEN:-}"
-          echo "::add-mask::$security_token"
-          echo "Cloudflare bot-management configuration:"
-          bot_status="$(curl --silent --show-error -o /tmp/cf-bot-management.json -w '%{http_code}' \
-            -H "Authorization: Bearer $security_token" \
-            "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/bot_management")"
-          echo "bot-management HTTP $bot_status"
-          jq '{success,errors,result:{fight_mode:(.result.fight_mode // null),sbfm_definitely_automated:(.result.sbfm_definitely_automated // null),sbfm_likely_automated:(.result.sbfm_likely_automated // null),sbfm_verified_bots:(.result.sbfm_verified_bots // null),sbfm_static_resource_protection:(.result.sbfm_static_resource_protection // null),enable_js:(.result.enable_js // null),stale_zone_configuration:(.result.stale_zone_configuration // null)}}' /tmp/cf-bot-management.json || cat /tmp/cf-bot-management.json
-
-          start="$(date -u -d '15 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
-          end="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          query='query ChallengeEvents($zoneTag: string, $start: Time, $end: Time) { viewer { zones(filter:{zoneTag:$zoneTag}) { firewallEventsAdaptive(filter:{datetime_geq:$start,datetime_leq:$end},limit:100,orderBy:[datetime_DESC]) { action source description clientRequestHTTPHost clientRequestPath datetime userAgent } } } }'
-          jq -cn --arg q "$query" --arg z "$CLOUDFLARE_ZONE_ID" --arg s "$start" --arg e "$end" \
-            '{query:$q,variables:{zoneTag:$z,start:$s,end:$e}}' > /tmp/cf-security-query.json
-          graph_status="$(curl --silent --show-error -o /tmp/cf-security-events.json -w '%{http_code}' \
-            -H "Authorization: Bearer $security_token" \
-            -H "Content-Type: application/json" \
-            --data @/tmp/cf-security-query.json \
-            "https://api.cloudflare.com/client/v4/graphql")"
-          echo "security-events HTTP $graph_status"
-          jq --arg host "$WEBSITE_ROUTING_CANARY" \
-            '{errors,events:[.data.viewer.zones[]?.firewallEventsAdaptive[]? | select(.clientRequestHTTPHost==$host) | {datetime,action,source,description,path:.clientRequestPath,userAgent}]}' \
-            /tmp/cf-security-events.json || cat /tmp/cf-security-events.json
-
       - name: Verify every deployed target and collect all failures
         id: live
         if: ${{ !cancelled() && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && steps.azure.outcome == 'success' && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true' || env.CLIENT_ONLY == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') }}
@@ -1163,6 +1013,8 @@ jobs:
           WEBSITECHECKS: ${{ steps.websitechecks.outcome }}
           ROUTINGCHECKS: ${{ steps.routingchecks.outcome }}
           ROUTINGSECRET: ${{ steps.routingsecret.outcome }}
+          ROUTINGAUTH: ${{ steps.routingauthority.outcome }}
+          ROUTINGPOLICY: ${{ steps.routingpolicy.outcome }}
           ROUTINGDEPLOY: ${{ steps.routingdeploy.outcome }}
           ROUTINGLIVE: ${{ steps.routinglive.outcome }}
           VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
@@ -1178,7 +1030,7 @@ jobs:
           validate_only=os.environ.get('VALIDATE_ONLY')=='true'
           website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
           preserve_live_targets=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
-          routing_steps=['ROUTINGCHECKS','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']
+          routing_steps=['ROUTINGCHECKS','ROUTINGSECRET','ROUTINGAUTH','ROUTINGPOLICY','ROUTINGDEPLOY','ROUTINGLIVE']
           if preserve_live_targets:
               assert not validate_only and website_routing
               required=['BASE','AZURE','LIVE']+routing_steps
