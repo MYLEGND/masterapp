@@ -150,7 +150,10 @@
         enabled: input?.store?.enabled === true,
         navigationLabel: typeof input?.store?.navigationLabel === 'string' && input.store.navigationLabel.trim()
           ? input.store.navigationLabel.trim().slice(0, 40)
-          : 'Store'
+          : 'Store',
+        cartIcon: ['cart','bag','basket'].includes(String(input?.store?.cartIcon || '').toLowerCase())
+          ? String(input.store.cartIcon).toLowerCase()
+          : 'cart'
       },
       pages
     };
@@ -1418,34 +1421,44 @@
     return documentState.store?.enabled === true && storeContext?.enabled === true && !!storeContext?.storefrontUrl;
   }
 
-  function createStoreCartIcon() {
+  function effectiveCartIcon() {
+    const value=String(documentState.store?.cartIcon || storeContext?.cartIcon || 'cart').toLowerCase();
+    return ['cart','bag','basket'].includes(value) ? value : 'cart';
+  }
+
+  function createStoreCartIcon(iconKey=effectiveCartIcon()) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('viewBox','0 0 24 24');
     svg.setAttribute('width','18');
     svg.setAttribute('height','18');
     svg.setAttribute('fill','none');
     svg.setAttribute('aria-hidden','true');
+    svg.classList.add('legend-store-cart-icon');
     svg.style.stroke='currentColor';
     svg.style.strokeWidth='2';
     svg.style.strokeLinecap='round';
     svg.style.strokeLinejoin='round';
-    const path = document.createElementNS(svg.namespaceURI,'path');
-    path.setAttribute('d','M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3');
-    const first = document.createElementNS(svg.namespaceURI,'circle'); first.setAttribute('cx','9.8'); first.setAttribute('cy','20'); first.setAttribute('r','1.2');
-    const second = document.createElementNS(svg.namespaceURI,'circle'); second.setAttribute('cx','17.6'); second.setAttribute('cy','20'); second.setAttribute('r','1.2');
-    svg.append(path,first,second);
-    return svg;
-  }
 
-  function storeInsertionPoint(nav) {
-    const links=[...nav.querySelectorAll(':scope > a')];
-    if (SITE_KEY === 'business') {
-      const contact=links.find(link => /\bcontact\b/i.test(link.textContent || '') || /\/contact\/?$/i.test(link.getAttribute('href') || ''));
-      return contact?.nextSibling || null;
+    const addPath = d => {
+      const path=document.createElementNS(svg.namespaceURI,'path');
+      path.setAttribute('d',d);
+      svg.appendChild(path);
+    };
+    if (iconKey === 'bag') {
+      addPath('M5 8h14l-1 12H6L5 8Z');
+      addPath('M9 8a3 3 0 0 1 6 0');
+    } else if (iconKey === 'basket') {
+      addPath('M4 10h16l-1.5 10h-13L4 10Z');
+      addPath('M8 10l4-6 4 6');
+      addPath('M9 13v4M12 13v4M15 13v4');
+    } else {
+      // Default is exactly Parfait's canonical public cart glyph.
+      addPath('M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3');
+      const first = document.createElementNS(svg.namespaceURI,'circle'); first.setAttribute('cx','9.8'); first.setAttribute('cy','20'); first.setAttribute('r','1.2');
+      const second = document.createElementNS(svg.namespaceURI,'circle'); second.setAttribute('cx','17.6'); second.setAttribute('cy','20'); second.setAttribute('r','1.2');
+      svg.append(first,second);
     }
-    return links.find(link => /client login|legacy protection/i.test(link.textContent || ''))
-      || links.find(link => link.classList.contains('nav-cta'))
-      || null;
+    return svg;
   }
 
   function applyStoreNavigation() {
@@ -1453,6 +1466,11 @@
     if (!storeIsEnabled()) return;
     const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
+
+    const cluster=document.createElement('span');
+    cluster.className='legend-store-nav-cluster';
+    cluster.dataset.legendStoreNav='cluster';
+    cluster.dataset.cmsLocked='true';
 
     const store=document.createElement('a');
     store.href=storeContext.storefrontUrl;
@@ -1473,10 +1491,15 @@
     cart.classList.add('legend-store-cart');
     cart.setAttribute('aria-label','Shopping cart');
     cart.appendChild(createStoreCartIcon());
+    const count=document.createElement('span');
+    count.className='pf-cart-count';
+    count.id='pfStoreCartCount';
+    count.textContent='0';
+    count.setAttribute('aria-hidden','true');
+    cart.appendChild(count);
 
-    const point=storeInsertionPoint(nav);
-    nav.insertBefore(store,point);
-    nav.insertBefore(cart,point);
+    cluster.append(store,cart);
+    nav.appendChild(cluster);
   }
 
   function templatePageEntries() {
@@ -1631,37 +1654,54 @@
     action.id='legend-cms-store-toggle';
     action.textContent=enabled?'Remove Store':'Add Store';
     action.addEventListener('click',()=>void updateStore(!enabled));
-    host.appendChild(action);
-
     if (!enabled) {
+      host.appendChild(action);
       const help=document.createElement('small');
       help.textContent='Adds one scoped Store page, Store/Shop navigation, cart, product catalog and centralized checkout. Products remain preserved if the Store page is later removed.';
       host.appendChild(help);
       return;
     }
 
+    const settings=document.createElement('div');
+    settings.className='legend-cms-store-settings';
+
     const label=document.createElement('label');
-    label.textContent='Store navigation name';
+    label.textContent='Navigation name';
     const input=document.createElement('input');
     input.id='legend-cms-store-label';
     input.type='text';
     input.maxLength=40;
     input.value=effectiveStoreLabel();
     input.placeholder='Store or Shop';
-    input.addEventListener('change',()=>void updateStore(true,input.value));
+    input.addEventListener('change',()=>void updateStore(true,input.value,effectiveCartIcon()));
     label.appendChild(input);
-    host.appendChild(label);
 
+    const iconLabel=document.createElement('label');
+    iconLabel.textContent='Cart icon';
+    const icon=document.createElement('select');
+    icon.id='legend-cms-store-cart-icon';
+    for(const [value,text] of [['cart','Cart · Parfait'],['bag','Shopping bag'],['basket','Basket']]) {
+      const option=document.createElement('option'); option.value=value; option.textContent=text; icon.appendChild(option);
+    }
+    icon.value=effectiveCartIcon();
+    icon.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),icon.value));
+    iconLabel.appendChild(icon);
+    settings.append(label,iconLabel);
+    host.appendChild(settings);
+
+    const actions=document.createElement('div');
+    actions.className='legend-cms-store-actions';
     const manage=document.createElement('button');
     manage.type='button';
     manage.id='legend-cms-manage-store';
-    manage.textContent='Manage Store';
+    manage.textContent='Manage products';
     manage.disabled=!storeContext?.managerUrl;
     manage.addEventListener('click',openStoreManager);
-    host.appendChild(manage);
+    actions.append(action,manage);
+    host.insertBefore(actions,settings);
   }
 
-  async function updateStore(enabled,labelValue=null) {
+  async function updateStore(enabled,labelValue=null,cartIconValue=null) {
     if (!editorMode || saving) return;
     const status=document.getElementById('legend-cms-status');
     if(status) status.textContent=enabled?'Setting up your store…':'Removing Store page…';
@@ -1669,7 +1709,7 @@
       const response=await fetch(`${API_BASE}/api/website-content/manage/store/${enabled?'enable':'remove'}`,{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel()})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel(),cartIcon:cartIconValue || effectiveCartIcon()})
       });
       const payload=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(payload.message || payload.error || `Store update failed (${response.status})`);
@@ -2059,8 +2099,8 @@
     if (directGesture) positionGridOverlay(directGesture.section);
   }
 
-  function lockMobilePreviewHorizontalScroll() {
-    if (!editorPreview || window.innerWidth > 800 || editorPreview.scrollLeft === 0) return;
+  function lockPreviewHorizontalScroll() {
+    if (!editorPreview || editorPreview.scrollLeft === 0) return;
     editorPreview.scrollLeft = 0;
   }
 
@@ -2210,14 +2250,14 @@
     window.addEventListener('pointerup', finishGesture);
     window.addEventListener('pointercancel', finishGesture);
     preview.addEventListener('scroll', () => {
-      lockMobilePreviewHorizontalScroll();
+      lockPreviewHorizontalScroll();
       updateDirectCanvasUi();
     }, { passive: true });
     window.addEventListener('resize', () => {
-      lockMobilePreviewHorizontalScroll();
+      lockPreviewHorizontalScroll();
       refreshResponsiveOverrides();
     });
-    lockMobilePreviewHorizontalScroll();
+    lockPreviewHorizontalScroll();
     updateDirectCanvasUi();
   }
 
@@ -3668,7 +3708,8 @@
       .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-move-handle,
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-edge-handle{display:none!important;pointer-events:none!important}
-      .legend-cms-store-controls{display:grid;gap:8px;padding:10px;border:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 52%,transparent);border-radius:12px;background:color-mix(in srgb,var(--web-surface,#fff) 92%,var(--web-gold,#d4ad45) 8%)}
+      .legend-cms-store-controls{display:grid;gap:8px;padding:9px;border:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 60%,transparent);border-radius:10px;background:color-mix(in srgb,var(--web-navy,#081a3a) 88%,transparent);color:var(--web-surface,#fff)}
+      .legend-cms-store-settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px}.legend-cms-store-settings label{display:grid;gap:5px;margin:0;font-size:11px;font-weight:800;color:var(--web-gold,#d4ad45)}.legend-cms-store-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.legend-cms-store-actions button{min-height:34px!important;padding:7px 9px!important;border-color:color-mix(in srgb,var(--web-gold,#d4ad45) 62%,transparent)!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 84%,var(--web-gold,#d4ad45) 16%)!important;color:var(--web-surface,#fff)!important}.legend-cms-store-controls input,.legend-cms-store-controls select{min-height:34px!important;padding:6px 8px!important;border-color:color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent)!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 90%,transparent)!important;color:var(--web-surface,#fff)!important}
       .legend-cms-store-preview{position:absolute!important;inset:0!important;z-index:2147482400!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;background:var(--web-surface,#fff)!important;color:var(--web-ink,#101a35)!important;pointer-events:auto!important}
       .legend-cms-store-preview[hidden]{display:none!important}.legend-cms-store-preview-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 50%,transparent);background:var(--web-surface,#fff)}.legend-cms-store-preview-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
       .legend-cms-store-manager{position:fixed!important;inset:0!important;z-index:2147483640!important;display:grid!important;place-items:center!important;padding:2vmin!important;background:#0009!important;pointer-events:auto!important}.legend-cms-store-manager[hidden]{display:none!important}.legend-cms-store-manager-shell{width:min(98vw,1600px);height:96dvh;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border-radius:16px;background:var(--web-surface,#fff);box-shadow:0 24px 70px #0008}.legend-cms-store-manager-top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent);color:var(--web-ink,#101a35)}.legend-cms-store-manager-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
@@ -3682,7 +3723,7 @@
       .legend-cms-edge-handle:hover{background:#d4ad451f!important}
       body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
       body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
-      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;position:relative;transform:translateZ(0)}
+      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0)}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
@@ -3715,6 +3756,7 @@
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
+      .legend-store-nav-cluster{display:flex;align-items:center;gap:clamp(8px,1vw,14px);margin-left:auto;flex:0 0 auto;white-space:nowrap}.legend-store-nav-cluster>a{display:inline-flex;align-items:center;justify-content:center}.legend-store-cart{position:relative}.legend-store-cart .pf-cart-count{position:absolute;right:-8px;top:-8px;display:grid;place-items:center;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--web-gold,#d4ad45);color:var(--web-navy-deep,#07152d);font:800 10px/1 Inter,system-ui,sans-serif}.legend-store-cart-icon{display:block}
       @media(max-width:800px){html{max-width:100%;overflow-x:hidden}body.legend-cms-editing{width:100%;max-width:100%;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr);overflow-x:hidden}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-preview{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}.legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}.legend-cms-panel{width:100%;max-width:100%;min-width:0;overflow-x:hidden;border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
     `;
     document.head.appendChild(style);
