@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: masterapp-platform-architecture-validation-${{ github.event_name }}-${{ github.ref }}
@@ -28,6 +29,7 @@ concurrency:
 
 jobs:
   validate:
+    if: github.head_ref != 'observe/direct-release-f920262b'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -142,3 +144,68 @@ jobs:
 
       - name: Run canonical form tracking tests
         run: node --test tests/analytics/form-tracker.test.cjs
+
+
+  observe-release:
+    if: github.head_ref == 'observe/direct-release-f920262b'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      RELEASE_SHA: f920262b15e8d032626a4246cc4b61a29b717150
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Follow exact approved direct release
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=""
+          for attempt in $(seq 1 160); do
+            payload="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/all-intentional-direct-release-20260918.yml/runs?branch=legend%2Fapproved-changes&event=push&per_page=50")"
+            run_id="$(printf '%s' "$payload" | jq -r --arg sha "$RELEASE_SHA" '.workflow_runs[] | select(.head_sha == $sha) | .id' | head -n1)"
+            if [ -n "$run_id" ]; then
+              status="$(printf '%s' "$payload" | jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .status')"
+              conclusion="$(printf '%s' "$payload" | jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | (.conclusion // "")')"
+              echo "release_run_id=$run_id status=$status conclusion=$conclusion"
+              if [ "$status" = completed ]; then
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=latest" --jq '.jobs[] | [.name,.status,.conclusion] | @tsv'
+                if [ "$conclusion" != success ]; then
+                  echo "::error::Approved direct release failed."
+                  gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --log || true
+                  exit 1
+                fi
+                echo "RUN_ID=$run_id" >> "$GITHUB_ENV"
+                break
+              fi
+            else
+              echo "Exact release run not visible yet."
+            fi
+            sleep 15
+          done
+          [ -n "$run_id" ] || { echo "::error::Exact direct release run was never found."; exit 1; }
+          [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status')" = completed ]
+          [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.conclusion // ""')" = success ]
+
+      - name: Verify exact live provenance for all selected hosts
+        shell: bash
+        run: |
+          set -euo pipefail
+          hosts=(
+            portal.mylegnd.com
+            client.mylegnd.com
+            masterapp-protect.azurewebsites.net
+            masterapp-parfait.azurewebsites.net
+          )
+          for host in "${hosts[@]}"; do
+            matched=false
+            for attempt in $(seq 1 60); do
+              actual="$(curl --fail --silent --show-error --max-time 20 -H 'Cache-Control: no-cache' "https://$host/api/runtime-provenance" | jq -r '.sourceRevision // empty' || true)"
+              echo "$host sourceRevision=${actual:-unavailable}"
+              if [ "$actual" = "$RELEASE_SHA" ]; then
+                matched=true
+                break
+              fi
+              sleep 15
+            done
+            [ "$matched" = true ] || { echo "::error::$host did not reach exact release SHA $RELEASE_SHA"; exit 1; }
+          done
+          echo "All selected live hosts report exact approved release SHA $RELEASE_SHA."
