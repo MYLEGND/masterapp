@@ -5,6 +5,11 @@ on:
     branches: [diagnose/camo-domain-proof-20260926]
     paths:
       - '.github/workflows/domain-proof-diagnostic.yml'
+  pull_request:
+    branches: [legend/approved-changes]
+    paths:
+      - '.github/workflows/domain-proof-diagnostic.yml'
+      - 'scripts/DomainReleaseRefresh/**'
 
 permissions:
   contents: read
@@ -12,7 +17,7 @@ permissions:
 
 jobs:
   inspect:
-    if: github.ref == 'refs/heads/diagnose/camo-domain-proof-20260926'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/diagnose/camo-domain-proof-20260926'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: Production
