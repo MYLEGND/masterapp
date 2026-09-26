@@ -1,16 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the fully validated canonical website analytics repair for direct release after #228. Supersede the accidental broad automatic #230. Deploy only AgentPortal and Protect; do not deploy ClientApp, Parfait, or LEGEND Website.",
-  "purpose": "Release the canonical analytics ingestion, scoped reporting, Meta bridge recovery, and live dashboard synchronization repair validated on architecture run 299. Replace the accidental broad automatic dispatch with this exact scoped release and fail forward from any concrete failed step.",
-  "requestId": "canonical-live-analytics-repair-20260926-r2",
+  "authorization": "Founder authorized completion of the canonical website analytics repair for ClientApp after the scoped AgentPortal + Protect release. Do not restart or redeploy AgentPortal or Protect. Deploy ClientApp only so business-scoped Website Analytics consumes the same canonical shared analytics assemblies and linked WebsiteAnalytics UI.",
+  "purpose": "Complete canonical analytics runtime parity for business clients. ClientApp hosts BusinessWorkspaceController over the shared BusinessWorkspaceControllerBase/BusinessWorkspaceService and links AgentPortal WebsiteAnalytics views and scripts, so it must receive the validated shared analytics changes without redeploying already-completed targets.",
+  "requestId": "canonical-live-analytics-clientapp-completion-20260926-r1",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36273622780",
-  "queueBehindRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36271963486",
+  "queueBehindRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36275708976",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-protect"
+    "masterapp-client"
   ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "supersedesRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36275526793"
+  "preserveLiveTargets": false
 }
