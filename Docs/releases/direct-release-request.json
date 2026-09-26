@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested the fully certified centralized analytics, Meta, lead ownership, CRM, notification, booking, and Parfait architecture completion be deployed through the approved direct release lane after the Risk Assessment retry gate repair. Deploy only the repository-approved affected application scope required for this shared release: Portal, ClientApp companion, Protect, and Parfait. Preserve LEGEND Website and Cloudflare routing.",
-  "purpose": "Deploy the exact post-baseline-sync architecture candidate after full green validation and verify live analytics ingestion, owner-scoped persistence, dashboards, Meta signal dispatch, lead/CRM capture, and durable advisor notification state end to end.",
-  "requestId": "analytics-meta-architecture-live-proof-20260925-2129",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36217714092",
+  "authorization": "Founder explicitly requested the completed full scoped Parfait commerce experience be deployed directly through legend/approved-changes after full isolated validation. Deploy only the affected shared runtime scope: Portal, ClientApp companion, Protect, and Parfait, plus the existing shared Cloudflare business website router required to make custom-domain /store routes live. No LEGEND Website rebuild and no unrelated targets.",
+  "purpose": "Deploy the centralized single-source commerce completion: canonical Parfait Dashboard/Products/Orders/Automations/Analytics UI, owner-scoped Business/Agent/Founder analytics, one MarketingConnectionStore and MarketingMetaAdsOAuthService authority, one Pixel/CAPI/Meta signal pipeline, scoped customer automation, shared editor-ticket authority, and custom-domain storefront routing. Verify camoexterior.com only as the live external routing canary; no CAMO-specific application logic.",
+  "requestId": "scoped-parfait-commerce-single-authority-live-proof-20260925",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36218166686",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
@@ -11,6 +11,7 @@
     "masterapp-protect",
     "masterapp-parfait"
   ],
-  "cloudflareWebsiteRouting": false,
+  "cloudflareWebsiteRouting": true,
+  "websiteRoutingCanaryHost": "camoexterior.com",
   "preserveLiveTargets": false
 }
