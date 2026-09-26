@@ -13,6 +13,20 @@ internal static class AnalyticsScopeQueryExtensions
             return scope.CommerceBusinessId is { } businessId && businessId != Guid.Empty && !scope.AgentTrackingProfileId.HasValue
                 ? query.Where(x => x.CommerceBusinessId == businessId && x.AgentTrackingProfileId == null)
                 : query.Where(x => false);
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (scope.CommerceBusinessId.HasValue || !scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)
+                return query.Where(x => false);
+
+            var founderId = scope.AgentTrackingProfileId.Value;
+            const string legendSiteMarker = "\"siteKey\":\"legend\"";
+            const string founderOwnerMarker = "\"reportingOwner\":\"founder\"";
+            return query.Where(x =>
+                x.CommerceBusinessId == null &&
+                (x.AgentTrackingProfileId == founderId ||
+                 (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
+                  (x.MetadataJson.Contains(legendSiteMarker) || x.MetadataJson.Contains(founderOwnerMarker)))));
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return query.Where(x => false);
@@ -52,6 +66,20 @@ internal static class AnalyticsScopeQueryExtensions
             return scope.CommerceBusinessId is { } businessId && businessId != Guid.Empty && !scope.AgentTrackingProfileId.HasValue
                 ? query.Where(x => x.CommerceBusinessId == businessId && x.AgentTrackingProfileId == null)
                 : query.Where(x => false);
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (scope.CommerceBusinessId.HasValue || !scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)
+                return query.Where(x => false);
+
+            var founderId = scope.AgentTrackingProfileId.Value;
+            const string legendSiteMarker = "\"siteKey\":\"legend\"";
+            const string founderOwnerMarker = "\"reportingOwner\":\"founder\"";
+            return query.Where(x =>
+                x.CommerceBusinessId == null &&
+                (x.AgentTrackingProfileId == founderId ||
+                 (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
+                  (x.MetadataJson.Contains(legendSiteMarker) || x.MetadataJson.Contains(founderOwnerMarker)))));
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return query.Where(x => false);
