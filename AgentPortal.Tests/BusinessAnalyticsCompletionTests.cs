@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Domain.Entities;
 using Infrastructure.Analytics;
 using Microsoft.AspNetCore.DataProtection;
@@ -135,6 +137,74 @@ public sealed class BusinessAnalyticsCompletionTests
             MarketingOwnerScope.Business(Guid.NewGuid()),
             "https://evil.example/",
             "https://client.example.com/business/callback"));
+    }
+
+
+    [Fact]
+    public void ProductionAnalyticsAndMetaHaveSingleWriteAndRuntimeAuthorities()
+    {
+        var root = RepoRoot();
+        var productionRoots = new[]
+        {
+            "AgentPortal",
+            "ClientApp",
+            "Infrastructure",
+            "Protect-Website",
+            "ParfaitApp",
+            "SHARED"
+        };
+
+        var analyticsAdd = new Regex(@"\bAnalyticsEvents\s*\.\s*Add(?:Range)?\s*\(", RegexOptions.CultureInvariant);
+        var metaAdd = new Regex(@"\bMetaSignalEvents\s*\.\s*Add(?:Range)?\s*\(", RegexOptions.CultureInvariant);
+        var analyticsCtor = new Regex(@"\bnew\s+AnalyticsEvent\s*(?:\{|\()", RegexOptions.CultureInvariant);
+        var metaCtor = new Regex(@"\bnew\s+MetaSignalEvent\s*(?:\{|\()", RegexOptions.CultureInvariant);
+
+        foreach (var sourceRoot in productionRoots)
+        {
+            var directory = Path.Combine(root, sourceRoot);
+            if (!Directory.Exists(directory)) continue;
+
+            foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+            {
+                var normalized = file.Replace('\\', '/');
+                if (normalized.Contains("/bin/", StringComparison.OrdinalIgnoreCase) ||
+                    normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
+                    normalized.Contains("/Migrations/", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var text = File.ReadAllText(file);
+                var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
+
+                if (analyticsAdd.IsMatch(text))
+                    Assert.Equal("Infrastructure/Analytics/UnifiedAnalyticsWriter.cs", relative);
+
+                if (metaAdd.IsMatch(text))
+                    Assert.Equal("Infrastructure/Analytics/UnifiedMetaSignalWriter.cs", relative);
+
+                if (analyticsCtor.IsMatch(text))
+                    Assert.Equal("Infrastructure/Analytics/UnifiedEventMapper.cs", relative);
+
+                if (metaCtor.IsMatch(text))
+                    Assert.Equal("Infrastructure/Analytics/UnifiedEventMapper.cs", relative);
+
+                Assert.DoesNotContain("ParfaitMetaSignalBridgeService", text, StringComparison.Ordinal);
+            }
+        }
+
+        var protectTrackingCopy = Path.Combine(root, "Protect-Website", "wwwroot", "js", "tracking.js");
+        var protectMetaCopy = Path.Combine(root, "Protect-Website", "wwwroot", "js", "meta-signal-intelligence.js");
+        Assert.False(File.Exists(protectTrackingCopy), "Protect must link the shared tracking runtime, not keep a competing local copy.");
+        Assert.False(File.Exists(protectMetaCopy), "Protect must link the shared Meta runtime, not keep a competing local copy.");
+
+        var protectProject = File.ReadAllText(Path.Combine(root, "Protect-Website", "ProtectWebsite.csproj"));
+        Assert.Contains(@"..\SHARED\WebsitePlatform\tracking.js", protectProject, StringComparison.Ordinal);
+        Assert.Contains(@"Link=""wwwroot\js\tracking.js""", protectProject, StringComparison.Ordinal);
+        Assert.Contains(@"..\SHARED\WebsitePlatform\meta-signal-intelligence.js", protectProject, StringComparison.Ordinal);
+        Assert.Contains(@"Link=""wwwroot\js\meta-signal-intelligence.js""", protectProject, StringComparison.Ordinal);
+
+        var legendBuild = File.ReadAllText(Path.Combine(root, "Legend-Website", "scripts", "build.mjs"));
+        Assert.Contains("SHARED/WebsitePlatform/tracking.js", legendBuild.Replace('\\', '/'), StringComparison.Ordinal);
+        Assert.Contains("SHARED/WebsitePlatform/meta-signal-intelligence.js", legendBuild.Replace('\\', '/'), StringComparison.Ordinal);
     }
 
     private static AnalyticsEvent Event(Guid businessId, DateTime utc, string sessionId, string elementKey, string label) => new()
