@@ -1171,6 +1171,21 @@
       el = document.createElement('section');
       if (editable) el.dataset.cmsSection = `extra:${extra.id}`;
       el.className = 'cms-extra cms-extra-section';
+      if (extra.templateSectionId) {
+        const template=document.querySelector(`[data-cms-section="${CSS.escape(extra.templateSectionId)}"]:not(.cms-extra-section)`);
+        if (template) {
+          el.className=['cms-extra','cms-extra-section',...template.classList].filter((value,index,array)=>value && array.indexOf(value)===index).join(' ');
+          el.innerHTML=template.innerHTML;
+          let childIndex=0;
+          el.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article').forEach(child=>{
+            if (!canEditElement(child)) return;
+            if (!['IMG','VIDEO','A','DIV','ARTICLE'].includes(child.tagName) && child.children.length>0) return;
+            child.dataset.cmsId = `extra:${extra.id}:node:${++childIndex}`;
+            child.dataset.cmsEditable='true';
+            rememberOriginal(child);
+          });
+        }
+      }
     } else if (extra.type === 'video') {
       el = document.createElement('video'); el.controls = true; el.preload = 'metadata';
       if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
@@ -1443,10 +1458,53 @@
     refreshLayers();
   }
 
+  function applyBusinessPageNavigation() {
+    if (SITE_KEY !== 'business') return;
+    const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
+    if (!nav) return;
+
+    // The rendered template nav is the baseline catalog in server/public renders.
+    // Overlay the versioned document page metadata and custom pages onto that one
+    // list so custom routes join the banner without erasing template routes.
+    const entries=new Map();
+    [...nav.querySelectorAll('a:not([data-legend-store-nav])')].forEach((node,index)=>{
+      const route=normalizePageRoute(new URL(node.getAttribute('href') || '/',location.origin).pathname);
+      if (!route) return;
+      entries.set(route,{
+        route,
+        label:(node.textContent || route).trim(),
+        showInNavigation:true,
+        parentPath:null,
+        order:index*10
+      });
+    });
+    for (const entry of websitePageEntries(false)) {
+      const previous=entries.get(entry.route);
+      entries.set(entry.route,{...previous,...entry});
+    }
+
+    nav.querySelectorAll('a:not([data-legend-store-nav])').forEach(node=>node.remove());
+    const current=currentPageRoute();
+    [...entries.values()]
+      .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
+      .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route))
+      .forEach(entry=>{
+        const link=document.createElement('a');
+        link.href=entry.route;
+        link.textContent=entry.label;
+        link.dataset.legendPageNav='true';
+        link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
+        link.dataset.cmsLocked='true';
+        if (entry.route===current) link.setAttribute('aria-current','page');
+        nav.appendChild(link);
+      });
+  }
+
   function applyDocument(doc) {
     documentState = normalizeDocument(doc);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
+    applyBusinessPageNavigation();
     applyStoreNavigation();
     const metadata = pageState();
     document.title = metadata.title ?? originalTitle;
@@ -1456,6 +1514,12 @@
     document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
     pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
     pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
+    // Shared shell overrides are document-global and always apply before the
+    // current page's local element map.
+    Object.entries(documentState.elements || {}).forEach(([id, override]) => {
+      const el = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
+      applyElementOverride(el, override);
+    });
     // Composite children do not exist until their parent extra is rendered.
     // Re-apply the one canonical page element map after extras exist.
     Object.entries(pageState().elements).forEach(([id, override]) => {
