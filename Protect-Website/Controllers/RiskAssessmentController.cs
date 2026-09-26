@@ -60,24 +60,19 @@ namespace Protect_Website.Controllers
             try
             {
                 var ct = HttpContext.RequestAborted;
-                var trackingProfile = HttpContext.Items["TrackingProfile"] as AgentTrackingProfile;
                 var requestedSlug = Request.Form["AgentSlug"].FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(requestedSlug))
+                var ownership = await WebsiteLeadOwnerAuthority.ResolveAsync(
+                    HttpContext,
+                    _resolver,
+                    recipientEmail,
+                    requestedSlug,
+                    ct);
+                if (!string.IsNullOrWhiteSpace(requestedSlug) && ownership.ExplicitSlugInvalid)
                 {
-                    var resolved = await _resolver.ResolveBySlugAsync(requestedSlug, ct);
-                    if (!resolved.Found || resolved.Profile == null)
-                    {
-                        ModelState.AddModelError("", "The advisor link is no longer available.");
-                        return View("~/Views/RiskAssessment/Index.cshtml", model);
-                    }
-                    trackingProfile = resolved.Profile;
+                    ModelState.AddModelError("", "The advisor link is no longer available.");
+                    return View("~/Views/RiskAssessment/Index.cshtml", model);
                 }
-                if (trackingProfile == null && !string.IsNullOrWhiteSpace(recipientEmail))
-                {
-                    var fallback = await _resolver.ResolveByUpnAsync(recipientEmail, ct);
-                    trackingProfile = fallback.Profile;
-                }
-                var recipient = trackingProfile?.AgentUpn ?? recipientEmail;
+                var recipient = ownership.RecipientEmail;
                 var lead = new WebsiteLead
                 {
                     LeadId = Guid.NewGuid(), FirstName = model.FirstName.Trim(), LastName = model.LastName.Trim(),
@@ -85,7 +80,7 @@ namespace Protect_Website.Controllers
                     SourcePageKey = "risk_assessment", TermsAccepted = true,
                     MarketingEmailConsent = model.AcknowledgedDisclaimer,
                     CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
-                    AgentTrackingProfileId = trackingProfile?.Id, AgentSlug = trackingProfile?.Slug,
+                    AgentTrackingProfileId = ownership.AgentProfileId, AgentSlug = ownership.AgentSlug,
                     SessionId = Request.Form["SessionId"].FirstOrDefault(), VisitorId = Request.Form["VisitorId"].FirstOrDefault(),
                     UtmSource = Request.Form["UtmSource"].FirstOrDefault(), UtmMedium = Request.Form["UtmMedium"].FirstOrDefault(),
                     UtmCampaign = Request.Form["UtmCampaign"].FirstOrDefault(),
