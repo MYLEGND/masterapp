@@ -21,7 +21,6 @@ public sealed class StoreCheckoutController : Controller
     private readonly IParfaitAnalyticsService _analytics;
     private readonly CommerceSignalService? _commerceSignals;
     private readonly CommerceStoreContextService? _stores;
-    private readonly ParfaitMetaSignalBridgeService? _legacyMetaSignalBridge;
     private readonly bool _legacyCompatibility;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
@@ -57,7 +56,7 @@ public sealed class StoreCheckoutController : Controller
         IBillingOrchestrator billingOrchestrator,
         IGraphMailService mail,
         IParfaitAnalyticsService analytics,
-        ParfaitMetaSignalBridgeService metaSignalBridge)
+        CommerceSignalService commerceSignals)
     {
         _squareOptions = squareOptions;
         _products = products;
@@ -66,7 +65,7 @@ public sealed class StoreCheckoutController : Controller
         _billingOrchestrator = billingOrchestrator;
         _mail = mail;
         _analytics = analytics;
-        _legacyMetaSignalBridge = metaSignalBridge;
+        _commerceSignals = commerceSignals;
         _legacyCompatibility = true;
     }
 
@@ -339,22 +338,15 @@ public sealed class StoreCheckoutController : Controller
 
         try
         {
-            if (_commerceSignals is not null)
-            {
-                await _commerceSignals.RecordAsync(
-                    "Purchase",
-                    paidOrder.OrderNumber,
-                    signalContext,
-                    firstItem is null ? null : ProductSignal(firstItem),
-                    CustomerSignal(request.Customer),
-                    paidOrder.OrderNumber,
-                    validatedItems.Select(ProductSignal).ToArray(),
-                    ct);
-            }
-            else if (_legacyMetaSignalBridge is not null)
-            {
-                await _legacyMetaSignalBridge.RecordPurchaseAsync(paidOrder, HttpContext, ct);
-            }
+            await _commerceSignals!.RecordAsync(
+                "Purchase",
+                paidOrder.OrderNumber,
+                signalContext,
+                firstItem is null ? null : ProductSignal(firstItem),
+                CustomerSignal(request.Customer),
+                paidOrder.OrderNumber,
+                validatedItems.Select(ProductSignal).ToArray(),
+                ct);
         }
         catch
         {
