@@ -975,11 +975,15 @@ jobs:
         if: ${{ always() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingdeploy.outcome == 'success' }}
         continue-on-error: true
         shell: bash
+        env:
+          CLOUDFLARE_SECURITY_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
+          security_token="${CLOUDFLARE_SECURITY_API_TOKEN:-$CLOUDFLARE_API_TOKEN}"
+          echo "::add-mask::$security_token"
           echo "Cloudflare bot-management configuration:"
           bot_status="$(curl --silent --show-error -o /tmp/cf-bot-management.json -w '%{http_code}' \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Authorization: Bearer $security_token" \
             "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/bot_management")"
           echo "bot-management HTTP $bot_status"
           jq '{success,errors,result:{fight_mode:(.result.fight_mode // null),sbfm_definitely_automated:(.result.sbfm_definitely_automated // null),sbfm_likely_automated:(.result.sbfm_likely_automated // null),sbfm_verified_bots:(.result.sbfm_verified_bots // null),sbfm_static_resource_protection:(.result.sbfm_static_resource_protection // null),enable_js:(.result.enable_js // null),stale_zone_configuration:(.result.stale_zone_configuration // null)}}' /tmp/cf-bot-management.json || cat /tmp/cf-bot-management.json
@@ -990,7 +994,7 @@ jobs:
           jq -cn --arg q "$query" --arg z "$CLOUDFLARE_ZONE_ID" --arg s "$start" --arg e "$end" \
             '{query:$q,variables:{zoneTag:$z,start:$s,end:$e}}' > /tmp/cf-security-query.json
           graph_status="$(curl --silent --show-error -o /tmp/cf-security-events.json -w '%{http_code}' \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Authorization: Bearer $security_token" \
             -H "Content-Type: application/json" \
             --data @/tmp/cf-security-query.json \
             "https://api.cloudflare.com/client/v4/graphql")"
