@@ -1327,7 +1327,7 @@ test('mobile runtime clamps inherited desktop geometry and contains every page s
   }finally{f.close();}
 });
 
-test('mobile editor preview is horizontally locked to the viewport and cannot pan into blank canvas space',async()=>{
+test('editor preview is horizontally locked to the rendered website at every breakpoint',async()=>{
   const f=await domFixture({viewportWidth:390});
   try{
     const preview=f.w.document.querySelector('.legend-cms-preview');
@@ -1340,13 +1340,27 @@ test('mobile editor preview is horizontally locked to the viewport and cannot pa
     f.w.innerWidth=1200;
     preview.scrollLeft=60;
     preview.dispatchEvent(new f.w.Event('scroll'));
-    assert.equal(preview.scrollLeft,60);
-    f.w.innerWidth=390;
+    assert.equal(preview.scrollLeft,0);
     f.w.dispatchEvent(new f.w.Event('resize'));
     assert.equal(preview.scrollLeft,0);
-    assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:hidden/);
-    assert.match(source,/@media\(max-width:800px\)[\s\S]*touch-action:pan-y/);
+    assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:hidden;[^}]*touch-action:pan-y pinch-zoom/);
+    assert.doesNotMatch(source,/window\.innerWidth > 800/);
   }finally{f.close();}
+});
+
+test('store navigation is one far-right website-owned cluster and defaults to the exact Parfait cart glyph',()=>{
+  assert.match(source,/cluster\.className='legend-store-nav-cluster'/);
+  assert.match(source,/cluster\.append\(store,cart\);\s*nav\.appendChild\(cluster\)/);
+  assert.match(source,/M6\.5 6\.5h15l-1\.8 8\.2a2 2 0 0 1-2 1\.6H9\.2a2 2 0 0 1-2-1\.7L5\.7 3\.8H3/);
+  assert.match(source,/\['cart','bag','basket'\]/);
+  assert.match(source,/id='legend-cms-store-cart-icon'/);
+  assert.equal((source.match(/\.legend-store-nav-cluster\{/g)||[]).length,1);
+});
+
+test('store cart icon is persisted in the canonical website document and sanitized server-side',()=>{
+  assert.match(editorContractsSource,/public string CartIcon \{ get; set; \} = "cart"/);
+  assert.match(source,/cartIcon:cartIconValue \|\| effectiveCartIcon\(\)/);
+  assert.match(businessRenderSource,/cartIcon:storeCartIcon/);
 });
 
 test('publish saves unsaved draft first then calls the explicit publish action',async()=>{
