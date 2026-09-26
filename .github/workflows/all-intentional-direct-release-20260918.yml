@@ -215,6 +215,11 @@ jobs:
           npm ci --prefix Legend-Cloudflare
           npm --prefix Legend-Cloudflare run test:website-routing
           npm --prefix Legend-Cloudflare run check:website-routing
+          python3 -m py_compile scripts/cloudflare-routing-authority.py
+          if grep -q 'secrets.CLOUDFLARE_API_TOKEN' .github/workflows/all-intentional-direct-release-20260918.yml; then
+            echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
+            exit 1
+          fi
       - name: Verify localization retention privacy limits and original delivery
         id: tests
         if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && steps.build.outcome == 'success'
