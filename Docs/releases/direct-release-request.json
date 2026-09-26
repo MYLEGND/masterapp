@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completion of the canonical website analytics repair for ClientApp after the scoped AgentPortal + Protect release. Do not restart or redeploy AgentPortal or Protect. Deploy ClientApp only so business-scoped Website Analytics consumes the same canonical shared analytics assemblies and linked WebsiteAnalytics UI.",
-  "purpose": "Complete canonical analytics runtime parity for business clients. ClientApp hosts BusinessWorkspaceController over the shared BusinessWorkspaceControllerBase/BusinessWorkspaceService and links AgentPortal WebsiteAnalytics views and scripts, so it must receive the validated shared analytics changes without redeploying already-completed targets.",
-  "requestId": "canonical-live-analytics-clientapp-completion-20260926-r1",
+  "authorization": "Founder authorized fail-forward completion of the canonical website analytics repair. AgentPortal and Protect are already live and must remain untouched. Deploy ClientApp only because its prior analytics parity release was cancelled before deployment.",
+  "purpose": "Complete ClientApp business-scoped Website Analytics parity using the already-approved canonical shared analytics services and linked WebsiteAnalytics UI. Do not redeploy or roll back AgentPortal, Protect, Parfait, or LEGEND Website.",
+  "requestId": "canonical-live-analytics-clientapp-completion-20260926-r2",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36273622780",
-  "queueBehindRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36275708976",
+  "preserveSuccessfulRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36275708976",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
