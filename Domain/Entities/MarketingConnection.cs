@@ -1,6 +1,6 @@
 namespace Domain.Entities;
 
-/// <summary>Durable Meta connection authority. A disconnected row is retained to prevent legacy re-import.</summary>
+/// <summary>Durable owner + provider marketing connection authority. Existing Meta fields remain for compatibility while provider-specific adapters project them safely.</summary>
 public sealed class MarketingConnection
 {
     public Guid Id { get; set; } = Guid.NewGuid();
