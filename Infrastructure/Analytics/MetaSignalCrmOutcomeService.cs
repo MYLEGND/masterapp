@@ -69,6 +69,7 @@ public sealed class MetaSignalCrmOutcomeService
     }
 
     public async Task RecordProductionOutcomeAsync(
+        Guid productionRecordId,
         string agentUserId,
         ProductionSide side,
         ProductionStatus status,
@@ -94,7 +95,10 @@ public sealed class MetaSignalCrmOutcomeService
         if (string.IsNullOrWhiteSpace(contactKey))
             return;
 
-        var dedupKey = $"{eventName}:{side}:{contactKey}:{amount:0.00}:{personalAmount:0.00}";
+        if (productionRecordId == Guid.Empty)
+            throw new ArgumentException("A canonical production record id is required.", nameof(productionRecordId));
+
+        var dedupKey = $"{eventName}:production:{productionRecordId:N}";
         if (await AlreadyRecordedAsync(eventName, dedupKey, cancellationToken))
             return;
 
@@ -112,7 +116,7 @@ public sealed class MetaSignalCrmOutcomeService
 
         var row = BuildRow(
             eventName: eventName,
-            eventId: $"{eventName.ToLowerInvariant()}_{Guid.NewGuid():N}",
+            eventId: $"{eventName.ToLowerInvariant()}_{productionRecordId:N}",
             dedupKey: dedupKey,
             websiteLeadId: websiteLeadId,
             agentTrackingProfileId: trackingProfile?.Id,
@@ -142,6 +146,7 @@ public sealed class MetaSignalCrmOutcomeService
             },
             metadata: new
             {
+                productionRecordId,
                 agentUserId,
                 side = side.ToString(),
                 status = status.ToString(),
