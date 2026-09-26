@@ -150,6 +150,27 @@ public sealed class AnalyticsPageRoutingTruthTests
     }
 
     [Fact]
+    public void ScopedWebsiteAnalyticsUsesCanonicalOwnerAndEndpointAuthorities()
+    {
+        var root = RepoRoot();
+        var scope = File.ReadAllText(Path.Combine(root, "SHARED", "Analytics", "ScopeContext.cs"));
+        var resolver = File.ReadAllText(Path.Combine(root, "AgentPortal", "Services", "Analytics", "WebsiteAnalyticsScopeResolver.cs"));
+        var queryScope = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "AnalyticsScopeQueryExtensions.cs"));
+        var proxy = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "WebsiteTrackingProxyAuthority.cs"));
+        var analyticsJs = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
+        var layout = File.ReadAllText(Path.Combine(root, "Protect-Website", "Views", "Shared", "_Layout.cshtml"));
+
+        Assert.Contains("Founder,", scope, StringComparison.Ordinal);
+        Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
+        Assert.Contains("ScopeType.Founder", queryScope, StringComparison.Ordinal);
+        Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, ct)", proxy, StringComparison.Ordinal);
+        Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
+        Assert.Contains("siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect", layout, StringComparison.Ordinal);
+        Assert.Contains("endpoint(path)", analyticsJs, StringComparison.Ordinal);
+        Assert.Contains("window.websiteAnalyticsBridge?.endpoint", analyticsJs, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PublicLeadSubmissionsAndNotificationRecoveryUseSharedAuthorities()
     {
         var root = RepoRoot();
