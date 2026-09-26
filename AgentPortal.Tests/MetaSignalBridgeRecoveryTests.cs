@@ -88,7 +88,7 @@ public sealed class MetaSignalBridgeRecoveryTests
                 SessionId = later.SessionId,
                 VisitorId = later.VisitorId,
                 MetadataJson = MetaSignalAnalyticsBridgeMetadata.Build(
-                    later, "ViewContent", "later-dedup", TrafficType.NonPaid, null, null, null, null, null, null)
+                    later, "ViewContent", "later-dedup", "Direct", null, null, null, null, null, null)
             });
             await db.SaveChangesAsync();
         }
