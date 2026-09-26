@@ -472,7 +472,7 @@ public class LifeQuoteControllerPublicBookingTests
                 ["AzureAd:ClientId"] = "client",
                 ["AzureAd:ClientSecret"] = "secret",
                 ["Contact:SenderEmail"] = "",
-                ["Contact:RecipientEmail"] = "",
+                ["Contact:RecipientEmail"] = "founder@example.test",
                 ["Tracking:ApiBase"] = "https://portal.example.test"
             })
             .Build();

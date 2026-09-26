@@ -6,6 +6,7 @@ using Azure.Identity;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
@@ -501,13 +502,12 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             metaSingleTruthDispatchEligible: true,
             metaPipelineOrigin: "graph_calendar_webhook");
 
-        _db.MetaSignalEvents.Add(new MetaSignalEvent
+        var row = UnifiedMetaSignalWriter.Create(new UnifiedEventContext
         {
-            CreatedUtc = utcNow,
             EventId = $"appointment_booked_{appointment.Id:N}",
             EventName = "AppointmentBooked",
             EventCategory = "conversion",
-            LeadId = metaLeadId,
+            EventUtc = utcNow,
             SessionId = intakeLink?.SessionId,
             VisitorId = intakeLink?.VisitorId,
             QuoteType = intakeLink?.InterestType ?? intakeLink?.ProductType ?? "crm",
@@ -515,32 +515,36 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             EffectivePageKey = intakeLink?.SourcePageKey,
             PageVariant = intakeLink?.PageVariant,
             PageMode = intakeLink?.PageMode,
-            TrafficType = "crm",
-            FunnelStep = 4,
-            StepName = "appointment_booked",
-            IntentScore = 120,
-            EngagementScore = 120,
-            QualificationScore = 120,
-            FrictionScore = 0,
-            TotalSignalScore = 120,
-            ScoreTier = "AppointmentBooked",
-            MetaBrowserSent = false,
-            MetaServerSent = false,
-            MetaDeduplicationKey = deduplicationKey,
             UtmSource = intakeLink?.UtmSource,
             UtmMedium = intakeLink?.UtmMedium,
             UtmCampaign = intakeLink?.UtmCampaign,
             UtmId = intakeLink?.UtmId,
             UtmContent = intakeLink?.UtmContent,
-            FbclidPresent = !string.IsNullOrWhiteSpace(intakeLink?.Fbclid),
-            FbcPresent = false,
-            FbpPresent = false,
+            Fbclid = intakeLink?.Fbclid,
             Referrer = intakeLink?.ReferrerUrl,
-            AgentSlug = null,
             Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
-            Host = null,
-            MetadataJson = metadataJson
+            IsBrowserSignal = false,
+            IsServerAuthority = true,
+            MetaServerAuthorityEligible = true
+        }, signal =>
+        {
+            signal.LeadId = metaLeadId;
+            signal.TrafficType = "crm";
+            signal.FunnelStep = 4;
+            signal.StepName = "appointment_booked";
+            signal.IntentScore = 120;
+            signal.EngagementScore = 120;
+            signal.QualificationScore = 120;
+            signal.FrictionScore = 0;
+            signal.TotalSignalScore = 120;
+            signal.ScoreTier = "AppointmentBooked";
+            signal.MetaBrowserSent = false;
+            signal.MetaServerSent = false;
+            signal.MetaDeduplicationKey = deduplicationKey;
+            signal.MetadataJson = metadataJson;
         });
+        UnifiedMetaSignalWriter.Write(_db, row);
+
     }
 
     private static string? ResolveSubscriptionCalendarIdentity(GraphCalendarSubscription subscription)

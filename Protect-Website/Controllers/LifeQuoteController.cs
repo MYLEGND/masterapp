@@ -586,13 +586,19 @@ if (!ModelState.IsValid)
 
             if (!string.IsNullOrWhiteSpace(primary))
             {
-                var agentEmailSent = await _emailSender.TrySendAsync(
+                var notification = await WebsiteLeadNotificationAuthority.DeliverAsync(
+                    _db,
+                    lead,
                     primary,
-                    $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
-                    BuildEmailBody(model, cfg),
-                    replyToEmail: model.Email,
-                    saveToSentItems: true,
-                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+                    token => _emailSender.TrySendAsync(
+                        primary,
+                        $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
+                        BuildEmailBody(model, cfg),
+                        replyToEmail: model.Email,
+                        saveToSentItems: true,
+                        cancellationToken: token),
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                var agentEmailSent = notification.Sent;
 
                 if (agentEmailSent)
                 {
@@ -874,32 +880,13 @@ if (!ModelState.IsValid)
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
         {
-            var slug = ResolveExplicitAgentSlugFromRequest();
-
-            if (!string.IsNullOrWhiteSpace(slug))
-            {
-                var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
-                if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug, false);
-            }
-
-            var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
-            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
-                trackingProfileObj is AgentTrackingProfile trackingProfile)
-            {
-                var trackingSlug = HttpContext?.Items["TrackingSlug"] as string;
-                var trackingRecipient = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn)
-                    ? trackingProfile.AgentUpn.Trim()
-                    : recipientEmail;
-
-                return (
-                    isFounderPath ? recipientEmail : trackingRecipient,
-                    trackingProfile.Id,
-                    string.IsNullOrWhiteSpace(trackingSlug) ? trackingProfile.Slug : trackingSlug,
-                    isFounderPath);
-            }
-
-            return (recipientEmail, null, null, isFounderPath);
+            var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
+                HttpContext,
+                _resolver,
+                recipientEmail,
+                ResolveExplicitAgentSlugFromRequest(),
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+            return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
         }
 
         private async Task<LeadAppointment?> UpsertRequestedPublicAppointmentAsync(

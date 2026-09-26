@@ -124,7 +124,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                     continue;
                 }
 
-                db.MetaSignalEvents.Add(bridgeRow);
+                UnifiedMetaSignalWriter.Write(db, bridgeRow);
 
                 try
                 {
@@ -237,79 +237,54 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             ? await ResolveLeadDispatchStateAsync(db, analyticsEvent, resolvedLead, leadId, eventUtc, cancellationToken)
             : null;
 
-        return new MetaSignalEvent
+        var scopedEventId = ScopeEventId(
+            analyticsEvent.CommerceBusinessId,
+            !string.IsNullOrWhiteSpace(leadDispatchState?.MetaEventId)
+                ? leadDispatchState.MetaEventId!
+                : !string.IsNullOrWhiteSpace(upstreamMetaEventId)
+                    ? upstreamMetaEventId!
+                    : analyticsEvent.EventId == Guid.Empty
+                        ? $"analytics_bridge_{analyticsEvent.Id}"
+                        : analyticsEvent.EventId.ToString("N"));
+        var effectivePageKey = Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "EffectivePageKey"))
+            ?? Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "effectivePageKey"))
+            ?? Normalize(analyticsEvent.PageKey);
+        var fbc = Normalize(resolvedLead?.Fbc)
+            ?? Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "Fbc"))
+            ?? Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "fbc"));
+        var fbp = Normalize(resolvedLead?.Fbp)
+            ?? Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "Fbp"))
+            ?? Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "fbp"));
+        var agentId = analyticsEvent.CommerceBusinessId.HasValue
+            ? null
+            : analyticsEvent.AgentTrackingProfileId ?? resolvedLead?.AgentTrackingProfileId;
+        var agentSlug = analyticsEvent.CommerceBusinessId.HasValue
+            ? null
+            : Normalize(analyticsEvent.AgentSlug) ?? Normalize(resolvedLead?.AgentSlug);
+        var isServerAuthority = MetaSignalEventCatalog.IsServerAuthorityEvent(mapping.MetaEventName);
+
+        return UnifiedMetaSignalWriter.Create(new UnifiedEventContext
         {
-            CreatedUtc = eventUtc,
-            EventId = ScopeEventId(
-                analyticsEvent.CommerceBusinessId,
-                !string.IsNullOrWhiteSpace(leadDispatchState?.MetaEventId)
-                    ? leadDispatchState.MetaEventId!
-                    : !string.IsNullOrWhiteSpace(upstreamMetaEventId)
-                        ? upstreamMetaEventId!
-                        : analyticsEvent.EventId == Guid.Empty
-                            ? $"analytics_bridge_{analyticsEvent.Id}"
-                            : analyticsEvent.EventId.ToString("N")),
+            EventId = scopedEventId,
             EventName = mapping.MetaEventName,
             EventCategory = mapping.EventCategory,
-            LeadId = leadId,
+            EventUtc = eventUtc,
             SessionId = Normalize(analyticsEvent.SessionId),
             VisitorId = Normalize(analyticsEvent.VisitorId),
             QuoteType = Normalize(resolvedLead?.InterestType) ?? Normalize(analyticsEvent.QuoteType),
             PageKey = Normalize(analyticsEvent.PageKey),
-            EffectivePageKey = Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "EffectivePageKey"))
-                ?? Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "effectivePageKey"))
-                ?? Normalize(analyticsEvent.PageKey),
+            EffectivePageKey = effectivePageKey,
             PageVariant = Normalize(pageVariant),
             PageMode = Normalize(pageMode),
-            TrafficType = trafficType,
-            FunnelStep = mapping.FunnelStep,
-            StepName = mapping.StepName,
-            IntentScore = mapping.IntentScore,
-            EngagementScore = mapping.EngagementScore,
-            QualificationScore = mapping.QualificationScore,
-            FrictionScore = mapping.FrictionScore,
-            TotalSignalScore = mapping.TotalSignalScore ?? Math.Max(0, mapping.IntentScore + mapping.EngagementScore + mapping.QualificationScore + mapping.FrictionScore),
-            ScoreTier = mapping.ScoreTier,
-            MetaBrowserSent = ReadAnalyticsMetadataBoolean(analyticsEvent.MetadataJson, "BrowserEventSent") ?? false,
-            MetaServerSent = leadDispatchState?.MetaServerSent ?? false,
-            MetaDeduplicationKey = deduplicationKey,
             UtmSource = Normalize(analyticsEvent.UtmSource),
             UtmMedium = Normalize(analyticsEvent.UtmMedium),
             UtmCampaign = Normalize(analyticsEvent.UtmCampaign),
             UtmId = Normalize(analyticsEvent.UtmId),
             UtmContent = Normalize(analyticsEvent.UtmContent),
-            FbclidPresent = !string.IsNullOrWhiteSpace(analyticsEvent.Fbclid),
-            FbcPresent = !string.IsNullOrWhiteSpace(resolvedLead?.Fbc)
-                || !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "Fbc"))
-                || !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "fbc")),
-            FbpPresent = !string.IsNullOrWhiteSpace(resolvedLead?.Fbp)
-                || !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "Fbp"))
-                || !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "fbp")),
+            Fbclid = Normalize(analyticsEvent.Fbclid),
+            Fbc = fbc,
+            Fbp = fbp,
             Referrer = Normalize(analyticsEvent.Referrer),
-            UserAgentHash = SafeHash(Normalize(analyticsEvent.UserAgent) ?? Normalize(resolvedLead?.ClientUserAgent)),
-            IpHash = SafeHash(Normalize(analyticsEvent.IpAddress) ?? Normalize(resolvedLead?.ClientIpAddress)),
-            AgentTrackingProfileId = analyticsEvent.CommerceBusinessId.HasValue
-                ? null
-                : analyticsEvent.AgentTrackingProfileId ?? resolvedLead?.AgentTrackingProfileId,
-            CommerceBusinessId = analyticsEvent.CommerceBusinessId,
-            WebsiteContentVersionId = analyticsEvent.WebsiteContentVersionId,
-            WebsiteBindingId = Normalize(analyticsEvent.WebsiteBindingId),
-            AgentSlug = analyticsEvent.CommerceBusinessId.HasValue
-                ? null
-                : Normalize(analyticsEvent.AgentSlug) ?? Normalize(resolvedLead?.AgentSlug),
-            Environment = Normalize(analyticsEvent.Environment),
-            Host = Normalize(analyticsEvent.Host),
-            MetadataJson = MetaSignalAnalyticsBridgeMetadata.Build(
-                analyticsEvent,
-                mapping.MetaEventName,
-                deduplicationKey,
-                trafficType,
-                leadId,
-                pageVariant,
-                pageMode,
-                leadDispatchState?.MetaEventId,
-                leadDispatchState?.MetaServerStatus,
-                leadDispatchState?.MetaServerNote),
             DeviceType = Normalize(analyticsEvent.DeviceType),
             Browser = Normalize(analyticsEvent.Browser),
             OperatingSystem = Normalize(analyticsEvent.OperatingSystem),
@@ -324,8 +299,48 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             HumanInteractionCount = analyticsEvent.HumanInteractionCount,
             VisibilityChangeCount = analyticsEvent.VisibilityChangeCount,
             Language = Normalize(analyticsEvent.Language),
-            TimeZone = Normalize(analyticsEvent.TimeZone)
-        };
+            TimeZone = Normalize(analyticsEvent.TimeZone),
+            AgentTrackingProfileId = agentId,
+            AgentSlug = agentSlug,
+            CommerceBusinessId = analyticsEvent.CommerceBusinessId,
+            WebsiteContentVersionId = analyticsEvent.WebsiteContentVersionId,
+            WebsiteBindingId = Normalize(analyticsEvent.WebsiteBindingId),
+            Environment = Normalize(analyticsEvent.Environment),
+            Host = Normalize(analyticsEvent.Host),
+            IsBrowserSignal = false,
+            IsServerAuthority = isServerAuthority,
+            MetaServerAuthorityEligible = isServerAuthority
+        }, row =>
+        {
+            row.LeadId = leadId;
+            row.TrafficType = trafficType;
+            row.FunnelStep = mapping.FunnelStep;
+            row.StepName = mapping.StepName;
+            row.IntentScore = mapping.IntentScore;
+            row.EngagementScore = mapping.EngagementScore;
+            row.QualificationScore = mapping.QualificationScore;
+            row.FrictionScore = mapping.FrictionScore;
+            row.TotalSignalScore = mapping.TotalSignalScore
+                ?? Math.Max(0, mapping.IntentScore + mapping.EngagementScore + mapping.QualificationScore + mapping.FrictionScore);
+            row.ScoreTier = mapping.ScoreTier;
+            row.MetaBrowserSent = ReadAnalyticsMetadataBoolean(analyticsEvent.MetadataJson, "BrowserEventSent") ?? false;
+            row.MetaServerSent = leadDispatchState?.MetaServerSent ?? false;
+            row.MetaDeduplicationKey = deduplicationKey;
+            row.UserAgentHash = SafeHash(Normalize(analyticsEvent.UserAgent) ?? Normalize(resolvedLead?.ClientUserAgent));
+            row.IpHash = SafeHash(Normalize(analyticsEvent.IpAddress) ?? Normalize(resolvedLead?.ClientIpAddress));
+            row.MetadataJson = MetaSignalAnalyticsBridgeMetadata.Build(
+                analyticsEvent,
+                mapping.MetaEventName,
+                deduplicationKey,
+                trafficType,
+                leadId,
+                pageVariant,
+                pageMode,
+                leadDispatchState?.MetaEventId,
+                leadDispatchState?.MetaServerStatus,
+                leadDispatchState?.MetaServerNote);
+        });
+
     }
 
     private async Task<LeadDispatchState?> ResolveLeadDispatchStateAsync(

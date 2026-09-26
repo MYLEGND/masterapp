@@ -3,6 +3,7 @@ using System.Text.Json;
 using AgentPortal.Security;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Infrastructure.Leads;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
@@ -194,49 +195,53 @@ public class LeadSubmitController : ControllerBase
 
         if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, req.SubmissionId, HttpContext.RequestAborted, async ct =>
         {
-            var evt = new AnalyticsEvent
+            var evt = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
             {
-                EventId    = Guid.NewGuid(),
-                EventType  = "website_lead_submitted",
-                PageKey    = lead.SourcePageKey,
-                FormKey    = lead.SourcePageKey,
-                QuoteType  = lead.InterestType,
-                SessionId  = lead.SessionId,
-                VisitorId  = lead.VisitorId,
-                UtmSource  = lead.UtmSource,
-                UtmMedium  = lead.UtmMedium,
-                UtmCampaign= lead.UtmCampaign,
-                UtmId      = lead.UtmId,
-                Fbclid     = lead.Fbclid,
+                EventName = "website_lead_submitted",
+                EventCategory = "lead",
+                EventUtc = now,
+                PageKey = lead.SourcePageKey,
+                FormKey = lead.SourcePageKey,
+                QuoteType = lead.InterestType,
+                SessionId = lead.SessionId,
+                VisitorId = lead.VisitorId,
+                UtmSource = lead.UtmSource,
+                UtmMedium = lead.UtmMedium,
+                UtmCampaign = lead.UtmCampaign,
+                UtmId = lead.UtmId,
+                Fbclid = lead.Fbclid,
                 MetaCampaignId = lead.MetaCampaignId,
                 MetaAdSetId = lead.MetaAdSetId,
                 MetaAdId = lead.MetaAdId,
                 AgentTrackingProfileId = lead.AgentTrackingProfileId,
-                AgentSlug  = lead.AgentSlug,
-                Environment= lead.Environment,
-                Host       = lead.Host,
-                EventUtc   = now,
-                ReceivedUtc= now,
-                MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
-                    eventName: "website_lead_submitted",
-                    leadId: lead.LeadId,
-                    sessionId: lead.SessionId,
-                    payload: new
-                    {
-                        LeadId = lead.LeadId,
-                        CorrelationId = correlationId
-                    },
-                    isBrowserSignal: false,
-                    isServerAuthority: false,
-                    metaServerAuthorityEligible: true,
-                    metaSingleTruthDispatchEligible: false,
-                    metaPipelineOrigin: "lead_submit_controller")
-            };
-            _db.AnalyticsEvents.Add(evt);
+                AgentSlug = lead.AgentSlug,
+                Environment = lead.Environment,
+                Host = lead.Host,
+                IsInternal = lead.IsInternal,
+                IsBrowserSignal = false,
+                IsServerAuthority = false,
+                MetaServerAuthorityEligible = true,
+                Metadata = new { LeadId = lead.LeadId, CorrelationId = correlationId }
+            });
+            evt.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                eventName: "website_lead_submitted",
+                leadId: lead.LeadId,
+                sessionId: lead.SessionId,
+                payload: new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId
+                },
+                isBrowserSignal: false,
+                isServerAuthority: false,
+                metaServerAuthorityEligible: true,
+                metaSingleTruthDispatchEligible: false,
+                metaPipelineOrigin: "lead_submit_controller");
+            UnifiedAnalyticsWriter.Write(_db, evt);
             await _db.SaveChangesAsync();
         }))
             lead = await _db.WebsiteLeads.SingleAsync(x => x.LeadId == lead.LeadId, HttpContext.RequestAborted);
-        if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, lead, HttpContext.RequestAborted))
+        if (!await WebsiteLeadNotificationAuthority.TryClaimAsync(_db, lead, HttpContext.RequestAborted))
             return Ok(new { status = "already_captured", captured = true, leadId = lead.LeadId,
                 notificationSent = lead.NotificationSentUtc != null, emailSent = lead.NotificationSentUtc != null });
         _logger.LogInformation(
@@ -350,7 +355,7 @@ Notes: {lead.Notes}";
             }
         }
 
-        await WebsiteLeadSubmission.CompleteNotificationAsync(_db, lead, emailSent, HttpContext.RequestAborted);
+        await WebsiteLeadNotificationAuthority.CompleteAsync(_db, lead, emailSent, HttpContext.RequestAborted);
         if (!emailSent)
         {
 
