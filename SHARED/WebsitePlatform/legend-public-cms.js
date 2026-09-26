@@ -124,12 +124,13 @@
     if (!style || typeof style !== 'object') return;
     const rawWidth = Number(style.widthPercent);
     const hasWidth = Number.isFinite(rawWidth) && rawWidth > 0;
-    const width = hasWidth ? Math.min(100, rawWidth) : null;
-    if (hasWidth) style.widthPercent = width;
+    if (hasWidth) style.widthPercent = Math.min(100, rawWidth);
     const rawOffset = Number(style.offsetXPercent);
     if (Number.isFinite(rawOffset)) {
-      const maxOffset = width == null ? 100 : Math.max(0, 100 - width);
-      style.offsetXPercent = Math.max(0, Math.min(maxOffset, rawOffset));
+      // Position is independent from stored width. Rendering consumes the
+      // remaining section width so content can move freely without creating
+      // horizontal page overflow.
+      style.offsetXPercent = Math.max(0, Math.min(95, rawOffset));
     }
   }
 
@@ -715,9 +716,13 @@
       refreshScale(el, style.fontScale);
     }
     const sectionLocked = !!el.dataset.cmsSection;
+    const horizontalOffset = !sectionLocked && Number.isFinite(Number(style.offsetXPercent))
+      ? Math.max(0, Math.min(95, Number(style.offsetXPercent))) : 0;
     if (!sectionLocked && positiveNumber(style.widthPercent)) {
-      el.style.width = `${Math.min(100, Number(style.widthPercent))}%`;
-      el.style.maxWidth = '100%';
+      const requestedWidth = Math.min(100, Number(style.widthPercent));
+      const availableWidth = Math.max(5, 100 - horizontalOffset);
+      el.style.width = `${Math.min(requestedWidth, availableWidth)}%`;
+      el.style.maxWidth = `${availableWidth}%`;
     }
     if (positiveNumber(style.heightPx)) {
       if (sectionLocked) {
@@ -728,7 +733,9 @@
         el.style.overflow = 'visible';
       } else {
         el.style.height = `${style.heightPx}px`;
-        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+        // Ordinary website content never becomes its own scroll container.
+        // Code frames remain clipped to their explicit sandbox frame.
+        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'visible';
       }
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
@@ -2532,8 +2539,11 @@
         ? Math.min(100, Number(style.widthPercent))
         : Math.min(100, gesture.startWidthPercent || 100);
       style.widthPercent = constrainedWidth;
-      if (Number.isFinite(Number(style.offsetXPercent)))
-        style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - constrainedWidth), Number(style.offsetXPercent)));
+      if (Number.isFinite(Number(style.offsetXPercent))) {
+        style.offsetXPercent = gesture.mode === 'move'
+          ? Math.max(0, Math.min(95, Number(style.offsetXPercent)))
+          : Math.max(0, Math.min(Math.max(0, 100 - constrainedWidth), Number(style.offsetXPercent)));
+      }
       gesture.changed = true;
       applyElementOverride(selected, override);
       updateDirectCanvasUi();
@@ -2716,10 +2726,7 @@
             style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - style.widthPercent), Number(style.offsetXPercent)));
           }
         } else if (field === 'offsetXPercent') {
-          const width = positiveNumber(style.widthPercent)
-            ? Math.min(100, Number(style.widthPercent))
-            : Math.min(100, actualWidth || 100);
-          style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - width), Number(control.value)));
+          style.offsetXPercent = Math.max(0, Math.min(95, Number(control.value)));
           control.value = String(style.offsetXPercent);
         } else style[field] = Number(control.value);
       } else if (control.id === 'legend-cms-align') {
