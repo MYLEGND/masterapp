@@ -212,11 +212,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         var fallback = $"/business/{businessId:D}/analytics";
         try
         {
-            var callback = Url.ActionLink(
-                nameof(MetaCallback),
-                values: new { businessId },
-                protocol: Request.Scheme)
-                ?? $"{Request.Scheme}://{Request.Host}{Request.PathBase}/business/{businessId:D}/analytics/meta-callback";
+            var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/business/meta-callback";
             var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingMetaAdsOAuthService>();
             var connect = oauth.BuildConnectUrl(
                 MarketingOwnerScope.Business(businessId),
@@ -230,26 +226,30 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         }
     }
 
-    [HttpGet("analytics/meta-callback")]
+    [HttpGet("/business/meta-callback")]
     public async Task<IActionResult> MetaCallback(
-        Guid businessId,
         [FromQuery] string? code = null,
         [FromQuery] string? state = null,
         [FromQuery] string? error = null,
         [FromQuery(Name = "error_description")] string? errorDescription = null,
         CancellationToken cancellationToken = default)
     {
-        var fallback = $"/business/{businessId:D}/analytics";
-        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
-        if (!string.IsNullOrWhiteSpace(error))
-        {
-            var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
-            return Redirect($"{fallback}?meta=error&message={Uri.EscapeDataString(message)}");
-        }
-
+        var fallback = "/";
         try
         {
             var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingMetaAdsOAuthService>();
+            var inspected = oauth.InspectState(state ?? string.Empty);
+            var businessId = inspected.Owner.CommerceBusinessId
+                ?? throw new InvalidOperationException("Meta OAuth state is not business-scoped.");
+            fallback = $"/business/{businessId:D}/analytics";
+
+            if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+                return Redirect($"{fallback}?meta=error&message={Uri.EscapeDataString(message)}");
+            }
+
             var result = await oauth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, cancellationToken);
             if (result.Owner.CommerceBusinessId != businessId || result.Owner.AgentTrackingProfileId.HasValue)
                 throw new InvalidOperationException("Meta OAuth owner scope does not match this business.");
