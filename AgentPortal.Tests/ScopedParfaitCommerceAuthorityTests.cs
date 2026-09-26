@@ -18,6 +18,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("~/Views/InternalModules/Products.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Orders.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Automations.cshtml", controller, StringComparison.Ordinal);
+        Assert.Contains("~/Views/InternalModules/Analytics.cshtml", controller, StringComparison.Ordinal);
+        Assert.Contains("~/Views/Dashboard/Index.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("store.CommerceBusinessId", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("CommerceManagementWorkspaceViewModel", controller, StringComparison.Ordinal);
     }
@@ -48,6 +50,47 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("id: editorauth", workflow, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection__BlobUri", workflow, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection__KeyVaultKeyId", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CommerceAnalyticsMetaAndPixel_UseTheCentralBusinessAuthorities()
+    {
+        var root = FindRepositoryRoot();
+        Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", "Services", "ParfaitMetaAdsConnectionStoreAdapter.cs")));
+        Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", "Services", "ParfaitMetaAdsOAuthService.cs")));
+
+        var program = ReadSource("ParfaitApp", "Program.cs");
+        var analytics = ReadSource("ParfaitApp", "Services", "ParfaitInternalAnalyticsService.cs");
+        var controller = ReadSource("ParfaitApp", "Controllers", "CommerceManagementController.cs");
+        var tracking = ReadSource("ParfaitApp", "Views", "Shared", "_ParfaitCommerceTracking.cshtml");
+        var signals = ReadSource("Infrastructure", "Commerce", "CommerceSignalService.cs");
+
+        Assert.DoesNotContain("ParfaitMetaAdsConnectionStoreAdapter", program, StringComparison.Ordinal);
+        Assert.DoesNotContain("IParfaitMetaAdsOAuthService", program, StringComparison.Ordinal);
+        Assert.Contains("ScopeContext.ForBusiness(businessId)", analytics, StringComparison.Ordinal);
+        Assert.Contains("MarketingOwnerScope.Business(store.CommerceBusinessId)", controller, StringComparison.Ordinal);
+        Assert.Contains("MarketingMetaAdsOAuthService", controller, StringComparison.Ordinal);
+        Assert.Contains("MarketingConnectionStore", controller, StringComparison.Ordinal);
+        Assert.Contains("MarketingConnections.GetStatusAsync", tracking, StringComparison.Ordinal);
+        Assert.Contains("MetaSignalEventCatalog", signals, StringComparison.Ordinal);
+        Assert.Contains("UnifiedMetaSignalWriter", signals, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CommerceEventsAndAutomations_RemainLiveForEveryScopedStore()
+    {
+        var checkout = ReadSource("ParfaitApp", "Controllers", "StoreCheckoutController.cs");
+        var analyticsController = ReadSource("ParfaitApp", "Controllers", "ParfaitAnalyticsController.cs");
+        var automations = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationService.cs");
+        var hosted = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationHostedService.cs");
+
+        Assert.Contains("_automations.CaptureCheckoutLead(store.CommerceBusinessId", checkout, StringComparison.Ordinal);
+        Assert.Contains("_automations.MarkOrderConverted(store.CommerceBusinessId", checkout, StringComparison.Ordinal);
+        Assert.Contains(""InitiateCheckout"", checkout, StringComparison.Ordinal);
+        Assert.Contains(""Purchase"", checkout, StringComparison.Ordinal);
+        Assert.Contains("commerceSignals.RecordAsync", analyticsController, StringComparison.Ordinal);
+        Assert.Contains("GetDueDispatchCandidatesForAllBusinesses", automations, StringComparison.Ordinal);
+        Assert.Contains("GetDueDispatchCandidatesForAllBusinesses", hosted, StringComparison.Ordinal);
     }
 
     [Fact]
