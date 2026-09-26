@@ -1,3 +1,4 @@
+using Domain.Entities;
 using System.Globalization;
 using Infrastructure.Analytics;
 using Infrastructure.WebsiteEditing;
