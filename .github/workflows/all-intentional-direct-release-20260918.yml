@@ -730,8 +730,14 @@ jobs:
           set -euo pipefail
           api="https://api.cloudflare.com/client/v4"
           security_token="${CLOUDFLARE_SECURITY_API_TOKEN:-}"
+          if [ -z "$security_token" ] && [ -s /tmp/protect-website-routing.json ]; then
+            security_token="$(jq -r '.[] | select(.name=="WebsiteDomains__ApiToken" or .name=="WebsiteDomains:ApiToken") | (.value // empty)' /tmp/protect-website-routing.json | head -n 1)"
+          fi
           if [ -z "$security_token" ]; then
-            echo "::error::Cloudflare security credential is unavailable; refusing to weaken the Worker deployment token or mutate the zone blindly."
+            security_token="${CLOUDFLARE_API_TOKEN:-}"
+          fi
+          if [ -z "$security_token" ]; then
+            echo "::error::No existing Cloudflare authority is available for the scoped custom-hostname policy."
             exit 1
           fi
           echo "::add-mask::$security_token"
@@ -828,7 +834,7 @@ jobs:
 
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && (env.PRESERVE_LIVE_TARGETS != 'true' || steps.routingpolicy.outcome == 'success') && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
