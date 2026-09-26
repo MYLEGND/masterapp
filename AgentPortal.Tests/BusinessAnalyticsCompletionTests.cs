@@ -2,6 +2,7 @@ using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Analytics;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -61,7 +62,9 @@ public sealed class BusinessAnalyticsCompletionTests
         Assert.Contains("[HttpGet(\"analytics/meta-campaigns\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/meta-connection-status\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/meta-connect\")]", controller, StringComparison.Ordinal);
+        Assert.Contains("[HttpGet(\"/business/meta-callback\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/meta-disconnect\")]", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("/business/{businessId:D}/analytics/meta-callback", controller, StringComparison.Ordinal);
         Assert.Contains("ScopeContext.ForBusiness(businessId)", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("MetaAds:DefaultAccountId", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("MetaAds:AccessToken", controller, StringComparison.Ordinal);
@@ -98,7 +101,8 @@ public sealed class BusinessAnalyticsCompletionTests
             MarketingOwnerScope.Business(businessId),
             $"/business/{businessId:D}/analytics",
             $"https://client.example.com/business/{businessId:D}/analytics/meta-callback"));
-        var stateToken = System.Web.HttpUtility.ParseQueryString(url.Query)["state"];
+        var parsed = QueryHelpers.ParseQuery(url.Query);
+        var stateToken = parsed["state"].ToString();
         Assert.False(string.IsNullOrWhiteSpace(stateToken));
 
         var protector = provider.CreateProtector("Marketing.MetaAds.OAuthState.v1");
