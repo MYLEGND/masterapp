@@ -1,12 +1,18 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the validated Website Studio CTA/productivity hardening through legend/approved-changes and then production. Direct deployment must be scoped to Protect Website and LEGEND Website only. Preserve all existing scoped drafts, published versions, tenant ownership, CRM, analytics, Meta, subscriptions, authentication, billing, domains, Parfait, ClientApp, AgentPortal, Cloudflare routing, and unrelated application flows.",
-  "purpose": "Deploy the validated shared Website Studio CTA/productivity hardening: one canonical backend CTA action per function with grouped human wording variants, no implicit default CTA on button creation, clearer CTA/page/custom destination grouping, side-panel context preserved across child selection, and move/resize gestures disabled during inline text editing. No parallel CTA system, no stacked CSS, no page-specific override, and no unrelated code changes.",
-  "requestId": "website-studio-cta-productivity-hardening-20260925",
+  "authorization": "Founder explicitly authorized the fully hardened centralized Cloudflare routing recovery. Preserve every successful application deployment. Use only CLOUDFLARE_WORKERS_API_TOKEN, run the centralized routing-authority capability audit, reconcile the single generic custom-host Browser Integrity policy, deploy the shared router, and require live homepage and /store proof. No legacy credential fallback, no per-domain exception, no application redeploy.",
+  "purpose": "Bring verified business custom-domain pages and stores live through the centralized Cloudflare authority and prove the hardened routing/security path end to end.",
+  "requestId": "scoped-commerce-routing-hardened-authority-20260926-r12",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36218166686",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-portal",
+    "masterapp-client",
     "masterapp-protect",
-    "masterapp-website"
+    "masterapp-parfait"
   ],
-  "cloudflareWebsiteRouting": false
+  "cloudflareWebsiteRouting": true,
+  "websiteRoutingCanaryHost": "camoexterior.com",
+  "preserveLiveTargets": true,
+  "preserveLiveRevision": "7157590505518009246abfcd5f9022ea9a8f6559"
 }

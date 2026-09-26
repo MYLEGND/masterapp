@@ -29,7 +29,7 @@ public class AnalyticsIngestControllerTests
             })
             .Build();
 
-        var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
+        var resolver = new AgentPortal.Services.Tracking.AgentTrackingResolver(db, NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance);
         var flags = Options.Create(new AppFeatureFlags { IngestHmacEnabled = false });
         var memoryCache = new MemoryCache(new MemoryCacheOptions());
         var signatureValidator = new IngestSignatureValidator(memoryCache, config, NullLogger<IngestSignatureValidator>.Instance);

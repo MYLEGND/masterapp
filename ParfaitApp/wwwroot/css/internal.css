@@ -76,7 +76,7 @@ html {
 }
 
 .pf-internal-body {
-    background: #ffffff;
+    background: var(--pf-bg, #ffffff);
 }
 
 

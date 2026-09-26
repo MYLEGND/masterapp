@@ -12,6 +12,49 @@ from release_policy import read_request, staging_only
 ROOT = Path(__file__).resolve().parent
 
 
+class ReleaseScopeSelection(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('baseline_scope', ROOT / 'approved-release-baseline.py')
+        self.baseline = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.baseline)
+
+    def test_centralized_commerce_scope_is_reviewed_and_supported(self):
+        selected = self.baseline.selected_targets({
+            'releaseMode': 'approved-only',
+            'targets': ['masterapp-protect', 'masterapp-parfait', 'masterapp-website']
+        })
+        self.assertEqual(
+            [row[0] for row in selected],
+            ['protect', 'parfait', 'website'])
+
+    def test_unreviewed_scope_still_fails_closed(self):
+        with self.assertRaises(ValueError):
+            self.baseline.selected_targets({
+                'releaseMode': 'approved-only',
+                'targets': ['masterapp-client', 'masterapp-parfait']
+            })
+
+    def test_complete_inventory_can_include_cloudflare_routing_in_one_release(self):
+        request = {
+            'releaseMode': 'approved-only',
+            'cloudflareWebsiteRouting': True,
+            'websiteRoutingCanaryHost': 'camoexterior.com',
+            'targets': ['masterapp-portal', 'masterapp-client', 'masterapp-protect',
+                        'masterapp-parfait', 'masterapp-website'],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'release-outputs'
+            with patch('sys.argv', ['baseline', '--output', str(output)]), \
+                 patch.object(self.baseline, 'read_request', return_value=request), \
+                 patch.object(self.baseline, 'observe', side_effect=lambda target: dict(app=target[0], revision='a' * 40)), \
+                 patch.object(self.baseline.subprocess, 'check_output', return_value='b' * 40), \
+                 patch.object(self.baseline.subprocess, 'run'), patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
+                self.baseline.main()
+            values = output.read_text()
+            self.assertIn('website_routing=true', values)
+            self.assertIn('"masterapp-website"', values)
+
+
 class ReleasePolicy(unittest.TestCase):
     def test_hold_survives_descendant_until_explicit_release(self):
         with tempfile.TemporaryDirectory() as directory:

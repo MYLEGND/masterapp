@@ -33,7 +33,7 @@ def selected_targets(request):
         raise ValueError('Release targets must be unique names from the existing deployment inventory')
     # Static-only releases have no database or .NET app changes. Other scoped
     # releases retain Portal as the shared migration baseline.
-    if set(names) not in ({'masterapp-website'}, {'masterapp-protect'}, {'masterapp-client'}, {'masterapp-client', 'masterapp-protect'}, {'masterapp-protect', 'masterapp-website'}, {'masterapp-parfait'}, {'masterapp-portal'}, {'masterapp-portal', 'masterapp-client'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect'}, {'masterapp-portal', 'masterapp-client', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}):
+    if set(names) not in ({'masterapp-website'}, {'masterapp-protect'}, {'masterapp-client'}, {'masterapp-client', 'masterapp-protect'}, {'masterapp-protect', 'masterapp-website'}, {'masterapp-parfait'}, {'masterapp-protect', 'masterapp-parfait'}, {'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}, {'masterapp-portal'}, {'masterapp-portal', 'masterapp-client'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect'}, {'masterapp-portal', 'masterapp-client', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}):
         raise ValueError('Unsupported scoped release; migration and packaging policy must be reviewed')
     return tuple(row for row in TARGETS if 'masterapp-' + row[0] in names)
 
@@ -88,10 +88,10 @@ def main():
     targets = TARGETS if args.automatic else selected_targets(request)
     if website_routing:
         routing_apps = {row[0] for row in targets}
-        if 'protect' not in routing_apps:
-            raise ValueError('Cloudflare website routing releases must include masterapp-protect')
-        if not routing_apps.issubset({'portal', 'client', 'protect'}):
-            raise ValueError('Cloudflare website routing may be combined only with AgentPortal and ClientApp in one reviewed release')
+        if not {'protect', 'parfait'}.issubset(routing_apps):
+            raise ValueError('Cloudflare website commerce routing releases must include masterapp-protect and masterapp-parfait')
+        if not (routing_apps.issubset({'portal', 'client', 'protect', 'parfait'}) or routing_apps == {row[0] for row in TARGETS}):
+            raise ValueError('Cloudflare website routing requires the reviewed commerce scope or the complete web release inventory')
     website_routing_canary = ''
     if website_routing:
         website_routing_canary = str(request.get('websiteRoutingCanaryHost') or '').strip().lower().rstrip('.')
@@ -109,6 +109,7 @@ def main():
         allowed_control_files = {
             '.github/workflows/all-intentional-direct-release-20260918.yml',
             'scripts/approved-release-baseline.py',
+            'scripts/cloudflare-routing-authority.py',
             'Docs/releases/direct-release-request.json',
         }
         changed = subprocess.check_output(

@@ -5,6 +5,7 @@ public sealed class WebsiteContentState
     public Guid Id { get; set; } = Guid.NewGuid();
     public string OwnerKey { get; set; } = "";
     public string SiteKey { get; set; } = "";
+    public Guid? CommerceBusinessId { get; set; }
     public string DraftJson { get; set; } = "{}";
     public string NamedDraftsJson { get; set; } = "[]";
     public string? ImportReportJson { get; set; }

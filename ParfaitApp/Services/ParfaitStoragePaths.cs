@@ -30,6 +30,14 @@ public sealed class ParfaitStoragePaths
     public string TeamAccessPath => Path.Combine(DataRoot, TeamAccessFileName);
     public string CustomerAutomationsPath => Path.Combine(DataRoot, CustomerAutomationsFileName);
 
+    public string GetCustomerAutomationsPath(string businessKey)
+    {
+        var key = NormalizeScopeKey(businessKey);
+        return string.Equals(key, "parfait", StringComparison.OrdinalIgnoreCase)
+            ? CustomerAutomationsPath
+            : Path.Combine(DataRoot, "commerce", key, CustomerAutomationsFileName);
+    }
+
     public IFileProvider BuildUploadFileProvider()
     {
         EnsureInitialized();
@@ -63,8 +71,34 @@ public sealed class ParfaitStoragePaths
     public string GetImageUrl(string productId, string fileName)
         => $"/uploads/parfait-products/{productId}/{fileName}";
 
+    public string GetImageUrl(string businessKey, string productId, string fileName)
+    {
+        var key = NormalizeScopeKey(businessKey);
+        return string.Equals(key, "parfait", StringComparison.OrdinalIgnoreCase)
+            ? GetImageUrl(productId, fileName)
+            : $"/uploads/parfait-products/{key}/{productId}/{fileName}";
+    }
+
     public string GetUploadDirectory(string productId)
         => Path.Combine(UploadRoot, productId);
+
+    public string GetUploadDirectory(string businessKey, string productId)
+    {
+        var key = NormalizeScopeKey(businessKey);
+        return string.Equals(key, "parfait", StringComparison.OrdinalIgnoreCase)
+            ? GetUploadDirectory(productId)
+            : Path.Combine(UploadRoot, key, productId);
+    }
+
+    private static string NormalizeScopeKey(string? value)
+    {
+        var normalized = string.Concat((value ?? string.Empty).Trim().ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) ? character : '-'));
+        while (normalized.Contains("--", StringComparison.Ordinal))
+            normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
+        normalized = normalized.Trim('-');
+        return string.IsNullOrWhiteSpace(normalized) ? "store" : normalized[..Math.Min(normalized.Length, 80)];
+    }
 
     public IEnumerable<string> ResolveImagePhysicalPaths(string? imageUrl)
     {

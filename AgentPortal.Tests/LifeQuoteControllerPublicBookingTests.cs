@@ -1,3 +1,5 @@
+using Infrastructure.Analytics;
+using Infrastructure.Bookings;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -24,7 +26,7 @@ using Protect_Website.Models;
 using ProtectWebsite.Services.Booking;
 using ProtectWebsite.Services.Communication;
 using ProtectWebsite.Services.Meta;
-using ProtectWebsite.Services.MetaSignal;
+using Infrastructure.Analytics;
 using ProtectWebsite.Services.Tracking;
 using Xunit;
 
@@ -175,12 +177,12 @@ public class LifeQuoteControllerPublicBookingTests
         captureService
             .Setup(service => service.UpsertAsync(It.IsAny<WebsiteLifeLeadCaptureRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WebsiteLifeLeadCaptureResult(
-                Captured: false,
-                Created: false,
-                WorkstationLeadId: null,
+                Captured: true,
+                Created: true,
+                WorkstationLeadId: "booking-disabled-test-lead",
                 Bucket: "LifeInsurance",
                 AgentUserId: null,
-                Reason: "NoAgentOwner"));
+                Reason: "Captured"));
 
         var metaPixelResolution = new Mock<IMetaPixelResolutionService>();
         metaPixelResolution
@@ -438,7 +440,8 @@ public class LifeQuoteControllerPublicBookingTests
         IWebsiteLifeLeadCaptureService? websiteLifeLeadCaptureService = null,
         IPublicBookingResolver? publicBookingResolver = null,
         IPublicBookingConfirmationService? publicBookingConfirmationService = null,
-        IPublicBookingContextProtector? publicBookingContextProtector = null)
+        IPublicBookingContextProtector? publicBookingContextProtector = null,
+        IProtectEmailSender? emailSender = null)
     {
         var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
 
@@ -451,7 +454,7 @@ public class LifeQuoteControllerPublicBookingTests
             publicBookingResolver ?? Mock.Of<IPublicBookingResolver>(),
             publicBookingConfirmationService ?? Mock.Of<IPublicBookingConfirmationService>(),
             publicBookingContextProtector ?? BuildBookingProtector(),
-            Mock.Of<IProtectEmailSender>(),
+            emailSender ?? BuildSuccessfulEmailSender(),
             NullLogger<LifeQuoteController>.Instance)
         {
             ControllerContext = new ControllerContext
@@ -470,10 +473,26 @@ public class LifeQuoteControllerPublicBookingTests
                 ["AzureAd:ClientId"] = "client",
                 ["AzureAd:ClientSecret"] = "secret",
                 ["Contact:SenderEmail"] = "",
-                ["Contact:RecipientEmail"] = "",
+                ["Contact:RecipientEmail"] = "founder@example.test",
                 ["Tracking:ApiBase"] = "https://portal.example.test"
             })
             .Build();
+    }
+
+    private static IProtectEmailSender BuildSuccessfulEmailSender()
+    {
+        var sender = new Mock<IProtectEmailSender>();
+        sender
+            .Setup(service => service.TrySendAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        return sender.Object;
     }
 
     private static IPublicBookingContextProtector BuildBookingProtector()

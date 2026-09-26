@@ -3,21 +3,25 @@
     ViewData["BodyClass"] = "sp-body";
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
+    var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var storeRoot = ViewData["StoreRootPath"] as string ?? "/store";
+    var checkoutPath = ViewData["StoreCheckoutPath"] as string ?? "/store/checkout";
+    var storeName = commerce?.StoreName ?? "Parfait";
 }
 
 @section Styles {
-    <link rel="stylesheet" href="~/css/storefront.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
 }
 
 <section class="sp-store-page sp-store-page--cart">
     <div class="sp-shell sp-transaction-page">
         <header class="sp-transaction-header">
             <div>
-                <p class="sp-transaction-kicker">Parfait Checkout</p>
+                <p class="sp-transaction-kicker">@storeName Checkout</p>
                 <h1>Your Cart</h1>
             </div>
             <div class="sp-transaction-actions">
-                <a class="sp-button sp-button--ghost" href="/store">Continue Shopping</a>
+                <a class="sp-button sp-button--ghost" href="@storeRoot">Continue Shopping</a>
             </div>
         </header>
 
@@ -81,11 +85,11 @@
                 </div>
 
                 <div class="sp-cart-summary-actions sp-cart-summary-actions--inline">
-                    <a class="sp-button sp-button--primary sp-button--checkout" id="spCheckoutLink" href="/store/checkout">
+                    <a class="sp-button sp-button--primary sp-button--checkout" id="spCheckoutLink" href="@checkoutPath">
                         <span class="sp-button-main">Secure Checkout</span>
                         <small class="sp-button-note">Encrypted payment</small>
                     </a>
-                    <a class="sp-button sp-button--ghost" href="/store">Back To Shop</a>
+                    <a class="sp-button sp-button--ghost" href="@storeRoot">Back To Shop</a>
                 </div>
             </div>
         </section>
@@ -96,6 +100,9 @@
     <script>
         (() => {
             const store = window.ParfaitStorefront;
+            const commerce = store?.context || {};
+            const storeRoot = commerce.storeRootPath || "/store";
+            const quoteEndpoint = (commerce.checkoutPath || "/store/checkout") + "/quote";
             const itemsHost = document.getElementById("spCartItems");
             const subtotalHost = document.getElementById("spCartSubtotal");
             const totalHost = document.getElementById("spCartTotal");
@@ -118,7 +125,7 @@
 
             let statusMessage = "";
 
-            const productUrl = item => item.slug ? `/store/product/${item.slug}` : "/store";
+            const productUrl = item => item.slug ? `${storeRoot}/product/${encodeURIComponent(item.slug)}` : storeRoot;
             const quoteItems = cart => cart.map(item => ({
                 id: item.id,
                 size: item.size,
@@ -191,7 +198,7 @@
                     <div class="sp-cart-empty">
                         <h2>Your cart is empty</h2>
                         <div class="sp-empty-actions">
-                            <a class="sp-button sp-button--primary" href="/store">Back To Shop</a>
+                            <a class="sp-button sp-button--primary" href="@storeRoot">Back To Shop</a>
                         </div>
                     </div>
                 `;
@@ -201,7 +208,7 @@
                 itemsHost.innerHTML = items.map(item => `
                     <article class="sp-cart-item">
                         <a class="sp-cart-media" href="${productUrl(item)}" aria-label="View ${item.name || "product"}">
-                            <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
+                            <img src="${item.imageUrl || "/store-assets/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
                         </a>
                         <div class="sp-cart-body">
                             <div class="sp-cart-top">
@@ -310,7 +317,7 @@
                 }
 
                 try {
-                    const response = await fetch("/store/checkout/quote", {
+                    const response = await fetch(quoteEndpoint, {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",

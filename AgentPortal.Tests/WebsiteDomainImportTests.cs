@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
+using Infrastructure.WebsiteRuntime;
 using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -83,8 +84,10 @@ public sealed class WebsiteDomainImportTests
     [Fact]
     public void DomainNormalizesCaseAndTrailingDot() => Assert.Equal("example.com", WebsiteDomainService.NormalizeHostname(" EXAMPLE.COM. "));
 
-    [Fact]
-    public async Task PendingDomainProofBypassesActiveRoutingGate()
+    [Theory]
+    [InlineData("/.well-known/legend-website")]
+    [InlineData("/.well-known/legend-website/")]
+    public async Task PendingDomainProofBypassesActiveRoutingGate(string proofPath)
     {
         await using var db = new MasterAppDbContext(
             new DbContextOptionsBuilder<MasterAppDbContext>()
@@ -105,7 +108,7 @@ public sealed class WebsiteDomainImportTests
             configuration);
         var context = new DefaultHttpContext();
         context.Request.Host = new HostString("example.com");
-        context.Request.Path = "/.well-known/legend-website";
+        context.Request.Path = proofPath;
         var domains = new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), configuration);
 
         await middleware.InvokeAsync(context, db, domains);

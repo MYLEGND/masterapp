@@ -19,7 +19,8 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using ProtectWebsite.Controllers;
+using Infrastructure.WebsiteEditing.Controllers;
+using Infrastructure.WebsitePublishing;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -442,7 +443,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         var beforeRevision = before.Revision;
 
         var response = Assert.IsType<OkObjectResult>(await fixture.CreateController().WebsiteStudioAiProposal(
-            new WebsiteContentController.WebsiteStudioAiRequest(
+            new WebsitePlatformController.WebsiteStudioAiRequest(
                 ticket,
                 beforeRevision,
                 "create",
@@ -469,7 +470,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Null(after.PublishedVersionId);
 
         Assert.IsType<ConflictObjectResult>(await fixture.CreateController().WebsiteStudioAiProposal(
-            new WebsiteContentController.WebsiteStudioAiRequest(
+            new WebsitePlatformController.WebsiteStudioAiRequest(
                 ticket,
                 beforeRevision - 1,
                 "create",
@@ -480,7 +481,7 @@ public sealed class WebsiteContentEditorRoundTripTests
                 "Original heading"),
             CancellationToken.None));
         Assert.IsType<UnauthorizedResult>(await fixture.CreateController().WebsiteStudioAiProposal(
-            new WebsiteContentController.WebsiteStudioAiRequest(
+            new WebsitePlatformController.WebsiteStudioAiRequest(
                 "invalid-ticket",
                 beforeRevision,
                 "create",
@@ -535,7 +536,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         var beforeJson = before.DraftJson;
 
         var browser = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalDryRun(
-            new WebsiteContentController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, browserBindingId),
+            new WebsitePlatformController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, browserBindingId),
             CancellationToken.None));
         var browserJson = JsonSerializer.SerializeToElement(browser.Value, JsonOptions);
         Assert.Equal("website_signal_private_dry_run", browserJson.GetProperty("source").GetString());
@@ -548,7 +549,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.False(browserJson.GetProperty("stages").GetProperty("browserPixelWouldInvoke").GetBoolean());
 
         var server = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalDryRun(
-            new WebsiteContentController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, serverBindingId),
+            new WebsitePlatformController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, serverBindingId),
             CancellationToken.None));
         var serverJson = JsonSerializer.SerializeToElement(server.Value, JsonOptions);
         Assert.True(serverJson.GetProperty("stages").GetProperty("serverOutcomeRequired").GetBoolean());
@@ -563,10 +564,10 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Empty(await fixture.Db.MetaSignalEvents.AsNoTracking().ToListAsync());
 
         Assert.IsType<ConflictObjectResult>(await fixture.CreateController().SignalDryRun(
-            new WebsiteContentController.WebsiteSignalTestRequest(ticket, before.Revision - 1, "/", ElementId, browserBindingId),
+            new WebsitePlatformController.WebsiteSignalTestRequest(ticket, before.Revision - 1, "/", ElementId, browserBindingId),
             CancellationToken.None));
         Assert.IsType<UnauthorizedResult>(await fixture.CreateController().SignalDryRun(
-            new WebsiteContentController.WebsiteSignalTestRequest("invalid-ticket", before.Revision, "/", ElementId, browserBindingId),
+            new WebsitePlatformController.WebsiteSignalTestRequest("invalid-ticket", before.Revision, "/", ElementId, browserBindingId),
             CancellationToken.None));
     }
 
@@ -686,7 +687,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.True(collaborator.GetProperty("canPublish").GetBoolean());
 
         var created = Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
-            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+            new WebsitePlatformController.WebsiteStudioCommentCreateRequest(
                 ticket,
                 before.Revision,
                 "/",
@@ -710,7 +711,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal(before.DraftJson, afterComment.DraftJson);
 
         var resolved = Assert.IsType<OkObjectResult>(await fixture.CreateController().SetCollaborationCommentStatus(
-            new WebsiteContentController.WebsiteStudioCommentStatusRequest(ticket, comment.Id, "resolved"),
+            new WebsitePlatformController.WebsiteStudioCommentStatusRequest(ticket, comment.Id, "resolved"),
             CancellationToken.None));
         var resolvedJson = JsonSerializer.SerializeToElement(resolved.Value, JsonOptions);
         Assert.Equal("resolved", resolvedJson.GetProperty("comment").GetProperty("status").GetString());
@@ -747,14 +748,14 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
 
         var parentResult = Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
-            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+            new WebsitePlatformController.WebsiteStudioCommentCreateRequest(
                 ticket, 1, "/", null, "Page-level review note."),
             CancellationToken.None));
         var parentJson = JsonSerializer.SerializeToElement(parentResult.Value, JsonOptions);
         var parentId = parentJson.GetProperty("comment").GetProperty("id").GetGuid();
 
         Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
-            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+            new WebsitePlatformController.WebsiteStudioCommentCreateRequest(
                 ticket, 1, "/", ElementId, "Reply on the same review thread.", parentId),
             CancellationToken.None));
 
@@ -768,7 +769,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal("/", comments[1].PagePath);
 
         var nested = await fixture.CreateController().CreateCollaborationComment(
-            new WebsiteContentController.WebsiteStudioCommentCreateRequest(
+            new WebsitePlatformController.WebsiteStudioCommentCreateRequest(
                 ticket, 1, "/", null, "Nested reply should be rejected.", comments[1].Id),
             CancellationToken.None);
         Assert.IsType<BadRequestObjectResult>(nested);
@@ -850,7 +851,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         private Guid? _clientProfileId;
         private ServiceProvider? _services;
         public MasterAppDbContext Db { get; }
-        public WebsiteContentController Controller { get; }
+        public WebsitePlatformController Controller { get; }
 
         public Fixture(string siteKey)
         {
@@ -897,22 +898,22 @@ public sealed class WebsiteContentEditorRoundTripTests
             var environment = Mock.Of<IWebHostEnvironment>(e => e.ContentRootPath == AppContext.BaseDirectory);
             _services = new ServiceCollection()
                 .AddSingleton(new WebsitePageCompiler(environment, _configuration))
-                .AddSingleton<ProtectWebsite.Services.IWebsiteStudioAiProposalService>(new FixtureWebsiteStudioAi())
+                .AddSingleton<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService>(new FixtureWebsiteStudioAi())
                 .BuildServiceProvider();
             Controller = CreateController();
         }
 
-        private sealed class FixtureWebsiteStudioAi : ProtectWebsite.Services.IWebsiteStudioAiProposalService
+        private sealed class FixtureWebsiteStudioAi : Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService
         {
-            public Task<ProtectWebsite.Services.WebsiteStudioAiProviderProposal> ProposeAsync(
-                ProtectWebsite.Services.WebsiteStudioAiProviderRequest request,
+            public Task<Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal> ProposeAsync(
+                Infrastructure.WebsiteEditing.WebsiteStudioAiProviderRequest request,
                 System.Threading.CancellationToken cancellationToken = default) =>
-                Task.FromResult(new ProtectWebsite.Services.WebsiteStudioAiProviderProposal(
+                Task.FromResult(new Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal(
                     "Improve the selected heading.",
                     [new WebsiteStudioAiOperation { Kind = "set_text", Text = "AI proposed heading" }]));
         }
 
-        public WebsiteContentController CreateController() => new(Db, _tickets, _configuration) { ControllerContext = new() { HttpContext = new DefaultHttpContext { RequestServices = _services! } } };
+        public WebsitePlatformController CreateController() => new(Db, _tickets, _configuration) { ControllerContext = new() { HttpContext = new DefaultHttpContext { RequestServices = _services! } } };
         public string Ticket(DateTime expiresUtc) => TicketForActor(_actor, "founder@example.test", expiresUtc);
 
         public string TicketForActor(string actorUserId, string actorEmail, DateTime expiresUtc) =>

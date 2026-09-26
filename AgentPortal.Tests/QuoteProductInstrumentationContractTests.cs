@@ -97,7 +97,7 @@ public class QuoteProductInstrumentationContractTests
         var repoRoot = GetRepoRoot();
         var view = Read(repoRoot, "Protect-Website", "Views", "Quote", "Life.cshtml");
         var controller = Read(repoRoot, "Protect-Website", "Controllers", "LifeQuoteController.cs");
-        var tracking = Read(repoRoot, "Protect-Website", "wwwroot", "js", "tracking.js");
+        var tracking = Read(repoRoot, "SHARED", "WebsitePlatform", "tracking.js");
 
         Assert.Contains("data-ajax-submit=\"true\" novalidate", view, StringComparison.Ordinal);
         Assert.Contains("window.legendFormTracking?.trackStart?.(form.dataset.formKey || pageKey)", view, StringComparison.Ordinal);

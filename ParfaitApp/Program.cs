@@ -35,6 +35,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // migration-gated adoption of the platform Blob+Key Vault ring is a deployment step.
 Shared.Security.PlatformConfigValidation.ValidateDataProtection(
     builder.Configuration, builder.Environment.IsProduction());
+Infrastructure.Security.PlatformDataProtection.AddPlatformDataProtection(
+    builder.Services,
+    builder.Configuration,
+    builder.Environment,
+    "ParfaitApp");
 
 // Rate limiting (was absent). Opt-in named policies from the shared authority;
 // applied to the public analytics ingest endpoint.
@@ -127,7 +132,14 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 });
 
 builder.Services.AddScoped<ICommerceBusinessProvisioningService, CommerceBusinessProvisioningService>();
+builder.Services.AddScoped<CommerceBusinessScopeResolver>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
+builder.Services.AddSingleton(sp =>
+    Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
+builder.Services.AddScoped<CommerceStoreContextService>();
 builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatformService>();
 builder.Services.AddScoped<ParfaitProductService>();
 builder.Services.AddScoped<ParfaitOrderService>();
@@ -142,18 +154,15 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<ParfaitStoragePaths>();
 builder.Services.AddScoped<ParfaitAnalyticsService>();
 builder.Services.AddScoped<IParfaitAnalyticsService>(serviceProvider => serviceProvider.GetRequiredService<ParfaitAnalyticsService>());
-builder.Services.AddScoped<ParfaitMetaSignalBridgeService>();
+builder.Services.AddScoped<Infrastructure.Commerce.CommerceSignalService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
-builder.Services.AddScoped<IMetaAdsConnectionStore, ParfaitMetaAdsConnectionStoreAdapter>();
-builder.Services.AddScoped<IMetaAdsService, MetaAdsService>();
 builder.Services.AddSingleton<ParfaitInternalAnalyticsCacheStamp>();
 builder.Services.AddScoped<ParfaitInternalAnalyticsService>();
 builder.Services.AddScoped<ParfaitInternalWorkspaceService>();
 builder.Services.AddScoped<IGraphMailService, GraphMailService>();
 builder.Services.AddSingleton<ParfaitMetaCapiCredentialProtector>();
 builder.Services.AddScoped<IParfaitBusinessProfileService, ParfaitBusinessProfileService>();
-builder.Services.AddScoped<IParfaitMetaAdsOAuthService, ParfaitMetaAdsOAuthService>();
 builder.Services.AddHostedService<ParfaitCustomerAutomationHostedService>();
 
 static bool TryResolveCanonicalHost(HttpRequest request, out HostString host)
@@ -344,6 +353,12 @@ app.Use(async (context, next) =>
 
     await next();
 });
+var webRoot = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+app.UseStaticFiles(new StaticFileOptions
+{
+    RequestPath = "/store-assets",
+    FileProvider = new PhysicalFileProvider(webRoot)
+});
 app.UseStaticFiles(new StaticFileOptions
 {
     RequestPath = "/uploads/parfait-products",
@@ -373,6 +388,7 @@ app.Use(async (context, next) =>
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
+app.MapControllers();
 
 var port = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(port))

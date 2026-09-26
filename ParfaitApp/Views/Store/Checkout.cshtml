@@ -3,6 +3,10 @@
     ViewData["BodyClass"] = "sp-body";
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
+    var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var storeRoot = ViewData["StoreRootPath"] as string ?? "/store";
+    var storeCart = ViewData["StoreCartPath"] as string ?? "/store/cart";
+    var storeName = commerce?.StoreName ?? "Parfait";
 
     var appId = ViewBag.SquareApplicationId as string;
     var locationId = ViewBag.SquareLocationId as string;
@@ -16,7 +20,7 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="~/css/storefront.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
 }
 
 <section class="sp-store-page sp-store-page--checkout">
@@ -27,7 +31,7 @@
                 <h1>Checkout</h1>
             </div>
             <div class="sp-transaction-actions">
-                <a class="sp-button sp-button--ghost" href="/store/cart">Edit Cart</a>
+                <a class="sp-button sp-button--ghost" href="@storeCart">Edit Cart</a>
             </div>
         </header>
 
@@ -100,7 +104,7 @@
                             <span class="sp-flow-step">Step 03</span>
                             <h2>Final Order Total</h2>
                         </div>
-                        <a class="sp-inline-link" href="/store/cart">Edit Cart</a>
+                        <a class="sp-inline-link" href="@storeCart">Edit Cart</a>
                     </div>
 
                     <div id="spCheckoutSummary" class="sp-checkout-summary-host"></div>
@@ -140,6 +144,13 @@
     <script>
         (() => {
             const store = window.ParfaitStorefront;
+            const commerce = store?.context || {};
+            const checkoutPath = commerce.checkoutPath || "/store/checkout";
+            const quoteEndpoint = checkoutPath + "/quote";
+            const leadEndpoint = checkoutPath + "/lead";
+            const payEndpoint = checkoutPath + "/pay";
+            const successPath = commerce.successPath || "/store/success";
+            const storeRoot = commerce.storeRootPath || "/store";
             const appId = @Html.Raw(appIdJson);
             const locationId = @Html.Raw(locationIdJson);
             const payButton = document.getElementById("spPayButton");
@@ -159,7 +170,9 @@
             let isSubmitting = false;
             let leadCaptureTimer = 0;
             let lastLeadSignature = "";
-            const checkoutAttemptStorageKey = "parfaitCheckoutAttemptId";
+            const checkoutAttemptStorageKey = store.storageKey === "parfaitCart"
+                ? "parfaitCheckoutAttemptId"
+                : store.storageKey + ":checkoutAttemptId";
             const emailPattern = /^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/;
 
             const fields = {
@@ -275,7 +288,7 @@
                     <div class="sp-cart-empty">
                         <h2>Your cart is empty</h2>
                         <div class="sp-checkout-review-actions">
-                            <a class="sp-button sp-button--primary" href="/store">Back to Shop</a>
+                            <a class="sp-button sp-button--primary" href="@storeRoot">Back to Shop</a>
                         </div>
                     </div>
                 `;
@@ -378,7 +391,7 @@
                 }
 
                 try {
-                    await fetch("/store/checkout/lead", {
+                    await fetch(leadEndpoint, {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -426,7 +439,7 @@
                 }
 
                 try {
-                    const response = await fetch("/store/checkout/quote", {
+                    const response = await fetch(quoteEndpoint, {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -508,7 +521,7 @@
                                 }))
                         };
 
-                        const response = await fetch("/store/checkout/pay", {
+                        const response = await fetch(payEndpoint, {
                             method: "POST",
                             headers: {
                                 "Content-Type": "application/json",
@@ -527,7 +540,7 @@
                         clearCheckoutAttemptId();
                         store.clearCart();
                         store.clearDiscountCode();
-                        window.location.href = data.redirectUrl || "/store/success";
+                        window.location.href = data.redirectUrl || successPath;
                     } catch (error) {
                         setError(error.message || "Payment failed.");
                         setSubmittingState(false, "Complete Purchase");

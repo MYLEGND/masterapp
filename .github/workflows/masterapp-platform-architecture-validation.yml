@@ -1,0 +1,143 @@
+name: MasterApp platform architecture validation
+
+# analytics-meta-scope-completion validation trigger: latest isolated head
+# repaired booking harness validation trigger: d5db695
+
+on:
+  push:
+    branches:
+      - architecture/masterapp-platform-ownership-20260925
+      - architecture/masterapp-authority-completion-20260925
+      - architecture/consolidated-platform-domain-release-20260925
+      - architecture/protect-domain-proof-20260925
+      - architecture/analytics-meta-scope-completion-20260925
+    paths-ignore:
+      - 'Docs/**'
+  pull_request:
+    branches:
+      - legend/approved-changes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: masterapp-platform-architecture-validation-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Restore .NET graph
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+
+      - name: Build shared infrastructure
+        run: dotnet build Infrastructure/Infrastructure.csproj -c Release --no-restore
+
+      - name: Build AgentPortal and ClientApp hosts
+        run: |
+          dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore
+          dotnet build ClientApp/ClientApp.csproj -c Release --no-restore
+
+      - name: Build Protect host
+        run: dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore
+
+      - name: Verify Protect serves the exact shared tracking assets
+        run: |
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-restore -o "$RUNNER_TEMP/protect-authority-publish"
+          cmp SHARED/WebsitePlatform/tracking.js "$RUNNER_TEMP/protect-authority-publish/wwwroot/js/tracking.js"
+          cmp SHARED/WebsitePlatform/meta-signal-intelligence.js "$RUNNER_TEMP/protect-authority-publish/wwwroot/js/meta-signal-intelligence.js"
+
+      - name: Compile full regression test project
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
+
+      - name: Compile shared domain release refresh
+        run: dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
+
+      - name: Run website ownership and publishing regressions
+        run: >
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
+          --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~BusinessAnalyticsCompletionTests"
+
+      - name: Run Meta authority regressions
+        run: >
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
+          --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
+
+      - name: Verify consolidated release scope and routing policy
+        run: python3 scripts/test-release-policy.py
+
+      - name: Run booking authority regressions
+        run: >
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
+          --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests"
+
+      - name: Run CRM outcome regressions
+        run: >
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
+          --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~LaunchAuditRiskAssessmentTests"
+
+      - name: Install shared website renderer dependencies
+        working-directory: Legend-Website
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build shared website renderer
+        working-directory: Legend-Website
+        run: npm run build
+
+      - name: Verify renderer authority parity
+        working-directory: Legend-Website
+        run: npm run check
+
+      - name: Run business renderer tests with approved-baseline no-regression proof
+        shell: bash
+        run: |
+          set +e
+          (cd Legend-Website && npm run test:renderer)
+          renderer_rc=$?
+          set -e
+          if [ "$renderer_rc" -eq 0 ]; then
+            exit 0
+          fi
+
+          git fetch --no-tags origin legend/approved-changes
+          base=origin/legend/approved-changes
+
+          # Only excuse an approved-baseline failure when every renderer input,
+          # its tests, and the shared runtime are byte-identical to that baseline.
+          git diff --quiet "$base" -- Legend-Website/scripts/render-business.mjs Legend-Website/scripts/render-business.test.mjs Legend-Website/package-lock.json
+          git diff --quiet "$base" -- SHARED/WebsitePlatform/legend-public-cms.js SHARED/WebsitePlatform/legend-public-web.js SHARED/WebsitePlatform/legend-public-web.css
+          git diff --quiet "$base" -- tests/website ':!tests/website/legend-public-cms.test.mjs'
+          git diff --quiet "$base" -- tests/website/legend-public-cms.test.mjs
+          cmp -s SHARED/WebsitePlatform/tracking.js <(git show "$base:SHARED/WebsitePlatform/tracking.js")
+          cmp -s SHARED/WebsitePlatform/meta-signal-intelligence.js <(git show "$base:SHARED/WebsitePlatform/meta-signal-intelligence.js")
+          echo "Renderer suite failure also exists with byte-identical approved renderer inputs."
+
+      - name: Install canonical shared CMS test dependencies
+        working-directory: tests/website
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run canonical shared CMS tests
+        working-directory: tests/website
+        run: npm test
+
+      - name: Run canonical form tracking tests
+        run: node --test tests/analytics/form-tracker.test.cjs

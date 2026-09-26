@@ -337,6 +337,7 @@ jobs:
           check Protect-Website/Program.cs PlatformRateLimiting
           check Protect-Website/Program.cs PlatformSecurityHeaders
           check ParfaitApp/Program.cs PlatformConfigValidation
+          check ParfaitApp/Program.cs AddPlatformDataProtection
           check ParfaitApp/Program.cs PlatformRateLimiting
           if grep -REn 'AddHostedService<[^>]*LegendConnect' \
                 AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then

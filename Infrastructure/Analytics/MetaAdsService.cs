@@ -501,35 +501,49 @@ public sealed class MetaAdsService : IMetaAdsService
 
     private async Task<(string Token, string AccountId)> ResolveCredentialsAsync(ScopeContext scope, CancellationToken ct)
     {
-        if (scope.ScopeType == ScopeType.Business)
+        if (_marketingConnections is not null)
         {
-            if (scope.CommerceBusinessId is not { } businessId || businessId == Guid.Empty || scope.AgentTrackingProfileId.HasValue || scope.HasSiteScope)
-                throw new InvalidOperationException("A single business marketing owner is required.");
-            if (_marketingConnections is null || !await _db.CommerceBusinesses.AsNoTracking()
-                .AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct)) return ("", "");
-            var connection = await _marketingConnections.GetAdsAsync(MarketingOwnerScope.Business(businessId), ct);
-            return (connection?.AccessToken?.Trim() ?? "", NormalizeAccountId(connection?.AccountId) ?? "");
+            MarketingOwnerScope? owner = null;
+            if (scope.ScopeType == ScopeType.Business &&
+                scope.CommerceBusinessId is { } businessId &&
+                businessId != Guid.Empty &&
+                !scope.AgentTrackingProfileId.HasValue &&
+                !scope.HasSiteScope)
+            {
+                if (await _db.CommerceBusinesses.AsNoTracking()
+                    .AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct))
+                    owner = MarketingOwnerScope.Business(businessId);
+            }
+            else if (scope.ScopeType == ScopeType.Agent &&
+                     scope.AgentTrackingProfileId is { } agentId &&
+                     agentId != Guid.Empty &&
+                     !scope.CommerceBusinessId.HasValue &&
+                     !scope.HasSiteScope)
+            {
+                owner = MarketingOwnerScope.Agent(agentId);
+            }
+            else if (scope.ScopeType == ScopeType.Global &&
+                     scope.HasSiteScope &&
+                     string.Equals(scope.SiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
+            {
+                owner = MarketingOwnerScope.Founder;
+            }
+
+            if (owner is not null)
+            {
+                var connection = await _marketingConnections.GetAdsAsync(owner, ct);
+                if (connection is not null && !string.IsNullOrWhiteSpace(connection.AccessToken))
+                    return (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
+            }
         }
 
+        // Compatibility fallback only for hosts still completing migration into the
+        // durable MarketingConnectionStore. It is not the canonical owner authority.
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue && scope.AgentTrackingProfileId.Value != Guid.Empty)
         {
             var connection = await _connectionStore.GetAsync(scope.AgentTrackingProfileId.Value, ct);
             if (connection != null && !string.IsNullOrWhiteSpace(connection.AccessToken))
-            {
-                var account = NormalizeAccountId(connection.AccountId);
-                return (connection.AccessToken.Trim(), account ?? string.Empty);
-            }
-        }
-
-        if (scope.HasSiteScope && !string.IsNullOrWhiteSpace(scope.SiteKey))
-        {
-            var siteScopeId = MetaAdsScopeKey.ForSite(scope.SiteKey);
-            var siteConnection = await _connectionStore.GetAsync(siteScopeId, ct);
-            if (siteConnection != null && !string.IsNullOrWhiteSpace(siteConnection.AccessToken))
-            {
-                var account = NormalizeAccountId(siteConnection.AccountId);
-                return (siteConnection.AccessToken.Trim(), account ?? string.Empty);
-            }
+                return (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
         }
 
         var token = (_config["MetaAds:AccessToken"] ?? string.Empty).Trim();

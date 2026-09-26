@@ -40,7 +40,7 @@ console.log('Shared observer copy, bounded route metadata, existing API base, an
 for (const file of ['legend-public-cms.js','legend-public-web.js','site.css']) {
   const bytes=await readFile(resolve(root,'dist',file));
   const version=createHash('sha256').update(bytes).digest('hex');
-  if(file.endsWith('.js') && !bytes.equals(await readFile(resolve(root,'../Legend-Design',file))))throw new Error('Shared asset differs from authority: '+file);
+  if(file.endsWith('.js') && !bytes.equals(await readFile(resolve(root,'../SHARED/WebsitePlatform',file))))throw new Error('Shared asset differs from authority: '+file);
   for(const route of routes){
     const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
     if(!html.includes(`/${file}?v=${version}`))throw new Error('Missing exact asset version: '+file);
@@ -49,8 +49,8 @@ for (const file of ['legend-public-cms.js','legend-public-web.js','site.css']) {
 console.log('Shared editor identity and content-versioned assets passed on every route.');
 
 for (const [built, authority] of [
-  ['legend-public-tracking.js','../Protect-Website/wwwroot/js/tracking.js'],
-  ['legend-public-meta-signal-intelligence.js','../Protect-Website/wwwroot/js/meta-signal-intelligence.js']
+  ['legend-public-tracking.js','../SHARED/WebsitePlatform/tracking.js'],
+  ['legend-public-meta-signal-intelligence.js','../SHARED/WebsitePlatform/meta-signal-intelligence.js']
 ]) {
   const builtBytes=await readFile(resolve(root,'dist',built));
   const authorityBytes=await readFile(resolve(root,authority));
@@ -61,7 +61,7 @@ for(const route of routes){
   for(const required of ['trackingAsset:"/legend-public-tracking.js?v=','metaSignalAsset:"/legend-public-meta-signal-intelligence.js?v='])
     if(!html.includes(required))throw new Error('LEGEND public route missing canonical Protect runtime asset: '+required);
 }
-console.log('Protect tracking and Meta intelligence are the exact public runtime source for LEGEND and business builds.');
+console.log('Shared platform tracking and Meta intelligence are the exact runtime source for Protect, LEGEND, and business builds.');
 
 const businessPreview=await readFile(resolve(root,'dist',businessPreviewRoute,'index.html'),'utf8');
 for(const file of ['legend-public-cms.js','legend-public-web.js','site.css']){

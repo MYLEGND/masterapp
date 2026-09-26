@@ -15,6 +15,11 @@ public static class WebsiteContentSanitizer
         {
             Version = WebsiteStudioContract.CurrentDocumentVersion,
             FaviconImageDataUrl = SanitizeImage(source.FaviconImageDataUrl),
+            Store = new WebsiteStoreSettings
+            {
+                Enabled = source.Store?.Enabled == true,
+                NavigationLabel = SanitizeStoreLabel(source.Store?.NavigationLabel)
+            },
             Breakpoints = breakpoints
         };
 
@@ -308,6 +313,14 @@ public static class WebsiteContentSanitizer
             Field = field,
             Target = target
         };
+    }
+
+    private static string SanitizeStoreLabel(string? value)
+    {
+        var label = (ClampText(value) ?? "Store").Trim();
+        if (label.Length == 0) label = "Store";
+        if (label.Length > 40) label = label[..40];
+        return label;
     }
 
     private static string? SanitizeDynamicRoutePattern(string? value)
