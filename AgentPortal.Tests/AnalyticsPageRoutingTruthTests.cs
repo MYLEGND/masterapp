@@ -130,6 +130,26 @@ public sealed class AnalyticsPageRoutingTruthTests
     }
 
     [Fact]
+    public void MetaAdsAndPixelRoutesFailClosedAndUseCanonicalQualityBuckets()
+    {
+        var root = RepoRoot();
+        var controller = File.ReadAllText(Path.Combine(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs"));
+        var ads = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MetaAdsService.cs"));
+        var resolver = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MetaPixelResolutionService.cs"));
+        var metaRuntime = File.ReadAllText(Path.Combine(root, "SHARED", "WebsitePlatform", "meta-signal-intelligence.js"));
+        var protectBootstrap = File.ReadAllText(Path.Combine(root, "Protect-Website", "Views", "Shared", "_QuoteMetaSignalBootstrap.cshtml"));
+
+        Assert.DoesNotContain("Configured fallback account", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("Using the configured fallback Meta Ads account", controller, StringComparison.Ordinal);
+        Assert.Contains("ApplyLeadBucketMembershipInMemory", ads, StringComparison.Ordinal);
+        Assert.DoesNotContain("BuildLeadPredicate(range.QualityMode)", ads, StringComparison.Ordinal);
+        Assert.Contains("Scoped agent traffic is tenant-owned", resolver, StringComparison.Ordinal);
+        Assert.Contains("trackSingleCustom", metaRuntime, StringComparison.Ordinal);
+        Assert.Contains("config.pixelId", metaRuntime, StringComparison.Ordinal);
+        Assert.Contains("ResolvedMetaPixelId", protectBootstrap, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task VisitorConcentrationUsesTheSameSelectedTrafficSliceAsUniqueVisitors()
     {
         using var db = ControllerTestHelpers.BuildDb();
