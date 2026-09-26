@@ -724,20 +724,12 @@ jobs:
         id: routingpolicy
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' }}
         shell: bash
-        env:
-          CLOUDFLARE_SECURITY_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
           api="https://api.cloudflare.com/client/v4"
-          security_token="${CLOUDFLARE_SECURITY_API_TOKEN:-}"
-          if [ -z "$security_token" ] && [ -s /tmp/protect-website-routing.json ]; then
-            security_token="$(jq -r '.[] | select(.name=="WebsiteDomains__ApiToken" or .name=="WebsiteDomains:ApiToken") | (.value // empty)' /tmp/protect-website-routing.json | head -n 1)"
-          fi
+          security_token="${CLOUDFLARE_API_TOKEN:-}"
           if [ -z "$security_token" ]; then
-            security_token="${CLOUDFLARE_API_TOKEN:-}"
-          fi
-          if [ -z "$security_token" ]; then
-            echo "::error::No existing Cloudflare authority is available for the scoped custom-hostname policy."
+            echo "::error::Central Cloudflare routing authority is unavailable."
             exit 1
           fi
           echo "::add-mask::$security_token"
@@ -1087,11 +1079,9 @@ jobs:
         if: ${{ always() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingdeploy.outcome == 'success' }}
         continue-on-error: true
         shell: bash
-        env:
-          CLOUDFLARE_SECURITY_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          security_token="${CLOUDFLARE_SECURITY_API_TOKEN:-$CLOUDFLARE_API_TOKEN}"
+          security_token="${CLOUDFLARE_API_TOKEN:-}"
           echo "::add-mask::$security_token"
           echo "Cloudflare bot-management configuration:"
           bot_status="$(curl --silent --show-error -o /tmp/cf-bot-management.json -w '%{http_code}' \
