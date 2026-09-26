@@ -49,6 +49,12 @@ public sealed class MarketingMetaAdsOAuthService(
                $"&scope={Uri.EscapeDataString(scopes)}";
     }
 
+    public MarketingMetaOAuthState InspectState(string stateToken)
+    {
+        var state = ReadState(stateToken);
+        return new MarketingMetaOAuthState(ResolveOwner(state), state.ReturnUrl, state.RedirectUri);
+    }
+
     public async Task<MarketingMetaOAuthResult> CompleteCallbackAsync(
         string code,
         string stateToken,
@@ -281,6 +287,11 @@ public sealed class MarketingMetaAdsOAuthService(
         bool HasCampaigns,
         bool IsActive);
 }
+
+public sealed record MarketingMetaOAuthState(
+    MarketingOwnerScope Owner,
+    string ReturnUrl,
+    string RedirectUri);
 
 public sealed record MarketingMetaOAuthResult(
     MarketingOwnerScope Owner,
