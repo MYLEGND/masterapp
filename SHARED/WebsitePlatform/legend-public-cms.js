@@ -1462,18 +1462,42 @@
     if (SITE_KEY !== 'business') return;
     const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
+
+    // The rendered template nav is the baseline catalog in server/public renders.
+    // Overlay the versioned document page metadata and custom pages onto that one
+    // list so custom routes join the banner without erasing template routes.
+    const entries=new Map();
+    [...nav.querySelectorAll('a:not([data-legend-store-nav])')].forEach((node,index)=>{
+      const route=normalizePageRoute(new URL(node.getAttribute('href') || '/',location.origin).pathname);
+      if (!route) return;
+      entries.set(route,{
+        route,
+        label:(node.textContent || route).trim(),
+        showInNavigation:true,
+        parentPath:null,
+        order:index*10
+      });
+    });
+    for (const entry of websitePageEntries(false)) {
+      const previous=entries.get(entry.route);
+      entries.set(entry.route,{...previous,...entry});
+    }
+
     nav.querySelectorAll('a:not([data-legend-store-nav])').forEach(node=>node.remove());
     const current=currentPageRoute();
-    for (const entry of websitePageEntries(false).filter(value=>value.showInNavigation!==false && !value.parentPath)) {
-      const link=document.createElement('a');
-      link.href=entry.route;
-      link.textContent=entry.label;
-      link.dataset.legendPageNav='true';
-      link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
-      link.dataset.cmsLocked='true';
-      if (entry.route===current) link.setAttribute('aria-current','page');
-      nav.appendChild(link);
-    }
+    [...entries.values()]
+      .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
+      .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route))
+      .forEach(entry=>{
+        const link=document.createElement('a');
+        link.href=entry.route;
+        link.textContent=entry.label;
+        link.dataset.legendPageNav='true';
+        link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
+        link.dataset.cmsLocked='true';
+        if (entry.route===current) link.setAttribute('aria-current','page');
+        nav.appendChild(link);
+      });
   }
 
   function applyDocument(doc) {
