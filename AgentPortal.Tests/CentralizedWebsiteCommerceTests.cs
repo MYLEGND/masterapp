@@ -149,6 +149,60 @@ public sealed class CentralizedWebsiteCommerceTests
     }
 
     [Fact]
+    public async Task PurchaseWritesAnalyticsAndMetaAsOneCanonicalDedupedOutcome()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var service = new CommerceSignalService(db);
+        var businessId = Guid.NewGuid();
+        var context = new CommerceSignalContext(
+            businessId,
+            null,
+            Guid.NewGuid(),
+            WebsiteEditorSiteKeys.Business,
+            "business-store",
+            "Business Store",
+            "https://business.example.com/store/checkout",
+            SessionId: "session-1",
+            VisitorId: "visitor-1");
+
+        var first = await service.RecordAsync(
+            "Purchase",
+            "order-1001",
+            context,
+            new CommerceSignalProduct("p1", "Product", "product", "M", 1, 2500),
+            new CommerceSignalCustomer("Jane", "Buyer", "jane@example.test", "5551234567", "Phoenix", "AZ", "85001"),
+            "ORDER-1001");
+
+        var duplicate = await service.RecordAsync(
+            "Purchase",
+            "order-1001",
+            context,
+            new CommerceSignalProduct("p1", "Product", "product", "M", 1, 2500),
+            new CommerceSignalCustomer("Jane", "Buyer", "jane@example.test", "5551234567", "Phoenix", "AZ", "85001"),
+            "ORDER-1001");
+
+        Assert.True(first);
+        Assert.False(duplicate);
+
+        var analytics = await db.AnalyticsEvents.SingleAsync();
+        var meta = await db.MetaSignalEvents.SingleAsync();
+
+        Assert.Equal("Purchase", analytics.EventType);
+        Assert.Equal(businessId, analytics.CommerceBusinessId);
+        Assert.Null(analytics.AgentTrackingProfileId);
+        Assert.Equal("session-1", analytics.SessionId);
+        Assert.Equal("visitor-1", analytics.VisitorId);
+        Assert.NotNull(analytics.ClientEventId);
+        Assert.Equal("commerce-server-authority-v1", analytics.TrackingVersion);
+
+        Assert.Equal("Purchase", meta.EventName);
+        Assert.Equal(businessId, meta.CommerceBusinessId);
+        Assert.Null(meta.AgentTrackingProfileId);
+        Assert.StartsWith("commerce:", meta.MetaDeduplicationKey);
+        Assert.True(MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(meta.EventName, meta.MetadataJson));
+    }
+
+    [Fact]
     public async Task BusinessStoreResolvesFromAuthenticatedCustomDomainAtRootStorePath()
     {
         using var db = ControllerTestHelpers.BuildDb();
