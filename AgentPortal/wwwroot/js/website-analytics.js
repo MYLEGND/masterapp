@@ -5181,6 +5181,7 @@ function escapeHtml(value) {
   const marketingSetupForm = document.getElementById('marketing-setup-form');
   const marketingSetupStatus = document.getElementById('marketing-setup-status');
   const marketingSetupSave = document.getElementById('marketing-setup-save');
+  let marketingSetupLoaded = false;
 
   function marketingSetupAgentProfileId() {
     const selected = document.getElementById('wa-scope-select')?.value || '';
@@ -5266,7 +5267,8 @@ function escapeHtml(value) {
   }
 
   async function loadMarketingSetup() {
-    if (!marketingSetupForm) return;
+    if (!marketingSetupForm) return false;
+    marketingSetupLoaded = false;
     setMarketingSetupStatus('Loading centralized setup…');
     if (marketingSetupSave) marketingSetupSave.disabled = true;
     try {
@@ -5275,13 +5277,18 @@ function escapeHtml(value) {
         'marketingSetup',
         endpoints.marketingSetup,
         profileId ? { agentProfileId: profileId } : {});
-      if (!payload) return;
+      if (!payload) return false;
       renderMarketingSetup(payload);
+      const revision = document.getElementById('marketing-setup-revision')?.value || '';
+      if (!revision) throw new Error('Canonical marketing settings did not return a revision.');
+      marketingSetupLoaded = true;
       setMarketingSetupStatus('Loaded from the canonical marketing and booking authorities.');
+      return true;
     } catch (error) {
       setMarketingSetupStatus(error?.message || 'Unable to load Marketing Setup.', 'error');
+      return false;
     } finally {
-      if (marketingSetupSave) marketingSetupSave.disabled = false;
+      if (marketingSetupSave) marketingSetupSave.disabled = !marketingSetupLoaded;
     }
   }
 
@@ -5289,10 +5296,14 @@ function escapeHtml(value) {
     event?.preventDefault?.();
     if (!marketingSetupForm || !marketingSetupSave) return;
 
-    const revision = document.getElementById('marketing-setup-revision')?.value || '';
-    if (!revision) {
-      setMarketingSetupStatus('Reload Marketing Setup before saving.', 'error');
-      return;
+    let revision = document.getElementById('marketing-setup-revision')?.value || '';
+    if (!marketingSetupLoaded || !revision) {
+      const loaded = await loadMarketingSetup();
+      revision = document.getElementById('marketing-setup-revision')?.value || '';
+      if (!loaded || !revision) {
+        setMarketingSetupStatus('Unable to load the canonical Marketing Setup. Nothing was saved.', 'error');
+        return;
+      }
     }
 
     const pixel = (document.getElementById('marketing-setup-pixel')?.value || '').trim();
@@ -5328,6 +5339,8 @@ function escapeHtml(value) {
   marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
   marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
   document.getElementById('wa-scope-select')?.addEventListener('change', () => {
+    marketingSetupLoaded = false;
+    if (marketingSetupSave) marketingSetupSave.disabled = true;
     if (marketingSetupModal?.classList.contains('show')) void loadMarketingSetup();
   });
 })();
