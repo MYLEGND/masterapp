@@ -529,6 +529,47 @@ jobs:
           [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)" = "masterapp-parfait.azurewebsites.net" ]
           echo "Shared website routing authority is present in Protect and Parfait without exposing its value."
 
+      - name: Diagnose preserve-live routing origin acceptance
+        id: routingorigin
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Azure front-door summaries (no secrets):"
+          for app in masterapp-protect masterapp-parfait; do
+            echo "=== $app ==="
+            az webapp show -g masterapp-rg -n "$app" --query '{publicNetworkAccess:publicNetworkAccess,httpsOnly:httpsOnly,state:state}' -o json
+            az webapp config access-restriction show -g masterapp-rg -n "$app" \
+              --query '{mainSiteAccessRestrictions:ipSecurityRestrictions,mainSiteDefaultAction:ipSecurityRestrictionsDefaultAction,scmSiteDefaultAction:scmIpSecurityRestrictionsDefaultAction}' -o json
+            az webapp auth show -g masterapp-rg -n "$app" \
+              --query '{enabled:platform.enabled,requireAuthentication:globalValidation.requireAuthentication,unauthenticatedClientAction:globalValidation.unauthenticatedClientAction,excludedPaths:globalValidation.excludedPaths}' -o json || true
+          done
+
+          probe() {
+            app="$1"
+            path="$2"
+            body="/tmp/${app}-origin-body"
+            headers="/tmp/${app}-origin-headers"
+            status="$(curl --silent --show-error --max-time 30 \
+              --output "$body" --dump-header "$headers" --write-out '%{http_code}' \
+              -H "X-Legend-Original-Host: $WEBSITE_ROUTING_CANARY" \
+              -H "X-Legend-Website-Bridge: $LEGEND_WEBSITE_BRIDGE_SECRET" \
+              -H "User-Agent: LEGEND-routing-origin-diagnostic/1.0" \
+              "https://${app}.azurewebsites.net${path}")"
+            echo "${app}${path} direct-origin status=${status} bytes=$(wc -c < "$body")"
+            grep -Ei '^(server|x-|location|content-type|date):' "$headers" || true
+            sha256sum "$body"
+            python3 - "$body" <<'PYORIGIN'
+          import pathlib,sys
+          raw=pathlib.Path(sys.argv[1]).read_bytes()[:512]
+          text=raw.decode('utf-8','replace').replace('\r',' ').replace('\n',' ')
+          print('body-prefix:',text)
+          PYORIGIN
+          }
+          probe masterapp-protect /
+          probe masterapp-parfait /store
+
+
 
       - name: Apply additive diagnostics migrations before restarting apps
         id: migrate
