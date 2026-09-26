@@ -216,7 +216,8 @@ jobs:
           npm --prefix Legend-Cloudflare run test:website-routing
           npm --prefix Legend-Cloudflare run check:website-routing
           python3 -m py_compile scripts/cloudflare-routing-authority.py
-          if grep -q 'secrets.CLOUDFLARE_API_TOKEN' .github/workflows/all-intentional-direct-release-20260918.yml; then
+          legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
+          if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
             echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
             exit 1
           fi
@@ -958,6 +959,14 @@ jobs:
             exit 1
           fi
           echo "Custom-domain Worker bridge reached the exact LEGEND business binding proof."
+
+      - name: Capture exact Cloudflare challenge event after failed live proof
+        id: routingchallenge
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome == 'failure' && steps.routingauthority.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/cloudflare-routing-authority.py challenge-events --host "$WEBSITE_ROUTING_CANARY"
 
       - name: Verify every deployed target and collect all failures
         id: live
