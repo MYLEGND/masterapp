@@ -118,6 +118,7 @@ builder.Services.AddScoped<Infrastructure.Analytics.IMetaSendAuthority, Infrastr
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
 builder.Services.AddScoped<IPublicBookingCalendarMatcher, MicrosoftGraphPublicBookingCalendarMatcher>();
+builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
 builder.Services.AddScoped<IPublicBookingConfirmationService, PublicBookingConfirmationService>();
 builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
