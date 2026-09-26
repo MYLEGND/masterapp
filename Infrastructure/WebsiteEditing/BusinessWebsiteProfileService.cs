@@ -19,7 +19,6 @@ public sealed class BusinessWebsiteProfileInput
     [MaxLength(320), EmailAddress] public string? BookingCalendarEmail { get; set; }
     [MaxLength(32)] public string? MetaPixelId { get; set; }
     [MaxLength(100)] public string? MetaTestEventCode { get; set; }
-    [MaxLength(8192)] public string? ReplacementCapiToken { get; set; }
 }
 
 public sealed record BusinessWebsiteProfileView(BusinessWebsiteProfileInput Settings,
@@ -69,7 +68,7 @@ public sealed class BusinessWebsiteProfileService(MasterAppDbContext db, Marketi
         settings.UpdatedUtc = DateTime.UtcNow;
         // Both tracked profile and connection changes commit together in the same SaveChanges transaction.
         await connections.SaveSettingsAsync(MarketingOwnerScope.Business(businessId), input.MetaPixelId,
-            input.MetaTestEventCode, input.ReplacementCapiToken, input.ConnectionRevision, ct);
+            input.MetaTestEventCode, replacementCapiToken: null, input.ConnectionRevision, ct);
     }
 
     private async Task<CommerceBusinessStorefrontSettings> SettingsAsync(Guid businessId, CancellationToken ct)
