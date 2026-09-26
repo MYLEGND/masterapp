@@ -72,7 +72,11 @@ public static class WebsiteLeadSubmission
     public static async Task CompleteNotificationAsync(MasterAppDbContext db, WebsiteLead lead, bool accepted, CancellationToken ct = default)
     {
         lead.NotificationSentUtc = accepted ? DateTime.UtcNow : null;
-        lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : null;
+        // Keep the failed-attempt timestamp so the canonical lease enforces
+        // backoff before either a user retry or the autonomous worker retries.
+        lead.NotificationAttemptUtc = accepted
+            ? lead.NotificationAttemptUtc
+            : (lead.NotificationAttemptUtc ?? DateTime.UtcNow);
         if (!accepted) lead.Status = "NotificationFailed";
         else if (lead.Status == "NotificationFailed") lead.Status = "New";
         await db.SaveChangesAsync(ct);
