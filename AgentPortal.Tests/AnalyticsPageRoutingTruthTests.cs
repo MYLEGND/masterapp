@@ -77,6 +77,22 @@ public sealed class AnalyticsPageRoutingTruthTests
     }
 
     [Fact]
+    public void AnalyticsPageContinuouslyRefreshesSummaryAndOpenDetailWithoutManualReload()
+    {
+        var root = RepoRoot();
+        var ui = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
+
+        Assert.Contains("pollMs: 1500", ui, StringComparison.Ordinal);
+        Assert.Contains("function refreshLiveAnalytics()", ui, StringComparison.Ordinal);
+        Assert.Contains("loadSummary();", ui, StringComparison.Ordinal);
+        Assert.Contains("if (state.openModal) refreshOpenModal();", ui, StringComparison.Ordinal);
+        Assert.Contains("setInterval(refreshLiveAnalytics, state.pollMs)", ui, StringComparison.Ordinal);
+        Assert.Contains("visibilitychange", ui, StringComparison.Ordinal);
+        Assert.Contains("window.addEventListener('focus', refreshLiveAnalytics)", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("pollMs: 45000", ui, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AnalyticsPageNeverRepresentsUnavailableSummaryOrFailedTrafficAsZero()
     {
         var root = RepoRoot();
