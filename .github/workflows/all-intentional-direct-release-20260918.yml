@@ -939,6 +939,35 @@ jobs:
           fi
           echo "Custom-domain Worker bridge reached the exact LEGEND business binding proof."
 
+      - name: Identify Cloudflare challenge authority
+        id: routingchallenge
+        if: ${{ always() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingdeploy.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Cloudflare bot-management configuration:"
+          bot_status="$(curl --silent --show-error -o /tmp/cf-bot-management.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/bot_management")"
+          echo "bot-management HTTP $bot_status"
+          jq '{success,errors,result:{fight_mode:(.result.fight_mode // null),sbfm_definitely_automated:(.result.sbfm_definitely_automated // null),sbfm_likely_automated:(.result.sbfm_likely_automated // null),sbfm_verified_bots:(.result.sbfm_verified_bots // null),sbfm_static_resource_protection:(.result.sbfm_static_resource_protection // null),enable_js:(.result.enable_js // null),stale_zone_configuration:(.result.stale_zone_configuration // null)}}' /tmp/cf-bot-management.json || cat /tmp/cf-bot-management.json
+
+          start="$(date -u -d '15 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+          end="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          query='query ChallengeEvents($zoneTag: string, $start: Time, $end: Time) { viewer { zones(filter:{zoneTag:$zoneTag}) { firewallEventsAdaptive(filter:{datetime_geq:$start,datetime_leq:$end},limit:100,orderBy:[datetime_DESC]) { action source description clientRequestHTTPHost clientRequestPath datetime userAgent } } } }'
+          jq -cn --arg q "$query" --arg z "$CLOUDFLARE_ZONE_ID" --arg s "$start" --arg e "$end" \
+            '{query:$q,variables:{zoneTag:$z,start:$s,end:$e}}' > /tmp/cf-security-query.json
+          graph_status="$(curl --silent --show-error -o /tmp/cf-security-events.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/cf-security-query.json \
+            "https://api.cloudflare.com/client/v4/graphql")"
+          echo "security-events HTTP $graph_status"
+          jq --arg host "$WEBSITE_ROUTING_CANARY" \
+            '{errors,events:[.data.viewer.zones[]?.firewallEventsAdaptive[]? | select(.clientRequestHTTPHost==$host) | {datetime,action,source,description,path:.clientRequestPath,userAgent}]}' \
+            /tmp/cf-security-events.json || cat /tmp/cf-security-events.json
+
       - name: Verify every deployed target and collect all failures
         id: live
         if: ${{ !cancelled() && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && steps.azure.outcome == 'success' && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true' || env.CLIENT_ONLY == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') }}
