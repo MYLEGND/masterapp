@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the final failure-forward storefront routing completion after the unified current-head web deployment. Preserve every application and website target at a74648c9178be29843a45a2d6596c388af8715a3; deploy only the shared Cloudflare website-commerce routing authority and prove the verified custom-domain homepage, store, and same-origin commerce-management transport. No application redeployments, no per-domain application logic, no legacy token fallback.",
-  "purpose": "Complete the current-head scoped storefront release by activating the already-validated /commerce/manage/* Cloudflare transport after all five web targets are live at the same revision. Preserve the successful Portal, ClientApp, Protect, Parfait, and LEGEND Website deployments.",
-  "requestId": "scoped-storefront-routing-preserve-live-20260926-r1",
+  "authorization": "Founder authorized failure-forward completion only. Preserve all five live application/site targets at a74648c9178be29843a45a2d6596c388af8715a3; rerun only the already-validated Cloudflare routing recovery and corrected non-mutating final gate. No application rebuild, migration, auth mutation, or redeployment.",
+  "purpose": "Finish the storefront routing release after #213 proved routing live but the enforcement gate incorrectly treated successful non-mutating WEBSITECHECKS as a deployment mutation.",
+  "requestId": "scoped-storefront-routing-preserve-live-20260926-r2-final-gate",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36231021723",
   "releaseMode": "approved-only",
   "targets": [
