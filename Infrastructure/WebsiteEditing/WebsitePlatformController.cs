@@ -291,7 +291,8 @@ public class WebsitePlatformController : ControllerBase
     public sealed record StoreActionRequest(
         string Ticket,
         long ExpectedRevision,
-        string? NavigationLabel = null);
+        string? NavigationLabel = null,
+        string? CartIcon = null);
 
     [HttpPost("manage/store/enable")]
     public async Task<IActionResult> EnableStore(
@@ -313,6 +314,8 @@ public class WebsitePlatformController : ControllerBase
         document.Store.Enabled = true;
         if (!string.IsNullOrWhiteSpace(request.NavigationLabel))
             document.Store.NavigationLabel = request.NavigationLabel.Trim();
+        if (!string.IsNullOrWhiteSpace(request.CartIcon))
+            document.Store.CartIcon = request.CartIcon.Trim();
 
         document = WebsiteContentSanitizer.Sanitize(document);
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
@@ -1868,6 +1871,7 @@ public class WebsitePlatformController : ControllerBase
             {
                 enabled = document.Store.Enabled,
                 label,
+                cartIcon = document.Store.CartIcon,
                 commerceBusinessId = (Guid?)null,
                 businessKey = (string?)null,
                 storefrontUrl = (string?)null,
@@ -1884,6 +1888,7 @@ public class WebsitePlatformController : ControllerBase
         {
             enabled = document.Store.Enabled,
             label,
+            cartIcon = document.Store.CartIcon,
             commerceBusinessId = (Guid?)scope.CommerceBusinessId,
             businessKey = scope.BusinessKey,
             storefrontUrl = root,
