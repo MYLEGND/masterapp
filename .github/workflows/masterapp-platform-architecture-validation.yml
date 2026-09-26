@@ -11,7 +11,6 @@ on:
       - architecture/consolidated-platform-domain-release-20260925
       - architecture/protect-domain-proof-20260925
       - architecture/analytics-meta-scope-completion-20260925
-      - repair/website-studio-layout-manager-pages-current-20260926
       - repair/analytics-canonical-reconciliation-20260926
     paths-ignore:
       - 'Docs/**'
@@ -110,7 +109,6 @@ jobs:
         run: npm run check
 
       - name: Run business renderer tests with approved-baseline no-regression proof
-        continue-on-error: true
         shell: bash
         run: |
           set +e
