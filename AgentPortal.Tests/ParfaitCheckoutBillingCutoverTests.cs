@@ -337,7 +337,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
             Products = new ParfaitProductService(StoragePaths, Db);
             Orders = new ParfaitOrderService(Db);
             Automations = new ParfaitCustomerAutomationService(StoragePaths, Configuration, Orders, Products);
-            MetaSignalBridge = new ParfaitMetaSignalBridgeService(Db, NullLogger<ParfaitMetaSignalBridgeService>.Instance);
+            CommerceSignals = new CommerceSignalService(Db);
 
             Gateway = new Mock<IBillingGateway>(MockBehavior.Strict);
             Gateway.SetupGet(x => x.Provider).Returns(BillingProvider.Square);
@@ -377,7 +377,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
                 BillingOrchestrator,
                 Mail.Object,
                 Analytics.Object,
-                MetaSignalBridge)
+                CommerceSignals)
             {
                 ControllerContext = new ControllerContext
                 {
@@ -394,7 +394,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
         public ParfaitProductService Products { get; }
         public ParfaitOrderService Orders { get; }
         public ParfaitCustomerAutomationService Automations { get; }
-        public ParfaitMetaSignalBridgeService MetaSignalBridge { get; }
+        public CommerceSignalService CommerceSignals { get; }
         public Mock<IBillingGateway> Gateway { get; }
         public Mock<IGraphMailService> Mail { get; }
         public Mock<IParfaitAnalyticsService> Analytics { get; }
