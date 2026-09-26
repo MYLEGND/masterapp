@@ -505,12 +505,18 @@ await TryWriteLeadEventAsync(
             var emailBody = LeadEmailTemplate.Wrap("New Quote — Auto Insurance", rows.ToString());
 
 // ── 2. Send email through unified sender ───────────────────────────────
-            var emailSent = await _emailSender.TrySendAsync(
+            var notification = await WebsiteLeadNotificationAuthority.DeliverAsync(
+                _db,
+                lead,
                 leadRecipientEmail,
-                $"[AUTO] Quote Request | {subjectName}",
-                emailBody,
-                saveToSentItems: true,
-                cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+                token => _emailSender.TrySendAsync(
+                    leadRecipientEmail,
+                    $"[AUTO] Quote Request | {subjectName}",
+                    emailBody,
+                    saveToSentItems: true,
+                    cancellationToken: token),
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+            var emailSent = notification.Sent;
 
             if (emailSent)
             {
