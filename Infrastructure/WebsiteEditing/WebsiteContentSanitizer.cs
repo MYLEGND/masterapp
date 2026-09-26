@@ -51,6 +51,7 @@ public static class WebsiteContentSanitizer
                 Id = id,
                 SectionId = sectionId,
                 Type = type,
+                TemplateSectionId = type == "section" ? NullIfEmpty(SanitizeId(extra.TemplateSectionId)) : null,
                 Signals = type == "reusable" ? new List<WebsiteSignalBinding>() : WebsiteSignalBindingPolicy.Validate(extra.Signals),
                 ActionKey = SanitizeActionKey(extra.ActionKey),
                 Title = ClampContentText(extra.Title),
