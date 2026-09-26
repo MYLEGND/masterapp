@@ -1,12 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested a final live deployment proof after the Protect deployment hardening. Deploy only masterapp-protect through the approved direct release lane. Preserve every other live application and Cloudflare Worker.",
-  "purpose": "Deploy the cleaned canonical Protect release path from approved changes and verify immutable ZIP transport, live provenance, and custom-domain proof behavior after deployment.",
-  "requestId": "protect-hardening-live-proof-20260925-1903",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36210649062",
+  "authorization": "Founder explicitly requested the fully certified centralized analytics, Meta, lead ownership, CRM, notification, booking, and Parfait architecture completion be deployed through the approved direct release lane. Deploy only the repository-approved affected application scope required for this shared release: Portal, ClientApp companion, Protect, and Parfait. Preserve LEGEND Website and Cloudflare routing.",
+  "purpose": "Deploy the exact post-baseline-sync architecture candidate after full green validation and verify live analytics ingestion, owner-scoped persistence, dashboards, Meta signal dispatch, lead/CRM capture, and durable advisor notification state end to end.",
+  "requestId": "analytics-meta-architecture-live-proof-20260925-2057",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36216987262",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
