@@ -32,7 +32,14 @@ public sealed class LaunchAuditRiskAssessmentTests
         sender.SetupSequence(x => x.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false).ReturnsAsync(true);
-        var controller = new RiskAssessmentController(new ConfigurationBuilder().Build(), sender.Object, db,
+        var controller = new RiskAssessmentController(
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Contact:RecipientEmail"] = "founder@example.test"
+                })
+                .Build(),
+            sender.Object, db,
             new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance),
             new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance),
             NullLogger<RiskAssessmentController>.Instance);
