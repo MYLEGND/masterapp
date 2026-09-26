@@ -62,6 +62,10 @@ public static class WebsiteLeadNotificationAuthority
         {
             sent = await sendAsync(cancellationToken);
         }
+        catch
+        {
+            sent = false;
+        }
         finally
         {
             await CompleteAsync(db, lead, sent, cancellationToken);
