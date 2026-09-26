@@ -140,7 +140,7 @@ namespace Protect_Website.Controllers
                     model = JsonSerializer.Deserialize<RiskAssessmentModel>(lead.MetadataJson!)
                         ?? throw new InvalidOperationException("The saved assessment cannot be loaded.");
                 }
-                if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, lead, ct))
+                if (!await WebsiteLeadNotificationAuthority.TryClaimAsync(_db, lead, ct))
                 {
                     await _db.Entry(lead).ReloadAsync(ct);
                     if (lead.NotificationSentUtc != null)
@@ -248,7 +248,7 @@ namespace Protect_Website.Controllers
                     saveToSentItems: true,
                     cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
 
-                await WebsiteLeadSubmission.CompleteNotificationAsync(_db, lead, emailSent, ct);
+                await WebsiteLeadNotificationAuthority.CompleteAsync(_db, lead, emailSent, ct);
                 if (!emailSent)
                 {
                     _logger.LogWarning("Risk assessment captured; notification failed for lead {LeadId}.", lead.LeadId);
