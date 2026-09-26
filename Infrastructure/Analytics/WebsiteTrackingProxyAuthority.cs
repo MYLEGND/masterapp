@@ -41,7 +41,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         _config = config;
         _logger = logger;
         _resolver = resolver;
-        _founderUpn = config["Founder:Upn"] ?? "zac.owen@mylegnd.com";
+        _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
     }
 
     [HttpPost]
