@@ -1,24 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized direct production release of the canonical analytics, CRM, Meta, booking, website runtime, and notification hardening candidate after the release-only regressions were repaired exactly: nullable request-services fallback and immediately retryable notification lease semantics.",
-  "purpose": "Resume from the failed release tests only. Preserve all previously successful validation and rollback work, then package, migrate, deploy, and live-verify all five affected web targets from the corrected approved head.",
-  "requestId": "canonical-analytics-crm-meta-booking-release-20260926-r3",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36256776427",
+  "authorization": "Founder authorized one final direct production release after #223 completed successfully. Preserve all successful #223 live work. Deploy only AgentPortal, ClientApp, and Protect for the fully validated Marketing Setup centralization; no Parfait, LEGEND Website, Cloudflare routing, or unrelated source changes.",
+  "purpose": "Promote the centralized Website Analytics Marketing Setup: move agent marketing/booking configuration out of Agent Profile, keep the existing owner-scoped MarketingConnection and AgentProfile authorities, remove manual Meta CAPI secret entry, and preserve automatic scoped Meta OAuth/CAPI behavior. Include the already-approved shared Website Studio fixes without restarting unaffected targets.",
+  "requestId": "analytics-marketing-setup-centralization-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36267157003",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
+    "masterapp-protect"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
-  "failedReleaseRun": "https://github.com/MYLEGND/masterapp/actions/runs/36257385153",
-  "compileRepairCommit": "d5d0d5ef6f2ef4e1759f7b8c65fc7d329d57e114",
-  "releaseRegressionFixes": [
-    "710b4cd4812c739cb333601659f88f1765c093b4",
-    "b6fb2d46ac69c0c4d0934f3c93df3951f519ed75",
-    "e9559736e2a937f98fd9d67f8a0756015329f751"
-  ]
+  "preserveSuccessfulRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36264282322"
 }
