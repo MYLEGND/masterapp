@@ -187,7 +187,10 @@
           : 'Store',
         cartIcon: ['cart','bag','basket'].includes(String(input?.store?.cartIcon || '').toLowerCase())
           ? String(input.store.cartIcon).toLowerCase()
-          : 'cart'
+          : 'cart',
+        cartIconSizePx: Number.isFinite(Number(input?.store?.cartIconSizePx))
+          ? Math.max(16, Math.min(96, Number(input.store.cartIconSizePx)))
+          : 28
       },
       pages
     };
@@ -233,6 +236,19 @@
       .slice(0, 160);
   }
 
+  function isSharedShellElement(el) {
+    return !!el?.closest?.('.site-header,.site-footer');
+  }
+
+  function globalShellOverride(id, create = true) {
+    if (!id) return null;
+    documentState.elements ||= {};
+    if (!documentState.elements[id] && create) documentState.elements[id] = { style: {} };
+    const value = documentState.elements[id] || null;
+    if (value && create) value.style ||= {};
+    return value;
+  }
+
   function canEditElement(el) {
     if (!(el instanceof HTMLElement)) return false;
     if (el.closest('.legend-cms-editor')) return false;
@@ -270,7 +286,7 @@
     const sections = [...document.querySelectorAll(sectionCandidates), ...document.querySelectorAll('.site-header,.site-footer')];
     sections.forEach((section, index) => {
       if (!section.dataset.cmsSection) {
-        section.dataset.cmsSection = section.matches('.site-header') ? `${pageKey}.header` : section.matches('.site-footer') ? `${pageKey}.footer` : `${pageKey}.section.${index + 1}`;
+        section.dataset.cmsSection = section.matches('.site-header') ? 'shell.header' : section.matches('.site-footer') ? 'shell.footer' : `${pageKey}.section.${index + 1}`;
       }
       section.dataset.cmsId = `section:${section.dataset.cmsSection}`;
       section.dataset.cmsEditable = 'true';
@@ -288,7 +304,8 @@
           const href = el.getAttribute('href');
           const route = href ? new URL(href, location.origin).pathname : '';
           const semantic = SITE_KEY !== 'business' && legacy ? el.dataset.cta || href || el.textContent || el.tagName : el.dataset.businessField || (el.hasAttribute?.('data-business-name') ? 'business-name' : '') || el.dataset.businessRoute || el.dataset.cta || route || (['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) ? el.className || el.tagName : '') || el.textContent || el.tagName;
-          el.dataset.cmsId = `${pageKey}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
+          const shellPrefix = el.closest('.site-header') ? 'shell.header' : el.closest('.site-footer') ? 'shell.footer' : pageKey;
+          el.dataset.cmsId = `${shellPrefix}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
         }
         rememberOriginal(el);
         if (isDirectCanvasSelectable(el)) el.dataset.cmsEditable = 'true';
@@ -703,8 +720,16 @@
       el.style.maxWidth = '100%';
     }
     if (positiveNumber(style.heightPx)) {
-      el.style.height = `${style.heightPx}px`;
-      el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+      if (sectionLocked) {
+        // Sections are content-sized canvases. Vertical resize changes only their
+        // minimum breathing room; content must never become an internal scroller.
+        el.style.minHeight = `${style.heightPx}px`;
+        el.style.height = 'auto';
+        el.style.overflow = 'visible';
+      } else {
+        el.style.height = `${style.heightPx}px`;
+        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+      }
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
     const hasOffsetY = style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
@@ -736,6 +761,10 @@
 
   function overrideForElement(el, create = true) {
     if (!el?.dataset?.cmsId) return null;
+    // Shared website shell edits are document-global and therefore render on
+    // every page. Page-specific content remains in the page record.
+    if (isSharedShellElement(el))
+      return globalShellOverride(el.dataset.cmsId, create);
     // An added composite block (for example a service card) owns its content,
     // but each selectable child owns its own geometry/style. This keeps one
     // canonical document store while allowing title/copy/etc. to move independently.
@@ -1142,6 +1171,21 @@
       el = document.createElement('section');
       if (editable) el.dataset.cmsSection = `extra:${extra.id}`;
       el.className = 'cms-extra cms-extra-section';
+      if (extra.templateSectionId) {
+        const template=document.querySelector(`[data-cms-section="${CSS.escape(extra.templateSectionId)}"]:not(.cms-extra-section)`);
+        if (template) {
+          el.className=['cms-extra','cms-extra-section',...template.classList].filter((value,index,array)=>value && array.indexOf(value)===index).join(' ');
+          el.innerHTML=template.innerHTML;
+          let childIndex=0;
+          el.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article').forEach(child=>{
+            if (!canEditElement(child)) return;
+            if (!['IMG','VIDEO','A','DIV','ARTICLE'].includes(child.tagName) && child.children.length>0) return;
+            child.dataset.cmsId = `extra:${extra.id}:node:${++childIndex}`;
+            child.dataset.cmsEditable='true';
+            rememberOriginal(child);
+          });
+        }
+      }
     } else if (extra.type === 'video') {
       el = document.createElement('video'); el.controls = true; el.preload = 'metadata';
       if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
@@ -1414,10 +1458,53 @@
     refreshLayers();
   }
 
+  function applyBusinessPageNavigation() {
+    if (SITE_KEY !== 'business') return;
+    const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
+    if (!nav) return;
+
+    // The rendered template nav is the baseline catalog in server/public renders.
+    // Overlay the versioned document page metadata and custom pages onto that one
+    // list so custom routes join the banner without erasing template routes.
+    const entries=new Map();
+    [...nav.querySelectorAll('a:not([data-legend-store-nav])')].forEach((node,index)=>{
+      const route=normalizePageRoute(new URL(node.getAttribute('href') || '/',location.origin).pathname);
+      if (!route) return;
+      entries.set(route,{
+        route,
+        label:(node.textContent || route).trim(),
+        showInNavigation:true,
+        parentPath:null,
+        order:index*10
+      });
+    });
+    for (const entry of websitePageEntries(false)) {
+      const previous=entries.get(entry.route);
+      entries.set(entry.route,{...previous,...entry});
+    }
+
+    nav.querySelectorAll('a:not([data-legend-store-nav])').forEach(node=>node.remove());
+    const current=currentPageRoute();
+    [...entries.values()]
+      .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
+      .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route))
+      .forEach(entry=>{
+        const link=document.createElement('a');
+        link.href=entry.route;
+        link.textContent=entry.label;
+        link.dataset.legendPageNav='true';
+        link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
+        link.dataset.cmsLocked='true';
+        if (entry.route===current) link.setAttribute('aria-current','page');
+        nav.appendChild(link);
+      });
+  }
+
   function applyDocument(doc) {
     documentState = normalizeDocument(doc);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
+    applyBusinessPageNavigation();
     applyStoreNavigation();
     const metadata = pageState();
     document.title = metadata.title ?? originalTitle;
@@ -1427,6 +1514,12 @@
     document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
     pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
     pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
+    // Shared shell overrides are document-global and always apply before the
+    // current page's local element map.
+    Object.entries(documentState.elements || {}).forEach(([id, override]) => {
+      const el = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
+      applyElementOverride(el, override);
+    });
     // Composite children do not exist until their parent extra is rendered.
     // Re-apply the one canonical page element map after extras exist.
     Object.entries(pageState().elements).forEach(([id, override]) => {
@@ -1473,11 +1566,18 @@
     return ['cart','bag','basket'].includes(value) ? value : 'cart';
   }
 
-  function createStoreCartIcon(iconKey=effectiveCartIcon()) {
+  function effectiveCartIconSize() {
+    const value=Number(documentState.store?.cartIconSizePx ?? storeContext?.cartIconSizePx ?? 28);
+    return Number.isFinite(value) ? Math.max(16,Math.min(96,value)) : 28;
+  }
+
+  function createStoreCartIcon(iconKey=effectiveCartIcon(), size=effectiveCartIconSize()) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('viewBox','0 0 24 24');
-    svg.setAttribute('width','18');
-    svg.setAttribute('height','18');
+    svg.setAttribute('width',String(size));
+    svg.setAttribute('height',String(size));
+    svg.style.width=`${size}px`;
+    svg.style.height=`${size}px`;
     svg.setAttribute('fill','none');
     svg.setAttribute('aria-hidden','true');
     svg.classList.add('legend-store-cart-icon');
@@ -1739,7 +1839,7 @@
     input.maxLength=40;
     input.value=effectiveStoreLabel();
     input.placeholder='Store or Shop';
-    input.addEventListener('change',()=>void updateStore(true,input.value,effectiveCartIcon()));
+    input.addEventListener('change',()=>void updateStore(true,input.value,effectiveCartIcon(),effectiveCartIconSize()));
     label.appendChild(input);
 
     const iconLabel=document.createElement('label');
@@ -1750,9 +1850,18 @@
       const option=document.createElement('option'); option.value=value; option.textContent=text; icon.appendChild(option);
     }
     icon.value=effectiveCartIcon();
-    icon.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),icon.value));
+    icon.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),icon.value,effectiveCartIconSize()));
     iconLabel.appendChild(icon);
-    settings.append(label,iconLabel);
+
+    const sizeLabel=document.createElement('label');
+    sizeLabel.textContent='Cart icon size';
+    const size=document.createElement('input');
+    size.id='legend-cms-store-cart-size';
+    size.type='number'; size.min='16'; size.max='96'; size.step='1';
+    size.value=String(effectiveCartIconSize());
+    size.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),effectiveCartIcon(),Number(size.value)));
+    sizeLabel.appendChild(size);
+    settings.append(label,iconLabel,sizeLabel);
     host.appendChild(settings);
 
     const actions=document.createElement('div');
@@ -1767,7 +1876,7 @@
     host.insertBefore(actions,settings);
   }
 
-  async function updateStore(enabled,labelValue=null,cartIconValue=null) {
+  async function updateStore(enabled,labelValue=null,cartIconValue=null,cartIconSizeValue=null) {
     if (!editorMode || saving) return;
     const status=document.getElementById('legend-cms-status');
     if(status) status.textContent=enabled?'Setting up your store…':'Removing Store page…';
@@ -1775,7 +1884,7 @@
       const response=await fetch(`${API_BASE}/api/website-content/manage/store/${enabled?'enable':'remove'}`,{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel(),cartIcon:cartIconValue || effectiveCartIcon()})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel(),cartIcon:cartIconValue || effectiveCartIcon(),cartIconSizePx:Number.isFinite(Number(cartIconSizeValue))?Number(cartIconSizeValue):effectiveCartIconSize()})
       });
       const payload=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(payload.message || payload.error || `Store update failed (${response.status})`);
@@ -2386,9 +2495,11 @@
     const serviceCard = businessServiceCardFor(selected);
     const duplicateButton = document.getElementById('legend-cms-duplicate');
     if (duplicateButton) {
-      duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate selected';
-      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM';
-      duplicateButton.title = selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
+      const immutableShell = selected.matches?.('.site-header,.site-footer');
+      duplicateButton.textContent = serviceCard ? 'Duplicate service' : selected.dataset.cmsSection ? 'Duplicate section' : 'Duplicate selected';
+      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM' || immutableShell;
+      duplicateButton.title = immutableShell ? 'The website banner and footer are shared shell authorities and cannot be duplicated.'
+        : selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
     }
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
@@ -3289,8 +3400,20 @@
       }
 
       if (selected.dataset.cmsSection) {
-        alert('Select an added section to duplicate the whole section, or select an individual item inside this template section.');
-        return;
+        if (selected.matches('.site-header,.site-footer')) return;
+        if (selected.querySelector?.('form[data-website-inquiry]')) {
+          alert('This section contains the canonical inquiry form. Move or redesign the section instead of creating a second live inquiry authority.');
+          return;
+        }
+        checkpoint();
+        const copy={
+          id:crypto.randomUUID(), type:'section', sectionId:selected.dataset.cmsSection,
+          templateSectionId:selected.dataset.cmsSection, style:{}, signals:[]
+        };
+        pageState().extras.push(copy);
+        const created=createExtra(copy);
+        if (created && selected.parentElement===created.parentElement) selected.parentElement.insertBefore(created,selected.nextSibling);
+        syncSectionOrderFromDom(); setSelected(created); markDirty(); return;
       }
       const supported = ['P','H1','H2','H3','H4','H5','H6','A','BUTTON','IMG','VIDEO','LI','SMALL','STRONG','SPAN'];
       if (!supported.includes(selected.tagName)) return;
