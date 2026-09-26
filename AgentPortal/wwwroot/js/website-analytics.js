@@ -38,7 +38,7 @@
     preset: initialPreset,
     from: initialFrom,
     to: initialTo,
-    pollMs: 45000,
+    pollMs: 1500,
     qualityMode: initialQualityMode,
     dashboardTrafficType: 'all',
     controllers: {},
@@ -4242,10 +4242,18 @@ function escapeHtml(value) {
     }
   }
 
+  function refreshLiveAnalytics() {
+    loadSummary();
+    if (state.openModal) refreshOpenModal();
+  }
+
   function initPolling() {
-    setInterval(() => {
-      refreshOpenModal();
-    }, state.pollMs);
+    setInterval(refreshLiveAnalytics, state.pollMs);
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshLiveAnalytics();
+    });
+    window.addEventListener('focus', refreshLiveAnalytics);
   }
 
   function initModules() {
@@ -4343,6 +4351,9 @@ function escapeHtml(value) {
       },
       getRangeParams(options) {
         return rangeParams(options || {});
+      },
+      endpoint(path) {
+        return analyticsEndpoint(path);
       }
     };
   }
@@ -5097,7 +5108,11 @@ function escapeHtml(value) {
     const content = document.getElementById('deviceIntelligenceContent');
     if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
 
-    const deviceUrl = `${analyticsEndpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
+    const endpoint = window.websiteAnalyticsBridge?.endpoint;
+    if (typeof endpoint !== 'function') {
+      throw new Error('Analytics endpoint authority is unavailable.');
+    }
+    const deviceUrl = `${endpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
     const res = await fetchCachedDeviceRequest(deviceUrl, () => fetch(deviceUrl, {
       headers: { 'Accept': 'application/json' }
     }));

@@ -12,6 +12,7 @@ on:
       - architecture/protect-domain-proof-20260925
       - architecture/analytics-meta-scope-completion-20260925
       - repair/analytics-canonical-reconciliation-20260926
+      - repair/scoped-website-analytics-canonical-20260926
     paths-ignore:
       - 'Docs/**'
   pull_request:

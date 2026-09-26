@@ -173,23 +173,10 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
 
     private async Task<long> InitializeWatermarkAsync(MasterAppDbContext db, CancellationToken cancellationToken)
     {
-        var recentBridgeRows = await db.MetaSignalEvents
-            .AsNoTracking()
-            .Where(x => x.MetadataJson != null && x.MetadataJson.Contains(MetaSignalAnalyticsBridgeMetadata.BridgeSourceMarker))
-            .OrderByDescending(x => x.Id)
-            .Take(100)
-            .ToListAsync(cancellationToken);
-
-        var bridgeWatermark = recentBridgeRows
-            .Select(x => MetaSignalAnalyticsBridgeMetadata.ReadInt64(x.MetadataJson, "sourceAnalyticsEventId"))
-            .Where(x => x.HasValue)
-            .Select(x => x!.Value)
-            .DefaultIfEmpty(0)
-            .Max();
-
-        if (bridgeWatermark > 0)
-            return bridgeWatermark;
-
+        // Restart from the configured lookback floor, not from the highest
+        // globally bridged event. A global high-water mark can skip an older eligible
+        // row from another Founder/agent/business scope forever. Replaying the bounded
+        // window is safe because bridge derivation is idempotent and duplicate-protected.
         var lookbackUtc = DateTime.UtcNow.AddHours(-Math.Clamp(_options.Value.AnalyticsBridgeStartupLookbackHours, 1, 168));
         var floor = await db.AnalyticsEvents
             .AsNoTracking()

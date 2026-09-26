@@ -41,7 +41,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         _config = config;
         _logger = logger;
         _resolver = resolver;
-        _founderUpn = config["Founder:Upn"] ?? "zac.owen@mylegnd.com";
+        _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
     }
 
     [HttpPost]
@@ -69,22 +69,12 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         }
 
         EnsureClientContextFallback(req);
-        await EnsureAgentAttributionAsync(req, ct);
+        var isFounderOwner = await EnsureAgentAttributionAsync(req, ct);
 
-        var response = await ForwardAsync("/api/analytics/ingest", req, ct);
-        if (response == null)
-        {
-            _logger.LogError("Analytics forward unavailable. Returning 503 so upstream ingest failures are visible.");
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "tracking_forward_unavailable" });
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogWarning("Analytics forward returned non-success status {StatusCode}. Passing through upstream status/body.", (int)response.StatusCode);
-            return await BuildPassThroughResultAsync(response, ct);
-        }
-
-        return await BuildPassThroughResultAsync(response, ct);
+        // Protect telemetry writes directly through the shared canonical database
+        // authority. Do not depend on a second application/network hop merely to
+        // record browser analytics.
+        return await PersistProtectEventAsync(req, isFounderOwner, ct);
     }
 
     [HttpPost]
@@ -137,6 +127,126 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         }
 
         return await BuildPassThroughResultAsync(response, ct);
+    }
+
+    private async Task<IActionResult> PersistProtectEventAsync(
+        AnalyticsEventRequest req,
+        bool isFounderOwner,
+        CancellationToken cancellationToken)
+    {
+        if (!AnalyticsEventCatalog.TryGet(req.EventType, out var definition) || !definition.AllowBrowser)
+            return BadRequest(new { error = "invalid_event_type" });
+
+        if (!req.AgentTrackingProfileId.HasValue || req.AgentTrackingProfileId == Guid.Empty)
+            return BadRequest(new { error = "tracking_owner_required" });
+
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        var existing = await db.AnalyticsEvents.AsNoTracking()
+            .FirstOrDefaultAsync(row => row.ClientEventId == req.ClientEventId, cancellationToken);
+        if (existing is not null)
+        {
+            var sameOwner =
+                existing.CommerceBusinessId == null &&
+                existing.AgentTrackingProfileId == req.AgentTrackingProfileId &&
+                string.Equals(existing.EventType, req.EventType, StringComparison.OrdinalIgnoreCase);
+            return sameOwner ? Ok(new { status = "duplicate_ignored" }) : Conflict(new { error = "event_id_owner_conflict" });
+        }
+
+        var context = new UnifiedEventContext
+        {
+            SiteKey = WebsiteEditorSiteKeys.Protect,
+            AgentTrackingProfileId = req.AgentTrackingProfileId,
+            AgentSlug = Clean(req.AgentSlug),
+            EventId = req.ClientEventId.ToString("N"),
+            EventName = req.EventType.Trim(),
+            EventCategory = definition.Category,
+            EventUtc = req.EventUtc ?? DateTime.UtcNow,
+            SessionId = Clean(req.SessionId),
+            VisitorId = Clean(req.VisitorId),
+            Url = Clean(req.Url),
+            Referrer = Clean(req.Referrer),
+            PageKey = Clean(req.PageKey),
+            ElementKey = Clean(req.ElementKey),
+            ButtonLabel = Clean(req.ButtonLabel),
+            FormKey = Clean(req.FormKey),
+            QuoteType = Clean(req.QuoteType),
+            DeviceType = Clean(req.DeviceType),
+            Browser = Clean(req.Browser),
+            OperatingSystem = Clean(req.OperatingSystem),
+            UserAgent = Clean(req.UserAgent) ?? Request.Headers.UserAgent.ToString(),
+            IpAddress = Clean(req.IpAddress) ?? ResolveClientIp(),
+            TimeZone = Clean(req.TimeZone),
+            Language = Clean(req.Language),
+            WebDriver = req.WebDriver,
+            IsHeadless = req.IsHeadless,
+            MouseMoveCount = req.MouseMoveCount,
+            HumanInteractionCount = req.HumanInteractionCount,
+            VisibilityChangeCount = req.VisibilityChangeCount,
+            ScreenWidth = req.ScreenWidth,
+            ScreenHeight = req.ScreenHeight,
+            ViewportWidth = req.ViewportWidth,
+            ViewportHeight = req.ViewportHeight,
+            ScrollPercent = req.ScrollPercent,
+            DwellMilliseconds = req.DwellMilliseconds,
+            EngagedMilliseconds = req.EngagedMilliseconds,
+            IsBounceCandidate = req.IsBounceCandidate,
+            IsExitPage = req.IsExitPage,
+            UtmSource = Clean(req.UtmSource),
+            UtmMedium = Clean(req.UtmMedium),
+            UtmCampaign = Clean(req.UtmCampaign),
+            UtmId = Clean(req.UtmId),
+            UtmContent = Clean(req.UtmContent),
+            Fbclid = Clean(req.Fbclid),
+            MetaCampaignId = Clean(req.MetaCampaignId),
+            MetaAdSetId = Clean(req.MetaAdSetId),
+            MetaAdId = Clean(req.MetaAdId),
+            IsInternal = req.IsInternal,
+            Environment = EnvironmentLabelResolver.Resolve(),
+            Host = Request.Host.Host,
+            IsBrowserSignal = true,
+            IsServerAuthority = false,
+            MetaServerAuthorityEligible = false,
+            Metadata = new
+            {
+                source = "protect_shared_tracking",
+                siteKey = WebsiteEditorSiteKeys.Protect,
+                reportingOwner = isFounderOwner ? "founder" : "agent",
+                analyticsMetadata = Clean(req.MetadataJson)
+            }
+        };
+
+        var row = UnifiedEventMapper.ToAnalytics(context);
+        row.ClientEventId = req.ClientEventId;
+        row.SchemaVersion = req.SchemaVersion ?? 1;
+        row.TrackingVersion = Clean(req.TrackingVersion);
+        row.Path = Clean(req.Path);
+        row.SubmitOutcome = Clean(req.SubmitOutcome);
+        row.UtmTerm = Clean(req.UtmTerm);
+        row.MetaCampaignName = Clean(req.MetaCampaignName);
+        row.MetaAdSetName = Clean(req.MetaAdSetName);
+        row.MetaAdName = Clean(req.MetaAdName);
+        row.Placement = Clean(req.Placement);
+        row.FormId = Clean(req.FormId);
+        row.FieldName = Clean(req.FieldName);
+        row.ElementId = Clean(req.ElementId);
+        UnifiedAnalyticsWriter.Write(db, row);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(row).State = EntityState.Detached;
+            existing = await db.AnalyticsEvents.AsNoTracking()
+                .FirstOrDefaultAsync(candidate => candidate.ClientEventId == req.ClientEventId, cancellationToken);
+            if (existing is null) throw;
+            if (existing.CommerceBusinessId != null ||
+                existing.AgentTrackingProfileId != req.AgentTrackingProfileId)
+                return Conflict(new { error = "event_id_owner_conflict" });
+        }
+
+        return Ok(new { status = "ok", eventId = row.EventId });
     }
 
     private async Task<IActionResult> PersistPublicWebsiteEventAsync(
@@ -663,52 +773,38 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
     /// 2) Slug parsed from /a/{slug}/... path
     /// 3) Founder fallback for default-domain pages
     /// </summary>
-    private async Task EnsureAgentAttributionAsync(AnalyticsEventRequest req, CancellationToken ct)
+    private async Task<bool> EnsureAgentAttributionAsync(AnalyticsEventRequest req, CancellationToken ct)
     {
-        // If a slug is provided but profile id is missing, resolve it.
-        if (!req.AgentTrackingProfileId.HasValue && !string.IsNullOrWhiteSpace(req.AgentSlug))
+        // Analytics ownership is server-authoritative. Ignore browser-supplied owner
+        // IDs/slugs and derive the scope from the same-origin public page/referrer.
+        req.AgentTrackingProfileId = null;
+        req.AgentSlug = null;
+
+        var sourcePath = ResolveLeadSourcePathFromReferrer();
+        var sourceSlug = ExtractAgentSlug(sourcePath) ?? ExtractAgentSlug(req.Path);
+        if (!string.IsNullOrWhiteSpace(sourceSlug))
         {
-            var bySlug = await _resolver.ResolveBySlugAsync(req.AgentSlug.Trim(), ct);
-            if (bySlug.Found && bySlug.Profile != null)
+            var bySlug = await _resolver.ResolveBySlugAsync(sourceSlug, ct);
+            if (bySlug.Found && bySlug.Profile != null &&
+                !string.Equals(bySlug.Profile.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase))
             {
                 req.AgentTrackingProfileId = bySlug.Profile.Id;
                 req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
-                return;
+                return false;
             }
         }
 
-        // Already fully attributed.
-        if (req.AgentTrackingProfileId.HasValue && !string.IsNullOrWhiteSpace(req.AgentSlug))
-            return;
-
-        // Attempt slug extraction from page path ("/a/{slug}/...").
-        var path = (req.Path ?? string.Empty).Trim();
-        if (path.StartsWith("/a/", StringComparison.OrdinalIgnoreCase))
+        // The canonical root Protect site belongs to the Founder owner. The actual
+        // Founder profile is resolved dynamically; no user/profile ID is hardcoded.
+        var founder = await _resolver.ResolveByUpnAsync(_founderUpn, ct);
+        if (founder.Found && founder.Profile != null)
         {
-            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length >= 2)
-            {
-                var slug = segments[1];
-                var bySlug = await _resolver.ResolveBySlugAsync(slug, ct);
-                if (bySlug.Found && bySlug.Profile != null)
-                {
-                    req.AgentTrackingProfileId = bySlug.Profile.Id;
-                    req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
-                    return;
-                }
-            }
+            req.AgentTrackingProfileId = founder.Profile.Id;
+            req.AgentSlug = founder.CanonicalSlug ?? founder.Profile.Slug;
+            return true;
         }
 
-        // Founder default-domain fallback.
-        if (!req.AgentTrackingProfileId.HasValue && string.IsNullOrWhiteSpace(req.AgentSlug))
-        {
-            var founder = await _resolver.ResolveByUpnAsync(_founderUpn, ct);
-            if (founder.Found && founder.Profile != null)
-            {
-                req.AgentTrackingProfileId = founder.Profile.Id;
-                req.AgentSlug = founder.CanonicalSlug ?? founder.Profile.Slug;
-            }
-        }
+        return false;
     }
 
     public sealed class AnalyticsEventRequest
