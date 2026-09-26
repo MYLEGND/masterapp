@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested the completed full scoped Parfait commerce experience be deployed directly through legend/approved-changes after full isolated validation. Deploy only the affected shared runtime scope: Portal, ClientApp companion, Protect, and Parfait, plus the existing shared Cloudflare business website router required to make custom-domain /store routes live. No LEGEND Website rebuild and no unrelated targets.",
-  "purpose": "Deploy the centralized single-source commerce completion: canonical Parfait Dashboard/Products/Orders/Automations/Analytics UI, owner-scoped Business/Agent/Founder analytics, one MarketingConnectionStore and MarketingMetaAdsOAuthService authority, one Pixel/CAPI/Meta signal pipeline, scoped customer automation, shared editor-ticket authority, and custom-domain storefront routing. Verify camoexterior.com only as the live external routing canary; no CAMO-specific application logic.",
-  "requestId": "scoped-parfait-commerce-single-authority-live-proof-20260925",
+  "authorization": "Founder explicitly requested failure-forward recovery for the completed full scoped Parfait commerce release. Preserve every successful Portal, ClientApp, Protect, and Parfait deployment from direct release #192; do not rebuild or redeploy successful application targets. Recover only the shared Cloudflare business website routing layer and its live custom-domain proof.",
+  "purpose": "Failure-forward routing recovery for direct release #192: retain the already-live centralized commerce application revision and repair only the shared custom-domain router/proof path so owner-scoped custom domains serve homepage and /store without restarting successful deployments.",
+  "requestId": "scoped-commerce-routing-failure-forward-20260925",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36218166686",
   "releaseMode": "approved-only",
   "targets": [
@@ -13,5 +13,5 @@
   ],
   "cloudflareWebsiteRouting": true,
   "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": false
+  "preserveLiveTargets": true
 }
