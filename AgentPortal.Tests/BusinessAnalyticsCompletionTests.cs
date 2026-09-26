@@ -179,6 +179,19 @@ public sealed class BusinessAnalyticsCompletionTests
     }
 
     [Fact]
+    public void ParfaitAnalyticsUsesCanonicalServicesWithoutStaleDashboardCache()
+    {
+        var root = RepoRoot();
+        var source = File.ReadAllText(Path.Combine(root, "ParfaitApp", "Services", "ParfaitInternalAnalyticsService.cs"));
+
+        Assert.Contains("IAnalyticsQueryService _analytics", source, StringComparison.Ordinal);
+        Assert.Contains("IMetaSignalAnalyticsService _metaSignal", source, StringComparison.Ordinal);
+        Assert.Contains("DashboardCacheDuration = TimeSpan.Zero", source, StringComparison.Ordinal);
+        Assert.Contains("WorkspaceCacheDuration = TimeSpan.Zero", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("TimeSpan.FromSeconds(45)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProductionAnalyticsAndMetaHaveSingleWriteAndRuntimeAuthorities()
     {
         var root = RepoRoot();
