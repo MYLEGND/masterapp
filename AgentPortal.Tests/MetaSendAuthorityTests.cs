@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ProtectWebsite.Services.Meta;
@@ -98,11 +99,17 @@ public class MetaSendAuthorityTests
     [Fact]
     public async Task SeparateAuthorityInstancesCannotClaimTheSamePersistedSignalConcurrently()
     {
-        var database = Guid.NewGuid().ToString();
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
         var services = new ServiceCollection();
-        services.AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database));
+        services.AddDbContext<MasterAppDbContext>(options => options.UseSqlite(connection));
 
         await using var provider = services.BuildServiceProvider();
+        await using (var migrationScope = provider.CreateAsyncScope())
+        {
+            var migrationDb = migrationScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            await migrationDb.Database.EnsureCreatedAsync();
+        }
         var eventId = "durable-claim-" + Guid.NewGuid().ToString("N");
         var dedupeKey = "Lead:" + Guid.NewGuid().ToString("N");
 
@@ -160,12 +167,15 @@ public class MetaSendAuthorityTests
     [Fact]
     public async Task FounderSentLookupNeverTreatsAgentOwnedSignalAsFounderDuplicate()
     {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
         var services = new ServiceCollection();
-        services.AddDbContext<MasterAppDbContext>(options =>
-            options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
+        services.AddDbContext<MasterAppDbContext>(options => options.UseSqlite(connection));
 
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
+        var setupDb = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+        await setupDb.Database.EnsureCreatedAsync();
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
         var agentId = Guid.NewGuid();
         var sharedKey = "PolicyPaid:shared-key";
