@@ -5,16 +5,38 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
 var hostname = WebsiteDomainService.NormalizeHostname(Required("LEGEND_RELEASE_DOMAIN"));
+var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+    .UseSqlServer(Required("LEGEND_RELEASE_DB_CONNECTION"))
+    .Options;
+await using var db = new MasterAppDbContext(options);
+
+if (string.Equals(Environment.GetEnvironmentVariable("LEGEND_RELEASE_DIAGNOSTIC_ONLY"), "true", StringComparison.OrdinalIgnoreCase))
+{
+    var matchingBindings = await db.Set<WebsiteDomainBinding>().AsNoTracking()
+        .Where(row => row.Hostname == hostname)
+        .OrderBy(row => row.CreatedUtc)
+        .ToListAsync();
+
+    Console.WriteLine($"Domain diagnostic: hostname={hostname}, bindings={matchingBindings.Count}");
+    foreach (var row in matchingBindings)
+    {
+        var business = await db.CommerceBusinesses.AsNoTracking()
+            .SingleOrDefaultAsync(candidate => candidate.Id == row.CommerceBusinessId);
+        Console.WriteLine(
+            $"Binding id={row.Id}, businessId={row.CommerceBusinessId}, status={row.Status}, certificate={row.CertificateStatus}, " +
+            $"lastCheckedUtc={row.LastCheckedUtc:O}, businessExists={business is not null}, businessStatus={business?.Status ?? "<missing>"}, " +
+            $"businessActive={business?.IsActive.ToString() ?? "<missing>"}");
+    }
+
+    return;
+}
+
 var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
 {
     ["WebsiteDomains:CloudflareZoneId"] = Required("LEGEND_RELEASE_ZONE_ID"),
     ["WebsiteDomains:ApiToken"] = Required("LEGEND_RELEASE_DOMAIN_TOKEN"),
     ["WebsiteDomains:CnameTarget"] = Required("LEGEND_RELEASE_CNAME_TARGET")
 }).Build();
-var options = new DbContextOptionsBuilder<MasterAppDbContext>()
-    .UseSqlServer(Required("LEGEND_RELEASE_DB_CONNECTION"))
-    .Options;
-await using var db = new MasterAppDbContext(options);
 var binding = await db.Set<WebsiteDomainBinding>().AsNoTracking()
     .SingleAsync(row => row.Hostname == hostname);
 var domains = new WebsiteDomainService(db, new DomainHttpClientFactory(), configuration);
