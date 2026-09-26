@@ -5183,7 +5183,8 @@ function escapeHtml(value) {
   const marketingSetupSave = document.getElementById('marketing-setup-save');
 
   function marketingSetupAgentProfileId() {
-    return state.agentProfileId || callerProfileId || '';
+    const selected = document.getElementById('wa-scope-select')?.value || '';
+    return selected || state.agentProfileId || callerProfileId || '';
   }
 
   function setMarketingSetupStatus(message, kind = '') {
