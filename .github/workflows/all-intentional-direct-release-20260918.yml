@@ -92,6 +92,7 @@ jobs:
           if-no-files-found: error
   release:
     needs: [discover-live, preserve-rollback]
+    if: ${{ always() && needs.discover-live.result == 'success' && (needs.preserve-rollback.result == 'success' || needs.preserve-rollback.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: Production
