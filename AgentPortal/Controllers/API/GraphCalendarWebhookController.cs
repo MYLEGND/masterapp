@@ -175,6 +175,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             subscription.UpdatedUtc = webhookUtc;
 
             syncLog.AgentUserId = subscription.AgentUserId;
+            syncLog.CommerceBusinessId = subscription.CommerceBusinessId;
             syncLog.CalendarUserId = subscription.CalendarUserId;
             syncLog.CalendarEmail = subscription.CalendarEmail;
 
@@ -224,7 +225,21 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         DateTime utcNow,
         CancellationToken cancellationToken)
     {
-        var appointment = await _db.LeadAppointments
+        var appointmentQuery = _db.LeadAppointments.AsQueryable();
+        if (subscription.CommerceBusinessId.HasValue)
+        {
+            appointmentQuery = appointmentQuery.Where(x =>
+                x.CommerceBusinessId == subscription.CommerceBusinessId &&
+                x.OwnerAgentUserId == "");
+        }
+        else
+        {
+            appointmentQuery = appointmentQuery.Where(x =>
+                x.CommerceBusinessId == null &&
+                x.OwnerAgentUserId == subscription.AgentUserId);
+        }
+
+        var appointment = await appointmentQuery
             .FirstOrDefaultAsync(x => x.CalendarEventId == eventId, cancellationToken);
 
         if (appointment == null)
@@ -274,7 +289,21 @@ public sealed class GraphCalendarWebhookController : ControllerBase
 
         var subscriptionCalendarIdentity = ResolveSubscriptionCalendarIdentity(subscription);
 
-        var appointment = await _db.LeadAppointments
+        var scopedAppointments = _db.LeadAppointments.AsQueryable();
+        if (subscription.CommerceBusinessId.HasValue)
+        {
+            scopedAppointments = scopedAppointments.Where(x =>
+                x.CommerceBusinessId == subscription.CommerceBusinessId &&
+                x.OwnerAgentUserId == "");
+        }
+        else
+        {
+            scopedAppointments = scopedAppointments.Where(x =>
+                x.CommerceBusinessId == null &&
+                x.OwnerAgentUserId == subscription.AgentUserId);
+        }
+
+        var appointment = await scopedAppointments
             .OrderByDescending(x => x.UpdatedUtc)
             .ThenByDescending(x => x.CreatedUtc)
             .FirstOrDefaultAsync(x =>
@@ -292,6 +321,16 @@ public sealed class GraphCalendarWebhookController : ControllerBase
                        x.BookingPageIdOrMailbox == subscription.CalendarEmail))
                  )),
                 cancellationToken);
+
+        if (appointment == null && subscription.CommerceBusinessId is { } businessId)
+        {
+            appointment = await TryCreateBusinessAppointmentFromEventAsync(
+                businessId,
+                subscription,
+                graphEvent,
+                utcNow,
+                cancellationToken);
+        }
 
         if (appointment != null && string.IsNullOrWhiteSpace(appointment.CalendarEventId))
         {
@@ -341,6 +380,78 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         await _db.SaveChangesAsync(cancellationToken);
     }
 
+    private async Task<LeadAppointment?> TryCreateBusinessAppointmentFromEventAsync(
+        Guid businessId,
+        GraphCalendarSubscription subscription,
+        GraphCalendarEvent graphEvent,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        var calendarEmail = Clean(subscription.CalendarEmail);
+        var attendeeEmails = (graphEvent.Attendees ?? [])
+            .Select(attendee => Clean(attendee.EmailAddress?.Address)?.ToLowerInvariant())
+            .Where(email => !string.IsNullOrWhiteSpace(email) &&
+                            !string.Equals(email, calendarEmail?.ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (attendeeEmails.Length == 0)
+            return null;
+
+        var contacts = await _db.WorkstationLeadProfiles
+            .AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.AgentUserId == "")
+            .ToListAsync(cancellationToken);
+
+        var matches = contacts
+            .Where(contact => attendeeEmails.Contains((contact.Email ?? "").Trim().ToLowerInvariant(), StringComparer.OrdinalIgnoreCase))
+            .OrderByDescending(contact => contact.UpdatedUtc)
+            .ToList();
+
+        if (matches.Count != 1)
+        {
+            _logger.LogWarning(
+                "Business booking event {EventId} could not be uniquely matched. business={BusinessId} attendeeCount={AttendeeCount} matchCount={MatchCount}",
+                graphEvent.Id,
+                businessId,
+                attendeeEmails.Length,
+                matches.Count);
+            return null;
+        }
+
+        var contact = matches[0];
+        var intake = await _db.WebsiteLeadIntakeLinks
+            .AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.WorkstationLeadId == contact.LeadId)
+            .OrderByDescending(x => x.SubmittedUtc)
+            .ThenByDescending(x => x.CapturedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var appointment = new LeadAppointment
+        {
+            Id = Guid.NewGuid(),
+            CommerceBusinessId = businessId,
+            WorkstationLeadId = contact.LeadId,
+            OwnerAgentUserId = "",
+            WebsiteLeadIntakeLinkId = intake?.Id,
+            Status = LeadAppointmentStatus.Requested,
+            BookingProvider = "microsoft_graph",
+            BookingSource = LeadAppointmentBookingSources.MicrosoftGraphWebhook,
+            RequestedBookingSource = LeadAppointmentBookingSources.ExternalRedirectFallback,
+            ConfirmationSource = LeadAppointmentBookingSources.MicrosoftGraphWebhook,
+            BookingConfigurationSource = "business_profile",
+            BookingCalendarUserId = subscription.CalendarUserId,
+            BookingCalendarEmail = subscription.CalendarEmail,
+            BookingPageIdOrMailbox = subscription.CalendarUserId ?? subscription.CalendarEmail,
+            CalendarEventId = graphEvent.Id,
+            RequestedUtc = utcNow,
+            CreatedUtc = utcNow,
+            UpdatedUtc = utcNow
+        };
+        _db.LeadAppointments.Add(appointment);
+        return appointment;
+    }
+
     private async Task SyncCrmStageFromAppointmentAsync(
         LeadAppointment appointment,
         DateTime utcNow,
@@ -380,7 +491,8 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             var lead = await _db.WorkstationLeadProfiles
                 .FirstOrDefaultAsync(x =>
                     x.LeadId == appointment.WorkstationLeadId &&
-                    x.AgentUserId == appointment.OwnerAgentUserId,
+                    x.AgentUserId == appointment.OwnerAgentUserId &&
+                    x.CommerceBusinessId == appointment.CommerceBusinessId,
                     cancellationToken);
 
             if (lead != null)
@@ -588,6 +700,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         public string? WebLink { get; set; }
         public GraphDateTimeTimeZone? Start { get; set; }
         public GraphDateTimeTimeZone? End { get; set; }
+        public List<GraphAttendee>? Attendees { get; set; }
         public GraphOnlineMeeting? OnlineMeeting { get; set; }
         public string? OnlineMeetingUrl { get; set; }
     }
@@ -596,6 +709,17 @@ public sealed class GraphCalendarWebhookController : ControllerBase
     {
         public string? DateTime { get; set; }
         public string? TimeZone { get; set; }
+    }
+
+    private sealed class GraphAttendee
+    {
+        public GraphEmailAddress? EmailAddress { get; set; }
+    }
+
+    private sealed class GraphEmailAddress
+    {
+        public string? Address { get; set; }
+        public string? Name { get; set; }
     }
 
     private sealed class GraphOnlineMeeting
