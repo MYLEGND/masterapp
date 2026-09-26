@@ -59,9 +59,16 @@
     var layoutBodyClass = "legend-app d-flex flex-column min-vh-100"
         + (isOnboardingPublic ? " onboarding-public-only" : "")
         + (isFinancePage ? " finance-page" : "");
+    var faviconAgentUserId = !string.IsNullOrWhiteSpace(messagingActorId)
+        ? messagingActorId
+        : User.FindFirst("oid")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+    var faviconTrackingProfile = !string.IsNullOrWhiteSpace(faviconAgentUserId)
+        ? await WebsiteTracking.GetByUserIdAsync(faviconAgentUserId)
+        : null;
     var applicationFaviconUrl = Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(
         WebsiteConfiguration,
-        Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect);
+        Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect,
+        faviconTrackingProfile?.Slug);
 }
 <!DOCTYPE html>
 <html lang="en">
