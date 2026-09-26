@@ -109,6 +109,7 @@ builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
 builder.Services.AddScoped<IWebsiteInquiryEmailSender>(services => services.GetRequiredService<IProtectEmailSender>());
 builder.Services.AddScoped<BusinessInquiryNotificationService>();
 builder.Services.AddHostedService<BusinessInquiryNotificationWorker>();
+builder.Services.AddHostedService<WebsiteLeadNotificationRecoveryWorker>();
 
 builder.Services.AddScoped<Infrastructure.Analytics.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
