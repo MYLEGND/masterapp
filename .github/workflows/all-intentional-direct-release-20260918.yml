@@ -441,13 +441,12 @@ jobs:
         shell: bash
         env:
           PRIMARY_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
-          FALLBACK_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CONFIGURED_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          token="${PRIMARY_CLOUDFLARE_TOKEN:-${FALLBACK_CLOUDFLARE_TOKEN:-}}"
+          token="${PRIMARY_CLOUDFLARE_TOKEN:-}"
           if [ -z "$token" ]; then
-            echo "::error::Cloudflare Workers deployment credential is not configured. Add the dedicated Production secret CLOUDFLARE_WORKERS_API_TOKEN using the Cloudflare Edit Workers template scoped to this account and mylegnd.com."
+            echo "::error::Central Cloudflare routing authority is not configured. Set the Production secret CLOUDFLARE_WORKERS_API_TOKEN to the scoped LEGEND Cloudflare Production Routing token."
             exit 1
           fi
           echo "::add-mask::$token"
