@@ -6,6 +6,30 @@
   "workers_dev": false,
   "routes": [
     {
+      "pattern": "mylegnd.com/store*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "www.mylegnd.com/store*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "protect.mylegnd.com/store*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "mylegnd.com/commerce/manage/*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "www.mylegnd.com/commerce/manage/*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "protect.mylegnd.com/commerce/manage/*",
+      "zone_name": "mylegnd.com"
+    },
+    {
       "pattern": "*/*",
       "zone_name": "mylegnd.com"
     }
