@@ -864,7 +864,21 @@ jobs:
                   if accept: headers['Accept']=accept
                   conn.request('GET',path,headers=headers)
                   response=conn.getresponse()
-                  body=response.read(4097)
+                  body=response.read(8193)
+                  edge_headers={key.lower(): value for key,value in response.getheaders()}
+                  if response.status >= 400:
+                      print('edge-diagnostic', json.dumps({
+                          'path': path,
+                          'status': response.status,
+                          'bytes': len(body),
+                          'server': edge_headers.get('server'),
+                          'cf-ray': edge_headers.get('cf-ray'),
+                          'cf-cache-status': edge_headers.get('cf-cache-status'),
+                          'x-azure-ref': edge_headers.get('x-azure-ref'),
+                          'x-ms-forbidden-ip': edge_headers.get('x-ms-forbidden-ip'),
+                          'content-type': edge_headers.get('content-type'),
+                          'bodyPrefix': body[:768].decode('utf-8','replace').replace('\\r',' ').replace('\\n',' ')
+                      }))
                   return response.status, body, response.getheader('Location')
               finally:
                   conn.close()
