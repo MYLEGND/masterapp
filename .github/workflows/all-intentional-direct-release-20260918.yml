@@ -684,9 +684,17 @@ jobs:
           done
           echo "::error::ClientApp deployment transport failed after three attempts with the same immutable package."
           exit 1
+      - name: Refresh Azure OIDC before late application deployments
+        id: azuredeploy
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait')) }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Direct deploy Protect immutable ZIP
         id: protect
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.resumestate.outputs.protect_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.resumestate.outputs.protect_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -728,7 +736,7 @@ jobs:
           exit 1
       - name: Direct deploy Parfait
         id: parfait
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.resumestate.outputs.parfait_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.resumestate.outputs.parfait_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
