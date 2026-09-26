@@ -1566,11 +1566,18 @@
     return ['cart','bag','basket'].includes(value) ? value : 'cart';
   }
 
-  function createStoreCartIcon(iconKey=effectiveCartIcon()) {
+  function effectiveCartIconSize() {
+    const value=Number(documentState.store?.cartIconSizePx ?? storeContext?.cartIconSizePx ?? 28);
+    return Number.isFinite(value) ? Math.max(16,Math.min(96,value)) : 28;
+  }
+
+  function createStoreCartIcon(iconKey=effectiveCartIcon(), size=effectiveCartIconSize()) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('viewBox','0 0 24 24');
-    svg.setAttribute('width','18');
-    svg.setAttribute('height','18');
+    svg.setAttribute('width',String(size));
+    svg.setAttribute('height',String(size));
+    svg.style.width=`${size}px`;
+    svg.style.height=`${size}px`;
     svg.setAttribute('fill','none');
     svg.setAttribute('aria-hidden','true');
     svg.classList.add('legend-store-cart-icon');
@@ -1832,7 +1839,7 @@
     input.maxLength=40;
     input.value=effectiveStoreLabel();
     input.placeholder='Store or Shop';
-    input.addEventListener('change',()=>void updateStore(true,input.value,effectiveCartIcon()));
+    input.addEventListener('change',()=>void updateStore(true,input.value,effectiveCartIcon(),effectiveCartIconSize()));
     label.appendChild(input);
 
     const iconLabel=document.createElement('label');
@@ -1843,9 +1850,18 @@
       const option=document.createElement('option'); option.value=value; option.textContent=text; icon.appendChild(option);
     }
     icon.value=effectiveCartIcon();
-    icon.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),icon.value));
+    icon.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),icon.value,effectiveCartIconSize()));
     iconLabel.appendChild(icon);
-    settings.append(label,iconLabel);
+
+    const sizeLabel=document.createElement('label');
+    sizeLabel.textContent='Cart icon size';
+    const size=document.createElement('input');
+    size.id='legend-cms-store-cart-size';
+    size.type='number'; size.min='16'; size.max='96'; size.step='1';
+    size.value=String(effectiveCartIconSize());
+    size.addEventListener('change',()=>void updateStore(true,effectiveStoreLabel(),effectiveCartIcon(),Number(size.value)));
+    sizeLabel.appendChild(size);
+    settings.append(label,iconLabel,sizeLabel);
     host.appendChild(settings);
 
     const actions=document.createElement('div');
@@ -1860,7 +1876,7 @@
     host.insertBefore(actions,settings);
   }
 
-  async function updateStore(enabled,labelValue=null,cartIconValue=null) {
+  async function updateStore(enabled,labelValue=null,cartIconValue=null,cartIconSizeValue=null) {
     if (!editorMode || saving) return;
     const status=document.getElementById('legend-cms-status');
     if(status) status.textContent=enabled?'Setting up your store…':'Removing Store page…';
@@ -1868,7 +1884,7 @@
       const response=await fetch(`${API_BASE}/api/website-content/manage/store/${enabled?'enable':'remove'}`,{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel(),cartIcon:cartIconValue || effectiveCartIcon()})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,navigationLabel:labelValue || effectiveStoreLabel(),cartIcon:cartIconValue || effectiveCartIcon(),cartIconSizePx:Number.isFinite(Number(cartIconSizeValue))?Number(cartIconSizeValue):effectiveCartIconSize()})
       });
       const payload=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(payload.message || payload.error || `Store update failed (${response.status})`);
@@ -2479,9 +2495,11 @@
     const serviceCard = businessServiceCardFor(selected);
     const duplicateButton = document.getElementById('legend-cms-duplicate');
     if (duplicateButton) {
-      duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate selected';
-      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM';
-      duplicateButton.title = selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
+      const immutableShell = selected.matches?.('.site-header,.site-footer');
+      duplicateButton.textContent = serviceCard ? 'Duplicate service' : selected.dataset.cmsSection ? 'Duplicate section' : 'Duplicate selected';
+      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM' || immutableShell;
+      duplicateButton.title = immutableShell ? 'The website banner and footer are shared shell authorities and cannot be duplicated.'
+        : selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
     }
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
@@ -3382,8 +3400,20 @@
       }
 
       if (selected.dataset.cmsSection) {
-        alert('Select an added section to duplicate the whole section, or select an individual item inside this template section.');
-        return;
+        if (selected.matches('.site-header,.site-footer')) return;
+        if (selected.querySelector?.('form[data-website-inquiry]')) {
+          alert('This section contains the canonical inquiry form. Move or redesign the section instead of creating a second live inquiry authority.');
+          return;
+        }
+        checkpoint();
+        const copy={
+          id:crypto.randomUUID(), type:'section', sectionId:selected.dataset.cmsSection,
+          templateSectionId:selected.dataset.cmsSection, style:{}, signals:[]
+        };
+        pageState().extras.push(copy);
+        const created=createExtra(copy);
+        if (created && selected.parentElement===created.parentElement) selected.parentElement.insertBefore(created,selected.nextSibling);
+        syncSectionOrderFromDom(); setSelected(created); markDirty(); return;
       }
       const supported = ['P','H1','H2','H3','H4','H5','H6','A','BUTTON','IMG','VIDEO','LI','SMALL','STRONG','SPAN'];
       if (!supported.includes(selected.tagName)) return;
