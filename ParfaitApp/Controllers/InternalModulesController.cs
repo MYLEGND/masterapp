@@ -23,7 +23,9 @@ public sealed class InternalModulesController : Controller
     private readonly ParfaitInternalWorkspaceService _workspace;
     private readonly IGraphMailService _mail;
     private readonly IParfaitBusinessProfileService _businessProfile;
-    private readonly IParfaitMetaAdsOAuthService _metaAdsOAuth;
+    private readonly MarketingConnectionStore _marketingConnections;
+    private readonly MarketingMetaAdsOAuthService _metaAdsOAuth;
+    private readonly ParfaitBusinessScopeService _parfaitScope;
     private readonly IMetaAdsService _metaAds;
 
     public InternalModulesController(
@@ -34,7 +36,9 @@ public sealed class InternalModulesController : Controller
         ParfaitInternalWorkspaceService workspace,
         IGraphMailService mail,
         IParfaitBusinessProfileService businessProfile,
-        IParfaitMetaAdsOAuthService metaAdsOAuth,
+        MarketingConnectionStore marketingConnections,
+        MarketingMetaAdsOAuthService metaAdsOAuth,
+        ParfaitBusinessScopeService parfaitScope,
         IMetaAdsService metaAds)
     {
         _products = products;
@@ -44,7 +48,9 @@ public sealed class InternalModulesController : Controller
         _workspace = workspace;
         _mail = mail;
         _businessProfile = businessProfile;
+        _marketingConnections = marketingConnections;
         _metaAdsOAuth = metaAdsOAuth;
+        _parfaitScope = parfaitScope;
         _metaAds = metaAds;
     }
 
@@ -351,13 +357,18 @@ public sealed class InternalModulesController : Controller
 
     [HttpGet("analytics/meta-connect")]
     [ParfaitInternalPageAccess("/internal/analytics")]
-    public IActionResult MetaConnect([FromQuery] string? returnUrl = null)
+    public async Task<IActionResult> MetaConnect([FromQuery] string? returnUrl = null, CancellationToken ct = default)
     {
         var target = ResolveAnalyticsReturnUrl(returnUrl);
+        var business = await _parfaitScope.GetParfaitAsync(ct);
+        var redirectUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/internal/analytics/meta-callback";
 
         try
         {
-            return Redirect(_metaAdsOAuth.BuildConnectUrl(target));
+            return Redirect(_metaAdsOAuth.BuildConnectUrl(
+                MarketingOwnerScope.Business(business.Id),
+                target,
+                redirectUri));
         }
         catch (InvalidOperationException ex)
         {
@@ -383,10 +394,14 @@ public sealed class InternalModulesController : Controller
 
         try
         {
-            var record = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
-            await _businessProfile.SaveMetaConnectionAsync(record, HttpContext.RequestAborted);
+            var result = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
+            var business = await _parfaitScope.GetParfaitAsync(HttpContext.RequestAborted);
+            if (result.Owner.CommerceBusinessId != business.Id || result.Owner.AgentTrackingProfileId.HasValue)
+                return Unauthorized();
+
+            await _marketingConnections.SaveAdsAsync(result.Owner, result.Connection, HttpContext.RequestAborted);
             _internalAnalytics.InvalidateCache();
-            return Redirect(AppendMetaStatus(target, "connected"));
+            return Redirect(AppendMetaStatus(result.ReturnUrl, "connected"));
         }
         catch (InvalidOperationException ex)
         {
@@ -426,7 +441,8 @@ public sealed class InternalModulesController : Controller
                 toUtc,
                 viewerTz: timezoneContext.ViewerTimeZone,
                 qualityMode: resolvedQualityMode);
-            var scope = ScopeContext.ForSite(ParfaitMetaAdsConnectionStoreAdapter.SiteKey, ParfaitMetaAdsConnectionStoreAdapter.SiteKey);
+            var business = await _parfaitScope.GetParfaitAsync(ct);
+            var scope = ScopeContext.ForBusiness(business.Id);
             var result = await _metaAds.GetCampaignsAsync(range, scope, ct);
             return Json(result);
         }
