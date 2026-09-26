@@ -28,8 +28,6 @@ public static class WebsiteLeadOwnerAuthority
         ArgumentNullException.ThrowIfNull(resolver);
 
         var founderRecipient = (founderRecipientEmail ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(founderRecipient))
-            throw new InvalidOperationException("A founder lead recipient is required.");
 
         var explicitInvalid = false;
         var slug = string.IsNullOrWhiteSpace(explicitAgentSlug) ? null : explicitAgentSlug.Trim();
