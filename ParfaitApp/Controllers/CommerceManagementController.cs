@@ -1,7 +1,12 @@
+using System.Globalization;
+using Infrastructure.Analytics;
 using Infrastructure.WebsiteEditing;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using ParfaitApp.Models;
 using ParfaitApp.Services;
+using Shared.Analytics;
 
 namespace ParfaitApp.Controllers;
 
@@ -21,6 +26,12 @@ public sealed class CommerceManagementController(
     ParfaitProductService products,
     ParfaitOrderService orders,
     ParfaitCustomerAutomationService automations,
+    ParfaitInternalAnalyticsService internalAnalytics,
+    ParfaitInternalWorkspaceService workspace,
+    IParfaitBusinessProfileService businessProfile,
+    MarketingConnectionStore marketingConnections,
+    MarketingMetaAdsOAuthService metaAdsOAuth,
+    IMetaAdsService metaAds,
     IGraphMailService mail) : Controller
 {
     [HttpGet("workspace")]
@@ -30,7 +41,187 @@ public sealed class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        return RedirectToAction(nameof(Products), new { ticket });
+        return RedirectToAction(nameof(Dashboard), new { ticket });
+    }
+
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> Dashboard(
+        [FromQuery] string ticket,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+
+        ApplyManagementViewData(store, ticket, "dashboard");
+        return View("~/Views/Dashboard/Index.cshtml", await workspace.GetSnapshotAsync(store.CommerceBusinessId, ct));
+    }
+
+    [HttpGet("analytics")]
+    public async Task<IActionResult> Analytics(
+        [FromQuery] string ticket,
+        [FromQuery] string? preset = "30d",
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        [FromQuery] string? qualityMode = null,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+
+        var resolvedQualityMode = ResolveAnalyticsQualityMode(qualityMode);
+        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
+        ApplyManagementViewData(store, ticket, "analytics");
+        return View("~/Views/InternalModules/Analytics.cshtml", await internalAnalytics.GetDashboardAsync(
+            store.CommerceBusinessId,
+            preset,
+            fromUtc,
+            toUtc,
+            resolvedQualityMode,
+            timezoneContext.ViewerTimeZone,
+            timezoneContext.TimezoneId,
+            timezoneContext.TimezoneOffsetMinutes,
+            ct));
+    }
+
+    [HttpGet("analytics/meta-connect")]
+    public async Task<IActionResult> MetaConnect(
+        [FromQuery] string ticket,
+        [FromQuery] string? returnUrl = null,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+
+        var target = LocalManagerReturnUrl(returnUrl, ticket);
+        var redirectUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/commerce/manage/analytics/meta-callback";
+        try
+        {
+            return Redirect(metaAdsOAuth.BuildConnectUrl(
+                MarketingOwnerScope.Business(store.CommerceBusinessId),
+                target,
+                redirectUri));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Redirect(AppendMetaStatus(target, "error", ex.Message));
+        }
+    }
+
+    [AllowAnonymous]
+    [HttpGet("analytics/meta-callback")]
+    public async Task<IActionResult> MetaCallback(
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
+        CancellationToken ct = default)
+    {
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            var fallback = "/commerce/manage/analytics";
+            var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+            return Redirect(AppendMetaStatus(fallback, "error", message));
+        }
+
+        try
+        {
+            var result = await metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, ct);
+            var ticket = TicketFromReturnUrl(result.ReturnUrl);
+            if (string.IsNullOrWhiteSpace(ticket)) return Unauthorized();
+
+            var store = await ResolveAsync(ticket, ct);
+            if (store is null ||
+                result.Owner.CommerceBusinessId != store.CommerceBusinessId ||
+                result.Owner.AgentTrackingProfileId.HasValue)
+                return Unauthorized();
+
+            await marketingConnections.SaveAdsAsync(result.Owner, result.Connection, ct);
+            internalAnalytics.InvalidateCache();
+            return Redirect(AppendMetaStatus(result.ReturnUrl, "connected"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("analytics/meta-connection-status")]
+    public async Task<IActionResult> MetaConnectionStatus([FromQuery] string ticket, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        return Json(await businessProfile.GetMetaConnectionStatusAsync(store.CommerceBusinessId, ct));
+    }
+
+    [HttpGet("analytics/meta-campaigns")]
+    public async Task<IActionResult> MetaCampaigns(
+        [FromQuery] string ticket,
+        [FromQuery] string? preset = "30d",
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        [FromQuery] string? qualityMode = null,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+
+        try
+        {
+            var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
+            var range = TimeRangeRequest.FromPreset(
+                string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
+                fromUtc,
+                toUtc,
+                viewerTz: timezoneContext.ViewerTimeZone,
+                qualityMode: ResolveAnalyticsQualityMode(qualityMode));
+            return Json(await metaAds.GetCampaignsAsync(range, ScopeContext.ForBusiness(store.CommerceBusinessId), ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("analytics/health-monitor")]
+    public async Task<IActionResult> AnalyticsHealthMonitor(
+        [FromQuery] string ticket,
+        [FromQuery] string? preset = "30d",
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        [FromQuery] string? qualityMode = null,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+
+        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
+        var dashboard = await internalAnalytics.GetDashboardAsync(
+            store.CommerceBusinessId,
+            preset,
+            fromUtc,
+            toUtc,
+            ResolveAnalyticsQualityMode(qualityMode),
+            timezoneContext.ViewerTimeZone,
+            timezoneContext.TimezoneId,
+            timezoneContext.TimezoneOffsetMinutes,
+            ct);
+        return Json(BuildHealthPayload(dashboard, store.StoreName));
+    }
+
+    [HttpPost("analytics/meta-disconnect")]
+    public async Task<IActionResult> MetaDisconnect([FromQuery] string ticket, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        await businessProfile.DisconnectMetaAsync(store.CommerceBusinessId, ct);
+        internalAnalytics.InvalidateCache();
+        return Json(new { ok = true });
     }
 
     [HttpGet("products")]
@@ -336,6 +527,134 @@ public sealed class CommerceManagementController(
         TempData["AutomationStatus"] = "Automation deleted.";
         TempData["AutomationStatusTone"] = "success";
         return RedirectToAction(nameof(Automations), new { ticket });
+    }
+
+    private static TrafficQualityMode ResolveAnalyticsQualityMode(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? TrafficQualityMode.RealHumanTraffic
+            : TrafficQualityBucketFilters.ParseClientOrEnumValue(value);
+
+    private (string? TimezoneId, int? TimezoneOffsetMinutes, TimeZoneInfo ViewerTimeZone) ResolveViewerTimeZoneContext(
+        string? timezoneId,
+        int? timezoneOffsetMinutes)
+    {
+        var id = !string.IsNullOrWhiteSpace(timezoneId)
+            ? timezoneId.Trim()
+            : Request.Cookies["ParfaitAnalyticsViewerTimeZone"]?.Trim();
+        var offset = timezoneOffsetMinutes;
+        if (!offset.HasValue &&
+            int.TryParse(Request.Cookies["ParfaitAnalyticsViewerOffsetMinutes"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            offset = parsed;
+
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            try { return (id, offset, TimeZoneInfo.FindSystemTimeZoneById(id)); }
+            catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { }
+        }
+        if (offset is >= -840 and <= 840)
+        {
+            try
+            {
+                return (id, offset, TimeZoneInfo.CreateCustomTimeZone(
+                    $"viewer-offset-{offset.Value}",
+                    TimeSpan.FromMinutes(-offset.Value),
+                    "Viewer Local",
+                    "Viewer Local"));
+            }
+            catch { }
+        }
+        return (id, offset, TimeZoneInfo.Utc);
+    }
+
+    private static object BuildHealthPayload(ParfaitInternalAnalyticsViewModel dashboard, string storeName)
+    {
+        var actions = dashboard.ActionBreakdowns.ToDictionary(x => x.Key, StringComparer.OrdinalIgnoreCase);
+        int Sessions(string key) => actions.TryGetValue(key, out var action) ? action.UniqueSessions : 0;
+        int Count(string key) => actions.TryGetValue(key, out var action) ? action.Count : 0;
+        decimal Rate(int value, int total) => total <= 0 ? 0m : Math.Round(value * 100m / total, 1);
+
+        var viewSessions = Sessions("view-content");
+        var productSessions = Sessions("product-viewed");
+        var cartSessions = Sessions("add-to-cart");
+        var checkoutSessions = Sessions("checkout-started");
+        var purchaseSessions = Sessions("purchase");
+        var browser = dashboard.MetaHealth.PipelineHealth.MetaBrowserSentCount;
+        var server = dashboard.MetaHealth.PipelineHealth.MetaServerSentCount;
+        var eligible = browser + server;
+        var matched = Math.Min(browser, server);
+        var missingFailures = dashboard.MetaHealth.FailureDetection.Sum(x => x.Count);
+
+        return new
+        {
+            dashboard.RangeLabel,
+            summary = $"{storeName} ecommerce health snapshot loaded.",
+            focusMetrics = new[]
+            {
+                new { key = "product-viewed", label = "Product Viewed", currentValue = Count("product-viewed"), deltaPercent = Rate(productSessions, viewSessions) },
+                new { key = "add-to-cart", label = "Add To Cart", currentValue = Count("add-to-cart"), deltaPercent = Rate(cartSessions, productSessions) },
+                new { key = "checkout-started", label = "Checkout Started", currentValue = Count("checkout-started"), deltaPercent = Rate(checkoutSessions, cartSessions) },
+                new { key = "purchase", label = "Purchase", currentValue = Count("purchase"), deltaPercent = Rate(purchaseSessions, checkoutSessions) }
+            },
+            attributionHealth = new
+            {
+                eligibleEvents = eligible,
+                browserSentEvents = browser,
+                serverSentEvents = server,
+                matchedEvents = matched,
+                serverBrowserMatchRate = Rate(matched, eligible),
+                missingAttributionEvents = missingFailures,
+                missingAttributionRate = Rate(missingFailures, eligible)
+            },
+            reconciliation = new
+            {
+                paidOrders = dashboard.PaidOrders,
+                purchaseEvents = Count("purchase"),
+                unmatchedPaidOrders = Math.Max(0, dashboard.PaidOrders - Count("purchase")),
+                revenueCents = dashboard.RevenueCents
+            },
+            funnel = new[]
+            {
+                new { label = "View Content", sessions = viewSessions, conversionRate = 100m },
+                new { label = "Product Viewed", sessions = productSessions, conversionRate = Rate(productSessions, viewSessions) },
+                new { label = "Add To Cart", sessions = cartSessions, conversionRate = Rate(cartSessions, productSessions) },
+                new { label = "Checkout Started", sessions = checkoutSessions, conversionRate = Rate(checkoutSessions, cartSessions) },
+                new { label = "Purchase", sessions = purchaseSessions, conversionRate = Rate(purchaseSessions, checkoutSessions) }
+            },
+            recentEvents = dashboard.MetaHealth.RecentEvents.Take(20).Select(row => new
+            {
+                row.CreatedUtc,
+                severity = string.Equals(row.MetaServerStatus, "Failed", StringComparison.OrdinalIgnoreCase) ? "Warning" : "Info",
+                row.EventName,
+                summary = $"{row.SourceLabel} · {row.DispatcherStatus} / {row.MetaServerStatus}"
+            })
+        };
+    }
+
+    private string LocalManagerReturnUrl(string? returnUrl, string ticket)
+    {
+        var fallback = Url.Action(nameof(Analytics), new { ticket }) ?? $"/commerce/manage/analytics?ticket={Uri.EscapeDataString(ticket)}";
+        if (string.IsNullOrWhiteSpace(returnUrl) || !Url.IsLocalUrl(returnUrl)) return fallback;
+        var parsedTicket = TicketFromReturnUrl(returnUrl);
+        return string.Equals(parsedTicket, ticket, StringComparison.Ordinal) ? returnUrl : fallback;
+    }
+
+    private static string? TicketFromReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl)) return null;
+        if (!Uri.TryCreate("https://local" + (returnUrl.StartsWith('/') ? returnUrl : "/" + returnUrl), UriKind.Absolute, out var uri))
+            return null;
+        return QueryHelpers.ParseQuery(uri.Query).TryGetValue("ticket", out var ticket)
+            ? ticket.ToString()
+            : null;
+    }
+
+    private static string AppendMetaStatus(string target, string meta, string? message = null)
+    {
+        var separator = target.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+        var url = $"{target}{separator}meta={Uri.EscapeDataString(meta)}";
+        if (!string.IsNullOrWhiteSpace(message))
+            url += $"&message={Uri.EscapeDataString(message)}";
+        return url;
     }
 
     private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct) =>
