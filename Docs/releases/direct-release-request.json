@@ -1,19 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized failure-forward completion only. Preserve all five live application/site targets at a74648c9178be29843a45a2d6596c388af8715a3; rerun only the already-validated Cloudflare routing recovery and corrected non-mutating final gate. No application rebuild, migration, auth mutation, or redeployment.",
-  "purpose": "Finish the storefront routing release after #213 proved routing live but the enforcement gate incorrectly treated successful non-mutating WEBSITECHECKS as a deployment mutation.",
-  "requestId": "scoped-storefront-routing-preserve-live-20260926-r2-final-gate",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36231021723",
+  "authorization": "Founder explicitly authorized deployment of the fully validated Website Studio storefront/frame repair. Deploy only Protect, LEGEND Website, and the shared Cloudflare website router. Preserve Portal, ClientApp, Parfait, analytics/Meta authorities, CRM, and all other successful live targets. No duplicate editor/runtime, no override CSS layer, no per-customer hardcoding.",
+  "purpose": "Publish the canonical Website Studio repair: universal horizontal frame containment, profile-owned business-name text with presentation-only editing, Store/cart presentation editing without navigation in edit mode, and first-party /store* plus /commerce/manage/* Worker routing to the existing Parfait commerce authority.",
+  "requestId": "website-studio-store-frame-lock-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36237501297",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait",
     "masterapp-website"
   ],
   "cloudflareWebsiteRouting": true,
   "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": true,
-  "preserveLiveRevision": "a74648c9178be29843a45a2d6596c388af8715a3"
+  "preserveLiveTargets": false
 }
