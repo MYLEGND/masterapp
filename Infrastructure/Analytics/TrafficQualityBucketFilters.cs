@@ -60,6 +60,53 @@ public static class TrafficQualityBucketFilters
     // identifiers, not traffic-quality signals, and should not be auto-classified
     // as internal QA.
 
+    public static List<WebsiteLead> ApplyLeadBucketMembershipInMemory(
+        IEnumerable<WebsiteLead> leads,
+        IEnumerable<AnalyticsEvent> events,
+        TrafficQualityMode mode)
+    {
+        var leadList = leads.ToList();
+        if (mode == TrafficQualityMode.AllTraffic || leadList.Count == 0)
+            return leadList;
+
+        var eventList = events.ToList();
+        var selectedEvents = ApplyEventBucketMembershipInMemory(eventList, mode);
+
+        var allSessionIds = eventList
+            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
+            .Select(e => e.SessionId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var allVisitorIds = eventList
+            .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
+            .Select(e => e.VisitorId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selectedSessionIds = selectedEvents
+            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
+            .Select(e => e.SessionId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selectedVisitorIds = selectedEvents
+            .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
+            .Select(e => e.VisitorId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var standaloneLeadPredicate = BuildLeadPredicate(mode).Compile();
+
+        return leadList.Where(lead =>
+        {
+            var sessionId = lead.SessionId?.Trim();
+            if (!string.IsNullOrWhiteSpace(sessionId) && allSessionIds.Contains(sessionId))
+                return selectedSessionIds.Contains(sessionId);
+
+            var visitorId = lead.VisitorId?.Trim();
+            if (!string.IsNullOrWhiteSpace(visitorId) && allVisitorIds.Contains(visitorId))
+                return selectedVisitorIds.Contains(visitorId);
+
+            // Server-originated leads can exist without a matching browser event.
+            // In that case only, classify from the lead's own authoritative context.
+            return standaloneLeadPredicate(lead);
+        }).ToList();
+    }
+
     private sealed record InMemoryEventBucketMembership(
         HashSet<string> SessionIds,
         HashSet<string> VisitorIds,
