@@ -94,14 +94,30 @@ public sealed class ScopedParfaitCommerceAuthorityTests
     }
 
     [Fact]
-    public void ScopedParfaitLayout_UsesWebsiteThemeInsteadOfASecondThemeSystem()
+    public void ScopedPublicCommerce_UsesPublishedWebsiteShell_WhileParfaitRemainsBackendAuthority()
     {
-        var layout = ReadSource("ParfaitApp", "Views", "Shared", "_InternalLayout.cshtml");
-        Assert.Contains("CommerceStoreContext", layout, StringComparison.Ordinal);
-        Assert.Contains("theme?.GoldStrong", layout, StringComparison.Ordinal);
-        Assert.Contains("theme?.NavyDeep", layout, StringComparison.Ordinal);
-        Assert.Contains("--pf-cocoa", layout, StringComparison.Ordinal);
-        Assert.Contains("--pf-nav-bg", layout, StringComparison.Ordinal);
+        var viewStart = ReadSource("ParfaitApp", "Views", "_ViewStart.cshtml");
+        var scopedLayout = ReadSource("ParfaitApp", "Views", "Shared", "_ScopedWebsiteStoreLayout.cshtml");
+        var legacyLayout = ReadSource("ParfaitApp", "Views", "Shared", "_Layout.cshtml");
+        var storeContext = ReadSource("ParfaitApp", "Services", "CommerceStoreContextService.cs");
+        var storefrontCss = ReadSource("ParfaitApp", "wwwroot", "css", "storefront.css");
+
+        Assert.Contains("WebsiteShellPrefix", viewStart, StringComparison.Ordinal);
+        Assert.Contains("_ScopedWebsiteStoreLayout", viewStart, StringComparison.Ordinal);
+        Assert.Contains("@Html.Raw(prefix)", scopedLayout, StringComparison.Ordinal);
+        Assert.Contains("@Html.Raw(suffix)", scopedLayout, StringComparison.Ordinal);
+        Assert.Contains("window.PARFAIT_COMMERCE_CONTEXT", scopedLayout, StringComparison.Ordinal);
+        Assert.Contains("_ParfaitCommerceTracking", scopedLayout, StringComparison.Ordinal);
+        Assert.Contains("TryExtractPublishedWebsiteShell", storeContext, StringComparison.Ordinal);
+        Assert.Contains("version.CompiledPagesJson", storeContext, StringComparison.Ordinal);
+        Assert.Contains("--web-gold-strong", storefrontCss, StringComparison.Ordinal);
+        Assert.Contains("--web-navy-deep", storefrontCss, StringComparison.Ordinal);
+        Assert.DoesNotContain("navbar-brand", scopedLayout, StringComparison.Ordinal);
+        Assert.DoesNotContain("site-header", scopedLayout, StringComparison.Ordinal);
+        Assert.DoesNotContain("footer-inner", scopedLayout, StringComparison.Ordinal);
+
+        // Parfait's own domain keeps its existing public frontend. Website-linked stores do not copy it.
+        Assert.Contains("navbar-brand", legacyLayout, StringComparison.Ordinal);
     }
 
     private static string ReadSource(params string[] path)
