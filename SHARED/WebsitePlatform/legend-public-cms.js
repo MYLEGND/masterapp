@@ -123,10 +123,14 @@
   function constrainHorizontalStyleRecord(style) {
     if (!style || typeof style !== 'object') return;
     const rawWidth = Number(style.widthPercent);
-    const width = Number.isFinite(rawWidth) && rawWidth > 0 ? Math.min(100, rawWidth) : 100;
-    if (Number.isFinite(rawWidth) && rawWidth > 0) style.widthPercent = width;
+    const hasWidth = Number.isFinite(rawWidth) && rawWidth > 0;
+    const width = hasWidth ? Math.min(100, rawWidth) : null;
+    if (hasWidth) style.widthPercent = width;
     const rawOffset = Number(style.offsetXPercent);
-    if (Number.isFinite(rawOffset)) style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - width), rawOffset));
+    if (Number.isFinite(rawOffset)) {
+      const maxOffset = width == null ? 100 : Math.max(0, 100 - width);
+      style.offsetXPercent = Math.max(0, Math.min(maxOffset, rawOffset));
+    }
   }
 
   function constrainOverrideGeometry(override) {
@@ -258,6 +262,7 @@
   function prepareDom() {
     const roots = [
       document.querySelector('main'),
+      document.querySelector('.site-header'),
       document.querySelector('.nav'),
       document.querySelector('.site-footer')
     ].filter(Boolean);
@@ -591,7 +596,7 @@
     const width = positiveNumber(style.widthPercent) ? Math.min(100, Number(style.widthPercent)) : null;
     if (width != null) style.widthPercent = width;
     if (style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent))) {
-      const maxOffset = Math.max(0, 100 - (width ?? 100));
+      const maxOffset = width == null ? 100 : Math.max(0, 100 - width);
       style.offsetXPercent = Math.max(0, Math.min(maxOffset, Number(style.offsetXPercent)));
     }
     return style;
@@ -2200,11 +2205,14 @@
       if (!override) return false;
       const gestureStyle = editingStyle(override, true);
       checkpoint();
+      const measuredWidthPercent = parentRect.width > 0 ? Math.min(100, selectedRect.width / parentRect.width * 100) : 100;
+      const startWidthPercent = positiveNumber(gestureStyle.widthPercent) ? Math.min(100, Number(gestureStyle.widthPercent)) : measuredWidthPercent;
+      if (mode === 'move' && !positiveNumber(gestureStyle.widthPercent)) gestureStyle.widthPercent = startWidthPercent;
       directGesture = {
         mode, edge, target: selected, section, parent,
         startX: event.clientX, startY: event.clientY,
         selectedRect, sectionRect, parentRect,
-        startWidthPercent: positiveNumber(gestureStyle.widthPercent) ? Number(gestureStyle.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
+        startWidthPercent,
         startHeightPx: positiveNumber(gestureStyle.heightPx) ? Number(gestureStyle.heightPx) : Math.max(selectedRect.height, 24),
         startOffsetXPercent: Number.isFinite(Number(gestureStyle.offsetXPercent)) ? Number(gestureStyle.offsetXPercent) : 0,
         startOffsetYPx: Number.isFinite(Number(gestureStyle.offsetYPx)) ? Number(gestureStyle.offsetYPx) : 0,
@@ -2290,8 +2298,10 @@
           }
         }
       }
-      const constrainedWidth = positiveNumber(style.widthPercent) ? Math.min(100, Number(style.widthPercent)) : 100;
-      if (positiveNumber(style.widthPercent)) style.widthPercent = constrainedWidth;
+      const constrainedWidth = positiveNumber(style.widthPercent)
+        ? Math.min(100, Number(style.widthPercent))
+        : Math.min(100, gesture.startWidthPercent || 100);
+      style.widthPercent = constrainedWidth;
       if (Number.isFinite(Number(style.offsetXPercent)))
         style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - constrainedWidth), Number(style.offsetXPercent)));
       gesture.changed = true;
