@@ -174,7 +174,7 @@ public sealed class MarketingMetaAdsOAuthService(
         using var doc = JsonDocument.Parse(body);
         if (doc.RootElement.TryGetProperty("error", out var error))
             throw new InvalidOperationException(
-                $"Meta OAuth error: {error.TryGetProperty("message", out var message) ? message.GetString() : "unknown"}");
+                $"Meta OAuth error: {(error.TryGetProperty("message", out var message) ? message.GetString() : "unknown")}");
         var token = doc.RootElement.TryGetProperty("access_token", out var tokenElement)
             ? tokenElement.GetString() ?? string.Empty : string.Empty;
         if (string.IsNullOrWhiteSpace(token)) throw new InvalidOperationException(missingMessage);
