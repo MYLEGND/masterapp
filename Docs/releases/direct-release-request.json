@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested: SO RELEASE PROTECT ONLY. Deploy only masterapp-protect through the approved direct release lane. Preserve every other live application and Cloudflare Worker.",
-  "purpose": "Deploy merged PR #188 minimal shared domain proof controller and verify Protect live provenance.",
-  "requestId": "protect-only-domain-proof-20260926-0135",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36208496027",
+  "authorization": "Founder explicitly requested a final live deployment proof after the Protect deployment hardening. Deploy only masterapp-protect through the approved direct release lane. Preserve every other live application and Cloudflare Worker.",
+  "purpose": "Deploy the cleaned canonical Protect release path from approved changes and verify immutable ZIP transport, live provenance, and custom-domain proof behavior after deployment.",
+  "requestId": "protect-hardening-live-proof-20260925-1903",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36210649062",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"
