@@ -151,6 +151,10 @@ public sealed class BusinessAnalyticsCompletionTests
 
     private static string RepoRoot()
     {
+        var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        if (!string.IsNullOrWhiteSpace(workspace) && Directory.Exists(Path.Combine(workspace, "Infrastructure")))
+            return workspace;
+
         var current = AppContext.BaseDirectory;
         while (!string.IsNullOrWhiteSpace(current))
         {
