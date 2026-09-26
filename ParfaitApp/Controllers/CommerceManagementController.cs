@@ -1,35 +1,99 @@
-using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
 using ParfaitApp.Services;
 
 namespace ParfaitApp.Controllers;
 
+/// <summary>
+/// Website-editor ticket adapter into the canonical Parfait commerce experience.
+/// It owns no parallel catalog/order/automation model or UI: every action resolves
+/// the authorized CommerceBusinessId and renders the same InternalModules views
+/// through the same Parfait services used by the Parfait internal console.
+/// </summary>
 [Route("commerce/manage")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [IgnoreAntiforgeryToken]
 public sealed class CommerceManagementController(
-    MasterAppDbContext db,
     WebsiteEditorTicketProtector tickets,
     IConfiguration configuration,
     CommerceStoreContextService stores,
     ParfaitProductService products,
-    ParfaitOrderService orders) : Controller
+    ParfaitOrderService orders,
+    ParfaitCustomerAutomationService automations,
+    IGraphMailService mail) : Controller
 {
     [HttpGet("workspace")]
     public async Task<IActionResult> Workspace(
         [FromQuery] string ticket,
-        [FromQuery] string? tab = null,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        return RedirectToAction(nameof(Products), new { ticket });
+    }
+
+    [HttpGet("products")]
+    public async Task<IActionResult> Products(
+        [FromQuery] string ticket,
         CancellationToken ct = default)
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
 
-        ApplyFramePolicy();
-        var model = await BuildWorkspaceAsync(ticket, store, tab, ct);
-        return View("~/Views/CommerceManagement/Workspace.cshtml", model);
+        ApplyManagementViewData(store, ticket, "products");
+        var scopedProducts = products.GetAllProducts(store.CommerceBusinessId).ToList();
+        return View("~/Views/InternalModules/Products.cshtml", new ParfaitProductAdminViewModel
+        {
+            Products = scopedProducts,
+            CommerceSettings = products.GetCommerceSettings(store.CommerceBusinessId),
+            ActiveProductCount = scopedProducts.Count(product => product.IsActive),
+            FeaturedProductCount = scopedProducts.Count(product => product.IsFeatured),
+            TotalImageCount = scopedProducts.Sum(product => product.Images.Count)
+        });
+    }
+
+    [HttpGet("orders")]
+    public async Task<IActionResult> Orders(
+        [FromQuery] string ticket,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+
+        ApplyManagementViewData(store, ticket, "orders");
+        var scopedOrders = orders.GetAllOrders(store.CommerceBusinessId).ToList();
+        var paidOrders = scopedOrders
+            .Where(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return View("~/Views/InternalModules/Orders.cshtml", new ParfaitOrderAdminViewModel
+        {
+            Orders = scopedOrders,
+            PaidOrderCount = paidOrders.Count(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)),
+            PendingOrderCount = scopedOrders.Count(order => string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)),
+            FailedOrderCount = scopedOrders.Count(order => string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)),
+            RefundedOrderCount = orders.CountRefunded(scopedOrders),
+            OpenFulfillmentCount = orders.CountOpenFulfillment(scopedOrders),
+            ReturnQueueCount = orders.CountReturnQueue(scopedOrders),
+            RevenueCents = orders.SumNetRevenueCents(scopedOrders),
+            AverageOrderValueCents = orders.CalculateAverageNetOrderValueCents(scopedOrders)
+        });
+    }
+
+    [HttpGet("automations")]
+    public async Task<IActionResult> Automations(
+        [FromQuery] string ticket,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+
+        ApplyManagementViewData(store, ticket, "automations");
+        return View(
+            "~/Views/InternalModules/Automations.cshtml",
+            automations.GetWorkspaceViewModel(store.CommerceBusinessId));
     }
 
     [HttpGet("preview")]
@@ -81,6 +145,14 @@ public sealed class CommerceManagementController(
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
 
+        product.IsActive = HasCheckedValue(Request.Form, "IsActive");
+        product.IsFeatured = HasCheckedValue(Request.Form, "IsFeatured");
+
+        for (var index = 0; index < product.InventoryBySize.Count; index++)
+            product.InventoryBySize[index].IsEnabled = HasCheckedValue(Request.Form, $"InventoryBySize[{index}].IsEnabled");
+        for (var index = 0; index < product.DiscountCodes.Count; index++)
+            product.DiscountCodes[index].IsActive = HasCheckedValue(Request.Form, $"DiscountCodes[{index}].IsActive");
+
         var existing = products.GetAllProducts(store.CommerceBusinessId)
             .FirstOrDefault(x => string.Equals(x.Id, product.Id, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
@@ -94,7 +166,8 @@ public sealed class CommerceManagementController(
         product.InventoryBySize ??= ParfaitProductCatalogDefaults.CreateDefaultInventory();
         product.DiscountCodes ??= [];
         products.SaveProduct(store.CommerceBusinessId, product);
-        return RedirectWorkspace(ticket, "products", "Product saved.");
+        TempData["ProductStatus"] = product.IsActive ? "Product saved and visible." : "Product saved and hidden.";
+        return RedirectToAction(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/delete")]
@@ -106,7 +179,8 @@ public sealed class CommerceManagementController(
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
         products.DeleteProduct(store.CommerceBusinessId, id);
-        return RedirectWorkspace(ticket, "products", "Product deleted.");
+        TempData["ProductStatus"] = "Product deleted.";
+        return RedirectToAction(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/upload")]
@@ -120,7 +194,8 @@ public sealed class CommerceManagementController(
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
         await products.UploadImagesAsync(store.CommerceBusinessId, productId, images);
-        return RedirectWorkspace(ticket, "products", "Product images uploaded.");
+        TempData["ProductStatus"] = "Images uploaded.";
+        return RedirectToAction(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/delete")]
@@ -133,7 +208,22 @@ public sealed class CommerceManagementController(
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
         products.DeleteImage(store.CommerceBusinessId, productId, imageId);
-        return RedirectWorkspace(ticket, "products", "Product image removed.");
+        TempData["ProductStatus"] = "Image deleted.";
+        return RedirectToAction(nameof(Products), new { ticket });
+    }
+
+    [HttpPost("product/images/reorder")]
+    public async Task<IActionResult> ReorderImages(
+        [FromForm] string ticket,
+        [FromForm] string productId,
+        [FromForm] List<string> imageIds,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        products.ReorderImages(store.CommerceBusinessId, productId, imageIds ?? []);
+        TempData["ProductStatus"] = "Image order updated.";
+        return RedirectToAction(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/display")]
@@ -149,15 +239,9 @@ public sealed class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        products.SaveImageDisplaySettings(
-            store.CommerceBusinessId,
-            productId,
-            imageId,
-            objectFit,
-            objectPositionX,
-            objectPositionY,
-            zoom);
-        return RedirectWorkspace(ticket, "products", "Image presentation saved.");
+        products.SaveImageDisplaySettings(store.CommerceBusinessId, productId, imageId, objectFit, objectPositionX, objectPositionY, zoom);
+        TempData["ProductStatus"] = "Image display settings saved.";
+        return RedirectToAction(nameof(Products), new { ticket });
     }
 
     [HttpPost("products/reorder")]
@@ -169,7 +253,23 @@ public sealed class CommerceManagementController(
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
         products.ReorderProducts(store.CommerceBusinessId, productIds ?? []);
-        return RedirectWorkspace(ticket, "products", "Product order saved.");
+        TempData["ProductStatus"] = "Store order updated.";
+        return RedirectToAction(nameof(Products), new { ticket });
+    }
+
+    [HttpPost("settings/commerce")]
+    public async Task<IActionResult> SaveCommerceSettings(
+        [FromForm] string ticket,
+        [FromForm] ParfaitCommerceSettingsViewModel settings,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        settings.GlobalDiscount ??= new ParfaitProductDiscountCodeEditorViewModel();
+        settings.GlobalDiscount.IsActive = HasCheckedValue(Request.Form, "GlobalDiscount.IsActive");
+        products.SaveCommerceSettings(store.CommerceBusinessId, settings);
+        TempData["ProductStatus"] = "Commerce settings saved.";
+        return RedirectToAction(nameof(Products), new { ticket });
     }
 
     [HttpPost("order")]
@@ -182,86 +282,72 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         if (!orders.UpdateOrder(store.CommerceBusinessId, request))
             return NotFound();
-        return RedirectWorkspace(ticket, "orders", "Order updated.");
+        TempData["OrderStatus"] = $"Order {request.OrderNumber} updated.";
+        return RedirectToAction(nameof(Orders), new { ticket });
     }
 
-    [HttpPost("settings/commerce")]
-    public async Task<IActionResult> SaveCommerceSettings(
+    [HttpPost("order/receipt")]
+    public async Task<IActionResult> ResendOrderReceipt(
         [FromForm] string ticket,
-        [FromForm] ParfaitCommerceSettingsViewModel settings,
+        [FromForm] string orderNumber,
         CancellationToken ct = default)
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        settings.GlobalDiscount ??= new ParfaitProductDiscountCodeEditorViewModel();
-        products.SaveCommerceSettings(store.CommerceBusinessId, settings);
-        return RedirectWorkspace(ticket, "settings", "Commerce settings saved.");
-    }
+        var order = orders.GetOrder(store.CommerceBusinessId, orderNumber);
+        if (order is null) return NotFound();
 
-    [HttpPost("settings/storefront")]
-    public async Task<IActionResult> SaveStorefrontSettings(
-        [FromForm] string ticket,
-        [FromForm] CommerceStorefrontSettingsInput input,
-        CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-
-        var row = await db.CommerceBusinessStorefrontSettings
-            .SingleOrDefaultAsync(x => x.CommerceBusinessId == store.CommerceBusinessId, ct);
-        if (row is null)
+        try
         {
-            row = new Domain.Entities.CommerceBusinessStorefrontSettings
-            {
-                CommerceBusinessId = store.CommerceBusinessId
-            };
-            db.CommerceBusinessStorefrontSettings.Add(row);
+            await mail.SendOrderReceiptAsync(order, ct);
+            TempData["OrderStatus"] = $"Receipt resent for {order.OrderNumber}.";
+        }
+        catch
+        {
+            TempData["OrderStatus"] = $"Receipt resend failed for {order.OrderNumber}.";
         }
 
-        row.BrandHeadline = Clean(input.BrandHeadline, 180, store.StoreName);
-        row.BrandSubheadline = Clean(input.BrandSubheadline, 300, store.StoreName + " storefront.");
-        row.StorefrontStatus = Clean(input.StorefrontStatus, 40, "Active");
-        row.Revision = Guid.NewGuid();
-        row.UpdatedUtc = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-        return RedirectWorkspace(ticket, "settings", "Store presentation saved.");
+        return RedirectToAction(nameof(Orders), new { ticket });
+    }
+
+    [HttpPost("automations/workflows")]
+    public async Task<IActionResult> SaveAutomationWorkflow(
+        [FromForm] string ticket,
+        [FromForm] ParfaitAutomationWorkflowEditorInput input,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        automations.SaveWorkflow(store.CommerceBusinessId, input);
+        TempData["AutomationStatus"] = "Automation saved.";
+        TempData["AutomationStatusTone"] = "success";
+        return RedirectToAction(nameof(Automations), new { ticket });
+    }
+
+    [HttpPost("automations/workflows/delete")]
+    public async Task<IActionResult> DeleteAutomationWorkflow(
+        [FromForm] string ticket,
+        [FromForm] Guid id,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        automations.DeleteWorkflow(store.CommerceBusinessId, id);
+        TempData["AutomationStatus"] = "Automation deleted.";
+        TempData["AutomationStatusTone"] = "success";
+        return RedirectToAction(nameof(Automations), new { ticket });
     }
 
     private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct) =>
         await stores.ResolveForWebsiteTicketAsync(ticket, tickets, configuration, ct);
 
-    private async Task<CommerceManagementWorkspaceViewModel> BuildWorkspaceAsync(
-        string ticket,
-        CommerceStoreContext store,
-        string? tab,
-        CancellationToken ct)
+    private void ApplyManagementViewData(CommerceStoreContext store, string ticket, string activePage)
     {
-        var storefront = await db.CommerceBusinessStorefrontSettings.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.CommerceBusinessId == store.CommerceBusinessId, ct)
-            ?? new Domain.Entities.CommerceBusinessStorefrontSettings
-            {
-                CommerceBusinessId = store.CommerceBusinessId,
-                BrandHeadline = store.Headline,
-                BrandSubheadline = store.Subheadline,
-                StorefrontStatus = "Active"
-            };
-
-        return new CommerceManagementWorkspaceViewModel
-        {
-            Ticket = ticket,
-            Store = store,
-            Products = products.GetAllProducts(store.CommerceBusinessId),
-            Orders = orders.GetAllOrders(store.CommerceBusinessId),
-            CommerceSettings = products.GetCommerceSettings(store.CommerceBusinessId),
-            StorefrontSettings = storefront,
-            ActiveTab = NormalizeTab(tab)
-        };
-    }
-
-    private IActionResult RedirectWorkspace(string ticket, string tab, string message)
-    {
-        TempData["CommerceStatus"] = message;
-        return RedirectToAction(nameof(Workspace), new { ticket, tab });
+        ApplyFramePolicy();
+        ApplyStoreViewData(store);
+        ViewData["CommerceManagerTicket"] = ticket;
+        ViewData["CommerceManagerActivePage"] = activePage;
+        ViewData["CommerceManagerScoped"] = true;
     }
 
     private void ApplyStoreViewData(CommerceStoreContext store)
@@ -282,18 +368,6 @@ public sealed class CommerceManagementController(
         Response.Headers.Remove("X-Frame-Options");
     }
 
-    private static string NormalizeTab(string? value) =>
-        (value ?? "").Trim().ToLowerInvariant() switch
-        {
-            "orders" => "orders",
-            "settings" => "settings",
-            _ => "products"
-        };
-
-    private static string Clean(string? value, int maximum, string fallback)
-    {
-        var cleaned = (value ?? "").Trim();
-        if (cleaned.Length == 0) cleaned = fallback;
-        return cleaned.Length <= maximum ? cleaned : cleaned[..maximum];
-    }
+    private static bool HasCheckedValue(IFormCollection form, string key) =>
+        form[key].Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
 }
