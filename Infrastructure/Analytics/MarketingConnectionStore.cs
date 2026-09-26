@@ -2,6 +2,7 @@ using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Shared.Analytics;
@@ -167,6 +168,8 @@ public static class MarketingServiceRegistration
             sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
         services.AddScoped<MarketingConnectionStore>();
         services.AddScoped<MarketingMetaAdsOAuthService>();
+        services.TryAddScoped<IMetaAdsConnectionStore, CanonicalMetaAdsConnectionStore>();
+        services.TryAddScoped<IMetaAdsService, MetaAdsService>();
         services.AddScoped<AgentMarketingProfileService>();
         services.AddScoped<Infrastructure.Leads.WebsiteIntakeRecipientResolver>();
         return services;
