@@ -529,6 +529,37 @@ jobs:
           [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)" = "masterapp-parfait.azurewebsites.net" ]
           echo "Shared website routing authority is present in Protect and Parfait without exposing its value."
 
+      - name: Inspect Cloudflare challenge policy for custom hostnames
+        id: cloudflaresecurity
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4"
+          auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
+
+          echo "Bot Fight Mode:"
+          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/settings/bot_fight_mode" | jq '{success,errors,result}'
+
+          echo "Browser Integrity Check:"
+          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/settings/browser_check" | jq '{success,errors,result}'
+
+          echo "Security Level:"
+          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/settings/security_level" | jq '{success,errors,result}'
+
+          echo "Custom WAF entrypoint:"
+          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/phases/http_request_firewall_custom/entrypoint" \
+            | jq '{success,errors,result:{id:.result.id,name:.result.name,phase:.result.phase,rules:[.result.rules[]? | {id,description,action,enabled,expression,action_parameters}]}}'
+
+          echo "Super Bot Fight Mode entrypoint:"
+          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/phases/http_request_sbfm/entrypoint" \
+            | jq '{success,errors,result:{id:.result.id,name:.result.name,phase:.result.phase,rules:[.result.rules[]? | {id,description,action,enabled,expression,action_parameters}]}}'
+
+          echo "Managed WAF entrypoint:"
+          curl --silent --show-error "${auth[@]}" "$api/zones/$CLOUDFLARE_ZONE_ID/rulesets/phases/http_request_firewall_managed/entrypoint" \
+            | jq '{success,errors,result:{id:.result.id,name:.result.name,phase:.result.phase,rules:[.result.rules[]? | {id,description,action,enabled,expression,action_parameters}]}}'
+
+
       - name: Diagnose preserve-live routing origin acceptance
         id: routingorigin
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' }}
