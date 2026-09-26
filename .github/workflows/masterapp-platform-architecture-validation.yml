@@ -6,6 +6,7 @@ on:
       - architecture/masterapp-platform-ownership-20260925
       - architecture/masterapp-authority-completion-20260925
       - architecture/consolidated-platform-domain-release-20260925
+      - architecture/protect-domain-proof-20260925
     paths-ignore:
       - 'Docs/**'
   workflow_dispatch:
