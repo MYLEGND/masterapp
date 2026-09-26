@@ -30,7 +30,18 @@ public sealed class ParfaitInternalWorkspaceService
     public Task<ParfaitInternalWorkspaceSnapshotViewModel> GetSnapshotAsync(CancellationToken ct = default) =>
         GetSnapshotAsync(_products.GetDefaultBusinessId(), ct);
 
-    public async Task<ParfaitInternalWorkspaceSnapshotViewModel> GetSnapshotAsync(Guid businessId, CancellationToken ct = default)
+    public Task<ParfaitInternalWorkspaceSnapshotViewModel> GetSnapshotAsync(Guid businessId, CancellationToken ct = default) =>
+        GetSnapshotAsync(
+            businessId,
+            ScopeContext.ForBusiness(businessId),
+            MarketingOwnerScope.Business(businessId),
+            ct);
+
+    public async Task<ParfaitInternalWorkspaceSnapshotViewModel> GetSnapshotAsync(
+        Guid businessId,
+        ScopeContext analyticsScope,
+        MarketingOwnerScope marketingOwner,
+        CancellationToken ct = default)
     {
         var business = await _db.CommerceBusinesses.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct)
@@ -39,6 +50,8 @@ public sealed class ParfaitInternalWorkspaceService
         var orders = _orders.GetAllOrders(businessId).ToList();
         var analytics = await _analytics.GetWorkspaceSummaryAsync(
             businessId,
+            analyticsScope,
+            marketingOwner,
             "30d",
             null,
             null,
