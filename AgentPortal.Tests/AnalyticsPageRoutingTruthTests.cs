@@ -150,6 +150,41 @@ public sealed class AnalyticsPageRoutingTruthTests
     }
 
     [Fact]
+    public void PublicLeadSubmissionsAndNotificationRecoveryUseSharedAuthorities()
+    {
+        var root = RepoRoot();
+        var controllers = new[]
+        {
+            "LifeQuoteController.cs",
+            "HomeQuoteController.cs",
+            "AutoQuoteController.cs",
+            "CommercialQuoteController.cs",
+            "DisabilityQuoteController.cs",
+            "DentalVisionHearingQuoteController.cs",
+            "RiskAssessmentController.cs"
+        };
+
+        foreach (var controllerFile in controllers)
+        {
+            var source = File.ReadAllText(Path.Combine(root, "Protect-Website", "Controllers", controllerFile));
+            Assert.Contains("PlatformRateLimiting.PublicFormPolicy", source, StringComparison.Ordinal);
+        }
+
+        var notificationAuthority = File.ReadAllText(Path.Combine(
+            root, "Infrastructure", "Leads", "WebsiteLeadNotificationAuthority.cs"));
+        var submission = File.ReadAllText(Path.Combine(
+            root, "Infrastructure", "Leads", "WebsiteLeadSubmission.cs"));
+        var program = File.ReadAllText(Path.Combine(root, "Protect-Website", "Program.cs"));
+
+        Assert.Contains("WebsiteLeadNotificationRecoveryWorker", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("WebsiteLeadNotificationAuthority.DeliverAsync(", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("WebsiteIntakeRecipientResolver", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("x.CommerceBusinessId == null", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("lead.NotificationAttemptUtc ?? DateTime.UtcNow", submission, StringComparison.Ordinal);
+        Assert.Contains("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", program, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task VisitorConcentrationUsesTheSameSelectedTrafficSliceAsUniqueVisitors()
     {
         using var db = ControllerTestHelpers.BuildDb();
