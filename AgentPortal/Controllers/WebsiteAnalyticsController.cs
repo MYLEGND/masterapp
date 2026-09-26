@@ -1004,21 +1004,14 @@ namespace AgentPortal.Controllers;
             });
         }
 
-        var hasConfiguredFallback = !string.IsNullOrWhiteSpace(_config["MetaAds:AccessToken"]) &&
-                                    !string.IsNullOrWhiteSpace(_config["MetaAds:DefaultAccountId"]);
         var record = await _metaAdsConnectionStore.GetAsync(agentId.Value, HttpContext.RequestAborted);
         if (record == null)
         {
             return Json(new MetaAdsConnectionStatusDto
             {
-                Connected = hasConfiguredFallback,
+                Connected = false,
                 AgentTrackingProfileId = agentId,
-                AccountId = hasConfiguredFallback ? _config["MetaAds:DefaultAccountId"] : null,
-                AccountName = hasConfiguredFallback ? "Configured fallback account" : null,
-                MetaUserName = hasConfiguredFallback ? "Configured fallback" : null,
-                Message = hasConfiguredFallback
-                    ? "Using the configured fallback Meta Ads account for the selected agent."
-                    : "Meta Ads not connected for the selected agent."
+                Message = "Meta Ads not connected for the selected agent."
             });
         }
 
