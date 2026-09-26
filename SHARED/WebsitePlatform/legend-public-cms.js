@@ -609,14 +609,13 @@
     const key = activeBreakpoint();
     const responsive = key && override?.breakpointStyles && typeof override.breakpointStyles[key] === 'object' ? override.breakpointStyles[key] : null;
     const style = responsive ? { ...base, ...responsive } : { ...base };
-    // Geometry may never create horizontal page overflow at any breakpoint.
-    // Content can move inside its parent frame, but cannot move the page itself.
+    // Stored width and in-section position are independent. Rendering constrains
+    // the effective width to the remaining section space, so movement stays free
+    // without creating horizontal page overflow.
     const width = positiveNumber(style.widthPercent) ? Math.min(100, Number(style.widthPercent)) : null;
     if (width != null) style.widthPercent = width;
-    if (style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent))) {
-      const maxOffset = width == null ? 100 : Math.max(0, 100 - width);
-      style.offsetXPercent = Math.max(0, Math.min(maxOffset, Number(style.offsetXPercent)));
-    }
+    if (style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent)))
+      style.offsetXPercent = Math.max(0, Math.min(95, Number(style.offsetXPercent)));
     return style;
   }
 
@@ -1485,22 +1484,6 @@
     if (!editorMode || !nav || nav.dataset.cmsPageOrderWired === 'true') return;
     nav.dataset.cmsPageOrderWired='true';
 
-    nav.addEventListener('click',event=>{
-      const link=event.target.closest?.('a[data-legend-page-nav="true"]');
-      if (!link) return;
-      event.preventDefault();
-      event.stopPropagation();
-    },true);
-
-    nav.addEventListener('dblclick',event=>{
-      const link=event.target.closest?.('a[data-legend-page-nav="true"]');
-      if (!link) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const route=normalizePageRoute(link.dataset.legendPageRoute);
-      if (route) void navigateToEditorPage(route);
-    },true);
-
     nav.addEventListener('pointerdown',event=>{
       const link=event.target.closest?.('a[data-legend-page-nav="true"]');
       if (!link || (event.button !== undefined && event.button !== 0)) return;
@@ -1567,6 +1550,17 @@
       link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
       link.dataset.cmsLocked='true';
       if (entry.route===current) link.setAttribute('aria-current','page');
+      if (editorMode) {
+        link.addEventListener('click',event=>{
+          event.preventDefault();
+          event.stopPropagation();
+        },true);
+        link.addEventListener('dblclick',event=>{
+          event.preventDefault();
+          event.stopPropagation();
+          void navigateToEditorPage(entry.route);
+        },true);
+      }
       nav.appendChild(link);
     });
     if (editorMode) installBusinessNavigationEditor(nav);
@@ -2722,9 +2716,8 @@
         else if (field === 'widthPercent') {
           style.widthPercent = Math.min(100, Number(control.value));
           control.value = String(style.widthPercent);
-          if (Number.isFinite(Number(style.offsetXPercent))) {
-            style.offsetXPercent = Math.max(0, Math.min(Math.max(0, 100 - style.widthPercent), Number(style.offsetXPercent)));
-          }
+          if (Number.isFinite(Number(style.offsetXPercent)))
+            style.offsetXPercent = Math.max(0, Math.min(95, Number(style.offsetXPercent)));
         } else if (field === 'offsetXPercent') {
           style.offsetXPercent = Math.max(0, Math.min(95, Number(control.value)));
           control.value = String(style.offsetXPercent);
