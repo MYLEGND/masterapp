@@ -1467,7 +1467,7 @@
   let businessNavigationDrag = null;
 
   function syncBusinessNavigationOrder(nav) {
-    const links=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
+    const links=[...nav.querySelectorAll('[data-legend-page-nav="true"]')];
     links.forEach((link,index)=>{
       const route=normalizePageRoute(link.dataset.legendPageRoute);
       if (!route) return;
@@ -1485,7 +1485,7 @@
     nav.dataset.cmsPageOrderWired='true';
 
     nav.addEventListener('pointerdown',event=>{
-      const link=event.target.closest?.('a[data-legend-page-nav="true"]');
+      const link=event.target.closest?.('[data-legend-page-nav="true"]');
       if (!link || (event.button !== undefined && event.button !== 0)) return;
       businessNavigationDrag={link,pointerId:event.pointerId,changed:false,checkpointed:false};
       link.setPointerCapture?.(event.pointerId);
@@ -1496,7 +1496,7 @@
     nav.addEventListener('pointermove',event=>{
       const drag=businessNavigationDrag;
       if (!drag || (drag.pointerId != null && event.pointerId != null && drag.pointerId !== event.pointerId)) return;
-      const siblings=[...nav.querySelectorAll('a[data-legend-page-nav="true"]')];
+      const siblings=[...nav.querySelectorAll('[data-legend-page-nav="true"]')];
       const target=siblings.find(candidate=>{
         if (candidate===drag.link) return false;
         const rect=candidate.getBoundingClientRect();
@@ -1542,8 +1542,9 @@
     nav.querySelectorAll('a:not([data-legend-store-nav])').forEach(node=>node.remove());
     const current=currentPageRoute();
     entries.forEach(entry=>{
-      const link=document.createElement('a');
-      link.href=entry.route;
+      const link=document.createElement(editorMode ? 'button' : 'a');
+      if (editorMode) link.type='button';
+      else link.href=entry.route;
       link.textContent=entry.label;
       link.dataset.legendPageNav='true';
       link.dataset.legendPageRoute=entry.route;
@@ -1551,10 +1552,7 @@
       link.dataset.cmsLocked='true';
       if (entry.route===current) link.setAttribute('aria-current','page');
       if (editorMode) {
-        link.addEventListener('click',event=>{
-          event.preventDefault();
-          event.stopPropagation();
-        },true);
+        link.title='Drag to reorder · double-click to edit this page';
         link.addEventListener('dblclick',event=>{
           event.preventDefault();
           event.stopPropagation();
