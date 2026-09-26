@@ -98,13 +98,22 @@ public sealed class MarketingSetupCentralizationTests
 
     private static string FindRoot()
     {
-        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (directory is not null)
+        var githubWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        if (!string.IsNullOrWhiteSpace(githubWorkspace) &&
+            File.Exists(Path.Combine(githubWorkspace, "MASTERAPP.sln")))
+            return Path.GetFullPath(githubWorkspace);
+
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
-            if (File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")))
-                return directory.FullName;
-            directory = directory.Parent;
+            var directory = new DirectoryInfo(start);
+            while (directory is not null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")))
+                    return directory.FullName;
+                directory = directory.Parent;
+            }
         }
+
         throw new DirectoryNotFoundException("Repository root not found.");
     }
 }
