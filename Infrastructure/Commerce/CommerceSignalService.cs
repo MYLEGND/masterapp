@@ -72,10 +72,18 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
         if (dedupe.Length > 220) dedupe = dedupe[..220];
 
         var eventId = "commerce_" + StableToken(dedupe);
-        if (await db.MetaSignalEvents.AsNoTracking()
-            .AnyAsync(x => x.EventId == eventId || x.MetaDeduplicationKey == dedupe, ct))
-            return false;
         if (eventId.Length > 120) eventId = eventId[..120];
+
+        var analyticsClientEventId = string.Equals(eventName, "Purchase", StringComparison.Ordinal)
+            ? StableGuid(dedupe)
+            : (Guid?)null;
+        var metaExists = await db.MetaSignalEvents.AsNoTracking()
+            .AnyAsync(x => x.EventId == eventId || x.MetaDeduplicationKey == dedupe, ct);
+        var analyticsExists = !analyticsClientEventId.HasValue ||
+            await db.AnalyticsEvents.AsNoTracking()
+                .AnyAsync(x => x.ClientEventId == analyticsClientEventId.Value, ct);
+        if (metaExists && analyticsExists)
+            return false;
 
         var isProtectOwner = string.Equals(context.SiteKey, WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase);
         var isLegendOwner = string.Equals(context.SiteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase);
@@ -134,7 +142,7 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
 
         var now = DateTime.UtcNow;
         var pageKey = "commerce_" + eventName.ToLowerInvariant();
-        var row = UnifiedMetaSignalWriter.Create(new UnifiedEventContext
+        var unifiedContext = new UnifiedEventContext
         {
             SiteKey = context.SiteKey,
             CommerceBusinessId = typedBusinessId,
@@ -162,27 +170,32 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
             IsServerAuthority = true,
             MetaServerAuthorityEligible = true,
             Metadata = payload
-        }, row =>
+        };
+
+        MetaSignalEvent? row = null;
+        if (!metaExists)
         {
-            row.TrafficType = "ecommerce";
-            row.FunnelStep = eventName switch
+            row = UnifiedMetaSignalWriter.Create(unifiedContext, meta =>
+            {
+                meta.TrafficType = "ecommerce";
+                meta.FunnelStep = eventName switch
             {
                 "AddToCart" => 5,
                 "InitiateCheckout" => 6,
                 "Purchase" => 8,
                 _ => 4
             };
-            row.StepName = eventName.ToLowerInvariant();
-            row.IntentScore = eventName == "Purchase" ? 500 : 250;
-            row.EngagementScore = eventName == "Purchase" ? 500 : 250;
-            row.QualificationScore = eventName == "Purchase" ? 500 : 250;
-            row.FrictionScore = 0;
-            row.TotalSignalScore = eventName == "Purchase" ? 500 : 250;
-            row.ScoreTier = eventName == "Purchase" ? "Purchase" : "Commerce";
-            row.MetaBrowserSent = false;
-            row.MetaServerSent = false;
-            row.MetaDeduplicationKey = dedupe;
-            row.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                meta.StepName = eventName.ToLowerInvariant();
+                meta.IntentScore = eventName == "Purchase" ? 500 : 250;
+                meta.EngagementScore = eventName == "Purchase" ? 500 : 250;
+                meta.QualificationScore = eventName == "Purchase" ? 500 : 250;
+                meta.FrictionScore = 0;
+                meta.TotalSignalScore = eventName == "Purchase" ? 500 : 250;
+                meta.ScoreTier = eventName == "Purchase" ? "Purchase" : "Commerce";
+                meta.MetaBrowserSent = false;
+                meta.MetaServerSent = false;
+                meta.MetaDeduplicationKey = dedupe;
+                meta.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
                 eventName,
                 leadId: null,
                 sessionId: context.SessionId,
@@ -192,9 +205,25 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
                 metaServerAuthorityEligible: true,
                 metaSingleTruthDispatchEligible: true,
                 metaPipelineOrigin: "CommercePurchaseBridge");
-        });
+            });
+            UnifiedMetaSignalWriter.Write(db, row);
+        }
 
-        UnifiedMetaSignalWriter.Write(db, row);
+        AnalyticsEvent? analyticsRow = null;
+        if (analyticsClientEventId.HasValue && !analyticsExists)
+        {
+            analyticsRow = UnifiedEventMapper.ToAnalytics(unifiedContext);
+            analyticsRow.EventId = analyticsClientEventId.Value;
+            analyticsRow.ClientEventId = analyticsClientEventId.Value;
+            analyticsRow.Url = context.EventSourceUrl;
+            analyticsRow.Path = Uri.TryCreate(context.EventSourceUrl, UriKind.Absolute, out var analyticsUri)
+                ? analyticsUri.AbsolutePath
+                : null;
+            analyticsRow.TrackingVersion = "commerce-server-authority-v1";
+            analyticsRow.SchemaVersion = 2;
+            UnifiedAnalyticsWriter.Write(db, analyticsRow);
+        }
+
         try
         {
             await db.SaveChangesAsync(ct);
@@ -202,9 +231,17 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
         }
         catch (DbUpdateException)
         {
-            db.Entry(row).State = EntityState.Detached;
-            if (await db.MetaSignalEvents.AsNoTracking()
-                .AnyAsync(x => x.MetaDeduplicationKey == dedupe || x.EventId == eventId, ct))
+            if (row is not null)
+                db.Entry(row).State = EntityState.Detached;
+            if (analyticsRow is not null)
+                db.Entry(analyticsRow).State = EntityState.Detached;
+
+            var persistedMeta = await db.MetaSignalEvents.AsNoTracking()
+                .AnyAsync(x => x.MetaDeduplicationKey == dedupe || x.EventId == eventId, ct);
+            var persistedAnalytics = !analyticsClientEventId.HasValue ||
+                await db.AnalyticsEvents.AsNoTracking()
+                    .AnyAsync(x => x.ClientEventId == analyticsClientEventId.Value, ct);
+            if (persistedMeta && persistedAnalytics)
                 return false;
             throw;
         }
@@ -222,6 +259,14 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private static Guid StableGuid(string value)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        Span<byte> guidBytes = stackalloc byte[16];
+        bytes.AsSpan(0, 16).CopyTo(guidBytes);
+        return new Guid(guidBytes);
     }
 
     private static string ResolveEnvironment(string? url)
