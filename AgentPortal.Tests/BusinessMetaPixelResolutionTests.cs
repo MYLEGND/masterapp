@@ -48,4 +48,75 @@ public sealed class BusinessMetaPixelResolutionTests
         await db.SaveChangesAsync();
         Assert.False((await resolver.ResolveForBusinessAsync(business.Id)).HasBrowserPixel);
     }
+    [Fact]
+    public async Task AgentWithoutOwnConnectionNeverInheritsFounderPixel()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var protection = new EphemeralDataProtectionProvider();
+        using var credentials = new MarketingCredentialProtector(protection);
+        var connections = new MarketingConnectionStore(db, credentials);
+        var tracking = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "agent-1",
+            AgentUpn = "agent@example.test",
+            Slug = "agent-one",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        db.AgentTrackingProfiles.Add(tracking);
+        await db.SaveChangesAsync();
+
+        await connections.ImportProfileAsync(MarketingOwnerScope.Founder, "founder-pixel", "founder-token", "founder-test");
+
+        var resolver = new MetaPixelResolutionService(new ConfigurationBuilder().Build(), db,
+            new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance),
+            new AgentMarketingProfileService(db, connections, protection), connections,
+            NullLogger<MetaPixelResolutionService>.Instance);
+
+        var resolved = await resolver.ResolveForLeadAsync(tracking.Id, tracking.Slug, isFounderPath: false);
+
+        Assert.False(resolved.HasBrowserPixel);
+        Assert.False(resolved.HasServerCapiCredentials);
+        Assert.Equal(MetaPixelOwnerTypes.None, resolved.PixelOwnerType);
+        Assert.Equal(tracking.Id, resolved.AgentTrackingProfileId);
+        Assert.Equal(tracking.Slug, resolved.AgentSlug);
+    }
+
+    [Fact]
+    public async Task AgentWithOwnConnectionUsesOnlyItsOwnPixelAndToken()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var protection = new EphemeralDataProtectionProvider();
+        using var credentials = new MarketingCredentialProtector(protection);
+        var connections = new MarketingConnectionStore(db, credentials);
+        var tracking = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "agent-2",
+            AgentUpn = "agent2@example.test",
+            Slug = "agent-two",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        db.AgentTrackingProfiles.Add(tracking);
+        await db.SaveChangesAsync();
+
+        await connections.ImportProfileAsync(MarketingOwnerScope.Founder, "founder-pixel", "founder-token", "founder-test");
+        await connections.ImportProfileAsync(MarketingOwnerScope.Agent(tracking.Id), "agent-pixel", "agent-token", "agent-test");
+
+        var resolver = new MetaPixelResolutionService(new ConfigurationBuilder().Build(), db,
+            new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance),
+            new AgentMarketingProfileService(db, connections, protection), connections,
+            NullLogger<MetaPixelResolutionService>.Instance);
+
+        var resolved = await resolver.ResolveForLeadAsync(tracking.Id, tracking.Slug, isFounderPath: false);
+
+        Assert.Equal("agent-pixel", resolved.PixelId);
+        Assert.Equal("agent-token", resolved.AccessToken);
+        Assert.Equal("agent-test", resolved.TestEventCode);
+        Assert.Equal(MetaPixelOwnerTypes.Agent, resolved.PixelOwnerType);
+        Assert.Equal(tracking.Id, resolved.AgentTrackingProfileId);
+    }
+
 }
