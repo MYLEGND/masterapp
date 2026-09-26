@@ -14,7 +14,7 @@ public sealed class ParfaitCustomerAutomationService
     private readonly IConfiguration _configuration;
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitProductService _products;
-    private readonly Infrastructure.Data.MasterAppDbContext _db;
+    private readonly Infrastructure.Data.MasterAppDbContext? _db;
     private readonly object _lock = new();
 
     public ParfaitCustomerAutomationService(
@@ -22,7 +22,7 @@ public sealed class ParfaitCustomerAutomationService
         IConfiguration configuration,
         ParfaitOrderService orders,
         ParfaitProductService products,
-        Infrastructure.Data.MasterAppDbContext db)
+        Infrastructure.Data.MasterAppDbContext? db = null)
     {
         _storagePaths = storagePaths;
         _configuration = configuration;
@@ -680,6 +680,10 @@ $"""
     private string DataPathForBusiness(Guid businessId)
     {
         if (businessId == Guid.Empty) throw new ArgumentException("A commerce business is required.", nameof(businessId));
+        if (businessId == _products.GetDefaultBusinessId())
+            return DataPath;
+        if (_db is null)
+            throw new InvalidOperationException("Scoped commerce automation requires the shared MasterApp database authority.");
         var key = _db.CommerceBusinesses.AsNoTracking()
             .Where(business => business.Id == businessId && business.IsActive && business.Status == "Active")
             .Select(business => business.Key)
