@@ -1,16 +1,19 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized completion and production deployment of the centralized website analytics and Meta source-of-truth repair after the architecture gate is green. Deploy only the affected .NET web applications and preserve unrelated targets.",
-  "purpose": "Release the validated centralized analytics ownership, Purchase atomicity/deduplication, and scoped Meta credential fail-closed fixes so website reporting and Meta authority use the shared MasterApp source of truth.",
-  "requestId": "centralized-analytics-meta-source-of-truth-20260926-r1",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36230483568",
+  "authorization": "Founder explicitly authorized the final failure-forward storefront routing completion after the unified current-head web deployment. Preserve every application and website target at a74648c9178be29843a45a2d6596c388af8715a3; deploy only the shared Cloudflare website-commerce routing authority and prove the verified custom-domain homepage, store, and same-origin commerce-management transport. No application redeployments, no per-domain application logic, no legacy token fallback.",
+  "purpose": "Complete the current-head scoped storefront release by activating the already-validated /commerce/manage/* Cloudflare transport after all five web targets are live at the same revision. Preserve the successful Portal, ClientApp, Protect, Parfait, and LEGEND Website deployments.",
+  "requestId": "scoped-storefront-routing-preserve-live-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36231021723",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait"
+    "masterapp-parfait",
+    "masterapp-website"
   ],
-  "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "cloudflareWebsiteRouting": true,
+  "websiteRoutingCanaryHost": "camoexterior.com",
+  "preserveLiveTargets": true,
+  "preserveLiveRevision": "a74648c9178be29843a45a2d6596c388af8715a3"
 }
