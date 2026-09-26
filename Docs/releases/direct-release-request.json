@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the fully validated canonical website analytics repair for direct release after LEGEND approved direct release #228. Preserve #228 and do not interrupt or restart it. Deploy only the affected AgentPortal and Protect runtime targets; do not deploy ClientApp, Parfait, or LEGEND Website.",
-  "purpose": "Release the canonical analytics ingestion, scoped reporting, Meta bridge recovery, and live dashboard synchronization repair validated on architecture run 299. The release must follow the approved branch source of truth and fail forward from any concrete failed step without repeating completed deployment work.",
-  "requestId": "canonical-live-analytics-repair-20260926-r1",
+  "authorization": "Founder authorized the fully validated canonical website analytics repair for direct release after #228. Supersede the accidental broad automatic #230. Deploy only AgentPortal and Protect; do not deploy ClientApp, Parfait, or LEGEND Website.",
+  "purpose": "Release the canonical analytics ingestion, scoped reporting, Meta bridge recovery, and live dashboard synchronization repair validated on architecture run 299. Replace the accidental broad automatic dispatch with this exact scoped release and fail forward from any concrete failed step.",
+  "requestId": "canonical-live-analytics-repair-20260926-r2",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36273622780",
   "queueBehindRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36271963486",
   "releaseMode": "approved-only",
@@ -11,5 +11,6 @@
     "masterapp-protect"
   ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "supersedesRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36275526793"
 }
