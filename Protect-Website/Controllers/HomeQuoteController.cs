@@ -315,12 +315,18 @@ await TryWriteLeadEventAsync(
             var rows = new LeadEmailTemplate.RowBuilder();
 
 // ── 2. Send email through unified sender ───────────────────────────────
-            var emailSent = await _emailSender.TrySendAsync(
+            var notification = await WebsiteLeadNotificationAuthority.DeliverAsync(
+                _db,
+                lead,
                 leadRecipientEmail,
-                $"[HOME QUOTE] New Lead | {model.FirstName} {model.LastName}",
-                LeadEmailTemplate.Wrap("New Quote — Home Insurance", rows.ToString()),
-                saveToSentItems: true,
-                cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+                token => _emailSender.TrySendAsync(
+                    leadRecipientEmail,
+                    $"[HOME QUOTE] New Lead | {model.FirstName} {model.LastName}",
+                    LeadEmailTemplate.Wrap("New Quote — Home Insurance", rows.ToString()),
+                    saveToSentItems: true,
+                    cancellationToken: token),
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+            var emailSent = notification.Sent;
 
             if (emailSent)
             {
