@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized direct production release of the fully validated canonical analytics, CRM, Meta, booking, website runtime, and notification hardening candidate after exact combined-head architecture validation completed green.",
-  "purpose": "Deploy the approved canonical end-to-end platform repair across every affected web target. Shared Domain, Infrastructure, SHARED runtime, AgentPortal, ClientApp, Protect, Parfait dependencies, and the static website renderer changed together, so all five web targets must advance to the same approved source revision.",
-  "requestId": "canonical-analytics-crm-meta-booking-release-20260926",
+  "authorization": "Founder authorized direct production release of the fully validated canonical analytics, CRM, Meta, booking, website runtime, and notification hardening candidate, including the exact nullable request-context compile repair exposed by the first release build.",
+  "purpose": "Resume the failed canonical platform direct release after the exact compile-only repair. Deploy all five affected web targets from the corrected approved head; preserve prior rollback artifacts and do not alter Cloudflare routing.",
+  "requestId": "canonical-analytics-crm-meta-booking-release-20260926-r2",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36256776427",
   "releaseMode": "approved-only",
   "targets": [
@@ -13,5 +13,7 @@
     "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "failedReleaseRun": "https://github.com/MYLEGND/masterapp/actions/runs/36256915840",
+  "compileRepairCommit": "d5d0d5ef6f2ef4e1759f7b8c65fc7d329d57e114"
 }
