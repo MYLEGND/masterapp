@@ -703,8 +703,16 @@
       el.style.maxWidth = '100%';
     }
     if (positiveNumber(style.heightPx)) {
-      el.style.height = `${style.heightPx}px`;
-      el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+      if (sectionLocked) {
+        // Sections are content-sized canvases. Vertical resize changes only their
+        // minimum breathing room; content must never become an internal scroller.
+        el.style.minHeight = `${style.heightPx}px`;
+        el.style.height = 'auto';
+        el.style.overflow = 'visible';
+      } else {
+        el.style.height = `${style.heightPx}px`;
+        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+      }
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
     const hasOffsetY = style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
@@ -1141,7 +1149,18 @@
     } else if (extra.type === 'section') {
       el = document.createElement('section');
       if (editable) el.dataset.cmsSection = `extra:${extra.id}`;
-      el.className = 'cms-extra cms-extra-section';
+      el.className = ['cms-extra','cms-extra-section',extra.sourceClassName || ''].filter(Boolean).join(' ');
+      if (typeof extra.templateHtml === 'string' && extra.templateHtml) {
+        el.innerHTML = extra.templateHtml;
+        let childIndex=0;
+        el.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article').forEach(child=>{
+          if (!canEditElement(child)) return;
+          if (!['IMG','VIDEO','A','DIV','ARTICLE'].includes(child.tagName) && child.children.length>0) return;
+          child.dataset.cmsId = `extra:${extra.id}:node:${++childIndex}`;
+          child.dataset.cmsEditable='true';
+          rememberOriginal(child);
+        });
+      }
     } else if (extra.type === 'video') {
       el = document.createElement('video'); el.controls = true; el.preload = 'metadata';
       if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
@@ -1414,10 +1433,29 @@
     refreshLayers();
   }
 
+  function applyBusinessPageNavigation() {
+    if (SITE_KEY !== 'business') return;
+    const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
+    if (!nav) return;
+    nav.querySelectorAll('a:not([data-legend-store-nav])').forEach(node=>node.remove());
+    const current=currentPageRoute();
+    for (const entry of websitePageEntries(false).filter(value=>value.showInNavigation!==false && !value.parentPath)) {
+      const link=document.createElement('a');
+      link.href=entry.route;
+      link.textContent=entry.label;
+      link.dataset.legendPageNav='true';
+      link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
+      link.dataset.cmsLocked='true';
+      if (entry.route===current) link.setAttribute('aria-current','page');
+      nav.appendChild(link);
+    }
+  }
+
   function applyDocument(doc) {
     documentState = normalizeDocument(doc);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
+    applyBusinessPageNavigation();
     applyStoreNavigation();
     const metadata = pageState();
     document.title = metadata.title ?? originalTitle;
@@ -2386,9 +2424,11 @@
     const serviceCard = businessServiceCardFor(selected);
     const duplicateButton = document.getElementById('legend-cms-duplicate');
     if (duplicateButton) {
-      duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate selected';
-      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM';
-      duplicateButton.title = selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
+      const immutableShell = selected.matches?.('.site-header,.site-footer');
+      duplicateButton.textContent = serviceCard ? 'Duplicate service' : selected.dataset.cmsSection ? 'Duplicate section' : 'Duplicate selected';
+      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM' || immutableShell;
+      duplicateButton.title = immutableShell ? 'The website banner and footer are shared shell authorities and cannot be duplicated.'
+        : selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
     }
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
@@ -3289,8 +3329,26 @@
       }
 
       if (selected.dataset.cmsSection) {
-        alert('Select an added section to duplicate the whole section, or select an individual item inside this template section.');
-        return;
+        if (selected.matches('.site-header,.site-footer')) return;
+        if (selected.querySelector?.('form[data-website-inquiry]')) {
+          alert('This section contains the canonical inquiry form. Move or redesign the section instead of creating a second live inquiry authority.');
+          return;
+        }
+        checkpoint();
+        const clone=selected.cloneNode(true);
+        clone.querySelectorAll('[data-cms-id],[data-cms-editable],[data-cms-section],[contenteditable]').forEach(node=>{
+          node.removeAttribute('data-cms-id'); node.removeAttribute('data-cms-editable'); node.removeAttribute('data-cms-section'); node.removeAttribute('contenteditable');
+        });
+        clone.querySelectorAll('.legend-cms-editor,.legend-cms-selection-frame,.legend-cms-grid-overlay').forEach(node=>node.remove());
+        const copy={
+          id:crypto.randomUUID(), type:'section', sectionId:selected.dataset.cmsSection,
+          sourceClassName:[...selected.classList].filter(name=>!name.startsWith('legend-cms-') && name!=='cms-extra').join(' '),
+          templateHtml:clone.innerHTML, style:{}, signals:[]
+        };
+        pageState().extras.push(copy);
+        const created=createExtra(copy);
+        if (created && selected.parentElement===created.parentElement) selected.parentElement.insertBefore(created,selected.nextSibling);
+        syncSectionOrderFromDom(); setSelected(created); markDirty(); return;
       }
       const supported = ['P','H1','H2','H3','H4','H5','H6','A','BUTTON','IMG','VIDEO','LI','SMALL','STRONG','SPAN'];
       if (!supported.includes(selected.tagName)) return;
