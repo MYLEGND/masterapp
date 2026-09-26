@@ -539,7 +539,7 @@ public sealed class MetaAdsService : IMetaAdsService
                 // owner-checked encrypted legacy connection can migrate into the
                 // canonical store. Business and Founder scopes must fail closed:
                 // they may never inherit process-global Meta credentials.
-                if (owner.OwnerType != MarketingOwnerType.Agent)
+                if (!string.Equals(owner.OwnerType, "agent", StringComparison.OrdinalIgnoreCase))
                     return (string.Empty, string.Empty);
             }
         }
