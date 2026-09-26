@@ -389,29 +389,6 @@ namespace AgentPortal.Controllers;
         if (request == null || request.LeadId == Guid.Empty)
             return BadRequest(new { message = "A valid leadId is required." });
 
-        var cleanupLead = await _db.WebsiteLeads.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.LeadId == request.LeadId, HttpContext.RequestAborted);
-        if (cleanupLead == null)
-            return NotFound(new { message = "Lead not found." });
-
-        if (!Infrastructure.Leads.WebsiteLeadCaptureSafety.ShouldSkipWorkstationCapture(cleanupLead))
-        {
-            return BadRequest(new
-            {
-                message = "Only explicitly internal/local test leads can be removed from analytics. Production lead history must be retained."
-            });
-        }
-
-        var hasCrmLineage = await _db.WebsiteLeadIntakeLinks.AsNoTracking()
-            .AnyAsync(x => x.WebsiteLeadPublicId == request.LeadId, HttpContext.RequestAborted);
-        if (hasCrmLineage)
-        {
-            return Conflict(new
-            {
-                message = "This test lead is linked to CRM and cannot be removed from Analytics independently."
-            });
-        }
-
         try
         {
             var actorId = (User.GetStableUserId() ?? string.Empty).Trim();
@@ -448,6 +425,32 @@ namespace AgentPortal.Controllers;
                 var lead = await FindLeadAsync(conn, request.LeadId, supportsSoftDelete, isSqlite, cancellationToken);
                 if (lead == null)
                     return NotFound(new { message = "Lead not found." });
+
+                var cleanupSafety = await ReadCleanupSafetyAsync(
+                    conn,
+                    request.LeadId,
+                    leadColumns,
+                    isSqlite,
+                    cancellationToken);
+                if (!cleanupSafety.IsInternal &&
+                    !Infrastructure.Leads.WebsiteLeadCaptureSafety.IsLocalHost(cleanupSafety.Host))
+                {
+                    return BadRequest(new
+                    {
+                        message = "Only explicitly internal/local test leads can be removed from analytics. Production lead history must be retained."
+                    });
+                }
+
+                var crmLineage = await HasCrmLineageAsync(conn, request.LeadId, isSqlite, cancellationToken);
+                if (crmLineage != false)
+                {
+                    return Conflict(new
+                    {
+                        message = crmLineage == true
+                            ? "This test lead is linked to CRM and cannot be removed from Analytics independently."
+                            : "CRM lineage could not be verified, so cleanup was blocked."
+                    });
+                }
 
                 if (lead.IsDeleted)
                 {
@@ -541,6 +544,59 @@ namespace AgentPortal.Controllers;
                 request?.LeadId,
                 request);
             return StatusCode(500, new { message = "Unable to delete lead right now." });
+        }
+
+        static async Task<(bool IsInternal, string? Host)> ReadCleanupSafetyAsync(
+            DbConnection conn,
+            Guid leadId,
+            IReadOnlySet<string> columns,
+            bool isSqlite,
+            CancellationToken cancellationToken)
+        {
+            var hasInternal = columns.Contains("IsInternal");
+            var hasHost = columns.Contains("Host");
+            if (!hasInternal && !hasHost)
+                return (false, null);
+
+            await using var cmd = conn.CreateCommand();
+            var internalSql = hasInternal
+                ? (isSqlite ? "COALESCE(\"IsInternal\", 0)" : "CASE WHEN [IsInternal] = 1 THEN 1 ELSE 0 END")
+                : "0";
+            var hostSql = hasHost ? QuoteIdentifier("Host", isSqlite) : "NULL";
+            cmd.CommandText = isSqlite
+                ? $"""SELECT {internalSql} AS "IsInternal", {hostSql} AS "Host" FROM "WebsiteLeads" WHERE lower("LeadId") = lower(@leadId) LIMIT 1"""
+                : $"""SELECT TOP (1) {internalSql} AS [IsInternal], {hostSql} AS [Host] FROM [WebsiteLeads] WHERE [LeadId] = @leadId""";
+            AddParameter(cmd, "@leadId", isSqlite ? leadId.ToString() : leadId);
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+                return (false, null);
+            return (
+                ReadBoolean(reader, "IsInternal"),
+                reader.IsDBNull(reader.GetOrdinal("Host")) ? null : Convert.ToString(reader.GetValue(reader.GetOrdinal("Host")), CultureInfo.InvariantCulture));
+        }
+
+        static async Task<bool?> HasCrmLineageAsync(
+            DbConnection conn,
+            Guid leadId,
+            bool isSqlite,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = isSqlite
+                    ? """SELECT COUNT(1) FROM "WebsiteLeadIntakeLinks" WHERE lower("WebsiteLeadPublicId") = lower(@leadId)"""
+                    : """SELECT COUNT(1) FROM [WebsiteLeadIntakeLinks] WHERE [WebsiteLeadPublicId] = @leadId""";
+                AddParameter(cmd, "@leadId", isSqlite ? leadId.ToString() : leadId);
+                var scalar = await cmd.ExecuteScalarAsync(cancellationToken);
+                return Convert.ToInt64(scalar ?? 0, CultureInfo.InvariantCulture) > 0;
+            }
+            catch (Exception ex) when (
+                ex is Microsoft.Data.Sqlite.SqliteException ||
+                ex is Microsoft.Data.SqlClient.SqlException)
+            {
+                return null;
+            }
         }
 
         static async Task<WebsiteLeadDeleteLookup?> FindLeadAsync(
