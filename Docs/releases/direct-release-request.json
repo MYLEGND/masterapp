@@ -1,15 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder directed recovery of the failed custom-domain proof from approved direct release #185 while preserving the successful Portal, Client and Website deployments. Release only the coupled Protect and Parfait commerce origins and Cloudflare router through the existing approved production gates. Require a verified business binding receipt, homepage and /store on the configured canary hostname; restore the previous Worker if route proof fails.",
-  "purpose": "Complete the queued business-scoped custom-domain storefront routing in one scoped recovery release. Retain the shared MasterApp domain authority and existing Cloudflare secrets; avoid redeploying the successful Portal, Client and standalone Website targets.",
-  "requestId": "masterapp-custom-domain-scoped-recovery-20260926",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36205924484",
+  "authorization": "Founder explicitly requested: SO RELEASE PROTECT ONLY. Deploy only masterapp-protect through the approved direct release lane. Preserve every other live application and Cloudflare Worker.",
+  "purpose": "Deploy merged PR #188 minimal shared domain proof controller and verify Protect live provenance.",
+  "requestId": "protect-only-domain-proof-20260926-0135",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36208496027",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect",
-    "masterapp-parfait"
+    "masterapp-protect"
   ],
-  "cloudflareWebsiteRouting": true,
-  "websiteRoutingCanaryHost": "camoexterior.com",
+  "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
 }
