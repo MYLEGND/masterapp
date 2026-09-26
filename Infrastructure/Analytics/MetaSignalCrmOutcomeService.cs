@@ -8,6 +8,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Shared.Analytics;
+using Shared.Crm;
 
 namespace Infrastructure.Analytics;
 
@@ -254,11 +255,31 @@ public sealed class MetaSignalCrmOutcomeService
         if (side == ProductionSide.Lead)
             return await ResolveWebsiteLeadIdAsync(leadId, null, cancellationToken);
 
-        // Many converted clients preserve the original workstation lead id as ClientUserId.
-        // This lets client-side production remain attributable to the original website lead.
-        var byClientUserId = await ResolveWebsiteLeadIdAsync(clientUserId, null, cancellationToken);
-        if (byClientUserId.HasValue)
-            return byClientUserId.Value;
+        // Converted clients preserve the canonical source lead in CRM metadata.
+        // ClientUserId itself is not required to equal the workstation lead id.
+        if (!string.IsNullOrWhiteSpace(clientUserId))
+        {
+            var client = await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(x => x.ClientUserId == clientUserId)
+                .Select(x => new { x.ClientUserId, x.CrmNotes })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (client is not null)
+            {
+                var meta = ClientCrmMetaSerializer.Deserialize(client.CrmNotes);
+                var sourceLeadId = meta?.SourceWorkstationLeadId;
+                var bySourceLead = await ResolveWebsiteLeadIdAsync(sourceLeadId, null, cancellationToken);
+                if (bySourceLead.HasValue)
+                    return bySourceLead.Value;
+            }
+
+            // Preserve compatibility for historical clients whose ClientUserId was
+            // itself the workstation lead id.
+            var byClientUserId = await ResolveWebsiteLeadIdAsync(clientUserId, null, cancellationToken);
+            if (byClientUserId.HasValue)
+                return byClientUserId.Value;
+        }
 
         // Defensive fallback for mixed caller paths where leadId may still be populated.
         return await ResolveWebsiteLeadIdAsync(leadId, null, cancellationToken);
