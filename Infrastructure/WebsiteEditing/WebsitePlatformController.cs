@@ -1895,10 +1895,10 @@ public class WebsitePlatformController : ControllerBase
             cartUrl = root + "/cart",
             previewUrl = string.IsNullOrWhiteSpace(ticket)
                 ? null
-                : CommercePublicBaseUrl() + "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket),
+                : "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket),
             managerUrl = string.IsNullOrWhiteSpace(ticket)
                 ? null
-                : CommercePublicBaseUrl() + "/commerce/manage/products?ticket=" + Uri.EscapeDataString(ticket)
+                : "/commerce/manage/products?ticket=" + Uri.EscapeDataString(ticket)
         };
     }
 
