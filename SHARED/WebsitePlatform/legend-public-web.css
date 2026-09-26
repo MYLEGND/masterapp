@@ -1,7 +1,11 @@
 /* LEGEND® public web presentation authority.
    Shared by www.mylegnd.com and protect.mylegnd.com.
    Brand-specific palettes are variables; layout, rhythm, components and responsive behavior live here. */
-body{overflow-x:clip}
+html{min-height:100%}
+body{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip}
+.site-header{flex:0 0 auto}
+main,.public-main,.layout-content{flex:1 0 auto;min-height:0}
+.site-footer{flex:0 0 auto;margin-top:auto}
 a{color:inherit;text-decoration:none}
 img{display:block}
 .skip{position:fixed;left:12px;top:-90px;z-index:1200;background:var(--gold);color:var(--navy-deep);padding:10px 14px;border-radius:10px;font-weight:800}
