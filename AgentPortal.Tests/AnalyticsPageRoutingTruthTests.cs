@@ -49,7 +49,8 @@ public sealed class AnalyticsPageRoutingTruthTests
             Assert.Contains($"\"{route.TrimStart('/')}\"", businessService, StringComparison.Ordinal);
         }
 
-        Assert.Contains("analyticsEndpoint(\"/DeviceIntelligence\")", ui, StringComparison.Ordinal);
+        Assert.Contains("window.websiteAnalyticsBridge?.endpoint", ui, StringComparison.Ordinal);
+        Assert.Contains("endpoint(\"/DeviceIntelligence\")", ui, StringComparison.Ordinal);
         Assert.Contains("\"DeviceIntelligence\"", businessService, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"DeviceIntelligence\")]", controller, StringComparison.Ordinal);
 
