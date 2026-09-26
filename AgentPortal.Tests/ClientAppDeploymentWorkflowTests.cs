@@ -130,4 +130,25 @@ public sealed class ClientAppDeploymentWorkflowTests
         // The previous portal ingress smoke assertions remain part of the same release.
         Assert.Contains("/api/v1/mobile/social/posts/media/stage' -ExpectedStatus '401'", workflow, StringComparison.Ordinal);
     }
+    [Fact]
+    public void ProtectDirectReleaseUsesOneImmutableZipTransportAndNoDirectoryDeploy()
+    {
+        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "all-intentional-direct-release-20260918.yml"));
+        var protectStart = workflow.IndexOf("      - name: Direct deploy Protect immutable ZIP", StringComparison.Ordinal);
+        var parfaitStart = workflow.IndexOf("      - name: Direct deploy Parfait", protectStart, StringComparison.Ordinal);
+        Assert.True(protectStart >= 0 && parfaitStart > protectStart);
+
+        var protect = workflow[protectStart..parfaitStart];
+        Assert.Contains("package=/tmp/diagnostics-packages/protect.zip", protect, StringComparison.Ordinal);
+        Assert.Contains("unzip -tq \"$package\"", protect, StringComparison.Ordinal);
+        Assert.Contains("_deployment-provenance.json", protect, StringComparison.Ordinal);
+        Assert.Contains("sha256sum \"$package\"", protect, StringComparison.Ordinal);
+        Assert.Contains("az webapp deploy", protect, StringComparison.Ordinal);
+        Assert.Contains("--src-path \"$package\"", protect, StringComparison.Ordinal);
+        Assert.Contains("--type zip", protect, StringComparison.Ordinal);
+        Assert.Contains("for attempt in 1 2 3", protect, StringComparison.Ordinal);
+        Assert.DoesNotContain("azure/webapps-deploy@v3", protect, StringComparison.Ordinal);
+        Assert.DoesNotContain("package: /tmp/protect-publish", protect, StringComparison.Ordinal);
+    }
+
 }
