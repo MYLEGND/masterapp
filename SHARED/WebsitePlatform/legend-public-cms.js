@@ -187,7 +187,10 @@
           : 'Store',
         cartIcon: ['cart','bag','basket'].includes(String(input?.store?.cartIcon || '').toLowerCase())
           ? String(input.store.cartIcon).toLowerCase()
-          : 'cart'
+          : 'cart',
+        cartIconSizePx: Number.isFinite(Number(input?.store?.cartIconSizePx))
+          ? Math.max(16, Math.min(96, Number(input.store.cartIconSizePx)))
+          : 28
       },
       pages
     };
@@ -233,6 +236,19 @@
       .slice(0, 160);
   }
 
+  function isSharedShellElement(el) {
+    return !!el?.closest?.('.site-header,.site-footer');
+  }
+
+  function globalShellOverride(id, create = true) {
+    if (!id) return null;
+    documentState.elements ||= {};
+    if (!documentState.elements[id] && create) documentState.elements[id] = { style: {} };
+    const value = documentState.elements[id] || null;
+    if (value && create) value.style ||= {};
+    return value;
+  }
+
   function canEditElement(el) {
     if (!(el instanceof HTMLElement)) return false;
     if (el.closest('.legend-cms-editor')) return false;
@@ -270,7 +286,7 @@
     const sections = [...document.querySelectorAll(sectionCandidates), ...document.querySelectorAll('.site-header,.site-footer')];
     sections.forEach((section, index) => {
       if (!section.dataset.cmsSection) {
-        section.dataset.cmsSection = section.matches('.site-header') ? `${pageKey}.header` : section.matches('.site-footer') ? `${pageKey}.footer` : `${pageKey}.section.${index + 1}`;
+        section.dataset.cmsSection = section.matches('.site-header') ? 'shell.header' : section.matches('.site-footer') ? 'shell.footer' : `${pageKey}.section.${index + 1}`;
       }
       section.dataset.cmsId = `section:${section.dataset.cmsSection}`;
       section.dataset.cmsEditable = 'true';
@@ -288,7 +304,8 @@
           const href = el.getAttribute('href');
           const route = href ? new URL(href, location.origin).pathname : '';
           const semantic = SITE_KEY !== 'business' && legacy ? el.dataset.cta || href || el.textContent || el.tagName : el.dataset.businessField || (el.hasAttribute?.('data-business-name') ? 'business-name' : '') || el.dataset.businessRoute || el.dataset.cta || route || (['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) ? el.className || el.tagName : '') || el.textContent || el.tagName;
-          el.dataset.cmsId = `${pageKey}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
+          const shellPrefix = el.closest('.site-header') ? 'shell.header' : el.closest('.site-footer') ? 'shell.footer' : pageKey;
+          el.dataset.cmsId = `${shellPrefix}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
         }
         rememberOriginal(el);
         if (isDirectCanvasSelectable(el)) el.dataset.cmsEditable = 'true';
@@ -703,8 +720,16 @@
       el.style.maxWidth = '100%';
     }
     if (positiveNumber(style.heightPx)) {
-      el.style.height = `${style.heightPx}px`;
-      el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+      if (sectionLocked) {
+        // Sections are content-sized canvases. Vertical resize changes only their
+        // minimum breathing room; content must never become an internal scroller.
+        el.style.minHeight = `${style.heightPx}px`;
+        el.style.height = 'auto';
+        el.style.overflow = 'visible';
+      } else {
+        el.style.height = `${style.heightPx}px`;
+        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'auto';
+      }
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
     const hasOffsetY = style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
@@ -736,6 +761,10 @@
 
   function overrideForElement(el, create = true) {
     if (!el?.dataset?.cmsId) return null;
+    // Shared website shell edits are document-global and therefore render on
+    // every page. Page-specific content remains in the page record.
+    if (isSharedShellElement(el))
+      return globalShellOverride(el.dataset.cmsId, create);
     // An added composite block (for example a service card) owns its content,
     // but each selectable child owns its own geometry/style. This keeps one
     // canonical document store while allowing title/copy/etc. to move independently.
