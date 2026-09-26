@@ -1,16 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized one final direct production release after #223 completed successfully. Preserve all successful #223 live work. Deploy only AgentPortal, ClientApp, and Protect for the fully validated Marketing Setup centralization; no Parfait, LEGEND Website, Cloudflare routing, or unrelated source changes.",
-  "purpose": "Promote the centralized Website Analytics Marketing Setup: move agent marketing/booking configuration out of Agent Profile, keep the existing owner-scoped MarketingConnection and AgentProfile authorities, remove manual Meta CAPI secret entry, and preserve automatic scoped Meta OAuth/CAPI behavior. Include the already-approved shared Website Studio fixes without restarting unaffected targets.",
-  "requestId": "analytics-marketing-setup-centralization-20260926-r1",
+  "authorization": "Founder authorized fail-forward recovery of release #225. Preserve the successful AgentPortal and ClientApp deployments. Deploy only Protect after refreshing Azure OIDC; do not redeploy successful targets or touch unrelated applications.",
+  "purpose": "Resume the validated Marketing Setup and shared Website Studio release at the first unresolved target after #225 exhausted Protect deployment retries because the Azure federated assertion expired. Use the same canonical release flow with a fresh Azure OIDC credential and a Protect-only scope.",
+  "requestId": "protect-oidc-refresh-recovery-20260926-r1",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36267157003",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
     "masterapp-protect"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
-  "preserveSuccessfulRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36264282322"
+  "preserveSuccessfulRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36267966867"
 }
