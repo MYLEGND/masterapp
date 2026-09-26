@@ -1539,7 +1539,7 @@
       .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
       .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route));
 
-    nav.querySelectorAll('a:not([data-legend-store-nav])').forEach(node=>node.remove());
+    nav.querySelectorAll('[data-legend-page-nav="true"],a:not([data-legend-store-nav])').forEach(node=>node.remove());
     const current=currentPageRoute();
     entries.forEach(entry=>{
       const link=document.createElement(editorMode ? 'button' : 'a');
