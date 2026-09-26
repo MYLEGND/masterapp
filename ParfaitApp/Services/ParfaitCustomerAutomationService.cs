@@ -15,6 +15,7 @@ public sealed class ParfaitCustomerAutomationService
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitProductService _products;
     private readonly Infrastructure.Data.MasterAppDbContext? _db;
+    private readonly CommerceStoreContextService? _stores;
     private readonly object _lock = new();
 
     public ParfaitCustomerAutomationService(
@@ -22,13 +23,15 @@ public sealed class ParfaitCustomerAutomationService
         IConfiguration configuration,
         ParfaitOrderService orders,
         ParfaitProductService products,
-        Infrastructure.Data.MasterAppDbContext? db = null)
+        Infrastructure.Data.MasterAppDbContext? db = null,
+        CommerceStoreContextService? stores = null)
     {
         _storagePaths = storagePaths;
         _configuration = configuration;
         _orders = orders;
         _products = products;
         _db = db;
+        _stores = stores;
     }
 
     private string DataPath => _storagePaths.CustomerAutomationsPath;
@@ -163,7 +166,10 @@ public sealed class ParfaitCustomerAutomationService
         }
     }
 
-    public void CaptureCheckoutLead(ParfaitAutomationCheckoutLeadCaptureRequest request, ParfaitCartQuoteResponse quote)
+    public void CaptureCheckoutLead(ParfaitAutomationCheckoutLeadCaptureRequest request, ParfaitCartQuoteResponse quote) =>
+        CaptureCheckoutLead(_products.GetDefaultBusinessId(), request, quote);
+
+    public void CaptureCheckoutLead(Guid businessId, ParfaitAutomationCheckoutLeadCaptureRequest request, ParfaitCartQuoteResponse quote)
     {
         var checkoutAttemptId = CleanOptional(request.CheckoutAttemptId);
         var email = NormalizeEmail(request.Customer.Email);
@@ -188,9 +194,10 @@ public sealed class ParfaitCustomerAutomationService
         if (items.Count == 0)
             return;
 
+        var dataPath = DataPathForBusiness(businessId);
         lock (_lock)
         {
-            var store = LoadStoreUnsafe();
+            var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
 
             var lead = store.CartLeads.FirstOrDefault(item =>
@@ -221,15 +228,19 @@ public sealed class ParfaitCustomerAutomationService
             lead.IsConverted = false;
             lead.ConvertedOrderNumber = null;
 
-            SaveStoreUnsafe(store);
+            SaveStoreUnsafe(store, dataPath);
         }
     }
 
-    public void MarkOrderConverted(ParfaitOrderRecord order)
+    public void MarkOrderConverted(ParfaitOrderRecord order) =>
+        MarkOrderConverted(_products.GetDefaultBusinessId(), order);
+
+    public void MarkOrderConverted(Guid businessId, ParfaitOrderRecord order)
     {
+        var dataPath = DataPathForBusiness(businessId);
         lock (_lock)
         {
-            var store = LoadStoreUnsafe();
+            var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
 
             var checkoutAttemptId = CleanOptional(order.CheckoutAttemptId);
@@ -250,19 +261,23 @@ public sealed class ParfaitCustomerAutomationService
                 lead.ConvertedOrderNumber = order.OrderNumber;
             }
 
-            SaveStoreUnsafe(store);
+            SaveStoreUnsafe(store, dataPath);
         }
     }
 
-    public IReadOnlyList<ParfaitAutomationDispatchCandidate> GetDueDispatchCandidates()
+    public IReadOnlyList<ParfaitAutomationDispatchCandidate> GetDueDispatchCandidates() =>
+        GetDueDispatchCandidates(_products.GetDefaultBusinessId());
+
+    public IReadOnlyList<ParfaitAutomationDispatchCandidate> GetDueDispatchCandidates(Guid businessId)
     {
+        var dataPath = DataPathForBusiness(businessId);
         lock (_lock)
         {
-            var store = LoadStoreUnsafe();
+            var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
 
             var now = DateTime.UtcNow;
-            var orders = _orders.GetAllOrders();
+            var orders = _orders.GetAllOrders(businessId);
             var candidates = new List<ParfaitAutomationDispatchCandidate>();
 
             foreach (var workflow in store.Workflows.Where(item => item.IsActive))
@@ -282,7 +297,7 @@ public sealed class ParfaitCustomerAutomationService
                         if (HasSuccessfulDispatch(store, workflow.Id, triggerKey))
                             continue;
 
-                        candidates.Add(BuildCandidate(workflow, lead, null));
+                        candidates.Add(BuildCandidate(businessId, workflow, lead, null));
                     }
 
                     continue;
@@ -298,7 +313,7 @@ public sealed class ParfaitCustomerAutomationService
                     if (HasSuccessfulDispatch(store, workflow.Id, triggerKey))
                         continue;
 
-                    candidates.Add(BuildCandidate(workflow, null, order));
+                    candidates.Add(BuildCandidate(businessId, workflow, null, order));
                 }
             }
 
@@ -306,11 +321,30 @@ public sealed class ParfaitCustomerAutomationService
         }
     }
 
+    public IReadOnlyList<ParfaitAutomationDispatchCandidate> GetDueDispatchCandidatesForAllBusinesses()
+    {
+        if (_db is null) return GetDueDispatchCandidates();
+        var businessIds = _db.CommerceBusinesses.AsNoTracking()
+            .Where(business => business.IsActive && business.Status == "Active")
+            .Select(business => business.Id)
+            .ToList();
+
+        var candidates = new List<ParfaitAutomationDispatchCandidate>();
+        foreach (var businessId in businessIds)
+        {
+            var path = DataPathForBusiness(businessId);
+            if (!File.Exists(path)) continue;
+            candidates.AddRange(GetDueDispatchCandidates(businessId));
+        }
+        return candidates;
+    }
+
     public void MarkDispatchSent(ParfaitAutomationDispatchCandidate candidate)
     {
+        var dataPath = DataPathForBusiness(candidate.CommerceBusinessId);
         lock (_lock)
         {
-            var store = LoadStoreUnsafe();
+            var store = LoadStoreUnsafe(dataPath);
             store.Dispatches.Add(new ParfaitAutomationDispatchLogRecord
             {
                 WorkflowId = candidate.WorkflowId,
@@ -325,15 +359,16 @@ public sealed class ParfaitCustomerAutomationService
                 CheckoutAttemptId = candidate.CheckoutAttemptId,
                 OccurredUtc = DateTime.UtcNow
             });
-            SaveStoreUnsafe(store);
+            SaveStoreUnsafe(store, dataPath);
         }
     }
 
     public void MarkDispatchFailed(ParfaitAutomationDispatchCandidate candidate, string errorMessage)
     {
+        var dataPath = DataPathForBusiness(candidate.CommerceBusinessId);
         lock (_lock)
         {
-            var store = LoadStoreUnsafe();
+            var store = LoadStoreUnsafe(dataPath);
             store.Dispatches.Add(new ParfaitAutomationDispatchLogRecord
             {
                 WorkflowId = candidate.WorkflowId,
@@ -349,18 +384,20 @@ public sealed class ParfaitCustomerAutomationService
                 CheckoutAttemptId = candidate.CheckoutAttemptId,
                 OccurredUtc = DateTime.UtcNow
             });
-            SaveStoreUnsafe(store);
+            SaveStoreUnsafe(store, dataPath);
         }
     }
 
     private ParfaitAutomationDispatchCandidate BuildCandidate(
+        Guid businessId,
         ParfaitAutomationWorkflowRecord workflow,
         ParfaitAutomationCartLeadRecord? lead,
         ParfaitOrderRecord? order)
     {
-        var context = BuildTemplateContext(workflow, lead, order);
+        var context = BuildTemplateContext(businessId, workflow, lead, order);
         return new ParfaitAutomationDispatchCandidate
         {
+            CommerceBusinessId = businessId,
             WorkflowId = workflow.Id,
             WorkflowName = workflow.Name,
             TriggerType = workflow.TriggerType,
@@ -375,14 +412,15 @@ public sealed class ParfaitCustomerAutomationService
     }
 
     private TemplateContext BuildTemplateContext(
+        Guid businessId,
         ParfaitAutomationWorkflowRecord workflow,
         ParfaitAutomationCartLeadRecord? lead,
         ParfaitOrderRecord? order)
     {
-        var baseUrl = ResolvePublicBaseUrl();
-        var firstName = CleanOptional(order?.FirstName) ?? CleanOptional(lead?.FirstName) ?? "Parfait";
+        var baseUrl = ResolvePublicBaseUrl(businessId);
+        var firstName = CleanOptional(order?.FirstName) ?? CleanOptional(lead?.FirstName) ?? "there";
         var email = NormalizeEmail(order?.Email ?? lead?.Email);
-        var discountCode = ResolveDiscountCode(workflow.DiscountCode);
+        var discountCode = ResolveDiscountCode(businessId, workflow.DiscountCode);
         var items = order?.Items ?? lead?.Items ?? [];
         var triggerLabel = workflow.TriggerType == ParfaitAutomationTriggerTypes.AbandonedCart ? "Cart Ready" : "Order Follow Up";
         var ctaUrl = ApplyTemplate(string.IsNullOrWhiteSpace(workflow.CtaUrl)
@@ -409,7 +447,8 @@ public sealed class ParfaitCustomerAutomationService
             CartTotalLabel = Money(lead?.TotalCents ?? order?.TotalCents ?? 0),
             DiscountCode = discountCode,
             CtaUrl = ctaUrl,
-            TriggerLabel = triggerLabel
+            TriggerLabel = triggerLabel,
+            StoreName = ResolveStoreName(businessId)
         };
     }
 
@@ -547,9 +586,9 @@ public sealed class ParfaitCustomerAutomationService
         var subject = enc.Encode(ApplyTemplate(workflow.Subject, context));
         var headline = enc.Encode(ApplyTemplate(workflow.Headline, context));
         var body = enc.Encode(ApplyTemplate(workflow.Body, context)).Replace("\n", "<br/>");
-        var ctaLabel = enc.Encode(ApplyTemplate(string.IsNullOrWhiteSpace(workflow.CtaLabel) ? "Open Parfait" : workflow.CtaLabel, context));
+        var ctaLabel = enc.Encode(ApplyTemplate(string.IsNullOrWhiteSpace(workflow.CtaLabel) ? "Open Store" : workflow.CtaLabel, context));
         var ctaUrl = enc.Encode(context.CtaUrl);
-        var storeName = enc.Encode((_configuration["Contact:WebsiteName"] ?? "Parfait").Trim());
+        var storeName = enc.Encode(context.StoreName);
         var discountCode = enc.Encode(context.DiscountCode);
         var triggerLabel = enc.Encode(context.TriggerLabel);
         var orderNumber = enc.Encode(context.OrderNumber);
@@ -693,20 +732,48 @@ $"""
         return _storagePaths.GetCustomerAutomationsPath(key);
     }
 
-    private string ResolvePublicBaseUrl()
+    private string ResolvePublicBaseUrl(Guid businessId)
     {
-        return CleanOptional(_configuration["Store:PublicBaseUrl"])
-            ?? CleanOptional(_configuration["PublicSite:BaseUrl"])
-            ?? "https://shopparfait.com";
+        if (_stores is not null)
+        {
+            try
+            {
+                var canonical = _stores.ResolveCanonicalPublicRootAsync(businessId).GetAwaiter().GetResult();
+                if (!string.IsNullOrWhiteSpace(canonical)) return canonical.TrimEnd('/');
+            }
+            catch
+            {
+            }
+        }
+
+        if (businessId == _products.GetDefaultBusinessId())
+            return CleanOptional(_configuration["Store:PublicBaseUrl"])
+                ?? CleanOptional(_configuration["PublicSite:BaseUrl"])
+                ?? "https://shopparfait.com/store";
+
+        var domain = _db?.CommerceBusinesses.AsNoTracking()
+            .Where(business => business.Id == businessId)
+            .Select(business => business.PrimaryDomain)
+            .SingleOrDefault();
+        return !string.IsNullOrWhiteSpace(domain)
+            ? "https://" + domain.Trim().TrimEnd('/') + "/store"
+            : "https://mylegnd.com/store";
     }
 
-    private string ResolveDiscountCode(string? requestedCode)
+    private string ResolveStoreName(Guid businessId) =>
+        _db?.CommerceBusinesses.AsNoTracking()
+            .Where(business => business.Id == businessId)
+            .Select(business => business.DisplayName)
+            .SingleOrDefault()
+        ?? (businessId == _products.GetDefaultBusinessId() ? "Parfait" : "Store");
+
+    private string ResolveDiscountCode(Guid businessId, string? requestedCode)
     {
         var normalized = ParfaitProductCatalogDefaults.NormalizeDiscountCode(requestedCode);
         if (string.IsNullOrWhiteSpace(normalized))
             return "";
 
-        return BuildDiscountOptions().Any(option => option.Code.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+        return BuildDiscountOptions(businessId).Any(option => option.Code.Equals(normalized, StringComparison.OrdinalIgnoreCase))
             ? normalized
             : "";
     }
@@ -801,6 +868,7 @@ $"""
         public string CartTotalLabel { get; init; } = "$0.00";
         public string DiscountCode { get; init; } = "";
         public string CtaUrl { get; init; } = "https://shopparfait.com/store";
-        public string TriggerLabel { get; init; } = "Parfait";
+        public string TriggerLabel { get; init; } = "Store";
+        public string StoreName { get; init; } = "Store";
     }
 }
