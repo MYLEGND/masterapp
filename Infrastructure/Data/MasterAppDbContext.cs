@@ -1847,6 +1847,7 @@ public class MasterAppDbContext : DbContext
 
             e.HasIndex(x => x.GraphSubscriptionId).IsUnique();
             e.HasIndex(x => new { x.AgentUserId, x.CalendarEmail });
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CalendarEmail });
             e.HasIndex(x => new { x.IsActive, x.ExpirationUtc });
         });
 
@@ -1867,6 +1868,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.DiagnosticJson).HasColumnType(unboundedTextColumnType);
 
             e.HasIndex(x => x.AppointmentId);
+            e.HasIndex(x => x.CommerceBusinessId);
             e.HasIndex(x => x.WorkstationLeadId);
             e.HasIndex(x => x.GraphEventId);
             e.HasIndex(x => x.CreatedUtc);
@@ -1902,6 +1904,7 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => new { x.WorkstationLeadId, x.UpdatedUtc });
             e.HasIndex(x => new { x.WorkstationLeadId, x.ScheduledStartUtc });
             e.HasIndex(x => new { x.OwnerAgentUserId, x.Status, x.ScheduledStartUtc });
+            e.HasIndex(x => new { x.CommerceBusinessId, x.Status, x.ScheduledStartUtc });
             e.HasIndex(x => x.CalendarEventId);
             e.HasIndex(x => x.WebsiteLeadIntakeLinkId);
             e.HasIndex(x => x.WebsiteLeadId);
