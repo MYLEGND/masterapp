@@ -389,6 +389,29 @@ namespace AgentPortal.Controllers;
         if (request == null || request.LeadId == Guid.Empty)
             return BadRequest(new { message = "A valid leadId is required." });
 
+        var cleanupLead = await _db.WebsiteLeads.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.LeadId == request.LeadId, HttpContext.RequestAborted);
+        if (cleanupLead == null)
+            return NotFound(new { message = "Lead not found." });
+
+        if (!Infrastructure.Leads.WebsiteLeadCaptureSafety.ShouldSkipWorkstationCapture(cleanupLead))
+        {
+            return BadRequest(new
+            {
+                message = "Only explicitly internal/local test leads can be removed from analytics. Production lead history must be retained."
+            });
+        }
+
+        var hasCrmLineage = await _db.WebsiteLeadIntakeLinks.AsNoTracking()
+            .AnyAsync(x => x.WebsiteLeadPublicId == request.LeadId, HttpContext.RequestAborted);
+        if (hasCrmLineage)
+        {
+            return Conflict(new
+            {
+                message = "This test lead is linked to CRM and cannot be removed from Analytics independently."
+            });
+        }
+
         try
         {
             var actorId = (User.GetStableUserId() ?? string.Empty).Trim();
