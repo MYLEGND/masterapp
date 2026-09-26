@@ -90,7 +90,10 @@ def phase_probe(token: str, zone: str, phase: str) -> str:
     except CloudflareError:
         raise
     # A 404/no-entrypoint is acceptable: authorization succeeded and no ruleset exists yet.
-    return payload.get("result", {}).get("id", "absent") if isinstance(payload, dict) else "absent"
+    if not isinstance(payload, dict):
+        return "absent"
+    result = payload.get("result")
+    return result.get("id", "absent") if isinstance(result, dict) else "absent"
 
 
 def audit(prove_cache_purge: bool) -> None:
