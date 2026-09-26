@@ -1,16 +1,18 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized fail-forward completion of canonical analytics parity for Parfait only. AgentPortal, Protect, and ClientApp are already live and must remain untouched. Do not deploy LEGEND Website.",
-  "purpose": "Deploy the validated Parfait analytics cleanup that removes the stale 45-second Parfait reporting cache while preserving the shared IAnalyticsQueryService and IMetaSignalAnalyticsService as the only reporting authorities.",
-  "requestId": "canonical-live-analytics-parfait-completion-20260926-r1",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36279049511",
+  "authorization": "Founder authorized the fully validated combined Meta Test Events, custom-domain HTTPS/SEO, and canonical website navigation/editor repair for approved-only direct release. Preserve all successful prior deployments and do not redeploy ClientApp or Parfait. Queue behind the currently active approved release and fail forward only from concrete failed steps.",
+  "purpose": "Promote the Run #311 combined head containing the validated architecture/meta-test-events-seo-20260926 work plus the current approved custom-domain page-routing/editor repair. Deploy only AgentPortal for Website Analytics Marketing Setup/Test Event Code UI and authority wiring, Protect for the shared website/custom-domain runtime and domain health/SEO authority, and LEGEND Website for the canonical business publication compiler and published page catalog. No alternate Meta sender, credential store, SEO renderer, domain router, navigation store, or app-specific override.",
+  "requestId": "meta-test-events-seo-custom-domain-combined-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36279347194",
+  "queueBehindRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36279230586",
   "preserveSuccessfulReleases": [
-    "https://github.com/MYLEGND/masterapp/actions/runs/36275708976",
     "https://github.com/MYLEGND/masterapp/actions/runs/36278375950"
   ],
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-parfait"
+    "masterapp-portal",
+    "masterapp-protect",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
