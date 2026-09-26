@@ -78,6 +78,10 @@
             @if (scopedManager)
             {
                 <div class="pf-nav-group">
+                    <div class="pf-nav-section">Core</div>
+                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/dashboard")">Dashboard</a>
+                </div>
+                <div class="pf-nav-group">
                     <div class="pf-nav-section">Operations</div>
                     <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/products")">Products</a>
                     <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/orders")">Orders</a>
@@ -85,6 +89,7 @@
                 <div class="pf-nav-group">
                     <div class="pf-nav-section">Growth</div>
                     <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/automations")">Automations</a>
+                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/analytics")">Analytics + Health</a>
                 </div>
             }
             else
@@ -131,7 +136,7 @@
             <div class="pf-header-inner">
                 <div class="pf-header-main">
                     <div class="pf-header-left">
-                        <a class="pf-brandmark" href="@(scopedManager ? ScopedUrl("/commerce/manage/products") : "/internal")">
+                        <a class="pf-brandmark" href="@(scopedManager ? ScopedUrl("/commerce/manage/dashboard") : "/internal")">
                             @if (!scopedManager)
                             {
                                 <span class="pf-brand-emblem">
