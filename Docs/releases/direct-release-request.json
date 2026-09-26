@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized failure-forward completion only. Preserve all five live application/site targets at a74648c9178be29843a45a2d6596c388af8715a3; rerun only the already-validated Cloudflare routing recovery and corrected non-mutating final gate. No application rebuild, migration, auth mutation, or redeployment.",
-  "purpose": "Finish the storefront routing release after #213 proved routing live but the enforcement gate incorrectly treated successful non-mutating WEBSITECHECKS as a deployment mutation.",
-  "requestId": "scoped-storefront-routing-preserve-live-20260926-r2-final-gate",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36231021723",
+  "authorization": "Founder authorized failure-forward routing completion after #215 proved all five web targets live at a8585b03a435f0d9f19d1cf427cebab277ac6779. Declare the complete web inventory only to satisfy the canonical routing release policy. Preserve every application/site at that exact live revision; deploy only the validated Cloudflare website-commerce router. No application rebuild, migration, auth mutation, or redeployment.",
+  "purpose": "Complete the Website Studio Store/Manage Store repair by activating first-party /store* and /commerce/manage/* Worker routes. All five web targets are declared because the canonical routing policy requires complete inventory when the Website target is in scope; preserve-live mode must skip every application deployment.",
+  "requestId": "website-studio-store-manager-routing-preserve-live-20260926-r2",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36237501297",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
@@ -15,5 +15,5 @@
   "cloudflareWebsiteRouting": true,
   "websiteRoutingCanaryHost": "camoexterior.com",
   "preserveLiveTargets": true,
-  "preserveLiveRevision": "a74648c9178be29843a45a2d6596c388af8715a3"
+  "preserveLiveRevision": "a8585b03a435f0d9f19d1cf427cebab277ac6779"
 }

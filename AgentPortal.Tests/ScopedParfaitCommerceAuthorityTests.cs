@@ -43,6 +43,7 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var platform = ReadSource("Infrastructure", "WebsiteEditing", "WebsitePlatformController.cs");
         var tickets = ReadSource("Infrastructure", "WebsiteEditing", "WebsiteEditorTicketProtector.cs");
         var workflow = ReadSource(".github", "workflows", "all-intentional-direct-release-20260918.yml");
+        var routingConfig = ReadSource("Legend-Cloudflare", "wrangler.website-routing.jsonc");
 
         Assert.Contains("/commerce/manage/products?ticket=", platform, StringComparison.Ordinal);
         Assert.DoesNotContain("CommercePublicBaseUrl() + \"/commerce/manage", platform, StringComparison.Ordinal);
@@ -53,6 +54,10 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("id: editorauth", workflow, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection__BlobUri", workflow, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection__KeyVaultKeyId", workflow, StringComparison.Ordinal);
+        Assert.Contains("\"pattern\": \"mylegnd.com/store*\"", routingConfig, StringComparison.Ordinal);
+        Assert.Contains("\"pattern\": \"www.mylegnd.com/store*\"", routingConfig, StringComparison.Ordinal);
+        Assert.Contains("\"pattern\": \"mylegnd.com/commerce/manage/*\"", routingConfig, StringComparison.Ordinal);
+        Assert.Contains("\"pattern\": \"www.mylegnd.com/commerce/manage/*\"", routingConfig, StringComparison.Ordinal);
     }
 
     [Fact]
