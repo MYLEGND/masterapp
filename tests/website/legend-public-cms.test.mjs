@@ -742,7 +742,7 @@ test('published business rendering activates the shared inquiry path without inj
 test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
   assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source)"));
   assert.equal(source.includes('allow-same-origin'),false);
-  assert.ok(businessMiddlewareSource.includes("frame-src data:; object-src 'none'"));
+  assert.ok(businessMiddlewareSource.includes("frame-src 'self' data:; object-src 'none'"));
   const policy=businessMiddlewareSource.match(/default-src 'self'; script-src[^"]+/)?.[0] || '';
   assert.equal(policy.includes("script-src 'self' 'unsafe-inline'"),false);
   assert.equal(policy.includes("script-src 'self' 'unsafe-eval'"),false);
