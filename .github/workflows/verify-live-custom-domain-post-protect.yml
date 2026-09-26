@@ -1,0 +1,44 @@
+name: Verify live custom domain after Protect release
+
+on:
+  push:
+    branches:
+      - diagnose/live-custom-domain-post-protect-20260925
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check CAMO DNS TLS homepage proof and store
+        shell: bash
+        run: |
+          set -euo pipefail
+          host=camoexterior.com
+          echo "DNS:"
+          getent ahosts "$host" | tee /tmp/dns.txt
+          test -s /tmp/dns.txt
+
+          check() {
+            name="$1"; url="$2"; expected="$3"
+            code="$(curl --silent --show-error --location --max-redirs 0 --connect-timeout 15 --max-time 30               -H 'Cache-Control: no-cache' -H 'User-Agent: LEGEND-post-release-domain-proof/1.0'               -o "/tmp/$name.body" -w '%{http_code}' "$url" || true)"
+            echo "$name HTTP $code"
+            test "$code" = "$expected"
+            test -s "/tmp/$name.body"
+          }
+
+          check home "https://$host/" 200
+          check proof "https://$host/.well-known/legend-website" 200
+          check store "https://$host/store" 200
+
+          python3 - <<'PY'
+          import json
+          p='/tmp/proof.body'
+          data=json.load(open(p))
+          assert isinstance(data.get('businessId'),str) and len(data['businessId'])>=32
+          assert isinstance(data.get('bindingId'),str) and len(data['bindingId'])>=32
+          print('Proof receipt contains businessId and bindingId.')
+          PY
