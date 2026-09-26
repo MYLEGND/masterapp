@@ -69,7 +69,7 @@ public sealed class LeadAppointmentAutoCompletionHostedService : BackgroundServi
             appointment.LastSyncStatus = "auto_completed_after_scheduled_end";
             appointment.LastSyncError = null;
 
-            await metaSignalOutcomes.RecordAppointmentCompletedAsync(appointment, cancellationToken);
+            await metaSignalOutcomes.RecordAppointmentOutcomeAsync(appointment, cancellationToken);
 
             _logger.LogInformation(
                 "Lead appointment auto-completed appointmentId={AppointmentId} workstationLeadId={WorkstationLeadId} scheduledEndUtc={ScheduledEndUtc}",
