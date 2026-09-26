@@ -1,14 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized fail-forward recovery of release #225. Preserve the successful AgentPortal and ClientApp deployments. Deploy only Protect after refreshing Azure OIDC; do not redeploy successful targets or touch unrelated applications.",
-  "purpose": "Resume the validated Marketing Setup and shared Website Studio release at the first unresolved target after #225 exhausted Protect deployment retries because the Azure federated assertion expired. Use the same canonical release flow with a fresh Azure OIDC credential and a Protect-only scope.",
-  "requestId": "protect-oidc-refresh-recovery-20260926-r1",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36267157003",
+  "authorization": "Founder authorized the fully validated canonical website analytics repair for direct release after LEGEND approved direct release #228. Preserve #228 and do not interrupt or restart it. Deploy only the affected AgentPortal and Protect runtime targets; do not deploy ClientApp, Parfait, or LEGEND Website.",
+  "purpose": "Release the canonical analytics ingestion, scoped reporting, Meta bridge recovery, and live dashboard synchronization repair validated on architecture run 299. The release must follow the approved branch source of truth and fail forward from any concrete failed step without repeating completed deployment work.",
+  "requestId": "canonical-live-analytics-repair-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36273622780",
+  "queueBehindRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36271963486",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-portal",
     "masterapp-protect"
   ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "preserveSuccessfulRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36267966867"
+  "preserveLiveTargets": false
 }
