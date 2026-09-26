@@ -49,6 +49,7 @@ namespace Protect_Website.Controllers
 
         // POST: /RiskAssessment
         [HttpPost("")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SubmitRiskAssessment(RiskAssessmentModel model)
         {
