@@ -1309,7 +1309,7 @@ test('generic template wrappers are not direct selections and blank-area selecti
   }finally{f.close();}
 });
 
-test('mobile runtime clamps inherited desktop geometry and contains every page section inside the viewport',async()=>{
+test('mobile runtime contains moved desktop geometry without creating horizontal page scroll',async()=>{
   const doc={
     breakpoints:[
       {key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},
@@ -1321,8 +1321,9 @@ test('mobile runtime clamps inherited desktop geometry and contains every page s
   const f=await domFixture({doc,search:'',viewportWidth:390});
   try{
     const heading=f.w.document.querySelector('main h1');
-    assert.equal(heading.style.width,'100%');
-    assert.equal(heading.style.left,'0%');
+    assert.equal(heading.style.width,'25%');
+    assert.equal(heading.style.maxWidth,'25%');
+    assert.equal(heading.style.left,'75%');
     assert.match(source,/html,body\{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none\}/);
     assert.match(source,/main,main>section,[^}]*overflow-x:clip/);
     assert.match(source,/body\{touch-action:pan-y pinch-zoom\}/);
@@ -1350,20 +1351,21 @@ test('editor preview is horizontally locked to the rendered website at every bre
   }finally{f.close();}
 });
 
-test('editor geometry is horizontally contained at every breakpoint and whole sections cannot shift sideways',async()=>{
+test('editor geometry can move anywhere inside the section while rendered width consumes remaining space',async()=>{
   const doc={pages:{'/':{elements:{'home.h1.template-title.1':{style:{widthPercent:80,offsetXPercent:75}}},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
   const f=await domFixture({doc,viewportWidth:1280});
   try{
     const heading=f.w.document.querySelector('main h1');
-    assert.equal(heading.style.width,'80%');
-    assert.equal(heading.style.left,'20%');
+    assert.equal(heading.style.width,'25%');
+    assert.equal(heading.style.maxWidth,'25%');
+    assert.equal(heading.style.left,'75%');
     f.click('main section');
     assert.equal(f.w.document.querySelector('#legend-cms-width').disabled,true);
     assert.equal(f.w.document.querySelector('#legend-cms-offset-x').disabled,true);
     assert.equal(f.w.document.querySelector('#legend-cms-width').value,'100');
     assert.equal(f.w.document.querySelector('#legend-cms-offset-x').value,'0');
-    assert.match(source,/const maxOffset = width == null \? 100 : Math\.max\(0, 100 - width\)/);
-    assert.doesNotMatch(source,/if \(key === 'mobile'\) \{/);
+    assert.match(source,/const availableWidth = Math\.max\(5, 100 - horizontalOffset\)/);
+    assert.match(source,/style\.offsetXPercent = Math\.max\(0, Math\.min\(95, rawOffset\)\)/);
   }finally{f.close();}
 });
 
