@@ -68,9 +68,9 @@ public sealed class MarketingDestinationLayerTests
             new { },
             isBrowserSignal: false,
             isServerAuthority: true,
-            metaServerEligible: true,
+            metaServerAuthorityEligible: true,
             metaSingleTruthDispatchEligible: true,
-            producer: "test");
+            metaPipelineOrigin: "test");
 
         var eligible = await adapter.EvaluateAsync(
             owner,
