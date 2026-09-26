@@ -1,0 +1,114 @@
+name: Recover approved Protect package only
+
+on:
+  push:
+    branches: [legend/approved-changes]
+    paths: ['.github/workflows/protect-package-recovery-20260926.yml']
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: agentportal-production
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: github.ref == 'refs/heads/legend/approved-changes'
+    runs-on: ubuntu-latest
+    environment: Production
+    timeout-minutes: 25
+    env:
+      EXPECTED_REVISION: 08a13d423124564b22f9332e3b4061d1dab8d452
+      PREVIOUS_REVISION: f2b426791e6820a94331f5e72f9a042cd360d2af
+    steps:
+      - name: Download retained approved package from release 187
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 36208949870
+          artifact-ids: 10894939008
+          path: /tmp/protect-recovery
+          merge-multiple: true
+      - name: Validate immutable ZIP checksum and embedded release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, zipfile
+          root=pathlib.Path('/tmp/protect-recovery')
+          package=root/'protect.zip'
+          lines=(root/'SHA256SUMS').read_text().splitlines()
+          expected=[line.split()[0] for line in lines if pathlib.PurePosixPath(line.split()[-1]).name=='protect.zip']
+          assert len(expected)==1, 'Protect package checksum missing or ambiguous'
+          assert hashlib.sha256(package.read_bytes()).hexdigest()==expected[0], 'Package checksum mismatch'
+          with zipfile.ZipFile(package) as archive:
+              assert archive.testzip() is None, 'ZIP CRC validation failed'
+              assert json.loads(archive.read('wwwroot/_deployment-provenance.json'))['releaseSha']==os.environ['EXPECTED_REVISION']
+              assert 'ProtectWebsite.dll' in archive.namelist()
+              print('Verified approved Protect package checksum, ZIP integrity, and embedded revision.')
+          PY
+      - name: Confirm current Protect revision before retry
+        id: baseline
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          url='https://masterapp-protect.azurewebsites.net/api/runtime-provenance?recovery='+os.environ['GITHUB_RUN_ID']
+          req=urllib.request.Request(url,headers={'Cache-Control':'no-cache'})
+          with urllib.request.urlopen(req,timeout=30) as response:
+              actual=json.load(response)['sourceRevision']
+          assert actual in (os.environ['PREVIOUS_REVISION'],os.environ['EXPECTED_REVISION']), 'Protect changed since approved release; stopping recovery'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('already_live='+str(actual==os.environ['EXPECTED_REVISION']).lower()+'\n')
+          print('Current Protect revision:',actual)
+          PY
+      - uses: azure/login@v2
+        if: steps.baseline.outputs.already_live != 'true'
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy only the retained Protect ZIP with bounded transport retry
+        if: steps.baseline.outputs.already_live != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "Protect immutable ZIP deployment attempt $attempt/3"
+            if az webapp deploy --resource-group masterapp-rg --name masterapp-protect \
+              --src-path /tmp/protect-recovery/protect.zip --type zip --clean true \
+              --restart true --async false --timeout 600000 --enriched-errors true \
+              --only-show-errors --output none; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep 20; fi
+          done
+          exit 1
+      - name: Verify live Protect revision and report custom-domain proof
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+          expected=os.environ['EXPECTED_REVISION']
+          for attempt in range(48):
+              try:
+                  req=urllib.request.Request('https://masterapp-protect.azurewebsites.net/api/runtime-provenance?recovery='+os.environ['GITHUB_RUN_ID']+'&attempt='+str(attempt),headers={'Cache-Control':'no-cache'})
+                  with urllib.request.urlopen(req,timeout=20) as response:
+                      actual=json.load(response).get('sourceRevision')
+                  if actual==expected:
+                      print('Protect live revision verified:',actual)
+                      break
+              except Exception as error:
+                  print('Provenance probe:',type(error).__name__)
+              time.sleep(10)
+          else:
+              raise SystemExit('Protect did not serve the approved revision')
+          req=urllib.request.Request('https://camoexterior.com/.well-known/legend-website?recovery='+os.environ['GITHUB_RUN_ID'],headers={'Cache-Control':'no-cache'})
+          try:
+              with urllib.request.urlopen(req,timeout=30) as response:
+                  print('CAMO proof HTTP:',response.status)
+                  print('CAMO proof:',response.read(4096).decode())
+          except urllib.error.HTTPError as error:
+              print('::warning::Protect deployed; CAMO proof remains HTTP '+str(error.code)+'. No Cloudflare change was performed.')
+          PY
