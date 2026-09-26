@@ -45,6 +45,9 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var workflow = ReadSource(".github", "workflows", "all-intentional-direct-release-20260918.yml");
 
         Assert.Contains("/commerce/manage/products?ticket=", platform, StringComparison.Ordinal);
+        Assert.DoesNotContain("CommercePublicBaseUrl() + \"/commerce/manage", platform, StringComparison.Ordinal);
+        Assert.Contains("managerUrl = string.IsNullOrWhiteSpace(ticket)", platform, StringComparison.Ordinal);
+        Assert.Contains(": \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection:BlobUri", tickets, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection:KeyVaultKeyId", tickets, StringComparison.Ordinal);
         Assert.Contains("id: editorauth", workflow, StringComparison.Ordinal);
