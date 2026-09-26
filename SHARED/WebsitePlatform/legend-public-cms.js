@@ -215,9 +215,9 @@
   }
 
   function editorSelectionTarget(node) {
-    if (!(node instanceof HTMLElement)) return null;
-    if (node.tagName === 'IMG') return node.closest('[data-cms-editable="true"]');
-    return node.closest('a[data-cms-editable="true"]') || node.closest('[data-cms-editable="true"]');
+    if (!(node instanceof Element)) return null;
+    const candidate = node.closest('a[data-cms-editable="true"],[data-cms-editable="true"]');
+    return candidate instanceof HTMLElement ? candidate : null;
   }
 
   function prepareDom() {
@@ -551,15 +551,13 @@
     const key = activeBreakpoint();
     const responsive = key && override?.breakpointStyles && typeof override.breakpointStyles[key] === 'object' ? override.breakpointStyles[key] : null;
     const style = responsive ? { ...base, ...responsive } : { ...base };
-    // Mobile may inherit desktop geometry, but it must never create a canvas
-    // wider than the mobile viewport or position content beyond its right edge.
-    if (key === 'mobile') {
-      const width = positiveNumber(style.widthPercent) ? Math.min(100, Number(style.widthPercent)) : null;
-      if (width != null) style.widthPercent = width;
-      if (style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent))) {
-        const maxOffset = Math.max(0, 100 - (width ?? 100));
-        style.offsetXPercent = Math.max(0, Math.min(maxOffset, Number(style.offsetXPercent)));
-      }
+    // Geometry may never create horizontal page overflow at any breakpoint.
+    // Content can move inside its parent frame, but cannot move the page itself.
+    const width = positiveNumber(style.widthPercent) ? Math.min(100, Number(style.widthPercent)) : null;
+    if (width != null) style.widthPercent = width;
+    if (style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent))) {
+      const maxOffset = Math.max(0, 100 - (width ?? 100));
+      style.offsetXPercent = Math.max(0, Math.min(maxOffset, Number(style.offsetXPercent)));
     }
     return style;
   }
@@ -715,6 +713,9 @@
 
   function isInlineEditable(el) {
     if (!el || el.dataset.cmsSignalOnly || el.dataset.cmsSection) return false;
+    // Entity-owned names and commerce controls expose presentation editing only.
+    // Their text/destination remains owned by the Business Profile / Store contract.
+    if (el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field') || el.dataset.legendStoreNav) return false;
     if (['IMG','VIDEO','DIV','ARTICLE','HEADER','FOOTER','FORM','INPUT','SELECT','TEXTAREA'].includes(el.tagName)) return false;
     return editableTextTags.has(el.tagName) || editableInteractiveTags.has(el.tagName);
   }
@@ -1070,13 +1071,15 @@
     else if (override.hidden === false) el.hidden = false;
 
     const original = rememberOriginal(el);
+    const entityBound = el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field');
+    const commerceControl = !!el.dataset.legendStoreNav;
     if (el instanceof HTMLImageElement) {
       el.src = override.imageDataUrl ? mediaUrl(override.imageDataUrl) : (original.src || '');
-    } else if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
+    } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
       setContentText(el, override.text != null ? override.text : (original.text || ''), override.text != null);
     }
 
-    if (el.tagName === 'A') {
+    if (el.tagName === 'A' && !commerceControl) {
       const href = override.href != null && safeUrl(override.href) ? override.href : original.href;
       if (href) el.setAttribute('href', href); else el.removeAttribute('href');
       el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
@@ -1473,13 +1476,13 @@
     const cluster=document.createElement('span');
     cluster.className='legend-store-nav-cluster';
     cluster.dataset.legendStoreNav='cluster';
-    cluster.dataset.cmsLocked='true';
 
     const store=document.createElement('a');
     store.href=storeContext.storefrontUrl;
     store.textContent=effectiveStoreLabel();
     store.dataset.legendStoreNav='store';
-    store.dataset.cmsLocked='true';
+    store.dataset.cmsId=`${pageKey}.commerce.store-nav`;
+    store.dataset.cmsEditable='true';
     store.dataset.websiteAnalyticsEvent='cta_click';
     store.dataset.websiteBindingId='commerce_store_nav';
     store.dataset.cta='commerce_store';
@@ -1487,7 +1490,8 @@
     const cart=document.createElement('a');
     cart.href=storeContext.cartUrl;
     cart.dataset.legendStoreNav='cart';
-    cart.dataset.cmsLocked='true';
+    cart.dataset.cmsId=`${pageKey}.commerce.cart-nav`;
+    cart.dataset.cmsEditable='true';
     cart.dataset.websiteAnalyticsEvent='cta_click';
     cart.dataset.websiteBindingId='commerce_cart_nav';
     cart.dataset.cta='commerce_cart';
@@ -1503,6 +1507,8 @@
 
     cluster.append(store,cart);
     nav.appendChild(cluster);
+    applyElementOverride(store, pageState().elements[store.dataset.cmsId]);
+    applyElementOverride(cart, pageState().elements[cart.dataset.cmsId]);
     updateStoreCartCount();
   }
 
@@ -2272,6 +2278,9 @@
       lockPreviewHorizontalScroll();
       updateDirectCanvasUi();
     }, { passive: true });
+    preview.addEventListener('wheel', event => {
+      if (Math.abs(event.deltaX) > 0 || event.shiftKey) event.preventDefault();
+    }, { passive: false });
     window.addEventListener('resize', () => {
       lockPreviewHorizontalScroll();
       refreshResponsiveOverrides();
@@ -2346,21 +2355,25 @@
       removeButton.textContent = `Delete ${kind}`;
       removeButton.disabled = false;
     }
+    const sectionSelected = !!selected.dataset.cmsSection;
     if (scale) scale.value = String(editStyle?.fontScale ?? 1);
-    if (width) width.value = displayNumber(editStyle?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
+    if (width) width.value = sectionSelected ? '100' : displayNumber(editStyle?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
     if (height) height.value = editStyle?.heightPx != null ? displayNumber(editStyle.heightPx) : '';
     if (top) top.value = displayNumber(editStyle?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
     if (bottom) bottom.value = displayNumber(editStyle?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
-    if (offsetX) offsetX.value = displayNumber(editStyle?.offsetXPercent ?? 0);
+    if (offsetX) offsetX.value = sectionSelected ? '0' : displayNumber(editStyle?.offsetXPercent ?? 0);
     if (offsetY) offsetY.value = displayNumber(editStyle?.offsetYPx ?? 0);
     if (align) align.value = editStyle?.textAlign ?? computed.textAlign ?? '';
     if (scale) scale.disabled = isImage || isCode;
+    if (width) width.disabled = sectionSelected;
+    if (offsetX) offsetX.disabled = sectionSelected;
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
     document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(editStyle?.[key] || computed[key]) : editStyle?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
     document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(editStyle?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
-    const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A';
-    if (selected.tagName === 'A') syncCtaControls(ov, values.href);
+    const isCommerceControl = !!selected.dataset.legendStoreNav;
+    const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A' || isCommerceControl;
+    if (selected.tagName === 'A' && !isCommerceControl) syncCtaControls(ov, values.href);
     const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
     const layoutMode = document.getElementById('legend-cms-layout-mode'); if (layoutMode) layoutMode.value = editLayout?.mode || 'free';
     const layoutDirection = document.getElementById('legend-cms-layout-direction'); if (layoutDirection) layoutDirection.value = editLayout?.direction || 'column';
@@ -2387,6 +2400,11 @@
       'legend-cms-offset-y': 'offsetYPx'
     };
     const field = fields[control.id];
+    if (selected.dataset.cmsSection && (field === 'widthPercent' || field === 'offsetXPercent')) {
+      control.value = field === 'widthPercent' ? '100' : '0';
+      control.setCustomValidity('');
+      return;
+    }
     if (field && control.value !== '') {
       const value = Number(control.value);
       const signed = field === 'offsetXPercent' || field === 'offsetYPx';
@@ -3747,7 +3765,7 @@
       .legend-cms-edge-handle:hover{background:#d4ad451f!important}
       body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
       body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
-      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0)}
+      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0);contain:inline-size}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
