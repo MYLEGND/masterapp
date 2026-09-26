@@ -179,6 +179,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          for record in CNAME A AAAA NS; do
+            printf 'CAMO DNS %s: ' "$record"
+            dig +short "$CAMO_HOST" "$record" | tr '\n' ' '
+            printf '\n'
+          done
+          printf 'LEGEND SaaS target: '
+          dig +short sites.mylegnd.com CNAME | tr '\n' ' '
+          printf '\n'
           probe() {
             local label="$1" url="$2"; shift 2
             local hdr body code
