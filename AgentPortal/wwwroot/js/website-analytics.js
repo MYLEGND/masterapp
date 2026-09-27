@@ -209,9 +209,17 @@
     return fetcher();
   }
 
-  async function fetchJson(key, url, params = {}) {
+  async function fetchJson(key, url, params = {}, timeoutMs = 0) {
     const ctrl = abort(key);
     const qs = new URLSearchParams(params).toString();
+    let timedOut = false;
+    const timeoutHandle = timeoutMs > 0
+      ? window.setTimeout(() => {
+          timedOut = true;
+          ctrl.abort();
+        }, timeoutMs)
+      : null;
+
     try {
       const res = await fetchOnce(String(`${url}?${qs}`), () => fetch(`${url}?${qs}`, { signal: ctrl.signal }));
       if (!res.ok) {
@@ -233,41 +241,60 @@
       return await res.json();
     } catch (err) {
       if (err.name === 'AbortError') {
-        // Expected cancellation; swallow
+        if (timedOut) throw new Error(`${key} request timed out`);
         return null;
       }
       throw err;
+    } finally {
+      if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
     }
   }
 
-  async function fetchPostJson(key, url, body = null) {
+  async function fetchPostJson(key, url, body = null, timeoutMs = 0) {
     const ctrl = abort(key);
     const token = getRequestVerificationToken();
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['RequestVerificationToken'] = token;
 
-    const res = await fetch(url, {
-      method: 'POST',
-      signal: ctrl.signal,
-      headers,
-      body: body == null ? null : JSON.stringify(body)
-    });
-
-    if (!res.ok) {
-      let detail = '';
-      try {
-        const payload = await res.json();
-        detail = payload?.message || payload?.error || '';
-      } catch {
-        detail = '';
-      }
-      throw new Error(detail ? `${key} failed: ${detail}` : `${key} failed`);
-    }
+    let timedOut = false;
+    const timeoutHandle = timeoutMs > 0
+      ? window.setTimeout(() => {
+          timedOut = true;
+          ctrl.abort();
+        }, timeoutMs)
+      : null;
 
     try {
-      return await res.json();
-    } catch {
-      return null;
+      const res = await fetch(url, {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers,
+        body: body == null ? null : JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        let detail = '';
+        try {
+          const payload = await res.json();
+          detail = payload?.message || payload?.error || '';
+        } catch {
+          detail = '';
+        }
+        throw new Error(detail ? `${key} failed: ${detail}` : `${key} failed`);
+      }
+
+      try {
+        return await res.json();
+      } catch {
+        return null;
+      }
+    } catch (err) {
+      if (err.name === 'AbortError' && timedOut) {
+        throw new Error(`${key} request timed out`);
+      }
+      throw err;
+    } finally {
+      if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
     }
   }
 
@@ -5655,7 +5682,8 @@ function escapeHtml(value) {
       const data = await fetchJson(
         'marketingManagerPerformance',
         endpoints.marketingManagerPerformance,
-        marketingManagerRequestBody());
+        marketingManagerRequestBody(),
+        15000);
       if (!data) return false;
       renderMarketingPerformance(data);
       return true;
@@ -5669,8 +5697,8 @@ function escapeHtml(value) {
     const grid = document.getElementById('growth-economics-grid');
     if (!grid) return false;
     try {
-      const data = await fetchJson('growthEconomics', endpoints.growthEconomics, marketingManagerRequestBody());
-      if (!data) return;
+      const data = await fetchJson('growthEconomics', endpoints.growthEconomics, marketingManagerRequestBody(), 15000);
+      if (!data) return false;
       setText('growth-economics-spend', marketingManagerMoney(data.totalMarketingSpend));
       setText('growth-economics-customers', marketingManagerNumber(data.customersAcquired));
       setText('growth-economics-cac', marketingManagerMoney(data.costPerCustomer));
@@ -6418,16 +6446,21 @@ function escapeHtml(value) {
       notes: null
     };
 
+    const button = document.getElementById('marketing-manager-build');
+    if (button) button.disabled = true;
     marketingManagerSetStatus('Reading the current scoped business evidence and building a governed plan…');
     try {
       const plan = await fetchPostJson(
         'marketingManagerPlan',
         endpoints.marketingManagerPlan,
-        marketingManagerRequestBody({ goal }));
+        marketingManagerRequestBody({ goal }),
+        20000);
       renderMarketingManagerPlan(plan);
       marketingManagerSetStatus('Growth plan built from current canonical evidence. Nothing has executed.', 'success');
     } catch (error) {
       marketingManagerSetStatus(error.message || 'Unable to build the growth plan.', 'error');
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
@@ -6502,16 +6535,19 @@ function escapeHtml(value) {
 
   function initMarketingManager() {
     document.getElementById('marketing-manager-build')?.addEventListener('click', () => void buildMarketingManagerPlan());
-    document.getElementById('marketing-manager-refresh')?.addEventListener('click', async () => {
+    document.getElementById('marketing-manager-refresh')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
       marketingManagerSetStatus('Refreshing current channel evidence…');
-      const [performanceOk, economicsOk] = await Promise.all([
-        loadMarketingPerformance(),
-        loadGrowthEconomics()
-      ]);
-      if (performanceOk && economicsOk) {
-        marketingManagerSetStatus('Current channel evidence refreshed.', 'success');
-      } else {
-        marketingManagerSetStatus('Some current evidence could not be refreshed. Review the channel panels for details.', 'error');
+      try {
+        const performanceOk = await loadMarketingPerformance();
+        if (performanceOk) {
+          marketingManagerSetStatus('Current channel evidence refreshed. Zero activity is valid evidence.', 'success');
+        } else {
+          marketingManagerSetStatus('Current channel evidence could not be refreshed. The Growth Plan can still be built from the goal and available canonical evidence.', 'error');
+        }
+      } finally {
+        button.disabled = false;
       }
     });
     document.getElementById('marketing-manager-open-advertising')?.addEventListener('click', () => {
