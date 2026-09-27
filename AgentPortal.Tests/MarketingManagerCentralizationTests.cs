@@ -152,12 +152,39 @@ public sealed class MarketingManagerCentralizationTests
 
         Assert.Contains("fetchPostJson(\n        'marketingManagerPlan'", js, StringComparison.Ordinal);
         Assert.Contains("endpoints.marketingManagerPlan", js, StringComparison.Ordinal);
-        Assert.Contains("await Promise.all([\n        loadMarketingPerformance(),\n        loadGrowthEconomics()", js, StringComparison.Ordinal);
-        Assert.Contains("if (performanceOk && economicsOk)", js, StringComparison.Ordinal);
+        Assert.Contains("const performanceOk = await loadMarketingPerformance()", js, StringComparison.Ordinal);
+        Assert.Contains("Zero activity is valid evidence.", js, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"marketing-manager/plan\")]", agent, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"marketing-manager/performance\")]", agent, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/marketing-manager/plan\")]", business, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/marketing-manager/performance\")]", business, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarketingManager_ZeroEvidenceAndSlowEvidence_DoNotBlockCanonicalOperatorFlow()
+    {
+        var root = Root();
+        var js = Read(root, "AgentPortal", "wwwroot", "js", "website-analytics.js");
+        var manager = Read(root, "Infrastructure", "Analytics", "MarketingManagerService.cs");
+
+        Assert.Contains("async function fetchJson(key, url, params = {}, timeoutMs = 0)", js, StringComparison.Ordinal);
+        Assert.Contains("async function fetchPostJson(key, url, body = null, timeoutMs = 0)", js, StringComparison.Ordinal);
+        Assert.Contains("marketingManagerRequestBody(),\n        15000)", js, StringComparison.Ordinal);
+        Assert.Contains("marketingManagerRequestBody({ goal }),\n        20000)", js, StringComparison.Ordinal);
+        Assert.Contains("Zero activity is valid evidence.", js, StringComparison.Ordinal);
+        Assert.Contains("The Growth Plan can still be built from the goal and available canonical evidence.", js, StringComparison.Ordinal);
+
+        var refreshStart = js.IndexOf("getElementById('marketing-manager-refresh')?.addEventListener", StringComparison.Ordinal);
+        var refreshEnd = js.IndexOf("getElementById('marketing-manager-open-advertising')?.addEventListener", refreshStart, StringComparison.Ordinal);
+        Assert.True(refreshStart >= 0 && refreshEnd > refreshStart, "Canonical Marketing Manager refresh handler is required.");
+        var refresh = js[refreshStart..refreshEnd];
+        Assert.Contains("await loadMarketingPerformance()", refresh, StringComparison.Ordinal);
+        Assert.DoesNotContain("loadGrowthEconomics()", refresh, StringComparison.Ordinal);
+        Assert.DoesNotContain("Promise.all(", refresh, StringComparison.Ordinal);
+
+        Assert.Contains("new(\"verified_leads\", \"Verified leads\", summary.VerifiedLeads.ToString()", manager, StringComparison.Ordinal);
+        Assert.Contains("summary.TopSource ?? \"No source in range\"", manager, StringComparison.Ordinal);
+        Assert.Contains("The selected range contains {summary.VerifiedLeads:N0} verified leads.", manager, StringComparison.Ordinal);
     }
 
     [Fact]
