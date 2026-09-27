@@ -417,13 +417,20 @@ jobs:
           ingest_secret="$(resolve_value "$portal_settings" Analytics__SharedSecret 'Analytics:SharedSecret' LeadIngest__SharedSecret 'LeadIngest:SharedSecret')"
           [ -n "$ingest_secret" ]
           echo "::add-mask::$ingest_secret"
-          ingest_updates=("Analytics__SharedSecret=$ingest_secret" "Tracking__SharedSecret=$ingest_secret")
+          ingest_updates=()
+          for key in Analytics__SharedSecret Tracking__SharedSecret; do
+            current="$(resolve_value "$protect_settings" "$key" || true)"
+            if [ "$current" != "$ingest_secret" ]; then ingest_updates+=("$key=$ingest_secret"); fi
+          done
           for alias in 'Analytics:SharedSecret' 'LeadIngest:SharedSecret' LeadIngest__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET; do
             if jq -e --arg key "$alias" 'any(.[]; .name == $key)' "$protect_settings" >/dev/null; then
-              ingest_updates+=("$alias=$ingest_secret")
+              current="$(resolve_value "$protect_settings" "$alias" || true)"
+              if [ "$current" != "$ingest_secret" ]; then ingest_updates+=("$alias=$ingest_secret"); fi
             fi
           done
-          az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings "${ingest_updates[@]}" --output none
+          if [ "${#ingest_updates[@]}" -gt 0 ]; then
+            az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings "${ingest_updates[@]}" --output none
+          fi
           az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
           [ "$(resolve_value "$protect_settings" Analytics__SharedSecret 'Analytics:SharedSecret')" = "$ingest_secret" ]
           [ "$(resolve_value "$protect_settings" Tracking__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET)" = "$ingest_secret" ]
@@ -472,9 +479,18 @@ jobs:
           echo "::add-mask::$keyvault"
           for app in masterapp-protect masterapp-parfait; do
             if [[ "$SELECTED_TARGETS" != *"\"$app\""* ]]; then continue; fi
-            az webapp config appsettings set -g masterapp-rg -n "$app" --settings               "WebsiteEditorDataProtection__BlobUri=$blob"               "WebsiteEditorDataProtection__KeyVaultKeyId=$keyvault" --output none
             settings="/tmp/$app-editor-ticket-authority.json"
             az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings"
+            editor_updates=()
+            for pair in BlobUri KeyVaultKeyId; do
+              expected="$blob"; if [ "$pair" = KeyVaultKeyId ]; then expected="$keyvault"; fi
+              current="$(value "$settings" "WebsiteEditorDataProtection__$pair" "WebsiteEditorDataProtection:$pair" || true)"
+              if [ "$current" != "$expected" ]; then editor_updates+=("WebsiteEditorDataProtection__$pair=$expected"); fi
+            done
+            if [ "${#editor_updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g masterapp-rg -n "$app" --settings "${editor_updates[@]}" --output none
+              az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings"
+            fi
             [ "$(value "$settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri')" = "$blob" ]
             [ "$(value "$settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId')" = "$keyvault" ]
           done
@@ -658,38 +674,14 @@ jobs:
         id: portal
         if: ${{ env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') && steps.resumestate.outputs.portal_live != 'true' && !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-portal
-          slot-name: Production
-          package: /tmp/agentportal-publish
+        shell: bash
+        run: python3 scripts/deploy-approved-app.py --target portal
       - name: Direct deploy ClientApp
         id: client
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.resumestate.outputs.client_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
         continue-on-error: true
         shell: bash
-        run: |
-          set -euo pipefail
-          package=/tmp/diagnostics-packages/clientapp.zip
-          [ -s "$package" ]
-          unzip -tq "$package" >/dev/null
-
-          # ClientApp is the only target that has reproduced a transient Kudu/OneDeploy
-          # ZIP extraction failure. Deploy the one immutable package through Azure CLI
-          # with a bounded retry; never rebuild or switch artifacts between attempts.
-          for attempt in 1 2 3; do
-            echo "ClientApp immutable ZIP deployment attempt $attempt/3"
-            if az webapp deploy               --resource-group masterapp-rg               --name masterapp-client               --src-path "$package"               --type zip               --clean true               --restart true               --async false               --timeout 600000               --enriched-errors true               --only-show-errors               --output none; then
-              echo "ClientApp ZIP deployment accepted on attempt $attempt."
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "::warning::ClientApp deployment transport failed on attempt $attempt; retrying the exact same immutable ZIP after Kudu settles."
-              sleep $((attempt * 30))
-            fi
-          done
-          echo "::error::ClientApp deployment transport failed after three attempts with the same immutable package."
-          exit 1
+        run: python3 scripts/deploy-approved-app.py --target client
       - name: Refresh Azure OIDC before late deployments
         id: azuredeploy
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website')) }}
@@ -703,52 +695,13 @@ jobs:
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.resumestate.outputs.protect_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         shell: bash
-        run: |
-          set -euo pipefail
-          package=/tmp/diagnostics-packages/protect.zip
-          [ -s "$package" ]
-          unzip -tq "$package" >/dev/null
-          test "$(unzip -p "$package" wwwroot/_deployment-provenance.json | jq -r .releaseSha)" = "$RELEASE_SHA"
-          grep -F "  $package" /tmp/diagnostics-packages/SHA256SUMS >/dev/null || grep -F "protect.zip" /tmp/diagnostics-packages/SHA256SUMS >/dev/null
-          expected="$(awk '$2 ~ /protect\.zip$/ {print $1}' /tmp/diagnostics-packages/SHA256SUMS)"
-          [ -n "$expected" ]
-          [ "$(sha256sum "$package" | awk '{print $1}')" = "$expected" ]
-
-          # Protect uses the same immutable ZIP transport proven by recovery run #187.
-          # Never rebuild or switch packages between retries.
-          for attempt in 1 2 3; do
-            echo "Protect immutable ZIP deployment attempt $attempt/3"
-            if az webapp deploy \
-              --resource-group masterapp-rg \
-              --name masterapp-protect \
-              --src-path "$package" \
-              --type zip \
-              --clean true \
-              --restart true \
-              --async false \
-              --timeout 600000 \
-              --enriched-errors true \
-              --only-show-errors \
-              --output none; then
-              echo "Protect ZIP deployment accepted on attempt $attempt."
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "::warning::Protect deployment transport failed on attempt $attempt; retrying the exact same immutable ZIP after Kudu settles."
-              sleep $((attempt * 20))
-            fi
-          done
-          echo "::error::Protect deployment transport failed after three attempts with the same immutable package."
-          exit 1
+        run: python3 scripts/deploy-approved-app.py --target protect
       - name: Direct deploy Parfait
         id: parfait
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.resumestate.outputs.parfait_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-parfait
-          slot-name: Production
-          package: /tmp/parfait-publish
+        shell: bash
+        run: python3 scripts/deploy-approved-app.py --target parfait
       - name: Reconcile public custom-hostname Cloudflare policy
         id: routingpolicy
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
@@ -858,42 +811,7 @@ jobs:
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.resumestate.outputs.website_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
         continue-on-error: true
         shell: bash
-        run: |
-          set -euo pipefail
-          package=/tmp/diagnostics-packages/website.zip
-          [ -s "$package" ]
-          unzip -tq "$package" >/dev/null
-          expected="$(awk '$2 ~ /website\.zip$/ {print $1}' /tmp/diagnostics-packages/SHA256SUMS)"
-          [ -n "$expected" ]
-          [ "$(sha256sum "$package" | awk '{print $1}')" = "$expected" ]
-
-          # Deploy the exact retained Website artifact. A transient OneDeploy ZIP
-          # extraction fault retries the same immutable package; it never rebuilds,
-          # substitutes artifacts, or creates an alternate deployment authority.
-          for attempt in 1 2 3; do
-            echo "Website immutable ZIP deployment attempt $attempt/3"
-            if az webapp deploy \
-              --resource-group masterapp-rg \
-              --name masterapp-website \
-              --src-path "$package" \
-              --type zip \
-              --clean true \
-              --restart true \
-              --async false \
-              --timeout 600000 \
-              --enriched-errors true \
-              --only-show-errors \
-              --output none; then
-              echo "Website ZIP deployment accepted on attempt $attempt."
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "::warning::Website deployment transport failed on attempt $attempt; retrying the exact same immutable ZIP after Kudu settles."
-              sleep $((attempt * 30))
-            fi
-          done
-          echo "::error::Website deployment transport failed after three attempts with the same immutable package."
-          exit 1
+        run: python3 scripts/deploy-approved-app.py --target website
       - name: Verify custom-domain bridge end to end
         id: routinglive
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
