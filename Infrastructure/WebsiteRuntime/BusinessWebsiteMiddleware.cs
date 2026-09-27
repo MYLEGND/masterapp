@@ -56,9 +56,9 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
             ? apiUri.GetLeftPart(UriPartial.Authority)
             : "https://masterapp-protect.azurewebsites.net";
         context.Response.Headers["Content-Security-Policy"] =
-            $"default-src 'self'; script-src 'self' https://connect.facebook.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' {publicApiOrigin} https://www.facebook.com https://connect.facebook.net; frame-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+            $"default-src 'self'; script-src 'self' https://connect.facebook.net https://bzrcdn.openai.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: https://bzr.openai.com; media-src 'self' https:; connect-src 'self' {publicApiOrigin} https://www.facebook.com https://connect.facebook.net https://bzr.openai.com https://bzrcdn.openai.com; frame-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
         if (path is "/site.css" or "/legend-public-web.js" or "/legend-public-inquiry.js" or "/legend-public-cms.js" or
-            "/legend-public-tracking.js" or "/legend-public-meta-signal-intelligence.js")
+            "/legend-public-tracking.js" or "/legend-public-meta-signal-intelligence.js" or "/legend-public-openai-measurement.js")
         {
             var asset = Path.Combine(environment.ContentRootPath, "WebsiteCompiler", "dist", path.TrimStart('/'));
             if (!File.Exists(asset)) { await Unavailable(context, bridged, "asset"); return; }
