@@ -15,6 +15,7 @@ on:
       - repair/scoped-website-analytics-canonical-20260926
       - architecture/meta-test-events-seo-20260926
       - architecture/provider-neutral-marketing-destinations-20260926
+      - feature/openai-ads-direct-connect-ui-20260926
     paths-ignore:
       - 'Docs/**'
   pull_request:
