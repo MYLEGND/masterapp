@@ -74,7 +74,9 @@ public sealed class OpenAiAdsAccountConnectionAuthority(
 
         var accountId = Required(verifiedAccount.AccountId, 100, nameof(verifiedAccount.AccountId));
         var accountName = Required(verifiedAccount.AccountName, 300, nameof(verifiedAccount.AccountName));
-        var role = OpenAiAdsAccountRoles.Normalize(verifiedAccount.Role);
+        var role = string.IsNullOrWhiteSpace(verifiedAccount.Role)
+            ? null
+            : OpenAiAdsAccountRoles.Normalize(verifiedAccount.Role);
         var review = OpenAiAdsReviewStatuses.Normalize(verifiedAccount.ReviewStatus);
         var authorization = OpenAiAdsAuthorizationMethods.Normalize(verifiedAccount.AuthorizationMethod);
         var userId = Optional(verifiedAccount.ProviderUserId, 200, nameof(verifiedAccount.ProviderUserId));

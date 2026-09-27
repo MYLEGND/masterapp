@@ -322,6 +322,48 @@ namespace AgentPortal.Controllers;
         return await MarketingSetup(tracking.Id, cancellationToken);
     }
 
+    public sealed record OpenAiConnectRequest(Guid? AgentProfileId, string AdvertiserApiKey, Guid? ExpectedRevision);
+
+    [HttpPost("openai-connect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConnectOpenAi([FromBody] OpenAiConnectRequest request, CancellationToken cancellationToken = default)
+    {
+        var tracking = await ResolveMarketingSetupTrackingAsync(request.AgentProfileId, cancellationToken);
+        if (tracking is null) return Forbid();
+
+        var connector = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
+        try
+        {
+            await connector.ConnectAsync(
+                ResolveOpenAiMarketingOwner(tracking),
+                request.AdvertiserApiKey,
+                request.ExpectedRevision,
+                cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { message = "ChatGPT Ads connection changed. Reload Marketing Setup and try again." });
+        }
+        catch (HttpRequestException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads could not be verified right now. Try again without changing your saved setup." });
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads returned an invalid verification response." });
+        }
+
+        return await MarketingSetup(tracking.Id, cancellationToken);
+    }
+
     public sealed record OpenAiDisconnectRequest(Guid? AgentProfileId, Guid ConnectionRevision);
 
     [HttpPost("openai-disconnect")]
