@@ -193,7 +193,27 @@ namespace AgentPortal.Controllers;
         var openAiHealthService = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiMeasurementHealthService>();
         var openAiConnection = await openAiConnections.GetAsync(openAiOwner, cancellationToken);
         var openAiHealth = await openAiHealthService.GetAsync(openAiOwner, cancellationToken);
+        var openAiDirect = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
+        Infrastructure.Analytics.OpenAiAdsProviderAccountSnapshot? openAiProvider = null;
+        string? openAiProviderError = null;
+        if (openAiConnection.Connected)
+        {
+            try
+            {
+                openAiProvider = await openAiDirect.InspectAsync(openAiOwner, cancellationToken);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
+            {
+                openAiProviderError = "Provider status could not be refreshed.";
+            }
+        }
         var opprefLineage = await LoadOpprefLineageVisibilityAsync(tracking, cancellationToken);
+        var openAiAccountReady =
+            string.Equals(openAiProvider?.Status, "active", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(openAiProvider?.ReviewStatus, Shared.Analytics.OpenAiAdsReviewStatuses.Approved, StringComparison.Ordinal) &&
+            openAiConnection.PixelConfigured &&
+            openAiConnection.ConversionsApiConfigured &&
+            openAiHealth.Status == "ready";
 
         return Json(new
         {
@@ -204,7 +224,7 @@ namespace AgentPortal.Controllers;
             {
                 publicReady = !string.IsNullOrWhiteSpace(profile?.FullName) && !string.IsNullOrWhiteSpace(profile?.Phone),
                 metaCustomPixel = !string.IsNullOrWhiteSpace(marketing.PixelId),
-                openAiReady = openAiHealth.Status == "ready",
+                openAiReady = openAiAccountReady,
                 bookingPersonalLive = bookingLive,
                 calendarLinked = !string.IsNullOrWhiteSpace(profile?.CalendarEmail)
             },
@@ -230,6 +250,17 @@ namespace AgentPortal.Controllers;
                 permissions = openAiConnection.Permissions,
                 reviewStatus = openAiConnection.ReviewStatus,
                 authorizationMethod = openAiConnection.AuthorizationMethod,
+                connectionMethod = openAiConnection.Connected ? "Advertiser API key verified" : null,
+                providerRole = openAiConnection.Role,
+                accountStatus = openAiProvider?.Status,
+                accountUrl = openAiProvider?.AccountUrl,
+                previewUrl = openAiProvider?.PreviewUrl,
+                timezone = openAiProvider?.Timezone,
+                currencyCode = openAiProvider?.CurrencyCode,
+                reviewStatus = openAiProvider?.ReviewStatus ?? openAiConnection.ReviewStatus,
+                reviewReason = openAiProvider?.ReviewReason,
+                providerStatusFresh = openAiProvider is not null,
+                providerStatusError = openAiProviderError,
                 pixelId = openAiConnection.PixelId,
                 pixelConfigured = openAiConnection.PixelConfigured,
                 conversionsApiConfigured = openAiConnection.ConversionsApiConfigured,
