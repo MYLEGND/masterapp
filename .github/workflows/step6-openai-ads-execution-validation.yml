@@ -1,0 +1,41 @@
+name: Step 6 isolated ChatGPT Ads execution validation
+
+on:
+  pull_request:
+    branches:
+      - legend/approved-changes
+    paths:
+      - 'SHARED/Analytics/OpenAiAdsExecutionContracts.cs'
+      - 'Infrastructure/Analytics/OpenAiAdsExecutionService.cs'
+      - 'Infrastructure/Analytics/MarketingConnectionStore.cs'
+      - 'AgentPortal.Tests/OpenAiAdsExecutionServiceTests.cs'
+      - 'AgentPortal.Tests/MarketingScopeParityContractTests.cs'
+      - '.github/workflows/step6-openai-ads-execution-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Restore affected graph
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+
+      - name: Build affected graph
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
+
+      - name: Run Step 6 execution and standing scope-parity tests
+        run: >
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
+          --filter "FullyQualifiedName~OpenAiAdsExecutionServiceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests"
