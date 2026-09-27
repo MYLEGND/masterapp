@@ -808,6 +808,10 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("EventUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Oppref")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
                     b.Property<string>("Fbclid")
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
@@ -1046,6 +1050,8 @@ namespace Infrastructure.Migrations
                     b.HasIndex("EventType", "EventUtc");
 
                     b.HasIndex("PageKey", "EventUtc");
+
+                    b.HasIndex("Oppref");
 
                     b.ToTable("AnalyticsEvents");
                 });
@@ -2562,6 +2568,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTime?>("PaymentProcessingStartedUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Oppref")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
 
                     b.Property<string>("PaymentStatus")
                         .IsRequired()
@@ -5088,6 +5098,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTime?>("NoShowUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Oppref")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
 
                     b.Property<string>("OwnerAgentUserId")
                         .IsRequired()
@@ -11078,6 +11092,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(240)
                         .HasColumnType("nvarchar(240)");
 
+                    b.Property<string>("Oppref")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
                     b.Property<decimal>("PersonalAmount")
                         .HasColumnType("decimal(18,2)");
 
@@ -12542,6 +12560,10 @@ namespace Infrastructure.Migrations
                     b.Property<string>("Fbc")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Oppref")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
                     b.Property<string>("Fbclid")
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
@@ -12693,6 +12715,8 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("Environment", "CreatedUtc");
 
+                    b.HasIndex("Oppref");
+
                     b.ToTable("WebsiteLeads");
                 });
 
@@ -12736,6 +12760,10 @@ namespace Infrastructure.Migrations
                     b.Property<string>("Fbc")
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("Oppref")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
 
                     b.Property<string>("Fbclid")
                         .HasMaxLength(160)
