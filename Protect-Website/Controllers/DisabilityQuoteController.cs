@@ -1243,6 +1243,7 @@ Review summary only. Final eligibility, pricing, benefit structure, and carrier 
                     WorkstationLeadId = intakeLink.WorkstationLeadId,
                     OwnerAgentUserId = intakeLink.AgentUserId,
                     WebsiteLeadIntakeLinkId = intakeLink.Id,
+                    Oppref = OpenAiClickReference.Normalize(intakeLink.Oppref),
                     BookingSource = bookingSource,
                     RequestedBookingSource = bookingSource,
                     CreatedUtc = nowUtc,
@@ -1257,6 +1258,7 @@ Review summary only. Final eligibility, pricing, benefit structure, and carrier 
                 appointment.WorkstationLeadId = intakeLink.WorkstationLeadId;
                 appointment.OwnerAgentUserId = intakeLink.AgentUserId;
                 appointment.WebsiteLeadIntakeLinkId = intakeLink.Id;
+                appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink.Oppref);
                 appointment.BookingSource = bookingSource;
                 appointment.RequestedBookingSource = bookingSource;
                 appointment.ConfirmationSource = null;
