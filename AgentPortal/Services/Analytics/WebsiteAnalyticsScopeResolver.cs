@@ -36,16 +36,29 @@ public sealed class WebsiteAnalyticsScopeResolver(
             return ScopeContext.Global;
         }
 
-        // Founder default on Website Analytics is founder personal unless Global/team is explicitly selected.
+        // Founder default on Website Analytics is Founder Personal unless Global/team
+        // is explicitly selected. The Founder's own tracking-profile id is only a
+        // transport identifier for that canonical Founder scope; it must never
+        // downgrade the request to an ordinary Agent scope.
         if (isFounder)
         {
-            if (requestedAgentId.HasValue) return ScopeContext.ForAgent(requestedAgentId.Value);
             if (_effectiveContext.IsViewingAsAgent)
             {
                 return await ResolveEffectiveImpersonatedAgentScopeAsync(httpContext);
             }
 
             var founderProfile = await GetCallerProfileAsync();
+
+            if (requestedAgentId.HasValue)
+            {
+                if (founderProfile != null && requestedAgentId.Value == founderProfile.Id)
+                {
+                    return ScopeContext.ForFounder(founderProfile.Id);
+                }
+
+                return ScopeContext.ForAgent(requestedAgentId.Value);
+            }
+
             if (founderProfile != null)
             {
                 return ScopeContext.ForFounder(founderProfile.Id);
