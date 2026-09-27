@@ -127,6 +127,9 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
         var referrerHost = ResolveHost(referrer);
         var isInternalTraffic = IsInternalTrafficSource(httpContext, sourceHost, sourcePath);
         var environment = ResolveEnvironment(httpContext, sourceHost, isInternalTraffic);
+        var cookieOppref = httpContext.Request.Cookies["pf_oppref"];
+        var oppref = OpenAiClickReference.Normalize(
+            string.IsNullOrWhiteSpace(cookieOppref) ? Read(sourceQuery, "oppref") : Uri.UnescapeDataString(cookieOppref));
 
         var isProtectOwner = string.Equals(siteKey, WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase);
         var isLegendOwner = string.Equals(siteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase);
@@ -183,6 +186,7 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
             UtmId = Read(sourceQuery, "utm_id"),
             UtmContent = Read(sourceQuery, "utm_content"),
             Fbclid = Read(sourceQuery, "fbclid"),
+            Oppref = oppref,
             Fbc = httpContext.Request.Cookies["_fbc"],
             Fbp = httpContext.Request.Cookies["_fbp"],
             AgentTrackingProfileId = typedAgentId,
@@ -355,6 +359,10 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
             ["utm_term"] = Read(sourceQuery, "utm_term"),
             ["utm_id"] = Read(sourceQuery, "utm_id"),
             ["fbclid"] = Read(sourceQuery, "fbclid"),
+            ["oppref"] = OpenAiClickReference.Normalize(
+                string.IsNullOrWhiteSpace(httpContext.Request.Cookies["pf_oppref"])
+                    ? Read(sourceQuery, "oppref")
+                    : Uri.UnescapeDataString(httpContext.Request.Cookies["pf_oppref"]!)),
             ["fbc"] = httpContext.Request.Cookies["_fbc"],
             ["fbp"] = httpContext.Request.Cookies["_fbp"]
         };

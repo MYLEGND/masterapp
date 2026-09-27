@@ -141,6 +141,7 @@
     metaConnectionStatus: analyticsEndpoint('/meta-connection-status'),
     metaDisconnect: analyticsEndpoint('/meta-disconnect'),
     marketingSetup: analyticsEndpoint('/marketing-setup'),
+    openAiDisconnect: analyticsEndpoint('/openai-disconnect'),
     behaviorSummary: analyticsEndpoint('/behavior/summary'),
     behaviorTime: analyticsEndpoint('/behavior/time-on-page'),
     behaviorExit: analyticsEndpoint('/behavior/exit-analysis'),
@@ -5017,6 +5018,7 @@ function escapeHtml(value) {
 
     setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
     setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
+    setMarketingSetupChip('openAiReady', status.openAiReady, 'Ready', 'Needs attention', true);
     setMarketingSetupChip(
       'bookingPersonalLive',
       status.bookingPersonalLive,
@@ -5057,6 +5059,62 @@ function escapeHtml(value) {
       connect.href = marketingSetupConnectUrl(profileId);
       connect.textContent = marketing.metaAdsConnected ? 'Reconnect Meta Ads' : 'Connect Meta Ads';
     }
+
+    const openAi = payload.openAi || {};
+    const openAiHealth = openAi.health || {};
+    const attribution = payload.attribution || {};
+    const setOpenAiText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value ?? '—';
+    };
+    const openAiStatus = document.getElementById('marketing-setup-openai-account');
+    if (openAiStatus) {
+      openAiStatus.textContent = openAi.connected
+        ? `ChatGPT Ads connected · ${openAi.accountName || openAi.accountId || 'Scoped account'}`
+        : 'ChatGPT Ads not connected for this scope';
+      openAiStatus.classList.toggle('is-good', openAiHealth.status === 'ready');
+      openAiStatus.classList.toggle('is-warn', openAi.connected && openAiHealth.status !== 'ready');
+    }
+
+    setOpenAiText('marketing-setup-openai-account-name', openAi.accountName || (openAi.connected ? 'Scoped advertiser' : 'Not connected'));
+    setOpenAiText('marketing-setup-openai-account-id', openAi.accountId || 'No advertiser ID');
+    setOpenAiText('marketing-setup-openai-role', openAi.role || '—');
+    setOpenAiText('marketing-setup-openai-permissions', Array.isArray(openAi.permissions) && openAi.permissions.length ? openAi.permissions.join(', ') : 'No permissions reported');
+    setOpenAiText('marketing-setup-openai-review', openAi.reviewStatus || '—');
+    setOpenAiText('marketing-setup-openai-verified', openAi.lastVerifiedUtc ? `Last verified ${new Date(openAi.lastVerifiedUtc).toLocaleString()}` : 'Not yet verified');
+    setOpenAiText('marketing-setup-openai-pixel', openAi.pixelConfigured ? (openAi.pixelId || 'Configured') : 'Not configured');
+    setOpenAiText('marketing-setup-openai-capi', openAi.conversionsApiConfigured ? 'Configured securely' : 'Not configured');
+    setOpenAiText('marketing-setup-openai-health', (openAiHealth.status || 'unknown').replaceAll('_', ' '));
+    setOpenAiText('marketing-setup-openai-last-send', openAiHealth.lastSentUtc ? `Last sent ${new Date(openAiHealth.lastSentUtc).toLocaleString()}` : 'No successful delivery yet');
+    setOpenAiText('marketing-setup-openai-pending', Number(openAiHealth.pending || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-retrying', Number(openAiHealth.retrying || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-failed', Number(openAiHealth.failed || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-sent', Number(openAiHealth.sent || 0).toLocaleString());
+
+    const openAiAction = document.getElementById('marketing-setup-openai-action-status');
+    if (openAiAction) {
+      openAiAction.textContent = openAi.connected
+        ? (openAiHealth.status === 'ready' ? 'Ready' : 'Needs attention')
+        : 'Connect through verified OpenAI Ads authority';
+    }
+    const disconnect = document.getElementById('marketing-setup-openai-disconnect');
+    if (disconnect) {
+      disconnect.disabled = !openAi.connected || !openAi.revision;
+      disconnect.dataset.revision = openAi.revision || '';
+    }
+
+    const verify = document.getElementById('marketing-setup-openai-verify');
+    if (verify) verify.textContent = openAi.connected ? 'Verify / refresh' : 'Recheck connection';
+
+    setOpenAiText('marketing-setup-oppref-events', Number(attribution.paidTrafficEvents || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-leads', Number(attribution.leads || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-crm', Number(attribution.crm || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-appointments', Number(attribution.appointments || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-orders', Number(attribution.orders || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-production', Number(attribution.production || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-revenue', new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(attribution.paidRevenue || 0)));
+    const opprefStatus = document.getElementById('marketing-setup-oppref-status');
+    if (opprefStatus) opprefStatus.textContent = attribution.complete ? 'Lineage observed end to end' : 'Waiting for complete customer journey evidence';
   }
 
   async function loadMarketingSetup() {
@@ -5138,6 +5196,26 @@ function escapeHtml(value) {
 
   marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
   marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
+  document.getElementById('marketing-setup-openai-verify')?.addEventListener('click', () => { void loadMarketingSetup(); });
+  document.getElementById('marketing-setup-openai-disconnect')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const revision = button?.dataset?.revision || '';
+    if (!revision) return;
+    button.disabled = true;
+    setMarketingSetupStatus('Disconnecting ChatGPT Ads from this scope…');
+    try {
+      const payload = await fetchPostJson('openAiDisconnect', endpoints.openAiDisconnect, {
+        agentProfileId: marketingSetupAgentProfileId() || null,
+        connectionRevision: revision
+      });
+      renderMarketingSetup(payload);
+      setMarketingSetupStatus('ChatGPT Ads disconnected for this scope.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to disconnect ChatGPT Ads.', 'error');
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
   document.getElementById('wa-scope-select')?.addEventListener('change', () => {
     marketingSetupLoaded = false;
     if (marketingSetupSave) marketingSetupSave.disabled = true;

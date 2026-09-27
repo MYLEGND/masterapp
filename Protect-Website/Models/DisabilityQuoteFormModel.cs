@@ -66,6 +66,7 @@ namespace Protect_Website.Models
         public string? MetaAdSetId { get; set; }
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
+        public string? Oppref { get; set; }
         public string? ReferrerUrl { get; set; }
         public string? LandingPageUrl { get; set; }
     }

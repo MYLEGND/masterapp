@@ -178,7 +178,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     renderInput.textContent=JSON.stringify({
       document:currentDocument,business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
       pageKey:renderPageKey,pageCatalog,server:false,
-      runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal}
+      runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal,openAiMeasurementAsset:publicRuntimeAssets.openAiMeasurement}
     }).replace(/</g,'\\u003c');
     doc.body.insertBefore(renderInput,doc.querySelector('script[src^="/legend-public-cms.js"]'));
     const form=doc.querySelector('[data-website-inquiry]');

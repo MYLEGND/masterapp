@@ -43,12 +43,24 @@ public sealed class MarketingCredentialProtector : IDisposable
     private IDataProtector For(MarketingOwnerScope owner) =>
         _provider.CreateProtector("LEGEND.MarketingConnection.v1", owner.Key);
 
+    private IDataProtector For(MarketingOwnerScope owner, string provider) =>
+        _provider.CreateProtector(
+            "LEGEND.MarketingConnection.v2",
+            owner.Key,
+            MarketingDestinationKeys.Normalize(provider));
+
     public string? Protect(MarketingOwnerScope owner, string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : For(owner).Protect(value.Trim());
+
+    public string? Protect(MarketingOwnerScope owner, string provider, string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : For(owner, provider).Protect(value.Trim());
 
     // A decryption failure must surface; it must never select a different owner's credential.
     public string? Unprotect(MarketingOwnerScope owner, string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : For(owner).Unprotect(value);
+
+    public string? Unprotect(MarketingOwnerScope owner, string provider, string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : For(owner, provider).Unprotect(value);
 
     public void Dispose() => _ownedProvider?.Dispose();
 }

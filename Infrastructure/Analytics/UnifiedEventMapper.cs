@@ -41,6 +41,7 @@ public static class UnifiedEventMapper
             MetaAdId = ctx.MetaAdId,
 
             Fbclid = ctx.Fbclid,
+            Oppref = OpenAiClickReference.Normalize(ctx.Oppref),
             AgentSlug = ctx.AgentSlug,
             AgentTrackingProfileId = ctx.CommerceBusinessId.HasValue ? null : ctx.AgentTrackingProfileId,
             CommerceBusinessId = ctx.CommerceBusinessId,
@@ -162,6 +163,7 @@ public static class UnifiedEventMapper
             : ctx.SiteKey,
         businessType = ctx.CommerceBusinessId.HasValue ? "Business" : BusinessType,
         reportingOwner = ctx.CommerceBusinessId.HasValue ? "Business" : ReportingOwner,
+        oppref = OpenAiClickReference.Normalize(ctx.Oppref),
         payload = ctx.Metadata
     };
 }

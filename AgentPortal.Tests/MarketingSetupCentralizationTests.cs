@@ -72,6 +72,43 @@ public sealed class MarketingSetupCentralizationTests
         Assert.DoesNotContain("Reload Marketing Setup before saving.", js, StringComparison.Ordinal);
         Assert.DoesNotContain("capiToken", js, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(".marketing-setup-trigger", css, StringComparison.Ordinal);
+
+        // ChatGPT Ads management is a projection of the Step 1-4 authorities,
+        // never a second settings/credential model.
+        Assert.Contains("IOpenAiAdsAccountConnectionAuthority", controller, StringComparison.Ordinal);
+        Assert.Contains("IOpenAiMeasurementHealthService", controller, StringComparison.Ordinal);
+        Assert.Contains("ResolveOpenAiMarketingOwner", controller, StringComparison.Ordinal);
+        Assert.Contains("LoadOpprefLineageVisibilityAsync", controller, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"openai-disconnect\")]", controller, StringComparison.Ordinal);
+        Assert.Contains("authority.DisconnectAsync", controller, StringComparison.Ordinal);
+        Assert.Contains("openAiConnection.Permissions", controller, StringComparison.Ordinal);
+        Assert.Contains("openAiHealth.PendingDeliveries", controller, StringComparison.Ordinal);
+        Assert.Contains("openAiHealth.RetryableDeliveries", controller, StringComparison.Ordinal);
+        Assert.Contains("openAiHealth.FailedDeliveries", controller, StringComparison.Ordinal);
+        Assert.Contains("openAiHealth.SentDeliveries", controller, StringComparison.Ordinal);
+        Assert.Contains("canonical_oppref_lineage", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConversionsApiKey =", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("ManagementApiKey =", controller, StringComparison.Ordinal);
+
+        Assert.Contains("data-status-key=\"openAiReady\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-openai-account\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-openai-pixel\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-openai-capi\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-openai-pending\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-openai-retrying\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-openai-failed\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-openai-sent\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-openai-disconnect\"", view, StringComparison.Ordinal);
+        Assert.Contains("oppref</code> lineage visibility", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("OpenAI API key", view, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains("openAiDisconnect: analyticsEndpoint('/openai-disconnect')", js, StringComparison.Ordinal);
+        Assert.Contains("status.openAiReady", js, StringComparison.Ordinal);
+        Assert.Contains("openAi.health", js, StringComparison.Ordinal);
+        Assert.Contains("attribution.paidTrafficEvents", js, StringComparison.Ordinal);
+        Assert.Contains("fetchPostJson('openAiDisconnect'", js, StringComparison.Ordinal);
+        Assert.Contains(".marketing-setup-openai", css, StringComparison.Ordinal);
+        Assert.Contains(".marketing-setup-lineage-grid", css, StringComparison.Ordinal);
     }
 
     [Fact]

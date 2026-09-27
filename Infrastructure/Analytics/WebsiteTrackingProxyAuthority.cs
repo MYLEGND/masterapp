@@ -197,6 +197,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
             UtmId = Clean(req.UtmId),
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
+            Oppref = OpenAiClickReference.Normalize(req.Oppref),
             MetaCampaignId = Clean(req.MetaCampaignId),
             MetaAdSetId = Clean(req.MetaAdSetId),
             MetaAdId = Clean(req.MetaAdId),
@@ -314,6 +315,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
             UtmId = Clean(req.UtmId),
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
+            Oppref = OpenAiClickReference.Normalize(req.Oppref),
             MetaCampaignId = Clean(req.MetaCampaignId),
             MetaAdSetId = Clean(req.MetaAdSetId),
             MetaAdId = Clean(req.MetaAdId),
@@ -834,6 +836,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         public string? UtmTerm { get; set; }
         public string? UtmContent { get; set; }
         public string? Fbclid { get; set; }
+        public string? Oppref { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
         public string? AgentSlug { get; set; }
         public string? Environment { get; set; }
@@ -901,6 +904,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         public string? MetaAdSetId { get; set; }
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
+        public string? Oppref { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }

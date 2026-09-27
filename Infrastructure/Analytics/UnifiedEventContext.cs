@@ -82,6 +82,7 @@ public sealed record UnifiedEventContext
     public string? MetaAdId { get; init; }
 
     public string? Fbclid { get; init; }
+    public string? Oppref { get; init; }
     public string? Fbc { get; init; }
     public string? Fbp { get; init; }
 

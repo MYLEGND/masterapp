@@ -58,6 +58,10 @@
              Link="wwwroot\js\meta-signal-intelligence.js"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\SHARED\WebsitePlatform\openai-measurement.js"
+             Link="wwwroot\js\openai-measurement.js"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\SHARED\WebsitePlatform\legend-public-cms.js"
              Link="wwwroot\design\legend-public-cms.js"
              CopyToOutputDirectory="PreserveNewest"

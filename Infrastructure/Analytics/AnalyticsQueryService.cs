@@ -989,6 +989,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? UtmCampaign,
         string? UtmId,
         string? Fbclid,
+        string? Oppref,
         string? UtmTerm,
         string? UtmContent,
         string? MetaCampaignId,
@@ -1042,6 +1043,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(e.UtmCampaign),
             NormalizeAttributionToken(e.UtmId),
             NormalizeAttributionToken(e.Fbclid),
+            NormalizeAttributionToken(e.Oppref),
             NormalizeAttributionToken(e.UtmTerm),
             NormalizeAttributionToken(e.UtmContent),
             NormalizeAttributionToken(e.MetaCampaignId),
@@ -1058,6 +1060,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         !string.IsNullOrWhiteSpace(snapshot.UtmCampaign) ||
         !string.IsNullOrWhiteSpace(snapshot.UtmId) ||
         !string.IsNullOrWhiteSpace(snapshot.Fbclid) ||
+        !string.IsNullOrWhiteSpace(snapshot.Oppref) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaCampaignId) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaAdSetId) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaAdId) ||
@@ -1075,7 +1078,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             metaAdId: snapshot.MetaAdId,
             isInternal: snapshot.IsInternal,
             environment: snapshot.Environment,
-            host: snapshot.Host);
+            host: snapshot.Host,
+            oppref: snapshot.Oppref);
 
     private static bool IsMetaAttributedPaid(EventAttributionSnapshot snapshot) =>
         TrafficAttribution.IsMetaAttributedPaid(
@@ -1096,6 +1100,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         if (!HasAttributionSignal(snapshot))
             return -1;
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Oppref))
+            return 550;
 
         if (IsMetaAttributedPaid(snapshot))
             return 500;
@@ -1278,6 +1285,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(lead.UtmCampaign),
             NormalizeAttributionToken(lead.UtmId) ?? metadata.UtmId,
             NormalizeAttributionToken(lead.Fbclid),
+            NormalizeAttributionToken(lead.Oppref),
             metadata.UtmTerm,
             metadata.UtmContent,
             NormalizeAttributionToken(lead.MetaCampaignId) ?? metadata.MetaCampaignId,

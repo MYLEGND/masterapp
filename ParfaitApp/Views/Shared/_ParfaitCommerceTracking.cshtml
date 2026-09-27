@@ -215,6 +215,13 @@
 
     touchSession();
 
+    const queryOppref = (new URLSearchParams(location.search).get("oppref") || "").trim();
+    let firstTouchOppref = decodeURIComponent(getCookie("pf_oppref") || "");
+    if (!firstTouchOppref && queryOppref && queryOppref.length <= 1024) {
+        firstTouchOppref = queryOppref;
+        setCookie("pf_oppref", encodeURIComponent(firstTouchOppref), 7776000);
+    }
+
     const readCart = () => window.ParfaitStorefront?.readCart?.() || [];
 
     const cartValueCents = cart => cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
@@ -231,6 +238,7 @@
         pageTitle: document.title || "",
         productSlug: currentProductSlug() || "",
         fbclid: new URLSearchParams(location.search).get("fbclid") || "",
+        oppref: firstTouchOppref || "",
         fbc: getCookie("_fbc") || "",
         fbp: getCookie("_fbp") || "",
         trackingVersion

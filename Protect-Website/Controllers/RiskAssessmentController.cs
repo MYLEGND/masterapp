@@ -85,6 +85,7 @@ namespace Protect_Website.Controllers
                     SessionId = Request.Form["SessionId"].FirstOrDefault(), VisitorId = Request.Form["VisitorId"].FirstOrDefault(),
                     UtmSource = Request.Form["UtmSource"].FirstOrDefault(), UtmMedium = Request.Form["UtmMedium"].FirstOrDefault(),
                     UtmCampaign = Request.Form["UtmCampaign"].FirstOrDefault(),
+                    Oppref = OpenAiClickReference.Normalize(model.Oppref ?? Request.Form["Oppref"].FirstOrDefault()),
                     Host = Request.Host.ToString(), Environment = EnvironmentLabelResolver.Resolve(),
                     IsInternal = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request.Host.Host),
                     CreatedUtc = DateTime.UtcNow, Status = "New", MetadataJson = JsonSerializer.Serialize(model)
@@ -112,6 +113,7 @@ namespace Protect_Website.Controllers
                     QuoteType = "risk_assessment",
                     SessionId = lead.SessionId,
                     VisitorId = lead.VisitorId,
+                    Oppref = lead.Oppref,
                     AgentTrackingProfileId = lead.AgentTrackingProfileId,
                     AgentSlug = lead.AgentSlug,
                     Environment = lead.Environment,

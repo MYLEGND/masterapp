@@ -194,6 +194,7 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
             ? intakeLink.AgentUserId
             : appointment.OwnerAgentUserId;
         appointment.WebsiteLeadIntakeLinkId ??= intakeLink.Id;
+        appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink.Oppref);
         appointment.RequestedBookingSource = string.IsNullOrWhiteSpace(appointment.RequestedBookingSource)
             ? LeadAppointmentBookingSources.WebsiteEmbed
             : appointment.RequestedBookingSource;

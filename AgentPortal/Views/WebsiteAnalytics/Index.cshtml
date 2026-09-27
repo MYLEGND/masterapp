@@ -49,6 +49,7 @@
                     <div class="marketing-setup-status-grid" aria-label="Marketing setup status">
                         <div class="marketing-setup-status" data-status-key="publicReady"><span>Public</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="metaCustomPixel"><span>Meta</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="openAiReady"><span>ChatGPT Ads</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="bookingPersonalLive"><span>Booking</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="calendarLinked"><span>Calendar</span><strong>—</strong></div>
                     </div>
@@ -77,6 +78,63 @@
                                 <strong id="marketing-setup-capi-status">Checking secure connection…</strong>
                             </div>
                             <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="#">Connect Meta Ads</a>
+                        </div>
+                    </section>
+
+                    <section class="marketing-setup-section marketing-setup-openai" id="marketing-setup-openai">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Marketing</div>
+                                <h6>ChatGPT Ads destination</h6>
+                            </div>
+                            <div class="marketing-setup-connection" id="marketing-setup-openai-account">ChatGPT Ads status: —</div>
+                        </div>
+                        <p class="marketing-setup-help">This panel reads the scoped OpenAI Ads authority, Pixel/CAPI delivery ledger, and canonical <code>oppref</code> lineage. Credentials are never exposed or entered here.</p>
+
+                        <div class="marketing-setup-detail-grid">
+                            <div class="marketing-setup-detail"><span>Advertiser account</span><strong id="marketing-setup-openai-account-name">—</strong><small id="marketing-setup-openai-account-id">—</small></div>
+                            <div class="marketing-setup-detail"><span>Role / permissions</span><strong id="marketing-setup-openai-role">—</strong><small id="marketing-setup-openai-permissions">—</small></div>
+                            <div class="marketing-setup-detail"><span>Account review</span><strong id="marketing-setup-openai-review">—</strong><small id="marketing-setup-openai-verified">—</small></div>
+                            <div class="marketing-setup-detail"><span>OpenAI Pixel</span><strong id="marketing-setup-openai-pixel">—</strong><small>Scoped browser destination</small></div>
+                            <div class="marketing-setup-detail"><span>Conversions API</span><strong id="marketing-setup-openai-capi">—</strong><small>Server credential remains protected</small></div>
+                            <div class="marketing-setup-detail"><span>Delivery health</span><strong id="marketing-setup-openai-health">—</strong><small id="marketing-setup-openai-last-send">—</small></div>
+                        </div>
+
+                        <div class="marketing-setup-delivery-grid" aria-label="ChatGPT Ads delivery diagnostics">
+                            <div><span>Pending</span><strong id="marketing-setup-openai-pending">0</strong></div>
+                            <div><span>Retrying</span><strong id="marketing-setup-openai-retrying">0</strong></div>
+                            <div><span>Failed</span><strong id="marketing-setup-openai-failed">0</strong></div>
+                            <div><span>Sent</span><strong id="marketing-setup-openai-sent">0</strong></div>
+                        </div>
+
+                        <div class="marketing-setup-secure-row">
+                            <div>
+                                <span class="marketing-setup-secure-label">Connection controls</span>
+                                <strong id="marketing-setup-openai-action-status">Read-only authority projection</strong>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-verify">Verify / refresh</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="marketing-setup-openai-disconnect">Disconnect</button>
+                            </div>
+                        </div>
+
+                        <div class="marketing-setup-attribution">
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Attribution</div>
+                                    <h6><code>oppref</code> lineage visibility</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-oppref-status">—</div>
+                            </div>
+                            <div class="marketing-setup-lineage-grid">
+                                <div><span>Paid traffic events</span><strong id="marketing-setup-oppref-events">0</strong></div>
+                                <div><span>Leads</span><strong id="marketing-setup-oppref-leads">0</strong></div>
+                                <div><span>CRM lineage</span><strong id="marketing-setup-oppref-crm">0</strong></div>
+                                <div><span>Appointments</span><strong id="marketing-setup-oppref-appointments">0</strong></div>
+                                <div><span>Orders</span><strong id="marketing-setup-oppref-orders">0</strong></div>
+                                <div><span>Production</span><strong id="marketing-setup-oppref-production">0</strong></div>
+                                <div><span>Paid revenue</span><strong id="marketing-setup-oppref-revenue">$0</strong></div>
+                            </div>
                         </div>
                     </section>
 

@@ -60,6 +60,7 @@ public class AnalyticsIngestController : ControllerBase
         public string? UtmCampaign { get; set; }
         public string? UtmId { get; set; }
         public string? Fbclid { get; set; }
+        public string? Oppref { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
         public string? AgentSlug { get; set; }
         public string? Environment { get; set; }

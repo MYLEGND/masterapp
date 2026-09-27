@@ -111,7 +111,9 @@ namespace Protect_Website.Models
         public string? HasProfessionalLiability { get; set; }
         public decimal? ProfessionalLiabilityLimit { get; set; }
 
-                        [Display(Name = "Acknowledged Disclaimer")]
+        public string? Oppref { get; set; }
+
+        [Display(Name = "Acknowledged Disclaimer")]
         [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the disclaimer.")]
         public bool AcknowledgedDisclaimer { get; set; } = false;
     }

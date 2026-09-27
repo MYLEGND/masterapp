@@ -12,10 +12,23 @@ namespace Infrastructure.Analytics;
 public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCredentialProtector protector)
 {
     public Task<bool> ExistsAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
-        db.MarketingConnections.AnyAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        ExistsAsync(owner, MarketingDestinationKeys.Meta, ct);
+
+    public Task<bool> ExistsAsync(MarketingOwnerScope owner, string provider, CancellationToken ct = default)
+    {
+        var key = MarketingDestinationKeys.Normalize(provider);
+        return db.MarketingConnections.AnyAsync(x => x.OwnerKey == owner.Key && x.Provider == key, ct);
+    }
 
     public Task<MarketingConnection?> GetStatusAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
-        db.MarketingConnections.AsNoTracking().SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        GetStatusAsync(owner, MarketingDestinationKeys.Meta, ct);
+
+    public Task<MarketingConnection?> GetStatusAsync(MarketingOwnerScope owner, string provider, CancellationToken ct = default)
+    {
+        var key = MarketingDestinationKeys.Normalize(provider);
+        return db.MarketingConnections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == key, ct);
+    }
 
     public async Task<MetaAdsConnectionRecord?> GetAdsAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
@@ -36,7 +49,8 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
     public async Task ImportAsync(MarketingOwnerScope owner, MetaAdsConnectionRecord? record,
         string? pixelId = null, string? capiToken = null, string? testEventCode = null, CancellationToken ct = default)
     {
-        var row = await db.MarketingConnections.SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        var row = await db.MarketingConnections.SingleOrDefaultAsync(
+            x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.Meta, ct);
         if (row?.LegacyAdsImportedUtc is not null || row?.DisconnectedUtc is not null) return;
         var isNew = row is null;
         row ??= New(owner);
@@ -62,7 +76,8 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
     public async Task ImportProfileAsync(MarketingOwnerScope owner, string? pixelId, string? capiToken,
         string? testCode, CancellationToken ct = default)
     {
-        var row = await db.MarketingConnections.SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        var row = await db.MarketingConnections.SingleOrDefaultAsync(
+            x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.Meta, ct);
         if (row?.LegacyProfileImportedUtc is not null || row?.DisconnectedUtc is not null) return;
         if (row is null) { row = New(owner); db.MarketingConnections.Add(row); }
         row.PixelId = pixelId;
@@ -133,12 +148,14 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
     }
 
     private Task<MarketingConnection> LoadAsync(MarketingOwnerScope owner, CancellationToken ct) =>
-        db.MarketingConnections.SingleAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        db.MarketingConnections.SingleAsync(
+            x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.Meta, ct);
 
     private static MarketingConnection New(MarketingOwnerScope owner) => new()
     {
         OwnerKey = owner.Key, OwnerType = owner.OwnerType,
-        AgentTrackingProfileId = owner.AgentTrackingProfileId, CommerceBusinessId = owner.CommerceBusinessId
+        AgentTrackingProfileId = owner.AgentTrackingProfileId, CommerceBusinessId = owner.CommerceBusinessId,
+        Provider = MarketingDestinationKeys.Meta
     };
 
     private void SetAds(MarketingConnection row, MarketingOwnerScope owner, MetaAdsConnectionRecord record)
@@ -167,6 +184,18 @@ public static class MarketingServiceRegistration
         services.AddSingleton(sp => MarketingCredentialProtector.CreateShared(
             sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
         services.AddScoped<MarketingConnectionStore>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, MetaMarketingDestination>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, OpenAiMarketingDestination>());
+        services.TryAddScoped<IMarketingDestinationRegistry, MarketingDestinationRegistry>();
+        services.AddScoped<IOpenAiAdsAccountConnectionAuthority, OpenAiAdsAccountConnectionAuthority>();
+        services.AddHttpClient<IOpenAiConversionsApiService, OpenAiConversionsApiService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddHttpClient<IOpenAiMeasurementHealthService, OpenAiMeasurementHealthService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
         services.AddScoped<MarketingMetaAdsOAuthService>();
         services.TryAddScoped<IMetaAdsConnectionStore, CanonicalMetaAdsConnectionStore>();
         services.TryAddScoped<IMetaAdsService, MetaAdsService>();

@@ -68,6 +68,7 @@ public class LeadSubmitController : ControllerBase
         public string? MetaAdSetId { get; set; }
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
+        public string? Oppref { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }
@@ -178,6 +179,7 @@ public class LeadSubmitController : ControllerBase
             MetaAdSetId = string.IsNullOrWhiteSpace(req.MetaAdSetId) ? null : req.MetaAdSetId.Trim(),
             MetaAdId = string.IsNullOrWhiteSpace(req.MetaAdId) ? null : req.MetaAdId.Trim(),
             Fbclid = string.IsNullOrWhiteSpace(req.Fbclid) ? null : req.Fbclid.Trim(),
+            Oppref = OpenAiClickReference.Normalize(req.Oppref),
             SessionId = string.IsNullOrWhiteSpace(req.SessionId) ? null : req.SessionId.Trim(),
             VisitorId = string.IsNullOrWhiteSpace(req.VisitorId) ? null : req.VisitorId.Trim(),
             MarketingEmailConsent = req.MarketingEmailConsent,
@@ -210,6 +212,7 @@ public class LeadSubmitController : ControllerBase
                 UtmCampaign = lead.UtmCampaign,
                 UtmId = lead.UtmId,
                 Fbclid = lead.Fbclid,
+                Oppref = lead.Oppref,
                 MetaCampaignId = lead.MetaCampaignId,
                 MetaAdSetId = lead.MetaAdSetId,
                 MetaAdId = lead.MetaAdId,

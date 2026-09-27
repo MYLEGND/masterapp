@@ -2,6 +2,7 @@
 using AgentPortal.Security;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Microsoft.EntityFrameworkCore;
 using AgentPortal.Models;
 
@@ -310,6 +311,8 @@ public class ProductionService
 
         var normAgent = Norm(targetAgentUserId);
         var now = DateTime.UtcNow;
+        var oppref = await new OpenAiAttributionLineageResolver(_db)
+            .ResolveForProductionAsync(side, leadId, clientUserId, ct);
 
         // Add operation should always create a new production row.
         // Editing/deleting specific rows is handled via UpdateAsync/DeleteAsync using record Id.
@@ -323,6 +326,7 @@ public class ProductionService
             Amount = amount,
             PersonalAmount = personalAmount,
             Notes = notes?.Trim(),
+            Oppref = oppref,
             CreatedUtc = now,
             UpdatedUtc = now
         };
