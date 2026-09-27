@@ -314,98 +314,14 @@ async function domFixture({siteKey='legend',doc={},store=null,denied=false,searc
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
   return {w,calls,animations,click,input,change,editSelected,save,close:()=>w.close()};
 }
-async function metaSignalFixture() {
-  const dom=new JSDOM('<!doctype html><html><body data-page-key="home"></body></html>',{url:'https://site.example/',runScripts:'outside-only'});
-  const {window:w}=dom;
-  const requests=[],pixels=[];
-  w.fetch=async(url,init={})=>{
-    requests.push({url:String(url),body:init.body?JSON.parse(init.body):null});
-    return {ok:true,json:async()=>({accepted:true,metaServerStatus:'accepted_for_test'})};
-  };
-  w.fbq=(...args)=>pixels.push(args);
-  w.eval(metaSignalSource);
-  const session=w.metaSignalIntelligence.createLandingSession({
-    enabled:true,
-    sendBrowserEvents:true,
-    sendServerEvents:true,
-    persistEvents:true,
-    endpoint:'https://site.example/analytics/meta-signal',
-    pixelId:'pixel-legend',
-    siteKey:'legend',
-    quoteType:'legend',
-    pageKey:'home',
-    effectivePageKey:'home',
-    browserEventNames:['LeadFormStart'],
-    browserSignalEventNames:['ViewContent','LeadFormStart','SubmitAttempt']
-  });
-  await new Promise(resolve=>setTimeout(resolve,0));
-  requests.length=0;
-  pixels.length=0;
-  return {w,session,requests,pixels,close:()=>w.close()};
-}
-
-
 test('public runtime binds autonomous Meta contact tracking to the actual generated inquiry form id',()=>{
   assert.ok(source.includes("formId: inquiryForm?.id || inquiryForm?.dataset.formKey || ''"));
   assert.ok(metaSignalSource.includes('function wireContactInputs()'));
   assert.ok(metaSignalSource.includes("emitSignal('ContactInputStarted'"));
   assert.ok(metaSignalSource.includes("emitSignal('PhoneFieldCompleted'"));
   assert.ok(metaSignalSource.includes("emitSignal('RequiredContactFieldsCompleted'"));
-  assert.ok(source.includes('Automatic form analytics + Meta'));
+  assert.ok(source.includes('Automatic form analytics'));
   assert.ok(source.includes('No mapping is required.'));
-});
-
-test('configured signal runtime suppresses Pixel for analytics-only and allows only Pixel-eligible Meta events',async()=>{
-  const f=await metaSignalFixture();
-  try{
-    const analyticsId=await f.session.trackConfiguredEvent('SubmitAttempt',{
-      deliveryMode:'analytics',
-      onceKey:'website-binding:analytics-one',
-      metadata:{websiteBindingId:'binding-analytics',elementId:'home.form',trigger:'submit_attempt',source:'website_signal_binding'}
-    });
-    assert.ok(analyticsId);
-    assert.equal(f.pixels.length,0);
-    assert.equal(f.requests.length,1);
-    assert.equal(f.requests[0].body.eventName,'SubmitAttempt');
-    assert.equal(f.requests[0].body.websiteBindingId,'binding-analytics');
-    assert.equal(f.requests[0].body.metadata.browserDispatchStatus,'suppressed_by_mapping');
-    assert.equal(f.requests[0].body.metadata.configuredWebsiteSignal,true);
-    assert.equal(f.requests[0].body.metadata.configuredDeliveryMode,'analytics');
-
-    f.requests.length=0;
-    const metaId=await f.session.trackConfiguredEvent('LeadFormStart',{
-      deliveryMode:'meta',
-      onceKey:'website-binding:meta-one',
-      metadata:{websiteBindingId:'binding-meta',elementId:'home.form',trigger:'form_started',source:'website_signal_binding'}
-    });
-    assert.ok(metaId);
-    assert.equal(f.requests.length,1);
-    assert.equal(f.requests[0].body.eventName,'LeadFormStart');
-    assert.equal(f.pixels.length,1);
-    assert.equal(f.pixels[0][0],'trackSingleCustom');
-    assert.equal(f.pixels[0][1],'pixel-legend');
-    assert.equal(f.pixels[0][2],'LeadFormStart');
-
-    const beforeRequests=f.requests.length,beforePixels=f.pixels.length;
-    const blocked=await f.session.trackConfiguredEvent('Lead',{
-      deliveryMode:'meta',
-      onceKey:'website-binding:server-only',
-      metadata:{websiteBindingId:'binding-server-only'}
-    });
-    assert.equal(blocked,null);
-    assert.equal(f.requests.length,beforeRequests);
-    assert.equal(f.pixels.length,beforePixels);
-  } finally { f.close(); }
-});
-
-test('configured signal once-per-session key deduplicates repeated browser observations',async()=>{
-  const f=await metaSignalFixture();
-  try{
-    const first=await f.session.trackConfiguredEvent('SubmitAttempt',{deliveryMode:'analytics',onceKey:'website-binding:once',metadata:{websiteBindingId:'binding-once'}});
-    const second=await f.session.trackConfiguredEvent('SubmitAttempt',{deliveryMode:'analytics',onceKey:'website-binding:once',metadata:{websiteBindingId:'binding-once'}});
-    assert.equal(first,second);
-    assert.equal(f.requests.length,1);
-  } finally { f.close(); }
 });
 
 test('published visual signal executor has no browser path for confirmed server outcomes',()=>{
@@ -415,7 +331,7 @@ test('published visual signal executor has no browser path for confirmed server 
   assert.equal(source.includes("case 'submission_saved':"),false);
   assert.equal(source.includes("case 'booking_confirmed':"),false);
   assert.equal(source.includes("case 'payment_confirmed':"),false);
-  assert.ok(source.includes("websiteBindingId: binding.id"));
+  assert.ok(source.includes("analytics.trackBinding(binding"));
   assert.ok(source.includes("source: 'website_signal_binding'"));
 });
 
@@ -487,7 +403,7 @@ test('signal editor private test saves draft first but sends no production signa
     assert.ok(testCall);
     const request=JSON.parse(testCall.body);
     assert.equal(request.pagePath,'/');
-    assert.equal(request.elementId,'home.h1.template-title.1');
+    assert.equal(request.elementId,'home.h1.node.1');
     assert.equal(request.bindingId,testButton.dataset.signalTest);
     assert.equal(f.calls.some(call=>new URL(call.url).pathname==='/analytics/meta-signal'),false);
     const status=f.w.document.querySelector(`[data-signal-diagnostics="${testButton.dataset.signalTest}"]`).textContent;
@@ -554,7 +470,7 @@ test('Collaboration reads canonical roles and posts private selection-anchored c
     assert.equal(body.ticket,'ticket');
     assert.equal(body.expectedRevision,'r1');
     assert.equal(body.pagePath,'/');
-    assert.equal(body.elementId,'home.h1.template-title.1');
+    assert.equal(body.elementId,'home.h1.node.1');
     assert.equal(body.body,'Review this hero before publishing.');
     assert.equal(body.parentCommentId,null);
     assert.equal(JSON.stringify(body).includes('document'),false);
@@ -610,7 +526,7 @@ test('AI Assist generates a review-only proposal then uses normal save authority
     assert.equal(aiRequest.ticket,'ticket');
     assert.equal(aiRequest.expectedRevision,'r1');
     assert.equal(aiRequest.pagePath,'/');
-    assert.equal(aiRequest.selectedElementId,'home.h1.template-title.1');
+    assert.equal(aiRequest.selectedElementId,'home.h1.node.1');
     assert.equal(aiRequest.selectedText,'Template title');
     assert.equal(f.calls.some(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage'),false);
     assert.equal(f.w.document.querySelector('main h1').textContent,'Template title');
@@ -797,7 +713,7 @@ test('shared CTA chooser starts neutral, applies one canonical action, and keeps
     assert.equal(button.textContent,'Talk with our team');
 
     f.click('[data-open="signals"]');
-    assert.match(f.w.document.querySelector('#legend-cms-signal-controls').textContent,/Automatic button analytics \+ Meta/);
+    assert.match(f.w.document.querySelector('#legend-cms-signal-controls').textContent,/Automatic action analytics/);
     const advanced=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')]
       .find(node=>node.textContent==='Add advanced custom mapping');
     assert.ok(advanced); assert.equal(advanced.hidden,true);
@@ -821,9 +737,9 @@ test('button action picker groups human CTA phrases by one backend wiring contra
     const select=f.w.document.querySelector('#legend-cms-action');
     const groups=[...select.querySelectorAll('optgroup')];
     assert.deepEqual(groups.map(group=>group.label),[
-      'CONTACT — Analytics + Meta',
-      'QUOTE — Analytics + Meta',
-      'SCHEDULE — Analytics + Meta',
+      'CONTACT — Automatic analytics',
+      'QUOTE — Automatic analytics',
+      'SCHEDULE — Automatic analytics',
       'WEBSITE PAGES',
       'OTHER'
     ]);
@@ -841,6 +757,7 @@ test('button action picker groups human CTA phrases by one backend wiring contra
     assert.equal(button.getAttribute('href'),'/contact');
     assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Every phrase in this group uses the same destination and event contract/);
 
+    f.change('#legend-cms-action','custom');
     f.change('#legend-cms-action','page:/contact');
     assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Navigation only/);
   }finally{f.close();}
@@ -2116,4 +2033,50 @@ test('removing a scoped favicon restores the canonical fallback before publicati
     const saved=await f.save();
     assert.equal(saved.faviconImageDataUrl,null);
   } finally { f.close(); }
+});
+
+test('managed action survives arbitrary copy styling and destination input until explicit Custom Link',async()=>{
+  const actions=[{key:'business_schedule',group:'Schedule',label:'Schedule',defaultText:'Book consultation',href:'https://booking.example/confirmed-flow',analyticsEventName:'cta_click',behaviorKey:'cta_click'}];
+  const f=await domFixture({ctaCatalog:actions});
+  try {
+    f.click('main h1');f.click('[data-add="button"]');
+    f.change('#legend-cms-action','managed:business_schedule:0');
+    const button=f.w.document.querySelector('[data-cms-extra-id]');
+    const elementId=button.dataset.cmsId;
+    f.editSelected('Pay now and complete my application');
+    const style=f.w.document.querySelector('[data-style-key="fontSize"]');
+    style.value='29';style.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    f.input('#legend-cms-href','https://unrelated.example');
+    let saved=await f.save();let extra=saved.pages['/'].extras[0];
+    assert.equal(extra.actionKey,'business_schedule');
+    assert.equal(extra.href,'https://booking.example/confirmed-flow');
+    assert.equal(extra.text,'Pay now and complete my application');
+    assert.equal(button.dataset.cmsId,elementId);
+    f.change('#legend-cms-action','custom');
+    f.input('#legend-cms-href','https://custom.example');
+    saved=await f.save();extra=saved.pages['/'].extras[0];
+    assert.equal(extra.actionKey,undefined);
+    assert.equal(extra.href,'https://custom.example');
+  }finally{f.close();}
+});
+
+test('structural element identity ignores template wording and historical saved bindings retain identity',async()=>{
+ const html=text=>`<!doctype html><html><body data-page-key="home"><main><section><h1>Heading</h1><a href="/contact">${text}</a></section></main></body></html>`;
+ const first=await domFixture({html:html('Original wording')});let id;
+ try{id=first.w.document.querySelector('main a').dataset.cmsId;assert.match(id,/\.a\.node\./);}finally{first.close();}
+ const changed=await domFixture({html:html('Completely different industry wording')});
+ try{assert.equal(changed.w.document.querySelector('main a').dataset.cmsId,id);}finally{changed.close();}
+ const legacy=id.replace('.node.','.old-presentation.');
+ const binding={id:'permanent-binding',actionKey:'cta_click',eventName:'cta_click',trigger:'click',deliveryMode:'analytics'};
+ const doc={pages:{'/':{elements:{[legacy]:{actionKey:'legend_contact',text:'My own brand',href:'/contact',signals:[binding]}}}}};
+ const loaded=await domFixture({html:html('New template wording'),doc});
+ try{
+  const link=loaded.w.document.querySelector('main a');
+  assert.equal(link.dataset.cmsId,legacy);assert.equal(link.dataset.websiteActionKey,'legend_contact');
+  assert.equal(link.textContent,'My own brand');
+  loaded.click('main a');loaded.editSelected('Reserve our next meeting');
+  const saved=await loaded.save();
+  assert.equal(saved.pages['/'].elements[legacy].actionKey,'legend_contact');
+  assert.equal(saved.pages['/'].elements[legacy].signals[0].id,'permanent-binding');
+ }finally{loaded.close();}
 });

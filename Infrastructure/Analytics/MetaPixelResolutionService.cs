@@ -11,6 +11,7 @@ namespace Infrastructure.Analytics;
 
 public interface IMetaPixelResolutionService
 {
+    Task<ResolvedMetaPixelContext> ResolveForOwnerAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default);
     Task<ResolvedMetaPixelContext> ResolveForBusinessAsync(Guid businessId, CancellationToken cancellationToken = default);
     Task<ResolvedMetaPixelContext> ResolveForCurrentRequestAsync(HttpContext? httpContext, CancellationToken cancellationToken = default);
     Task<ResolvedMetaPixelContext> ResolveForLeadAsync(Guid? agentTrackingProfileId, string? agentSlug, bool isFounderPath, CancellationToken cancellationToken = default);
@@ -52,7 +53,6 @@ public sealed class ResolvedMetaPixelContext
 
 public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
 {
-    private const string RequestCacheKey = "__ResolvedMetaPixelContext";
 
     private readonly IConfiguration _configuration;
     private readonly MasterAppDbContext _db;
@@ -77,41 +77,24 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
         _logger = logger;
     }
 
+    /// <summary>Projects credentials for an already resolved permanent owner; never infers another tenant.</summary>
+    public async Task<ResolvedMetaPixelContext> ResolveForOwnerAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (owner == MarketingOwnerScope.Founder) return await ResolveFounderAsync(cancellationToken);
+        if (owner.CommerceBusinessId is Guid businessId) return await ResolveForBusinessAsync(businessId, cancellationToken);
+        if (owner.AgentTrackingProfileId is not Guid profileId) return new();
+        var resolved = await _resolver.ResolveByIdAsync(profileId, cancellationToken);
+        return !resolved.Found || resolved.Profile is null ? new()
+            : await ResolveInternalAsync(resolved.Profile, resolved.CanonicalSlug ?? resolved.Profile.Slug, false, cancellationToken);
+    }
+
     public async Task<ResolvedMetaPixelContext> ResolveForCurrentRequestAsync(HttpContext? httpContext, CancellationToken cancellationToken = default)
     {
-        if (httpContext == null)
-            return await ResolveAgencyFallbackAsync(cancellationToken);
-
-        if (httpContext.Items.TryGetValue(RequestCacheKey, out var cached) &&
-            cached is ResolvedMetaPixelContext cachedContext)
-        {
-            return cachedContext;
-        }
-
-        var request = httpContext.Request;
-        var explicitSlug = ResolveExplicitAgentSlug(request);
-        if (!string.IsNullOrWhiteSpace(explicitSlug))
-        {
-            var resolvedBySlug = await _resolver.ResolveBySlugAsync(explicitSlug, cancellationToken);
-            if (resolvedBySlug.Found && resolvedBySlug.Profile != null)
-            {
-                var explicitResolved = await ResolveInternalAsync(
-                    resolvedBySlug.Profile,
-                    Normalize(resolvedBySlug.CanonicalSlug) ?? explicitSlug,
-                    isFounderPath: false,
-                    cancellationToken);
-                httpContext.Items[RequestCacheKey] = explicitResolved;
-                return explicitResolved;
-            }
-        }
-
-        var isFounderPath = httpContext.Items["IsFounderPath"] as bool? == true;
-        var trackingProfile = httpContext.Items["TrackingProfile"] as AgentTrackingProfile;
-        var trackingSlug = Normalize(httpContext.Items["TrackingSlug"] as string);
-
-        var resolved = await ResolveInternalAsync(trackingProfile, trackingSlug, isFounderPath, cancellationToken);
-        httpContext.Items[RequestCacheKey] = resolved;
-        return resolved;
+        var owner = await ProtectWebsiteOwnerResolver.ResolveAsync(httpContext, _resolver,
+            _configuration["Founder:Upn"], ct: cancellationToken);
+        if (owner is null) return new();
+        return await ResolveInternalAsync(owner.Profile, owner.Slug, owner.IsFounder, cancellationToken);
     }
 
     public async Task<ResolvedMetaPixelContext> ResolveForBusinessAsync(Guid businessId, CancellationToken cancellationToken = default)
@@ -132,29 +115,10 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
 
     public async Task<ResolvedMetaPixelContext> ResolveForLeadAsync(Guid? agentTrackingProfileId, string? agentSlug, bool isFounderPath, CancellationToken cancellationToken = default)
     {
-        if (isFounderPath)
-            return await ResolveAgencyFallbackAsync(cancellationToken);
-
-        AgentTrackingProfile? trackingProfile = null;
-        var normalizedSlug = Normalize(agentSlug);
-
-        if (agentTrackingProfileId.HasValue && agentTrackingProfileId.Value != Guid.Empty)
-        {
-            trackingProfile = await _db.AgentTrackingProfiles.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == agentTrackingProfileId.Value, cancellationToken);
-        }
-
-        if (trackingProfile == null && !string.IsNullOrWhiteSpace(normalizedSlug))
-        {
-            var resolvedBySlug = await _resolver.ResolveBySlugAsync(normalizedSlug, cancellationToken);
-            if (resolvedBySlug.Found && resolvedBySlug.Profile != null)
-            {
-                trackingProfile = resolvedBySlug.Profile;
-                normalizedSlug = Normalize(resolvedBySlug.CanonicalSlug) ?? normalizedSlug;
-            }
-        }
-
-        return await ResolveInternalAsync(trackingProfile, normalizedSlug, isFounderPath: false, cancellationToken);
+        var owner = await ProtectWebsiteOwnerResolver.ResolveLeadAsync(_resolver, _configuration["Founder:Upn"],
+            agentTrackingProfileId, agentSlug, isFounderPath, cancellationToken);
+        if (owner is null) return new();
+        return await ResolveInternalAsync(owner.Profile, owner.Slug, owner.IsFounder, cancellationToken);
     }
 
     private async Task<ResolvedMetaPixelContext> ResolveInternalAsync(
@@ -164,7 +128,7 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
         CancellationToken cancellationToken)
     {
         if (isFounderPath)
-            return await ResolveAgencyFallbackAsync(cancellationToken);
+            return await ResolveFounderAsync(cancellationToken);
 
         // Scoped agent traffic is tenant-owned. It must never inherit Founder/agency
         // advertising credentials when the agent has not connected its own destination.
@@ -195,7 +159,7 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
         }
     }
 
-    private async Task<ResolvedMetaPixelContext> ResolveAgencyFallbackAsync(CancellationToken cancellationToken)
+    private async Task<ResolvedMetaPixelContext> ResolveFounderAsync(CancellationToken cancellationToken)
     {
         var owner = MarketingOwnerScope.Founder;
         await _connections.ImportProfileAsync(owner, Normalize(_configuration["Meta:PixelId"]),
@@ -223,46 +187,6 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
             AgentTrackingProfileId = trackingProfile.Id,
             AgentSlug = Normalize(agentSlug) ?? Normalize(trackingProfile.Slug)
         };
-    }
-
-    private static string? ResolveExplicitAgentSlug(HttpRequest? request)
-    {
-        if (request == null)
-            return null;
-
-        string? formSlug = null;
-        try
-        {
-            if (HttpMethods.IsPost(request.Method) && request.HasFormContentType)
-                formSlug = Normalize(request.Form["AgentSlug"].ToString());
-        }
-        catch
-        {
-            formSlug = null;
-        }
-
-        return Normalize(formSlug)
-            ?? ExtractSlugFromPath(request.Path.Value)
-            ?? ExtractSlugFromPath(request.Headers["Referer"].ToString());
-    }
-
-    private static string? ExtractSlugFromPath(string? pathOrUrl)
-    {
-        var value = Normalize(pathOrUrl);
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
-            value = Normalize(uri.AbsolutePath);
-
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
-            return Normalize(segments[1]);
-
-        return null;
     }
 
     private static string? Normalize(string? value)

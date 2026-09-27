@@ -303,11 +303,9 @@
         if (!el.dataset.cmsId) {
           const legacy = !el.closest('.brand,.brand-wordmark') && !['VIDEO','DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) && (el.tagName === 'IMG' || el.children.length === 0);
           const index = legacy ? ++counter : `node${++addedCounter}`;
-          const href = el.getAttribute('href');
-          const route = href ? new URL(href, location.origin).pathname : '';
-          const semantic = SITE_KEY !== 'business' && legacy ? el.dataset.cta || href || el.textContent || el.tagName : el.dataset.businessField || (el.hasAttribute?.('data-business-name') ? 'business-name' : '') || el.dataset.businessRoute || el.dataset.cta || route || (['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) ? el.className || el.tagName : '') || el.textContent || el.tagName;
           const shellPrefix = el.closest('.site-header') ? 'shell.header' : el.closest('.site-footer') ? 'shell.footer' : pageKey;
-          el.dataset.cmsId = `${shellPrefix}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
+          el.dataset.cmsId = `${shellPrefix}.${safeId(el.tagName)}.node.${index}`;
+
         }
         rememberOriginal(el);
         if (isDirectCanvasSelectable(el)) el.dataset.cmsEditable = 'true';
@@ -466,18 +464,17 @@
     if (['INPUT','SELECT','TEXTAREA'].includes(type)) triggers.push('field_started','validation_failed');
     if (type === 'INPUT' && selected.type === 'tel') triggers.push('field_completed');
     if (selected.dataset.cmsSection) triggers.push('scroll_threshold');
-    const candidates = signalCatalog.events.filter(option => option.triggers.some(trigger => triggers.includes(trigger)));
+    const candidates = signalCatalog.events.filter(option => !option.requiresServerOutcome && option.triggers.some(trigger => triggers.includes(trigger)));
     const overrides = selectedOverride();
     const bindings = overrides?.signals || [];
     paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
     if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
     const managedActionKey = selected.dataset.websiteActionKey;
-    const selectedHref = selected.getAttribute?.('href');
     const managedAction = (managedActionKey && availableCtaOptions().find(option => option.key === managedActionKey))
-      || (selectedHref && availableCtaOptions().find(option => option.href === selectedHref))
+
       || null;
     if (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) {
-      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic form analytics + Meta';
+      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic form analytics';
       host.appendChild(automaticTitle);
       const automaticHelp = document.createElement('p');
       automaticHelp.textContent = 'No mapping is required. The shared Protect Website runtime automatically tracks the canonical inquiry lifecycle, and the backend owns the confirmed Lead outcome.';
@@ -488,15 +485,15 @@
         const option = signalCatalog.events.find(value => value.name === name);
         if (!option) continue;
         const row = document.createElement('div');
-        row.textContent = `${name} · automatic · ${option.requiresServerOutcome ? 'verified server outcome' : option.metaEligible ? 'Meta + analytics when configured' : 'analytics'}`;
+        row.textContent = `${name} · automatic · ${option.requiresServerOutcome ? 'verified server outcome' : 'analytics + eligible configured destinations'}`;
         automatic.appendChild(row);
       }
       host.appendChild(automatic);
     } else if (managedAction) {
-      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic button analytics + Meta';
+      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic action analytics';
       host.appendChild(automaticTitle);
       const automaticHelp = document.createElement('p');
-      automaticHelp.textContent = `${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}${managedAction.metaIntentEventName ? ' + ' + managedAction.metaIntentEventName : ''}. No manual mapping is required.`;
+      automaticHelp.textContent = `${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}. No manual mapping is required.`;
       host.appendChild(automaticHelp);
     }
     const addSelect = (labelText, values, value, action) => {
@@ -508,11 +505,11 @@
     };
     for (const binding of bindings) {
       const definition = signalCatalog.events.find(x => x.name === binding.eventName);
-      addSelect('Send', [['off','Do not send'],['analytics','Analytics only'], ...(definition?.metaEligible ? [['meta','Meta + analytics']] : [])], binding.deliveryMode, value => binding.deliveryMode = value);
-      const available = candidates.flatMap(option => option.triggers.filter(trigger => triggers.includes(trigger)).map(trigger => [option.name + ':' + trigger, `${option.name} · ${trigger.replaceAll('_',' ')}`]));
+      addSelect('Send', [['off','Do not send'],['analytics','Analytics only'], ['destinations','Analytics + configured destinations']], binding.deliveryMode === 'meta' ? 'destinations' : binding.deliveryMode, value => binding.deliveryMode = value);
+      const available = candidates.flatMap(option => option.triggers.filter(trigger => triggers.includes(trigger)).map(trigger => [option.name + ':' + trigger, `${option.displayLabel || option.name} · ${trigger.replaceAll('_',' ')}`]));
       addSelect('Event and trigger', available, binding.eventName + ':' + binding.trigger, value => {
         const [name, trigger] = value.split(':'); binding.eventName = name; binding.trigger = trigger; binding.matchingFields = [];
-        if (!signalCatalog.events.find(x => x.name === name)?.metaEligible && binding.deliveryMode === 'meta') binding.deliveryMode = 'analytics';
+        binding.actionKey = signalCatalog.events.find(x => x.name === name)?.actionKey || null;
       });
       const label = document.createElement('label'), once = document.createElement('input'); once.type = 'checkbox'; once.checked = binding.oncePerSession;
       once.addEventListener('change', () => { checkpoint(); binding.oncePerSession = once.checked; markDirty(); }); label.append(once, document.createTextNode(' Once per session')); host.appendChild(label);
@@ -550,7 +547,7 @@
     add.addEventListener('click', () => {
       const option = candidates.flatMap(x => x.triggers.filter(t => triggers.includes(t) && !bindings.some(b => b.trigger === t)).map(t => ({ event: x, trigger: t })))[0];
       if (!option) { paragraph('All supported triggers for this element are already mapped.'); return; }
-      checkpoint(); overrides.signals ||= []; overrides.signals.push({ id: crypto.randomUUID().replaceAll('-',''), eventName: option.event.name, trigger: option.trigger, deliveryMode: 'off', oncePerSession: true, matchingFields: [] });
+      checkpoint(); overrides.signals ||= []; overrides.signals.push({ id: crypto.randomUUID().replaceAll('-',''), eventName: option.event.name, actionKey: option.event.actionKey, trigger: option.trigger, deliveryMode: 'off', oncePerSession: true, matchingFields: [] });
       markDirty(); renderSignalControls();
     }); host.appendChild(add);
   }
@@ -1140,11 +1137,24 @@
     add.addEventListener('click',()=>{ const ov=selectedOverride(); checkpoint(); ov.animations ||= []; ov.animations.push({id:crypto.randomUUID().replaceAll('-',''),trigger:'view',effect:'fade',durationMs:400,delayMs:0,distancePx:24,easing:'ease',once:true}); markDirty(); renderMotionControls(); });
     host.appendChild(add);
   }
+  function findEditableElement(id) {
+    const direct = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
+    if (direct) return direct;
+    // Read-only translation of historical label-derived identifiers. Keep the
+    // saved identity once matched; never generate another label-derived ID.
+    const legacy = String(id).match(/^(.*)\.([a-z][a-z0-9]*)\.[^.]+\.(node\d+|\d+)$/);
+    if (!legacy) return null;
+    const structural = `${legacy[1]}.${legacy[2]}.node.${legacy[3]}`;
+    const node = document.querySelector(`[data-cms-id="${CSS.escape(structural)}"]`);
+    if (node) node.dataset.cmsId = id;
+    return node;
+  }
+
   function applyElementOverride(el, override) {
     if (el?.dataset.cmsSignalOnly) return;
     if (!el || !override) return;
     if (override.actionKey) el.dataset.websiteActionKey = override.actionKey;
-    else delete el.dataset.websiteActionKey;
+    else if (override.href != null) delete el.dataset.websiteActionKey;
     if (override.hidden === true) el.hidden = true;
     else if (override.hidden === false) el.hidden = false;
 
@@ -1551,6 +1561,8 @@
       link.dataset.legendPageNav='true';
       link.dataset.legendPageRoute=entry.route;
       link.dataset.businessRoute=entry.route==='/'?'home':entry.route.replace(/^\//,'');
+      const actionKey = `business_${link.dataset.businessRoute}`;
+      if (ctaCatalog.some(option => option.key === actionKey)) link.dataset.websiteActionKey = actionKey;
       link.dataset.cmsLocked='true';
       if (entry.route===current) link.setAttribute('aria-current','page');
       if (editorMode) {
@@ -1583,22 +1595,22 @@
     // Shared shell overrides are document-global and always apply before the
     // current page's local element map.
     Object.entries(documentState.elements || {}).forEach(([id, override]) => {
-      const el = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
+      const el = findEditableElement(id);
       applyElementOverride(el, override);
     });
     // Composite children do not exist until their parent extra is rendered.
     // Re-apply the one canonical page element map after extras exist.
     Object.entries(pageState().elements).forEach(([id, override]) => {
-      const el = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
+      const el = findEditableElement(id);
       applyElementOverride(el, override);
     });
     applySectionOrder();
-    Object.entries(pageState().elements).forEach(([id, ov]) => applyPlacement(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), ov.placement));
+    Object.entries(pageState().elements).forEach(([id, ov]) => applyPlacement(findEditableElement(id), ov.placement));
     pageState().extras.forEach(extra => applyPlacement(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra.placement));
   }
 
   function refreshResponsiveOverrides() {
-    Object.entries(pageState().elements).forEach(([id, override]) => applyElementOverride(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), override));
+    Object.entries(pageState().elements).forEach(([id, override]) => applyElementOverride(findEditableElement(id), override));
     pageState().extras.forEach(extra => {
       const node = document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`);
       if (extra.type === 'reusable') renderReusableInstance(node, extra);
@@ -1693,6 +1705,7 @@
     store.dataset.websiteAnalyticsEvent='cta_click';
     store.dataset.websiteBindingId='commerce_store_nav';
     store.dataset.cta='commerce_store';
+    store.dataset.websiteActionKey='commerce_store';
 
     const cart=document.createElement('a');
     cart.href=storeContext.cartUrl;
@@ -1702,6 +1715,7 @@
     cart.dataset.websiteAnalyticsEvent='cta_click';
     cart.dataset.websiteBindingId='commerce_cart_nav';
     cart.dataset.cta='commerce_cart';
+    cart.dataset.websiteActionKey='commerce_cart';
     cart.classList.add('legend-store-cart');
     cart.setAttribute('aria-label','Shopping cart');
     cart.appendChild(createStoreCartIcon());
@@ -2168,13 +2182,14 @@
     if (!options.length) return;
     document.querySelectorAll('a[href],button[data-website-action-key]').forEach(element => {
       const key = element.dataset.websiteActionKey;
-      const href = element.getAttribute('href');
-      const option = (key && options.find(candidate => candidate.key === key))
-        || (href && options.find(candidate => candidate.href === href));
+      const option = key && options.find(candidate => candidate.key === key);
       if (!option) return;
       element.dataset.websiteActionKey = option.key;
       element.dataset.websiteBindingId = element.dataset.cmsId || option.key;
       element.dataset.websiteAnalyticsEvent = option.analyticsEventName || 'cta_click';
+      element.dataset.websiteBehaviorKey = option.behaviorKey || 'cta_click';
+      if (option.runtimeAction) element.dataset.websiteRuntimeAction = option.runtimeAction;
+      else delete element.dataset.websiteRuntimeAction;
       if (option.metaIntentEventName) element.dataset.websiteMetaIntent = option.metaIntentEventName;
       else delete element.dataset.websiteMetaIntent;
     });
@@ -2182,8 +2197,8 @@
 
   function installPublishedSignalBindings() {
     if (editorMode || renderInput?.server) return;
-    const session = window.LEGEND_PUBLIC_META_SESSION;
-    if (!session || typeof session.trackConfiguredEvent !== 'function') return;
+    const analytics = window.LegendAnalytics;
+    if (!analytics || typeof analytics.trackBinding !== 'function') return;
 
     const allowedTriggers = new Set([
       'viewed', 'click', 'form_started', 'submit_attempt',
@@ -2191,25 +2206,18 @@
     ]);
     const page = pageState();
     const candidates = [
-      ...Object.entries(page.elements || {}).map(([id, override]) => ({ id, override, node: document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`) })),
+      ...Object.entries(page.elements || {}).map(([id, override]) => ({ id, override, node: findEditableElement(id) })),
       ...(page.extras || []).map(extra => ({ id: `extra:${extra.id}`, override: extra, node: document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`) }))
     ];
+    window.__legendWebsiteSignalBindingsCleanup?.();
     const cleanups = [];
 
     const emit = (binding, elementId) => {
       if (!binding || binding.deliveryMode === 'off' || !allowedTriggers.has(binding.trigger)) return;
-      const onceKey = binding.oncePerSession ? `website-binding:${binding.id}` : null;
-      session.trackConfiguredEvent(binding.eventName, {
-        deliveryMode: binding.deliveryMode,
-        onceKey,
-        metadata: {
-          websiteBindingId: binding.id,
-          elementId,
-          trigger: binding.trigger,
-          deliveryMode: binding.deliveryMode,
-          pagePath: currentPageRoute(),
-          source: 'website_signal_binding'
-        }
+      analytics.trackBinding(binding, {
+        elementId,
+        pagePath: currentPageRoute(),
+        source: 'website_signal_binding'
       });
     };
 
@@ -2231,6 +2239,16 @@
       if (!candidate.node || !Array.isArray(candidate.override?.signals)) continue;
       for (const binding of candidate.override.signals) {
         if (!binding?.id || !binding.eventName || binding.deliveryMode === 'off' || !allowedTriggers.has(binding.trigger)) continue;
+        // Managed actions enrich the existing source envelope instead of creating
+        // a second event for this visual binding.
+        const managedForm = candidate.node.matches?.('form') ? candidate.node : candidate.node.closest?.('form');
+        const managedAction = candidate.node.matches?.('[data-website-action-key],[data-cta]');
+        if (window.LegendAnalytics?.registerBinding &&
+            ((managedForm && ['form_started','submit_attempt','field_started','validation_failed'].includes(binding.trigger)) ||
+             (managedAction && binding.trigger === 'click'))) {
+          cleanups.push(window.LegendAnalytics.registerBinding(candidate.node, binding, candidate.id));
+          continue;
+        }
         const fire = () => emit(binding, candidate.id);
         switch (binding.trigger) {
           case 'viewed':
@@ -2267,7 +2285,6 @@
       }
     }
 
-    window.__legendWebsiteSignalBindingsCleanup?.();
     window.__legendWebsiteSignalBindingsCleanup = () => cleanups.forEach(cleanup => cleanup());
   }
 
@@ -2277,6 +2294,9 @@
     if (!context.trackingAsset) return;
     if (SITE_KEY === 'business' && location.pathname.startsWith('/business-preview')) return;
 
+    // A linked storefront retains the published shell CMS for content/actions,
+    // while the server commerce bootstrap owns the one tracking/provider runtime.
+    const reuseCommerceRuntime = window.LEGEND_ANALYTICS_CONFIG?.runtimeOwner === 'commerce';
     publicRuntimeStarting = true;
     let payload;
     try {
@@ -2294,16 +2314,28 @@
         throw new Error('Canonical analytics runtime configuration is unavailable.');
       }
 
-      window.LEGEND_ANALYTICS_CONFIG = {
-        ...analytics,
-        siteKey: SITE_KEY,
-        publishedVersionId: payload.publishedVersionId || null
-      };
-      document.body.dataset.pageKey ||= pageKey;
+      if (!reuseCommerceRuntime) {
+        window.LEGEND_ANALYTICS_CONFIG = {
+          ...analytics,
+          siteKey: SITE_KEY,
+          publishedVersionId: payload.publishedVersionId || null
+        };
+        document.body.dataset.pageKey ||= pageKey;
 
-      // Analytics is foundational. Load it before any optional advertising or
-      // measurement projection so provider failures cannot suppress traffic.
-      await loadRuntimeScript(context.trackingAsset || '/legend-public-tracking.js');
+        // Analytics is foundational. Load it before any optional advertising or
+        // measurement projection so provider failures cannot suppress traffic.
+        const trackingAsset = context.trackingAsset || '/legend-public-tracking.js';
+        await loadRuntimeScript(trackingAsset);
+        if (window.__legendTrackingInitialized !== true || typeof window.LegendAnalytics?.track !== 'function') {
+          // A downloaded script can still throw during execution. Remove that failed
+          // attempt so the retry can execute it again after tracker cleanup.
+          const source = new URL(trackingAsset, location.origin).href;
+          [...document.scripts].find(script => script.src === source)?.remove();
+          throw new Error('Canonical analytics tracker did not initialize.');
+        }
+      } else if (window.__legendTrackingInitialized !== true || typeof window.LegendAnalytics?.track !== 'function') {
+        throw new Error('The owning commerce analytics runtime is unavailable.');
+      }
       publicRuntimeStarted = true;
       publicRuntimeRetryCount = 0;
       if (publicRuntimeRetryTimer) {
@@ -2318,6 +2350,8 @@
       publicRuntimeStarting = false;
     }
 
+    installPublishedSignalBindings();
+    if (reuseCommerceRuntime) return;
     const meta = payload?.meta || {};
     try {
       initializeMetaPixel(meta.pixelId);
@@ -2351,7 +2385,6 @@
             formId: inquiryForm?.id || inquiryForm?.dataset.formKey || '',
             requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []
           });
-          installPublishedSignalBindings();
         }
       } catch (error) {
         console.error('[legend-public-meta-signal-runtime]', error);
@@ -2437,7 +2470,10 @@
   }
 
   function selectedOverride(create = true) {
-    return overrideForElement(selected, create);
+    const override = overrideForElement(selected, create);
+    if (create && override && selected?.dataset.websiteActionKey && !Object.hasOwn(override, 'actionKey'))
+      override.actionKey = selected.dataset.websiteActionKey;
+    return override;
   }
 
   function previewRelativeRect(el) {
@@ -3679,6 +3715,8 @@
 
     for (const option of ctaCatalog || []) {
       if (!option?.key || !option?.href || option.href === '#' || !safeUrl(option.href)) continue;
+      if (['focus_form','submit_form'].includes(option.runtimeAction) && !document.querySelector('form[data-form-key]')) continue;
+      if (option.runtimeAction === 'add_current_product' && !document.querySelector('#spAddToCart[data-product-id]')) continue;
       const phrases = [...new Set([
         option.defaultText,
         ...(Array.isArray(option.textVariants) ? option.textVariants : [])
@@ -3755,9 +3793,8 @@
       groups.get(option.group).push(option);
     }
     for (const [groupName, values] of groups) {
-      const meta = values.some(option => option.metaIntentEventName);
       const group = document.createElement('optgroup');
-      group.label = `${String(groupName || 'Action').toUpperCase()} — Analytics${meta ? ' + Meta' : ''}`;
+      group.label = `${String(groupName || 'Action').toUpperCase()} — Automatic analytics`;
       values.forEach(option => {
         const node = document.createElement('option');
         node.value = option.choiceKey;
@@ -3785,31 +3822,24 @@
     }
 
     const other = document.createElement('optgroup'); other.label = 'OTHER';
-    const customOption = document.createElement('option'); customOption.value = 'custom'; customOption.textContent = 'Custom URL…'; other.appendChild(customOption);
+    const customOption = document.createElement('option'); customOption.value = 'custom'; customOption.textContent = 'Custom Link / Custom Action…'; other.appendChild(customOption);
     select.appendChild(other);
 
-    const currentText = String(override?.text ?? selected?.textContent ?? '').trim();
-    const managedMatches = override?.actionKey
-      ? options.filter(option => option.managed && option.actionKey === override.actionKey)
-      : [];
-    const byKey = managedMatches.find(option => option.defaultText === currentText) || managedMatches[0] || null;
-    const byHref = !byKey && currentHref
-      ? options.find(option => !option.managed && option.href === currentHref)
-        || options.find(option => option.managed && option.href === currentHref && option.defaultText === currentText)
-        || options.find(option => option.managed && option.href === currentHref)
-      : null;
+    const key = override?.actionKey || selected?.dataset.websiteActionKey;
+    const byKey = key ? options.find(option => option.managed && option.actionKey === key) : null;
+    const byHref = !key && currentHref ? options.find(option => !option.managed && option.href === currentHref) : null;
     const selectedOption = byKey || byHref || null;
     const hasCustomHref = currentHref && currentHref !== '#';
     select.value = selectedOption?.choiceKey || (hasCustomHref ? 'custom' : '');
     if (custom) custom.hidden = select.value !== 'custom';
     if (wiring) {
       wiring.textContent = selectedOption?.managed
-        ? `Automatic wiring: Analytics ${selectedOption.analyticsEventName || 'cta_click'}${selectedOption.metaIntentEventName ? ' + Meta ' + selectedOption.metaIntentEventName : ''}. Every phrase in this group uses the same destination and event contract.`
+        ? `Automatic wiring: Analytics ${selectedOption.analyticsEventName || 'cta_click'}. Every phrase in this group uses the same destination and event contract.`
         : selectedOption
           ? 'Navigation only. This links to an existing page or section and does not create a second CTA wiring contract.'
           : select.value === 'custom'
-            ? 'Custom URL. Use a grouped CTA above when you want the existing automatic analytics/Meta contract.'
-            : 'Choose the CTA wording you want. Grouped phrases share one canonical backend destination and event contract.';
+            ? 'Custom URL. Use a grouped CTA above when you want the existing automatic analytics contract.'
+            : 'Choose an action, then customize the visible text. Its destination and analytics stay connected.';
     }
   }
 
@@ -3946,7 +3976,7 @@
     if (content) content.appendChild(selectedActions);
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
-    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose the exact CTA wording. Every phrase inside an action group shares the same canonical destination and automatic event wiring.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     syncBreakpointControls();
@@ -4039,7 +4069,8 @@
       checkpoint();
       const option = availableCtaOptions().find(candidate => candidate.choiceKey === event.target.value);
       if (!option) {
-        delete ov.actionKey;
+        if (event.target.value !== 'custom' && ov.actionKey) { syncEditorControls(); return; }
+        if (event.target.value === 'custom') { delete ov.actionKey; delete selected.dataset.websiteActionKey; }
         if (event.target.value === 'custom') {
           document.getElementById('legend-cms-custom-link').hidden = false;
         } else {
@@ -4050,7 +4081,8 @@
         applyElementOverride(selected, ov); syncEditorControls(); markDirty();
         return;
       }
-      if (option.managed) ov.actionKey = option.actionKey; else delete ov.actionKey;
+      if (!option.managed && ov.actionKey) { syncEditorControls(); return; }
+      if (option.managed) ov.actionKey = option.actionKey;
       ov.href = option.href; ov.target = option.openInNewTab ? '_blank' : '_self';
       if (selected.dataset.cmsExtraId) {
         ov.text = option.defaultText || option.label;
@@ -4073,7 +4105,7 @@
       if (!selected) return; checkpoint(); const ov = selectedOverride(); if (ov.style) delete ov.style[button.dataset.colorReset];
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
-    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; if (key === 'href') { delete ov.actionKey; const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyElementOverride(selected, ov); markDirty(); }));
+    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyElementOverride(selected, ov); markDirty(); }));
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => { const video = selected; if (video?.tagName !== 'VIDEO') return; const url = await uploadMedia(event.target.files?.[0]); if (!url || selected !== video) return; checkpoint(); const ov = selectedOverride(); ov.videoUrl = url; applyElementOverride(video, ov); syncEditorControls(); markDirty(); });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));

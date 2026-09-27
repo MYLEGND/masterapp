@@ -102,7 +102,7 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
-    public void CanonicalInquiryFormBlocksAndServerLeadBindingsSurviveSanitization()
+    public void CanonicalInquiryFormRejectsManualLeadButHistoricalReadPreservesForm()
     {
         var bindingId = Guid.NewGuid().ToString("N");
         var doc = new WebsiteContentDocument
@@ -130,13 +130,37 @@ public sealed class WebsitePublishingAuthorityTests
             ]
         };
 
-        var form = Assert.Single(WebsiteContentSanitizer.Sanitize(doc).Extras);
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.Sanitize(doc));
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var persistedJson = System.Text.Json.JsonSerializer.Serialize(doc, jsonOptions);
+        var form = Assert.Single(WebsiteContentSanitizer.ReadPersisted(persistedJson, jsonOptions).Extras);
         Assert.Equal("form", form.Type);
-        var binding = Assert.Single(form.Signals);
-        Assert.Equal(bindingId, binding.Id);
-        Assert.Equal("submission_saved", binding.Trigger);
-        Assert.Equal("Lead", binding.EventName);
-        Assert.Equal("meta", binding.DeliveryMode);
+        Assert.Equal("contact-form", form.Id);
+        Assert.Equal("Contact us", form.Title);
+        Assert.Equal("Send inquiry", form.Text);
+        Assert.Empty(form.Signals);
+        // Historical storage remains readable for audit; compatibility is not an active writer.
+        Assert.Single(doc.Extras[0].Signals);
+        Assert.Contains(bindingId, persistedJson, StringComparison.Ordinal);
+
+    }
+
+    [Fact]
+    public void VisibleCopyCannotChangeManagedActionOrCanonicalBehavior()
+    {
+        var options = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Business, bookingUrl: "https://book.example.test/meeting");
+        var action = Assert.Single(options.Where(x => x.Key == "business_schedule"));
+        Assert.Equal("cta_click", action.BehaviorKey);
+        Assert.Equal("cta_click", action.AnalyticsEventName);
+        var document = new WebsiteContentDocument();
+        document.Elements["stable-button"] = new WebsiteElementOverride { ActionKey = action.Key, Text = "Payment completed", Href = "https://untrusted.example" };
+        Assert.Null(WebsiteCallToActionCatalog.PrepareForPublish(document, options));
+        Assert.Equal(action.Key, document.Elements["stable-button"].ActionKey);
+        Assert.Equal(action.Href, document.Elements["stable-button"].Href);
+        Assert.Equal("Payment completed", document.Elements["stable-button"].Text);
+        Assert.Contains(options, x => x.Key == "form_start" && x.RuntimeAction == "focus_form");
+        Assert.Contains(options, x => x.Key == "submit" && x.RuntimeAction == "submit_form");
+        Assert.All(options, x => Assert.False(Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(x.BehaviorKey, out var behavior) && behavior.RequiresServerAuthority));
     }
 
     [Fact]
@@ -148,13 +172,13 @@ public sealed class WebsitePublishingAuthorityTests
             email: "hello@example.test",
             bookingUrl: "https://book.example.test/meeting");
         Assert.Contains(business, option => option.Key == "business_call" && option.Href == "tel:6025550199" &&
-            option.AnalyticsEventName == "cta_click" && option.MetaIntentEventName == "ContactStepReached");
+            option.AnalyticsEventName == "cta_click" && option.MetaIntentEventName == null);
         Assert.Contains(business, option => option.Key == "business_email" && option.Href == "mailto:hello@example.test" &&
-            option.MetaIntentEventName == "ContactStepReached");
+            option.MetaIntentEventName == null);
         Assert.Contains(business, option => option.Key == "business_schedule" && option.Href.StartsWith("https://book.example.test/") &&
-            option.MetaIntentEventName == "ContactStepReached");
+            option.MetaIntentEventName == null);
         Assert.Contains(business, option => option.Key == "business_quote" && option.Href == "/contact" &&
-            option.AnalyticsEventName == "cta_click" && option.MetaIntentEventName == "ContactStepReached");
+            option.AnalyticsEventName == "cta_click" && option.MetaIntentEventName == null);
 
         var contact = Assert.Single(business.Where(option => option.Key == "business_contact"));
         Assert.Equal("Contact", contact.Group);
@@ -194,7 +218,7 @@ public sealed class WebsitePublishingAuthorityTests
             option.AnalyticsEventName == "quote_click");
         Assert.Contains(protect, option => option.Href == "/Quote/Life" && option.AnalyticsEventName == "quote_click");
         Assert.Contains(protect, option => option.Key == "protect_contact" &&
-            option.MetaIntentEventName == "ContactStepReached");
+            option.MetaIntentEventName == null);
         Assert.DoesNotContain(protect, option => option.Key == "protect_call");
         Assert.DoesNotContain(protect, option => option.Key == "protect_schedule");
     }

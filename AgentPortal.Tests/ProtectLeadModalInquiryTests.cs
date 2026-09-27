@@ -19,7 +19,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
-using PortalTrackingResolver = AgentPortal.Services.Tracking.AgentTrackingResolver;
+using PortalTrackingResolver = Infrastructure.Analytics.AgentTrackingResolver;
 using ProtectTrackingResolver = Infrastructure.Analytics.AgentTrackingResolver;
 using ProtectWebsite.Controllers;
 
@@ -91,6 +91,7 @@ public sealed class ProtectLeadModalInquiryTests
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
+        controller.Request.Scheme = "https";
         controller.Request.Host = new HostString("protect.mylegnd.com");
         controller.Request.Headers["Referer"] = "https://protect.mylegnd.com/a/agent-one/";
 
@@ -276,6 +277,7 @@ public sealed class ProtectLeadModalInquiryTests
         };
 
         controller.Request.Headers["X-Shared-Secret"] = "secret";
+        controller.Request.Scheme = "https";
         controller.Request.Host = new HostString("protect.mylegnd.com");
         return controller;
     }

@@ -182,7 +182,8 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
         Assert.Contains("ScopeType.Founder", queryScope, StringComparison.Ordinal);
         Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, ct)", proxy, StringComparison.Ordinal);
-        Assert.Contains("A scoped /a/{slug} request must never fall through to Founder.", proxy, StringComparison.Ordinal);
+        Assert.Contains("ProtectWebsiteOwnerResolver.ResolveAsync", proxy, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResolveByUpnAsync", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
         Assert.Contains("siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect", layout, StringComparison.Ordinal);
         Assert.Contains("endpoint(path)", analyticsJs, StringComparison.Ordinal);
@@ -213,7 +214,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         var runtime = File.ReadAllText(Path.Combine(root, "SHARED", "WebsitePlatform", "legend-public-cms.js"));
         var controller = File.ReadAllText(Path.Combine(root, "Infrastructure", "WebsiteEditing", "WebsitePlatformController.cs"));
 
-        var trackingLoad = runtime.IndexOf("await loadRuntimeScript(context.trackingAsset", StringComparison.Ordinal);
+        var trackingLoad = runtime.IndexOf("await loadRuntimeScript(trackingAsset)", StringComparison.Ordinal);
         var metaLoad = runtime.IndexOf("await loadRuntimeScript(context.metaSignalAsset", StringComparison.Ordinal);
         var openAiLoad = runtime.IndexOf("await loadRuntimeScript(context.openAiMeasurementAsset", StringComparison.Ordinal);
 
@@ -223,7 +224,9 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("schedulePublicRuntimeRetry()", runtime, StringComparison.Ordinal);
         Assert.Contains("publicRuntimeStarted = true", runtime, StringComparison.Ordinal);
         Assert.Contains("using Microsoft.Extensions.Logging;", controller, StringComparison.Ordinal);
-        Assert.Contains("canonical analytics bootstrap will continue", controller, StringComparison.Ordinal);
+        Assert.Contains("MarketingBrowserConfigurationService", controller, StringComparison.Ordinal);
+        var browserConfiguration = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MarketingBrowserConfigurationService.cs"));
+        Assert.Contains("first-party tracking continues", browserConfiguration, StringComparison.Ordinal);
     }
 
     [Fact]

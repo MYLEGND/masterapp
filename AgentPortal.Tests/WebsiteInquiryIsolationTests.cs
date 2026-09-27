@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Net.Http;
 using System.Linq;
@@ -309,23 +310,47 @@ public sealed class WebsiteInquiryIsolationTests
         var version = await f.Db.Set<WebsiteContentVersion>().SingleAsync();
         version.CompiledPagesJson = "{\"pages\":{\"/\":{\"html\":\"test\"}}}";
         await f.Db.SaveChangesAsync();
-        var controller = new Protect_Website.Controllers.AnalyticsController(f.Db,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<Protect_Website.Controllers.AnalyticsController>.Instance)
-            { ControllerContext = new() { HttpContext = new DefaultHttpContext() } };
+        var controller = WebsiteTrackingIngestTests.BuildController(f.Db);
+        var config = new ConfigurationBuilder().Build();
+        var domains = new WebsiteDomainService(f.Db, Mock.Of<IHttpClientFactory>(), config);
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddSingleton(f.Db);
+        services.AddSingleton(new PublicWebsiteRuntimeScopeResolver(f.Db, domains, config));
+        controller.HttpContext.RequestServices = services.BuildServiceProvider();
         controller.Request.Host = new HostString("business.example");
         controller.Request.Headers.Origin = "https://business.example";
-        var domains = new WebsiteDomainService(f.Db, Mock.Of<IHttpClientFactory>(), new ConfigurationBuilder().Build());
-        var request = new Protect_Website.Controllers.AnalyticsController.BusinessEventRequest(Guid.NewGuid(), Guid.NewGuid(), "/");
-        Assert.IsType<OkObjectResult>(await controller.BusinessPage(request, domains, default));
-        Assert.IsType<OkObjectResult>(await controller.BusinessPage(request, domains, default));
+        var request = new TrackingProxyController.AnalyticsEventRequest
+        {
+            ClientEventId = Guid.NewGuid(), SessionId = Guid.NewGuid().ToString("N"),
+            VisitorId = Guid.NewGuid().ToString("N"), Path = "/", SiteKey = WebsiteEditorSiteKeys.Business,
+            EventType = "page_view"
+        };
+        Assert.IsType<OkObjectResult>(await controller.Ingest(request, default));
+        Assert.IsType<OkObjectResult>(await controller.Ingest(request, default));
         var row = Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
         Assert.Equal(f.BusinessId, row.CommerceBusinessId);
         Assert.Null(row.AgentTrackingProfileId);
+        Assert.Equal(request.VisitorId, row.VisitorId);
+        Assert.NotEqual(row.VisitorId, row.SessionId);
         Assert.DoesNotContain("Insurance", row.MetadataJson);
-        Assert.IsType<ConflictResult>(await controller.BusinessPage(request with { SessionId = Guid.NewGuid() }, domains, default));
-        Assert.IsType<NotFoundResult>(await controller.BusinessPage(request with { EventId = Guid.NewGuid(), Path = "/unpublished" }, domains, default));
+        // A reused event ID cannot move from a business to the root Protect owner.
+        request.SiteKey = WebsiteEditorSiteKeys.Protect;
+        Assert.IsType<ConflictObjectResult>(await controller.Ingest(request, default));
+        request.SiteKey = WebsiteEditorSiteKeys.Business;
+        request.ClientEventId = Guid.NewGuid();
+        request.Path = "/unpublished";
+        Assert.IsType<BadRequestObjectResult>(await controller.Ingest(request, default));
+        request.Path = "/";
         controller.Request.Headers.Origin = "https://foreign.example";
-        Assert.IsType<BadRequestResult>(await controller.BusinessPage(request, domains, default));
+        Assert.IsType<BadRequestObjectResult>(await controller.Ingest(request, default));
+        controller.Request.Scheme = "https";
+        controller.Request.Method = "POST";
+        foreach (var invalidOrigin in new[] { "", "https://foreign.example/path", "null" })
+        {
+            controller.Request.Headers.Origin = invalidOrigin;
+            Assert.IsType<BadRequestObjectResult>(await controller.Ingest(request, default));
+        }
+        Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
     }
 
     private sealed class Fixture : IDisposable

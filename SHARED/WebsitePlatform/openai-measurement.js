@@ -56,6 +56,7 @@
       initializedPixels.add(pixelId);
     }
     window.LEGEND_OPENAI_PIXEL_ID = pixelId;
+    window.LegendAnalytics?.subscribe?.(`openai:${pixelId}`, body => trackCanonical(body, pixelId));
     await loadSdk().catch(() => {});
     return true;
   }
@@ -72,8 +73,13 @@
     return true;
   }
 
-  function trackCanonical(body) {
+  function trackCanonical(body, pixelId) {
     if (!body || body.IsInternal === true) return false;
+    let metadata = {}; try { metadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
+    const bindings = metadata.configuredSignalBindings;
+    if (Array.isArray(bindings) && bindings.length &&
+        !bindings.some(binding => ['destinations', 'meta'].includes(binding.deliveryMode) && !binding.duplicateBinding)) return false;
+    if (body.MetaSignal?.metadata?.configuredDeliveryMode === 'analytics') return false;
     const eventId = body.ClientEventId || body.EventId || null;
     switch (body.EventType) {
       case 'page_view':
@@ -87,7 +93,7 @@
               content_type: 'page'
             }]
           },
-          eventId);
+          eventId, pixelId);
       default:
         return false;
     }

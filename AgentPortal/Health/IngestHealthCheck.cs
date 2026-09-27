@@ -5,7 +5,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace AgentPortal.Health;
 
 /// <summary>
-/// Synthetic readiness indicator for ingest endpoints (controller resolvable, dependencies injected).
+/// Dependency readiness for the portal lead endpoint. Public analytics is owned by Protect.
 /// </summary>
 public sealed class IngestHealthCheck : IHealthCheck
 {
@@ -18,11 +18,10 @@ public sealed class IngestHealthCheck : IHealthCheck
 
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        // MVC discovers controllers but does not register them as services. Activate each
+        // MVC discovers controllers but does not register them as services. Activate it
         // through its scoped dependency graph without adding duplicate controller services.
         using var scope = _scopeFactory.CreateScope();
-        _ = ActivatorUtilities.CreateInstance<AnalyticsIngestController>(scope.ServiceProvider);
         _ = ActivatorUtilities.CreateInstance<LeadSubmitController>(scope.ServiceProvider);
-        return Task.FromResult(HealthCheckResult.Healthy("Ingest controllers resolvable"));
+        return Task.FromResult(HealthCheckResult.Healthy("Lead ingest dependencies resolvable"));
     }
 }

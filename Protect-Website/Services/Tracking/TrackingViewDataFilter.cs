@@ -1,60 +1,31 @@
 using Infrastructure.Analytics;
+using Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
-using ProtectWebsite.Services.Meta;
 
 namespace ProtectWebsite.Services.Tracking;
 
-/// <summary>
-/// Pushes tracking context into ViewData for layout injection.
-/// </summary>
-public sealed class TrackingViewDataFilter : IAsyncActionFilter
+/// <summary>Tracking ownership is resolved before either optional advertising destination.</summary>
+public sealed class TrackingViewDataFilter(IHttpContextAccessor http, AgentTrackingResolver profiles,
+    IConfiguration configuration, MasterAppDbContext db, MarketingBrowserConfigurationService marketing) : IAsyncActionFilter
 {
-    private readonly IHttpContextAccessor _http;
-    private readonly IMetaPixelResolutionService _metaPixelResolution;
-    private readonly IOpenAiAdsAccountConnectionAuthority _openAiConnections;
-
-    public TrackingViewDataFilter(
-        IHttpContextAccessor http,
-        IMetaPixelResolutionService metaPixelResolution,
-        IOpenAiAdsAccountConnectionAuthority openAiConnections)
-    {
-        _http = http;
-        _metaPixelResolution = metaPixelResolution;
-        _openAiConnections = openAiConnections;
-    }
-
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         if (context.Controller is Controller controller)
         {
-            var httpContext = _http.HttpContext ?? context.HttpContext;
-            var profile = httpContext.Items["TrackingProfile"] as Domain.Entities.AgentTrackingProfile;
-            var isFounder = httpContext.Items.ContainsKey("IsFounderPath") && (httpContext.Items["IsFounderPath"] as bool? == true);
-            var slug = httpContext.Items["TrackingSlug"] as string;
-            var metaPixelContext = await _metaPixelResolution.ResolveForCurrentRequestAsync(
-                httpContext,
-                context.HttpContext.RequestAborted);
-
-            var resolvedAgentContext =
-                metaPixelContext.AgentTrackingProfileId.HasValue ||
-                !string.IsNullOrWhiteSpace(metaPixelContext.AgentSlug);
-
-            controller.ViewData["TrackingProfileId"] = metaPixelContext.AgentTrackingProfileId ?? profile?.Id;
-            controller.ViewData["TrackingSlug"] = !string.IsNullOrWhiteSpace(metaPixelContext.AgentSlug)
-                ? metaPixelContext.AgentSlug
-                : slug;
-            controller.ViewData["IsFounderPath"] = resolvedAgentContext ? false : isFounder;
-            controller.ViewData["ResolvedMetaPixelId"] = metaPixelContext.PixelId;
-            controller.ViewData["MetaPixelOwnerType"] = metaPixelContext.PixelOwnerType;
-
-            var openAiOwner = metaPixelContext.AgentTrackingProfileId.HasValue
-                ? Shared.Analytics.MarketingOwnerScope.Agent(metaPixelContext.AgentTrackingProfileId.Value)
-                : Shared.Analytics.MarketingOwnerScope.Founder;
-            var openAi = await _openAiConnections.GetAsync(openAiOwner, context.HttpContext.RequestAborted);
-            controller.ViewData["ResolvedOpenAiPixelId"] = openAi.Connected && openAi.PixelConfigured ? openAi.PixelId : null;
+            var request = http.HttpContext ?? context.HttpContext;
+            var resolved = await ProtectWebsiteOwnerResolver.ResolveAsync(request, profiles, configuration["Founder:Upn"], ct: request.RequestAborted);
+            var owner = resolved is null ? null : await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, resolved.Profile, request.RequestAborted);
+            var browser = await marketing.GetAsync(owner, request.RequestAborted);
+            controller.ViewData["TrackingProfileId"] = resolved?.Profile.Id;
+            controller.ViewData["TrackingSlug"] = resolved?.Slug;
+            controller.ViewData["IsFounderPath"] = resolved?.IsFounder == true;
+            controller.ViewData["ResolvedMetaPixelId"] = browser.MetaPixelId;
+            controller.ViewData["MetaPixelOwnerType"] = browser.MetaPixelOwnerType;
+            controller.ViewData["ResolvedOpenAiPixelId"] = browser.OpenAiPixelId;
+            controller.ViewData["AnalyticsAttributionScope"] = browser.MarketingOwnerKey;
+            controller.ViewData["MetaTestMode"] = browser.MetaTestMode;
         }
-
         await next();
     }
 }

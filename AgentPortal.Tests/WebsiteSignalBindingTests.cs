@@ -52,9 +52,11 @@ public sealed class WebsiteSignalBindingTests
     {
         foreach (var option in WebsiteSignalBindingPolicy.Options)
         {
-            Assert.True(MetaSignalEventCatalog.TryGet(option.Name, out var definition));
-            Assert.Equal(definition.AllowBrowserPixel || definition.AllowServerForward, option.MetaEligible);
-            Assert.Equal(MetaSignalEventCatalog.IsServerAuthorityEvent(option.Name), option.RequiresServerOutcome);
+            Assert.True(AnalyticsEventCatalog.TryGetBehavior(option.Name, out var behavior));
+            Assert.Equal(behavior.Key, option.ActionKey);
+            Assert.Equal(behavior.RequiresServerAuthority, option.RequiresServerOutcome);
+            Assert.Equal(behavior.EditorTriggers, option.Triggers);
+            if (option.RequiresServerOutcome) Assert.Empty(option.Triggers);
         }
     }
 }

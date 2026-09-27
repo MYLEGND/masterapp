@@ -105,7 +105,8 @@ namespace Protect_Website.Controllers
                 lead.Status = captured.Captured ? "New" : "InternalTestLead";
                 var persistedEvent = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
                 {
-                    EventName = "lead_persisted",
+                    EventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                    EventName = "website_lead_submitted",
                     EventCategory = "lead",
                     EventUtc = lead.CreatedUtc,
                     PageKey = "risk_assessment",
@@ -120,17 +121,17 @@ namespace Protect_Website.Controllers
                     Host = lead.Host,
                     IsInternal = lead.IsInternal,
                     IsBrowserSignal = false,
-                    IsServerAuthority = false,
+                    IsServerAuthority = true,
                     MetaServerAuthorityEligible = true,
                     Metadata = new { LeadId = lead.LeadId, CrmCaptured = captured.Captured }
                 });
                 persistedEvent.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
-                    eventName: "lead_persisted",
+                    eventName: "website_lead_submitted",
                     leadId: lead.LeadId,
                     sessionId: lead.SessionId,
-                    payload: new { LeadId = lead.LeadId, CrmCaptured = captured.Captured },
+                    payload: new { LeadId = lead.LeadId, canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), CrmCaptured = captured.Captured },
                     isBrowserSignal: false,
-                    isServerAuthority: false,
+                    isServerAuthority: true,
                     metaServerAuthorityEligible: true,
                     metaSingleTruthDispatchEligible: false,
                     metaPipelineOrigin: "risk_assessment");

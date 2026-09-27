@@ -51,7 +51,8 @@ public class QuoteProductInstrumentationContractTests
 
         foreach (var controller in controllers)
         {
-            Assert.Contains("\"lead_persisted\"", controller, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"lead_persisted\"", controller, StringComparison.Ordinal);
+            Assert.Contains("\"website_lead_submitted\"", controller, StringComparison.Ordinal);
             Assert.Contains("\"workstation_capture_attempt\"", controller, StringComparison.Ordinal);
             Assert.Contains("\"workstation_capture_success\"", controller, StringComparison.Ordinal);
             Assert.Contains("\"workstation_capture_failure\"", controller, StringComparison.Ordinal);

@@ -2,6 +2,39 @@ namespace Infrastructure.WebsiteEditing;
 
 public static class WebsiteContentSanitizer
 {
+    /// <summary>
+    /// Read-only compatibility for persisted documents. Retired browser mappings
+    /// of verified outcomes are inactive; their original JSON remains available
+    /// to the Event Map. New saves always use strict Sanitize validation.
+    /// </summary>
+    public static WebsiteContentDocument ReadPersisted(string json, System.Text.Json.JsonSerializerOptions options)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(json);
+        void RemoveRetiredMappings(System.Text.Json.Nodes.JsonNode? node)
+        {
+            if (node is System.Text.Json.Nodes.JsonObject obj)
+            {
+                foreach (var property in obj.ToArray())
+                {
+                    if (property.Key.Equals("signals", StringComparison.OrdinalIgnoreCase) &&
+                        property.Value is System.Text.Json.Nodes.JsonArray bindings)
+                    {
+                        for (var i = bindings.Count - 1; i >= 0; i--)
+                        {
+                            var name = bindings[i]?["eventName"]?.ToString() ?? bindings[i]?["EventName"]?.ToString();
+                            if (Shared.Analytics.AnalyticsEventCatalog.RequiresServerAuthority(name)) bindings.RemoveAt(i);
+                        }
+                    }
+                    RemoveRetiredMappings(property.Value);
+                }
+            }
+            else if (node is System.Text.Json.Nodes.JsonArray array)
+                foreach (var child in array) RemoveRetiredMappings(child);
+        }
+        RemoveRetiredMappings(root);
+        return Sanitize(System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(root?.ToJsonString() ?? "{}", options) ?? new());
+    }
+
     private const int MaxElements = 600;
     private const int MaxExtras = 120;
     private const int MaxTextLength = 12000;
@@ -184,7 +217,10 @@ public static class WebsiteContentSanitizer
         {
             if (item is null || item.IsSystem || result.Count >= 8) continue;
             var key = SanitizeId(item.Key);
-            if (key.Length == 0 || !keys.Add(key)) continue;
+            if (key.Length == 0 || !string.Equals(key, item.Key, StringComparison.Ordinal) ||
+                item.MinWidth < 0 || item.MinWidth > 10000 ||
+                (item.MaxWidth.HasValue && (item.MaxWidth.Value < item.MinWidth || item.MaxWidth.Value > 10000)) ||
+                !keys.Add(key)) continue;
             var min = Math.Clamp(item.MinWidth, 0, 10000);
             var max = item.MaxWidth.HasValue ? Math.Clamp(item.MaxWidth.Value, min, 10000) : (int?)null;
             var label = ClampText(item.Label);

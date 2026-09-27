@@ -34,7 +34,6 @@ window.PARFAIT_COMMERCE_CONTEXT = @Html.Raw(System.Text.Json.JsonSerializer.Seri
     cartPath = commerce.CartPath,
     checkoutPath = commerce.CheckoutPath,
     successPath = commerce.SuccessPath,
-    analyticsEndpoint = $"/parfait-analytics/s/{Uri.EscapeDataString(commerce.BusinessKey)}/track",
     cartStorageKey = commerce.CartStorageKey,
     isParfait = false,
     cartIcon = commerce.CartIcon

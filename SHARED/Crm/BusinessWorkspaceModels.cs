@@ -27,7 +27,10 @@ public sealed class BusinessWorkspaceModel
 }
 
 public sealed record BusinessWebsiteEventMapRow(string Page, string Element, string Trigger, string Event,
-    string Mode, bool Published, long Revision);
+    string Mode, bool Published, long Revision, string? Owner = null, string? Site = null,
+    string? VisibleLabel = null, string? ActionKey = null, string? Binding = null, string? BehaviorKey = null,
+    string? Authority = null, bool Locked = false, string? MetaMapping = null, string? OpenAiMapping = null,
+    Guid? PublishedVersion = null, string? AnalyticsStatus = null, string? MetaStatus = null, string? OpenAiStatus = null);
 public sealed record BusinessWebsiteEventRow(DateTime OccurredUtc, string Event, string? Page, bool ServerSent);
 
 public sealed class BusinessCrmContact

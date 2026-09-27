@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Infrastructure.Analytics;
@@ -59,6 +60,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
         var capi = scope.ServiceProvider.GetRequiredService<IMetaConversionsApiService>();
         var metaPixelResolutionService = scope.ServiceProvider.GetRequiredService<IMetaPixelResolutionService>();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
         var candidates = db.MetaSignalEvents
             .Where(x =>
@@ -290,16 +292,30 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 continue;
             }
 
-            var pixelContext = row.CommerceBusinessId is { } businessId
-                ? await metaPixelResolutionService.ResolveForBusinessAsync(businessId, cancellationToken)
-                : await metaPixelResolutionService.ResolveForLeadAsync(
-                row.AgentTrackingProfileId ?? websiteLead?.AgentTrackingProfileId,
-                row.AgentSlug ?? websiteLead?.AgentSlug,
-                isFounderPath: string.Equals(
-                    MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "siteKey"),
-                    WebsiteEditorSiteKeys.Legend,
-                    StringComparison.OrdinalIgnoreCase),
-                cancellationToken);
+            var sourceId = CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "sourceAnalyticsEventId");
+            MarketingOwnerScope? owner;
+            if (sourceId.HasValue)
+            {
+                var source = await db.AnalyticsEvents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sourceId.Value, cancellationToken);
+                owner = source is null || source.AgentTrackingProfileId != row.AgentTrackingProfileId ||
+                    source.CommerceBusinessId != row.CommerceBusinessId || !CanonicalAdvertisingEventProjection.CanProjectServer(source)
+                    ? null : await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, cancellationToken);
+            }
+            else
+            {
+                // Required queue-history adapter only; new bridge rows always resolve their persisted source.
+                owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, row, cancellationToken);
+            }
+            if (owner is null)
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Attempted = false, Sent = false, Status = "skipped_owner_unresolved", Note = "canonical_source_owner_unresolved"
+                });
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+            var pixelContext = await metaPixelResolutionService.ResolveForOwnerAsync(owner, cancellationToken);
 
             var capiRequest = new MetaConversionsApiEventRequest
             {
@@ -308,7 +324,9 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 AgentTrackingProfileId = row.AgentTrackingProfileId,
                 CorrelationId = Guid.NewGuid(),
                 EventName = row.EventName,
-                EventId = isBridgeOwned
+                EventId = MetaSignalSingleTruthPolicy.ReadBoolean(row.MetadataJson, "canonicalSourceIdentity") == true
+                    ? row.EventId
+                    : isBridgeOwned
                     ? FirstNonBlank(
                         MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "upstreamMetaEventId"),
                         row.MetaDeduplicationKey,

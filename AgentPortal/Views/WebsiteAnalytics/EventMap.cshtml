@@ -1,0 +1,15 @@
+@model IReadOnlyList<Infrastructure.WebsiteEditing.WebsiteEventMapQuery.Entry>
+@{ ViewData["Title"] = "Event Map"; }
+<div class="container-fluid py-4">
+<h1>Event Map</h1>
+<p>Published configuration and delivery evidence from the last 30 days. Automatic outcomes are locked to their authoritative source. “Not observed” is not a delivery failure. Unpublished drafts do not change this map.</p>
+<div class="table-responsive"><table class="table table-striped">
+<thead><tr><th>Owner / site</th><th>Page / element</th><th>Visible label</th><th>Action key / binding</th><th>Behavior / canonical event</th><th>Authority / mode</th><th>Meta / OpenAI mapping</th><th>Published version</th><th>Analytics / Meta / OpenAI status</th></tr></thead>
+<tbody>
+@foreach (var row in Model)
+{
+<tr><td>@row.Owner<br/>@row.Site</td><td>@row.Page<br/>@row.Element</td><td>@row.VisibleLabel</td><td><code>@row.ActionKey</code><br/>@row.Binding</td><td>@row.BehaviorKey<br/><code>@row.CanonicalEvent</code></td><td>@row.Authority<br/>@row.Mode @(row.Locked ? "(locked)" : "")</td><td>@(row.MetaMapping ?? "not mapped")<br/>@(row.OpenAiMapping ?? "not mapped")</td><td>@(row.PublishedVersion?.ToString() ?? "not published")</td><td>@row.AnalyticsStatus<br/>@row.MetaStatus<br/>@row.OpenAiStatus</td></tr>
+}
+</tbody></table></div>
+@if (Model.Count == 0) { <p>No website publication is available in this reporting scope.</p> }
+</div>

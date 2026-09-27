@@ -37,6 +37,36 @@ public sealed class BusinessMetaAdsScopeTests
         agentConnections.VerifyNoOtherCalls();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FounderProfileNeverUsesAgentLegacyCredentialsAndGlobalNeverUsesProcessCredentials(bool connected)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var founder = new AgentTrackingProfile { Id = Guid.NewGuid(), AgentUserId = "founder", AgentUpn = "founder@example.com", Slug = "founder", Status = "Active" };
+        db.Add(founder); await db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> {
+            ["Founder:Upn"] = founder.AgentUpn, ["MetaAds:Enabled"] = "true",
+            ["MetaAds:AccessToken"] = "global-token", ["MetaAds:DefaultAccountId"] = "999"
+        }).Build();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var connections = new MarketingConnectionStore(db, protector);
+        if (connected) await connections.SaveAdsAsync(MarketingOwnerScope.Founder, new() { AccessToken = "founder-token", AccountId = "act_123" });
+        await connections.SaveAdsAsync(MarketingOwnerScope.Agent(founder.Id), new() { AgentTrackingProfileId = founder.Id, AccessToken = "wrong-agent-token", AccountId = "act_456" });
+        var legacy = new Mock<IMetaAdsConnectionStore>(MockBehavior.Strict);
+        var service = new MetaAdsService(config, db, Mock.Of<IHttpClientFactory>(), legacy.Object,
+            Mock.Of<IAnalyticsQueryService>(), NullLogger<MetaAdsService>.Instance, connections);
+        var method = typeof(MetaAdsService).GetMethod("ResolveCredentialsAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        async Task<(string Token,string AccountId)> Resolve(ScopeContext scope) =>
+            await (Task<(string Token,string AccountId)>)method.Invoke(service, new object[] { scope, System.Threading.CancellationToken.None })!;
+        var expected = connected ? ("founder-token", "123") : (string.Empty, string.Empty);
+        Assert.Equal(expected, await Resolve(ScopeContext.ForAgent(founder.Id)));
+        Assert.Equal(expected, await Resolve(ScopeContext.ForFounder(founder.Id)));
+        Assert.Equal((string.Empty,string.Empty), await Resolve(ScopeContext.Global));
+        Assert.Equal((string.Empty,string.Empty), await Resolve(ScopeContext.ForSite("legendwebsite")));
+        legacy.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public void CampaignLeadAttributionRejectsOtherBusinessesAgentLeadsAndAmbiguousScope()
     {

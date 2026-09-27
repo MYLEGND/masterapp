@@ -53,7 +53,9 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("advertising.ProposePromotionAsync", manager, StringComparison.Ordinal);
         Assert.Contains("IOpenAiAdsExecutionService", performance, StringComparison.Ordinal);
         Assert.Contains("IMetaAdsService", performance, StringComparison.Ordinal);
-        Assert.Contains("OpenAiClickReference.Normalize", performance, StringComparison.Ordinal);
+        Assert.Contains("CanonicalMarketingOutcomeProjection.ConfirmedOutcomes", performance, StringComparison.Ordinal);
+        Assert.DoesNotContain("MetaSignalEvents", performance, StringComparison.Ordinal);
+        Assert.Contains("OpenAiClickReference.Normalize", Read(root, "Infrastructure", "Analytics", "CanonicalMarketingOutcomeProjection.cs"), StringComparison.Ordinal);
         Assert.Contains("Campaign-level revenue is not inferred", performance, StringComparison.Ordinal);
     }
 

@@ -132,7 +132,7 @@ public static class UnifiedEventContextBuilder
 
             BrowserEventSent = browserEventSent,
             IsBrowserSignal = resolvedIsBrowserSignal,
-            IsServerAuthority = isServerAuthority == true,
+            IsServerAuthority = isServerAuthority ?? (!resolvedIsBrowserSignal && AnalyticsEventCatalog.IsServerAllowed(normalizedEventName) && !AnalyticsEventCatalog.IsBrowserAllowed(normalizedEventName)),
             MetaServerAuthorityEligible = resolvedMetaServerAuthorityEligible,
             Metadata = metadata
         };

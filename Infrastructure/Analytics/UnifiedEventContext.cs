@@ -38,6 +38,7 @@ public sealed record UnifiedEventContext
     public string? PageMode { get; init; }
     public string? FormKey { get; init; }
     public string? ElementKey { get; init; }
+    public string? ActionKey { get; init; }
     public string? ButtonLabel { get; init; }
 
     // =========================

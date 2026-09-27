@@ -1,500 +1,105 @@
-@inject ParfaitApp.Services.ParfaitBusinessScopeService ParfaitScope
-@inject Infrastructure.Analytics.MarketingConnectionStore MarketingConnections
+@inject Infrastructure.Data.MasterAppDbContext AnalyticsDb
+@inject Microsoft.Extensions.Configuration.IConfiguration AnalyticsConfiguration
+@inject Infrastructure.Analytics.MarketingBrowserConfigurationService BrowserMarketing
 @inject Microsoft.Extensions.Logging.ILoggerFactory LoggerFactory
 @{
     var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
     var isManagementPreview = Context.Request.Path.StartsWithSegments("/commerce/manage");
     string metaPixelId = string.Empty;
+    string openAiPixelId = string.Empty;
+    string? attributionScope = null;
+    var metaTestMode = false;
     try
     {
         if (!isManagementPreview && commerce is not null)
         {
-            Shared.Analytics.MarketingOwnerScope owner;
-            if (string.Equals(commerce.WebsiteSiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase))
+            var owner = await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(AnalyticsDb, AnalyticsConfiguration, commerce, Context.Request.Host.Host, Context.RequestAborted);
+            if (owner is not null)
             {
-                if (!commerce.AgentTrackingProfileId.HasValue)
-                    throw new InvalidOperationException("Protect storefront tracking requires the canonical agent marketing owner.");
-                owner = Shared.Analytics.MarketingOwnerScope.Agent(commerce.AgentTrackingProfileId.Value);
+                var browser = await BrowserMarketing.GetAsync(owner, Context.RequestAborted);
+                metaPixelId = browser.MetaPixelId ?? string.Empty;
+                openAiPixelId = browser.OpenAiPixelId ?? string.Empty;
+                attributionScope = browser.MarketingOwnerKey;
+                metaTestMode = browser.MetaTestMode;
             }
-            else if (string.Equals(commerce.WebsiteSiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
-            {
-                owner = Shared.Analytics.MarketingOwnerScope.Founder;
-            }
-            else
-            {
-                owner = Shared.Analytics.MarketingOwnerScope.Business(commerce.CommerceBusinessId);
-            }
-
-            var connection = await MarketingConnections.GetStatusAsync(owner, Context.RequestAborted);
-            if (connection?.DisconnectedUtc is null)
-                metaPixelId = (connection?.PixelId ?? string.Empty).Trim();
-        }
-        else if (!isManagementPreview)
-        {
-            var parfait = await ParfaitScope.GetParfaitAsync(Context.RequestAborted);
-            var connection = await MarketingConnections.GetStatusAsync(
-                Shared.Analytics.MarketingOwnerScope.Business(parfait.Id),
-                Context.RequestAborted);
-            if (connection?.DisconnectedUtc is null)
-                metaPixelId = (connection?.PixelId ?? string.Empty).Trim();
         }
     }
     catch (Exception ex)
     {
-        // Marketing instrumentation is optional to rendering. A transient analytics or
-        // migration fault must never take a storefront offline.
-        LoggerFactory.CreateLogger("ParfaitCommerceTracking")
-            .LogError(ex, "Commerce marketing settings lookup failed; rendering storefront without Meta pixel.");
+        LoggerFactory.CreateLogger("ParfaitCommerceTracking").LogError(ex, "Commerce optional marketing configuration unavailable.");
     }
-
     var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
 }
+@if (!isManagementPreview)
+{
+<script>
+window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+    endpoint = "https://masterapp-protect.azurewebsites.net/api/tracking/ingest",
+    siteKey = "commerce",
+    runtimeOwner = "commerce",
+    attributionScope,
+    metaTestMode,
+    allowedBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.BrowserAllowedEventNames,
+    criticalBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.CriticalBrowserEventNames,
+    signalAliases = Shared.Analytics.MetaSignalAnalyticsAliasCatalog.BrowserProjectionMap
+}));
+</script>
+<script src="/store-assets/js/tracking.js" asp-append-version="true"></script>
+<script>
+(() => {
+ const ids=window.LegendAnalytics?.ids;if(!ids)return;
+ const storeScope=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(commerce?.CommerceBusinessId.ToString("N")));
+ if(!storeScope)return;
+ function persistCurrentAttribution() {
+   const sessionId=ids.getSessionId(), value=ids.getAttribution() || {};
+   const attribution={};
+   for(const [cookieKey,field] of Object.entries({utm_source:'utmSource',utm_medium:'utmMedium',utm_campaign:'utmCampaign',utm_id:'utmId',utm_content:'utmContent',fbclid:'fbclid',oppref:'oppref',meta_campaign_id:'metaCampaignId',meta_adset_id:'metaAdSetId',meta_ad_id:'metaAdId'}))
+     if(value[field])attribution[cookieKey]=String(value[field]).slice(0,256);
+   const envelope={scope:storeScope,sessionId,updatedAt:Date.now(),attribution};
+   document.cookie='pf_attribution='+encodeURIComponent(JSON.stringify(envelope))+'; Path=/; SameSite=Lax; Secure';
+   for(const [name,id] of Object.entries({pf_sid:sessionId,pf_vid:ids.getVisitorId()}))
+     if(id)document.cookie=name+'='+encodeURIComponent(String(id).slice(0,512))+'; Path=/; SameSite=Lax; Secure';
+ }
+ persistCurrentAttribution();
+ // Refresh current session activity before a native cart/checkout command runs.
+ document.addEventListener('click',persistCurrentAttribution,true);
+ document.addEventListener('submit',persistCurrentAttribution,true);
+
+})();
+</script>
 @if (hasMetaPixel)
 {
 <script>
-    !function(f,b,e,v,n,t,s){
-        if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-        n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t,s)
-    }(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
+if (window.__legendTrackingInitialized) {
+ !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+ const pixelId = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(metaPixelId));
+ fbq('init',pixelId);
 
-    window.PARFAIT_META_PIXEL_ID = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(metaPixelId));
-    fbq('init', window.PARFAIT_META_PIXEL_ID);
-    fbq('track', 'PageView');
+}
 </script>
+}
+<script src="/store-assets/js/meta-signal-intelligence.js" asp-append-version="true"></script>
+<script>
+if(window.__legendTrackingInitialized) window.metaSignalIntelligence?.createLandingSession({
+ enabled:true,sendBrowserEvents:true,sendServerEvents:true,persistEvents:true,
+ siteKey:'commerce',pageKey:location.pathname,quoteType:'commerce',
+ pixelId:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(metaPixelId)),
+ browserEventNames:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared.Analytics.MetaSignalEventCatalog.BrowserPixelEventNames)),
+ browserSignalEventNames:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Shared.Analytics.AnalyticsEventCatalog.BrowserAllowedEventNames))
+});
+</script>
+@if (!string.IsNullOrWhiteSpace(openAiPixelId))
+{
+<script src="/store-assets/js/openai-measurement.js" asp-append-version="true"></script>
+<script>if(window.__legendTrackingInitialized) window.LegendOpenAiMeasurement?.configure({pixelId:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(openAiPixelId))});</script>
 }
 <script>
 (() => {
-    const pathLower = location.pathname.toLowerCase();
-    if (pathLower.startsWith("/internal") || pathLower.startsWith("/commerce/manage") || pathLower.startsWith("/signin-oidc") || pathLower.startsWith("/signout-callback-oidc")) return;
-
-    const commerce = window.PARFAIT_COMMERCE_CONTEXT || {};
-    const trackingVersion = "legend-commerce-tracking-v4";
-    const sessionTtlMs = 30 * 60 * 1000;
-    const pageStartMs = Date.now();
-    const scrollThresholds = [25, 50, 75, 90, 100];
-    const firedScrollThresholds = new Set();
-    const firedEngagementEvents = new Set();
-
-    let lastVisibleAt = document.visibilityState === "visible" ? Date.now() : 0;
-    let engagedMilliseconds = 0;
-    let visibilityChangeCount = 0;
-    let mouseMoveCount = 0;
-    let humanInteractionCount = 0;
-    let pageExitSent = false;
-
-    const hasMetaPixel = typeof window.fbq === "function" && !!window.PARFAIT_META_PIXEL_ID;
-
-    const getCookie = name => document.cookie
-        .split("; ")
-        .find(row => row.startsWith(name + "="))
-        ?.split("=")[1];
-
-    const setCookie = (name, value, maxAge) => {
-        document.cookie = `${name}=${value}; path=/; SameSite=Lax; max-age=${maxAge}`;
-    };
-
-    const createUuid = prefix => {
-        const raw = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID().replaceAll("-", "")
-            : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
-        return `${prefix}_${raw}`;
-    };
-
-    const readNumber = value => {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : 0;
-    };
-
-    const normalizeKey = value => String(value || "")
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_+|_+$/g, "") || "unknown";
-
-    const currentPath = () => location.pathname || "/store";
-    const currentProductSlug = () => {
-        const parts = currentPath().split("/").filter(Boolean);
-        const productIndex = parts.findIndex(part => part.toLowerCase() === "product");
-        return productIndex >= 0 && parts.length > productIndex + 1 ? parts[productIndex + 1] : "";
-    };
-
-    const currentPageKey = () => {
-        const path = currentPath().toLowerCase().replace(/\/+$/, "");
-        const prefix = commerce.isParfait === false ? `commerce_${normalizeKey(commerce.businessKey)}` : "parfait";
-        if (!path || path === "/") return `${prefix}_home`;
-        if (path === String(commerce.storeRootPath || "/store").toLowerCase()) return `${prefix}_store_home`;
-        if (path === String(commerce.cartPath || "/store/cart").toLowerCase()) return `${prefix}_cart`;
-        if (path === String(commerce.checkoutPath || "/store/checkout").toLowerCase()) return `${prefix}_checkout`;
-        if (path === String(commerce.successPath || "/store/success").toLowerCase()) return `${prefix}_checkout_success`;
-        if (currentProductSlug()) return `${prefix}_product_${normalizeKey(currentProductSlug())}`;
-        return `${prefix}_${normalizeKey(path.replaceAll("/", "_"))}`;
-    };
-
-    const currentPageType = () => {
-        const path = currentPath().toLowerCase().replace(/\/+$/, "");
-        if (path === String(commerce.storeRootPath || "/store").toLowerCase()) return "store_index";
-        if (path === String(commerce.cartPath || "/store/cart").toLowerCase()) return "cart";
-        if (path === String(commerce.checkoutPath || "/store/checkout").toLowerCase()) return "checkout";
-        if (path === String(commerce.successPath || "/store/success").toLowerCase()) return "success";
-        if (currentProductSlug()) return "product_detail";
-        if (path === "/") return "marketing_home";
-        return "marketing_page";
-    };
-
-    const detectDeviceType = () => {
-        const width = Math.max(window.innerWidth || 0, screen.width || 0);
-        const ua = navigator.userAgent || "";
-        if (/ipad|tablet/i.test(ua) || (width >= 768 && width <= 1024 && /mobile/i.test(ua))) return "tablet";
-        if (/mobi|android|iphone|ipod/i.test(ua) || width < 768) return "mobile";
-        return "desktop";
-    };
-
-    const detectBrowser = () => {
-        const ua = navigator.userAgent || "";
-        if (/edg\//i.test(ua)) return "Edge";
-        if (/opr\//i.test(ua) || /opera/i.test(ua)) return "Opera";
-        if (/chrome\//i.test(ua) && !/edg\//i.test(ua) && !/opr\//i.test(ua)) return "Chrome";
-        if (/safari\//i.test(ua) && !/chrome\//i.test(ua)) return "Safari";
-        if (/firefox\//i.test(ua)) return "Firefox";
-        return "Other";
-    };
-
-    const detectOperatingSystem = () => {
-        const ua = navigator.userAgent || "";
-        if (/windows/i.test(ua)) return "Windows";
-        if (/android/i.test(ua)) return "Android";
-        if (/iphone|ipad|ipod/i.test(ua)) return "iOS";
-        if (/mac os x|macintosh/i.test(ua)) return "macOS";
-        if (/linux/i.test(ua)) return "Linux";
-        return "Other";
-    };
-
-    const currentScrollPercent = () => {
-        const doc = document.documentElement;
-        const maxScrollable = Math.max(0, (doc.scrollHeight || 0) - (window.innerHeight || 0));
-        if (maxScrollable <= 0) return 0;
-        const current = Math.max(window.scrollY || 0, window.pageYOffset || 0);
-        return Math.max(0, Math.min(100, Math.round((current / maxScrollable) * 100)));
-    };
-
-    const elapsedMilliseconds = () => Math.max(0, Date.now() - pageStartMs);
-
-    const syncVisibleTime = () => {
-        if (lastVisibleAt > 0) {
-            engagedMilliseconds += Math.max(0, Date.now() - lastVisibleAt);
-            lastVisibleAt = document.visibilityState === "visible" ? Date.now() : 0;
-        }
-    };
-
-    let visitorId = getCookie("pf_vid");
-    if (!visitorId) {
-        visitorId = createUuid("pfv");
-        setCookie("pf_vid", visitorId, 31536000);
-    }
-
-    const persistedSessionId = sessionStorage.getItem("pf_sid") || getCookie("pf_sid");
-    const persistedLastTouch = readNumber(sessionStorage.getItem("pf_sid_last_touch") || getCookie("pf_sid_last_touch"));
-    const sessionExpired = !persistedSessionId || !persistedLastTouch || (Date.now() - persistedLastTouch) > sessionTtlMs;
-
-    let sessionId = persistedSessionId;
-    if (sessionExpired) {
-        sessionId = createUuid("pfs");
-    }
-
-    const touchSession = () => {
-        const now = String(Date.now());
-        sessionStorage.setItem("pf_sid", sessionId);
-        sessionStorage.setItem("pf_sid_last_touch", now);
-        setCookie("pf_sid", sessionId, 1800);
-        setCookie("pf_sid_last_touch", now, 1800);
-    };
-
-    touchSession();
-
-    const queryOppref = (new URLSearchParams(location.search).get("oppref") || "").trim();
-    let firstTouchOppref = decodeURIComponent(getCookie("pf_oppref") || "");
-    if (!firstTouchOppref && queryOppref && queryOppref.length <= 1024) {
-        firstTouchOppref = queryOppref;
-        setCookie("pf_oppref", encodeURIComponent(firstTouchOppref), 7776000);
-    }
-
-    const readCart = () => window.ParfaitStorefront?.readCart?.() || [];
-
-    const cartValueCents = cart => cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
-    const cartQuantity = cart => cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-
-    const baseMetadata = () => ({
-        siteKey: commerce.websiteSiteKey || "ParfaitApp",
-        businessType: "Ecommerce",
-        reportingOwner: commerce.businessKey || "parfait",
-        commerceBusinessId: commerce.commerceBusinessId || null,
-        websiteContentVersionId: commerce.websiteContentVersionId || null,
-        pageType: currentPageType(),
-        pageKey: currentPageKey(),
-        pageTitle: document.title || "",
-        productSlug: currentProductSlug() || "",
-        fbclid: new URLSearchParams(location.search).get("fbclid") || "",
-        oppref: firstTouchOppref || "",
-        fbc: getCookie("_fbc") || "",
-        fbp: getCookie("_fbp") || "",
-        trackingVersion
-    });
-
-    const baseEventContext = () => ({
-        pageKey: currentPageKey(),
-        url: location.href,
-        referrer: document.referrer || "",
-        deviceType: detectDeviceType(),
-        browser: detectBrowser(),
-        operatingSystem: detectOperatingSystem(),
-        timeZone: Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone || "",
-        language: navigator.language || "",
-        screenWidth: Number(window.screen?.width) || null,
-        screenHeight: Number(window.screen?.height) || null,
-        viewportWidth: Number(window.innerWidth) || null,
-        viewportHeight: Number(window.innerHeight) || null,
-        scrollPercent: currentScrollPercent(),
-        dwellMilliseconds: elapsedMilliseconds(),
-        engagedMilliseconds,
-        isBounceCandidate: elapsedMilliseconds() < 10000,
-        isExitPage: false,
-        webDriver: !!navigator.webdriver,
-        isHeadless: /HeadlessChrome/i.test(navigator.userAgent || ""),
-        mouseMoveCount,
-        humanInteractionCount,
-        visibilityChangeCount,
-        trackingVersion,
-        metadata: baseMetadata()
-    });
-
-    const sendBrowserMeta = (eventName, payload = {}) => {
-        if (!hasMetaPixel) return;
-
-        const valueCents = Number(payload.valueCents || 0);
-        const value = valueCents > 0 ? Number((valueCents / 100).toFixed(2)) : undefined;
-
-        const metaPayload = {
-            content_name: payload.productName || document.title || "Parfait",
-            content_ids: [payload.productId || payload.productSlug || currentProductSlug() || currentPageKey()].filter(Boolean),
-            content_type: currentPageType() === "product_detail" ? "product" : "product_group",
-            currency: "USD"
-        };
-
-        if (value !== undefined) metaPayload.value = value;
-        if (payload.quantity) metaPayload.num_items = Number(payload.quantity) || undefined;
-
-        const eventId = payload.eventId || createUuid(`pfmeta_${normalizeKey(eventName)}`);
-
-        try {
-            window.fbq("track", eventName, metaPayload, { eventID: eventId });
-        } catch {
-        }
-    };
-
-    const send = (eventName, payload = {}) => {
-        syncVisibleTime();
-        touchSession();
-
-        const eventId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : createUuid("evt");
-        const context = baseEventContext();
-        const payloadMetadata = payload.metadata || {};
-        const body = {
-            eventName,
-            eventId,
-            visitorId,
-            sessionId,
-            ...context,
-            ...payload,
-            metadata: {
-                ...context.metadata,
-                ...payloadMetadata
-            }
-        };
-
-        const analyticsEndpoint = commerce.analyticsEndpoint || "/parfait-analytics/track";
-        try {
-            const sent = navigator.sendBeacon(
-                analyticsEndpoint,
-                new Blob([JSON.stringify(body)], { type: "application/json" })
-            );
-            if (sent) return;
-        } catch {
-        }
-
-        fetch(analyticsEndpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-            keepalive: true
-        }).catch(() => {});
-    };
-
-    window.parfaitTrackCommerce = send;
-
-    send("page_view");
-
-    if (currentPageType() === "store_index") {
-        send("ViewContent", { metadata: { pageType: "store_index" } });
-        sendBrowserMeta("ViewContent", { productName: commerce.storeName || "Store" });
-    }
-
-    if (currentPageType() === "product_detail") {
-        const name = document.querySelector("h1")?.textContent?.trim() || "";
-        send("ProductViewed", {
-            productName: name,
-            productSlug: currentProductSlug(),
-            metadata: { pageType: "product_detail" }
-        });
-        sendBrowserMeta("ViewContent", {
-            productName: name,
-            productSlug: currentProductSlug()
-        });
-    }
-
-    if (currentPageType() === "checkout") {
-        const cart = readCart();
-        const firstItem = cart.length ? cart[0] : null;
-        const totalQuantity = cartQuantity(cart);
-        const total = cartValueCents(cart);
-
-        send("CheckoutStarted", {
-            productId: firstItem?.id || null,
-            productName: firstItem?.name || null,
-            productSlug: firstItem?.slug || null,
-            size: firstItem?.size || null,
-            quantity: totalQuantity,
-            valueCents: total,
-            metadata: {
-                pageType: "checkout",
-                cartItems: JSON.stringify(cart.map(item => ({
-                    id: item.id,
-                    name: item.name,
-                    slug: item.slug,
-                    size: item.size,
-                    quantity: item.quantity,
-                    priceCents: item.priceCents
-                })))
-            }
-        });
-
-    }
-
-    document.addEventListener("click", event => {
-        const element = event.target.closest("button, a");
-        if (!element) return;
-
-        const label = (element.getAttribute("aria-label") || element.textContent || "").replace(/\s+/g, " ").trim();
-        const text = label.toLowerCase();
-
-        const isTrackedCta = element.matches(
-            "#spAddToCart, #spCheckoutLink, #spPayButton, #spApplyDiscount, #spClearDiscount, #spCheckoutApplyDiscount, #spCheckoutClearDiscount, a.sp-button, button.sp-button, a.sp-shop-link, a.sp-shop-media, a.sp-back-link, [data-action]"
-        );
-
-        if (isTrackedCta) {
-            send("cta_click", {
-                elementKey: normalizeKey(element.dataset.analyticsKey || element.id || element.dataset.action || element.getAttribute("href") || label || "cta"),
-                buttonLabel: label,
-                metadata: {
-                    ctaType: text.includes("add to cart") ? "add_to_cart" : text.includes("checkout") ? "checkout" : "store_cta",
-                    targetUrl: element.getAttribute("href") || ""
-                }
-            });
-        }
-
-        const looksLikeAddToCart =
-            text.includes("add to cart") ||
-            element.matches("#spAddToCart, [data-add-to-cart], [data-cart-add], .sp-product-button, .sp-add-to-cart, .pf-add-to-cart");
-
-        if (!looksLikeAddToCart) return;
-
-        setTimeout(() => {
-            const cart = readCart();
-            const item = cart.at(-1) || {};
-            const valueCents = (Number(item.priceCents) || 0) * (Number(item.quantity) || 1);
-
-            const payload = {
-                productId: item.id,
-                productName: item.name,
-                productSlug: item.slug || currentProductSlug() || null,
-                size: item.size,
-                quantity: Number(item.quantity) || 1,
-                valueCents,
-                metadata: { pageType: "cart_action" }
-            };
-
-            send("AddToCart", payload);
-        }, 150);
-    }, true);
-
-    const sendEngagementEvent = (eventName, minimumMs) => {
-        if (firedEngagementEvents.has(eventName)) return;
-        if (elapsedMilliseconds() < minimumMs) return;
-        firedEngagementEvents.add(eventName);
-        send(eventName, { metadata: { milestoneSeconds: Math.round(minimumMs / 1000) } });
-    };
-
-    const maybeFireScrollDepthEvents = () => {
-        const percent = currentScrollPercent();
-        scrollThresholds.forEach(threshold => {
-            if (percent >= threshold && !firedScrollThresholds.has(threshold)) {
-                firedScrollThresholds.add(threshold);
-                send(`scroll_depth_${threshold}`, {
-                    scrollPercent: threshold,
-                    metadata: { threshold }
-                });
-            }
-        });
-    };
-
-    const sendPageExit = () => {
-        if (pageExitSent) return;
-        pageExitSent = true;
-        syncVisibleTime();
-
-        send("page_exit", {
-            scrollPercent: currentScrollPercent(),
-            dwellMilliseconds: elapsedMilliseconds(),
-            engagedMilliseconds,
-            isBounceCandidate: elapsedMilliseconds() < 10000,
-            isExitPage: true,
-            metadata: { exitReason: "pagehide" }
-        });
-    };
-
-    window.setTimeout(() => sendEngagementEvent("page_engaged_5s", 5000), 5000);
-    window.setTimeout(() => sendEngagementEvent("page_engaged_10s", 10000), 10000);
-    window.setTimeout(() => sendEngagementEvent("page_engaged_15s", 15000), 15000);
-    window.setTimeout(() => sendEngagementEvent("page_engaged_30s", 30000), 30000);
-    window.setTimeout(() => sendEngagementEvent("page_engaged_60s", 60000), 60000);
-
-    document.addEventListener("mousemove", () => { mouseMoveCount += 1; }, { passive: true });
-
-    ["click", "keydown", "touchstart", "scroll"].forEach(eventName => {
-        window.addEventListener(eventName, () => { humanInteractionCount += 1; }, { passive: true });
-    });
-
-    window.addEventListener("scroll", maybeFireScrollDepthEvents, { passive: true });
-
-    document.addEventListener("visibilitychange", () => {
-        visibilityChangeCount += 1;
-
-        if (document.visibilityState === "hidden") {
-            syncVisibleTime();
-            send("page_visibility_hidden", { metadata: { visibilityState: "hidden" } });
-            return;
-        }
-
-        lastVisibleAt = Date.now();
-        send("page_visibility_return", { metadata: { visibilityState: "visible" } });
-    });
-
-    window.addEventListener("pagehide", sendPageExit);
-    window.addEventListener("beforeunload", sendPageExit);
+ const product=document.querySelector('#spAddToCart');
+ if (product) window.LegendAnalytics?.track({EventType:'ProductViewed',MetadataJson:JSON.stringify({
+   productId:product.dataset.productId,productName:product.dataset.productName,
+   productSlug:product.dataset.productSlug,priceCents:Number(product.dataset.productPriceCents||0)
+ })});
 })();
 </script>
+}

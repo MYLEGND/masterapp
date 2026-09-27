@@ -517,14 +517,6 @@ public sealed class WebsiteContentEditorRoundTripTests
                             EventName = "LeadFormStart",
                             DeliveryMode = "meta",
                             OncePerSession = true
-                        },
-                        new WebsiteSignalBinding
-                        {
-                            Id = serverBindingId,
-                            Trigger = "submission_saved",
-                            EventName = "Lead",
-                            DeliveryMode = "meta",
-                            OncePerSession = true
                         }
                     ]
                 }
@@ -548,13 +540,8 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.True(browserJson.GetProperty("stages").GetProperty("browserAnalyticsWouldBeAccepted").GetBoolean());
         Assert.False(browserJson.GetProperty("stages").GetProperty("browserPixelWouldInvoke").GetBoolean());
 
-        var server = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalDryRun(
-            new WebsitePlatformController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, serverBindingId),
-            CancellationToken.None));
-        var serverJson = JsonSerializer.SerializeToElement(server.Value, JsonOptions);
-        Assert.True(serverJson.GetProperty("stages").GetProperty("serverOutcomeRequired").GetBoolean());
-        Assert.False(serverJson.GetProperty("stages").GetProperty("browserTriggerSupported").GetBoolean());
-        Assert.False(serverJson.GetProperty("stages").GetProperty("browserAnalyticsWouldBeAccepted").GetBoolean());
+        Assert.Throws<ArgumentException>(() => WebsiteSignalBindingPolicy.Validate([
+            new() { Id = serverBindingId, Trigger = "submission_saved", EventName = "Lead", DeliveryMode = "destinations" }]));
 
         fixture.Db.ChangeTracker.Clear();
         var after = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
@@ -896,7 +883,11 @@ public sealed class WebsiteContentEditorRoundTripTests
                 Db.SaveChanges();
             }
             var environment = Mock.Of<IWebHostEnvironment>(e => e.ContentRootPath == AppContext.BaseDirectory);
+            var meta = new Mock<Infrastructure.Analytics.IMetaPixelResolutionService>();
+            meta.Setup(service => service.ResolveForOwnerAsync(It.IsAny<Shared.Analytics.MarketingOwnerScope>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Infrastructure.Analytics.ResolvedMetaPixelContext());
             _services = new ServiceCollection()
+                .AddSingleton(meta.Object)
                 .AddSingleton(new WebsitePageCompiler(environment, _configuration))
                 .AddSingleton<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService>(new FixtureWebsiteStudioAi())
                 .BuildServiceProvider();

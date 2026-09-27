@@ -81,10 +81,12 @@ public sealed class BusinessAnalyticsCompletionTests
     public void SharedTrackingTreatsButtonTextAsPresentationOnly()
     {
         var tracking = File.ReadAllText(Path.Combine(RepoRoot(), "SHARED", "WebsitePlatform", "tracking.js"));
-        Assert.Contains("ElementKey: actionKey", tracking, StringComparison.Ordinal);
+        Assert.Contains("ElementKey: target.dataset.cmsId || target.id || actionKey", tracking, StringComparison.Ordinal);
+        Assert.Contains("ActionKey: actionKey", tracking, StringComparison.Ordinal);
+        Assert.DoesNotContain("ElementKey: actionKey,", tracking, StringComparison.Ordinal);
         Assert.Contains("WebsiteBindingId: target.dataset.websiteBindingId || actionKey", tracking, StringComparison.Ordinal);
         Assert.Contains("ButtonLabel: target.textContent?.trim() || null", tracking, StringComparison.Ordinal);
-        var elementIndex = tracking.IndexOf("ElementKey: actionKey", StringComparison.Ordinal);
+        var elementIndex = tracking.IndexOf("ElementKey: target.dataset.cmsId || target.id || actionKey", StringComparison.Ordinal);
         var labelIndex = tracking.IndexOf("ButtonLabel: target.textContent?.trim() || null", StringComparison.Ordinal);
         Assert.True(elementIndex >= 0 && labelIndex > elementIndex);
     }

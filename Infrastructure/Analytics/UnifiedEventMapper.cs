@@ -15,11 +15,14 @@ public static class UnifiedEventMapper
 
     public static AnalyticsEvent ToAnalytics(UnifiedEventContext ctx)
     {
+        if (ctx.IsBrowserSignal == true && AnalyticsEventCatalog.RequiresServerAuthority(ctx.EventName))
+            throw new InvalidOperationException("Browser observations cannot create verified server outcomes.");
         return new AnalyticsEvent
         {
             EventId = Guid.NewGuid(),
             PipelineStamp = UnifiedAnalyticsWriter.PipelineStamp,
             EventType = ctx.EventName ?? "unknown",
+            Url = ctx.Url,
             PageKey = ctx.PageKey,
             ElementKey = ctx.ElementKey,
             ButtonLabel = ctx.ButtonLabel,
@@ -98,7 +101,7 @@ public static class UnifiedEventMapper
     {
         return new MetaSignalEvent
         {
-            CreatedUtc = DateTime.UtcNow,
+            CreatedUtc = ctx.EventUtc ?? DateTime.UtcNow,
 
             EventId = ctx.EventId ?? Guid.NewGuid().ToString(),
             EventName = ctx.EventName ?? "unknown",
@@ -151,8 +154,8 @@ public static class UnifiedEventMapper
             WebsiteContentVersionId = ctx.WebsiteContentVersionId,
             WebsiteBindingId = ctx.WebsiteBindingId,
 
-            Environment = null,
-            Host = null
+            Environment = ctx.Environment,
+            Host = ctx.Host
         };
     }
 
@@ -163,7 +166,12 @@ public static class UnifiedEventMapper
             : ctx.SiteKey,
         businessType = ctx.CommerceBusinessId.HasValue ? "Business" : BusinessType,
         reportingOwner = ctx.CommerceBusinessId.HasValue ? "Business" : ReportingOwner,
+        behaviorKey = AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var behavior) ? behavior.Key : null,
+        actionKey = ctx.ActionKey ?? (AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var action) ? action.Key : null),
         oppref = OpenAiClickReference.Normalize(ctx.Oppref),
+        fbc = ctx.Fbc,
+        fbp = ctx.Fbp,
+        canonicalOutcomeEventId = ctx.IsServerAuthority == true ? ctx.EventId : null,
         payload = ctx.Metadata
     };
 }

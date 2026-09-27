@@ -177,10 +177,6 @@ namespace Protect_Website.Controllers
                             if (!capturedSubmission.Captured && capturedSubmission.Reason != "InternalTestLead")
                                 throw new InvalidOperationException("The advisor handoff could not be completed.");
 await TryWriteLeadEventAsync(
-                "lead_persisted",
-                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "commercial_insurance" },
-                lead.CreatedUtc);
-await TryWriteLeadEventAsync(
                 "website_lead_submitted",
                 new { LeadId = lead.LeadId, CorrelationId = correlationId },
                 lead.CreatedUtc);
@@ -215,7 +211,7 @@ await TryWriteLeadEventAsync(
                 }
                 catch (Exception analyticsEx)
                 {
-                    if (eventType is "lead_persisted" or "website_lead_submitted") throw;
+                    if (eventType is "website_lead_submitted") throw;
                     if (analyticsEvent != null)
                     {
                         var entry = _db.Entry(analyticsEvent);
@@ -290,7 +286,7 @@ await TryWriteLeadEventAsync(
                     });
             }
 
-            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            var metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead);
             await MetaLeadTrackingWorkflow.TryPersistAsync(
                 lead,
                 _db,
@@ -485,6 +481,8 @@ await TryWriteLeadEventAsync(
         {
             return UnifiedEventContextBuilder.Build(
                 httpContext: HttpContext,
+                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
+                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
                 eventName: eventType,
                 eventUtc: eventUtc,
                 sessionId: lead.SessionId,

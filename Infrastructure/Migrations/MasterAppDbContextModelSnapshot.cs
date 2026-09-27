@@ -9735,6 +9735,11 @@ namespace Infrastructure.Migrations
                     b.Property<Guid?>("AgentTrackingProfileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<long?>("AnalyticsEventId").HasColumnType("bigint");
+                    b.Property<long?>("MetaSignalEventId").HasColumnType("bigint");
+                    b.Property<string>("AdvertiserAccountId").HasMaxLength(100).HasColumnType("nvarchar(100)");
+                    b.Property<string>("ConversionDataSourceId").HasMaxLength(200).HasColumnType("nvarchar(200)");
+
                     b.Property<int>("AttemptCount")
                         .HasColumnType("int");
 
@@ -9828,6 +9833,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+                    b.HasIndex("AnalyticsEventId");
 
                     b.HasIndex("AgentTrackingProfileId");
 

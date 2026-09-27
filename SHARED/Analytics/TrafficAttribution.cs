@@ -56,7 +56,6 @@ namespace Shared.Analytics
         };
         private static readonly string[] InternalDomains =
         {
-            "mylegnd.com",
             "localhost",
             "127.0.0.1"
         };

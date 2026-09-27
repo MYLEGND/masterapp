@@ -170,9 +170,6 @@
         cartPath = storeCart,
         checkoutPath = commerce?.CheckoutPath ?? "/store/checkout",
         successPath = commerce?.SuccessPath ?? "/store/success",
-        analyticsEndpoint = commerce?.IsParfait == false
-            ? $"/parfait-analytics/s/{Uri.EscapeDataString(commerce.BusinessKey)}/track"
-            : "/parfait-analytics/track",
         cartStorageKey = commerce?.CartStorageKey ?? "parfaitCart",
         isParfait = commerce?.IsParfait ?? true
     }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));</script>

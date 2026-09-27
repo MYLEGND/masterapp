@@ -27,7 +27,6 @@ namespace AgentPortal.Controllers;
         private readonly IAnalyticsQueryService _analytics;
         private readonly IMetaAdsService _metaAds;
         private readonly IMetaAdsOAuthService _metaAdsOAuth;
-        private readonly IMetaAdsConnectionStore _metaAdsConnectionStore;
         private readonly Services.Tracking.IAgentTrackingService _tracking;
         private readonly IMetaSignalAnalyticsService _metaSignalAnalytics;
         private readonly ILandingRouteDiscoveryService _landingRouteDiscovery;
@@ -43,12 +42,11 @@ namespace AgentPortal.Controllers;
         private readonly MetaCapiCredentialProtector _metaCapiCredentialProtector;
         private readonly IAnalyticsIncidentQueryService _incidentMonitor;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, IAnalyticsIncidentQueryService incidentMonitor, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, MetaCapiCredentialProtector metaCapiCredentialProtector)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, IAnalyticsIncidentQueryService incidentMonitor, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, MetaCapiCredentialProtector metaCapiCredentialProtector)
         {
             _analytics = analytics;
             _metaAds = metaAds;
             _metaAdsOAuth = metaAdsOAuth;
-            _metaAdsConnectionStore = metaAdsConnectionStore;
             _tracking = tracking;
             _metaSignalAnalytics = metaSignalAnalytics;
             _landingRouteDiscovery = landingRouteDiscovery;
@@ -64,6 +62,15 @@ namespace AgentPortal.Controllers;
             _effectiveContext = effectiveContext;
             _metaCapiCredentialProtector = metaCapiCredentialProtector;
         }
+
+    [HttpGet("event-map")]
+    public async Task<IActionResult> EventMap([FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var entries = await new Infrastructure.WebsiteEditing.WebsiteEventMapQuery(_db, _config).ReadAsync(scope, cancellationToken);
+        return View("EventMap", entries);
+    }
 
     [HttpGet("")]
     [HttpGet("Index")]
@@ -95,7 +102,7 @@ namespace AgentPortal.Controllers;
             ? TimeZoneInfo.ConvertTimeFromUtc(range.ToUtc, range.ViewerTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : string.Empty;
         ViewData["InitialQualityMode"] = ToClientQualityMode(initialQualityMode);
-        ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary);
+        ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         ViewData["InitialScopeLabel"] = summary.ScopeLabel;
         // Founder Personal must hydrate with the permanent Founder tracking-profile id
         // so the browser preserves the same canonical scope on every AJAX refresh.
@@ -176,53 +183,31 @@ namespace AgentPortal.Controllers;
         if (tracking is null) return Forbid();
 
         var profile = await ResolveMarketingSetupAgentProfileAsync(tracking, createIfMissing: false, cancellationToken);
-        var marketingService = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.AgentMarketingProfileService>();
-        var marketing = await marketingService.GetAsync(tracking, cancellationToken);
-
-        // Meta connection state has exactly one read authority: the same
-        // IMetaAdsConnectionStore used by the main Website Analytics Meta panel.
-        // Marketing Setup is only another presentation of that canonical state.
-        var metaConnection = await _metaAdsConnectionStore.GetAsync(tracking.Id, cancellationToken);
-        var adsConnected = metaConnection is not null;
-        var secureCapi = adsConnected;
+        var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
+        var marketing = await GetMarketingSettingsAsync(tracking, owner, cancellationToken);
+        var setup = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingProviderSetupProjection>()
+            .ReadAsync(owner, cancellationToken);
+        var adsConnected = setup.Meta.Connected;
+        var secureCapi = setup.Meta.CapiConfigured;
+        var evidence = setup.Evidence;
         var bookingLive = profile?.BookingEnabled == true &&
-            (!string.IsNullOrWhiteSpace(profile.MicrosoftBookingsEmbedUrl) ||
-             !string.IsNullOrWhiteSpace(profile.FallbackBookingUrl));
-
-        // ChatGPT Ads is projected from the exact Step 1-4 authorities. This surface
-        // owns no OpenAI settings, credentials, delivery ledger, or attribution state.
-        var openAiOwner = ResolveOpenAiMarketingOwner(tracking);
-        var openAiConnections = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
-        var openAiHealthService = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiMeasurementHealthService>();
-        var openAiConnection = await openAiConnections.GetAsync(openAiOwner, cancellationToken);
-        var openAiHealth = await openAiHealthService.GetAsync(openAiOwner, cancellationToken);
-        var openAiDirect = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
-        Infrastructure.Analytics.OpenAiAdsProviderAccountSnapshot? openAiProvider = null;
-        Infrastructure.Analytics.OpenAiAdsMeasurementCapabilitySnapshot? openAiMeasurement = null;
-        string? openAiProviderError = null;
-        if (openAiConnection.Connected)
-        {
-            try
-            {
-                openAiProvider = await openAiDirect.InspectAsync(openAiOwner, cancellationToken);
-                openAiMeasurement = await openAiDirect.InspectMeasurementAsync(openAiOwner, cancellationToken);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
-            {
-                openAiProviderError = "Provider status could not be refreshed.";
-            }
-        }
-        var opprefLineage = await LoadOpprefLineageVisibilityAsync(tracking, cancellationToken);
+            (!string.IsNullOrWhiteSpace(profile.MicrosoftBookingsEmbedUrl) || !string.IsNullOrWhiteSpace(profile.FallbackBookingUrl));
+        var openAiConnection = setup.Connection;
+        var openAiHealth = setup.Health;
+        var openAiProvider = setup.Account;
+        var openAiMeasurement = setup.Capability;
+        var openAiProviderError = setup.OpenAiError;
         var openAiAccountReady =
             string.Equals(openAiProvider?.Status, "active", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(openAiProvider?.ReviewStatus, Shared.Analytics.OpenAiAdsReviewStatuses.Approved, StringComparison.Ordinal) &&
             openAiConnection.PixelConfigured &&
-            openAiConnection.ConversionsApiConfigured &&
-            openAiHealth.Status == "ready";
+            openAiConnection.ConversionsApiConfigured && !string.IsNullOrWhiteSpace(openAiConnection.ConversionDataSourceId);
 
         return Json(new
         {
             source = "canonical_marketing_setup",
+            evidence,
+            evidenceError = setup.EvidenceError,
             agentProfileId = tracking.Id,
             agentName = tracking.DisplayName ?? tracking.AgentUpn ?? tracking.Slug,
             status = new
@@ -240,7 +225,9 @@ namespace AgentPortal.Controllers;
                 metaTestEventCode = marketing.TestEventCode,
                 metaTestEventsConfigured = !string.IsNullOrWhiteSpace(marketing.TestEventCode),
                 metaAdsConnected = adsConnected,
-                metaAccount = adsConnected ? metaConnection!.AccountName ?? metaConnection.AccountId ?? "Meta Ads" : null,
+                metaAccount = adsConnected ? setup.Meta.AccountName ?? setup.Meta.AccountId ?? "Meta Ads" : null,
+                available = setup.Meta.Available,
+                error = setup.Meta.Error,
                 metaCapiConfiguredSecurely = secureCapi,
                 metaCapiManagedAutomatically = true
             },
@@ -286,7 +273,6 @@ namespace AgentPortal.Controllers;
                     recentProviderEvents = openAiHealth.RecentProviderEvents
                 }
             },
-            attribution = opprefLineage,
             booking = new
             {
                 enabled = profile?.BookingEnabled == true,
@@ -350,7 +336,11 @@ namespace AgentPortal.Controllers;
             // through the same scoped DbContext SaveChanges transaction. No CAPI secret
             // is accepted here; OAuth-owned Meta Ads credentials remain the only active
             // secure CAPI authority.
-            await marketingService.SavePixelAsync(tracking, pixel, testEventCode, request.MarketingRevision, cancellationToken);
+            var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
+            if (owner == Shared.Analytics.MarketingOwnerScope.Founder)
+                await MarketingConnections.SaveSettingsAsync(owner, pixel, testEventCode, null, request.MarketingRevision, cancellationToken);
+            else
+                await marketingService.SavePixelAsync(tracking, pixel, testEventCode, request.MarketingRevision, cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -373,7 +363,7 @@ namespace AgentPortal.Controllers;
         try
         {
             await connector.ConnectAsync(
-                ResolveOpenAiMarketingOwner(tracking),
+                await ResolveMarketingOwnerAsync(tracking, cancellationToken),
                 request.AdvertiserApiKey,
                 request.ExpectedRevision,
                 cancellationToken);
@@ -399,7 +389,7 @@ namespace AgentPortal.Controllers;
             return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads returned an invalid verification response." });
         }
 
-        return await MarketingSetup(tracking.Id, cancellationToken);
+        return await MarketingCommandReceiptAsync(tracking.Id, cancellationToken);
     }
 
     public sealed record OpenAiRefreshRequest(Guid? AgentProfileId, Guid ConnectionRevision);
@@ -416,7 +406,7 @@ namespace AgentPortal.Controllers;
         try
         {
             refresh = await connector.RefreshAsync(
-                ResolveOpenAiMarketingOwner(tracking),
+                await ResolveMarketingOwnerAsync(tracking, cancellationToken),
                 request.ConnectionRevision,
                 cancellationToken);
         }
@@ -437,10 +427,7 @@ namespace AgentPortal.Controllers;
             return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads returned an invalid refresh response." });
         }
 
-        var setupResult = await MarketingSetup(tracking.Id, cancellationToken);
-        if (setupResult is JsonResult setupJson)
-            return Json(new { setup = setupJson.Value, pixelProvisioning = refresh.PixelProvisioning });
-        return setupResult;
+        return await MarketingCommandReceiptAsync(tracking.Id, cancellationToken, refresh.PixelProvisioning);
     }
 
     public sealed record OpenAiDisconnectRequest(Guid? AgentProfileId, Guid ConnectionRevision);
@@ -455,71 +442,42 @@ namespace AgentPortal.Controllers;
         var authority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
         try
         {
-            await authority.DisconnectAsync(ResolveOpenAiMarketingOwner(tracking), request.ConnectionRevision, cancellationToken);
+            await authority.DisconnectAsync(await ResolveMarketingOwnerAsync(tracking, cancellationToken), request.ConnectionRevision, cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
             return Conflict(new { message = "ChatGPT Ads connection changed. Reload Marketing Setup and try again." });
         }
 
-        return await MarketingSetup(tracking.Id, cancellationToken);
+        return await MarketingCommandReceiptAsync(tracking.Id, cancellationToken);
     }
 
-    private Shared.Analytics.MarketingOwnerScope ResolveOpenAiMarketingOwner(AgentTrackingProfile tracking) =>
-        FounderGuard.IsFounder(User) && string.Equals(tracking.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase)
-            ? Shared.Analytics.MarketingOwnerScope.Founder
-            : Shared.Analytics.MarketingOwnerScope.Agent(tracking.Id);
-
-    private async Task<object> LoadOpprefLineageVisibilityAsync(AgentTrackingProfile tracking, CancellationToken cancellationToken)
+    private async Task<IActionResult> MarketingCommandReceiptAsync(Guid profileId, CancellationToken cancellationToken, object? pixelProvisioning = null)
     {
-        var analytics = await _db.AnalyticsEvents.AsNoTracking()
-            .CountAsync(x => x.AgentTrackingProfileId == tracking.Id && x.Oppref != null && x.Oppref != "", cancellationToken);
-        var leads = await _db.WebsiteLeads.AsNoTracking()
-            .CountAsync(x => x.AgentTrackingProfileId == tracking.Id && x.Oppref != null && x.Oppref != "", cancellationToken);
-
-        var agentUserId = tracking.AgentUserId ?? string.Empty;
-        var crmLeadIds = _db.WebsiteLeadIntakeLinks.AsNoTracking()
-            .Where(x => x.AgentUserId == agentUserId && x.Oppref != null && x.Oppref != "")
-            .Select(x => x.WorkstationLeadId);
-        var crm = await crmLeadIds.CountAsync(cancellationToken);
-        var appointments = await _db.LeadAppointments.AsNoTracking()
-            .CountAsync(x => x.WorkstationLeadId != null && crmLeadIds.Contains(x.WorkstationLeadId) && x.Oppref != null && x.Oppref != "", cancellationToken);
-
-        var commerceBusinessIds = _db.WebsiteLeads.AsNoTracking()
-            .Where(x => x.AgentTrackingProfileId == tracking.Id && x.CommerceBusinessId.HasValue)
-            .Select(x => x.CommerceBusinessId!.Value)
-            .Distinct();
-        var orders = await _db.CommerceOrders.AsNoTracking()
-            .CountAsync(x => commerceBusinessIds.Contains(x.CommerceBusinessId) && x.Oppref != null && x.Oppref != "", cancellationToken);
-
-        var productionRows = _db.ProductionRecords.AsNoTracking()
-            .Where(x => x.AgentUserId == agentUserId && x.Oppref != null && x.Oppref != "");
-        var production = await productionRows.CountAsync(cancellationToken);
-        var revenue = await productionRows
-            .Where(x => x.Status == ProductionStatus.Paid)
-            .SumAsync(x => (decimal?)x.Amount, cancellationToken) ?? 0m;
-
-        return new
+        // The mutation has committed. A read failure must not turn its receipt into a failed command.
+        try
         {
-            source = "canonical_oppref_lineage",
-            paidTrafficEvents = analytics,
-            leads,
-            crm,
-            appointments,
-            orders,
-            production,
-            paidRevenue = revenue,
-            complete = analytics > 0 && leads > 0 && crm > 0 && (appointments > 0 || orders > 0 || production > 0)
-        };
+            var refreshed = await MarketingSetup(profileId, cancellationToken);
+            return Json(new { ok = true, setup = (refreshed as JsonResult)?.Value,
+                setupStatus = refreshed is JsonResult ? "available" : "unavailable", pixelProvisioning });
+        }
+        catch (Exception)
+        { return Json(new { ok = true, setup = (object?)null, setupStatus = "unavailable", pixelProvisioning }); }
     }
+
+    private async Task<Shared.Analytics.MarketingOwnerScope> ResolveMarketingOwnerAsync(AgentTrackingProfile tracking, CancellationToken cancellationToken) =>
+        await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _config, tracking, cancellationToken)
+            ?? throw new InvalidOperationException("The selected website owner could not be resolved.");
 
     private async Task<AgentTrackingProfile?> ResolveMarketingSetupTrackingAsync(Guid? requestedAgentId, CancellationToken cancellationToken)
     {
+        // Aggregate reports are not credential owners, even if a profile is also supplied.
+        if (bool.TryParse(Request.Query["team"], out var team) && team) return null;
         if (!requestedAgentId.HasValue || requestedAgentId.Value == Guid.Empty)
             return await GetCallerProfileAsync();
 
         var scope = await ResolveScopeAsync(requestedAgentId, team: false);
-        if (scope.ScopeType != ScopeType.Agent || scope.AgentTrackingProfileId != requestedAgentId.Value)
+        if (scope.ScopeType is not (ScopeType.Agent or ScopeType.Founder) || scope.AgentTrackingProfileId != requestedAgentId.Value)
             return null;
 
         return await _db.AgentTrackingProfiles.AsNoTracking()
@@ -1446,7 +1404,7 @@ namespace AgentPortal.Controllers;
     {
         var tracking = await ResolveMarketingSetupTrackingAsync(agentProfileId, cancellationToken);
         if (tracking is null) return Forbid();
-        var owner = ResolveOpenAiMarketingOwner(tracking);
+        var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
         var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
         try
         {
@@ -1607,7 +1565,7 @@ namespace AgentPortal.Controllers;
         CancellationToken cancellationToken)
     {
         var tracking = await ResolveMarketingSetupTrackingAsync(agentProfileId, cancellationToken);
-        return tracking is null ? null : ResolveOpenAiMarketingOwner(tracking);
+        return tracking is null ? null : await ResolveMarketingOwnerAsync(tracking, cancellationToken);
     }
 
     public sealed record MarketingManagerPlanHttpRequest(
@@ -1730,7 +1688,7 @@ namespace AgentPortal.Controllers;
                 throw new InvalidOperationException("Select an agent scope to view Meta campaigns.");
 
             var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
-            var scope = ScopeContext.ForAgent(selectedAgentId.Value);
+            var scope = await ResolveScopeAsync(agentProfileId, team);
             var result = await _metaAds.GetCampaignsAsync(range, scope, HttpContext.RequestAborted);
             return Json(result);
         }
@@ -1744,14 +1702,16 @@ namespace AgentPortal.Controllers;
     [HttpGet("meta-connect")]
     public async Task<IActionResult> MetaConnect([FromQuery] string? returnUrl = null, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
     {
-        var target = string.IsNullOrWhiteSpace(returnUrl) ? "/WebsiteAnalytics/Index" : returnUrl!;
+        var target = Url.IsLocalUrl(returnUrl) ? returnUrl! : "/WebsiteAnalytics/Index";
         try
         {
             var agentId = await ResolveMetaConnectionAgentIdAsync(agentProfileId, team);
             if (!agentId.HasValue || agentId.Value == Guid.Empty)
                 return Redirect($"{target}?meta=error&message={Uri.EscapeDataString("Select an agent scope to connect Meta Ads.")}");
 
-            var connectUrl = _metaAdsOAuth.BuildConnectUrl(agentId.Value, returnUrl);
+            var owner = await ResolveAdvertisingOwnerAsync(agentId.Value, HttpContext.RequestAborted);
+            if (owner is null) return Forbid();
+            var connectUrl = _metaAdsOAuth.BuildConnectUrl(owner, target);
             return Redirect(connectUrl);
         }
         catch (InvalidOperationException ex)
@@ -1761,7 +1721,6 @@ namespace AgentPortal.Controllers;
         }
     }
 
-    [AllowAnonymous]
     [HttpGet("meta-callback")]
     public async Task<IActionResult> MetaCallback([FromQuery] string? code = null, [FromQuery] string? state = null, [FromQuery] string? error = null, [FromQuery(Name = "error_description")] string? errorDescription = null)
     {
@@ -1774,7 +1733,12 @@ namespace AgentPortal.Controllers;
 
         try
         {
-            var record = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
+            var pending = _metaAdsOAuth.InspectState(state ?? string.Empty);
+            if (!await IsAuthorizedMetaOwnerAsync(pending.Owner)) return Forbid();
+            var result = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
+            if (result.Owner != pending.Owner || !await IsAuthorizedMetaOwnerAsync(result.Owner)) return Forbid();
+            await MarketingConnections.SaveAdsAsync(result.Owner, result.Connection, HttpContext.RequestAborted);
+            target = Url.IsLocalUrl(result.ReturnUrl) ? result.ReturnUrl : target;
             return Redirect($"{target}?meta=connected");
         }
         catch (InvalidOperationException ex)
@@ -1804,7 +1768,9 @@ namespace AgentPortal.Controllers;
             });
         }
 
-        var record = await _metaAdsConnectionStore.GetAsync(agentId.Value, HttpContext.RequestAborted);
+        var owner = await ResolveAdvertisingOwnerAsync(agentId.Value, HttpContext.RequestAborted);
+        if (owner is null) return Forbid();
+        var record = await MarketingConnections.GetAdsAsync(owner, HttpContext.RequestAborted);
         if (record == null)
         {
             return Json(new MetaAdsConnectionStatusDto
@@ -1837,8 +1803,34 @@ namespace AgentPortal.Controllers;
         if (!agentId.HasValue || agentId.Value == Guid.Empty)
             return BadRequest(new { message = "Select an agent scope to disconnect Meta Ads." });
 
-        await _metaAdsConnectionStore.DeleteAsync(agentId.Value, HttpContext.RequestAborted);
+        var owner = await ResolveAdvertisingOwnerAsync(agentId.Value, HttpContext.RequestAborted);
+        if (owner is null) return Forbid();
+        await MarketingConnections.DisconnectAsync(owner, HttpContext.RequestAborted);
         return Json(new { ok = true });
+    }
+
+    private Infrastructure.Analytics.MarketingConnectionStore MarketingConnections =>
+        HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
+
+    private async Task<MarketingConnection> GetMarketingSettingsAsync(AgentTrackingProfile tracking,
+        Shared.Analytics.MarketingOwnerScope owner, CancellationToken ct)
+    {
+        if (owner != Shared.Analytics.MarketingOwnerScope.Founder)
+            return await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.AgentMarketingProfileService>().GetAsync(tracking, ct);
+        // Initialize the Founder owner without importing any agent-owned credentials or settings.
+        if (await MarketingConnections.GetStatusAsync(owner, ct) is not { } row)
+        {
+            await MarketingConnections.ImportProfileAsync(owner, null, null, null, ct);
+            row = (await MarketingConnections.GetStatusAsync(owner, ct))!;
+        }
+        return row;
+    }
+
+    private async Task<bool> IsAuthorizedMetaOwnerAsync(Shared.Analytics.MarketingOwnerScope owner)
+    {
+        if (User.Identity?.IsAuthenticated != true || owner.CommerceBusinessId.HasValue) return false;
+        var resolved = await ResolveAdvertisingOwnerAsync(owner.AgentTrackingProfileId, HttpContext.RequestAborted);
+        return resolved == owner;
     }
 
     private Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false) =>
@@ -1850,8 +1842,9 @@ namespace AgentPortal.Controllers;
 
     private async Task<Guid?> ResolveMetaConnectionAgentIdAsync(Guid? requestedAgentId = null, bool team = false)
     {
+        if (team) return null;
         var scope = await ResolveScopeAsync(requestedAgentId, team);
-        return scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId != Guid.Empty
+        return scope.ScopeType is (ScopeType.Agent or ScopeType.Founder) && scope.AgentTrackingProfileId != Guid.Empty
             ? scope.AgentTrackingProfileId : null;
     }
 

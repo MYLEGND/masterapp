@@ -10,6 +10,7 @@ using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Shared.Analytics;
 
@@ -170,12 +171,12 @@ public static class OpenAiMeasurementEventMapper
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-    public static bool TryMap(MetaSignalEvent row, out OpenAiConversionEvent conversion)
+    public static bool TryMap(AnalyticsEvent row, out OpenAiConversionEvent conversion)
     {
         conversion = null!;
-        if (row is null || string.IsNullOrWhiteSpace(row.EventId)) return false;
+        if (row is null || row.EventId == Guid.Empty) return false;
 
-        var destination = MarketingConversionDestinationCatalog.ResolveOpenAi(row.EventName);
+        var destination = MarketingConversionDestinationCatalog.ResolveOpenAi(CanonicalAdvertisingEventProjection.ResolveEventName(row));
         if (destination is null) return false;
 
         var providerEvent = destination.EventName;
@@ -214,34 +215,39 @@ public static class OpenAiMeasurementEventMapper
             }
         }
 
+        if (contentEvent && ReadString(row.MetadataJson, "items") is { } itemJson)
+        {
+            try
+            {
+                using var items = JsonDocument.Parse(itemJson);
+                if (items.RootElement.ValueKind == JsonValueKind.Array)
+                    contents = items.RootElement.EnumerateArray().Select(item =>
+                    {
+                        var json = item.GetRawText();
+                        var itemAmount = CanonicalAdvertisingEventProjection.ReadInt64(json, "valueCents");
+                        var itemQuantity = CanonicalAdvertisingEventProjection.ReadInt64(json, "quantity");
+                        return new OpenAiConversionContent(ReadString(json, "productId"), ReadString(json, "productName"), "product",
+                            itemQuantity is > 0 and <= int.MaxValue ? (int)itemQuantity.Value : null,
+                            itemAmount is >= 0 ? itemAmount : null, currency);
+                    }).ToArray();
+            }
+            catch (JsonException) { }
+        }
+
         conversion = new(
-            Id: row.EventId.Trim(),
+            Id: CanonicalAdvertisingEventProjection.ResolveEventId(row),
             Type: providerEvent,
-            TimestampMs: new DateTimeOffset(DateTime.SpecifyKind(row.CreatedUtc, DateTimeKind.Utc)).ToUnixTimeMilliseconds(),
+            TimestampMs: new DateTimeOffset(DateTime.SpecifyKind(row.EventUtc, DateTimeKind.Utc)).ToUnixTimeMilliseconds(),
             SourceUrl: sourceUrl,
             ActionSource: "web",
             Data: new(destination.PayloadType ?? "customer_action", amount, amount.HasValue ? currency : null, contents),
-            Oppref: ReadString(row.MetadataJson, "oppref"));
+            Oppref: row.Oppref ?? ReadString(row.MetadataJson, "oppref"));
         return true;
     }
 
-    public static MarketingOwnerScope? ResolveOwner(MetaSignalEvent row)
+    private static string? SourceUrl(AnalyticsEvent row)
     {
-        if (row.CommerceBusinessId is Guid businessId && businessId != Guid.Empty)
-            return MarketingOwnerScope.Business(businessId);
-        if (row.AgentTrackingProfileId is Guid agentId && agentId != Guid.Empty)
-            return MarketingOwnerScope.Agent(agentId);
-
-        var siteKey = ReadString(row.MetadataJson, "siteKey");
-        if (string.Equals(siteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
-            return MarketingOwnerScope.Founder;
-
-        return null;
-    }
-
-    private static string? SourceUrl(MetaSignalEvent row)
-    {
-        var explicitUrl = ReadString(row.MetadataJson, "sourceUrl");
+        var explicitUrl = row.Url ?? ReadString(row.MetadataJson, "sourceUrl");
         if (Uri.TryCreate(explicitUrl, UriKind.Absolute, out var explicitUri) &&
             (explicitUri.Scheme == Uri.UriSchemeHttps || explicitUri.Scheme == Uri.UriSchemeHttp))
             return explicitUri.ToString();
@@ -249,51 +255,26 @@ public static class OpenAiMeasurementEventMapper
         if (string.IsNullOrWhiteSpace(row.Host)) return null;
         var host = row.Host.Trim();
         var scheme = host.StartsWith("localhost", StringComparison.OrdinalIgnoreCase) ? "http" : "https";
-        var path = ReadString(row.MetadataJson, "sourcePath");
+        var path = row.Path ?? ReadString(row.MetadataJson, "sourcePath");
         if (string.IsNullOrWhiteSpace(path)) path = "/";
         if (!path.StartsWith('/')) path = "/" + path;
         return $"{scheme}://{host}{path}";
     }
 
-    internal static string? ReadString(string? json, string property)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return null;
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty(property, out var value)) return null;
-            return value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
-        }
-        catch (JsonException) { return null; }
-    }
-
+    internal static string? ReadString(string? json, string property) => CanonicalAdvertisingEventProjection.ReadString(json, property);
     private static bool TryReadLong(string? json, string property, out long value)
     {
-        value = 0;
-        if (string.IsNullOrWhiteSpace(json)) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            return document.RootElement.TryGetProperty(property, out var element) &&
-                   ((element.ValueKind == JsonValueKind.Number && element.TryGetInt64(out value)) ||
-                    (element.ValueKind == JsonValueKind.String && long.TryParse(element.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value)));
-        }
-        catch (JsonException) { return false; }
+        var number = CanonicalAdvertisingEventProjection.ReadInt64(json, property);
+        value = number ?? 0;
+        return number.HasValue;
     }
-
     private static bool TryReadInt(string? json, string property, out int value)
     {
-        value = 0;
-        if (string.IsNullOrWhiteSpace(json)) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            return document.RootElement.TryGetProperty(property, out var element) &&
-                   ((element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out value)) ||
-                    (element.ValueKind == JsonValueKind.String && int.TryParse(element.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value)));
-        }
-        catch (JsonException) { return false; }
+        var number = CanonicalAdvertisingEventProjection.ReadInt64(json, property);
+        value = number is >= int.MinValue and <= int.MaxValue ? (int)number.Value : 0;
+        return number is >= int.MinValue and <= int.MaxValue;
     }
+
 }
 
 public sealed class OpenAiConversionDispatcherHostedService(
@@ -301,6 +282,7 @@ public sealed class OpenAiConversionDispatcherHostedService(
     ILogger<OpenAiConversionDispatcherHostedService> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
+    private long _scanAfterId;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -322,35 +304,37 @@ public sealed class OpenAiConversionDispatcherHostedService(
         var capi = scope.ServiceProvider.GetRequiredService<IOpenAiConversionsApiService>();
         var now = DateTime.UtcNow;
         var cutoff = now.AddDays(-7);
-        var supported = OpenAiMeasurementEventMapper.SupportedCanonicalServerEvents.ToArray();
-
-        var candidates = await db.MetaSignalEvents.AsNoTracking()
-            .Where(row => row.CreatedUtc >= cutoff &&
-                          supported.Contains(row.EventName) &&
-                          row.MetadataJson != null &&
-                          row.MetadataJson.Contains(MetaSignalSingleTruthPolicy.DispatchEligibleMarker))
-            .OrderBy(row => row.CreatedUtc)
-            .Take(100)
-            .ToListAsync(ct);
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var candidates = await db.AnalyticsEvents.AsNoTracking()
+            .Where(row => row.Id > _scanAfterId && row.EventUtc >= cutoff && row.MetadataJson != null &&
+                (row.MetadataJson.Contains("measurementServerAuthorityEligible") || row.MetadataJson.Contains("metaServerAuthorityEligible")))
+            .OrderBy(row => row.Id).Take(100).ToListAsync(ct);
+        _scanAfterId = candidates.Count == 100 ? candidates[^1].Id : 0;
 
         foreach (var source in candidates)
         {
-            if (!MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(source.EventName, source.MetadataJson))
-                continue;
-            var owner = OpenAiMeasurementEventMapper.ResolveOwner(source);
+            if (!CanonicalAdvertisingEventProjection.CanProjectServer(source)) continue;
+            var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
             if (owner is null) continue;
             if (!OpenAiMeasurementEventMapper.TryMap(source, out var conversion)) continue;
 
             var connection = await connections.GetAsync(owner, ct);
-            if (!connection.Connected || string.IsNullOrWhiteSpace(connection.PixelId) || !connection.HasConversionsApiCredential)
+            if (connection.Owner != owner || !connection.Connected || string.IsNullOrWhiteSpace(connection.AccountId) ||
+                string.IsNullOrWhiteSpace(connection.PixelId) || string.IsNullOrWhiteSpace(connection.ConversionDataSourceId) || !connection.HasConversionsApiCredential)
                 continue;
 
             var delivery = await db.Set<MarketingDestinationDelivery>().SingleOrDefaultAsync(row =>
                 row.OwnerKey == owner.Key &&
                 row.Provider == MarketingDestinationKeys.OpenAi &&
-                row.Channel == "server" &&
-                row.CanonicalEventId == conversion.Id &&
+                row.Channel == "server" && row.CanonicalSource == nameof(AnalyticsEvent) &&
+                (row.AnalyticsEventId == source.Id || row.CanonicalEventId == conversion.Id) &&
                 row.ProviderEventName == conversion.Type, ct);
+
+            // Historical delivery identities are read-only resend fences. They
+            // never become active AnalyticsEvent receipts or a second dispatcher.
+            if (delivery is null && await FindHistoricalReceiptAsync(db, owner, source, conversion.Type, ct) is not null)
+                continue;
+            if (delivery is not null) conversion = conversion with { Id = delivery.CanonicalEventId };
 
             if (delivery?.Status == "sent") continue;
             if (delivery?.Status == "permanent_failure") continue;
@@ -366,9 +350,12 @@ public sealed class OpenAiConversionDispatcherHostedService(
                     CommerceBusinessId = owner.CommerceBusinessId,
                     Provider = MarketingDestinationKeys.OpenAi,
                     Channel = "server",
-                    CanonicalSource = nameof(MetaSignalEvent),
+                    CanonicalSource = nameof(AnalyticsEvent),
+                    AnalyticsEventId = source.Id,
+                    AdvertiserAccountId = connection.AccountId,
+                    ConversionDataSourceId = connection.ConversionDataSourceId,
                     CanonicalEventId = conversion.Id,
-                    CanonicalEventName = source.EventName,
+                    CanonicalEventName = source.EventType,
                     ProviderEventName = conversion.Type,
                     PixelId = connection.PixelId!,
                     Status = "pending",
@@ -382,6 +369,25 @@ public sealed class OpenAiConversionDispatcherHostedService(
                     db.Entry(delivery).State = EntityState.Detached;
                     continue;
                 }
+            }
+
+            if (string.IsNullOrWhiteSpace(delivery.AdvertiserAccountId) || string.IsNullOrWhiteSpace(delivery.ConversionDataSourceId))
+            {
+                // Legacy receipts did not pin these identifiers. Preserve them until an explicit
+                // verification/migration establishes the original destination; never guess from today's connection.
+                delivery.Status = "blocked_requires_destination_verification";
+                delivery.ErrorCode = "historical_destination_binding_unverified";
+                await db.SaveChangesAsync(ct);
+                continue;
+            }
+
+            // Never move a queued conversion to a newly connected account or data source.
+            if (!MatchesCurrentDestination(delivery, connection))
+            {
+                delivery.Status = "blocked_destination_changed";
+                delivery.ErrorCode = "destination_binding_changed";
+                await db.SaveChangesAsync(ct);
+                continue;
             }
 
             var claim = Guid.NewGuid().ToString("N");
@@ -399,6 +405,7 @@ public sealed class OpenAiConversionDispatcherHostedService(
 
             delivery = await db.Set<MarketingDestinationDelivery>()
                 .SingleAsync(row => row.Id == delivery.Id && row.ClaimToken == claim, ct);
+            await db.Entry(delivery).ReloadAsync(ct);
 
             var secrets = await connections.GetSecretsAsync(owner, ct);
             if (string.IsNullOrWhiteSpace(secrets.ConversionsApiKey))
@@ -412,7 +419,13 @@ public sealed class OpenAiConversionDispatcherHostedService(
                 continue;
             }
 
-            var result = await capi.SendAsync(connection.PixelId!, secrets.ConversionsApiKey!, conversion, false, ct);
+            OpenAiConversionsApiResult result;
+            try { result = await capi.SendAsync(connection.PixelId!, secrets.ConversionsApiKey!, conversion, false, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                logger.LogWarning(ex, "OpenAI delivery failed for canonical analytics event {AnalyticsEventId}", source.Id);
+                result = new(true, false, true, null, "retryable_failure", "provider_exception", "Provider delivery failed.");
+            }
             delivery.AttemptCount++;
             delivery.LastAttemptUtc = DateTime.UtcNow;
             delivery.LastHttpStatusCode = result.HttpStatusCode;
@@ -429,7 +442,7 @@ public sealed class OpenAiConversionDispatcherHostedService(
                 delivery.SentUtc = DateTime.UtcNow;
                 delivery.NextAttemptUtc = null;
             }
-            else if (result.Retryable && source.CreatedUtc > DateTime.UtcNow.AddDays(-7))
+            else if (result.Retryable && source.EventUtc > DateTime.UtcNow.AddDays(-7))
             {
                 delivery.Status = "retryable";
                 delivery.NextAttemptUtc = DateTime.UtcNow.Add(RetryDelay(delivery.AttemptCount));
@@ -442,6 +455,29 @@ public sealed class OpenAiConversionDispatcherHostedService(
 
             await db.SaveChangesAsync(ct);
         }
+    }
+
+    internal static bool MatchesCurrentDestination(MarketingDestinationDelivery receipt, OpenAiAdsConnectionSnapshot connection) =>
+        connection.Connected && receipt.OwnerKey == connection.Owner.Key && receipt.Provider == MarketingDestinationKeys.OpenAi &&
+        !string.IsNullOrWhiteSpace(connection.PixelId) && !string.IsNullOrWhiteSpace(connection.AccountId) &&
+        !string.IsNullOrWhiteSpace(connection.ConversionDataSourceId) &&
+        receipt.PixelId == connection.PixelId && receipt.AdvertiserAccountId == connection.AccountId &&
+        receipt.ConversionDataSourceId == connection.ConversionDataSourceId;
+
+    internal static async Task<MarketingDestinationDelivery?> FindHistoricalReceiptAsync(MasterAppDbContext db,
+        MarketingOwnerScope owner, AnalyticsEvent source, string providerEventName, CancellationToken ct)
+    {
+        var receipts = await db.MarketingDestinationDeliveries.AsNoTracking().Where(x => x.OwnerKey == owner.Key &&
+            x.Provider == MarketingDestinationKeys.OpenAi && x.Channel == "server" && x.CanonicalSource == nameof(MetaSignalEvent) &&
+            x.ProviderEventName == providerEventName).ToListAsync(ct);
+        var linked = receipts.FirstOrDefault(x => x.AnalyticsEventId == source.Id);
+        if (linked is not null) return linked;
+        var ids = receipts.Where(x => x.AnalyticsEventId == null).Select(x => x.CanonicalEventId).ToArray();
+        if (ids.Length == 0) return null;
+        var historical = await db.MetaSignalEvents.AsNoTracking().Where(x => ids.Contains(x.EventId) &&
+            x.CommerceBusinessId == source.CommerceBusinessId && x.AgentTrackingProfileId == source.AgentTrackingProfileId).ToListAsync(ct);
+        var match = historical.FirstOrDefault(x => CanonicalAdvertisingEventProjection.ReadInt64(x.MetadataJson, "sourceAnalyticsEventId") == source.Id);
+        return match is null ? null : receipts.First(x => x.CanonicalEventId == match.EventId);
     }
 
     private static TimeSpan RetryDelay(int attempts) => attempts switch
@@ -467,9 +503,11 @@ public sealed class OpenAiMeasurementHealthService(
     public async Task<OpenAiMeasurementHealthSnapshot> GetAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default)
     {
         var connection = await connections.GetAsync(owner, cancellationToken);
-        var rows = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
-            .Where(row => row.OwnerKey == owner.Key && row.Provider == MarketingDestinationKeys.OpenAi)
+        var from = DateTime.UtcNow.AddDays(-30);
+        var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
+            .Where(row => row.OwnerKey == owner.Key && row.Provider == MarketingDestinationKeys.OpenAi && row.CreatedUtc >= from)
             .ToListAsync(cancellationToken);
+        var rows = receipts.Where(row => OpenAiConversionDispatcherHostedService.MatchesCurrentDestination(row, connection)).ToArray();
 
         var providerAvailable = false;
         var recentProviderEvents = 0;
@@ -495,16 +533,20 @@ public sealed class OpenAiMeasurementHealthService(
                     }
                 }
                 catch (HttpRequestException) { }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
                 catch (JsonException) { }
             }
         }
 
         var status = !connection.Connected ? "not_connected"
             : !connection.PixelConfigured ? "pixel_not_configured"
+            : string.IsNullOrWhiteSpace(connection.ConversionDataSourceId) ? "data_source_not_configured"
             : !connection.ConversionsApiConfigured ? "conversions_api_not_configured"
+            : rows.Any(x => x.Status.StartsWith("blocked_", StringComparison.Ordinal)) ? "delivery_blocked"
             : rows.Any(x => x.Status == "permanent_failure") ? "delivery_failures"
             : rows.Any(x => x.Status == "retryable") ? "retrying"
-            : "ready";
+            : rows.Any(x => x.Status == "sent" && x.LastHttpStatusCode >= 200 && x.LastHttpStatusCode < 300) ? "provider_accepted"
+            : "configured_no_delivery_evidence";
 
         return new(
             owner,
@@ -512,7 +554,7 @@ public sealed class OpenAiMeasurementHealthService(
             connection.PixelConfigured,
             connection.ConversionsApiConfigured,
             connection.PixelId,
-            rows.Count(x => x.Status is "pending" or "blocked_not_configured"),
+            rows.Count(x => x.Status == "pending" || x.Status.StartsWith("blocked_", StringComparison.Ordinal)),
             rows.Count(x => x.Status == "retryable"),
             rows.Count(x => x.Status == "permanent_failure"),
             rows.Count(x => x.Status == "sent"),

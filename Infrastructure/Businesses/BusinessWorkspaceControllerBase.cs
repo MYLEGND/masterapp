@@ -526,7 +526,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         [FromQuery] string? returnUrl = null,
         CancellationToken cancellationToken = default)
     {
-        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var fallback = $"/business/{businessId:D}/analytics";
         try
         {
@@ -561,7 +561,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 ?? throw new InvalidOperationException("Meta OAuth state is not business-scoped.");
             fallback = $"/business/{businessId:D}/analytics";
 
-            if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+            if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
             if (!string.IsNullOrWhiteSpace(error))
             {
                 var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
@@ -586,7 +586,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> MetaDisconnect(Guid businessId, CancellationToken cancellationToken = default)
     {
-        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var store = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
         await store.DisconnectAsync(MarketingOwnerScope.Business(businessId), cancellationToken);
         return Json(new { ok = true });
@@ -615,56 +615,25 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         var owner = MarketingOwnerScope.Business(businessId);
         var profileService = ActivatorUtilities.CreateInstance<Infrastructure.WebsiteEditing.BusinessWebsiteProfileService>(HttpContext.RequestServices);
         var profile = await profileService.GetAsync(businessId, cancellationToken);
-
-        var openAiConnections = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
-        var openAiHealthService = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiMeasurementHealthService>();
-        var openAiDirect = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
-        var openAiConnection = await openAiConnections.GetAsync(owner, cancellationToken);
-        var openAiHealth = await openAiHealthService.GetAsync(owner, cancellationToken);
-
-        Infrastructure.Analytics.OpenAiAdsProviderAccountSnapshot? openAiProvider = null;
-        Infrastructure.Analytics.OpenAiAdsMeasurementCapabilitySnapshot? openAiMeasurement = null;
-        string? openAiProviderError = null;
-        if (openAiConnection.Connected)
-        {
-            try
-            {
-                openAiProvider = await openAiDirect.InspectAsync(owner, cancellationToken);
-                openAiMeasurement = await openAiDirect.InspectMeasurementAsync(owner, cancellationToken);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or UnauthorizedAccessException or JsonException or InvalidOperationException)
-            { openAiProviderError = "Provider status could not be refreshed."; }
-        }
-
-        var db = HttpContext.RequestServices.GetRequiredService<Infrastructure.Data.MasterAppDbContext>();
-        var paidTrafficEvents = await db.AnalyticsEvents.AsNoTracking()
-            .CountAsync(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "", cancellationToken);
-        var leads = await db.WebsiteLeads.AsNoTracking()
-            .CountAsync(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "", cancellationToken);
-        var crmLeadIds = db.WebsiteLeadIntakeLinks.AsNoTracking()
-            .Where(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "")
-            .Select(x => x.WorkstationLeadId);
-        var crm = await crmLeadIds.CountAsync(cancellationToken);
-        var appointments = await db.LeadAppointments.AsNoTracking()
-            .CountAsync(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "", cancellationToken);
-        var orders = await db.CommerceOrders.AsNoTracking()
-            .CountAsync(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "", cancellationToken);
-        var productionRows = db.ProductionRecords.AsNoTracking()
-            .Where(x => x.LeadId != null && crmLeadIds.Contains(x.LeadId) && x.Oppref != null && x.Oppref != "");
-        var production = await productionRows.CountAsync(cancellationToken);
-        var paidRevenue = await productionRows.Where(x => x.Status == ProductionStatus.Paid)
-            .SumAsync(x => (decimal?)x.Amount, cancellationToken) ?? 0m;
-
+        var setup = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingProviderSetupProjection>()
+            .ReadAsync(owner, cancellationToken);
+        var evidence = setup.Evidence;
+        var openAiConnection = setup.Connection;
+        var openAiHealth = setup.Health;
+        var openAiProvider = setup.Account;
+        var openAiMeasurement = setup.Capability;
+        var openAiProviderError = setup.OpenAiError;
         var accountReady =
             string.Equals(openAiProvider?.Status, "active", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(openAiProvider?.ReviewStatus, OpenAiAdsReviewStatuses.Approved, StringComparison.Ordinal) &&
             openAiConnection.PixelConfigured &&
-            openAiConnection.ConversionsApiConfigured &&
-            openAiHealth.Status == "ready";
+            openAiConnection.ConversionsApiConfigured && !string.IsNullOrWhiteSpace(openAiConnection.ConversionDataSourceId);
 
         return Json(new
         {
             source = "canonical_business_marketing_setup",
+            evidence,
+            evidenceError = setup.EvidenceError,
             agentProfileId = (Guid?)null,
             agentName = business.DisplayName,
             status = new
@@ -682,9 +651,10 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 metaPixelId = profile.Settings.MetaPixelId,
                 metaTestEventCode = profile.Settings.MetaTestEventCode,
                 metaTestEventsConfigured = !string.IsNullOrWhiteSpace(profile.Settings.MetaTestEventCode),
-                metaAdsConnected = profile.AdsConnected,
-                metaAccount = profile.ConnectedAccount,
-                metaCapiConfiguredSecurely = profile.HasSecureCapiToken,
+                metaAdsConnected = setup.Meta.Connected,
+                metaAccount = setup.Meta.AccountName ?? setup.Meta.AccountId,
+                available = setup.Meta.Available, error = setup.Meta.Error,
+                metaCapiConfiguredSecurely = setup.Meta.CapiConfigured,
                 metaCapiManagedAutomatically = true
             },
             openAi = new
@@ -728,18 +698,6 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                     providerMonitoringAvailable = openAiHealth.ProviderMonitoringAvailable,
                     recentProviderEvents = openAiHealth.RecentProviderEvents
                 }
-            },
-            attribution = new
-            {
-                source = "canonical_oppref_lineage",
-                paidTrafficEvents,
-                leads,
-                crm,
-                appointments,
-                orders,
-                production,
-                paidRevenue,
-                complete = paidTrafficEvents > 0 && leads > 0 && crm > 0 && (appointments > 0 || orders > 0 || production > 0)
             },
             booking = new
             {
@@ -814,7 +772,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         catch (HttpRequestException)
         { return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads could not be verified right now." }); }
 
-        return await MarketingSetup(businessId, cancellationToken);
+        return await MarketingCommandReceiptAsync(businessId, cancellationToken);
     }
 
     [HttpPost("analytics/openai-refresh")]
@@ -838,10 +796,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         catch (HttpRequestException)
         { return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads could not be refreshed right now." }); }
 
-        var setupResult = await MarketingSetup(businessId, cancellationToken);
-        if (setupResult is JsonResult setupJson)
-            return Json(new { setup = setupJson.Value, pixelProvisioning = refresh.PixelProvisioning });
-        return setupResult;
+        return await MarketingCommandReceiptAsync(businessId, cancellationToken, refresh.PixelProvisioning);
     }
 
     [HttpPost("analytics/openai-disconnect")]
@@ -862,7 +817,20 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         catch (InvalidOperationException ex)
         { return BadRequest(new { message = ex.Message }); }
 
-        return await MarketingSetup(businessId, cancellationToken);
+        return await MarketingCommandReceiptAsync(businessId, cancellationToken);
+    }
+
+    private async Task<IActionResult> MarketingCommandReceiptAsync(Guid businessId, CancellationToken cancellationToken, object? pixelProvisioning = null)
+    {
+        // The mutation has committed. A read failure must not turn its receipt into a failed command.
+        try
+        {
+            var refreshed = await MarketingSetup(businessId, cancellationToken);
+            return Json(new { ok = true, setup = (refreshed as JsonResult)?.Value,
+                setupStatus = refreshed is JsonResult ? "available" : "unavailable", pixelProvisioning });
+        }
+        catch (Exception)
+        { return Json(new { ok = true, setup = (object?)null, setupStatus = "unavailable", pixelProvisioning }); }
     }
 
     [HttpGet("analytics/{**section}")]

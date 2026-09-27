@@ -48,7 +48,8 @@ public sealed class UnifiedMarketingPerformanceService(
                     ct);
                 delivery.AddRange(ParseOpenAiRows(provider.Payload));
             }
-            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or OpenAiAdsExecutionException)
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or OpenAiAdsExecutionException or HttpRequestException ||
+                ex is OperationCanceledException && !ct.IsCancellationRequested)
             {
                 notes.Add("ChatGPT Ads delivery metrics are temporarily unavailable: " + ex.Message);
             }
@@ -59,27 +60,15 @@ public sealed class UnifiedMarketingPerformanceService(
         }
 
         var attributedEvents = await analytics.LoadAttributedEventsAsync(range, analyticsScope, TrafficType.All, ct);
-        var openAiEvents = attributedEvents
-            .Where(x => OpenAiClickReference.Normalize(x.Oppref) is not null)
-            .ToList();
-
-        var openAiLeadIds = openAiEvents
-            .Where(x => IsLeadEvent(x.EventType))
-            .Select(x => x.ClientEventId ?? x.EventId)
-            .Distinct()
-            .LongCount();
-
-        var metaSignals = await analytics.LoadScopedMetaEventsAsync(range, analyticsScope, attributedEvents, ct);
-        var openAiSignals = metaSignals.Where(HasOppref).ToList();
-
+        var openAiEvents = CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(attributedEvents)
+            .Where(x => CanonicalMarketingOutcomeProjection.ChannelFor(x) == MarketingChannels.ChatGptAds).ToArray();
         var outcomes = new CanonicalOutcomeTotals(
-            Leads: openAiLeadIds,
-            QualifiedLeads: CountSignals(openAiSignals, "QualifiedLead"),
-            Appointments: CountSignals(openAiSignals, "AppointmentBooked", "Schedule", "AppointmentCompleted"),
-            Customers: CountSignals(openAiSignals, "PolicyPaid", "Purchase", "OrderCreated"),
-            Revenue: openAiSignals
-                .Where(x => IsAny(x.EventName, "PolicyPaid", "Purchase", "OrderCreated"))
-                .Sum(x => ReadRevenue(x.MetadataJson)));
+            Leads: openAiEvents.LongCount(x => CanonicalMarketingOutcomeProjection.OutcomeName(x) == "Lead"),
+            QualifiedLeads: openAiEvents.LongCount(x => CanonicalMarketingOutcomeProjection.OutcomeName(x) == "QualifiedLead"),
+            Appointments: openAiEvents.LongCount(x => CanonicalMarketingOutcomeProjection.OutcomeName(x) is "AppointmentBooked" or "AppointmentCompleted"),
+            Customers: openAiEvents.LongCount(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.EventType)),
+            Revenue: openAiEvents.Where(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.EventType))
+                .Sum(x => CanonicalMarketingOutcomeProjection.ReadMoney(x.MetadataJson)));
 
         var channels = new List<ChannelPerformanceRow>();
         var openAiSpend = delivery.Sum(x => x.Spend);
@@ -94,8 +83,8 @@ public sealed class UnifiedMarketingPerformanceService(
             outcomes.Customers,
             outcomes.Revenue,
             openAiSpend > 0 ? Math.Round(outcomes.Revenue / openAiSpend, 2) : 0,
-            "verified",
-            "Provider delivery + canonical oppref CRM lineage"));
+            openAiEvents.Length > 0 ? "reference_observed" : "not_observed",
+            "Canonical oppref lineage; campaign credit requires separate provider evidence"));
 
         try
         {
@@ -116,7 +105,8 @@ public sealed class UnifiedMarketingPerformanceService(
                 "verified",
                 "Canonical Meta campaign attribution + CRM outcomes"));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException ||
+            ex is OperationCanceledException && !ct.IsCancellationRequested)
         {
             notes.Add("Meta Ads comparison is unavailable for this scope: " + ex.Message);
         }
@@ -194,108 +184,12 @@ public sealed class UnifiedMarketingPerformanceService(
 
             channels.Add(new ChannelPerformanceRow(
                 channel, 0, 0, 0,
-                rows.LongCount(x => IsLeadEvent(x.EventType)),
+                CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(rows).LongCount(x => CanonicalMarketingOutcomeProjection.OutcomeName(x) == "Lead"),
                 0, 0, 0, 0, 0,
                 "observed",
                 "Canonical website attribution events"));
         }
     }
-
-    private static bool HasOppref(Domain.Entities.MetaSignalEvent row)
-    {
-        if (string.IsNullOrWhiteSpace(row.MetadataJson)) return false;
-        try
-        {
-            using var doc = JsonDocument.Parse(row.MetadataJson);
-            return FindProperty(doc.RootElement, "oppref") is { } value &&
-                   OpenAiClickReference.Normalize(value) is not null;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
-
-    private static string? FindProperty(JsonElement element, string propertyName)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in element.EnumerateObject())
-            {
-                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase) &&
-                    property.Value.ValueKind == JsonValueKind.String)
-                    return property.Value.GetString();
-
-                var nested = FindProperty(property.Value, propertyName);
-                if (nested is not null) return nested;
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                var nested = FindProperty(item, propertyName);
-                if (nested is not null) return nested;
-            }
-        }
-        return null;
-    }
-
-    private static decimal ReadRevenue(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return 0;
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            foreach (var key in new[] { "amount", "personalAmount", "revenue", "value", "paidPremium", "orderTotal" })
-            {
-                var found = FindNumber(doc.RootElement, key);
-                if (found.HasValue) return found.Value;
-            }
-        }
-        catch (JsonException) { }
-        return 0;
-    }
-
-    private static decimal? FindNumber(JsonElement element, string propertyName)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in element.EnumerateObject())
-            {
-                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetDecimal(out var number))
-                        return number;
-                    if (property.Value.ValueKind == JsonValueKind.String &&
-                        decimal.TryParse(property.Value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out number))
-                        return number;
-                }
-                var nested = FindNumber(property.Value, propertyName);
-                if (nested.HasValue) return nested;
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                var nested = FindNumber(item, propertyName);
-                if (nested.HasValue) return nested;
-            }
-        }
-        return null;
-    }
-
-    private static long CountSignals(
-        IEnumerable<Domain.Entities.MetaSignalEvent> rows,
-        params string[] names) =>
-        rows.LongCount(x => names.Any(name => string.Equals(x.EventName, name, StringComparison.OrdinalIgnoreCase)));
-
-    private static bool IsLeadEvent(string? value) =>
-        IsAny(value, "Lead", "LeadCreated", "lead_created", "QuoteSubmitted", "quote_submitted");
-
-    private static bool IsAny(string? value, params string[] candidates) =>
-        candidates.Any(x => string.Equals(value, x, StringComparison.OrdinalIgnoreCase));
 
     private static string? Text(JsonElement row, string name) =>
         row.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String

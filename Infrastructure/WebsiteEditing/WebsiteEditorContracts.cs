@@ -267,7 +267,9 @@ public sealed record WebsiteCallToActionOption(
     bool OpenInNewTab = false,
     string AnalyticsEventName = "cta_click",
     string? MetaIntentEventName = null,
-    IReadOnlyList<string>? TextVariants = null);
+    IReadOnlyList<string>? TextVariants = null,
+    string BehaviorKey = "cta_click",
+    string? RuntimeAction = null);
 
 /// <summary>
 /// One scope-aware CTA catalog for the shared LEGEND website editor. Dynamic contact
@@ -298,7 +300,8 @@ public static class WebsiteCallToActionCatalog
         string siteKey,
         string? phone = null,
         string? email = null,
-        string? bookingUrl = null)
+        string? bookingUrl = null,
+        string? commerceStorePath = null)
     {
         var options = new List<WebsiteCallToActionOption>();
         void Add(
@@ -309,18 +312,19 @@ public static class WebsiteCallToActionCatalog
             string? href,
             bool external = false,
             string analytics = "cta_click",
-            string? metaIntent = null,
-            IReadOnlyList<string>? textVariants = null)
+            IReadOnlyList<string>? textVariants = null,
+            string behaviorKey = "cta_click",
+            string? runtimeAction = null)
         {
             if (string.IsNullOrWhiteSpace(href) || href == "#") return;
             if (!Shared.Analytics.AnalyticsEventCatalog.TryGet(analytics, out var analyticsDefinition) ||
                 !analyticsDefinition.AllowBrowser)
                 throw new InvalidOperationException("CTA analytics must use the canonical browser event catalog.");
-            if (!string.IsNullOrWhiteSpace(metaIntent) &&
-                (!Shared.Analytics.MetaSignalEventCatalog.TryGet(metaIntent, out var metaDefinition) ||
-                 Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(metaIntent) ||
-                 !metaDefinition.AllowBrowserPixel))
-                throw new InvalidOperationException("CTA Meta intent must be a canonical browser signal.");
+            if (!Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(behaviorKey, out var behavior) ||
+                behavior.RequiresServerAuthority)
+                throw new InvalidOperationException("Browser actions cannot claim a verified backend outcome.");
+            // Provider names are projections of the canonical source contract.
+            var metaIntent = Shared.Analytics.MetaSignalAnalyticsAliasCatalog.ResolveSignalName(analytics);
 
             var variants = new[] { defaultText }
                 .Concat(textVariants ?? Array.Empty<string>())
@@ -328,7 +332,7 @@ public static class WebsiteCallToActionCatalog
                 .Select(value => value.Trim())
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
-            options.Add(new(key, group, label, defaultText, href, external, analytics, metaIntent, variants));
+            options.Add(new(key, group, label, defaultText, href, external, analytics, metaIntent, variants, behavior.Key, runtimeAction));
         }
 
         if (siteKey == WebsiteEditorSiteKeys.Legend)
@@ -336,15 +340,16 @@ public static class WebsiteCallToActionCatalog
             Add("legend_home", "Home", "Home", "Home", "/", textVariants: HomeTexts);
             Add("legend_about", "About", "About", "About", "/about", textVariants: AboutTexts);
             Add("legend_contact", "Contact", "Contact", "Contact", "/contact",
-                metaIntent: "ContactStepReached", textVariants: ContactTexts);
+                textVariants: ContactTexts);
             Add("legend_protect", "Protection", "Protection", "Protection", "https://protect.mylegnd.com/", true,
                 textVariants: ProtectionTexts);
         }
         else if (siteKey == WebsiteEditorSiteKeys.Protect)
         {
             Add("protect_home", "Home", "Home", "Home", "/", textVariants: HomeTexts);
+            Add("protect_risk_assessment", "Assessment", "Risk assessment", "Start assessment", "/RiskAssessment", analytics: "risk_assessment_click");
             Add("protect_contact", "Contact", "Contact", "Contact", "/Contact",
-                metaIntent: "ContactStepReached", textVariants: ContactTexts);
+                textVariants: ContactTexts);
             Add("protect_quote", "Quote", "Quote", "Quote", "/Quote",
                 analytics: "quote_click", textVariants: QuoteTexts);
             foreach (var route in Shared.Analytics.ProtectRouteCatalog.Routes.Where(route => !string.IsNullOrWhiteSpace(route.QuoteType)))
@@ -367,9 +372,9 @@ public static class WebsiteCallToActionCatalog
                     ]);
             }
             Add("protect_call", "Call", "Call", "Call", NormalizePhone(phone),
-                metaIntent: "ContactStepReached", textVariants: CallTexts);
+                textVariants: CallTexts);
             Add("protect_schedule", "Schedule", "Schedule", "Schedule", NormalizeHttps(bookingUrl), true,
-                metaIntent: "ContactStepReached", textVariants: ScheduleTexts);
+                textVariants: ScheduleTexts);
         }
         else if (siteKey == WebsiteEditorSiteKeys.Business)
         {
@@ -377,18 +382,39 @@ public static class WebsiteCallToActionCatalog
             Add("business_about", "About", "About", "About", "/about", textVariants: AboutTexts);
             Add("business_services", "Services", "Services", "Services", "/services", textVariants: ServicesTexts);
             Add("business_contact", "Contact", "Contact", "Contact", "/contact",
-                metaIntent: "ContactStepReached", textVariants: ContactTexts);
+                textVariants: ContactTexts);
             Add("business_quote", "Quote", "Quote", "Quote", "/contact",
-                metaIntent: "ContactStepReached", textVariants: QuoteTexts);
+                textVariants: QuoteTexts);
             Add("business_call", "Call", "Call", "Call", NormalizePhone(phone),
-                metaIntent: "ContactStepReached", textVariants: CallTexts);
+                textVariants: CallTexts);
             Add("business_email", "Email", "Email", "Email", NormalizeEmail(email),
-                metaIntent: "ContactStepReached", textVariants: EmailTexts);
+                textVariants: EmailTexts);
             Add("business_schedule", "Schedule", "Schedule", "Schedule", NormalizeHttps(bookingUrl), true,
-                metaIntent: "ContactStepReached", textVariants: ScheduleTexts);
+                textVariants: ScheduleTexts);
         }
 
+        if (!string.IsNullOrWhiteSpace(commerceStorePath) &&
+            WebsiteContentSanitizer.SanitizeUrl(commerceStorePath) is string storeRoot)
+        {
+            storeRoot = storeRoot.TrimEnd('/');
+            Add("commerce_store", "Store", "View products", "View products", storeRoot);
+            Add("commerce_cart", "Store", "View cart", "View cart", storeRoot + "/cart");
+            Add("commerce_checkout", "Store", "Checkout / purchase flow", "Checkout", storeRoot + "/checkout");
+            Add("commerce_add_to_cart", "Store", "Add current product to cart", "Add to cart", "#current-product", runtimeAction: "add_current_product");
+        }
+        Add("form_start", "Forms", "Start form", "Get started", "#website-form", runtimeAction: "focus_form");
+        Add("submit", "Forms", "Submit form", "Submit", "#website-form", runtimeAction: "submit_form");
         return options;
+    }
+
+    public static bool TryResolveBehavior(string siteKey, string? actionKey, out Shared.Analytics.AnalyticsBehaviorContract behavior)
+    {
+        // Availability affects selection, not the identity of an already-published action.
+        var option = Build(siteKey, "10000000000", "identity@example.invalid", "https://example.invalid/booking", "/store")
+            .FirstOrDefault(candidate => string.Equals(candidate.Key, actionKey, StringComparison.Ordinal));
+        if (option is not null) return Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(option.BehaviorKey, out behavior);
+        behavior = null!;
+        return false;
     }
 
     public static string? PrepareForPublish(

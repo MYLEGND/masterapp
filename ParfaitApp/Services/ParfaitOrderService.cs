@@ -1,6 +1,7 @@
 using System.Text;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Commerce;
 using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
 using Shared.Analytics;
@@ -90,6 +91,7 @@ public sealed class ParfaitOrderService
         {
             var now = DateTime.UtcNow;
             var record = CreatePendingOrderRecord(
+                businessId,
                 GenerateOrderNumber(now),
                 null,
                 customer,
@@ -169,6 +171,7 @@ public sealed class ParfaitOrderService
             if (order is null)
             {
                 record = CreatePendingOrderRecord(
+                    businessId,
                     GenerateOrderNumber(now),
                     normalizedAttemptId,
                     customer,
@@ -189,6 +192,7 @@ public sealed class ParfaitOrderService
             {
                 record = MapOrder(order);
                 ApplyCheckoutSnapshot(
+                    businessId,
                     record,
                     normalizedAttemptId,
                     customer,
@@ -496,6 +500,7 @@ public sealed class ParfaitOrderService
     }
 
     private static ParfaitOrderRecord CreatePendingOrderRecord(
+        Guid businessId,
         string orderNumber,
         string? checkoutAttemptId,
         ParfaitCheckoutCustomerRequest customer,
@@ -528,11 +533,12 @@ public sealed class ParfaitOrderService
             PostalCode = ""
         };
 
-        ApplyCheckoutSnapshot(order, checkoutAttemptId, customer, items, subtotalCents, discountCode, discountLabel, discountCents, shippingCents, taxCents, httpContext, now);
+        ApplyCheckoutSnapshot(businessId, order, checkoutAttemptId, customer, items, subtotalCents, discountCode, discountLabel, discountCents, shippingCents, taxCents, httpContext, now);
         return order;
     }
 
     private static void ApplyCheckoutSnapshot(
+        Guid businessId,
         ParfaitOrderRecord order,
         string? checkoutAttemptId,
         ParfaitCheckoutCustomerRequest customer,
@@ -572,7 +578,7 @@ public sealed class ParfaitOrderService
         order.Source = "Public Store";
         order.UserAgent = httpContext.Request.Headers.UserAgent.ToString();
         order.RequestIp = httpContext.Connection.RemoteIpAddress?.ToString();
-        order.Oppref ??= ResolveOppref(httpContext);
+        order.Oppref ??= ResolveOppref(businessId, httpContext);
         order.Items = items.Select(NormalizeItem).ToList();
         order.SubtotalCents = subtotal;
         order.DiscountCode = string.IsNullOrWhiteSpace(discountCode) ? null : discountCode.Trim().ToUpperInvariant();
@@ -652,12 +658,14 @@ public sealed class ParfaitOrderService
         return normalized;
     }
 
-    private static string? ResolveOppref(HttpContext httpContext)
+    private static string? ResolveOppref(Guid businessId, HttpContext httpContext)
     {
-        var cookie = httpContext.Request.Cookies.TryGetValue("pf_oppref", out var rawCookie)
-            ? Uri.UnescapeDataString(rawCookie)
-            : null;
-        return OpenAiClickReference.Normalize(cookie ?? httpContext.Request.Query["oppref"].FirstOrDefault());
+        // businessId is the validated domain scope already used to load/write
+        // this order. Campaign cookies cannot choose or replace it.
+        var sessionId = httpContext.Request.Cookies["pf_sid"];
+        var context = new CommerceSignalContext(businessId, null, null, "commerce", string.Empty,
+            string.Empty, string.Empty, SessionId: sessionId);
+        return CommerceSignalAttribution.Apply(context, httpContext.Request).Oppref;
     }
 
     private static ParfaitValidatedCartItem NormalizeItem(ParfaitValidatedCartItem item)

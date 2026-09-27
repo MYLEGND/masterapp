@@ -18,7 +18,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Analytics;
 
-public class WebsiteTrackingProxyAuthority : ControllerBase
+public abstract class WebsiteTrackingProxyAuthority : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonPascalCase = new()
     {
@@ -46,7 +46,6 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
 
     [HttpPost]
     [Route("api/tracking/ingest")]
-    [Route("api/analytics/ingest")] // Compat alias for older tracking.js builds.
     [IgnoreAntiforgeryToken]
     [RequestSizeLimit(32 * 1024)]
     public async Task<IActionResult> Ingest([FromBody] AnalyticsEventRequest req, CancellationToken ct)
@@ -56,6 +55,27 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
 
         if (string.IsNullOrWhiteSpace(req.EventType))
             return BadRequest(new { error = "event_type_required" });
+
+        if (req.MetaSignal is not null &&
+            (!Guid.TryParse(req.MetaSignal.EventId, out var signalId) || signalId != req.ClientEventId ||
+             !string.Equals(req.MetaSignal.EventName, req.EventType, StringComparison.OrdinalIgnoreCase) ||
+             AnalyticsEventCatalog.RequiresServerAuthority(req.MetaSignal.EventName)))
+            return BadRequest(new { error = "signal_identity_or_authority_invalid" });
+
+        if (string.Equals(req.SiteKey, "commerce", StringComparison.OrdinalIgnoreCase))
+        {
+            var stores = HttpContext.RequestServices.GetRequiredService<ParfaitApp.Services.CommerceStoreContextService>();
+            var store = await stores.ResolveAnalyticsAsync(HttpContext, req.Path, ct);
+            if (store is null) return BadRequest(new { error = "commerce_scope_required" });
+            var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+            var version = store.WebsiteContentVersionId.HasValue
+                ? await db.Set<Domain.Entities.WebsiteContentVersion>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == store.WebsiteContentVersionId, ct) : null;
+            var origin = new Uri(Request.Headers.Origin.ToString());
+            var typedBusinessId = store.WebsiteSiteKey is WebsiteEditorSiteKeys.Protect or WebsiteEditorSiteKeys.Legend
+                ? (Guid?)null : store.CommerceBusinessId;
+            var scope = new PublicWebsiteRuntimeScope(store.WebsiteSiteKey, store.BusinessKey, typedBusinessId, version, origin.IdnHost);
+            return await PersistPublicWebsiteEventAsync(req, scope, ct, store.AgentTrackingProfileId);
+        }
 
         if (req.SiteKey is WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Business)
         {
@@ -141,17 +161,6 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
             return BadRequest(new { error = "tracking_owner_required" });
 
         var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
-        var existing = await db.AnalyticsEvents.AsNoTracking()
-            .FirstOrDefaultAsync(row => row.ClientEventId == req.ClientEventId, cancellationToken);
-        if (existing is not null)
-        {
-            var sameOwner =
-                existing.CommerceBusinessId == null &&
-                existing.AgentTrackingProfileId == req.AgentTrackingProfileId &&
-                string.Equals(existing.EventType, req.EventType, StringComparison.OrdinalIgnoreCase);
-            return sameOwner ? Ok(new { status = "duplicate_ignored" }) : Conflict(new { error = "event_id_owner_conflict" });
-        }
-
         var context = new UnifiedEventContext
         {
             SiteKey = WebsiteEditorSiteKeys.Protect,
@@ -167,6 +176,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
             Referrer = Clean(req.Referrer),
             PageKey = Clean(req.PageKey),
             ElementKey = Clean(req.ElementKey),
+            ActionKey = Clean(req.ActionKey),
             ButtonLabel = Clean(req.ButtonLabel),
             FormKey = Clean(req.FormKey),
             QuoteType = Clean(req.QuoteType),
@@ -212,11 +222,11 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
                 source = "protect_shared_tracking",
                 siteKey = WebsiteEditorSiteKeys.Protect,
                 reportingOwner = isFounderOwner ? "founder" : "agent",
-                analyticsMetadata = Clean(req.MetadataJson)
+                analyticsMetadata = WebsiteAnalyticsIngestAuthority.ParseMetadata(req.MetadataJson)
             }
         };
 
-        var row = UnifiedEventMapper.ToAnalytics(context);
+        var row = UnifiedEventMapper.ToAnalytics(WebsiteAnalyticsIngestAuthority.ApplySignalMetadata(context, req.MetaSignal));
         row.ClientEventId = req.ClientEventId;
         row.SchemaVersion = req.SchemaVersion ?? 1;
         row.TrackingVersion = Clean(req.TrackingVersion);
@@ -230,49 +240,26 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         row.FormId = Clean(req.FormId);
         row.FieldName = Clean(req.FieldName);
         row.ElementId = Clean(req.ElementId);
-        UnifiedAnalyticsWriter.Write(db, row);
-
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException)
-        {
-            db.Entry(row).State = EntityState.Detached;
-            existing = await db.AnalyticsEvents.AsNoTracking()
-                .FirstOrDefaultAsync(candidate => candidate.ClientEventId == req.ClientEventId, cancellationToken);
-            if (existing is null) throw;
-            if (existing.CommerceBusinessId != null ||
-                existing.AgentTrackingProfileId != req.AgentTrackingProfileId)
-                return Conflict(new { error = "event_id_owner_conflict" });
-        }
-
-        return Ok(new { status = "ok", eventId = row.EventId });
+        var result = await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, row, cancellationToken);
+        return result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict
+            ? Conflict(new { error = "event_id_owner_conflict" })
+            : Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok", eventId = row.EventId });
     }
 
     private async Task<IActionResult> PersistPublicWebsiteEventAsync(
         AnalyticsEventRequest req,
         PublicWebsiteRuntimeScope scope,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? agentTrackingProfileId = null)
     {
         if (!AnalyticsEventCatalog.TryGet(req.EventType, out var definition) || !definition.AllowBrowser)
             return BadRequest(new { error = "invalid_event_type" });
 
         var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
-        var existing = await db.AnalyticsEvents.AsNoTracking()
-            .FirstOrDefaultAsync(row => row.ClientEventId == req.ClientEventId, cancellationToken);
-        if (existing is not null)
-        {
-            var sameOwner = existing.CommerceBusinessId == scope.CommerceBusinessId &&
-                existing.WebsiteContentVersionId == scope.PublishedVersion?.Id &&
-                string.Equals(existing.EventType, req.EventType, StringComparison.OrdinalIgnoreCase);
-            return sameOwner ? Ok(new { status = "duplicate_ignored" }) : Conflict(new { error = "event_id_owner_conflict" });
-        }
-
         var context = new UnifiedEventContext
         {
             SiteKey = scope.SiteKey,
             CommerceBusinessId = scope.CommerceBusinessId,
+            AgentTrackingProfileId = agentTrackingProfileId,
             WebsiteContentVersionId = scope.PublishedVersion?.Id,
             WebsiteBindingId = string.IsNullOrWhiteSpace(req.WebsiteBindingId) ? null : req.WebsiteBindingId.Trim(),
             EventId = req.ClientEventId.ToString("N"),
@@ -285,6 +272,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
             Referrer = Clean(req.Referrer),
             PageKey = Clean(req.PageKey),
             ElementKey = Clean(req.ElementKey),
+            ActionKey = Clean(req.ActionKey),
             ButtonLabel = Clean(req.ButtonLabel),
             FormKey = Clean(req.FormKey),
             QuoteType = Clean(req.QuoteType),
@@ -330,11 +318,11 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
                 Source = "public_website_shared_tracking",
                 Scope = scope.SiteKey,
                 WebsiteBindingId = Clean(req.WebsiteBindingId),
-                AnalyticsMetadata = Clean(req.MetadataJson)
+                AnalyticsMetadata = WebsiteAnalyticsIngestAuthority.ParseMetadata(req.MetadataJson)
             }
         };
 
-        var row = UnifiedEventMapper.ToAnalytics(context);
+        var row = UnifiedEventMapper.ToAnalytics(WebsiteAnalyticsIngestAuthority.ApplySignalMetadata(context, req.MetaSignal));
         row.ClientEventId = req.ClientEventId;
         row.SchemaVersion = req.SchemaVersion ?? 1;
         row.TrackingVersion = Clean(req.TrackingVersion);
@@ -348,23 +336,10 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         row.FormId = Clean(req.FormId);
         row.FieldName = Clean(req.FieldName);
         row.ElementId = Clean(req.ElementId);
-        UnifiedAnalyticsWriter.Write(db, row);
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException)
-        {
-            db.Entry(row).State = EntityState.Detached;
-            existing = await db.AnalyticsEvents.AsNoTracking()
-                .FirstOrDefaultAsync(candidate => candidate.ClientEventId == req.ClientEventId, cancellationToken);
-            if (existing is null) throw;
-            if (existing.CommerceBusinessId != scope.CommerceBusinessId ||
-                existing.WebsiteContentVersionId != scope.PublishedVersion?.Id)
-                return Conflict(new { error = "event_id_owner_conflict" });
-        }
-
-        return Ok(new { status = "ok", eventId = row.EventId });
+        var result = await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, row, cancellationToken);
+        return result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict
+            ? Conflict(new { error = "event_id_owner_conflict" })
+            : Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok", eventId = row.EventId });
     }
 
     private static string? Clean(string? value) =>
@@ -402,60 +377,18 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
             return (true, null);
         }
 
-        if (!string.IsNullOrWhiteSpace(req.AgentSlug))
-        {
-            var bySlug = await _resolver.ResolveBySlugAsync(req.AgentSlug.Trim(), ct);
-            if (!bySlug.Found || bySlug.Profile == null)
-            {
-                return (false, "invalid_agent_slug");
-            }
-
-            req.AgentTrackingProfileId = bySlug.Profile.Id;
-            req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
-            return (true, null);
-        }
-
-        if (req.AgentTrackingProfileId.HasValue)
-        {
-            var byId = await _resolver.ResolveByIdAsync(req.AgentTrackingProfileId.Value, ct);
-            if (!byId.Found || byId.Profile == null)
-            {
-                return (false, "invalid_agent_profile");
-            }
-
-            req.AgentTrackingProfileId = byId.Profile.Id;
-            req.AgentSlug = byId.CanonicalSlug ?? byId.Profile.Slug;
-            return (true, null);
-        }
-
-        // Root-domain Home belongs to Founder. Preserve the existing founder fallback,
-        // but resolve it here so the central lead endpoint receives explicit attribution.
-        var founder = await _resolver.ResolveByUpnAsync(_founderUpn, ct);
-        if (founder.Found && founder.Profile != null)
-        {
-            req.AgentTrackingProfileId = founder.Profile.Id;
-            req.AgentSlug = founder.CanonicalSlug ?? founder.Profile.Slug;
-        }
-
+        var hasExplicitOwner = req.AgentTrackingProfileId.HasValue || !string.IsNullOrWhiteSpace(req.AgentSlug);
+        var owner = await ProtectWebsiteOwnerResolver.ResolveLeadAsync(_resolver, _founderUpn,
+            req.AgentTrackingProfileId, req.AgentSlug, !hasExplicitOwner, ct);
+        if (owner is null) return (false, "invalid_agent_scope");
+        req.AgentTrackingProfileId = owner.Profile.Id;
+        req.AgentSlug = owner.Slug;
         return (true, null);
     }
 
     private string? ResolveLeadSourcePathFromReferrer()
     {
-        var raw = Request.Headers["Referer"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(raw)) return null;
-
-        if (Uri.TryCreate(raw, UriKind.Absolute, out var uri))
-        {
-            if (!string.Equals(uri.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            return uri.AbsolutePath;
-        }
-
-        return raw.Trim();
+        return ProtectWebsiteOwnerResolver.SameOriginReferrerPath(Request);
     }
 
     private static string? ExtractAgentSlug(string? sourcePath)
@@ -770,51 +703,20 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
 
     /// <summary>
     /// Ensures analytics events carry attribution even if client-side globals are missing.
-    /// Priority:
-    /// 1) Existing explicit payload values
-    /// 2) Slug parsed from /a/{slug}/... path
-    /// 3) Founder fallback for default-domain pages
+    /// Scoped paths resolve strictly to their owner; unscoped Protect pages resolve
+    /// to the configured Founder. Browser owner identifiers are not authority.
     /// </summary>
     private async Task<bool> EnsureAgentAttributionAsync(AnalyticsEventRequest req, CancellationToken ct)
     {
-        // Analytics ownership is server-authoritative. Ignore browser-supplied owner
-        // IDs/slugs and derive the scope from the same-origin public page/referrer.
-        req.AgentTrackingProfileId = null;
-        req.AgentSlug = null;
-
-        var sourcePath = ResolveLeadSourcePathFromReferrer();
-        var sourceSlug = ExtractAgentSlug(sourcePath) ?? ExtractAgentSlug(req.Path);
-        if (!string.IsNullOrWhiteSpace(sourceSlug))
-        {
-            var bySlug = await _resolver.ResolveBySlugAsync(sourceSlug, ct);
-            if (!bySlug.Found || bySlug.Profile == null)
-            {
-                // A scoped /a/{slug} request must never fall through to Founder.
-                // Unknown or temporarily unresolvable owners fail closed instead of
-                // contaminating Founder reporting.
-                return false;
-            }
-
-            req.AgentTrackingProfileId = bySlug.Profile.Id;
-            req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
-            return string.Equals(bySlug.Profile.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase);
-        }
-
-        // The canonical root Protect site belongs to the Founder owner. The actual
-        // Founder profile is resolved dynamically; no user/profile ID is hardcoded.
-        var founder = await _resolver.ResolveByUpnAsync(_founderUpn, ct);
-        if (founder.Found && founder.Profile != null)
-        {
-            req.AgentTrackingProfileId = founder.Profile.Id;
-            req.AgentSlug = founder.CanonicalSlug ?? founder.Profile.Slug;
-            return true;
-        }
-
-        return false;
+        var owner = await ProtectWebsiteOwnerResolver.ResolveAsync(HttpContext, _resolver, _founderUpn, req.Path, ct);
+        req.AgentTrackingProfileId = owner?.Profile.Id;
+        req.AgentSlug = owner?.Slug;
+        return owner?.IsFounder == true;
     }
 
     public sealed class AnalyticsEventRequest
     {
+        public MetaSignalIngestRequest? MetaSignal { get; set; }
         public int? SchemaVersion { get; set; }
         public string? TrackingVersion { get; set; }
         public string? SiteKey { get; set; }
@@ -825,6 +727,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         public string? PageKey { get; set; }
         public string? SectionKey { get; set; }
         public string? ElementKey { get; set; }
+        public string? ActionKey { get; set; }
         public string? ButtonLabel { get; set; }
         public string? FormKey { get; set; }
         public string? QuoteType { get; set; }
@@ -849,7 +752,7 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         public string? SubmitOutcome { get; set; }
         public string? MetadataJson { get; set; }
         public bool IsInternal { get; set; }
-        // Behavior Intelligence fields — must mirror AnalyticsIngestController.AnalyticsEventRequest exactly
+        // Canonical behavior intelligence ingest fields
         public string? ReferrerHost { get; set; }
         public string? DeviceType { get; set; }
         public string? Browser { get; set; }

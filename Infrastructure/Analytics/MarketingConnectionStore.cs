@@ -33,7 +33,7 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
     public async Task<MetaAdsConnectionRecord?> GetAdsAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
         var row = await GetStatusAsync(owner, ct);
-        if (row is null || row.DisconnectedUtc.HasValue || string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext)) return null;
+        if (row is null || row.DisconnectedUtc.HasValue || row.AccessTokenExpiresUtc <= DateTime.UtcNow || string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext)) return null;
         return new MetaAdsConnectionRecord
         {
             AgentTrackingProfileId = owner.AgentTrackingProfileId ?? Guid.Empty,
@@ -129,8 +129,10 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
     public async Task<string?> GetCapiTokenAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
         var row = await GetStatusAsync(owner, ct);
-        return row is null || row.DisconnectedUtc.HasValue ? null : protector.Unprotect(owner,
-            row.CapiAccessTokenCiphertext ?? row.AdsAccessTokenCiphertext);
+        if (row is null || row.DisconnectedUtc.HasValue) return null;
+        if (!string.IsNullOrWhiteSpace(row.CapiAccessTokenCiphertext))
+            return protector.Unprotect(owner, row.CapiAccessTokenCiphertext);
+        return row.AccessTokenExpiresUtc <= DateTime.UtcNow ? null : protector.Unprotect(owner, row.AdsAccessTokenCiphertext);
     }
 
     public async Task DisconnectAsync(MarketingOwnerScope owner, CancellationToken ct = default)
@@ -184,6 +186,11 @@ public static class MarketingServiceRegistration
         services.AddSingleton(sp => MarketingCredentialProtector.CreateShared(
             sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
         services.AddScoped<MarketingConnectionStore>();
+        services.TryAddScoped<AgentTrackingResolver>();
+        services.TryAddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
+        services.TryAddScoped<MarketingBrowserConfigurationService>();
+        services.TryAddScoped<MarketingMeasurementEvidenceService>();
+        services.TryAddScoped<MarketingProviderSetupProjection>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, MetaMarketingDestination>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, OpenAiMarketingDestination>());
         services.TryAddScoped<IMarketingDestinationRegistry, MarketingDestinationRegistry>();

@@ -19,6 +19,8 @@ public sealed class CanonicalCrmOutcomeLineageTests
         await using var db = ControllerTestHelpers.BuildDb();
         var websiteLeadId = Guid.NewGuid();
         var trackingId = Guid.NewGuid();
+        var version = Guid.NewGuid();
+        var originalTime = new DateTime(2026, 8, 22, 11, 30, 0, DateTimeKind.Utc);
 
         db.AgentTrackingProfiles.Add(new AgentTrackingProfile
         {
@@ -35,6 +37,9 @@ public sealed class CanonicalCrmOutcomeLineageTests
             LeadId = websiteLeadId,
             AgentTrackingProfileId = trackingId,
             AgentSlug = "agent-lineage",
+            WebsiteContentVersionId = version,
+            WebsiteBindingId = "original-binding",
+            Host = "protect.mylegnd.com",
             FirstName = "Taylor",
             LastName = "Lead",
             Email = "taylor@example.test",
@@ -48,6 +53,12 @@ public sealed class CanonicalCrmOutcomeLineageTests
             WebsiteLeadPublicId = websiteLeadId,
             WorkstationLeadId = "lead-lineage",
             AgentUserId = "agent-lineage",
+            SessionId = "original-session", VisitorId = "original-visitor",
+            UtmSource = "source", UtmMedium = "medium", UtmCampaign = "campaign", UtmId = "campaign-id",
+            MetaCampaignId = "meta-campaign", MetaAdSetId = "meta-adset", MetaAdId = "meta-ad",
+            Fbclid = "fb-click", Fbc = "fbc-click", Fbp = "fbp-browser", Oppref = "openai-click",
+            ReferrerUrl = "https://referrer.example.test", PagePath = "/original", LandingPageUrl = "https://protect.mylegnd.com/original",
+            ClientIpAddress = "192.0.2.1", ClientUserAgent = "original-agent",
             SubmittedUtc = DateTime.UtcNow,
             CapturedUtc = DateTime.UtcNow
         });
@@ -58,6 +69,8 @@ public sealed class CanonicalCrmOutcomeLineageTests
             NullLogger<MetaSignalCrmOutcomeService>.Instance);
 
         var issuedRecordId = Guid.NewGuid();
+        db.ProductionRecords.Add(new ProductionRecord { Id = issuedRecordId, AgentUserId = "agent-lineage", UpdatedUtc = originalTime });
+        await db.SaveChangesAsync();
         await service.RecordProductionOutcomeAsync(
             issuedRecordId,
             "agent-lineage",
@@ -70,6 +83,8 @@ public sealed class CanonicalCrmOutcomeLineageTests
             "issued");
 
         var paidRecordId = Guid.NewGuid();
+        db.ProductionRecords.Add(new ProductionRecord { Id = paidRecordId, AgentUserId = "agent-lineage", UpdatedUtc = originalTime });
+        await db.SaveChangesAsync();
         await service.RecordProductionOutcomeAsync(
             paidRecordId,
             "agent-lineage",
@@ -93,6 +108,24 @@ public sealed class CanonicalCrmOutcomeLineageTests
             1200m,
             "paid");
 
+        Assert.Empty(db.MetaSignalEvents);
+        foreach (var source in await db.AnalyticsEvents.AsNoTracking().ToListAsync())
+        {
+            Assert.Equal(originalTime, source.EventUtc);
+            Assert.Equal(version, source.WebsiteContentVersionId);
+            Assert.Equal("original-binding", source.WebsiteBindingId);
+            Assert.Equal("original-session", source.SessionId);
+            Assert.Equal("original-visitor", source.VisitorId);
+            Assert.Equal("campaign", source.UtmCampaign);
+            Assert.Equal("meta-campaign", source.MetaCampaignId);
+            Assert.Equal("openai-click", source.Oppref);
+            Assert.Equal("fb-click", source.Fbclid);
+            Assert.Equal("/original", source.Path);
+            Assert.Equal("fbc-click", CanonicalAdvertisingEventProjection.ReadString(source.MetadataJson, "fbc"));
+            Assert.Equal("fbp-browser", CanonicalAdvertisingEventProjection.ReadString(source.MetadataJson, "fbp"));
+            Assert.Equal(120000, CanonicalAdvertisingEventProjection.ReadInt64(source.MetadataJson, "valueCents"));
+            Assert.True(await MetaSignalAnalyticsBridge.PersistAsync(db, source));
+        }
         var events = await db.MetaSignalEvents
             .Where(x => x.EventName == "PolicyIssued" || x.EventName == "PolicyPaid")
             .OrderBy(x => x.FunnelStep)
@@ -117,6 +150,11 @@ public sealed class CanonicalCrmOutcomeLineageTests
                 Assert.Equal(trackingId, paid.AgentTrackingProfileId);
                 Assert.Equal("agent-lineage", paid.AgentSlug);
                 Assert.Equal("policy_paid", paid.StepName);
+                Assert.Equal(originalTime, paid.CreatedUtc);
+                Assert.Equal("original-session", paid.SessionId);
+                Assert.Equal("original-binding", paid.WebsiteBindingId);
+                Assert.Equal("openai-click", CanonicalAdvertisingEventProjection.ReadString(paid.MetadataJson, "oppref"));
+                Assert.Equal(120000, CanonicalAdvertisingEventProjection.ReadInt64(paid.MetadataJson, "valueCents"));
                 Assert.False(paid.MetaBrowserSent);
                 Assert.False(paid.MetaServerSent);
             });
@@ -188,6 +226,8 @@ public sealed class CanonicalCrmOutcomeLineageTests
             900m,
             "paid");
 
+        foreach (var source in await db.AnalyticsEvents.AsNoTracking().ToListAsync())
+            await Infrastructure.Analytics.MetaSignalAnalyticsBridge.PersistAsync(db, source);
         var paid = await db.MetaSignalEvents.SingleAsync(x => x.EventName == "PolicyPaid");
         Assert.Equal(websiteLeadId, paid.LeadId);
         Assert.Equal(trackingId, paid.AgentTrackingProfileId);

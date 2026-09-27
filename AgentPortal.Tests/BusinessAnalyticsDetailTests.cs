@@ -41,7 +41,7 @@ public sealed class BusinessAnalyticsDetailTests
     public async Task BusinessAnalyticsEventMapReadsAutomaticActionsFromTheCanonicalWebsiteContract()
     {
         using var db = ControllerTestHelpers.BuildDb();
-        var business = new CommerceBusiness { Id = Guid.NewGuid(), Key = "business", DisplayName = "Business" };
+        var business = new CommerceBusiness { Id = Guid.NewGuid(), Key = "business", DisplayName = "Business", IsActive = true, Status = "Active" };
         var settings = new CommerceBusinessStorefrontSettings
         {
             CommerceBusinessId = business.Id,
@@ -76,6 +76,7 @@ public sealed class BusinessAnalyticsDetailTests
         {
             OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id),
             SiteKey = WebsiteEditorSiteKeys.Business,
+            CommerceBusinessId = business.Id,
             DraftJson = System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             Revision = 4
         };
@@ -85,6 +86,10 @@ public sealed class BusinessAnalyticsDetailTests
             Revision = 3,
             DocumentJson = state.DraftJson
         };
+        // Unpublished edits must not appear as live behavior or rewrite publication history.
+        document.Pages["/"].Extras[0].Text = "Unpublished call label";
+        document.Pages["/"].Extras.Add(new WebsiteExtraComponent { Id = "draft-only", ActionKey = "business_email", Text = "Draft email" });
+        state.DraftJson = System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         state.PublishedVersionId = version.Id;
         db.AddRange(business, settings, state, version);
         await db.SaveChangesAsync();
@@ -100,10 +105,21 @@ public sealed class BusinessAnalyticsDetailTests
         var service = new BusinessWorkspaceService(db, analytics.Object, new(db, new ConfigurationBuilder().Build()));
         var model = await service.AnalyticsAsync(business, 30, CancellationToken.None);
 
-        Assert.Contains(model.EventMap, row => row.Element == "page" && row.Event == "ViewContent" && row.Mode == "automatic");
-        Assert.Contains(model.EventMap, row => row.Element == "page" && row.Event == "MeaningfulScroll" && row.Mode == "automatic");
-        Assert.Contains(model.EventMap, row => row.Element == "extra:call" && row.Event == "cta_click" && row.Mode == "automatic");
-        Assert.Contains(model.EventMap, row => row.Element == "extra:call" && row.Event == "ContactStepReached" && row.Mode == "automatic_meta");
+        Assert.Contains(model.EventMap, row => row.Element == "automatic:page_view" && row.Event == "page_view" && row.Mode == "automatic");
+        Assert.Contains(model.EventMap, row => row.Element == "automatic:meaningful_scroll" && row.Event == "scroll_depth_50" && row.Mode == "automatic");
+        var call = Assert.Single(model.EventMap.Where(row => row.Element == "extra:call"));
+        Assert.Equal("business_call", call.ActionKey);
+        Assert.Equal("cta_click", call.Event);
+        Assert.Equal("Talk to us", call.VisibleLabel);
+        Assert.DoesNotContain(model.EventMap, row => row.Element == "extra:draft-only" || row.VisibleLabel == "Unpublished call label");
+        Assert.Equal("browser", call.Authority);
+        Assert.Equal(version.Id, call.PublishedVersion);
+        Assert.Equal(3, call.Revision);
+        Assert.DoesNotContain(model.EventMap, row => row.Mode == "automatic_meta" || !row.Published);
+        Assert.Contains(model.EventMap, row => row.BehaviorKey == "appointment_booked" && row.Locked && row.Authority == "verified_server");
+        var canonical = await new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build()).ReadAsync(ScopeContext.ForBusiness(business.Id));
+        Assert.Equal(canonical.Select(row => (row.Element, row.CanonicalEvent, row.MetaMapping, row.OpenAiMapping)),
+            model.EventMap.Select(row => (row.Element, row.Event, row.MetaMapping, row.OpenAiMapping)));
         analytics.VerifyAll();
     }
 

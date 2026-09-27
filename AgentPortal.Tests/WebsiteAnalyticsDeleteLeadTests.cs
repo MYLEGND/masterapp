@@ -177,7 +177,6 @@ public class WebsiteAnalyticsDeleteLeadTests
             analytics,
             metaAds,
             Mock.Of<IMetaAdsOAuthService>(),
-            Mock.Of<IMetaAdsConnectionStore>(),
             tracking.Object,
             metaSignalAnalytics,
             Mock.Of<ILandingRouteDiscoveryService>(),

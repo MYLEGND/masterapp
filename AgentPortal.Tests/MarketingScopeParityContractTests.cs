@@ -61,7 +61,7 @@ public sealed class MarketingScopeParityContractTests
         Assert.Contains("MarketingOwnerScope.Business(businessId)", controller, StringComparison.Ordinal);
         Assert.Contains("IOpenAiAdsAccountConnectionAuthority", controller, StringComparison.Ordinal);
         Assert.Contains("IOpenAiAdsDirectConnectionService", controller, StringComparison.Ordinal);
-        Assert.Contains("IOpenAiMeasurementHealthService", controller, StringComparison.Ordinal);
+        Assert.Contains("MarketingProviderSetupProjection", controller, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -71,7 +71,8 @@ public sealed class MarketingScopeParityContractTests
         var business = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
 
         Assert.Contains("MarketingOwnerScope.Founder", agent, StringComparison.Ordinal);
-        Assert.Contains("MarketingOwnerScope.Agent(", agent, StringComparison.Ordinal);
+        Assert.Contains("CanonicalAdvertisingEventProjection.ResolveOwnerAsync", agent, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingOwnerScope.Agent(", agent, StringComparison.Ordinal);
         Assert.Contains("MarketingOwnerScope.Business(businessId)", business, StringComparison.Ordinal);
 
         Assert.DoesNotContain("MarketingOwnerScope.Business(Request.Host", business, StringComparison.OrdinalIgnoreCase);
@@ -87,10 +88,13 @@ public sealed class MarketingScopeParityContractTests
         var tracking = Read("ParfaitApp", "Views", "Shared", "_ParfaitCommerceTracking.cshtml");
         var program = Read("ParfaitApp", "Program.cs");
 
-        Assert.Contains("MarketingOwnerScope.Business(store.CommerceBusinessId)", controller, StringComparison.Ordinal);
+        Assert.Contains("CanonicalAdvertisingEventProjection.ResolveOwnerAsync", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingOwnerScope.Business(store.CommerceBusinessId)", controller, StringComparison.Ordinal);
         Assert.Contains("ScopeContext.ForBusiness(businessId)", analytics, StringComparison.Ordinal);
-        Assert.Contains("MarketingConnections.GetStatusAsync", tracking, StringComparison.Ordinal);
-        Assert.Contains("MarketingOwnerScope.Business(parfait.Id)", tracking, StringComparison.Ordinal);
+        Assert.Contains("BrowserMarketing.GetAsync(owner", tracking, StringComparison.Ordinal);
+        Assert.Contains("CanonicalAdvertisingEventProjection.ResolveOwnerAsync", tracking, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingConnections.GetStatusAsync", tracking, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingOwnerScope.Business(parfait.Id)", tracking, StringComparison.Ordinal);
         Assert.Contains("MarketingServiceRegistration.AddMarketingConnections", program, StringComparison.Ordinal);
 
         Assert.DoesNotContain("ParfaitMetaAdsConnectionStoreAdapter", program, StringComparison.Ordinal);

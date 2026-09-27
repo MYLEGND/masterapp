@@ -7,13 +7,15 @@ public sealed class WebsiteSignalBinding
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Trigger { get; set; } = "click";
     public string EventName { get; set; } = string.Empty;
+    public string? ActionKey { get; set; }
     public string DeliveryMode { get; set; } = "off";
     public bool OncePerSession { get; set; } = true;
     public List<string> MatchingFields { get; set; } = new();
 }
 
 public sealed record WebsiteSignalOption(string Name, string Category, bool MetaEligible,
-    bool RequiresServerOutcome, IReadOnlyList<string> Triggers);
+    bool RequiresServerOutcome, IReadOnlyList<string> Triggers, string ActionKey, string DisplayLabel,
+    string? MetaEventName, string? OpenAiEventName, string AutomaticTrigger);
 
 /// <summary>Editor capabilities derived from the existing event authority. No second dispatch catalog.</summary>
 public static class WebsiteSignalBindingPolicy
@@ -21,25 +23,24 @@ public static class WebsiteSignalBindingPolicy
     public static readonly IReadOnlyList<string> ApprovedMatchingFields = Array.AsReadOnly(
         new[] { "email", "phone", "firstName", "lastName", "city", "state", "postalCode" });
 
-    public static IReadOnlyList<WebsiteSignalOption> Options => MetaSignalEventCatalog.Definitions
-        .Select(e => new WebsiteSignalOption(e.Name, e.Category, e.AllowBrowserPixel || e.AllowServerForward,
-            MetaSignalEventCatalog.IsServerAuthorityEvent(e.Name), Triggers(e.Name)))
-        .Where(e => e.Triggers.Count != 0).ToArray();
-
-    private static IReadOnlyList<string> Triggers(string name) => name switch
-    {
-        "ViewContent" => ["viewed"],
-        "LeadFormStart" => ["click", "form_started"],
-        "ContactInputStarted" => ["field_started"],
-        "PhoneFieldCompleted" => ["field_completed"],
-        "FieldError" => ["validation_failed"],
-        "SubmitAttempt" => ["submit_attempt"],
-        "MeaningfulScroll" => ["scroll_threshold"],
-        "Lead" => ["submission_saved"],
-        "AppointmentBooked" => ["booking_confirmed"],
-        "Purchase" => ["payment_confirmed"],
-        _ => []
-    };
+    public static IReadOnlyList<WebsiteSignalOption> Options => AnalyticsEventCatalog.Definitions
+        .Select(e => AnalyticsEventCatalog.TryGetBehavior(e.Name, out var behavior) ? behavior : null)
+        .OfType<AnalyticsBehaviorContract>().Concat(AnalyticsEventCatalog.Behaviors)
+        .DistinctBy(e => e.Key, StringComparer.OrdinalIgnoreCase)
+        .Where(e => e.EditorTriggers.Count != 0 || e.ConversionEventName is not null)
+        .Select(e =>
+        {
+            // Provider capabilities are downstream annotations, never the available behavior list.
+            var meta = MetaSignalAnalyticsAliasCatalog.ResolveSignalName(e.EventName);
+            var metaEligible = meta is not null && MetaSignalEventCatalog.TryGet(meta, out var destination) &&
+                (destination.AllowBrowserPixel || destination.AllowServerForward);
+            return new WebsiteSignalOption(e.EventName,
+                AnalyticsEventCatalog.TryGet(e.EventName, out var definition) ? definition.Category : "behavior",
+                metaEligible, e.RequiresServerAuthority, e.EditorTriggers, e.Key, e.DisplayLabel, meta,
+                e.Key == "page_view" ? OpenAiMeasurementEventNames.PageViewed
+                    : MarketingConversionDestinationCatalog.ResolveOpenAi(e.ConversionEventName)?.EventName,
+                e.AutomaticTrigger);
+        }).ToArray();
 
     public static List<WebsiteSignalBinding> Validate(IEnumerable<WebsiteSignalBinding>? bindings)
     {
@@ -50,20 +51,23 @@ public static class WebsiteSignalBindingPolicy
         {
             if (binding is null || clean.Count >= 8 || !Guid.TryParseExact(binding.Id, "N", out _) || !ids.Add(binding.Id))
                 throw new ArgumentException("Signal mappings require unique IDs and at most eight mappings per element.");
-            if (binding.DeliveryMode is not ("off" or "analytics" or "meta"))
-                throw new ArgumentException("Choose Off, Analytics, or Meta and analytics.");
-            var option = Options.SingleOrDefault(x => x.Name == binding.EventName);
+            if (binding.DeliveryMode is not ("off" or "analytics" or "destinations" or "meta"))
+                throw new ArgumentException("Choose Off, Analytics only, or Analytics and configured destinations.");
+            var behavior = AnalyticsEventCatalog.TryGetBehavior(binding.EventName, out var resolved) ? resolved : null;
+            var option = behavior is null ? null : Options.SingleOrDefault(x => x.ActionKey == behavior.Key);
+            if (option?.RequiresServerOutcome == true)
+                throw new ArgumentException("Verified outcomes are automatic backend events and cannot be manually bound to browser actions.");
+            if (!string.IsNullOrWhiteSpace(binding.ActionKey) && binding.ActionKey != option?.ActionKey)
+                throw new ArgumentException("The action key must match its immutable canonical behavior.");
             if (option is null || !option.Triggers.Contains(binding.Trigger) || !triggers.Add(binding.Trigger))
                 throw new ArgumentException("Choose one supported event for each trigger.");
-            if (binding.DeliveryMode == "meta" && !option.MetaEligible)
-                throw new ArgumentException("This event is available for analytics only.");
             var fields = (binding.MatchingFields ?? []).Distinct(StringComparer.Ordinal).ToList();
             if (fields.Any(x => !ApprovedMatchingFields.Contains(x)) || (fields.Count > 0 && !option.RequiresServerOutcome))
                 throw new ArgumentException("Customer matching is available only from approved fields on verified server outcomes.");
             clean.Add(new()
             {
-                Id = binding.Id, Trigger = binding.Trigger, EventName = option.Name,
-                DeliveryMode = binding.DeliveryMode, OncePerSession = binding.OncePerSession, MatchingFields = fields
+                Id = binding.Id, Trigger = binding.Trigger, EventName = option.Name, ActionKey = option.ActionKey,
+                DeliveryMode = binding.DeliveryMode == "meta" ? "destinations" : binding.DeliveryMode, OncePerSession = binding.OncePerSession, MatchingFields = fields
             });
         }
         return clean;

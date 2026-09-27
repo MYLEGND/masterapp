@@ -41,8 +41,8 @@
         <p class="hero-line">Protection planning rooted in clarity, responsibility, and stewardship.</p>
         <p>A cleaner way to understand your risks, protect your income, and make confident decisions around family, debt, coverage, and long-term legacy.</p>
         <div class="actions">
-            <a class="btn primary" href="@Link("/RiskAssessment")" data-cta="home_start_assessment">Start Assessment</a>
-            <a class="btn ghost" href="@Link("/Quote")" data-cta="home_get_quote">Explore Coverage</a>
+            <a class="btn primary" href="@Link("/RiskAssessment")" data-cta="home_start_assessment" data-website-action-key="protect_risk_assessment" data-website-analytics-event="risk_assessment_click">Start Assessment</a>
+            <a class="btn ghost" href="@Link("/Quote")" data-cta="home_get_quote" data-website-action-key="protect_quote" data-website-analytics-event="quote_click">Explore Coverage</a>
         </div>
     </div>
     <div class="hero-mark">
@@ -78,14 +78,14 @@
             <p class="eyebrow">INCOME</p>
             <h3>Protect the income that funds everything.</h3>
             <p>Your income supports the home, family, lifestyle, goals, and future. Start by seeing what changes if it stops.</p>
-            <div class="actions"><a class="btn primary" href="@Link("/RiskAssessment")" data-cta="home_income_assessment">Assess income risk</a></div>
+            <div class="actions"><a class="btn primary" href="@Link("/RiskAssessment")" data-cta="home_income_assessment" data-website-action-key="protect_risk_assessment" data-website-analytics-event="risk_assessment_click">Assess income risk</a></div>
         </article>
         <article>
             @Icon("shield")
             <p class="eyebrow">COVERAGE</p>
             <h3>Explore protection paths at your pace.</h3>
             <p>Review life, mortgage protection, disability, term, whole life, final expense, and other available coverage paths.</p>
-            <div class="actions"><a class="btn primary" href="@Link("/Quote")" data-cta="home_coverage_paths">Explore coverage</a></div>
+            <div class="actions"><a class="btn primary" href="@Link("/Quote")" data-cta="home_coverage_paths" data-website-action-key="protect_quote" data-website-analytics-event="quote_click">Explore coverage</a></div>
         </article>
     </div>
 </section>
@@ -124,10 +124,10 @@
         <p class="lead">Browse the area that is relevant to you without forcing every decision into one product.</p>
     </div>
     <div class="card-grid">
-        <a class="card" href="@Link("/Quote/Life")" data-cta="home_life">@Icon("shield")<h3>Life Insurance</h3><p>Family, income, legacy, and long-term protection.</p></a>
-        <a class="card" href="@Link("/Quote/Mortgage-Protection")" data-cta="home_mortgage">@Icon("home")<h3>Mortgage Protection</h3><p>Plan around the obligation that keeps the household anchored.</p></a>
-        <a class="card" href="@Link("/Quote/Term-Life")" data-cta="home_term">@Icon("document")<h3>Term Life</h3><p>Focused coverage for defined protection periods and responsibilities.</p></a>
-        <a class="card" href="@Link("/Quote/Disability")" data-cta="home_disability">@Icon("income")<h3>Disability Insurance</h3><p>Protect earning power when health interrupts the ability to work.</p></a>
+        <a class="card" href="@Link("/Quote/Life")" data-cta="home_life" data-website-action-key="protect_quote_life" data-website-analytics-event="quote_click">@Icon("shield")<h3>Life Insurance</h3><p>Family, income, legacy, and long-term protection.</p></a>
+        <a class="card" href="@Link("/Quote/Mortgage-Protection")" data-cta="home_mortgage" data-website-action-key="protect_quote_mortgage_protection" data-website-analytics-event="quote_click">@Icon("home")<h3>Mortgage Protection</h3><p>Plan around the obligation that keeps the household anchored.</p></a>
+        <a class="card" href="@Link("/Quote/Term-Life")" data-cta="home_term" data-website-action-key="protect_quote_term_life" data-website-analytics-event="quote_click">@Icon("document")<h3>Term Life</h3><p>Focused coverage for defined protection periods and responsibilities.</p></a>
+        <a class="card" href="@Link("/Quote/Disability")" data-cta="home_disability" data-website-action-key="protect_quote_disability" data-website-analytics-event="quote_click">@Icon("income")<h3>Disability Insurance</h3><p>Protect earning power when health interrupts the ability to work.</p></a>
     </div>
 </section>
 
@@ -149,11 +149,11 @@
     <h2>Start with clarity. Protect what matters. Build with intention.</h2>
     <p>The best next step is the one that makes the picture clearer. Begin the assessment, explore coverage, or talk first if you want a human walkthrough.</p>
     <div class="actions">
-        <a class="btn primary" href="@Link("/RiskAssessment")" data-cta="home_final_assessment">Start Assessment</a>
-        <a class="btn ghost" href="@Link("/Quote")" data-cta="home_final_quote">Explore Coverage</a>
+        <a class="btn primary" href="@Link("/RiskAssessment")" data-cta="home_final_assessment" data-website-action-key="protect_risk_assessment" data-website-analytics-event="risk_assessment_click">Start Assessment</a>
+        <a class="btn ghost" href="@Link("/Quote")" data-cta="home_final_quote" data-website-action-key="protect_quote" data-website-analytics-event="quote_click">Explore Coverage</a>
         @if (bookingConfig.Enabled)
         {
-            <a class="btn ghost" href="@bookingLink" data-cta="home_book_conversation">Talk First</a>
+            <a class="btn ghost" href="@bookingLink" data-cta="home_book_conversation" data-website-action-key="protect_schedule" data-website-analytics-event="cta_click">Talk First</a>
         }
     </div>
 </section>
