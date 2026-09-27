@@ -324,6 +324,7 @@
       utmTerm: sanitizeAttributionValue(raw?.utmTerm),
       utmContent: sanitizeAttributionValue(raw?.utmContent),
       fbclid: sanitizeAttributionValue(raw?.fbclid),
+      oppref: sanitizeAttributionValue(raw?.oppref),
       metaCampaignId: sanitizeAttributionValue(raw?.metaCampaignId),
       metaAdSetId: sanitizeAttributionValue(raw?.metaAdSetId),
       metaAdId: sanitizeAttributionValue(raw?.metaAdId)
@@ -340,6 +341,7 @@
       attribution.utmTerm ||
       attribution.utmContent ||
       attribution.fbclid ||
+      attribution.oppref ||
       attribution.metaCampaignId ||
       attribution.metaAdSetId ||
       attribution.metaAdId
@@ -371,13 +373,16 @@
 
   function rememberAttribution(attribution) {
     if (!hasAttribution(attribution)) return;
-    writeAttributionToStorage(sessionStorage, STORAGE_ATTR_SESSION, attribution);
-    writeAttributionToStorage(localStorage, STORAGE_ATTR_SESSION, attribution);
+    const existingSession = getStoredAttribution(STORAGE_ATTR_SESSION);
+    const existingFirstTouch = getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH);
+    const lockedOppref = existingSession?.oppref || existingFirstTouch?.oppref || attribution.oppref || null;
+    const sessionValue = normalizeAttribution({ ...attribution, oppref: lockedOppref });
+    writeAttributionToStorage(sessionStorage, STORAGE_ATTR_SESSION, sessionValue);
+    writeAttributionToStorage(localStorage, STORAGE_ATTR_SESSION, sessionValue);
 
-    const firstTouch = getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH);
-    if (!hasAttribution(firstTouch)) {
-      writeAttributionToStorage(sessionStorage, STORAGE_ATTR_FIRST_TOUCH, attribution);
-      writeAttributionToStorage(localStorage, STORAGE_ATTR_FIRST_TOUCH, attribution);
+    if (!hasAttribution(existingFirstTouch)) {
+      writeAttributionToStorage(sessionStorage, STORAGE_ATTR_FIRST_TOUCH, sessionValue);
+      writeAttributionToStorage(localStorage, STORAGE_ATTR_FIRST_TOUCH, sessionValue);
     }
   }
 
@@ -391,6 +396,7 @@
       utmTerm: params.get('utm_term'),
       utmContent: params.get('utm_content'),
       fbclid: params.get('fbclid'),
+      oppref: params.get('oppref'),
       metaCampaignId: params.get('meta_campaign_id'),
       metaAdSetId: params.get('meta_adset_id'),
       metaAdId: params.get('meta_ad_id')
@@ -409,6 +415,7 @@
       utmTerm: payload.UtmTerm,
       utmContent: payload.UtmContent,
       fbclid: payload.Fbclid,
+      oppref: payload.Oppref,
       metaCampaignId: payload.MetaCampaignId,
       metaAdSetId: payload.MetaAdSetId,
       metaAdId: payload.MetaAdId
@@ -423,6 +430,7 @@
       utmTerm: payloadAttribution.utmTerm || queryAttribution.utmTerm || sessionAttribution?.utmTerm,
       utmContent: payloadAttribution.utmContent || queryAttribution.utmContent || sessionAttribution?.utmContent,
       fbclid: payloadAttribution.fbclid || queryAttribution.fbclid || sessionAttribution?.fbclid,
+      oppref: sessionAttribution?.oppref || getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH)?.oppref || queryAttribution.oppref || payloadAttribution.oppref,
       metaCampaignId: payloadAttribution.metaCampaignId || queryAttribution.metaCampaignId || sessionAttribution?.metaCampaignId,
       metaAdSetId: payloadAttribution.metaAdSetId || queryAttribution.metaAdSetId || sessionAttribution?.metaAdSetId,
       metaAdId: payloadAttribution.metaAdId || queryAttribution.metaAdId || sessionAttribution?.metaAdId
@@ -446,6 +454,7 @@
       utmTerm: firstTouchAttribution?.utmTerm,
       utmContent: firstTouchAttribution?.utmContent,
       fbclid: firstTouchAttribution?.fbclid,
+      oppref: firstTouchAttribution?.oppref,
       metaCampaignId: firstTouchAttribution?.metaCampaignId,
       metaAdSetId: firstTouchAttribution?.metaAdSetId,
       metaAdId: firstTouchAttribution?.metaAdId
@@ -604,6 +613,7 @@
       UtmTerm: attribution.utmTerm || null,
       UtmContent: attribution.utmContent || null,
       Fbclid: attribution.fbclid || null,
+      Oppref: attribution.oppref || null,
       MetaCampaignId: attribution.metaCampaignId || null,
       MetaAdSetId: attribution.metaAdSetId || null,
       MetaAdId: attribution.metaAdId || null,
@@ -2025,6 +2035,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       utmTerm: attribution.utmTerm || null,
       utmContent: attribution.utmContent || null,
       fbclid: attribution.fbclid || null,
+      oppref: attribution.oppref || null,
       metaCampaignId: attribution.metaCampaignId || null,
       metaAdSetId: attribution.metaAdSetId || null,
       metaAdId: attribution.metaAdId || null
