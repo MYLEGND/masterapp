@@ -388,13 +388,15 @@ public sealed class AdvertisingActionAuthorizationService(
         return ExecutionReceipt(row);
     }
 
-    private Task<AdvertisingActionAuthorization> LoadOwnedAsync(
+    private async Task<AdvertisingActionAuthorization> LoadOwnedAsync(
         MarketingOwnerScope owner,
         Guid id,
-        CancellationToken ct) =>
-        db.AdvertisingActionAuthorizations.SingleOrDefaultAsync(
-            x => x.Id == id && x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.OpenAi, ct)
-        ?? throw new InvalidOperationException("Advertising proposal does not exist in this scope.");
+        CancellationToken ct)
+    {
+        var row = await db.AdvertisingActionAuthorizations.SingleOrDefaultAsync(
+            x => x.Id == id && x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.OpenAi, ct);
+        return row ?? throw new InvalidOperationException("Advertising proposal does not exist in this scope.");
+    }
 
     private static AdvertisingActionExecutionReceipt ExecutionReceipt(AdvertisingActionAuthorization row) =>
         new(
