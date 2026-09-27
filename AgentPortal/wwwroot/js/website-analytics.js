@@ -5031,6 +5031,8 @@ function escapeHtml(value) {
 
     const revision = document.getElementById('marketing-setup-revision');
     if (revision) revision.value = marketing.revision || '';
+    const profileRevision = document.getElementById('marketing-setup-profile-revision');
+    if (profileRevision) profileRevision.value = booking.revision || '';
     const pixel = document.getElementById('marketing-setup-pixel');
     if (pixel) pixel.value = marketing.metaPixelId || '';
     const testCode = document.getElementById('marketing-setup-test-code');
@@ -5236,6 +5238,7 @@ function escapeHtml(value) {
     const body = {
       agentProfileId: marketingSetupAgentProfileId() || null,
       marketingRevision: revision,
+      profileRevision: document.getElementById('marketing-setup-profile-revision')?.value || null,
       metaPixelId: pixel || null,
       metaTestEventCode: testEventCode || null,
       bookingEnabled: document.getElementById('marketing-setup-booking-enabled')?.checked === true,
