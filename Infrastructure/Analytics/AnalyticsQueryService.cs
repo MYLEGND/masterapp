@@ -68,27 +68,41 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         _envFilter = configuredFilter ?? (runtimeEnvironment == "prod" ? "prod" : null);
     }
 
+    private IQueryable<AnalyticsEvent> ApplyEnvironmentFilter(IQueryable<AnalyticsEvent> query) =>
+        _envFilter switch
+        {
+            "prod" => query.Where(e => e.Environment == "production" || e.Environment == "prod"),
+            "dev" => query.Where(e => e.Environment == "development" || e.Environment == "dev"),
+            _ => query
+        };
+
+    private IQueryable<WebsiteLead> ApplyEnvironmentFilter(IQueryable<WebsiteLead> query) =>
+        _envFilter switch
+        {
+            "prod" => query.Where(l => l.Environment == "production" || l.Environment == "prod"),
+            "dev" => query.Where(l => l.Environment == "development" || l.Environment == "dev"),
+            _ => query
+        };
+
     private IQueryable<AnalyticsEvent> BaseEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null)
     {
-        var query = _db.AnalyticsEvents.AsNoTracking()
-            .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
-            .ApplySiteScope(scope)
-            .Where(ScopePredicateEvents(scope, scopedAgentIds));
-
+        var query = BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds);
         return ApplyQualityFilterEvents(query, range.QualityMode);
     }
 
     private IQueryable<AnalyticsEvent> BaseEventsWithoutQualityFilter(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
-        _db.AnalyticsEvents.AsNoTracking()
-            .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
-            .ApplySiteScope(scope)
-            .Where(ScopePredicateEvents(scope, scopedAgentIds));
+        ApplyEnvironmentFilter(
+            _db.AnalyticsEvents.AsNoTracking()
+                .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
+                .ApplySiteScope(scope)
+                .Where(ScopePredicateEvents(scope, scopedAgentIds)));
 
     private IQueryable<AnalyticsEvent> EventsInRangeWithoutQualityFilter(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
-        _db.AnalyticsEvents.AsNoTracking()
-            .Where(e => e.EventUtc >= from && e.EventUtc <= to)
-            .ApplySiteScope(scope)
-            .Where(ScopePredicateEvents(scope, scopedAgentIds));
+        ApplyEnvironmentFilter(
+            _db.AnalyticsEvents.AsNoTracking()
+                .Where(e => e.EventUtc >= from && e.EventUtc <= to)
+                .ApplySiteScope(scope)
+                .Where(ScopePredicateEvents(scope, scopedAgentIds)));
 
     public async Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(
         TimeRangeRequest range,
@@ -111,7 +125,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, qualityMode);
     }
 
-
     public IQueryable<AnalyticsEvent> ScopedEvents(
         TimeRangeRequest range,
         ScopeContext scope,
@@ -122,18 +135,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         TimeRangeRequest range,
         ScopeContext scope,
         Guid[]? scopedAgentIds = null) =>
-        _db.WebsiteLeads.AsNoTracking()
-            .Where(l => !l.IsDeleted)
-            .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
-            .Where(ScopePredicateLeads(scope, scopedAgentIds));
+        ApplyEnvironmentFilter(
+            _db.WebsiteLeads.AsNoTracking()
+                .Where(l => !l.IsDeleted)
+                .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
+                .Where(ScopePredicateLeads(scope, scopedAgentIds)));
 
     private IQueryable<AnalyticsEvent> EventsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null, TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
-        var query = _db.AnalyticsEvents.AsNoTracking()
-            .Where(e => e.EventUtc >= from && e.EventUtc <= to)
-            .ApplySiteScope(scope)
-            .Where(ScopePredicateEvents(scope, scopedAgentIds));
-
+        var query = EventsInRangeWithoutQualityFilter(from, to, scope, scopedAgentIds);
         return ApplyQualityFilterEvents(query, qualityMode);
     }
 
@@ -142,10 +152,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         DateTime to,
         ScopeContext scope,
         Guid[]? scopedAgentIds = null) =>
-        _db.WebsiteLeads.AsNoTracking()
-            .Where(l => !l.IsDeleted)
-            .Where(l => l.CreatedUtc >= from && l.CreatedUtc <= to)
-            .Where(ScopePredicateLeads(scope, scopedAgentIds));
+        ApplyEnvironmentFilter(
+            _db.WebsiteLeads.AsNoTracking()
+                .Where(l => !l.IsDeleted)
+                .Where(l => l.CreatedUtc >= from && l.CreatedUtc <= to)
+                .Where(ScopePredicateLeads(scope, scopedAgentIds)));
 
     private async Task<(List<AnalyticsEvent> Events, List<WebsiteLead> Leads)> LoadCanonicalDatasetAsync(
         TimeRangeRequest range,
@@ -372,7 +383,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     /// Expands an agent scope to all tracking profile IDs sharing the same UPN.
     /// This prevents analytics drop-offs when duplicate profile rows exist for one user.
     /// </summary>
-    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope)
+    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken cancellationToken = default)
     {
         if ((scope.ScopeType != ScopeType.Agent && scope.ScopeType != ScopeType.Founder) || !scope.AgentTrackingProfileId.HasValue)
             return null;
@@ -381,7 +392,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var upn = await _db.AgentTrackingProfiles.AsNoTracking()
             .Where(p => p.Id == selectedId)
             .Select(p => p.AgentUpn)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(upn))
             return new[] { selectedId };
@@ -390,7 +401,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(p => p.AgentUpn == upn)
             .Select(p => p.Id)
             .Distinct()
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (!ids.Contains(selectedId))
             ids.Add(selectedId);
@@ -2036,10 +2047,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static decimal ClampPercent(decimal value) => Math.Min(100m, Math.Max(0m, value));
 
-    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
+    public Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All) =>
+        GetSummaryAsync(range, scope, trafficType, CancellationToken.None);
+
+    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType, CancellationToken cancellationToken)
     {
-        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds);
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, cancellationToken);
+        var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds, cancellationToken);
         var allEvents = dataset.Events;
         var allLeads = dataset.Leads;
 
@@ -2062,7 +2076,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var prevFrom = range.FromUtc - span;
         var prevTo   = range.ToUtc - span;
         var previousDataset = await LoadCanonicalDatasetInRangeAsync(
-            prevFrom, prevTo, scope, range.QualityMode, scopedAgentIds);
+            prevFrom, prevTo, scope, range.QualityMode, scopedAgentIds, cancellationToken);
         var prevAllEvents = previousDataset.Events;
         var prevAllLeads = previousDataset.Leads;
 
@@ -2790,6 +2804,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         });
 
         var warnings = new List<string>();
+        if (events.Count == 0 && leads.Count == 0)
+        {
+            warnings.Add("No canonical analytics evidence is visible in this selected scope and traffic-quality window. Zero tracking errors alone does not establish healthy ingest.");
+        }
         if (clientTrackingErrorEvents.Count > 0)
         {
             var mostRecentTrackingError = recentTrackingErrors.FirstOrDefault();

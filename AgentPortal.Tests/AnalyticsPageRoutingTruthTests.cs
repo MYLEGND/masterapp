@@ -82,14 +82,15 @@ public sealed class AnalyticsPageRoutingTruthTests
         var root = RepoRoot();
         var ui = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
 
-        Assert.Contains("pollMs: 1500", ui, StringComparison.Ordinal);
-        Assert.Contains("function refreshLiveAnalytics()", ui, StringComparison.Ordinal);
-        Assert.Contains("loadSummary();", ui, StringComparison.Ordinal);
+        Assert.Contains("pollMs: 15000", ui, StringComparison.Ordinal);
+        Assert.Contains("async function refreshLiveAnalytics()", ui, StringComparison.Ordinal);
+        Assert.Contains("summaryRefreshInFlight", ui, StringComparison.Ordinal);
+        Assert.Contains("await loadSummary();", ui, StringComparison.Ordinal);
         Assert.Contains("if (state.openModal) refreshOpenModal();", ui, StringComparison.Ordinal);
         Assert.Contains("setInterval(refreshLiveAnalytics, state.pollMs)", ui, StringComparison.Ordinal);
         Assert.Contains("visibilitychange", ui, StringComparison.Ordinal);
         Assert.Contains("window.addEventListener('focus', refreshLiveAnalytics)", ui, StringComparison.Ordinal);
-        Assert.DoesNotContain("pollMs: 45000", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("pollMs: 1500", ui, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -181,10 +182,47 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
         Assert.Contains("ScopeType.Founder", queryScope, StringComparison.Ordinal);
         Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, ct)", proxy, StringComparison.Ordinal);
+        Assert.Contains("A scoped /a/{slug} request must never fall through to Founder.", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
         Assert.Contains("siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect", layout, StringComparison.Ordinal);
         Assert.Contains("endpoint(path)", analyticsJs, StringComparison.Ordinal);
         Assert.Contains("window.websiteAnalyticsBridge?.endpoint", analyticsJs, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FounderPersonalHydrationAndVisitorDrillInUseTheCanonicalFounderResolver()
+    {
+        var root = RepoRoot();
+        var controller = File.ReadAllText(Path.Combine(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs"));
+        var resolver = File.ReadAllText(Path.Combine(root, "AgentPortal", "Services", "Analytics", "WebsiteAnalyticsScopeResolver.cs"));
+        var visitor = File.ReadAllText(Path.Combine(root, "AgentPortal", "Controllers", "API", "VisitorConcentrationController.cs"));
+        var ui = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
+
+        Assert.Contains("scope.ScopeType is ScopeType.Founder or ScopeType.Agent", controller, StringComparison.Ordinal);
+        Assert.Contains("requestedAgentId.Value == founderProfile.Id", resolver, StringComparison.Ordinal);
+        Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
+        Assert.Contains("new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger)", visitor, StringComparison.Ordinal);
+        Assert.DoesNotContain("FounderGuard.IsFounder(User)", visitor, StringComparison.Ordinal);
+        Assert.Contains("Founder Personal", ui, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PublicWebsiteRuntimeLoadsCanonicalAnalyticsBeforeOptionalAdvertisingProviders()
+    {
+        var root = RepoRoot();
+        var runtime = File.ReadAllText(Path.Combine(root, "SHARED", "WebsitePlatform", "legend-public-cms.js"));
+        var controller = File.ReadAllText(Path.Combine(root, "Infrastructure", "WebsiteEditing", "WebsitePlatformController.cs"));
+
+        var trackingLoad = runtime.IndexOf("await loadRuntimeScript(context.trackingAsset", StringComparison.Ordinal);
+        var metaLoad = runtime.IndexOf("await loadRuntimeScript(context.metaSignalAsset", StringComparison.Ordinal);
+        var openAiLoad = runtime.IndexOf("await loadRuntimeScript(context.openAiMeasurementAsset", StringComparison.Ordinal);
+
+        Assert.True(trackingLoad >= 0, "Canonical tracking runtime must load.");
+        Assert.True(metaLoad > trackingLoad, "Meta runtime must remain downstream of canonical tracking.");
+        Assert.True(openAiLoad > trackingLoad, "OpenAI measurement must remain downstream of canonical tracking.");
+        Assert.Contains("schedulePublicRuntimeRetry()", runtime, StringComparison.Ordinal);
+        Assert.Contains("publicRuntimeStarted = true", runtime, StringComparison.Ordinal);
+        Assert.Contains("canonical analytics bootstrap will continue", controller, StringComparison.Ordinal);
     }
 
     [Fact]

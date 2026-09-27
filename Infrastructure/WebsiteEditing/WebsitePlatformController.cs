@@ -211,18 +211,51 @@ public class WebsitePlatformController : ControllerBase
             facts,
             cancellationToken);
 
-        var metaResolver = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMetaPixelResolutionService>();
-        var pixel = scope.CommerceBusinessId.HasValue
-            ? await metaResolver.ResolveForBusinessAsync(scope.CommerceBusinessId.Value, cancellationToken)
-            : await metaResolver.ResolveForLeadAsync(null, null, isFounderPath: true, cancellationToken);
+        // Canonical analytics bootstrap must not depend on advertising-provider
+        // availability. Provider projections are optional enrichments of the same
+        // owner scope; failures here must never prevent the browser tracker from
+        // receiving its ingest endpoint and event catalog.
+        var runtimeLogger = HttpContext.RequestServices
+            .GetService<Microsoft.Extensions.Logging.ILogger<WebsitePlatformController>>();
+        var pixel = new Infrastructure.Analytics.ResolvedMetaPixelContext();
+        try
+        {
+            var metaResolver = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMetaPixelResolutionService>();
+            pixel = scope.CommerceBusinessId.HasValue
+                ? await metaResolver.ResolveForBusinessAsync(scope.CommerceBusinessId.Value, cancellationToken)
+                : await metaResolver.ResolveForLeadAsync(null, null, isFounderPath: true, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            runtimeLogger?.LogWarning(ex, "Public website Meta projection unavailable for {SiteKey}; canonical analytics bootstrap will continue.", scope.SiteKey);
+        }
+
         var metaOptions = HttpContext.RequestServices
             .GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<Infrastructure.Analytics.MetaSignalIntelligenceOptions>>()
             .Value;
-        var openAiConnections = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
-        var openAiOwner = scope.CommerceBusinessId.HasValue
-            ? Shared.Analytics.MarketingOwnerScope.Business(scope.CommerceBusinessId.Value)
-            : Shared.Analytics.MarketingOwnerScope.Founder;
-        var openAi = await openAiConnections.GetAsync(openAiOwner, cancellationToken);
+
+        Shared.Analytics.OpenAiAdsConnectionSnapshot? openAi = null;
+        try
+        {
+            var openAiConnections = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
+            var openAiOwner = scope.CommerceBusinessId.HasValue
+                ? Shared.Analytics.MarketingOwnerScope.Business(scope.CommerceBusinessId.Value)
+                : Shared.Analytics.MarketingOwnerScope.Founder;
+            openAi = await openAiConnections.GetAsync(openAiOwner, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            runtimeLogger?.LogWarning(ex, "Public website ChatGPT Ads projection unavailable for {SiteKey}; canonical analytics bootstrap will continue.", scope.SiteKey);
+        }
+
         var apiBase = WebsiteContentApiBaseUrl();
 
         return Ok(new
@@ -257,10 +290,10 @@ public class WebsitePlatformController : ControllerBase
             },
             openai = new
             {
-                enabled = openAi.Connected && openAi.PixelConfigured,
-                pixelId = openAi.Connected ? openAi.PixelId : null,
-                accountApproved = openAi.AccountApproved,
-                conversionsApiConfigured = openAi.ConversionsApiConfigured
+                enabled = openAi?.Connected == true && openAi.PixelConfigured,
+                pixelId = openAi?.Connected == true ? openAi.PixelId : null,
+                accountApproved = openAi?.AccountApproved == true,
+                conversionsApiConfigured = openAi?.ConversionsApiConfigured == true
             }
         });
     }
