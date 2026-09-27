@@ -9451,6 +9451,125 @@ namespace Infrastructure.Migrations
                     b.ToTable("LegendTranslationUsagePeriods", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.MarketingDestinationDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AgentTrackingProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CanonicalEventId")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("CanonicalEventName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("CanonicalSource")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ClaimToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ClaimExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CommerceBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime?>("LastAttemptUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("LastHttpStatusCode")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("NextAttemptUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OwnerKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("OwnerType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("PixelId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ProviderEventName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("ProviderReceiptJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("SentUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentTrackingProfileId");
+
+                    b.HasIndex("ClaimExpiresUtc");
+
+                    b.HasIndex("CommerceBusinessId");
+
+                    b.HasIndex("SentUtc");
+
+                    b.HasIndex("Provider", "Status", "NextAttemptUtc");
+
+                    b.HasIndex("OwnerKey", "Provider", "Channel", "CanonicalEventId", "ProviderEventName")
+                        .IsUnique();
+
+                    b.ToTable("MarketingDestinationDeliveries");
+                });
+
             modelBuilder.Entity("Domain.Entities.MarketingConnection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -14024,6 +14143,19 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("TargetTextUnitId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.MarketingDestinationDelivery", b =>
+                {
+                    b.HasOne("Domain.Entities.AgentTrackingProfile", null)
+                        .WithMany()
+                        .HasForeignKey("AgentTrackingProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Domain.Entities.CommerceBusiness", null)
+                        .WithMany()
+                        .HasForeignKey("CommerceBusinessId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Domain.Entities.MarketingConnection", b =>
