@@ -383,7 +383,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     /// Expands an agent scope to all tracking profile IDs sharing the same UPN.
     /// This prevents analytics drop-offs when duplicate profile rows exist for one user.
     /// </summary>
-    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope)
+    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken cancellationToken = default)
     {
         if ((scope.ScopeType != ScopeType.Agent && scope.ScopeType != ScopeType.Founder) || !scope.AgentTrackingProfileId.HasValue)
             return null;
@@ -392,7 +392,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var upn = await _db.AgentTrackingProfiles.AsNoTracking()
             .Where(p => p.Id == selectedId)
             .Select(p => p.AgentUpn)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(upn))
             return new[] { selectedId };
@@ -401,7 +401,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(p => p.AgentUpn == upn)
             .Select(p => p.Id)
             .Distinct()
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (!ids.Contains(selectedId))
             ids.Add(selectedId);
@@ -2047,10 +2047,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static decimal ClampPercent(decimal value) => Math.Min(100m, Math.Max(0m, value));
 
-    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
+    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, CancellationToken cancellationToken = default)
     {
-        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds);
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, cancellationToken);
+        var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds, cancellationToken);
         var allEvents = dataset.Events;
         var allLeads = dataset.Leads;
 
@@ -2073,7 +2073,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var prevFrom = range.FromUtc - span;
         var prevTo   = range.ToUtc - span;
         var previousDataset = await LoadCanonicalDatasetInRangeAsync(
-            prevFrom, prevTo, scope, range.QualityMode, scopedAgentIds);
+            prevFrom, prevTo, scope, range.QualityMode, scopedAgentIds, cancellationToken);
         var prevAllEvents = previousDataset.Events;
         var prevAllLeads = previousDataset.Leads;
 
