@@ -87,6 +87,45 @@ public sealed class OpenAiAdsAccountConnectionAuthorityTests
     }
 
     [Fact]
+    public async Task VerifiedMetadataRefreshPreservesExistingCredentialsUnlessExplicitlyRotated()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var authority = new OpenAiAdsAccountConnectionAuthority(db, protector);
+        var owner = MarketingOwnerScope.Founder;
+
+        var first = await authority.BindVerifiedAsync(
+            owner,
+            Verified("acct_refresh", "Founder Ads", OpenAiAdsAccountRoles.Admin),
+            new("management-secret", "capi-secret"));
+
+        var refreshed = await authority.BindVerifiedAsync(
+            owner,
+            Verified("acct_refresh", "Founder Ads Updated", OpenAiAdsAccountRoles.Admin) with
+            {
+                ReviewStatus = OpenAiAdsReviewStatuses.InReview
+            },
+            new(),
+            first.Revision);
+
+        var secrets = await authority.GetSecretsAsync(owner);
+        Assert.Equal("management-secret", secrets.ManagementApiKey);
+        Assert.Equal("capi-secret", secrets.ConversionsApiKey);
+        Assert.Equal(OpenAiAdsReviewStatuses.InReview, refreshed.ReviewStatus);
+
+        var rotated = await authority.BindVerifiedAsync(
+            owner,
+            Verified("acct_refresh", "Founder Ads Updated", OpenAiAdsAccountRoles.Admin),
+            new(ManagementApiKey: "management-rotated"),
+            refreshed.Revision);
+
+        var rotatedSecrets = await authority.GetSecretsAsync(owner);
+        Assert.Equal("management-rotated", rotatedSecrets.ManagementApiKey);
+        Assert.Equal("capi-secret", rotatedSecrets.ConversionsApiKey);
+        Assert.Equal(OpenAiAdsReviewStatuses.Approved, rotated.ReviewStatus);
+    }
+
+    [Fact]
     public async Task DisconnectClearsCredentialsButRetainsAccountReceiptForAuditAndReconnect()
     {
         using var db = ControllerTestHelpers.BuildDb();
