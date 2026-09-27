@@ -214,5 +214,9 @@ public sealed class AdvertisingActionAuthorizationServiceTests
         public Task<OpenAiAdsInsightsResult> GetCampaignInsightsAsync(MarketingOwnerScope owner, string campaignId, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<OpenAiAdsInsightsResult> GetAdGroupInsightsAsync(MarketingOwnerScope owner, string adGroupId, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<OpenAiAdsInsightsResult> GetAdInsightsAsync(MarketingOwnerScope owner, string adId, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderPage> ListProductFeedsAsync(MarketingOwnerScope owner, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> CreateProductFeedAsync(MarketingOwnerScope owner, OpenAiAdsProductFeedCreateRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderPage> ListProductFeedItemsAsync(MarketingOwnerScope owner, string productFeedId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> UpsertProductFeedItemAsync(MarketingOwnerScope owner, OpenAiAdsProductFeedItemUpsertRequest request, CancellationToken ct = default) => throw new NotSupportedException();
     }
 }
