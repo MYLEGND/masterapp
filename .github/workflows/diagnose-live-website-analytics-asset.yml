@@ -1,0 +1,38 @@
+name: Diagnose live Website Analytics asset parity
+
+on:
+  push:
+    branches:
+      - recovery/steps5-13-migration-deploy-20260927
+    paths:
+      - '.github/workflows/diagnose-live-website-analytics-asset.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a59e9ff37c049b88769b3cebf679d3be23025355
+
+      - name: Compare live analytics asset with approved source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=AgentPortal/wwwroot/js/website-analytics.js
+          for host in portal.mylegnd.com masterapp-portal.azurewebsites.net; do
+            out="/tmp/${host}.js"
+            curl --fail --silent --show-error               -H 'Cache-Control: no-cache'               -H 'Pragma: no-cache'               "https://${host}/js/website-analytics.js?diag=$(date +%s)"               -o "$out"
+            echo "=== $host ==="
+            sha256sum "$expected" "$out"
+            grep -n "loadOpenAiOnboarding" "$out" || true
+            grep -n "async function loadOpenAiOnboarding" "$out" || true
+            cmp "$expected" "$out" && echo "MATCH" || {
+              echo "MISMATCH"
+              diff -u "$expected" "$out" | head -n 220 || true
+              exit 1
+            }
+          done
