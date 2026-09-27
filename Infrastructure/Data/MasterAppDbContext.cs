@@ -6,6 +6,7 @@ using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Data.Configurations;
 
+using Shared.Analytics;
 namespace Infrastructure.Data;
 
 public class MasterAppDbContext : DbContext
@@ -1889,7 +1890,6 @@ public class MasterAppDbContext : DbContext
             e.ToTable("AppointmentSyncLogs");
             e.Property(x => x.WorkstationLeadId).HasMaxLength(64);
             e.Property(x => x.ClientProfileId).HasMaxLength(450);
-            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.AgentUserId).HasMaxLength(450);
             e.Property(x => x.CalendarUserId).HasMaxLength(450);
             e.Property(x => x.CalendarEmail).HasMaxLength(320);
@@ -1915,6 +1915,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
             e.Property(x => x.WebsiteLeadId).HasMaxLength(64);
             e.Property(x => x.ClientProfileId).HasMaxLength(450);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
             e.Property(x => x.BookingProvider).HasMaxLength(80);
             e.Property(x => x.BookingSource).HasMaxLength(80).IsRequired();
@@ -2714,7 +2715,6 @@ public class MasterAppDbContext : DbContext
 
             e.Property(x => x.Amount).HasColumnType("decimal(18,2)");
             e.Property(x => x.Notes).HasMaxLength(240);
-            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
 
             e.HasIndex(x => new { x.OwnerUserId, x.Scope, x.EntryDate });
 
@@ -2810,6 +2810,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Amount).HasColumnType("decimal(18,2)");
             e.Property(x => x.PersonalAmount).HasColumnType("decimal(18,2)");
             e.Property(x => x.Notes).HasMaxLength(240);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
 
             e.HasIndex(x => x.AgentUserId);
             e.HasIndex(x => new { x.AgentUserId, x.Side });
