@@ -208,6 +208,78 @@ public sealed class AnalyticsCanonicalReconciliationTests
     }
 
     [Fact]
+    public async Task ProductionEnvironmentFilterExcludesDevelopmentRowsFromCanonicalFounderReporting()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var founderId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+        {
+            Id = founderId,
+            AgentUpn = "founder@example.org",
+            AgentUserId = "founder-1",
+            Slug = "founder"
+        });
+
+        db.AnalyticsEvents.AddRange(
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(), ClientEventId = Guid.NewGuid(), EventType = "page_view",
+                EventUtc = now.AddMinutes(-3), ReceivedUtc = now.AddMinutes(-3),
+                SessionId = "prod-session", VisitorId = "prod-visitor", PageKey = "protect_home",
+                AgentTrackingProfileId = founderId, Environment = "production", Host = "protect.mylegnd.com"
+            },
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(), ClientEventId = Guid.NewGuid(), EventType = "page_view",
+                EventUtc = now.AddMinutes(-2), ReceivedUtc = now.AddMinutes(-2),
+                SessionId = "dev-session", VisitorId = "dev-visitor", PageKey = "protect_home",
+                AgentTrackingProfileId = founderId, Environment = "development", Host = "localhost"
+            });
+
+        db.WebsiteLeads.AddRange(
+            new WebsiteLead
+            {
+                LeadId = Guid.NewGuid(), AgentTrackingProfileId = founderId,
+                FirstName = "Prod", Email = "prod@example.org", TermsAccepted = true,
+                CreatedUtc = now.AddMinutes(-1), Environment = "production", Host = "protect.mylegnd.com"
+            },
+            new WebsiteLead
+            {
+                LeadId = Guid.NewGuid(), AgentTrackingProfileId = founderId,
+                FirstName = "Dev", Email = "dev@example.org", TermsAccepted = true,
+                CreatedUtc = now.AddMinutes(-1), Environment = "development", Host = "localhost"
+            });
+        await db.SaveChangesAsync();
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Analytics:EnvironmentFilter"] = "production"
+            })
+            .Build();
+        var analytics = new AnalyticsQueryService(db, config);
+        var range = new TimeRangeRequest
+        {
+            FromUtc = now.AddHours(-1),
+            ToUtc = now.AddHours(1),
+            QualityMode = TrafficQualityMode.AllTraffic,
+            Label = "test",
+            Preset = "custom",
+            ViewerTimeZone = TimeZoneInfo.Utc
+        };
+
+        var summary = await analytics.GetSummaryAsync(range, ScopeContext.ForFounder(founderId));
+
+        Assert.Equal(1, summary.PageViews);
+        Assert.Equal(1, summary.Sessions);
+        Assert.Equal(1, summary.UniqueVisitors);
+        Assert.Equal(1, summary.VerifiedLeads);
+        Assert.Equal("Environment: Production", summary.EnvironmentLabel);
+    }
+
+    [Fact]
     public async Task StandaloneServerLeadUsesLeadContextOnlyWhenNoBrowserIdentityExists()
     {
         using var db = ControllerTestHelpers.BuildDb();
