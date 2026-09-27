@@ -41,6 +41,8 @@
     var metaPixelId = (ViewData["ResolvedMetaPixelId"]?.ToString() ?? string.Empty).Trim();
     var metaPixelOwnerType = (ViewData["MetaPixelOwnerType"]?.ToString() ?? string.Empty).Trim().ToLowerInvariant();
     var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
+    var openAiPixelId = (ViewData["ResolvedOpenAiPixelId"]?.ToString() ?? string.Empty).Trim();
+    var hasOpenAiPixel = !string.IsNullOrWhiteSpace(openAiPixelId);
     var analyticsBrowserConfigJson = JsonSerializer.Serialize(new
     {
         siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect,
@@ -319,6 +321,13 @@
         document.body.dataset.quoteType = "@ViewData["QuoteTypeForTracking"]";
         window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(analyticsBrowserConfigJson);
     </script>
+    @if (hasOpenAiPixel)
+    {
+        <script src="~/js/openai-measurement.js" asp-append-version="true"></script>
+        <script>
+            window.LegendOpenAiMeasurement?.configure?.({ pixelId: @Html.Raw(JsonSerializer.Serialize(openAiPixelId)) });
+        </script>
+    }
     <script src="~/js/tracking.js" asp-append-version="true"></script>
     <script src="~/js/lead-modal.js" asp-append-version="true"></script>
     <script>
