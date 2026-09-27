@@ -3,6 +3,7 @@ using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
+using Shared.Analytics;
 
 namespace ParfaitApp.Services;
 
@@ -400,6 +401,7 @@ public sealed class ParfaitOrderService
             Source = order.Source,
             UserAgent = order.UserAgent,
             RequestIp = order.RequestIp,
+            Oppref = order.Oppref,
             Items = order.Lines
                 .OrderBy(x => x.Id)
                 .Select(line => new ParfaitValidatedCartItem
@@ -460,6 +462,7 @@ public sealed class ParfaitOrderService
         entity.Source = record.Source;
         entity.UserAgent = record.UserAgent;
         entity.RequestIp = record.RequestIp;
+        entity.Oppref = OpenAiClickReference.Normalize(record.Oppref);
         entity.SubtotalCents = record.SubtotalCents;
         entity.DiscountCode = record.DiscountCode;
         entity.DiscountLabel = record.DiscountLabel;
@@ -569,6 +572,7 @@ public sealed class ParfaitOrderService
         order.Source = "Public Store";
         order.UserAgent = httpContext.Request.Headers.UserAgent.ToString();
         order.RequestIp = httpContext.Connection.RemoteIpAddress?.ToString();
+        order.Oppref ??= ResolveOppref(httpContext);
         order.Items = items.Select(NormalizeItem).ToList();
         order.SubtotalCents = subtotal;
         order.DiscountCode = string.IsNullOrWhiteSpace(discountCode) ? null : discountCode.Trim().ToUpperInvariant();
@@ -627,6 +631,7 @@ public sealed class ParfaitOrderService
             Source = string.IsNullOrWhiteSpace(order.Source) ? "Public Store" : Clean(order.Source),
             UserAgent = NullIfEmpty(order.UserAgent),
             RequestIp = NullIfEmpty(order.RequestIp),
+            Oppref = OpenAiClickReference.Normalize(order.Oppref),
             Items = normalizedItems,
             SubtotalCents = order.SubtotalCents > 0 ? order.SubtotalCents : normalizedItems.Sum(item => item.LineTotalCents),
             DiscountCode = NullIfEmpty(order.DiscountCode)?.ToUpperInvariant(),
@@ -645,6 +650,14 @@ public sealed class ParfaitOrderService
 
         normalized.Status = BuildStatus(normalized);
         return normalized;
+    }
+
+    private static string? ResolveOppref(HttpContext httpContext)
+    {
+        var cookie = httpContext.Request.Cookies.TryGetValue("pf_oppref", out var rawCookie)
+            ? Uri.UnescapeDataString(rawCookie)
+            : null;
+        return OpenAiClickReference.Normalize(cookie ?? httpContext.Request.Query["oppref"].FirstOrDefault());
     }
 
     private static ParfaitValidatedCartItem NormalizeItem(ParfaitValidatedCartItem item)
