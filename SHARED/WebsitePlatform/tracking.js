@@ -778,15 +778,6 @@
         quoteType: body.QuoteType,
         submitOutcome: body.SubmitOutcome
       });
-      try {
-        window.LegendOpenAiMeasurement?.trackCanonical?.(body);
-      } catch (openAiMeasurementError) {
-        debug('openai measurement projection failed', {
-          eventType: body.EventType,
-          message: openAiMeasurementError?.message || 'projection_error'
-        });
-      }
-
       const maxAttempts = criticalEvents.has(body.EventType) ? TRACKING_MAX_RETRIES : 1;
       let attempt = 0;
       let lastFailure = null;
@@ -795,6 +786,14 @@
         attempt += 1;
         const result = await postBody(body);
         if (result.ok) {
+          try {
+            window.LegendOpenAiMeasurement?.trackCanonical?.(body);
+          } catch (openAiMeasurementError) {
+            debug('openai measurement projection failed after canonical ingest', {
+              eventType: body.EventType,
+              message: openAiMeasurementError?.message || 'projection_error'
+            });
+          }
           if (
             body.EventType === 'thank_you_view' ||
             body.EventType === 'life_step2_submit_success' ||
@@ -912,6 +911,17 @@
       }
 
       const result = await postBody(queued.body);
+      if (result.ok) {
+        try {
+          window.LegendOpenAiMeasurement?.trackCanonical?.(queued.body);
+        } catch (openAiMeasurementError) {
+          debug('openai measurement queued projection failed after canonical ingest', {
+            eventType: queued.body.EventType,
+            message: openAiMeasurementError?.message || 'projection_error'
+          });
+        }
+        continue;
+      }
       if (!result.ok) {
         keep.push({
           ...queued,
