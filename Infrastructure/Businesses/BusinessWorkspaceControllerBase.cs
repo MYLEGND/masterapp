@@ -306,10 +306,15 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         var openAiHealth = await openAiHealthService.GetAsync(owner, cancellationToken);
 
         Infrastructure.Analytics.OpenAiAdsProviderAccountSnapshot? openAiProvider = null;
+        Infrastructure.Analytics.OpenAiAdsMeasurementCapabilitySnapshot? openAiMeasurement = null;
         string? openAiProviderError = null;
         if (openAiConnection.Connected)
         {
-            try { openAiProvider = await openAiDirect.InspectAsync(owner, cancellationToken); }
+            try
+            {
+                openAiProvider = await openAiDirect.InspectAsync(owner, cancellationToken);
+                openAiMeasurement = await openAiDirect.InspectMeasurementAsync(owner, cancellationToken);
+            }
             catch (Exception ex) when (ex is HttpRequestException or UnauthorizedAccessException or JsonException or InvalidOperationException)
             { openAiProviderError = "Provider status could not be refreshed."; }
         }
@@ -386,6 +391,9 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 reviewReason = openAiProvider?.ReviewReason,
                 providerStatusFresh = openAiProvider is not null,
                 providerStatusError = openAiProviderError,
+                measurementCapabilityStatus = openAiMeasurement?.Status,
+                measurementCapabilityHttpStatus = openAiMeasurement?.HttpStatusCode,
+                measurementCapabilityDetail = openAiMeasurement?.Detail,
                 pixelId = openAiConnection.PixelId,
                 pixelConfigured = openAiConnection.PixelConfigured,
                 conversionsApiConfigured = openAiConnection.ConversionsApiConfigured,
