@@ -31,7 +31,8 @@ public sealed class PromotionOrchestrationService(
     IConfiguration configuration,
     IAdvertisingActionAuthorizationService authorizations,
     IOpenAiAdsAccountConnectionAuthority connections,
-    IOpenAiAdsExecutionService ads) : IPromotionOrchestrationService
+    IOpenAiAdsExecutionService ads,
+    IBusinessPublicUrlResolver businessPublicUrls) : IPromotionOrchestrationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -497,7 +498,7 @@ public sealed class PromotionOrchestrationService(
         CancellationToken ct)
     {
         if (owner.CommerceBusinessId is Guid businessId)
-            return await BusinessPublicBaseAsync(businessId, ct);
+            return await businessPublicUrls.ResolveAsync(businessId, ct);
 
         if (owner.AgentTrackingProfileId is Guid agentId)
         {
@@ -512,23 +513,6 @@ public sealed class PromotionOrchestrationService(
         }
 
         return (configuration["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/');
-    }
-
-    private async Task<string> BusinessPublicBaseAsync(Guid businessId, CancellationToken ct)
-    {
-        var cutoff = DateTime.UtcNow.AddHours(-24);
-        var hostname = await db.Set<WebsiteDomainBinding>().AsNoTracking()
-            .Where(x => x.CommerceBusinessId == businessId &&
-                        x.Status == "active" &&
-                        x.CertificateStatus == "active" &&
-                        x.LastCheckedUtc >= cutoff)
-            .OrderBy(x => x.CreatedUtc)
-            .Select(x => x.Hostname)
-            .FirstOrDefaultAsync(ct);
-
-        if (string.IsNullOrWhiteSpace(hostname))
-            throw new InvalidOperationException("A verified active custom domain is required before promoting this business website.");
-        return "https://" + hostname.Trim().TrimEnd('.');
     }
 
     private async Task<CommerceBusiness> ActiveBusinessAsync(Guid businessId, CancellationToken ct) =>
