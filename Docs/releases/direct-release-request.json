@@ -1,17 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized fail-forward retry of the validated combined Meta Test Events, custom-domain HTTPS/SEO, and canonical website navigation/editor release after #241 failed before any build or deployment because the exact three-target scope was not yet in the reviewed release allowlist. Preserve successful prior deployments and do not deploy ClientApp or Parfait.",
-  "purpose": "Retry the exact combined approved head after adding only the reviewed release-policy allowance for AgentPortal + Protect + LEGEND Website. Application behavior remains the Run #311 validated code. Resume from release discovery forward; no rollback or redeployment of unrelated apps.",
-  "requestId": "meta-test-events-seo-custom-domain-combined-20260926-r2",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36279347194",
-  "resumeFailedRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36279653342",
-  "preserveSuccessfulReleases": [
-    "https://github.com/MYLEGND/masterapp/actions/runs/36278375950",
-    "https://github.com/MYLEGND/masterapp/actions/runs/36279230586"
-  ],
+  "authorization": "Founder authorized fail-forward deployment of the validated Website Studio free-resize and canonical commerce-manager routing repair. Deploy only Protect and LEGEND Website. Do not redeploy AgentPortal, ClientApp, or Parfait. Preserve all successful releases and resume only from concrete failed steps.",
+  "purpose": "Deploy the shared Website Platform API/CMS repair: continuous direct canvas resize, reclaimable non-scrolling section height, canonical Founder/Protect/business store and cart roots, and absolute Parfait-owned commerce manager URL. Parfait commerce services remain unchanged and already live; only the shared website runtime and website package require publication.",
+  "requestId": "free-canvas-canonical-commerce-manager-20260926-r1",
+  "failedBroadRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36283204704",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
     "masterapp-protect",
     "masterapp-website"
   ],
