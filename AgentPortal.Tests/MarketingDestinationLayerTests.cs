@@ -18,7 +18,7 @@ public sealed class MarketingDestinationLayerTests
     {
         var registry = new MarketingDestinationRegistry(new IMarketingDestination[]
         {
-            new OpenAiMarketingDestination(),
+            new OpenAiMarketingDestination(new FakeOpenAiAuthority()),
             new FakeDestination(MarketingDestinationKeys.Meta)
         });
 
@@ -40,7 +40,7 @@ public sealed class MarketingDestinationLayerTests
     [Fact]
     public async Task OpenAiDestinationIsRegisteredButCannotSendBeforeItsImplementationStep()
     {
-        var decision = await new OpenAiMarketingDestination().EvaluateAsync(
+        var decision = await new OpenAiMarketingDestination(new FakeOpenAiAuthority()).EvaluateAsync(
             MarketingOwnerScope.Business(Guid.NewGuid()),
             new MarketingOutcome("Lead", "event-1", IsServerAuthority: true));
 
@@ -48,7 +48,7 @@ public sealed class MarketingDestinationLayerTests
         Assert.False(decision.Supported);
         Assert.False(decision.Configured);
         Assert.False(decision.Eligible);
-        Assert.Equal("destination_not_implemented", decision.Reason);
+        Assert.Equal("destination_not_configured", decision.Reason);
     }
 
     [Fact]
@@ -128,6 +128,18 @@ public sealed class MarketingDestinationLayerTests
         Assert.Contains(services, descriptor =>
             descriptor.ServiceType == typeof(IMarketingDestinationRegistry) &&
             descriptor.ImplementationType == typeof(MarketingDestinationRegistry));
+    }
+
+    private sealed class FakeOpenAiAuthority : IOpenAiAdsAccountConnectionAuthority
+    {
+        public Task<OpenAiAdsConnectionSnapshot> GetAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new OpenAiAdsConnectionSnapshot(owner, false, false, Guid.Empty, null, null, null, null, null, null, null, [], null, null, false, false, null, null, null));
+
+        public Task<OpenAiAdsConnectionSnapshot> BindVerifiedAsync(MarketingOwnerScope owner, VerifiedOpenAiAdsAccount verifiedAccount, OpenAiAdsConnectionSecrets secrets, Guid? expectedRevision = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<OpenAiAdsConnectionSnapshot> DisconnectAsync(MarketingOwnerScope owner, Guid expectedRevision, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeDestination(string key) : IMarketingDestination
