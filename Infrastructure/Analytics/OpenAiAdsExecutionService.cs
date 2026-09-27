@@ -38,6 +38,11 @@ public interface IOpenAiAdsExecutionService
     Task<OpenAiAdsInsightsResult> GetCampaignInsightsAsync(MarketingOwnerScope owner, string campaignId, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default);
     Task<OpenAiAdsInsightsResult> GetAdGroupInsightsAsync(MarketingOwnerScope owner, string adGroupId, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default);
     Task<OpenAiAdsInsightsResult> GetAdInsightsAsync(MarketingOwnerScope owner, string adId, OpenAiAdsInsightsQuery query, CancellationToken ct = default);
+
+    Task<OpenAiAdsProviderPage> ListProductFeedsAsync(MarketingOwnerScope owner, CancellationToken ct = default);
+    Task<OpenAiAdsProviderEntity> CreateProductFeedAsync(MarketingOwnerScope owner, OpenAiAdsProductFeedCreateRequest request, CancellationToken ct = default);
+    Task<OpenAiAdsProviderPage> ListProductFeedItemsAsync(MarketingOwnerScope owner, string productFeedId, CancellationToken ct = default);
+    Task<OpenAiAdsProviderEntity> UpsertProductFeedItemAsync(MarketingOwnerScope owner, OpenAiAdsProductFeedItemUpsertRequest request, CancellationToken ct = default);
 }
 
 public sealed class OpenAiAdsExecutionService(
@@ -541,6 +546,56 @@ public sealed class OpenAiAdsExecutionService(
             _ => throw new ArgumentOutOfRangeException(nameof(status))
         };
         return await SendEntityAsync(owner, HttpMethod.Post, $"/{resource}/{Id(id)}/{action}", new Dictionary<string, object?>(), null, ct);
+    }
+
+
+    public Task<OpenAiAdsProviderPage> ListProductFeedsAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
+        GetPageAsync(owner, "/product_feeds", ct);
+
+    public Task<OpenAiAdsProviderEntity> CreateProductFeedAsync(
+        MarketingOwnerScope owner,
+        OpenAiAdsProductFeedCreateRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var payload = new Dictionary<string, object?>
+        {
+            ["name"] = Text(request.Name, 500, nameof(request.Name)),
+            ["currency"] = Text(request.Currency, 3, nameof(request.Currency)).ToUpperInvariant()
+        };
+        return SendEntityAsync(owner, HttpMethod.Post, "/product_feeds", payload, request.IdempotencyKey, ct);
+    }
+
+    public Task<OpenAiAdsProviderPage> ListProductFeedItemsAsync(
+        MarketingOwnerScope owner,
+        string productFeedId,
+        CancellationToken ct = default) =>
+        GetPageAsync(owner, $"/product_feeds/{Id(productFeedId)}/products", ct);
+
+    public Task<OpenAiAdsProviderEntity> UpsertProductFeedItemAsync(
+        MarketingOwnerScope owner,
+        OpenAiAdsProductFeedItemUpsertRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!Uri.TryCreate(request.LandingUrl, UriKind.Absolute, out var landing) || landing.Scheme != Uri.UriSchemeHttps)
+            throw new ArgumentException("Product landing URL must be HTTPS.", nameof(request));
+        if (!Uri.TryCreate(request.ImageUrl, UriKind.Absolute, out var image) || image.Scheme is not (Uri.UriSchemeHttps or Uri.UriSchemeHttp))
+            throw new ArgumentException("Product image URL must be HTTP(S).", nameof(request));
+        if (request.PriceMicros < 0) throw new ArgumentOutOfRangeException(nameof(request.PriceMicros));
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["external_id"] = Text(request.ExternalId, 500, nameof(request.ExternalId)),
+            ["title"] = Text(request.Title, 500, nameof(request.Title)),
+            ["description"] = Text(request.Description, 4000, nameof(request.Description)),
+            ["price_micros"] = request.PriceMicros,
+            ["currency"] = Text(request.Currency, 3, nameof(request.Currency)).ToUpperInvariant(),
+            ["landing_url"] = request.LandingUrl.Trim(),
+            ["image_url"] = request.ImageUrl.Trim(),
+            ["availability"] = Text(request.Availability, 32, nameof(request.Availability))
+        };
+        return SendEntityAsync(owner, HttpMethod.Post, $"/product_feeds/{Id(request.ProductFeedId)}/products:upsert", payload, request.IdempotencyKey, ct);
     }
 
     private async Task<OpenAiAdsProviderPage> GetPageAsync(MarketingOwnerScope owner, string path, CancellationToken ct) =>
