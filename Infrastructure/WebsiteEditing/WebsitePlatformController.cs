@@ -218,6 +218,11 @@ public class WebsitePlatformController : ControllerBase
         var metaOptions = HttpContext.RequestServices
             .GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<Infrastructure.Analytics.MetaSignalIntelligenceOptions>>()
             .Value;
+        var openAiConnections = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
+        var openAiOwner = scope.CommerceBusinessId.HasValue
+            ? Shared.Analytics.MarketingOwnerScope.Business(scope.CommerceBusinessId.Value)
+            : Shared.Analytics.MarketingOwnerScope.Founder;
+        var openAi = await openAiConnections.GetAsync(openAiOwner, cancellationToken);
         var apiBase = WebsiteContentApiBaseUrl();
 
         return Ok(new
@@ -249,6 +254,13 @@ public class WebsitePlatformController : ControllerBase
                     .Select(definition => definition.Name)
                     .ToArray(),
                 weights = metaOptions.Weights
+            },
+            openai = new
+            {
+                enabled = openAi.Connected && openAi.PixelConfigured,
+                pixelId = openAi.Connected ? openAi.PixelId : null,
+                accountApproved = openAi.AccountApproved,
+                conversionsApiConfigured = openAi.ConversionsApiConfigured
             }
         });
     }
