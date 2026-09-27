@@ -295,6 +295,136 @@
         await request('/schedule', { publishUtc: null }); await reload(); overview(); status.textContent = 'Publication schedule canceled.';
       })));
     };
+    const promoteThis = () => run(async () => {
+      section('Promote This');
+      panel.append(el('p', 'Build a scoped ChatGPT Ads proposal from your published website, service, or product. Preview and approval are required before any provider mutation.'));
+      const [sourceResult, conversionResult] = await Promise.all([
+        request('/promote/sources'),
+        request('/promote/conversions').catch(() => ({ payload: { data: [] } }))
+      ]);
+      const sources = sourceResult.items || [];
+      if (!sources.length) { panel.append(el('p', 'Publish a page or add an active business product/service before creating a promotion.')); return; }
+
+      const sourceLabel = el('label', 'What do you want to promote?');
+      const sourceSelect = el('select', null, { 'aria-label': 'Promotion source' });
+      for (const item of sources) {
+        const option = el('option', item.detail ? `${item.label} · ${item.detail}` : item.label, { value: `${item.sourceKind}|${item.sourceId}|${item.pagePath || ''}` });
+        sourceSelect.append(option);
+      }
+      sourceLabel.append(sourceSelect); panel.append(sourceLabel);
+
+      const objectiveLabel = el('label', 'Objective');
+      const objective = el('select', null, { 'aria-label': 'Promotion objective' });
+      objective.append(el('option', 'Drive qualified visits (clicks)', { value: 'clicks' }), el('option', 'Optimize for a conversion', { value: 'conversions' }));
+      objectiveLabel.append(objective); panel.append(objectiveLabel);
+
+      const conversionLabel = el('label', 'Conversion objective');
+      const conversion = el('select', null, { 'aria-label': 'Conversion objective' });
+      conversion.append(el('option', 'Choose a standard conversion', { value: '' }));
+      const conversionRows = Array.isArray(conversionResult?.payload?.data) ? conversionResult.payload.data : [];
+      for (const row of conversionRows.filter(row => String(row.event_type || '').toLowerCase() !== 'custom' && String(row.status || '').toLowerCase() !== 'archived')) {
+        conversion.append(el('option', row.name || row.event_name || row.event_type || 'Conversion', { value: row.id }));
+      }
+      conversionLabel.append(conversion); panel.append(conversionLabel);
+      conversionLabel.hidden = true;
+      objective.addEventListener('change', () => { conversionLabel.hidden = objective.value !== 'conversions'; });
+
+      const budget = field('Daily budget (connected ad account currency)', 'number');
+      budget.min = '1'; budget.step = '0.01';
+      const goal = field('Campaign goal / offer');
+      const hints = field('Context hints (comma separated)');
+      const countries = field('Country codes (comma separated, optional)');
+      const launchLabel = el('label', 'Execution state');
+      const launchState = el('select', null, { 'aria-label': 'Execution state' });
+      launchState.append(el('option', 'Create paused for final provider review', { value: 'paused' }), el('option', 'Launch active after approval', { value: 'active' }));
+      launchLabel.append(launchState); panel.append(launchLabel);
+
+      const readPromotion = selectedCreativeKey => {
+        const [sourceKind, sourceId, pagePath] = sourceSelect.value.split('|');
+        const amount = Number(budget.value);
+        if (!Number.isFinite(amount) || amount < 1) throw new Error('Enter a daily budget of at least 1.00 in the connected account currency.');
+        if (objective.value === 'conversions' && !conversion.value) throw new Error('Choose a standard conversion objective.');
+        return {
+          sourceKind, sourceId, pagePath: pagePath || null,
+          goal: goal.value.trim() || null,
+          dailyBudgetMicros: Math.round(amount * 1000000),
+          biddingType: objective.value,
+          contextHints: hints.value.split(',').map(value => value.trim()).filter(Boolean),
+          countries: countries.value.split(',').map(value => value.trim().toUpperCase()).filter(Boolean),
+          platforms: null,
+          status: launchState.value,
+          conversionEventSettingId: objective.value === 'conversions' ? conversion.value : null,
+          selectedCreativeKey: selectedCreativeKey || null
+        };
+      };
+
+      const renderProposal = proposal => {
+        section('Review exact advertising action');
+        panel.append(el('p', 'This proposal is persisted but not approved and has not executed.'));
+        panel.append(el('p', `Action digest: ${proposal.actionDigest}`));
+        const steps = proposal.plan?.steps || [];
+        for (const step of steps) {
+          const details = el('details', null);
+          details.append(el('summary', `${step.stepKey}: ${step.actionType}`), el('pre', JSON.stringify(step.payload, null, 2)));
+          panel.append(details);
+        }
+        panel.append(button('Approve exact plan', () => run(async () => {
+          const approved = await request('/promote/approve', { proposalId: proposal.id, revision: proposal.revision });
+          const receipt = approved.receipt;
+          section('Advertising plan approved');
+          panel.append(el('p', 'Approval is bound to the exact reviewed plan. No provider action has executed yet.'),
+            el('p', `Approval expires ${new Date(receipt.approvalExpiresUtc).toLocaleTimeString()}.`),
+            button(launchState.value === 'active' ? 'Launch approved plan' : 'Create approved paused campaign', () => run(async () => {
+              const executed = await request('/promote/execute', { proposalId: proposal.id, revision: receipt.revision });
+              const result = executed.receipt;
+              section('Advertising execution receipt');
+              panel.append(el('p', `State: ${result.state}`));
+              if (result.errorMessage) panel.append(el('p', `Provider result: ${result.errorMessage}`));
+              if (result.providerReceipt) {
+                const details = el('details', null); details.append(el('summary', 'Provider receipt'), el('pre', JSON.stringify(result.providerReceipt, null, 2))); panel.append(details);
+              }
+              panel.append(button('Back to website overview', overview));
+              status.textContent = result.state === 'Completed' ? 'Approved advertising plan executed and audited.' : `Advertising execution ended in ${result.state}.`;
+            }), true),
+            button('Reject instead', () => run(async () => {
+              await request('/promote/reject', { proposalId: proposal.id, revision: receipt.revision });
+              overview(); status.textContent = 'Advertising proposal rejected. Nothing was launched.';
+            })));
+        }), true),
+        button('Reject proposal', () => run(async () => {
+          await request('/promote/reject', { proposalId: proposal.id, revision: proposal.revision });
+          overview(); status.textContent = 'Advertising proposal rejected. Nothing was launched.';
+        })));
+      };
+
+      const renderDraft = draft => {
+        section('Preview promotion');
+        panel.append(el('p', `${draft.source.displayName} → ${draft.source.landingUrl}`),
+          el('p', `Objective: ${draft.biddingType} · Daily budget: ${(draft.dailyBudgetMicros / 1000000).toFixed(2)}`));
+        let selected = draft.selectedAlternativeKey;
+        for (const alternative of draft.alternatives || []) {
+          const card = el('label', null, { class: 'wm-promotion-creative' });
+          const radio = el('input', null, { type: 'radio', name: 'promotion-creative', value: alternative.key });
+          radio.checked = alternative.key === selected;
+          radio.addEventListener('change', () => { selected = alternative.key; });
+          card.append(radio, el('strong', alternative.title), el('span', alternative.body));
+          if (alternative.imageUrl) card.append(el('img', null, { src: alternative.imageUrl, alt: '', loading: 'lazy' }));
+          panel.append(card);
+        }
+        const exact = el('details', null); exact.append(el('summary', 'Exact proposed provider actions'), el('pre', JSON.stringify(draft.plan?.steps || [], null, 2))); panel.append(exact);
+        panel.append(button('Create approval proposal', () => run(async () => {
+          const proposed = await request('/promote/propose', { promotion: readPromotion(selected) });
+          renderProposal(proposed.proposal);
+        }), true), button('Change setup', promoteThis));
+        status.textContent = 'Preview only. Nothing has been approved or executed.';
+      };
+
+      panel.append(button('Preview promotion', () => run(async () => {
+        const draft = await request('/promote/draft', { promotion: readPromotion(null) });
+        renderDraft(draft.draft);
+      }), true));
+      status.textContent = '';
+    });
     const deleteWebsite = () => {
       section('Delete website');
       panel.append(el('p', 'This removes the current published website, working draft, named drafts, import state, and scheduled publication for this website scope. It does not delete the account, CRM, analytics, Meta settings, business profile, inquiries, or historical audit versions.'));
@@ -322,6 +452,7 @@
       tile('Website usage', 'Storage, media and publication history', usage);
       tile('Export website', 'Download your structured website content', exportWebsite);
       if (state.capabilities?.canDelete === true) tile('Delete website', 'Unpublish and clear this scoped website', deleteWebsite);
+      if (state.capabilities?.canPromote === true) tile('Promote This', 'Build, preview, approve, and launch scoped ChatGPT Ads', promoteThis);
       if (trigger.dataset.scope === 'business') { if (state.capabilities?.canPublish === true) tile('Marketing & booking', 'Public card, secure Meta destination and scheduler', marketingProfile); tile('Business details', 'Public contact details, services and locations', businessDetails); if (state.capabilities?.canManageDomains === true) tile('Domains', 'Connect and verify your business address', domains); tile('Inquiries', 'Manage customer messages for this business', inquiries); }
       panel.append(grid);
     };
