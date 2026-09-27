@@ -178,6 +178,15 @@ public sealed class OpenAiMeasurementDeliveryTests
         Assert.Contains("globalPrivacyControl", measurement, StringComparison.Ordinal);
         Assert.DoesNotContain("ConversionsApiKey", measurement, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("LegendOpenAiMeasurement?.trackCanonical", tracking, StringComparison.Ordinal);
+        var sendEventIndex = tracking.IndexOf("async function sendEvent(payload)", StringComparison.Ordinal);
+        var postIndex = tracking.IndexOf("const result = await postBody(body);", sendEventIndex, StringComparison.Ordinal);
+        var successIndex = tracking.IndexOf("if (result.ok)", postIndex, StringComparison.Ordinal);
+        var projectionIndex = tracking.IndexOf("LegendOpenAiMeasurement?.trackCanonical?.(body)", successIndex, StringComparison.Ordinal);
+        Assert.True(sendEventIndex >= 0 && postIndex > sendEventIndex && successIndex > postIndex && projectionIndex > successIndex);
+        Assert.DoesNotContain(
+            "LegendOpenAiMeasurement?.trackCanonical?.(body)",
+            tracking[sendEventIndex..postIndex],
+            StringComparison.Ordinal);
         Assert.Contains("openAiMeasurementAsset", cms, StringComparison.Ordinal);
         Assert.Contains("LegendOpenAiMeasurement?.configure", cms, StringComparison.Ordinal);
     }
