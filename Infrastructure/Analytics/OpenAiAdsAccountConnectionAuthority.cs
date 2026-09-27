@@ -10,6 +10,8 @@ public interface IOpenAiAdsAccountConnectionAuthority
 {
     Task<OpenAiAdsConnectionSnapshot> GetAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default);
 
+    Task<OpenAiAdsConnectionSecrets> GetSecretsAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default);
+
     Task<OpenAiAdsConnectionSnapshot> BindVerifiedAsync(
         MarketingOwnerScope owner,
         VerifiedOpenAiAdsAccount verifiedAccount,
@@ -43,6 +45,22 @@ public sealed class OpenAiAdsAccountConnectionAuthority(
         return row is null ? Empty(owner) : Snapshot(owner, row);
     }
 
+    public async Task<OpenAiAdsConnectionSecrets> GetSecretsAsync(
+        MarketingOwnerScope owner,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        var row = await db.MarketingConnections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == Provider, cancellationToken);
+
+        if (row is null || row.DisconnectedUtc.HasValue)
+            return new();
+
+        return new(
+            protector.Unprotect(owner, Provider, row.AdsAccessTokenCiphertext),
+            protector.Unprotect(owner, Provider, row.CapiAccessTokenCiphertext));
+    }
+
     public async Task<OpenAiAdsConnectionSnapshot> BindVerifiedAsync(
         MarketingOwnerScope owner,
         VerifiedOpenAiAdsAccount verifiedAccount,
@@ -73,6 +91,7 @@ public sealed class OpenAiAdsAccountConnectionAuthority(
 
         var row = await db.MarketingConnections
             .SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == Provider, cancellationToken);
+        var isNew = row is null;
 
         if (row is null)
         {
@@ -105,9 +124,11 @@ public sealed class OpenAiAdsAccountConnectionAuthority(
         row.ProviderPermissionsJson = JsonSerializer.Serialize(permissions);
         row.ProviderPixelId = pixelId;
         row.ProviderDataSourceId = dataSourceId;
-        row.AdsAccessTokenCiphertext = protector.Protect(owner, Provider, secrets.ManagementApiKey);
-        row.CapiAccessTokenCiphertext = protector.Protect(owner, Provider, secrets.ConversionsApiKey);
-        row.ConnectedUtc = DateTime.UtcNow;
+        if (isNew || secrets.ManagementApiKey is not null)
+            row.AdsAccessTokenCiphertext = protector.Protect(owner, Provider, secrets.ManagementApiKey);
+        if (isNew || secrets.ConversionsApiKey is not null)
+            row.CapiAccessTokenCiphertext = protector.Protect(owner, Provider, secrets.ConversionsApiKey);
+        row.ConnectedUtc = row.ConnectedUtc ?? DateTime.UtcNow;
         row.DisconnectedUtc = null;
         row.LastVerifiedUtc = verifiedUtc;
         Touch(row);
