@@ -9,6 +9,8 @@ on:
       - 'Infrastructure/Analytics/OpenAiAdsExecutionService.cs'
       - 'Infrastructure/Analytics/MarketingConnectionStore.cs'
       - 'AgentPortal.Tests/OpenAiAdsExecutionServiceTests.cs'
+      - 'AgentPortal.Tests/OpenAiAdsAccountConnectionAuthorityTests.cs'
+      - 'AgentPortal.Tests/MarketingDestinationLayerTests.cs'
       - 'AgentPortal.Tests/MarketingScopeParityContractTests.cs'
       - '.github/workflows/step6-openai-ads-execution-validation.yml'
 
@@ -38,4 +40,4 @@ jobs:
       - name: Run Step 6 execution and standing scope-parity tests
         run: >
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
-          --filter "FullyQualifiedName~OpenAiAdsExecutionServiceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests"
+          --filter "FullyQualifiedName~OpenAiAdsExecutionServiceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests"
