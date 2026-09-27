@@ -1587,6 +1587,72 @@ namespace AgentPortal.Controllers;
         return tracking is null ? null : ResolveOpenAiMarketingOwner(tracking);
     }
 
+    public sealed record MarketingManagerPlanHttpRequest(
+        Guid? AgentProfileId,
+        string? Preset,
+        DateTime? FromUtc,
+        DateTime? ToUtc,
+        Shared.Analytics.TrafficQualityMode QualityMode,
+        Shared.Analytics.MarketingManagerGoalRequest Goal);
+
+    [HttpPost("marketing-manager/plan")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MarketingManagerPlan(
+        [FromBody] MarketingManagerPlanHttpRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+
+        try
+        {
+            var range = TimeRangeRequest.FromPreset(
+                string.IsNullOrWhiteSpace(request.Preset) ? "30d" : request.Preset,
+                request.FromUtc,
+                request.ToUtc,
+                GetViewerTimeZone(),
+                request.QualityMode);
+            var scope = await ResolveScopeAsync(request.AgentProfileId, team: false);
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMarketingManagerService>();
+            return Json(await service.PlanAsync(owner, scope, range, request.Goal, cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or Infrastructure.Analytics.OpenAiAdsExecutionException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("marketing-manager/performance")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> MarketingManagerPerformance(
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] string? preset = null,
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        [FromQuery] Shared.Analytics.TrafficQualityMode qualityMode = Shared.Analytics.TrafficQualityMode.RealHumanTraffic,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+
+        try
+        {
+            var range = TimeRangeRequest.FromPreset(
+                string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
+                fromUtc,
+                toUtc,
+                GetViewerTimeZone(),
+                qualityMode);
+            var scope = await ResolveScopeAsync(agentProfileId, team: false);
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IUnifiedMarketingPerformanceService>();
+            return Json(await service.GetAsync(owner, scope, range, cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or Infrastructure.Analytics.OpenAiAdsExecutionException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("meta-campaigns")]
     public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
