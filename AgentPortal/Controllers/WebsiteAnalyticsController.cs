@@ -351,8 +351,6 @@ namespace AgentPortal.Controllers;
 
     private async Task<object> LoadOpprefLineageVisibilityAsync(AgentTrackingProfile tracking, CancellationToken cancellationToken)
     {
-        static bool HasOppref(string? value) => !string.IsNullOrWhiteSpace(value);
-
         var analytics = await _db.AnalyticsEvents.AsNoTracking()
             .CountAsync(x => x.AgentTrackingProfileId == tracking.Id && x.Oppref != null && x.Oppref != "", cancellationToken);
         var leads = await _db.WebsiteLeads.AsNoTracking()
