@@ -38,13 +38,13 @@ public partial class AddOpenAiProductFeedProjections : Migration
                     column: x => x.CommerceBusinessId,
                     principalTable: "CommerceBusinesses",
                     principalColumn: "Id",
-                    onDelete: ReferentialAction.Cascade);
+                    onDelete: ReferentialAction.Restrict);
                 table.ForeignKey(
                     name: "FK_OpenAiProductFeedProjections_CommerceProducts_CommerceProductId",
                     column: x => x.CommerceProductId,
                     principalTable: "CommerceProducts",
                     principalColumn: "Id",
-                    onDelete: ReferentialAction.Cascade);
+                    onDelete: ReferentialAction.Restrict);
             });
 
         migrationBuilder.CreateIndex(
