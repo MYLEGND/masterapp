@@ -312,10 +312,10 @@ public sealed class AdvertisingActionAuthorizationService(
 
             AdvertisingActionTypes.AdCreate =>
                 (await openAiAds.CreateAdAsync(owner,
-                    Deserialize<OpenAiAdsAdCreateRequest>(step.Payload) with
-                    {
-                        AdGroupId = ParentId() ?? Deserialize<OpenAiAdsAdCreateRequest>(step.Payload).AdGroupId
-                    }, ct)).Payload,
+                    BindAdCreateDependencies(
+                        Deserialize<OpenAiAdsAdCreateRequest>(step.Payload),
+                        ParentId(),
+                        CreativeId(step.CreativeStepKey, createdIds)), ct)).Payload,
 
             AdvertisingActionTypes.AdUpdate =>
                 (await openAiAds.UpdateAdAsync(owner, Deserialize<OpenAiAdsAdUpdateRequest>(step.Payload), ct)).Payload,
@@ -328,6 +328,12 @@ public sealed class AdvertisingActionAuthorizationService(
                     owner,
                     Deserialize<OpenAiAdsConversionEventSettingCreateRequest>(step.Payload),
                     ct)).Payload,
+
+            AdvertisingActionTypes.CreativeUploadUrl =>
+                UploadReceipt(await openAiAds.UploadImageUrlAsync(
+                    owner,
+                    Deserialize<AdvertisingCreativeUploadUrlMutation>(step.Payload).ImageUrl,
+                    ct)),
 
             _ => throw new InvalidOperationException($"Unsupported advertising action '{step.ActionType}'.")
         };
@@ -455,6 +461,8 @@ public sealed class AdvertisingActionAuthorizationService(
                 throw new ArgumentException("Advertising step payload must be an object.", nameof(plan));
             if (!string.IsNullOrWhiteSpace(step.ParentStepKey) && !keys.Contains(step.ParentStepKey))
                 throw new ArgumentException("Advertising parent steps must precede dependent actions.", nameof(plan));
+            if (!string.IsNullOrWhiteSpace(step.CreativeStepKey) && !keys.Contains(step.CreativeStepKey))
+                throw new ArgumentException("Advertising creative steps must precede dependent actions.", nameof(plan));
 
             ValidateTypedPayload(step);
         }
@@ -476,6 +484,9 @@ public sealed class AdvertisingActionAuthorizationService(
             case AdvertisingActionTypes.ConversionSettingCreate:
                 RequireCreateIdempotency(Deserialize<OpenAiAdsConversionEventSettingCreateRequest>(step.Payload).IdempotencyKey);
                 break;
+            case AdvertisingActionTypes.CreativeUploadUrl:
+                _ = Deserialize<AdvertisingCreativeUploadUrlMutation>(step.Payload);
+                break;
             case AdvertisingActionTypes.CampaignUpdate:
                 _ = Deserialize<OpenAiAdsCampaignUpdateRequest>(step.Payload);
                 break;
@@ -492,6 +503,34 @@ public sealed class AdvertisingActionAuthorizationService(
                 break;
         }
     }
+
+    private static OpenAiAdsAdCreateRequest BindAdCreateDependencies(
+        OpenAiAdsAdCreateRequest request,
+        string? adGroupId,
+        string? fileId)
+    {
+        var creative = request.Creative;
+        if (!string.IsNullOrWhiteSpace(fileId))
+            creative = creative with { FileId = fileId };
+        return request with
+        {
+            AdGroupId = string.IsNullOrWhiteSpace(adGroupId) ? request.AdGroupId : adGroupId,
+            Creative = creative
+        };
+    }
+
+    private static string? CreativeId(
+        string? stepKey,
+        IReadOnlyDictionary<string, string> createdIds)
+    {
+        if (string.IsNullOrWhiteSpace(stepKey)) return null;
+        return createdIds.TryGetValue(stepKey, out var value)
+            ? value
+            : throw new InvalidOperationException($"Approved creative step '{stepKey}' did not produce a file ID.");
+    }
+
+    private static JsonElement UploadReceipt(OpenAiAdsImageUploadResult result) =>
+        JsonSerializer.SerializeToElement(new { file_id = result.FileId, provider = result.Payload }, JsonOptions);
 
     private static void RequireCreateIdempotency(string? key)
     {
@@ -587,4 +626,5 @@ public sealed class AdvertisingActionAuthorizationService(
     }
 
     private sealed record AdvertisingStatusMutation(string EntityId, string Status);
+    private sealed record AdvertisingCreativeUploadUrlMutation(string ImageUrl);
 }
