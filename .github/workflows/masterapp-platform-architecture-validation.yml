@@ -17,6 +17,7 @@ on:
       - architecture/provider-neutral-marketing-destinations-20260926
       - feature/openai-ads-direct-connect-ui-20260926
       - fix/openai-ads-account-readiness-20260926
+      - fix/openai-measurement-refresh-failsoft-20260926
     paths-ignore:
       - 'Docs/**'
   pull_request:
