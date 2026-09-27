@@ -127,6 +127,20 @@ public sealed class MarketingScopeParityContractTests
     }
 
     [Fact]
+    public void AppSpecificScopes_DoNotOwnChatGptAdsExecutionAdapters()
+    {
+        var root = Root();
+
+        Assert.True(File.Exists(Path.Combine(root, "Infrastructure", "Analytics", "OpenAiAdsExecutionService.cs")));
+        Assert.False(File.Exists(Path.Combine(root, "AgentPortal", "Services", "OpenAiAdsService.cs")));
+        Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", "Services", "OpenAiAdsService.cs")));
+        Assert.False(File.Exists(Path.Combine(root, "ClientApp", "Services", "OpenAiAdsService.cs")));
+
+        var registration = Read("Infrastructure", "Analytics", "MarketingConnectionStore.cs");
+        Assert.Contains("IOpenAiAdsExecutionService, OpenAiAdsExecutionService", registration, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AppSpecificSurfaces_DoNotOwnProviderConversionMappingLogic()
     {
         var agentController = Read("AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
