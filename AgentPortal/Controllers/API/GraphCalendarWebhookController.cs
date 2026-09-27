@@ -435,6 +435,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             WorkstationLeadId = contact.LeadId,
             OwnerAgentUserId = "",
             WebsiteLeadIntakeLinkId = intake?.Id,
+            Oppref = OpenAiClickReference.Normalize(intake?.Oppref),
             Status = LeadAppointmentStatus.Requested,
             BookingProvider = "microsoft_graph",
             BookingSource = LeadAppointmentBookingSources.MicrosoftGraphWebhook,
