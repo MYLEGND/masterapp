@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized direct deployment of the Run #488 validated OpenAI measurement refresh fail-soft replacement. Deploy only AgentPortal and ClientApp because those are the affected Marketing Setup hosts. Protect, Parfait, and LEGEND Website are not release targets.",
+  "authorization": "Founder authorized direct deployment of the Run #488 validated OpenAI measurement refresh fail-soft replacement. Deploy only AgentPortal and ClientApp because those are the affected Marketing Setup hosts. Preserve successful Protect, Parfait, and LEGEND Website releases by excluding them from this scoped release.",
   "purpose": "Publish the canonical OpenAI Ads refresh correction: verified advertiser account refresh no longer fails when independent Pixel/CAPI provisioning is unavailable; measurement capability is reported separately; existing Pixel/CAPI state is preserved; no parallel settings or credential authority is created.",
-  "requestId": "openai-measurement-refresh-failsoft-20260926-r1",
+  "requestId": "openai-measurement-refresh-failsoft-20260926-r2",
   "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36296984617",
   "validatedHead": "3c06a8fb6ab1ef4b735abc56e9c03221fb069d99",
   "releaseMode": "approved-only",
