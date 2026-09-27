@@ -1970,11 +1970,11 @@ test('editor navigation uses non-link controls and opens pages only on double-cl
   assert.match(source,/addEventListener\('dblclick',[\s\S]*navigateToEditorPage\(entry\.route\)/);
 });
 
-test('text scaling stays unbounded while sections remain content-sized and never become internal scrollers',()=>{
+test('text scaling stays unbounded while manually resized sections remain non-scrolling canvases',()=>{
   assert.match(source,/id="legend-cms-scale" type="number" min="0" step="any"/);
   assert.doesNotMatch(source,/id="legend-cms-scale"[^>]*max=/);
   assert.match(source,/scaledElements\.set\(el, style\.fontScale\)/);
-  assert.match(source,/el\.style\.height = 'auto';[\s\S]*el\.style\.overflow = 'visible';/);
+  assert.match(source,/el\.style\.minHeight = '0';[\s\S]*el\.style\.height = `\$\{style\.heightPx\}px`;[\s\S]*el\.style\.overflow = 'visible';/);
 });
 
 test('business header navigation renders once from the canonical page catalog and discards stale DOM links',async()=>{
