@@ -60,7 +60,7 @@ public sealed class OpenAiAdsDirectConnectionServiceTests
         Assert.False(result.ConversionsApiConfigured);
         Assert.Equal("ads_secret", authority.Secrets!.ManagementApiKey);
         Assert.Null(authority.Secrets.ConversionsApiKey);
-        Assert.Equal(["ad_account.read"], authority.Verified!.Permissions);
+        Assert.Equal(new[] { "ad_account.read" }, authority.Verified!.Permissions);
     }
 
     [Fact]
