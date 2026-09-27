@@ -32,7 +32,9 @@ public interface IPromotionOrchestrationService
 public sealed class PromotionOrchestrationService(
     MasterAppDbContext db,
     IConfiguration configuration,
-    IAdvertisingActionAuthorizationService authorizations) : IPromotionOrchestrationService
+    IAdvertisingActionAuthorizationService authorizations,
+    IOpenAiAdsAccountConnectionAuthority connections,
+    IOpenAiAdsExecutionService ads) : IPromotionOrchestrationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -103,8 +105,20 @@ public sealed class PromotionOrchestrationService(
 
         var status = OpenAiAdsEntityStatuses.NormalizeCreate(request.Status);
         var biddingType = OpenAiAdsBiddingTypes.Normalize(request.BiddingType);
-        if (biddingType == OpenAiAdsBiddingTypes.Conversions && string.IsNullOrWhiteSpace(request.ConversionEventSettingId))
-            throw new ArgumentException("Select a standard conversion event setting for conversion optimization.", nameof(request));
+        var connection = await connections.GetAsync(owner, ct);
+        if (!connection.Connected || !connection.HasManagementCredential)
+            throw new InvalidOperationException("Connect the scoped ChatGPT Ads account before creating a promotion.");
+
+        if (biddingType == OpenAiAdsBiddingTypes.Conversions)
+        {
+            if (string.IsNullOrWhiteSpace(request.ConversionEventSettingId))
+                throw new ArgumentException("Select a standard conversion event setting for conversion optimization.", nameof(request));
+            await ValidateConversionSettingAsync(owner, request.ConversionEventSettingId, ct);
+        }
+        else if (!string.IsNullOrWhiteSpace(request.ConversionEventSettingId))
+        {
+            throw new ArgumentException("A conversion event setting applies only to a conversions objective.", nameof(request));
+        }
 
         var source = await ResolveSourceAsync(actor, owner, request, ct);
         var hints = BuildContextHints(source, request.ContextHints);
@@ -154,6 +168,34 @@ public sealed class PromotionOrchestrationService(
             ct);
     }
 
+    private async Task ValidateConversionSettingAsync(
+        MarketingOwnerScope owner,
+        string settingId,
+        CancellationToken ct)
+    {
+        var settings = await ads.ListConversionEventSettingsAsync(owner, ct);
+        if (!settings.Payload.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("ChatGPT Ads conversion settings are unavailable.");
+
+        var row = data.EnumerateArray().FirstOrDefault(item =>
+            item.TryGetProperty("id", out var id) &&
+            id.ValueKind == JsonValueKind.String &&
+            string.Equals(id.GetString(), settingId, StringComparison.Ordinal));
+        if (row.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("The selected conversion setting does not belong to this scoped ChatGPT Ads account.");
+
+        var eventType = row.TryGetProperty("event_type", out var type) && type.ValueKind == JsonValueKind.String
+            ? type.GetString()
+            : null;
+        var status = row.TryGetProperty("status", out var state) && state.ValueKind == JsonValueKind.String
+            ? state.GetString()
+            : null;
+        if (string.Equals(eventType, "custom", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Custom ChatGPT Ads events are measurement-only and cannot be selected for conversion optimization.");
+        if (string.Equals(status, "archived", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The selected ChatGPT Ads conversion setting is archived.");
+    }
+
     private async Task<PromotionSourceSnapshot> ResolveSourceAsync(
         WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
@@ -182,12 +224,13 @@ public sealed class PromotionOrchestrationService(
         var id = (request.SourceId ?? string.Empty).Trim();
         if (id.Length == 0) throw new ArgumentException("Select a product to promote.", nameof(request));
 
+        var hasProductId = Guid.TryParse(id, out var productId);
         var product = await db.CommerceProducts.AsNoTracking()
             .Include(x => x.Images)
             .SingleOrDefaultAsync(x =>
                 x.CommerceBusinessId == businessId &&
                 x.IsActive &&
-                (x.Id.ToString() == id || x.Slug == id), ct)
+                ((hasProductId && x.Id == productId) || x.Slug == id), ct)
             ?? throw new InvalidOperationException("The selected product is not active in this business.");
 
         var business = await ActiveBusinessAsync(businessId, ct);
