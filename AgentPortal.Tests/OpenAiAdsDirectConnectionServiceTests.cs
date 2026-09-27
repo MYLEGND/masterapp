@@ -44,8 +44,10 @@ public sealed class OpenAiAdsDirectConnectionServiceTests
             Current = Snapshot(owner, pixelId: "pixel_existing", hasCapi: true),
             StoredSecrets = new OpenAiAdsConnectionSecrets("stored_ads_key", "stored_capi_key")
         };
+        var accountResponse = """{"id":"adacct_1","name":"LEGEND","url":"https://mylegnd.com","preview_url":"https://example.test/icon.png","status":"active","timezone":"America/Phoenix","currency_code":"USD","review":{"status":"approved"}}""";
         var handler = new QueueHandler(
-            Json(HttpStatusCode.OK, """{"id":"adacct_1","name":"LEGEND","url":"https://mylegnd.com","preview_url":"https://example.test/icon.png","status":"active","timezone":"America/Phoenix","currency_code":"USD","review":{"status":"approved"}}"""));
+            Json(HttpStatusCode.OK, accountResponse),
+            Json(HttpStatusCode.OK, accountResponse));
         var service = new OpenAiAdsDirectConnectionService(new HttpClient(handler), authority);
 
         await service.RefreshAsync(owner, authority.Current.Revision);
