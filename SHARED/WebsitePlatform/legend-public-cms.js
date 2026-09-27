@@ -2089,17 +2089,60 @@
   }
 
   let publicRuntimeStarted = false;
+  let publicRuntimeStarting = false;
+  let publicRuntimeRetryCount = 0;
+  let publicRuntimeRetryTimer = null;
+
   function loadRuntimeScript(src) {
     return new Promise((resolve, reject) => {
       if (!src) { resolve(); return; }
-      const existing = [...document.scripts].find(script => script.src === new URL(src, location.origin).href);
-      if (existing) { resolve(); return; }
-      const script = document.createElement('script');
-      script.src = src; script.async = true;
-      script.addEventListener('load', resolve, { once: true });
-      script.addEventListener('error', reject, { once: true });
+
+      const absoluteSrc = new URL(src, location.origin).href;
+      let script = [...document.scripts].find(candidate => candidate.src === absoluteSrc);
+
+      const bind = node => {
+        node.addEventListener('load', () => {
+          node.dataset.legendRuntimeLoaded = 'true';
+          delete node.dataset.legendRuntimeFailed;
+          resolve();
+        }, { once: true });
+        node.addEventListener('error', () => {
+          node.dataset.legendRuntimeFailed = 'true';
+          node.remove();
+          reject(new Error(`Runtime script failed to load: ${absoluteSrc}`));
+        }, { once: true });
+      };
+
+      if (script) {
+        if (script.dataset.legendRuntimeLoaded === 'true') {
+          resolve();
+          return;
+        }
+        if (script.dataset.legendRuntimeFailed === 'true') {
+          script.remove();
+          script = null;
+        } else {
+          bind(script);
+          return;
+        }
+      }
+
+      script = document.createElement('script');
+      script.src = absoluteSrc;
+      script.async = true;
+      bind(script);
       document.head.appendChild(script);
     });
+  }
+
+  function schedulePublicRuntimeRetry() {
+    if (publicRuntimeStarted || publicRuntimeRetryCount >= 3 || publicRuntimeRetryTimer) return;
+    publicRuntimeRetryCount += 1;
+    const delayMs = Math.min(15000, publicRuntimeRetryCount * 3000);
+    publicRuntimeRetryTimer = window.setTimeout(() => {
+      publicRuntimeRetryTimer = null;
+      void startPublicRuntime();
+    }, delayMs);
   }
 
   function initializeMetaPixel(pixelId) {
@@ -2229,21 +2272,28 @@
   }
 
   async function startPublicRuntime() {
-    if (publicRuntimeStarted || editorMode || renderInput?.server) return;
+    if (publicRuntimeStarted || publicRuntimeStarting || editorMode || renderInput?.server) return;
     if (!['legend','business'].includes(SITE_KEY)) return;
-    if (!context.trackingAsset || !context.metaSignalAsset) return;
+    if (!context.trackingAsset) return;
     if (SITE_KEY === 'business' && location.pathname.startsWith('/business-preview')) return;
-    publicRuntimeStarted = true;
+
+    publicRuntimeStarting = true;
+    let payload;
     try {
       const runtimeUrl = new URL(`${API_BASE}/api/website-content/public/runtime`);
       runtimeUrl.searchParams.set('siteKey', SITE_KEY);
       const response = await fetch(runtimeUrl, { cache: 'no-store' });
       if (!response.ok) throw new Error('Public website runtime is unavailable.');
-      const payload = await response.json();
+
+      payload = await response.json();
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
       applyRuntimeActionContracts();
 
       const analytics = payload.analytics || {};
+      if (!analytics.endpoint || !Array.isArray(analytics.allowedBrowserEvents)) {
+        throw new Error('Canonical analytics runtime configuration is unavailable.');
+      }
+
       window.LEGEND_ANALYTICS_CONFIG = {
         ...analytics,
         siteKey: SITE_KEY,
@@ -2251,34 +2301,61 @@
       };
       document.body.dataset.pageKey ||= pageKey;
 
-      const meta = payload.meta || {};
-      initializeMetaPixel(meta.pixelId);
-
-      const openai = payload.openai || {};
-      if (openai.enabled && openai.pixelId) {
-        await loadRuntimeScript(context.openAiMeasurementAsset || '/legend-public-openai-measurement.js');
-        await window.LegendOpenAiMeasurement?.configure?.({ pixelId: openai.pixelId });
-      }
-
+      // Analytics is foundational. Load it before any optional advertising or
+      // measurement projection so provider failures cannot suppress traffic.
       await loadRuntimeScript(context.trackingAsset || '/legend-public-tracking.js');
-      await loadRuntimeScript(context.metaSignalAsset || '/legend-public-meta-signal-intelligence.js');
-      if (meta.enabled && window.metaSignalIntelligence?.createLandingSession) {
-        const inquiryForm = document.querySelector('form[data-website-inquiry][data-form-key]');
-        window.LEGEND_PUBLIC_META_SESSION = window.metaSignalIntelligence.createLandingSession({
-          ...meta,
-          siteKey: SITE_KEY,
-          quoteType: SITE_KEY === 'business' ? 'business' : 'legend',
-          pageKey,
-          effectivePageKey: pageKey,
-          pageVariant: SITE_KEY + '_website',
-          pageMode: 'site_mode',
-          formId: inquiryForm?.id || inquiryForm?.dataset.formKey || '',
-          requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []
-        });
-        installPublishedSignalBindings();
+      publicRuntimeStarted = true;
+      publicRuntimeRetryCount = 0;
+      if (publicRuntimeRetryTimer) {
+        window.clearTimeout(publicRuntimeRetryTimer);
+        publicRuntimeRetryTimer = null;
       }
     } catch (error) {
       console.error('[legend-public-runtime]', error);
+      schedulePublicRuntimeRetry();
+      return;
+    } finally {
+      publicRuntimeStarting = false;
+    }
+
+    const meta = payload?.meta || {};
+    try {
+      initializeMetaPixel(meta.pixelId);
+    } catch (error) {
+      console.error('[legend-public-meta-runtime]', error);
+    }
+
+    const openai = payload?.openai || {};
+    if (openai.enabled && openai.pixelId && context.openAiMeasurementAsset) {
+      try {
+        await loadRuntimeScript(context.openAiMeasurementAsset || '/legend-public-openai-measurement.js');
+        await window.LegendOpenAiMeasurement?.configure?.({ pixelId: openai.pixelId });
+      } catch (error) {
+        console.error('[legend-public-openai-runtime]', error);
+      }
+    }
+
+    if (context.metaSignalAsset) {
+      try {
+        await loadRuntimeScript(context.metaSignalAsset || '/legend-public-meta-signal-intelligence.js');
+        if (meta.enabled && window.metaSignalIntelligence?.createLandingSession) {
+          const inquiryForm = document.querySelector('form[data-website-inquiry][data-form-key]');
+          window.LEGEND_PUBLIC_META_SESSION = window.metaSignalIntelligence.createLandingSession({
+            ...meta,
+            siteKey: SITE_KEY,
+            quoteType: SITE_KEY === 'business' ? 'business' : 'legend',
+            pageKey,
+            effectivePageKey: pageKey,
+            pageVariant: SITE_KEY + '_website',
+            pageMode: 'site_mode',
+            formId: inquiryForm?.id || inquiryForm?.dataset.formKey || '',
+            requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []
+          });
+          installPublishedSignalBindings();
+        }
+      } catch (error) {
+        console.error('[legend-public-meta-signal-runtime]', error);
+      }
     }
   }
   async function loadPublic() {
