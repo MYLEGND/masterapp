@@ -92,7 +92,9 @@ test('route manifest honors navigation order visibility nesting deletion and cus
   assert.equal(result.manifest.some(page=>page.route==='/services'),false);
   const home=parseHTML(result.pages['/'].html).document;
   const links=[...home.querySelectorAll('.nav a')];
-  assert.deepEqual(links.map(link=>link.textContent),['Contact','Team','Start']);
+  // Nested pages remain in the canonical page catalog but are not promoted to
+  // top-level navigation links by the shared CMS.
+  assert.deepEqual(links.map(link=>link.textContent),['Contact','Start']);
   const embeddedCatalog=JSON.parse(home.querySelector('#legend-cms-published-document').textContent).pageCatalog;
   assert.deepEqual(embeddedCatalog.map(item=>[item.route,item.showInNavigation,item.parentPath,item.order]),[
     ['/contact',true,null,0],
@@ -100,7 +102,7 @@ test('route manifest honors navigation order visibility nesting deletion and cus
     ['/team',true,'/about',15],
     ['/',true,null,20]
   ]);
-  assert.equal(links.find(link=>link.textContent==='Team').getAttribute('data-nav-parent'),'/about');
+  assert.equal(links.some(link=>link.textContent==='Team'),false);
   assert.equal(links.some(link=>link.textContent==='About us'),false);
   assert.equal(result.pages['/services'],undefined);
   assert.match(result.pages['/team'].html,/Our team/);
