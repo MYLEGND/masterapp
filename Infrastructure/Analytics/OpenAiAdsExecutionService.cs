@@ -30,6 +30,8 @@ public interface IOpenAiAdsExecutionService
     Task<OpenAiAdsImageUploadResult> UploadImageUrlAsync(MarketingOwnerScope owner, string imageUrl, CancellationToken ct = default);
     Task<OpenAiAdsGeoSearchResult> SearchGeoAsync(MarketingOwnerScope owner, string query, int limit = 20, CancellationToken ct = default);
     Task<OpenAiAdsProviderPage> ListConversionEventSettingsAsync(MarketingOwnerScope owner, CancellationToken ct = default);
+    Task<OpenAiAdsProviderEntity> CreateConversionEventSettingAsync(MarketingOwnerScope owner, OpenAiAdsConversionEventSettingCreateRequest request, CancellationToken ct = default);
+    Task<OpenAiAdsInsightsResult> GetConversionInsightsAsync(MarketingOwnerScope owner, OpenAiAdsConversionInsightsQuery query, CancellationToken ct = default);
 
     Task<OpenAiAdsInsightsResult> GetAccountInsightsAsync(MarketingOwnerScope owner, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default);
     Task<OpenAiAdsInsightsResult> GetCampaignInsightsAsync(MarketingOwnerScope owner, string campaignId, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default);
@@ -289,6 +291,92 @@ public sealed class OpenAiAdsExecutionService(
 
     public Task<OpenAiAdsProviderPage> ListConversionEventSettingsAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
         GetPageAsync(owner, "/conversions/event_settings?limit=500", ct);
+
+    public async Task<OpenAiAdsProviderEntity> CreateConversionEventSettingAsync(
+        MarketingOwnerScope owner,
+        OpenAiAdsConversionEventSettingCreateRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var eventType = Text(request.EventType, 256, nameof(request.EventType));
+        var custom = string.Equals(eventType, "custom", StringComparison.OrdinalIgnoreCase);
+        if (custom && string.IsNullOrWhiteSpace(request.CustomEventName))
+            throw new ArgumentException("Custom conversion settings require custom_event_name.", nameof(request));
+        if (!custom && !string.IsNullOrWhiteSpace(request.CustomEventName))
+            throw new ArgumentException("custom_event_name is valid only for custom conversion settings.", nameof(request));
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["name"] = Text(request.Name, 1000, nameof(request.Name)),
+            ["event_type"] = eventType,
+            ["attribution_window_days"] = 30,
+            ["source_ids"] = new[] { Id(request.SourceId) }
+        };
+        if (custom) payload["custom_event_name"] = Text(request.CustomEventName, 256, nameof(request.CustomEventName));
+        return await SendEntityAsync(owner, HttpMethod.Post, "/conversions/event_settings", payload, request.IdempotencyKey, ct);
+    }
+
+    public async Task<OpenAiAdsInsightsResult> GetConversionInsightsAsync(
+        MarketingOwnerScope owner,
+        OpenAiAdsConversionInsightsQuery query,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (query.ToUtc <= query.FromUtc) throw new ArgumentException("Conversion insight end time must be after start time.", nameof(query));
+        if ((query.ToUtc - query.FromUtc).TotalDays > 365) throw new ArgumentException("Conversion insight range cannot exceed 365 days.", nameof(query));
+
+        var aggregation = query.AggregationLevel.Trim().ToLowerInvariant();
+        if (aggregation is not ("campaign" or "ad_group" or "ad"))
+            throw new ArgumentException("Conversion insights aggregate by campaign, ad_group, or ad.", nameof(query));
+        var granularity = query.TimeGranularity.Trim().ToLowerInvariant();
+        if (granularity is not ("none" or "daily"))
+            throw new ArgumentException("Conversion insights support none or daily granularity.", nameof(query));
+        var basis = query.AttributionTimeBasis.Trim().ToLowerInvariant();
+        if (basis is not ("ad_event_time" or "conversion_time"))
+            throw new ArgumentException("Unsupported conversion attribution time basis.", nameof(query));
+        if (query.AttributionWindowDays is not (7 or 14 or 30))
+            throw new ArgumentException("Click attribution window must be 7, 14, or 30 days.", nameof(query));
+        if (query.ViewThroughAttributionWindowDays is not (0 or 1))
+            throw new ArgumentException("View-through attribution window must be 0 or 1 day.", nameof(query));
+        var breakdown = string.IsNullOrWhiteSpace(query.Breakdown) ? null : query.Breakdown.Trim().ToLowerInvariant();
+        if (breakdown is not null and not ("country" or "device"))
+            throw new ArgumentException("Conversion insight breakdown must be country or device.", nameof(query));
+
+        var entityIds = CleanList(query.EntityIds, 500, 500);
+        if (query.GroupByEntity && (entityIds is null || entityIds.Count == 0))
+            throw new ArgumentException("Grouped conversion insights require at least one entity ID.", nameof(query));
+        var eventNames = CleanList(query.EventNames, 500, 256);
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["aggregation_level"] = aggregation,
+            ["time_ranges"] = new[]
+            {
+                JsonSerializer.Serialize(new
+                {
+                    type = "unix_range",
+                    start = new DateTimeOffset(query.FromUtc.ToUniversalTime()).ToUnixTimeSeconds().ToString(),
+                    end = new DateTimeOffset(query.ToUtc.ToUniversalTime()).ToUnixTimeSeconds().ToString()
+                })
+            },
+            ["time_granularity"] = granularity,
+            ["group_by_entity"] = query.GroupByEntity,
+            ["attribution_time_basis"] = basis,
+            ["attribution_window_days"] = query.AttributionWindowDays,
+            ["view_through_attribution_window_days"] = query.ViewThroughAttributionWindowDays,
+            ["include_zero_rows"] = query.IncludeZeroRows
+        };
+        if (entityIds is not null && entityIds.Count > 0) payload["entity_ids"] = entityIds;
+        Add(payload, "breakdown", breakdown);
+        if (eventNames is not null && eventNames.Count > 0)
+        {
+            payload["include"] = new[] { "attributed_events" };
+            payload["event_names"] = eventNames;
+        }
+
+        var entity = await SendEntityAsync(owner, HttpMethod.Post, "/conversions/insights", payload, null, ct);
+        return new(entity.Payload);
+    }
 
     public Task<OpenAiAdsInsightsResult> GetAccountInsightsAsync(MarketingOwnerScope owner, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default) =>
         GetInsightsAsync(owner, "/ad_account/insights", aggregationLevel, query, ct);
