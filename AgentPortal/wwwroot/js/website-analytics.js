@@ -142,6 +142,7 @@
     metaDisconnect: analyticsEndpoint('/meta-disconnect'),
     marketingSetup: analyticsEndpoint('/marketing-setup'),
     openAiConnect: analyticsEndpoint('/openai-connect'),
+    openAiRefresh: analyticsEndpoint('/openai-refresh'),
     openAiDisconnect: analyticsEndpoint('/openai-disconnect'),
     behaviorSummary: analyticsEndpoint('/behavior/summary'),
     behaviorTime: analyticsEndpoint('/behavior/time-on-page'),
@@ -5259,15 +5260,35 @@ function escapeHtml(value) {
 
   marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
   marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
-  document.getElementById('marketing-setup-openai-verify')?.addEventListener('click', event => {
+  document.getElementById('marketing-setup-openai-verify')?.addEventListener('click', async event => {
     const button = event.currentTarget;
-    if (button?.dataset?.connected === 'true') {
-      void loadMarketingSetup();
+    if (button?.dataset?.connected !== 'true') {
+      const panel = document.getElementById('marketing-setup-openai-connect-panel');
+      if (panel) panel.hidden = false;
+      document.getElementById('marketing-setup-openai-api-key')?.focus();
       return;
     }
-    const panel = document.getElementById('marketing-setup-openai-connect-panel');
-    if (panel) panel.hidden = false;
-    document.getElementById('marketing-setup-openai-api-key')?.focus();
+
+    const revision = document.getElementById('marketing-setup-openai-disconnect')?.dataset?.revision || '';
+    if (!revision) {
+      setMarketingSetupStatus('Reload Marketing Setup before refreshing ChatGPT Ads.', 'error');
+      return;
+    }
+
+    button.disabled = true;
+    setMarketingSetupStatus('Refreshing ChatGPT Ads account and measurement setup…');
+    try {
+      const payload = await fetchPostJson('openAiRefresh', endpoints.openAiRefresh, {
+        agentProfileId: marketingSetupAgentProfileId() || null,
+        connectionRevision: revision
+      });
+      renderMarketingSetup(payload);
+      setMarketingSetupStatus('ChatGPT Ads account and measurement setup refreshed.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to refresh ChatGPT Ads.', 'error');
+    } finally {
+      button.disabled = false;
+    }
   });
   document.getElementById('marketing-setup-openai-connect-cancel')?.addEventListener('click', () => {
     const key = document.getElementById('marketing-setup-openai-api-key');
