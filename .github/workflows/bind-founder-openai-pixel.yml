@@ -36,119 +36,115 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          connection="$(az webapp config connection-string list             -g masterapp-rg -n masterapp-portal             --query "[?name=='MasterAppDb'].value | [0]" -o tsv)"
-
+          
+          connection="$(az webapp config connection-string list -g masterapp-rg -n masterapp-portal --query "[?name=='MasterAppDb'].value | [0]" -o tsv)"
           if [ -z "$connection" ] || [ "$connection" = "null" ]; then
-            connection="$(az webapp config appsettings list               -g masterapp-rg -n masterapp-portal               --query "[?name=='ConnectionStrings__MasterAppDb' || name=='MasterAppDb' || name=='SQLCONNSTR_MasterAppDb'] | [0].value"               -o tsv)"
+            connection="$(az webapp config appsettings list -g masterapp-rg -n masterapp-portal --query "[?name=='ConnectionStrings__MasterAppDb' || name=='MasterAppDb' || name=='SQLCONNSTR_MasterAppDb'] | [0].value" -o tsv)"
           fi
-
           if [ -z "$connection" ] || [ "$connection" = "null" ]; then
             echo "::error::Production MasterAppDb connection is unavailable."
             exit 1
           fi
           echo "::add-mask::$connection"
           export ConnectionStrings__MasterAppDb="$connection"
-
+          
           work=/tmp/legend-founder-pixel-bind
           rm -rf "$work"
           mkdir -p "$work"
-          cat > "$work/FounderPixelBind.csproj" <<EOF
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="${GITHUB_WORKSPACE}/Infrastructure/Infrastructure.csproj" />
-  </ItemGroup>
-</Project>
-EOF
-
+          cat > "$work/FounderPixelBind.csproj" <<'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <OutputType>Exe</OutputType>
+              <TargetFramework>net10.0</TargetFramework>
+              <ImplicitUsings>enable</ImplicitUsings>
+              <Nullable>enable</Nullable>
+            </PropertyGroup>
+            <ItemGroup>
+              <ProjectReference Include="REPO/Infrastructure/Infrastructure.csproj" />
+            </ItemGroup>
+          </Project>
+          EOF
+          sed -i "s|REPO|$GITHUB_WORKSPACE|g" "$work/FounderPixelBind.csproj"
+          
           cat > "$work/Program.cs" <<'EOF'
-using Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
-
-const string expectedOwnerKey = "founder";
-const string expectedOwnerType = "founder";
-const string provider = "openai";
-const string expectedAccountId = "adacct_6ab78a328a20819d92c88b989404c4fb";
-const string expectedAccountName = "MYLEGND, LLC";
-const string pixelId = "8T9udjcARZ1SG6wKM5PqLN";
-const string dataSourceId = "cds_6ab8e68ce8c0819d9ac236a8f4553592";
-
-var connection = Environment.GetEnvironmentVariable("ConnectionStrings__MasterAppDb");
-if (string.IsNullOrWhiteSpace(connection))
-    throw new InvalidOperationException("Production connection missing.");
-
-var options = new DbContextOptionsBuilder<MasterAppDbContext>()
-    .UseSqlServer(connection)
-    .Options;
-
-await using var db = new MasterAppDbContext(options);
-var rows = await db.MarketingConnections
-    .Where(x => x.OwnerKey == expectedOwnerKey && x.Provider == provider)
-    .ToListAsync();
-
-if (rows.Count != 1)
-    throw new InvalidOperationException($"Expected exactly one founder/openai connection, found {rows.Count}.");
-
-var row = rows[0];
-if (!string.Equals(row.OwnerType, expectedOwnerType, StringComparison.Ordinal) ||
-    row.AgentTrackingProfileId.HasValue ||
-    row.CommerceBusinessId.HasValue)
-    throw new InvalidOperationException("Founder OpenAI owner scope is malformed.");
-
-if (!row.ConnectedUtc.HasValue || row.DisconnectedUtc.HasValue)
-    throw new InvalidOperationException("Founder OpenAI connection is not currently connected.");
-
-if (!string.Equals(row.AdAccountId, expectedAccountId, StringComparison.Ordinal) ||
-    !string.Equals(row.AdAccountName, expectedAccountName, StringComparison.Ordinal))
-    throw new InvalidOperationException(
-        $"Founder OpenAI account mismatch: {row.AdAccountId} / {row.AdAccountName}");
-
-if (string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext))
-    throw new InvalidOperationException("Founder management credential is missing.");
-
-if (string.IsNullOrWhiteSpace(row.CapiAccessTokenCiphertext))
-    throw new InvalidOperationException("Founder Conversions API credential is missing.");
-
-if (!string.IsNullOrWhiteSpace(row.ProviderPixelId) &&
-    !string.Equals(row.ProviderPixelId, pixelId, StringComparison.Ordinal))
-    throw new InvalidOperationException($"A different Founder Pixel is already bound: {row.ProviderPixelId}");
-
-if (!string.IsNullOrWhiteSpace(row.ProviderDataSourceId) &&
-    !string.Equals(row.ProviderDataSourceId, dataSourceId, StringComparison.Ordinal))
-    throw new InvalidOperationException($"A different Founder conversion source is already bound: {row.ProviderDataSourceId}");
-
-var changed = !string.Equals(row.ProviderPixelId, pixelId, StringComparison.Ordinal) ||
+          using Infrastructure.Data;
+          using Microsoft.EntityFrameworkCore;
+          
+          const string expectedOwnerKey = "founder";
+          const string expectedOwnerType = "founder";
+          const string provider = "openai";
+          const string expectedAccountId = "adacct_6ab78a328a20819d92c88b989404c4fb";
+          const string expectedAccountName = "MYLEGND, LLC";
+          const string pixelId = "8T9udjcARZ1SG6wKM5PqLN";
+          const string dataSourceId = "cds_6ab8e68ce8c0819d9ac236a8f4553592";
+          
+          var connection = Environment.GetEnvironmentVariable("ConnectionStrings__MasterAppDb");
+          if (string.IsNullOrWhiteSpace(connection))
+              throw new InvalidOperationException("Production connection missing.");
+          
+          var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlServer(connection).Options;
+          await using var db = new MasterAppDbContext(options);
+          
+          var rows = await db.MarketingConnections
+              .Where(x => x.OwnerKey == expectedOwnerKey && x.Provider == provider)
+              .ToListAsync();
+          
+          if (rows.Count != 1)
+              throw new InvalidOperationException($"Expected exactly one founder/openai connection, found {rows.Count}.");
+          
+          var row = rows[0];
+          
+          if (!string.Equals(row.OwnerType, expectedOwnerType, StringComparison.Ordinal) ||
+              row.AgentTrackingProfileId.HasValue ||
+              row.CommerceBusinessId.HasValue)
+              throw new InvalidOperationException("Founder OpenAI owner scope is malformed.");
+          
+          if (!row.ConnectedUtc.HasValue || row.DisconnectedUtc.HasValue)
+              throw new InvalidOperationException("Founder OpenAI connection is not currently connected.");
+          
+          if (!string.Equals(row.AdAccountId, expectedAccountId, StringComparison.Ordinal) ||
+              !string.Equals(row.AdAccountName, expectedAccountName, StringComparison.Ordinal))
+              throw new InvalidOperationException($"Founder OpenAI account mismatch: {row.AdAccountId} / {row.AdAccountName}");
+          
+          if (string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext))
+              throw new InvalidOperationException("Founder management credential is missing.");
+          
+          if (string.IsNullOrWhiteSpace(row.CapiAccessTokenCiphertext))
+              throw new InvalidOperationException("Founder Conversions API credential is missing.");
+          
+          if (!string.IsNullOrWhiteSpace(row.ProviderPixelId) &&
+              !string.Equals(row.ProviderPixelId, pixelId, StringComparison.Ordinal))
+              throw new InvalidOperationException($"A different Founder Pixel is already bound: {row.ProviderPixelId}");
+          
+          if (!string.IsNullOrWhiteSpace(row.ProviderDataSourceId) &&
+              !string.Equals(row.ProviderDataSourceId, dataSourceId, StringComparison.Ordinal))
+              throw new InvalidOperationException($"A different Founder conversion source is already bound: {row.ProviderDataSourceId}");
+          
+          var changed =
+              !string.Equals(row.ProviderPixelId, pixelId, StringComparison.Ordinal) ||
               !string.Equals(row.ProviderDataSourceId, dataSourceId, StringComparison.Ordinal);
-
-if (changed)
-{
-    row.ProviderPixelId = pixelId;
-    row.ProviderDataSourceId = dataSourceId;
-    row.LastVerifiedUtc = DateTime.UtcNow;
-    row.UpdatedUtc = DateTime.UtcNow;
-    row.Revision = Guid.NewGuid();
-    await db.SaveChangesAsync();
-}
-
-var verify = await db.MarketingConnections.AsNoTracking()
-    .SingleAsync(x => x.OwnerKey == expectedOwnerKey && x.Provider == provider);
-
-if (!string.Equals(verify.ProviderPixelId, pixelId, StringComparison.Ordinal) ||
-    !string.Equals(verify.ProviderDataSourceId, dataSourceId, StringComparison.Ordinal) ||
-    !string.Equals(verify.AdAccountId, expectedAccountId, StringComparison.Ordinal) ||
-    string.IsNullOrWhiteSpace(verify.CapiAccessTokenCiphertext))
-    throw new InvalidOperationException("Founder OpenAI Pixel binding read-back verification failed.");
-
-Console.WriteLine(changed
-    ? "Founder OpenAI Pixel bound and verified."
-    : "Founder OpenAI Pixel was already bound and verified.");
-Console.WriteLine($"Owner={verify.OwnerKey}; Provider={verify.Provider}; Account={verify.AdAccountId}; Pixel={verify.ProviderPixelId}; DataSource={verify.ProviderDataSourceId}");
-EOF
-
+          
+          if (changed)
+          {
+              row.ProviderPixelId = pixelId;
+              row.ProviderDataSourceId = dataSourceId;
+              row.LastVerifiedUtc = DateTime.UtcNow;
+              row.UpdatedUtc = DateTime.UtcNow;
+              row.Revision = Guid.NewGuid();
+              await db.SaveChangesAsync();
+          }
+          
+          var verify = await db.MarketingConnections.AsNoTracking()
+              .SingleAsync(x => x.OwnerKey == expectedOwnerKey && x.Provider == provider);
+          
+          if (!string.Equals(verify.ProviderPixelId, pixelId, StringComparison.Ordinal) ||
+              !string.Equals(verify.ProviderDataSourceId, dataSourceId, StringComparison.Ordinal) ||
+              !string.Equals(verify.AdAccountId, expectedAccountId, StringComparison.Ordinal) ||
+              string.IsNullOrWhiteSpace(verify.CapiAccessTokenCiphertext))
+              throw new InvalidOperationException("Founder OpenAI Pixel binding read-back verification failed.");
+          
+          Console.WriteLine(changed ? "Founder OpenAI Pixel bound and verified." : "Founder OpenAI Pixel was already bound and verified.");
+          Console.WriteLine($"Owner={verify.OwnerKey}; Provider={verify.Provider}; Account={verify.AdAccountId}; Pixel={verify.ProviderPixelId}; DataSource={verify.ProviderDataSourceId}");
+          EOF
+          
           dotnet run --project "$work/FounderPixelBind.csproj" -c Release
