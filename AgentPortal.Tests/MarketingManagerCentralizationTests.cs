@@ -77,6 +77,45 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
+    public void SharedAnalyticsUi_SupportingModulesCannotEraseCanonicalSummary()
+    {
+        var root = Root();
+        var js = Read(root, "AgentPortal", "wwwroot", "js", "website-analytics.js");
+
+        var summaryStart = js.IndexOf("async function loadSummary()", StringComparison.Ordinal);
+        var summaryEnd = js.IndexOf("async function loadMarketingHealth()", summaryStart, StringComparison.Ordinal);
+        Assert.True(summaryStart >= 0 && summaryEnd > summaryStart, "Canonical summary loader is required.");
+
+        var summary = js[summaryStart..summaryEnd];
+        var catchStart = summary.IndexOf("} catch (err) {", StringComparison.Ordinal);
+        var supportStart = summary.IndexOf("void Promise.resolve().then(() => loadMarketingHealth())", StringComparison.Ordinal);
+
+        Assert.True(catchStart >= 0, "Summary fetch/render failure boundary is required.");
+        Assert.True(supportStart > catchStart, "Supporting module refreshes must execute outside the canonical summary try/catch.");
+        Assert.Contains("console.error(err);\n      return;", summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("renderSummaryUnavailable", summary[supportStart..], StringComparison.Ordinal);
+        Assert.Contains("loadMarketingPerformance()", summary[supportStart..], StringComparison.Ordinal);
+        Assert.Contains("loadGrowthEconomics()", summary[supportStart..], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WebsiteAnalyticsController_DoesNotMisclassifyDatabaseFailuresAsTimeouts()
+    {
+        var root = Root();
+        var controller = Read(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
+
+        var classifierStart = controller.IndexOf("private static bool IsAnalyticsTimeout(Exception ex)", StringComparison.Ordinal);
+        var classifierEnd = controller.IndexOf("private static string ToClientQualityMode", classifierStart, StringComparison.Ordinal);
+        Assert.True(classifierStart >= 0 && classifierEnd > classifierStart, "Analytics timeout classifier is required.");
+
+        var classifier = controller[classifierStart..classifierEnd];
+        Assert.Contains("current is TimeoutException", classifier, StringComparison.Ordinal);
+        Assert.DoesNotContain("current is TimeoutException or DbException", classifier, StringComparison.Ordinal);
+        Assert.Contains("catch (DbException ex)", controller, StringComparison.Ordinal);
+        Assert.Contains("Summary database query failed.", controller, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AppHosts_DoNotOwnParallelMarketingManagerImplementations()
     {
         var root = Root();

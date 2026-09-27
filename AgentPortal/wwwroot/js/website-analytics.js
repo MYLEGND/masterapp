@@ -2967,19 +2967,21 @@ function escapeHtml(value) {
 
       setSummaryRefreshStatus('', false);
       renderSummary(data);
-
-      // Health uses the same current range, quality and scope as the summary.
-      // Refresh it whenever the summary does, including filter changes.
-      void loadMarketingHealth();
-      void loadMarketingPerformance();
-      void loadGrowthEconomics();
     } catch (err) {
       if (requestId !== summaryRequestId) return;
 
       const message = (err && err.message) ? err.message : 'Unable to refresh the current summary.';
       renderSummaryUnavailable({ rangeLabel: state.cache.summary?.rangeLabel || '' }, `Live summary unavailable: ${message}`);
       console.error(err);
+      return;
     }
+
+    // Supporting modules use the same range/scope, but they are independent
+    // projections. Their failure must never erase a successfully rendered
+    // canonical summary.
+    void Promise.resolve().then(() => loadMarketingHealth()).catch(err => console.error(err));
+    void Promise.resolve().then(() => loadMarketingPerformance()).catch(err => console.error(err));
+    void Promise.resolve().then(() => loadGrowthEconomics()).catch(err => console.error(err));
   }
 
   async function loadMarketingHealth() {

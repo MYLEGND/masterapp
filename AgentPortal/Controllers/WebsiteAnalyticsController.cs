@@ -613,6 +613,22 @@ namespace AgentPortal.Controllers;
                 EnvironmentLabel = "Summary temporarily unavailable"
             };
         }
+        catch (DbException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Website analytics summary database query failed for scope {ScopeType} profile {AgentProfileId}.",
+                scope.ScopeType,
+                scope.AgentTrackingProfileId);
+
+            return new SummaryKpiDto
+            {
+                IsAvailable = false,
+                UnavailableReason = "Summary database query failed.",
+                RangeLabel = range.Label,
+                EnvironmentLabel = "Summary temporarily unavailable"
+            };
+        }
     }
 
     private async Task<List<VisitorConcentrationDto>> LoadVisitorConcentrationSafelyAsync(
@@ -640,7 +656,7 @@ namespace AgentPortal.Controllers;
     {
         for (var current = ex; current != null; current = current.InnerException)
         {
-            if (current is TimeoutException or DbException)
+            if (current is TimeoutException)
                 return true;
 
             var message = current.Message ?? string.Empty;
