@@ -139,14 +139,10 @@ public sealed class ClientAppDeploymentWorkflowTests
         Assert.True(protectStart >= 0 && parfaitStart > protectStart);
 
         var protect = workflow[protectStart..parfaitStart];
-        Assert.Contains("package=/tmp/diagnostics-packages/protect.zip", protect, StringComparison.Ordinal);
-        Assert.Contains("unzip -tq \"$package\"", protect, StringComparison.Ordinal);
-        Assert.Contains("_deployment-provenance.json", protect, StringComparison.Ordinal);
-        Assert.Contains("sha256sum \"$package\"", protect, StringComparison.Ordinal);
-        Assert.Contains("az webapp deploy", protect, StringComparison.Ordinal);
-        Assert.Contains("--src-path \"$package\"", protect, StringComparison.Ordinal);
-        Assert.Contains("--type zip", protect, StringComparison.Ordinal);
-        Assert.Contains("for attempt in 1 2 3", protect, StringComparison.Ordinal);
+        Assert.Contains("python3 scripts/deploy-approved-app.py --target protect", protect, StringComparison.Ordinal);
+        Assert.DoesNotContain("for attempt", protect, StringComparison.Ordinal);
+        foreach (var target in new[] { "portal", "client", "protect", "parfait", "website" })
+            Assert.Contains("python3 scripts/deploy-approved-app.py --target " + target, workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("azure/webapps-deploy@v3", protect, StringComparison.Ordinal);
         Assert.DoesNotContain("package: /tmp/protect-publish", protect, StringComparison.Ordinal);
     }
