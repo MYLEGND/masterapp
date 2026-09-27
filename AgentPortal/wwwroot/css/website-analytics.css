@@ -8157,6 +8157,86 @@ body {
   font-size: .88rem;
 }
 
+
+.marketing-setup-openai {
+  border-color: rgba(245,180,45,.3);
+  background: linear-gradient(155deg, rgba(3,12,30,.54), rgba(54,38,8,.22));
+}
+
+.marketing-setup-detail-grid,
+.marketing-setup-delivery-grid,
+.marketing-setup-lineage-grid {
+  display: grid;
+  gap: .7rem;
+}
+
+.marketing-setup-detail-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.marketing-setup-delivery-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.marketing-setup-lineage-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.marketing-setup-detail,
+.marketing-setup-delivery-grid > div,
+.marketing-setup-lineage-grid > div {
+  min-width: 0;
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 12px;
+  background: rgba(2,6,23,.3);
+  padding: .72rem .78rem;
+}
+
+.marketing-setup-detail span,
+.marketing-setup-delivery-grid span,
+.marketing-setup-lineage-grid span {
+  display: block;
+  color: rgba(216,222,234,.64);
+  font-size: .67rem;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.marketing-setup-detail strong,
+.marketing-setup-delivery-grid strong,
+.marketing-setup-lineage-grid strong {
+  display: block;
+  margin-top: .28rem;
+  color: #fff;
+  font-size: .9rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.marketing-setup-detail small {
+  display: block;
+  margin-top: .22rem;
+  color: rgba(216,222,234,.58);
+  line-height: 1.35;
+}
+
+.marketing-setup-attribution {
+  display: grid;
+  gap: .75rem;
+  border-top: 1px solid rgba(245,180,45,.18);
+  padding-top: .9rem;
+}
+
+#marketing-setup-openai-account.is-good,
+#marketing-setup-oppref-status {
+  color: #a7f3d0;
+}
+
+#marketing-setup-openai-account.is-warn {
+  color: #fde68a;
+}
+
 #marketing-setup-status {
   color: rgba(226,232,240,.82);
   font-weight: 800;
@@ -8172,7 +8252,10 @@ body {
 
 @media (max-width: 800px) {
   .marketing-setup-status-grid,
-  .marketing-setup-field-grid {
+  .marketing-setup-field-grid,
+  .marketing-setup-detail-grid,
+  .marketing-setup-delivery-grid,
+  .marketing-setup-lineage-grid {
     grid-template-columns: 1fr;
   }
 
