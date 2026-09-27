@@ -17,6 +17,13 @@ on:
       - 'AgentPortal.Tests/AdvertisingActionAuthorizationServiceTests.cs'
       - 'AgentPortal.Tests/PromotionOrchestrationTests.cs'
       - 'AgentPortal.Tests/MarketingScopeParityContractTests.cs'
+      - 'Infrastructure/Analytics/AdvertisingCommandCenterService.cs'
+      - 'AgentPortal/Controllers/WebsiteAnalyticsController.cs'
+      - 'AgentPortal/Views/WebsiteAnalytics/Index.cshtml'
+      - 'AgentPortal/wwwroot/js/website-analytics.js'
+      - 'AgentPortal/wwwroot/css/website-analytics.css'
+      - 'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs'
+      - 'AgentPortal.Tests/AdvertisingCommandCenterCentralizationTests.cs'
       - '.github/workflows/steps7-8-governed-advertising-validation.yml'
 
 concurrency:
@@ -53,7 +60,7 @@ jobs:
       - name: Run Steps 7-8 governance, promotion, execution, and scope-parity tests
         run: >
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
-          --filter "FullyQualifiedName~AdvertisingActionAuthorizationServiceTests|FullyQualifiedName~PromotionOrchestrationTests|FullyQualifiedName~OpenAiAdsExecutionServiceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~MarketingDestinationLayerTests"
+          --filter "FullyQualifiedName~AdvertisingActionAuthorizationServiceTests|FullyQualifiedName~PromotionOrchestrationTests|FullyQualifiedName~AdvertisingCommandCenterCentralizationTests|FullyQualifiedName~OpenAiAdsExecutionServiceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessWorkspaceTests"
 
       - name: Run shared website management UI tests
         run: |
