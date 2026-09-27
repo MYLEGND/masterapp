@@ -58,6 +58,7 @@
         utmTerm: attribution.utmTerm || null,
         utmContent: attribution.utmContent || null,
         fbclid: attribution.fbclid || null,
+        oppref: attribution.oppref || null,
         fbp: cookie('_fbp'),
         fbc: cookie('_fbc'),
         metaCampaignId: attribution.metaCampaignId || null,
