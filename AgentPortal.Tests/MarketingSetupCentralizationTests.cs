@@ -138,6 +138,33 @@ public sealed class MarketingSetupCentralizationTests
     }
 
     [Fact]
+    public void BusinessAnalytics_UsesTheSameCanonicalMarketingSetupAuthorities()
+    {
+        var business = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var profile = Read("Infrastructure", "WebsiteEditing", "BusinessWebsiteProfileService.cs");
+
+        Assert.Contains("[HttpGet(\"analytics/marketing-setup\")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"analytics/marketing-setup\")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"analytics/openai-connect\")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"analytics/openai-refresh\")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"analytics/openai-disconnect\")]", business, StringComparison.Ordinal);
+        Assert.Contains("MarketingOwnerScope.Business(businessId)", business, StringComparison.Ordinal);
+        Assert.Contains("BusinessWebsiteProfileService", business, StringComparison.Ordinal);
+        Assert.Contains("IOpenAiAdsAccountConnectionAuthority", business, StringComparison.Ordinal);
+        Assert.Contains("IOpenAiAdsDirectConnectionService", business, StringComparison.Ordinal);
+        Assert.Contains("IOpenAiMeasurementHealthService", business, StringComparison.Ordinal);
+        Assert.Contains("canonical_business_marketing_setup", business, StringComparison.Ordinal);
+        Assert.Contains("canonical_oppref_lineage", business, StringComparison.Ordinal);
+
+        var specificRoute = business.IndexOf("[HttpGet(\"analytics/marketing-setup\")]", StringComparison.Ordinal);
+        var catchAllRoute = business.IndexOf("[HttpGet(\"analytics/{**section}\")]", StringComparison.Ordinal);
+        Assert.True(specificRoute >= 0 && catchAllRoute > specificRoute);
+
+        Assert.Contains("connections.SaveSettingsAsync(MarketingOwnerScope.Business(businessId)", profile, StringComparison.Ordinal);
+        Assert.DoesNotContain("new MarketingConnection", business, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LegacyProfileCapi_CannotOverrideOrBlockCanonicalOauthConnection()
     {
         var service = Read("Infrastructure", "Analytics", "AgentMarketingProfileService.cs");
