@@ -256,9 +256,11 @@ public sealed class AdvertisingActionAuthorizationService(
         if (row.State is not (AdvertisingActionStates.Proposed or AdvertisingActionStates.Approved))
             throw new InvalidOperationException("Only an unexecuted advertising action can be rejected.");
         row.State = AdvertisingActionStates.Rejected;
-        row.ApprovedByUserId = actor;
+        row.ApprovedByUserId = null;
         row.ApprovedUtc = null;
         row.ApprovalExpiresUtc = null;
+        row.RejectedByUserId = actor;
+        row.RejectedUtc = DateTime.UtcNow;
         row.Revision = NewRevision();
         await db.SaveChangesAsync(ct);
         return Snapshot(owner, row);
