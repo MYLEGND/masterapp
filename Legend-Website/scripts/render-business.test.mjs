@@ -41,6 +41,7 @@ test('all normal business pages use canonical components, actual scoped name and
     assert.equal(runtime.apiBase,'https://masterapp-protect.azurewebsites.net');
     assert.equal(runtime.trackingAsset,'/legend-public-tracking.js');
     assert.equal(runtime.metaSignalAsset,'/legend-public-meta-signal-intelligence.js');
+    assert.equal(runtime.openAiMeasurementAsset,'/legend-public-openai-measurement.js');
     assert.equal(dom.querySelector('script[data-cms-context]'),null);
     assert.ok(dom.querySelector('script[src^="/legend-public-cms.js"]'));
   }
