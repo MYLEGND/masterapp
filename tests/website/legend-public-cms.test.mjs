@@ -1200,6 +1200,36 @@ test('direct canvas replaces designated drop controls and persists shared geomet
     assert.equal(loaded.w.document.querySelector('.legend-cms-panel'),null);
   }finally{loaded.close();}
 });
+test('direct canvas resize is continuous with no 12-column or 24px snap',()=>{
+  assert.doesNotMatch(source,/const cell = sectionWidth \/ 12/);
+  assert.doesNotMatch(source,/const verticalStep = 24/);
+  assert.doesNotMatch(source,/snappedWidth/);
+  assert.match(source,/Math\.round\(rawWidth \* 1000\) \/ 1000/);
+  assert.match(source,/Math\.round\(\(gesture\.startHeightPx \+ heightDelta\) \* 1000\) \/ 1000/);
+});
+
+test('section resize changes the canvas height without creating a section offset',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main section');
+    const section=f.w.document.querySelector('main section');
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
+    preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
+    const frame=f.w.document.querySelector('.legend-cms-selection-frame');
+    const bottom=frame.querySelector('.legend-cms-edge-bottom');
+    bottom.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:300,clientY:450,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:300,clientY:327,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:300,clientY:327,button:0}));
+    const saved=await f.save();
+    const style=saved.pages['/'].elements['section:home.section.1'].style;
+    assert.equal(style.heightPx,277);
+    assert.equal(style.offsetYPx,undefined);
+    assert.equal(section.style.height,'277px');
+    assert.equal(section.style.overflow,'visible');
+  }finally{f.close();}
+});
+
 test('selected content drag preserves free-form placement instead of forcing grid cells',async()=>{
   const f=await domFixture();
   try{
@@ -1862,14 +1892,15 @@ test('business selector includes imported custom routes from only the authorized
 });
 
 
-test('sections expand with content instead of creating internal scroll containers',async()=>{
-  const doc={pages:{'/':{elements:{'section:home.section.1':{style:{heightPx:180}}},extras:[],sectionOrder:{}}}};
+test('manually resized sections reclaim space and never become internal scroll containers',async()=>{
+  const doc={pages:{'/':{elements:{'section:home.section.1':{style:{heightPx:180,offsetYPx:72}}},extras:[],sectionOrder:{}}}};
   const f=await domFixture({doc});
   try{
     const section=f.w.document.querySelector('main section');
-    assert.equal(section.style.height,'auto');
-    assert.equal(section.style.minHeight,'180px');
+    assert.equal(section.style.height,'180px');
+    assert.equal(section.style.minHeight,'0');
     assert.equal(section.style.overflow,'visible');
+    assert.equal(section.style.top,'');
   }finally{f.close();}
 });
 
