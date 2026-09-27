@@ -69,6 +69,8 @@ public sealed class MetaSignalCrmOutcomeService
                 .FirstOrDefaultAsync(x => x.LeadId == intakeLink.WebsiteLeadPublicId, cancellationToken);
         }
 
+        appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink?.Oppref ?? websiteLead?.Oppref);
+
         var metaEligible = appointment.Status is LeadAppointmentStatus.Booked
             or LeadAppointmentStatus.Confirmed
             or LeadAppointmentStatus.Completed;
@@ -94,6 +96,7 @@ public sealed class MetaSignalCrmOutcomeService
             MetaAdSetId = intakeLink?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
             MetaAdId = intakeLink?.MetaAdId ?? websiteLead?.MetaAdId,
             Fbclid = intakeLink?.Fbclid ?? websiteLead?.Fbclid,
+            Oppref = OpenAiClickReference.Normalize(appointment.Oppref ?? intakeLink?.Oppref ?? websiteLead?.Oppref),
             AgentTrackingProfileId = websiteLead?.CommerceBusinessId.HasValue == true
                 ? null
                 : websiteLead?.AgentTrackingProfileId,
@@ -122,6 +125,7 @@ public sealed class MetaSignalCrmOutcomeService
                 appointment.BookingSource,
                 appointment.ConfirmationSource,
                 AppointmentStatus = appointment.Status.ToString(),
+                Oppref = OpenAiClickReference.Normalize(appointment.Oppref ?? intakeLink?.Oppref ?? websiteLead?.Oppref),
                 appointment.LastSyncStatus
             }
         };
@@ -186,6 +190,24 @@ public sealed class MetaSignalCrmOutcomeService
             clientUserId,
             cancellationToken);
 
+        WebsiteLead? productionWebsiteLead = null;
+        WebsiteLeadIntakeLink? productionIntake = null;
+        if (websiteLeadId.HasValue)
+        {
+            productionWebsiteLead = await _db.WebsiteLeads.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.LeadId == websiteLeadId.Value, cancellationToken);
+            productionIntake = await _db.WebsiteLeadIntakeLinks.AsNoTracking()
+                .Where(x => x.WebsiteLeadPublicId == websiteLeadId.Value)
+                .OrderByDescending(x => x.SubmittedUtc)
+                .ThenByDescending(x => x.CapturedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        var productionOppref = OpenAiClickReference.Normalize(productionIntake?.Oppref ?? productionWebsiteLead?.Oppref);
+        var productionRecord = await _db.ProductionRecords
+            .FirstOrDefaultAsync(x => x.Id == productionRecordId, cancellationToken);
+        if (productionRecord is not null && string.IsNullOrWhiteSpace(productionRecord.Oppref) && productionOppref is not null)
+            productionRecord.Oppref = productionOppref;
+
         var trackingProfile = await _db.AgentTrackingProfiles
             .AsNoTracking()
             .Where(x => x.AgentUserId == agentUserId && x.Status == "active")
@@ -232,7 +254,8 @@ public sealed class MetaSignalCrmOutcomeService
                 clientUserId,
                 amount,
                 personalAmount,
-                notes
+                notes,
+                oppref = productionOppref
             });
 
         UnifiedMetaSignalWriter.Write(_db, row);
