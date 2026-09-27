@@ -17,32 +17,38 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+  MSBUILDDISABLENODEREUSE: '1'
+
 jobs:
-  validate:
+  candidate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_NOLOGO: '1'
     steps:
       - name: Checkout isolated branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.x'
+          dotnet-version: '10.0.401'
 
       - name: Restore AgentPortal tests
         run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
 
       - name: Build affected test graph
-        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
 
       - name: Run Step 5 focused tests
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~MarketingScopeParityContractTests"
 
       - name: Run full AgentPortal candidate suite
+        id: full
         shell: bash
         run: |
           set +e
@@ -50,25 +56,69 @@ jobs:
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --logger "trx;LogFileName=candidate.trx" --results-directory /tmp/step5-candidate
           exit 0
 
-      - name: Fetch approved baseline commit
-        shell: bash
-        env:
-          APPROVED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: git fetch --no-tags --depth=1 origin "$APPROVED_BASE_SHA"
+      - name: Preserve completed candidate results
+        if: always() && steps.full.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-candidate-${{ github.event.pull_request.head.sha }}
+          path: /tmp/step5-candidate/candidate.trx
+          if-no-files-found: error
+          retention-days: 7
+
+  baseline:
+    # Never switch source revisions inside a compiler/source-generator process.
+    # This separate runner also allows a baseline-only retry to preserve the
+    # completed candidate job and its exact-SHA result artifact.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact approved baseline
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Setup identical .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
 
       - name: Run identical suite on approved baseline
+        id: full
         shell: bash
         run: |
-          git checkout --detach FETCH_HEAD
-          # A different source revision must not reuse candidate Razor/compiler
-          # intermediates or test binaries. Preserve the candidate evidence.
           baseline_artifacts=/tmp/masterapp-step5-baseline
           dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj -p:MasterAppArtifactsRoot="$baseline_artifacts"
-          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -p:MasterAppArtifactsRoot="$baseline_artifacts"
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false -p:MasterAppArtifactsRoot="$baseline_artifacts"
           set +e
           rm -rf /tmp/step5-baseline
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build -p:MasterAppArtifactsRoot="$baseline_artifacts" --logger "trx;LogFileName=baseline.trx" --results-directory /tmp/step5-baseline
           exit 0
+
+      - name: Preserve completed baseline results
+        if: always() && steps.full.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-baseline/baseline.trx
+          if-no-files-found: error
+          retention-days: 7
+
+  validate:
+    needs: [candidate, baseline]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Load exact candidate results
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-candidate-${{ github.event.pull_request.head.sha }}
+          path: /tmp/step5-candidate
+
+      - name: Load exact approved baseline results
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-baseline
 
       - name: Prove Step 5 adds no full-suite failures
         shell: bash
