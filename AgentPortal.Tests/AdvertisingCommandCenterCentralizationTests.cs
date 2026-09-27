@@ -40,17 +40,17 @@ public sealed class AdvertisingCommandCenterCentralizationTests
         var business = Read(root, "Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
 
         Assert.Contains("IAdvertisingCommandCenterService", agent, StringComparison.Ordinal);
-        Assert.Contains("[HttpGet("advertising")]", agent, StringComparison.Ordinal);
-        Assert.Contains("[HttpPost("advertising/promote/propose")]", agent, StringComparison.Ordinal);
-        Assert.Contains("[HttpPost("advertising/approve")]", agent, StringComparison.Ordinal);
-        Assert.Contains("[HttpPost("advertising/execute")]", agent, StringComparison.Ordinal);
+        Assert.Contains("[HttpGet(\"advertising\")]", agent, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"advertising/promote/propose\")]", agent, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"advertising/approve\")]", agent, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"advertising/execute\")]", agent, StringComparison.Ordinal);
         Assert.Contains("ResolveOpenAiMarketingOwner(tracking)", agent, StringComparison.Ordinal);
 
         Assert.Contains("IAdvertisingCommandCenterService", business, StringComparison.Ordinal);
-        Assert.Contains("[HttpGet("analytics/advertising")]", business, StringComparison.Ordinal);
-        Assert.Contains("[HttpPost("analytics/advertising/promote/propose")]", business, StringComparison.Ordinal);
-        Assert.Contains("[HttpPost("analytics/advertising/approve")]", business, StringComparison.Ordinal);
-        Assert.Contains("[HttpPost("analytics/advertising/execute")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpGet(\"analytics/advertising\")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"analytics/advertising/promote/propose\")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"analytics/advertising/approve\")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"analytics/advertising/execute\")]", business, StringComparison.Ordinal);
         Assert.Contains("MarketingOwnerScope.Business(businessId)", business, StringComparison.Ordinal);
     }
 
