@@ -238,7 +238,7 @@ public class WebsitePlatformController : ControllerBase
             .GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<Infrastructure.Analytics.MetaSignalIntelligenceOptions>>()
             .Value;
 
-        Infrastructure.Analytics.OpenAiAdsConnectionSnapshot? openAi = null;
+        Shared.Analytics.OpenAiAdsConnectionSnapshot? openAi = null;
         try
         {
             var openAiConnections = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
