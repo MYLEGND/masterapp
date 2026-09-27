@@ -38,7 +38,7 @@
     preset: initialPreset,
     from: initialFrom,
     to: initialTo,
-    pollMs: 1500,
+    pollMs: 15000,
     qualityMode: initialQualityMode,
     dashboardTrafficType: 'all',
     controllers: {},
@@ -119,6 +119,7 @@
   state.scope.scopeLabel = shell?.dataset.initialScopeLabel || (isFounder ? 'Global' : 'Agent Scope');
 
   let summaryRequestId = 0;
+  let summaryRefreshInFlight = false;
   let openModalRefreshTimer = null;
 
   const analyticsBase = shell?.dataset.analyticsBase || '/WebsiteAnalytics';
@@ -4264,8 +4265,17 @@ function escapeHtml(value) {
     }
   }
 
-  function refreshLiveAnalytics() {
-    loadSummary();
+  async function refreshLiveAnalytics() {
+    // Polling must never pile up canonical summary queries. User-driven refreshes
+    // can still replace stale requests through the existing AbortController path.
+    if (!summaryRefreshInFlight) {
+      summaryRefreshInFlight = true;
+      try {
+        await loadSummary();
+      } finally {
+        summaryRefreshInFlight = false;
+      }
+    }
     if (state.openModal) refreshOpenModal();
   }
 
