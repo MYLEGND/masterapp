@@ -126,6 +126,15 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains(".is-critical", css, StringComparison.Ordinal);
         Assert.Contains(".is-warn", css, StringComparison.Ordinal);
         Assert.Contains(".is-good", css, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"openai-refresh\")]", controller, StringComparison.Ordinal);
+        Assert.Contains("openAiRefresh: analyticsEndpoint('/openai-refresh')", js, StringComparison.Ordinal);
+        Assert.Contains("providerStatusFresh", controller, StringComparison.Ordinal);
+        Assert.Contains("accountStatus = openAiProvider?.Status", controller, StringComparison.Ordinal);
+        Assert.Contains("currencyCode = openAiProvider?.CurrencyCode", controller, StringComparison.Ordinal);
+        Assert.Contains("timezone = openAiProvider?.Timezone", controller, StringComparison.Ordinal);
+        Assert.Contains("reviewReason = openAiProvider?.ReviewReason", controller, StringComparison.Ordinal);
+        Assert.Contains("Advertiser API key verified", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("API key verified' : '—'", js, StringComparison.Ordinal);
     }
 
     [Fact]
