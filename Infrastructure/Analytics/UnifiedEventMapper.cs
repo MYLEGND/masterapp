@@ -15,11 +15,14 @@ public static class UnifiedEventMapper
 
     public static AnalyticsEvent ToAnalytics(UnifiedEventContext ctx)
     {
+        if (ctx.IsBrowserSignal == true && AnalyticsEventCatalog.RequiresServerAuthority(ctx.EventName))
+            throw new InvalidOperationException("Browser observations cannot create verified server outcomes.");
         return new AnalyticsEvent
         {
             EventId = Guid.NewGuid(),
             PipelineStamp = UnifiedAnalyticsWriter.PipelineStamp,
             EventType = ctx.EventName ?? "unknown",
+            Url = ctx.Url,
             PageKey = ctx.PageKey,
             ElementKey = ctx.ElementKey,
             ButtonLabel = ctx.ButtonLabel,
@@ -163,6 +166,8 @@ public static class UnifiedEventMapper
             : ctx.SiteKey,
         businessType = ctx.CommerceBusinessId.HasValue ? "Business" : BusinessType,
         reportingOwner = ctx.CommerceBusinessId.HasValue ? "Business" : ReportingOwner,
+        behaviorKey = AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var behavior) ? behavior.Key : null,
+        actionKey = ctx.ActionKey ?? (AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var action) ? action.Key : null),
         oppref = OpenAiClickReference.Normalize(ctx.Oppref),
         fbc = ctx.Fbc,
         fbp = ctx.Fbp,

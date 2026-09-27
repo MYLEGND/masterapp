@@ -59,7 +59,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         if (req.MetaSignal is not null &&
             (!Guid.TryParse(req.MetaSignal.EventId, out var signalId) || signalId != req.ClientEventId ||
              !string.Equals(req.MetaSignal.EventName, req.EventType, StringComparison.OrdinalIgnoreCase) ||
-             MetaSignalEventCatalog.IsServerAuthorityEvent(req.MetaSignal.EventName)))
+             AnalyticsEventCatalog.RequiresServerAuthority(req.MetaSignal.EventName)))
             return BadRequest(new { error = "signal_identity_or_authority_invalid" });
 
         if (string.Equals(req.SiteKey, "commerce", StringComparison.OrdinalIgnoreCase))
@@ -176,6 +176,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             Referrer = Clean(req.Referrer),
             PageKey = Clean(req.PageKey),
             ElementKey = Clean(req.ElementKey),
+            ActionKey = Clean(req.ActionKey),
             ButtonLabel = Clean(req.ButtonLabel),
             FormKey = Clean(req.FormKey),
             QuoteType = Clean(req.QuoteType),
@@ -271,6 +272,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             Referrer = Clean(req.Referrer),
             PageKey = Clean(req.PageKey),
             ElementKey = Clean(req.ElementKey),
+            ActionKey = Clean(req.ActionKey),
             ButtonLabel = Clean(req.ButtonLabel),
             FormKey = Clean(req.FormKey),
             QuoteType = Clean(req.QuoteType),
@@ -725,6 +727,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         public string? PageKey { get; set; }
         public string? SectionKey { get; set; }
         public string? ElementKey { get; set; }
+        public string? ActionKey { get; set; }
         public string? ButtonLabel { get; set; }
         public string? FormKey { get; set; }
         public string? QuoteType { get; set; }

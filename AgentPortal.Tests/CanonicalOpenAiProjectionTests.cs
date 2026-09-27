@@ -124,17 +124,20 @@ public sealed class CanonicalOpenAiProjectionTests
         await Dispatch();
         var receipt = Assert.Single(await db.MarketingDestinationDeliveries.ToListAsync());
         Assert.Equal(historicalMode is null ? nameof(AnalyticsEvent) : nameof(MetaSignalEvent), receipt.CanonicalSource);
-        if (historicalMode == "unverified" || historicalMode?.StartsWith("changed_", StringComparison.Ordinal) == true)
+        if (historicalMode is not null)
         {
-            Assert.Equal(historicalMode == "unverified" ? "blocked_requires_destination_verification" : "blocked_destination_changed", receipt.Status);
+            // Historical rows are a read-only fence, never adopted/retried by the
+            // canonical AnalyticsEvent dispatcher (including uncertain pending receipts).
+            Assert.Equal("pending", receipt.Status);
+            Assert.Equal("historical-issued-event", receipt.CanonicalEventId);
+            Assert.Equal(historicalMode == "first_link" ? (long?)null : source.Id, receipt.AnalyticsEventId);
+            Assert.Null(receipt.MetaSignalEventId);
+            Assert.Null(receipt.ProviderReceiptJson);
             Assert.Empty(conversions);
-            using var healthHttp = new System.Net.Http.HttpClient();
-            var health = await new OpenAiMeasurementHealthService(db, connections.Object, healthHttp).GetAsync(owner);
-            Assert.Equal("delivery_blocked", health.Status);
-            Assert.Equal(1, health.PendingDeliveries);
             await Dispatch();
             Assert.Empty(conversions);
             Assert.Single(await db.MarketingDestinationDeliveries.ToListAsync());
+            Assert.Equal(originalId, Assert.Single(await db.AnalyticsEvents.ToListAsync()).EventId);
             return;
         }
         Assert.Equal(source.Id, receipt.AnalyticsEventId);

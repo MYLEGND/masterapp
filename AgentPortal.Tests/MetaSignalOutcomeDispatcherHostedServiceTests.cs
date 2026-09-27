@@ -267,7 +267,8 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
 
         capi.Setup(x => x.SendEventAsync(
                 It.Is<MetaConversionsApiEventRequest>(request =>
-                    request.EventName == "Lead" &&
+                    request.EventName == "Lead" && request.EventId == "agent-lead-event" &&
+                    request.EventSourceUrl == "https://protect.mylegnd.com/agent/agent-one/Quote/Life" &&
                     request.LeadId == leadId &&
                     request.CommerceBusinessId == null &&
                     request.AgentTrackingProfileId == agentId &&
@@ -312,21 +313,20 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 ClientIpAddress = "1.2.3.4",
                 ClientUserAgent = "browser-agent"
             });
-            db.MetaSignalEvents.Add(new MetaSignalEvent
+            var source = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
             {
-                CreatedUtc = DateTime.UtcNow,
-                EventId = "agent-lead-event",
-                EventName = "Lead",
-                EventCategory = "conversion",
-                LeadId = leadId,
-                AgentTrackingProfileId = agentId,
-                AgentSlug = "agent-one",
-                SessionId = "agent-session",
-                TrafficType = "crm",
-                MetaDeduplicationKey = "Lead:" + leadId.ToString("N"),
-                MetadataJson = BuildBridgeOwnedServerMetadata(true)
+                EventName = "website_lead_submitted", EventId = "agent-lead-event", EventUtc = DateTime.UtcNow,
+                SiteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect,
+                AgentTrackingProfileId = agentId, AgentSlug = "agent-one", SessionId = "agent-session",
+                VisitorId = "agent-visitor", PageKey = "quote_life", WebsiteBindingId = "contact-form",
+                WebsiteContentVersionId = Guid.NewGuid(), ActionKey = "submit",
+                IsServerAuthority = true, IsBrowserSignal = false, MetaServerAuthorityEligible = true,
+                Host = "protect.mylegnd.com", Url = "https://protect.mylegnd.com/agent/agent-one/Quote/Life",
+                UserAgent = "browser-agent", IpAddress = "1.2.3.4", Metadata = new { LeadId = leadId }
             });
+            UnifiedAnalyticsWriter.Write(db, source);
             await db.SaveChangesAsync();
+            Assert.True(await MetaSignalAnalyticsBridge.PersistAsync(db, source));
         }
 
         var dispatcher = new MetaSignalOutcomeDispatcherHostedService(
@@ -340,6 +340,10 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         var row = await verification.ServiceProvider.GetRequiredService<MasterAppDbContext>()
             .MetaSignalEvents.SingleAsync();
         Assert.True(row.MetaServerSent);
+        Assert.Equal("agent-lead-event", row.EventId);
+        Assert.Equal("contact-form", row.WebsiteBindingId);
+        Assert.Equal("submit", MetaSignalSingleTruthPolicy.ReadString(row.MetadataJson, "actionKey"));
+        Assert.Equal("lead_created", MetaSignalSingleTruthPolicy.ReadString(row.MetadataJson, "behaviorKey"));
         Assert.Equal(agentId, row.AgentTrackingProfileId);
         Assert.Null(row.CommerceBusinessId);
         Assert.Equal("sent", MetaSignalSingleTruthPolicy.ReadString(row.MetadataJson, "metaServerStatus"));

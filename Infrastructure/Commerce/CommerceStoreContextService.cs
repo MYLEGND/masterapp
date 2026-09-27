@@ -394,10 +394,7 @@ public sealed class CommerceStoreContextService(
         if (string.IsNullOrWhiteSpace(json)) return new WebsiteContentDocument();
         try
         {
-            return WebsiteContentSanitizer.Sanitize(
-                JsonSerializer.Deserialize<WebsiteContentDocument>(
-                    json,
-                    new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new());
+            return WebsiteContentSanitizer.ReadPersisted(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         }
         catch
         {

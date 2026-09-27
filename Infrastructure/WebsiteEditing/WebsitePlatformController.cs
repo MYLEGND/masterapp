@@ -204,13 +204,14 @@ public class WebsitePlatformController : ControllerBase
         WebsiteBusinessFacts? facts = scope.CommerceBusinessId.HasValue
             ? await WebsiteBusinessFacts.LoadAsync(_db, scope.CommerceBusinessId.Value, cancellationToken)
             : null;
+        var document = scope.PublishedVersion is null ? new WebsiteContentDocument() : Read(scope.PublishedVersion.DocumentJson);
         var actions = await BuildCallToActionCatalogAsync(
             scope.SiteKey,
             scope.OwnerKey,
             agentSlug: null,
             scope.CommerceBusinessId,
             facts,
-            cancellationToken);
+            cancellationToken, document);
 
         var owner = await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _configuration, scope, cancellationToken);
         var browser = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingBrowserConfigurationService>()
@@ -228,7 +229,10 @@ public class WebsitePlatformController : ControllerBase
             analytics = new
             {
                 endpoint = apiBase + "/api/tracking/ingest",
+                attributionScope = browser.MarketingOwnerKey,
+                metaTestMode = browser.MetaTestMode,
                 allowedBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.BrowserAllowedEventNames,
+                behaviors = Shared.Analytics.AnalyticsEventCatalog.Behaviors,
                 signalAliases = Shared.Analytics.MetaSignalAnalyticsAliasCatalog.BrowserProjectionMap,
                 criticalBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.CriticalBrowserEventNames,
                 clientTrackingErrorEvent = Shared.Analytics.AnalyticsEventCatalog.ClientTrackingErrorEventName
@@ -244,6 +248,7 @@ public class WebsitePlatformController : ControllerBase
                 leadReadyThreshold = metaOptions.LeadReadyThreshold,
                 endpoint = apiBase + "/api/tracking/ingest",
                 pixelId = browser.MetaPixelId,
+                metaTestMode = browser.MetaTestMode,
                 browserEventNames = Shared.Analytics.MetaSignalEventCatalog.BrowserPixelEventNames,
                 browserSignalEventNames = Shared.Analytics.MetaSignalEventCatalog.Definitions
                     .Where(definition => !Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(definition.Name))
@@ -280,7 +285,7 @@ public class WebsitePlatformController : ControllerBase
         IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData = business is null
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
             : await new WebsiteCollectionProjectionService(_db).LoadCatalogAsync(business.Id, cancellationToken);
-        var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken);
+        var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, draft);
         return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = draft,
             revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
             facts,
@@ -418,7 +423,7 @@ public class WebsitePlatformController : ControllerBase
 
     public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null, IReadOnlyList<string>? DeletedKeys = null);
     public sealed record ProfileRequest(string Ticket, BusinessWebsiteProfileInput Settings);
-    private object SignalCatalogPayload() => new { events = WebsiteSignalBindingPolicy.Options, matchingFields = WebsiteSignalBindingPolicy.ApprovedMatchingFields, runtimeEnabled = _configuration.GetValue<bool>("WebsiteMarketing:Enabled") };
+    private object SignalCatalogPayload() => new { events = WebsiteSignalBindingPolicy.Options, automaticBehaviors = Shared.Analytics.AnalyticsEventCatalog.Behaviors.Where(behavior => !string.IsNullOrWhiteSpace(behavior.AutomaticTrigger)), matchingFields = WebsiteSignalBindingPolicy.ApprovedMatchingFields, runtimeEnabled = _configuration.GetValue<bool>("WebsiteMarketing:Enabled") };
 
     [HttpGet("manage/signal-catalog")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
@@ -426,6 +431,16 @@ public class WebsitePlatformController : ControllerBase
     {
         if (await AuthorizeAsync(ticket, cancellationToken) is null) return Unauthorized();
         return Ok(SignalCatalogPayload());
+    }
+
+    [HttpGet("manage/event-map")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> EventMap([FromQuery] string ticket, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        return Ok(new { windowDays = 30, source = "published_configuration_and_receipts",
+            entries = await new WebsiteEventMapQuery(_db, _configuration).ReadTicketAsync(actor, cancellationToken) });
     }
 
     [HttpGet("manage/signals/health")]
@@ -443,7 +458,7 @@ public class WebsitePlatformController : ControllerBase
         var document = Read(state.DraftJson);
         if (!TryFindSignalBinding(document, pagePath, elementId, bindingId, out var binding))
             return NotFound(new { error = "website_signal_binding_not_found" });
-        if (!Shared.Analytics.MetaSignalEventCatalog.TryGet(binding.EventName, out var definition))
+        if (!Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(binding.EventName, out var definition))
             return BadRequest(new { error = "website_signal_event_invalid" });
 
         var destination = await ResolveSignalDestinationAsync(actor, cancellationToken);
@@ -508,17 +523,17 @@ public class WebsitePlatformController : ControllerBase
         var document = Read(state.DraftJson);
         if (!TryFindSignalBinding(document, request.PagePath, request.ElementId, request.BindingId, out var binding))
             return NotFound(new { error = "website_signal_binding_not_found" });
-        if (!Shared.Analytics.MetaSignalEventCatalog.TryGet(binding.EventName, out var definition))
+        if (!Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(binding.EventName, out var definition))
             return BadRequest(new { error = "website_signal_event_invalid" });
 
         var destination = await ResolveSignalDestinationAsync(actor, cancellationToken);
-        var serverAuthority = Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(binding.EventName);
+        var serverAuthority = definition.RequiresServerAuthority;
         var browserTrigger = binding.Trigger is "viewed" or "click" or "form_started" or "submit_attempt"
             or "field_started" or "validation_failed" or "field_completed" or "scroll_threshold";
-        var analyticsWouldAccept = (binding.DeliveryMode is "analytics" or "meta") && browserTrigger && !serverAuthority;
-        var pixelWouldInvoke = binding.DeliveryMode == "meta" && browserTrigger &&
-            definition.AllowBrowserPixel && destination.HasBrowserPixel;
-        var serverCapiRequiresVerifiedOutcome = binding.DeliveryMode == "meta" && serverAuthority;
+        var analyticsWouldAccept = (binding.DeliveryMode is "analytics" or "meta" or "destinations") && browserTrigger && !serverAuthority;
+        var pixelWouldInvoke = (binding.DeliveryMode is "meta" or "destinations") && browserTrigger &&
+            definition.BrowserAllowed && destination.HasBrowserPixel;
+        var serverCapiRequiresVerifiedOutcome = (binding.DeliveryMode is "meta" or "destinations") && serverAuthority;
 
         return Ok(new
         {
@@ -1031,7 +1046,7 @@ public class WebsitePlatformController : ControllerBase
             business = await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken);
             facts = await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         }
-        var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken);
+        var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
         var ctaError = WebsiteCallToActionCatalog.PrepareForPublish(document, ctaOptions);
         if (ctaError is not null) return BadRequest(new { error = "button_destination_required", message = ctaError });
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
@@ -1363,14 +1378,14 @@ public class WebsitePlatformController : ControllerBase
     private Task<IReadOnlyList<WebsiteCallToActionOption>> BuildCallToActionCatalogAsync(
         WebsiteEditorTicket actor,
         WebsiteBusinessFacts? facts,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken, WebsiteContentDocument? document = null) =>
         BuildCallToActionCatalogAsync(
             actor.SiteKey,
             actor.OwnerUserId,
             actor.AgentSlug,
             actor.CommerceBusinessId,
             facts,
-            cancellationToken);
+            cancellationToken, document);
 
     private async Task<IReadOnlyList<WebsiteCallToActionOption>> BuildCallToActionCatalogAsync(
         string siteKey,
@@ -1378,7 +1393,7 @@ public class WebsitePlatformController : ControllerBase
         string? agentSlug,
         Guid? commerceBusinessId,
         WebsiteBusinessFacts? facts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, WebsiteContentDocument? document = null)
     {
         string? phone = null;
         string? email = null;
@@ -1415,7 +1430,9 @@ public class WebsitePlatformController : ControllerBase
             }
         }
 
-        return WebsiteCallToActionCatalog.Build(siteKey, phone, email, bookingUrl);
+        var storeScope = document is null ? null : await PublishedStoreScopeAsync(ownerUserId, siteKey, document, cancellationToken);
+        var storeRoot = storeScope is null ? null : await ResolveCanonicalStoreRootAsync(siteKey, storeScope, cancellationToken);
+        return WebsiteCallToActionCatalog.Build(siteKey, phone, email, bookingUrl, commerceStorePath: storeRoot);
     }
 
     private sealed record SignalDestinationStatus(
@@ -1567,82 +1584,13 @@ public class WebsitePlatformController : ControllerBase
         WebsiteEditorTicket actor,
         CancellationToken cancellationToken)
     {
-        static SignalDestinationStatus FromConnection(MarketingConnection? connection, string ownerType)
-        {
-            if (connection is null || connection.DisconnectedUtc.HasValue)
-                return new(ownerType, false, false, false);
-            var hasPixel = !string.IsNullOrWhiteSpace(connection.PixelId);
-            var hasCapi = hasPixel &&
-                (!string.IsNullOrWhiteSpace(connection.CapiAccessTokenCiphertext) ||
-                 !string.IsNullOrWhiteSpace(connection.AdsAccessTokenCiphertext));
-            return new(ownerType, hasPixel, hasCapi, !string.IsNullOrWhiteSpace(connection.TestEventCode));
-        }
-
-        async Task<SignalDestinationStatus> FounderAsync()
-        {
-            var owner = Shared.Analytics.MarketingOwnerScope.Founder;
-            var connection = await _db.Set<MarketingConnection>().AsNoTracking()
-                .SingleOrDefaultAsync(row => row.OwnerKey == owner.Key && row.Provider == "meta", cancellationToken);
-            if (connection?.DisconnectedUtc.HasValue == true)
-                return new(Infrastructure.Analytics.MetaPixelOwnerTypes.Agency, false, false, false);
-            if (connection is not null && !string.IsNullOrWhiteSpace(connection.PixelId))
-                return FromConnection(connection, Infrastructure.Analytics.MetaPixelOwnerTypes.Agency);
-
-            var pixel = _configuration["Meta:PixelId"]?.Trim();
-            var token = _configuration["Meta:AccessToken"]?.Trim();
-            var test = _configuration["Meta:TestEventCode"]?.Trim();
-            return new(
-                Infrastructure.Analytics.MetaPixelOwnerTypes.Agency,
-                !string.IsNullOrWhiteSpace(pixel),
-                !string.IsNullOrWhiteSpace(pixel) && !string.IsNullOrWhiteSpace(token),
-                !string.IsNullOrWhiteSpace(test));
-        }
-
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue)
-        {
-            var owner = Shared.Analytics.MarketingOwnerScope.Business(actor.CommerceBusinessId.Value);
-            var connection = await _db.Set<MarketingConnection>().AsNoTracking()
-                .SingleOrDefaultAsync(row => row.OwnerKey == owner.Key && row.Provider == "meta", cancellationToken);
-            return FromConnection(connection, Infrastructure.Analytics.MetaPixelOwnerTypes.Business);
-        }
-
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Legend)
-            return await FounderAsync();
-
-        var tracking = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(row =>
-                (!string.IsNullOrWhiteSpace(actor.AgentSlug) && row.Slug == actor.AgentSlug) ||
-                row.AgentUserId == actor.OwnerUserId)
-            .OrderByDescending(row => row.UpdatedUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (tracking is null)
-            return await FounderAsync();
-
-        var agentOwner = Shared.Analytics.MarketingOwnerScope.Agent(tracking.Id);
-        var agentConnection = await _db.Set<MarketingConnection>().AsNoTracking()
-            .SingleOrDefaultAsync(row => row.OwnerKey == agentOwner.Key && row.Provider == "meta", cancellationToken);
-        if (agentConnection?.DisconnectedUtc.HasValue == true)
-            return new(Infrastructure.Analytics.MetaPixelOwnerTypes.Agent, false, false, false);
-        if (agentConnection is not null && !string.IsNullOrWhiteSpace(agentConnection.PixelId))
-            return FromConnection(agentConnection, Infrastructure.Analytics.MetaPixelOwnerTypes.Agent);
-
-        var upn = tracking.AgentUpn?.Trim().ToUpperInvariant();
-        var profile = await _db.AgentProfiles.AsNoTracking()
-            .Where(row =>
-                row.IsActive &&
-                ((!string.IsNullOrWhiteSpace(tracking.AgentUserId) && row.AgentUserId == tracking.AgentUserId) ||
-                 (!string.IsNullOrWhiteSpace(upn) && (row.NormalizedEmail == upn || row.AgentUpn == tracking.AgentUpn))))
-            .OrderByDescending(row => !string.IsNullOrWhiteSpace(row.MetaPixelId))
-            .ThenByDescending(row => row.UpdatedUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (!string.IsNullOrWhiteSpace(profile?.MetaPixelId))
-            return new(
-                Infrastructure.Analytics.MetaPixelOwnerTypes.Agent,
-                true,
-                !string.IsNullOrWhiteSpace(profile.MetaCapiAccessToken),
-                !string.IsNullOrWhiteSpace(profile.MetaTestEventCode));
-
-        return await FounderAsync();
+        var owner = await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+            _db, _configuration, actor, cancellationToken);
+        if (owner is null) return new("none", false, false, false);
+        var destination = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMetaPixelResolutionService>()
+            .ResolveForOwnerAsync(owner, cancellationToken);
+        return new(destination.PixelOwnerType, destination.HasBrowserPixel,
+            destination.HasServerCapiCredentials, !string.IsNullOrWhiteSpace(destination.TestEventCode));
     }
 
     private static bool TryFindSignalBinding(
@@ -1676,22 +1624,25 @@ public class WebsitePlatformController : ControllerBase
 
     private static object SignalBindingPayload(
         WebsiteSignalBinding binding,
-        Shared.Analytics.MetaSignalEventDefinition definition,
+        Shared.Analytics.AnalyticsBehaviorContract definition,
         SignalDestinationStatus destination) => new
     {
         binding.Id,
         binding.Trigger,
         binding.EventName,
+        binding.ActionKey,
+        behaviorKey = definition.Key,
+        locked = definition.RequiresServerAuthority,
         binding.DeliveryMode,
         binding.OncePerSession,
         binding.MatchingFields,
-        browserSignal = !Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(binding.EventName),
-        browserPixelEligible = definition.AllowBrowserPixel,
-        serverForwardEligible = definition.AllowServerForward,
-        serverOutcomeRequired = Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(binding.EventName),
+        browserSignal = !definition.RequiresServerAuthority,
+        browserPixelEligible = definition.BrowserAllowed,
+        serverForwardEligible = definition.RequiresServerAuthority,
+        serverOutcomeRequired = definition.RequiresServerAuthority,
         matchingConsent = binding.MatchingFields.Count == 0 ? "not_requested" : "verified_server_outcome_required",
-        destinationReady = binding.DeliveryMode != "meta" ||
-            (definition.AllowBrowserPixel ? destination.HasBrowserPixel : destination.HasServerCapiCredentials)
+        destinationReady = (binding.DeliveryMode is not ("meta" or "destinations")) ||
+            (definition.BrowserAllowed ? destination.HasBrowserPixel : destination.HasServerCapiCredentials)
     };
 
     private static object SignalDestinationPayload(
@@ -1983,35 +1934,9 @@ public class WebsitePlatformController : ControllerBase
         }
     }
 
-    private async Task<Shared.Analytics.MarketingOwnerScope?> ResolveAdvertisingOwnerAsync(
-        WebsiteEditorTicket actor,
-        CancellationToken cancellationToken)
-    {
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Business &&
-            actor.CommerceBusinessId is Guid businessId &&
-            businessId != Guid.Empty)
-            return Shared.Analytics.MarketingOwnerScope.Business(businessId);
-
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Legend && actor.IsFounder)
-            return Shared.Analytics.MarketingOwnerScope.Founder;
-
-        if (actor.SiteKey != WebsiteEditorSiteKeys.Protect)
-            return null;
-
-        AgentTrackingProfile? profile = null;
-        if (!string.IsNullOrWhiteSpace(actor.AgentSlug))
-        {
-            var slug = actor.AgentSlug.Trim().ToLowerInvariant();
-            profile = await _db.AgentTrackingProfiles.AsNoTracking()
-                .SingleOrDefaultAsync(x => x.Slug.ToLower() == slug, cancellationToken);
-        }
-        profile ??= await _db.AgentTrackingProfiles.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.AgentUserId.ToLower() == actor.OwnerUserId.ToLower(), cancellationToken);
-
-        return profile is null
-            ? null
-            : Shared.Analytics.MarketingOwnerScope.Agent(profile.Id);
-    }
+    private Task<Shared.Analytics.MarketingOwnerScope?> ResolveAdvertisingOwnerAsync(
+        WebsiteEditorTicket actor, CancellationToken cancellationToken) =>
+        Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _configuration, actor, cancellationToken);
 
     private async Task<bool> CanPublishAsync(WebsiteEditorTicket actor, CancellationToken cancellationToken) =>
         actor.SiteKey != WebsiteEditorSiteKeys.Business ||
@@ -2070,8 +1995,7 @@ public class WebsitePlatformController : ControllerBase
         return state;
     }
 
-    private static WebsiteContentDocument Read(string json) => WebsiteContentSanitizer.Sanitize(
-        JsonSerializer.Deserialize<WebsiteContentDocument>(json, JsonOptions) ?? new());
+    private static WebsiteContentDocument Read(string json) => WebsiteContentSanitizer.ReadPersisted(json, JsonOptions);
 
     private async Task<WebsiteContentDocument?> LoadAsync(string ownerUserId, string siteKey, CancellationToken cancellationToken)
     {

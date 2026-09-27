@@ -157,6 +157,76 @@ public class WebsiteAnalyticsInitialQualityModeTests
         Assert.Empty(db.MarketingConnections);
     }
 
+    [Fact]
+    public async Task GlobalCredentialRequestsFailClosedBeforeCallingProviders()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = SeedTrackingProfile(db);
+        await db.SaveChangesAsync();
+        var controller = BuildController(db, profile);
+        controller.Request.QueryString = new QueryString("?team=true");
+        Assert.IsType<ForbidResult>(await controller.MarketingSetup(profile.Id));
+        Assert.IsType<ForbidResult>(await controller.ConnectOpenAi(new(profile.Id, "unused", null)));
+        Assert.IsType<ForbidResult>(await controller.RefreshOpenAi(new(profile.Id, Guid.NewGuid())));
+        Assert.IsType<ForbidResult>(await controller.DisconnectOpenAi(new(profile.Id, Guid.NewGuid())));
+        Assert.IsType<ForbidResult>(await controller.SaveMarketingSetup(new(profile.Id, Guid.NewGuid(), null, null, false, null, null, null, null)));
+        Assert.Empty(db.MarketingConnections);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OpenAiConnectUsesCanonicalProfileOwnerBeforeProviderCall(bool founderProfile)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = SeedTrackingProfile(db);
+        if (founderProfile) profile.AgentUpn = "founder@example.com";
+        await db.SaveChangesAsync();
+        var expected = founderProfile ? MarketingOwnerScope.Founder : MarketingOwnerScope.Agent(profile.Id);
+        var connector = new Mock<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
+        connector.Setup(service => service.ConnectAsync(expected, "test-key", null, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("Stop after verified owner selection."));
+        var controller = BuildController(db, profile);
+        controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(connector.Object).BuildServiceProvider();
+        Assert.IsType<BadRequestObjectResult>(await controller.ConnectOpenAi(new(profile.Id, "test-key", null)));
+        connector.Verify(service => service.ConnectAsync(expected, "test-key", null, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Empty(db.MarketingConnections);
+    }
+
+    [Fact]
+    public async Task MarketingSetupDoesNotTreatAnAdsConnectionAsConfiguredCapiOrAcceptedEvents()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = SeedTrackingProfile(db);
+        profile.AgentUpn = "founder@example.com";
+        await db.SaveChangesAsync();
+        var owner = MarketingOwnerScope.Founder;
+        var controller = BuildController(db, profile);
+        var store = controller.HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
+        await store.SaveAdsAsync(owner, new Shared.Analytics.MetaAdsConnectionRecord { AccessToken = "protected-test-token", AccountId = "account" });
+        var pixels = new Mock<Infrastructure.Analytics.IMetaPixelResolutionService>();
+        pixels.Setup(service => service.ResolveForOwnerAsync(owner, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Infrastructure.Analytics.ResolvedMetaPixelContext());
+        var openAi = new Mock<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
+        openAi.Setup(service => service.GetAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(
+            new Shared.Analytics.OpenAiAdsConnectionSnapshot(owner, false, false, Guid.Empty, null, null, null, null, null, null, null, [], null, null, false, false, null, null, null));
+        var health = new Mock<Infrastructure.Analytics.IOpenAiMeasurementHealthService>();
+        health.Setup(service => service.GetAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(
+            new Shared.Analytics.OpenAiMeasurementHealthSnapshot(owner, false, false, false, null, 0, 0, 0, 0, null, false, 0, "not_connected"));
+        controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(store).AddSingleton(pixels.Object)
+            .AddSingleton(openAi.Object).AddSingleton(health.Object)
+            .AddSingleton<Infrastructure.Analytics.MarketingProviderSetupProjection>()
+            .AddSingleton(Mock.Of<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>())
+            .AddSingleton(new Infrastructure.Analytics.MarketingMeasurementEvidenceService(db, new ConfigurationBuilder().Build(), store, openAi.Object)).BuildServiceProvider();
+        var result = Assert.IsType<JsonResult>(await controller.MarketingSetup(profile.Id));
+        var json = JsonSerializer.SerializeToElement(result.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.True(json.GetProperty("marketing").GetProperty("metaAdsConnected").GetBoolean());
+        Assert.False(json.GetProperty("marketing").GetProperty("metaCapiConfiguredSecurely").GetBoolean());
+        Assert.False(json.GetProperty("evidence").GetProperty("receivingEvents").GetBoolean());
+        Assert.Equal(0, json.GetProperty("evidence").GetProperty("meta").GetProperty("accepted").GetInt32());
+        pixels.Verify(service => service.ResolveForOwnerAsync(owner, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static WebsiteAnalyticsController BuildController(MasterAppDbContext db, AgentTrackingProfile profile, IMetaAdsOAuthService? oauth = null)
     {
         var analyticsConfig = new ConfigurationBuilder()

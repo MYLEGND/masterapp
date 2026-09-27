@@ -78,7 +78,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.DoesNotContain("ParfaitMetaAdsConnectionStoreAdapter", program, StringComparison.Ordinal);
         Assert.DoesNotContain("IParfaitMetaAdsOAuthService", program, StringComparison.Ordinal);
         Assert.Contains("ScopeContext.ForBusiness(businessId)", analytics, StringComparison.Ordinal);
-        Assert.Contains("MarketingOwnerScope.Business(store.CommerceBusinessId)", controller, StringComparison.Ordinal);
+        Assert.Contains("CanonicalAdvertisingEventProjection.ResolveOwnerAsync", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingOwnerScope.Business(store.CommerceBusinessId)", controller, StringComparison.Ordinal);
         Assert.Contains("MarketingMetaAdsOAuthService", controller, StringComparison.Ordinal);
         Assert.Contains("MarketingConnectionStore", controller, StringComparison.Ordinal);
         Assert.Contains("BrowserMarketing.GetAsync(owner", tracking, StringComparison.Ordinal);

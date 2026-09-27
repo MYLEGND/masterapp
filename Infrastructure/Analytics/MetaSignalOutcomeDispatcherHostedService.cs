@@ -324,7 +324,9 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 AgentTrackingProfileId = row.AgentTrackingProfileId,
                 CorrelationId = Guid.NewGuid(),
                 EventName = row.EventName,
-                EventId = isBridgeOwned
+                EventId = MetaSignalSingleTruthPolicy.ReadBoolean(row.MetadataJson, "canonicalSourceIdentity") == true
+                    ? row.EventId
+                    : isBridgeOwned
                     ? FirstNonBlank(
                         MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "upstreamMetaEventId"),
                         row.MetaDeduplicationKey,

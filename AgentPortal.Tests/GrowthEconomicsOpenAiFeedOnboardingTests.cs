@@ -48,7 +48,8 @@ public sealed class GrowthEconomicsOpenAiFeedOnboardingTests
         var projection = Read(root, "Infrastructure", "Analytics", "CanonicalMarketingOutcomeProjection.cs");
 
         Assert.Contains("IUnifiedMarketingPerformanceService", economics, StringComparison.Ordinal);
-        Assert.Contains("LoadScopedMetaEventsAsync", economics, StringComparison.Ordinal);
+        Assert.DoesNotContain("LoadScopedMetaEventsAsync", economics, StringComparison.Ordinal);
+        Assert.Contains("CanonicalMarketingOutcomeProjection.ConfirmedOutcomes", economics, StringComparison.Ordinal);
         Assert.Contains("CostPerCustomer", Read(root, "SHARED", "Analytics", "GrowthEconomicsAndOpenAiFeedContracts.cs"), StringComparison.Ordinal);
         Assert.Contains("BlendedRoas", Read(root, "SHARED", "Analytics", "GrowthEconomicsAndOpenAiFeedContracts.cs"), StringComparison.Ordinal);
         Assert.Contains("PipelineValue", Read(root, "SHARED", "Analytics", "GrowthEconomicsAndOpenAiFeedContracts.cs"), StringComparison.Ordinal);

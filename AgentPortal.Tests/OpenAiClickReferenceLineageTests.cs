@@ -116,7 +116,7 @@ public sealed class OpenAiClickReferenceLineageTests
     }
 
     [Fact]
-    public void BrowserRuntimeLocksFirstTouchOpprefAndFormsCarryIt()
+    public void BrowserRuntimeSeparatesCurrentOpprefFromFirstTouchAndFormsCarryIt()
     {
         var root = FindRoot();
         var tracking = File.ReadAllText(Path.Combine(root, "SHARED", "WebsitePlatform", "tracking.js"));
@@ -124,9 +124,12 @@ public sealed class OpenAiClickReferenceLineageTests
         var commerce = File.ReadAllText(Path.Combine(root, "ParfaitApp", "Views", "Shared", "_ParfaitCommerceTracking.cshtml"));
 
         Assert.Contains("params.get('oppref')", tracking, StringComparison.Ordinal);
-        Assert.Contains("lockedOppref", tracking, StringComparison.Ordinal);
+        Assert.DoesNotContain("lockedOppref", tracking, StringComparison.Ordinal);
+        Assert.Contains("hasAttribution(queryAttribution) ? queryAttribution", tracking, StringComparison.Ordinal);
+        Assert.Contains("legend_attr_first_touch:${storageScope}", tracking, StringComparison.Ordinal);
         Assert.Contains("oppref: attribution.oppref", inquiry, StringComparison.Ordinal);
-        Assert.Contains("pf_oppref", commerce, StringComparison.Ordinal);
+        Assert.Contains("oppref:'oppref'", commerce, StringComparison.Ordinal);
+        Assert.Contains("scope:storeScope,sessionId", commerce, StringComparison.Ordinal);
     }
 
     [Fact]

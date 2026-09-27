@@ -2,7 +2,6 @@
   const STORAGE_VISITOR = 'legend_visitor_id';
   const STORAGE_SESSION = 'legend_session_id';
   const STORAGE_SESSION_TS = 'legend_session_ts';
-  const STORAGE_ATTR_SESSION = 'legend_attr_session';
   const STORAGE_SESSION_ENTRY_SOURCE = 'legend_meta_entry_source';
   const STORAGE_SESSION_PAGE_CLUSTERS = 'legend_meta_page_clusters';
   const STORAGE_PAGE_INIT_PREFIX = 'legend_meta_page_init';
@@ -224,32 +223,6 @@
     };
   }
 
-  function hasAttribution(attribution) {
-    if (!attribution) return false;
-
-    return Boolean(
-      attribution.utmSource ||
-      attribution.utmMedium ||
-      attribution.utmCampaign ||
-      attribution.utmId ||
-      attribution.utmContent ||
-      attribution.fbclid ||
-      attribution.metaCampaignId ||
-      attribution.metaAdSetId ||
-      attribution.metaAdId
-    );
-  }
-
-  function readAttributionFromStorage(key) {
-    const fromSession = safeJsonParse(safeStorageGet(window.sessionStorage, key), null);
-    if (hasAttribution(fromSession)) {
-      return normalizeAttribution(fromSession);
-    }
-
-    const fromLocal = safeJsonParse(safeStorageGet(window.localStorage, key), null);
-    return hasAttribution(fromLocal) ? normalizeAttribution(fromLocal) : null;
-  }
-
   function readCookieValue(name) {
     try {
       const prefix = `${encodeURIComponent(name)}=`;
@@ -312,39 +285,6 @@
     }
   }
 
-  function writeAttributionToStorage(key, attribution) {
-    const normalized = normalizeAttribution(attribution);
-    if (!hasAttribution(normalized)) return;
-
-    const json = JSON.stringify(normalized);
-    safeStorageSet(window.sessionStorage, key, json);
-    safeStorageSet(window.localStorage, key, json);
-  }
-
-  function readAttributionFromQuery() {
-    const params = new URLSearchParams(window.location.search);
-    return normalizeAttribution({
-      utmSource: params.get('utm_source'),
-      utmMedium: params.get('utm_medium'),
-      utmCampaign: params.get('utm_campaign'),
-      utmId: params.get('utm_id'),
-      utmContent: params.get('utm_content'),
-      fbclid: params.get('fbclid'),
-      fbc: readCookieValue('_fbc'),
-      fbp: readCookieValue('_fbp'),
-      metaCampaignId: params.get('meta_campaign_id'),
-      metaAdSetId: params.get('meta_adset_id'),
-      metaAdId: params.get('meta_ad_id')
-    });
-  }
-
-  function rememberQueryAttribution() {
-    const queryAttribution = readAttributionFromQuery();
-    if (hasAttribution(queryAttribution)) {
-      writeAttributionToStorage(STORAGE_ATTR_SESSION, queryAttribution);
-    }
-  }
-
   function getVisitorId() {
     const ids = window.legendTrackingIds;
     if (ids && typeof ids.getVisitorId === 'function') {
@@ -374,12 +314,6 @@
 
     if (expired) {
       sessionId = uuidNoDash();
-      try {
-        window.sessionStorage.removeItem(STORAGE_ATTR_SESSION);
-        window.localStorage.removeItem(STORAGE_ATTR_SESSION);
-      } catch {
-        // ignore storage failures
-      }
     }
 
     safeStorageSet(window.localStorage, STORAGE_SESSION, sessionId);
@@ -388,25 +322,10 @@
   }
 
   function resolveAttribution() {
-    rememberQueryAttribution();
-
+    // The canonical tracker owns scoped attribution, including an empty direct
+    // session. Provider adapters never recover campaigns from historical storage.
     const ids = window.legendTrackingIds;
-    if (ids && typeof ids.getAttribution === 'function') {
-      const direct = normalizeAttribution(ids.getAttribution() || {});
-      if (hasAttribution(direct)) {
-        writeAttributionToStorage(STORAGE_ATTR_SESSION, direct);
-        return direct;
-      }
-    }
-
-    const queryAttribution = readAttributionFromQuery();
-    if (hasAttribution(queryAttribution)) {
-      writeAttributionToStorage(STORAGE_ATTR_SESSION, queryAttribution);
-      return queryAttribution;
-    }
-
-    const stored = readAttributionFromStorage(STORAGE_ATTR_SESSION);
-    return hasAttribution(stored) ? stored : normalizeAttribution({});
+    return normalizeAttribution(ids?.getAttribution?.() || {});
   }
 
   function resolveQuoteType(value) {
@@ -571,7 +490,6 @@
       trackSubmitAttempt() {},
       trackBacktrack() {},
       trackDeadClick() {},
-      trackConfiguredEvent() { return null; },
       markSubmitted() {},
       getState() {
         return null;
@@ -1340,7 +1258,7 @@
       let canonicalMetadata = {}; try { canonicalMetadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
       const bindings = canonicalMetadata.configuredSignalBindings;
       const projections = Array.isArray(bindings) && bindings.length
-        ? bindings.filter(binding => binding.deliveryMode === 'meta' && !binding.duplicateBinding).map(binding => binding.eventName)
+        ? bindings.filter(binding => ['destinations', 'meta'].includes(binding.deliveryMode) && !binding.duplicateBinding).map(binding => signalAliases[binding.eventName]).filter(Boolean)
         : metadata.configuredDeliveryMode === 'analytics' ? [] : [eventName];
       for (const projection of new Set(projections)) {
         const status = fireBrowserPixel(projection, body.ClientEventId, pixelPayload);
@@ -1837,23 +1755,6 @@
       },
       trackDeadClick(metadata = {}) {
         return emitSignal('DeadClick', { metadata });
-      },
-      trackConfiguredEvent(eventName, options = {}) {
-        const normalizedEventName = asTrimmed(eventName);
-        if (!normalizedEventName || !config.browserSignalEventNames.has(normalizedEventName)) {
-          debug('Configured website signal blocked by browser catalog', { eventName: normalizedEventName || null });
-          return null;
-        }
-        const deliveryMode = options.deliveryMode === 'meta' ? 'meta' : 'analytics';
-        return emitSignal(normalizedEventName, {
-          onceKey: asTrimmed(options.onceKey) || null,
-          metadata: Object.assign({}, options.metadata || {}, {
-            configuredWebsiteSignal: true,
-            configuredDeliveryMode: deliveryMode
-          }),
-          sendBrowserPixel: deliveryMode === 'meta',
-          skipThresholds: true
-        });
       },
       markSubmitted(metadata = {}) {
         state.submitted = true;

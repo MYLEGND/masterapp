@@ -23,6 +23,21 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return FilterAttributedRowsByTraffic(BuildAttributedEventRows(events), trafficType).Select(x => x.Event).ToList();
     }
 
+    /// <summary>Evidence for one permanent advertising owner, selected from first-party truth.</summary>
+    public async Task<List<AnalyticsEvent>> LoadOwnerEventsAsync(DateTime fromUtc, MarketingOwnerScope owner, CancellationToken ct = default)
+    {
+        var query = ApplyEnvironmentFilter(_db.AnalyticsEvents.AsNoTracking())
+            .Where(e => e.EventUtc >= fromUtc && e.EventUtc <= DateTime.UtcNow && !e.IsInternal);
+        if (owner.CommerceBusinessId is { } business) query = query.Where(e => e.CommerceBusinessId == business);
+        else if (owner.AgentTrackingProfileId is { } agent) query = query.Where(e => e.AgentTrackingProfileId == agent && e.CommerceBusinessId == null);
+        else query = query.Where(e => e.CommerceBusinessId == null);
+        var result = new List<AnalyticsEvent>();
+        foreach (var source in await query.ToListAsync(ct))
+            if (await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _configuration, source, ct) == owner)
+                result.Add(source);
+        return result;
+    }
+
     public async Task<List<MetaSignalEvent>> LoadScopedMetaEventsAsync(TimeRangeRequest range, ScopeContext scope,
         IReadOnlyCollection<AnalyticsEvent> events, CancellationToken ct = default)
     {
@@ -45,10 +60,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private readonly string? _envFilter; // normalized ("prod","dev") or null for legacy fallback
 
     private readonly MasterAppDbContext _db;
+    private readonly IConfiguration _configuration;
 
     public AnalyticsQueryService(MasterAppDbContext db, IConfiguration config)
     {
         _db = db;
+        _configuration = config;
         var configuredFilter = NormalizeEnv(config["Analytics:EnvironmentFilter"] ?? config["Analytics__EnvironmentFilter"]);
         var runtimeEnvironment = NormalizeEnv(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"));
         // In production, default to strict production filtering if no explicit filter is configured.

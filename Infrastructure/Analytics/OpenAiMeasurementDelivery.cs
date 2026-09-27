@@ -326,19 +326,15 @@ public sealed class OpenAiConversionDispatcherHostedService(
             var delivery = await db.Set<MarketingDestinationDelivery>().SingleOrDefaultAsync(row =>
                 row.OwnerKey == owner.Key &&
                 row.Provider == MarketingDestinationKeys.OpenAi &&
-                row.Channel == "server" &&
+                row.Channel == "server" && row.CanonicalSource == nameof(AnalyticsEvent) &&
                 (row.AnalyticsEventId == source.Id || row.CanonicalEventId == conversion.Id) &&
                 row.ProviderEventName == conversion.Type, ct);
 
-            // Read-only compatibility adapter for receipts created by the former Meta-dependent path.
-            // A missing Meta row never affects a new Analytics projection.
-            delivery ??= await FindHistoricalReceiptAsync(db, owner, source, conversion.Type, ct);
-            if (delivery is not null)
-            {
-                delivery.AnalyticsEventId ??= source.Id;
-                conversion = conversion with { Id = delivery.CanonicalEventId };
-                await db.SaveChangesAsync(ct);
-            }
+            // Historical delivery identities are read-only resend fences. They
+            // never become active AnalyticsEvent receipts or a second dispatcher.
+            if (delivery is null && await FindHistoricalReceiptAsync(db, owner, source, conversion.Type, ct) is not null)
+                continue;
+            if (delivery is not null) conversion = conversion with { Id = delivery.CanonicalEventId };
 
             if (delivery?.Status == "sent") continue;
             if (delivery?.Status == "permanent_failure") continue;
@@ -386,9 +382,7 @@ public sealed class OpenAiConversionDispatcherHostedService(
             }
 
             // Never move a queued conversion to a newly connected account or data source.
-            if (delivery.PixelId != connection.PixelId ||
-                (delivery.AdvertiserAccountId is not null && delivery.AdvertiserAccountId != connection.AccountId) ||
-                (delivery.ConversionDataSourceId is not null && delivery.ConversionDataSourceId != connection.ConversionDataSourceId))
+            if (!MatchesCurrentDestination(delivery, connection))
             {
                 delivery.Status = "blocked_destination_changed";
                 delivery.ErrorCode = "destination_binding_changed";
@@ -463,21 +457,27 @@ public sealed class OpenAiConversionDispatcherHostedService(
         }
     }
 
-    private static async Task<MarketingDestinationDelivery?> FindHistoricalReceiptAsync(MasterAppDbContext db,
+    internal static bool MatchesCurrentDestination(MarketingDestinationDelivery receipt, OpenAiAdsConnectionSnapshot connection) =>
+        connection.Connected && receipt.OwnerKey == connection.Owner.Key && receipt.Provider == MarketingDestinationKeys.OpenAi &&
+        !string.IsNullOrWhiteSpace(connection.PixelId) && !string.IsNullOrWhiteSpace(connection.AccountId) &&
+        !string.IsNullOrWhiteSpace(connection.ConversionDataSourceId) &&
+        receipt.PixelId == connection.PixelId && receipt.AdvertiserAccountId == connection.AccountId &&
+        receipt.ConversionDataSourceId == connection.ConversionDataSourceId;
+
+    internal static async Task<MarketingDestinationDelivery?> FindHistoricalReceiptAsync(MasterAppDbContext db,
         MarketingOwnerScope owner, AnalyticsEvent source, string providerEventName, CancellationToken ct)
     {
-        var receipts = await db.MarketingDestinationDeliveries.Where(x => x.OwnerKey == owner.Key &&
+        var receipts = await db.MarketingDestinationDeliveries.AsNoTracking().Where(x => x.OwnerKey == owner.Key &&
             x.Provider == MarketingDestinationKeys.OpenAi && x.Channel == "server" && x.CanonicalSource == nameof(MetaSignalEvent) &&
-            x.AnalyticsEventId == null && x.ProviderEventName == providerEventName).ToListAsync(ct);
-        if (receipts.Count == 0) return null;
-        var ids = receipts.Select(x => x.CanonicalEventId).ToArray();
+            x.ProviderEventName == providerEventName).ToListAsync(ct);
+        var linked = receipts.FirstOrDefault(x => x.AnalyticsEventId == source.Id);
+        if (linked is not null) return linked;
+        var ids = receipts.Where(x => x.AnalyticsEventId == null).Select(x => x.CanonicalEventId).ToArray();
+        if (ids.Length == 0) return null;
         var historical = await db.MetaSignalEvents.AsNoTracking().Where(x => ids.Contains(x.EventId) &&
             x.CommerceBusinessId == source.CommerceBusinessId && x.AgentTrackingProfileId == source.AgentTrackingProfileId).ToListAsync(ct);
-        var row = historical.SingleOrDefault(x => CanonicalAdvertisingEventProjection.ReadInt64(x.MetadataJson, "sourceAnalyticsEventId") == source.Id);
-        if (row is null) return null;
-        var receipt = receipts.Single(x => x.CanonicalEventId == row.EventId);
-        receipt.MetaSignalEventId = row.Id;
-        return receipt;
+        var match = historical.FirstOrDefault(x => CanonicalAdvertisingEventProjection.ReadInt64(x.MetadataJson, "sourceAnalyticsEventId") == source.Id);
+        return match is null ? null : receipts.First(x => x.CanonicalEventId == match.EventId);
     }
 
     private static TimeSpan RetryDelay(int attempts) => attempts switch
@@ -503,9 +503,11 @@ public sealed class OpenAiMeasurementHealthService(
     public async Task<OpenAiMeasurementHealthSnapshot> GetAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default)
     {
         var connection = await connections.GetAsync(owner, cancellationToken);
-        var rows = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
-            .Where(row => row.OwnerKey == owner.Key && row.Provider == MarketingDestinationKeys.OpenAi)
+        var from = DateTime.UtcNow.AddDays(-30);
+        var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
+            .Where(row => row.OwnerKey == owner.Key && row.Provider == MarketingDestinationKeys.OpenAi && row.CreatedUtc >= from)
             .ToListAsync(cancellationToken);
+        var rows = receipts.Where(row => OpenAiConversionDispatcherHostedService.MatchesCurrentDestination(row, connection)).ToArray();
 
         var providerAvailable = false;
         var recentProviderEvents = 0;
@@ -531,6 +533,7 @@ public sealed class OpenAiMeasurementHealthService(
                     }
                 }
                 catch (HttpRequestException) { }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
                 catch (JsonException) { }
             }
         }
@@ -542,7 +545,8 @@ public sealed class OpenAiMeasurementHealthService(
             : rows.Any(x => x.Status.StartsWith("blocked_", StringComparison.Ordinal)) ? "delivery_blocked"
             : rows.Any(x => x.Status == "permanent_failure") ? "delivery_failures"
             : rows.Any(x => x.Status == "retryable") ? "retrying"
-            : "ready";
+            : rows.Any(x => x.Status == "sent" && x.LastHttpStatusCode >= 200 && x.LastHttpStatusCode < 300) ? "provider_accepted"
+            : "configured_no_delivery_evidence";
 
         return new(
             owner,

@@ -49,12 +49,17 @@
     window.location.hostname === '127.0.0.1' ||
     new URLSearchParams(window.location.search).has('trackingDebug');
 
+  // Resolved public ownership is emitted by the server, independently of providers.
+  // Missing scope gets an isolated document session and never inherits stored campaigns.
+  const ATTRIBUTION_SCOPE = typeof ANALYTICS_CONFIG.attributionScope === 'string'
+    ? ANALYTICS_CONFIG.attributionScope.trim() : '';
+  const storageScope = encodeURIComponent(ATTRIBUTION_SCOPE || `unresolved:${uuid()}`);
   const STORAGE_VISITOR = 'legend_visitor_id';
-  const STORAGE_SESSION = 'legend_session_id';
-  const STORAGE_SESSION_TS = 'legend_session_ts';
-  const STORAGE_ATTR_SESSION = 'legend_attr_session';
-  const STORAGE_ATTR_FIRST_TOUCH = 'legend_attr_first_touch';
-  const STORAGE_EVENT_QUEUE = 'legend_tracking_event_queue_v1';
+  const STORAGE_SESSION = `legend_session_id:${storageScope}`;
+  const STORAGE_SESSION_TS = `legend_session_ts:${storageScope}`;
+  const STORAGE_ATTR_SESSION = `legend_attr_session:${storageScope}`;
+  const STORAGE_ATTR_FIRST_TOUCH = `legend_attr_first_touch:${storageScope}`;
+  const STORAGE_EVENT_QUEUE = `legend_tracking_event_queue_v1:${storageScope}`;
   const SESSION_TIMEOUT_MIN = 30;
   const DEBOUNCE_MS = 2000;
   const TRACKING_MAX_RETRIES = 3;
@@ -370,7 +375,9 @@
     try {
       const raw = storage.getItem(key);
       if (!raw) return null;
-      return normalizeAttribution(JSON.parse(raw));
+      const value = JSON.parse(raw);
+      if (key === STORAGE_ATTR_SESSION && value.sessionId !== safeStorageGet(localStorage, STORAGE_SESSION)) return null;
+      return normalizeAttribution(value);
     } catch {
       return null;
     }
@@ -378,7 +385,9 @@
 
   function writeAttributionToStorage(storage, key, attribution) {
     try {
-      storage.setItem(key, JSON.stringify(normalizeAttribution(attribution)));
+      const value = normalizeAttribution(attribution);
+      if (key === STORAGE_ATTR_SESSION) value.sessionId = safeStorageGet(localStorage, STORAGE_SESSION);
+      storage.setItem(key, JSON.stringify(value));
     } catch { /* ignore */ }
   }
 
@@ -391,10 +400,8 @@
 
   function rememberAttribution(attribution) {
     if (!hasAttribution(attribution)) return;
-    const existingSession = getStoredAttribution(STORAGE_ATTR_SESSION);
     const existingFirstTouch = getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH);
-    const lockedOppref = existingSession?.oppref || existingFirstTouch?.oppref || attribution.oppref || null;
-    const sessionValue = normalizeAttribution({ ...attribution, oppref: lockedOppref });
+    const sessionValue = normalizeAttribution(attribution);
     writeAttributionToStorage(sessionStorage, STORAGE_ATTR_SESSION, sessionValue);
     writeAttributionToStorage(localStorage, STORAGE_ATTR_SESSION, sessionValue);
 
@@ -422,6 +429,7 @@
   }
 
   const queryAttribution = readAttributionFromQuery();
+  getSessionId(); // Expire the prior session before recording this landing campaign.
   rememberAttribution(queryAttribution);
 
   function resolveCurrentSessionAttribution(payload, sessionId) {
@@ -440,19 +448,12 @@
     });
 
     const sessionAttribution = getStoredAttribution(STORAGE_ATTR_SESSION);
-    const currentAttribution = normalizeAttribution({
-      utmSource: payloadAttribution.utmSource || queryAttribution.utmSource || sessionAttribution?.utmSource,
-      utmMedium: payloadAttribution.utmMedium || queryAttribution.utmMedium || sessionAttribution?.utmMedium,
-      utmCampaign: payloadAttribution.utmCampaign || queryAttribution.utmCampaign || sessionAttribution?.utmCampaign,
-      utmId: payloadAttribution.utmId || queryAttribution.utmId || sessionAttribution?.utmId,
-      utmTerm: payloadAttribution.utmTerm || queryAttribution.utmTerm || sessionAttribution?.utmTerm,
-      utmContent: payloadAttribution.utmContent || queryAttribution.utmContent || sessionAttribution?.utmContent,
-      fbclid: payloadAttribution.fbclid || queryAttribution.fbclid || sessionAttribution?.fbclid,
-      oppref: sessionAttribution?.oppref || getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH)?.oppref || queryAttribution.oppref || payloadAttribution.oppref,
-      metaCampaignId: payloadAttribution.metaCampaignId || queryAttribution.metaCampaignId || sessionAttribution?.metaCampaignId,
-      metaAdSetId: payloadAttribution.metaAdSetId || queryAttribution.metaAdSetId || sessionAttribution?.metaAdSetId,
-      metaAdId: payloadAttribution.metaAdId || queryAttribution.metaAdId || sessionAttribution?.metaAdId
-    });
+    // A new landing campaign replaces the previous campaign as one unit. Never
+    // combine identifiers from different ads or resurrect first-touch as current.
+    const currentAttribution = normalizeAttribution(
+      hasAttribution(queryAttribution) ? queryAttribution :
+      hasAttribution(payloadAttribution) ? payloadAttribution : sessionAttribution);
+
 
     if (hasAttribution(currentAttribution)) {
       rememberAttribution(currentAttribution);
@@ -644,6 +645,7 @@
       TrackingVersion: payload.TrackingVersion || payload.trackingVersion || TRACKING_RUNTIME_VERSION,
       SiteKey: payload.SiteKey || ANALYTICS_CONFIG.siteKey || null,
       WebsiteBindingId: payload.WebsiteBindingId || null,
+      ActionKey: payload.ActionKey || null,
       ClientEventId: canonicalEventId(payload.ClientEventId),
       MetaSignal: payload.MetaSignal || null,
       EventType: payload.EventType,
@@ -1813,6 +1815,8 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
   function wireClick(selector, elementKey, eventType) {
     document.querySelectorAll(selector).forEach(el => {
+      el._legendLegacyClickWired = true;
+      startupCleanup.push(() => { delete el._legendLegacyClickWired; });
       listen(el, 'click', () => {
         if (el instanceof HTMLElement) {
           const existingLock = Number(el.dataset.analyticsClickLockedUntil || '0');
@@ -1842,17 +1846,13 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
         sendEvent({
           EventType: eventType,
-          ElementKey: elementKey,
+          ElementKey: el.dataset.cmsId || el.id || elementKey,
+          ActionKey: el.dataset.websiteActionKey || null,
+          WebsiteBindingId: el.dataset.websiteBindingId || el.dataset.cmsId || elementKey,
           ButtonLabel: el.textContent?.trim() || null
         });
 
-        if (PAGE_CATEGORY === 'quote' && allowedEvents.has('quote_cta_click')) {
-          sendEvent({
-            EventType: 'quote_cta_click',
-            ElementKey: elementKey,
-            ButtonLabel: el.textContent?.trim() || null
-          });
-        }
+
       });
     });
   }
@@ -1878,15 +1878,31 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       if (!target || target.closest?.('.legend-cms-editor')) return;
       // Protect's original template CTAs retain their existing explicit data-cta
       // wiring. Managed editor-created actions use this central contract.
-      if (target.hasAttribute?.('data-cta') && !target.classList?.contains('cms-extra')) return;
+      if (target._legendLegacyClickWired) return;
       const actionKey = target.dataset.websiteActionKey || '';
       const eventType = target.dataset.websiteAnalyticsEvent || 'cta_click';
       if (!actionKey || !allowedEvents.has(eventType)) return;
       try { sessionStorage.setItem('legend_last_website_action_key', actionKey); } catch {}
       window.LEGEND_LAST_WEBSITE_ACTION_KEY = actionKey;
+      const runtimeAction = target.dataset.websiteRuntimeAction;
+      if (runtimeAction === 'add_current_product') {
+        const productAction = document.querySelector('#spAddToCart[data-product-id]');
+        if (!productAction || productAction === target || productAction.disabled) return;
+        event.preventDefault();
+        productAction.click();
+      }
+      if (runtimeAction === 'focus_form' || runtimeAction === 'submit_form') {
+        const form = target.closest('form[data-form-key]') || document.querySelector('form[data-form-key]');
+        if (!form) return;
+        event.preventDefault();
+        if (runtimeAction === 'focus_form') form.querySelector('input:not([type="hidden"]),select,textarea')?.focus();
+        else form.requestSubmit?.();
+      }
+
       sendEvent({
         EventType: eventType,
-        ElementKey: actionKey,
+        ElementKey: target.dataset.cmsId || target.id || actionKey,
+        ActionKey: actionKey,
         WebsiteBindingId: target.dataset.websiteBindingId || actionKey,
         ButtonLabel: target.textContent?.trim() || null,
         MetadataJson: JSON.stringify({
@@ -1910,9 +1926,18 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     form._legendTrackingBound = true;
     const state = ensureFormTrackState(formKey);
     syncFormAttribution(form);
+    const focusedFields = new Set();
     const handler = event => {
       state.lastFocusedField = event.target?.name || null;
       fireTrackedFormStartOnce(formKey);
+      const field = event.target;
+      const fieldName = field?.name || field?.id;
+      if (fieldName && !focusedFields.has(fieldName) && field.type !== 'hidden' &&
+          ['INPUT','SELECT','TEXTAREA'].includes(field.tagName)) {
+        focusedFields.add(fieldName);
+        sendEvent({EventType:'form_field_focus', FormKey:formKey, FieldName:fieldName,
+          ElementKey:field.dataset.cmsId || field.id || fieldName});
+      }
     };
     listen(form, 'focusin', handler);
     listen(form, 'change', handler);
@@ -2048,6 +2073,22 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   // Page scripts should use this boundary instead of calling internal tracking helpers directly.
   window.LegendAnalytics = {
     ...(window.LegendAnalytics || {}),
+    async trackBinding(binding, metadata = {}) {
+      if (!binding?.id || binding.deliveryMode === 'off' || !allowedEvents.has(binding.eventName)) return false;
+      const key = `canonical-binding-event:${getSessionId()}:${binding.id}`;
+      let receipt = null;
+      try { receipt = JSON.parse(safeStorageGet(window.sessionStorage, key) || 'null'); } catch {}
+      if (binding.oncePerSession && receipt?.accepted) return true;
+      const id = binding.oncePerSession && receipt?.id ? receipt.id : uuid();
+      if (binding.oncePerSession) safeStorageSet(window.sessionStorage, key, JSON.stringify({id,accepted:false}));
+      const accepted = await sendEvent({EventType:binding.eventName, ActionKey:binding.actionKey,
+        ClientEventId:id, WebsiteBindingId:binding.id, ElementKey:metadata.elementId,
+        MetadataJson:JSON.stringify({...metadata, configuredWebsiteSignal:true,
+          configuredDeliveryMode:binding.deliveryMode === 'meta' ? 'destinations' : binding.deliveryMode,
+          configuredSignalBindings:[{...binding,elementId:metadata.elementId}]})});
+      if (binding.oncePerSession && accepted) safeStorageSet(window.sessionStorage, key, JSON.stringify({id,accepted:true}));
+      return accepted;
+    },
     subscribe: subscribeCanonical,
     registerBinding(node, binding, elementId) {
       canonicalBindings.set(binding.id, {node, binding, elementId});
@@ -2110,6 +2151,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       utmTerm: attribution.utmTerm || null,
       utmContent: attribution.utmContent || null,
       fbclid: attribution.fbclid || null,
+      oppref: attribution.oppref || null,
       metaCampaignId: attribution.metaCampaignId || null,
       metaAdSetId: attribution.metaAdSetId || null,
       metaAdId: attribution.metaAdId || null

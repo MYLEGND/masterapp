@@ -2,6 +2,7 @@ using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Shared.Analytics;
 
 namespace Infrastructure.Analytics;
@@ -16,7 +17,8 @@ public sealed class OpenAiAdsOnboardingService(
     IOpenAiAdsAccountConnectionAuthority connections,
     IOpenAiMeasurementHealthService measurementHealth,
     IOpenAiAdsExecutionService ads,
-    IBusinessPublicUrlResolver businessUrls) : IOpenAiAdsOnboardingService
+    IBusinessPublicUrlResolver businessUrls,
+    IConfiguration configuration) : IOpenAiAdsOnboardingService
 {
     public async Task<OpenAiAdsOnboardingSnapshot> GetAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
@@ -76,7 +78,7 @@ public sealed class OpenAiAdsOnboardingService(
         var complete = steps.Count(x => x.Complete);
         var ready = complete == steps.Count &&
                     connection.AccountApproved &&
-                    string.Equals(health.Status, "ready", StringComparison.OrdinalIgnoreCase);
+                    (health.Status is "configured_no_delivery_evidence" or "provider_accepted");
         var overall = ready ? "ready_to_advertise"
             : connection.Connected ? "setup_incomplete"
             : "not_connected";
@@ -99,8 +101,12 @@ public sealed class OpenAiAdsOnboardingService(
             }
         }
 
-        return await db.Set<WebsiteContentState>().AsNoTracking()
-            .AnyAsync(x => x.OwnerKey == owner.Key && x.PublishedVersionId != null, ct);
+        var states = await db.Set<WebsiteContentState>().AsNoTracking().Where(x => x.PublishedVersionId != null).ToListAsync(ct);
+        foreach (var state in states)
+            if (await db.Set<WebsiteContentVersion>().AsNoTracking().AnyAsync(v => v.Id == state.PublishedVersionId && v.StateId == state.Id, ct) &&
+                await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, state, ct) == owner)
+                return true;
+        return false;
     }
 
     private static OpenAiAdsReadinessStep Step(string key, string label, bool complete, string status, string detail) =>

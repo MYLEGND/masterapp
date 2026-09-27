@@ -23,39 +23,21 @@ public sealed class BlendedGrowthEconomicsService(
     {
         var unified = await performance.GetAsync(owner, analyticsScope, range, ct);
         var events = await analytics.LoadAttributedEventsAsync(range, analyticsScope, TrafficType.All, ct);
-        var signals = await analytics.LoadScopedMetaEventsAsync(range, analyticsScope, events, ct);
-
-        var sessionChannels = events
-            .Where(x => !string.IsNullOrWhiteSpace(x.SessionId))
-            .GroupBy(x => x.SessionId!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                g => g.Key,
-                g => PickChannel(g.Select(CanonicalMarketingOutcomeProjection.ChannelFor)),
-                StringComparer.OrdinalIgnoreCase);
-
-        var visitorChannels = events
-            .Where(x => !string.IsNullOrWhiteSpace(x.VisitorId))
-            .GroupBy(x => x.VisitorId!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                g => g.Key,
-                g => PickChannel(g.Select(CanonicalMarketingOutcomeProjection.ChannelFor)),
-                StringComparer.OrdinalIgnoreCase);
-
-        var outcomeGroups = signals
+        var outcomeGroups = CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(events)
             .Select(x => new
             {
                 Row = x,
-                Channel = CanonicalMarketingOutcomeProjection.ChannelFor(x, sessionChannels, visitorChannels)
+                Channel = CanonicalMarketingOutcomeProjection.ChannelFor(x)
             })
             .GroupBy(x => x.Channel, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
                 g => new
                 {
-                    Customers = g.LongCount(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.Row.EventName)),
-                    Revenue = g.Where(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.Row.EventName))
+                    Customers = g.LongCount(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.Row.EventType)),
+                    Revenue = g.Where(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.Row.EventType))
                         .Sum(x => CanonicalMarketingOutcomeProjection.ReadMoney(x.Row.MetadataJson)),
-                    Pipeline = g.Where(x => CanonicalMarketingOutcomeProjection.IsPipeline(x.Row.EventName))
+                    Pipeline = g.Where(x => CanonicalMarketingOutcomeProjection.IsPipeline(x.Row.EventType))
                         .Sum(x => CanonicalMarketingOutcomeProjection.ReadMoney(x.Row.MetadataJson))
                 },
                 StringComparer.OrdinalIgnoreCase);
@@ -119,14 +101,4 @@ public sealed class BlendedGrowthEconomicsService(
             notes);
     }
 
-    private static string PickChannel(IEnumerable<string> channels)
-    {
-        var values = channels.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (values.Contains(MarketingChannels.ChatGptAds, StringComparer.OrdinalIgnoreCase)) return MarketingChannels.ChatGptAds;
-        if (values.Contains(MarketingChannels.MetaAds, StringComparer.OrdinalIgnoreCase)) return MarketingChannels.MetaAds;
-        if (values.Contains(MarketingChannels.Organic, StringComparer.OrdinalIgnoreCase)) return MarketingChannels.Organic;
-        if (values.Contains(MarketingChannels.Referral, StringComparer.OrdinalIgnoreCase)) return MarketingChannels.Referral;
-        if (values.Contains(MarketingChannels.Direct, StringComparer.OrdinalIgnoreCase)) return MarketingChannels.Direct;
-        return MarketingChannels.Unknown;
-    }
 }

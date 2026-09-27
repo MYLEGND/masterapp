@@ -15,9 +15,7 @@ public static class CanonicalAdvertisingEventProjection
 {
     public static string? ResolveEventName(AnalyticsEvent source)
     {
-        if (MarketingConversionDestinationCatalog.TryGet(source.EventType, out var conversion)) return conversion.CanonicalEventName;
-        if (AnalyticsEventCatalog.TryGet(source.EventType, out var definition) && definition.AllowServer && definition.CountsAsConfirmedLead) return "Lead";
-        return MetaSignalAnalyticsAliasCatalog.ResolveSignalName(source.EventType);
+        return AnalyticsEventCatalog.ResolveConversionEventName(source.EventType);
     }
 
     public static bool CanProjectServer(AnalyticsEvent source)
@@ -51,6 +49,46 @@ public static class CanonicalAdvertisingEventProjection
         if (businessId is not Guid business || business == Guid.Empty) return eventId;
         var prefix = $"business:{business:N}:";
         return eventId.StartsWith(prefix, StringComparison.Ordinal) ? eventId : prefix + eventId;
+    }
+
+    /// <summary>Reporting scope adapter; Global/team is never a provider owner.</summary>
+    public static async Task<MarketingOwnerScope?> ResolveOwnerAsync(MasterAppDbContext db, IConfiguration configuration,
+        ScopeContext scope, CancellationToken ct = default)
+    {
+        if (scope.ScopeType == ScopeType.Business && !scope.AgentTrackingProfileId.HasValue && !scope.HasSiteScope)
+            return await ResolveOwnerIdentityAsync(db, configuration, true, scope.CommerceBusinessId, null, null, null, null, null, ct);
+        if (scope.ScopeType is not (ScopeType.Agent or ScopeType.Founder) || scope.CommerceBusinessId.HasValue ||
+            scope.AgentTrackingProfileId is not { } profileId || profileId == Guid.Empty) return null;
+        var owner = await ResolveOwnerIdentityAsync(db, configuration, false, null, profileId, null, null, null, null, ct);
+        return scope.ScopeType == ScopeType.Founder && owner != MarketingOwnerScope.Founder ? null : owner;
+    }
+
+    /// <summary>Adapter for a ticket already validated by WebsitePlatformController.AuthorizeAsync.</summary>
+    public static Task<MarketingOwnerScope?> ResolveOwnerAsync(MasterAppDbContext db, IConfiguration configuration,
+        WebsiteEditorTicket actor, CancellationToken ct = default) => actor.ExpiresUtc <= DateTime.UtcNow
+            ? Task.FromResult<MarketingOwnerScope?>(null)
+            : ResolveWebsiteOwnerAsync(db, configuration, actor.SiteKey, actor.OwnerUserId, actor.CommerceBusinessId, actor.AgentSlug, actor.IsFounder, ct);
+
+    /// <summary>Published-state identity uses the same website owner projection as authorized editor tickets.</summary>
+    public static Task<MarketingOwnerScope?> ResolveOwnerAsync(MasterAppDbContext db, IConfiguration configuration,
+        WebsiteContentState state, CancellationToken ct = default) => ResolveWebsiteOwnerAsync(db, configuration,
+            state.SiteKey, state.OwnerKey, state.SiteKey == WebsiteEditorSiteKeys.Business ? state.CommerceBusinessId : null,
+            null, state.SiteKey == WebsiteEditorSiteKeys.Legend && state.OwnerKey == WebsiteEditorSiteKeys.GlobalOwnerKey, ct);
+
+    private static async Task<MarketingOwnerScope?> ResolveWebsiteOwnerAsync(MasterAppDbContext db, IConfiguration configuration,
+        string siteKey, string ownerKey, Guid? businessId, string? agentSlug, bool founderAuthorized, CancellationToken ct)
+    {
+        if (siteKey == WebsiteEditorSiteKeys.Legend)
+            return founderAuthorized && ownerKey == WebsiteEditorSiteKeys.GlobalOwnerKey && businessId is null
+                ? MarketingOwnerScope.Founder : null;
+        if (siteKey == WebsiteEditorSiteKeys.Business)
+            return businessId is { } business && ownerKey == WebsiteEditorSiteKeys.BusinessOwnerKey(business) && string.IsNullOrWhiteSpace(agentSlug)
+                ? await ResolveOwnerIdentityAsync(db, configuration, true, business, null, null, null, null, null, ct) : null;
+        if (siteKey != WebsiteEditorSiteKeys.Protect || businessId.HasValue) return null;
+        var profile = await db.AgentTrackingProfiles.AsNoTracking()
+            .Where(p => p.AgentUserId == ownerKey && (agentSlug == null || p.Slug == agentSlug))
+            .OrderByDescending(p => p.UpdatedUtc).FirstOrDefaultAsync(ct);
+        return profile is null ? null : await ResolveOwnerAsync(db, configuration, profile, ct);
     }
 
     public static Task<MarketingOwnerScope?> ResolveOwnerAsync(MasterAppDbContext db, IConfiguration configuration,

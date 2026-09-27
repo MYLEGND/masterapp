@@ -46,6 +46,8 @@
     var analyticsBrowserConfigJson = JsonSerializer.Serialize(new
     {
         siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect,
+        attributionScope = ViewData["AnalyticsAttributionScope"]?.ToString(),
+        metaTestMode = ViewData["MetaTestMode"] is true,
         allowedBrowserEvents = AnalyticsEventCatalog.BrowserAllowedEventNames,
         signalAliases = MetaSignalAnalyticsAliasCatalog.BrowserProjectionMap,
         criticalBrowserEvents = AnalyticsEventCatalog.CriticalBrowserEventNames,
@@ -159,10 +161,10 @@
         {
             <button class="nav-toggle" type="button" data-public-nav-toggle aria-controls="primary-nav" aria-expanded="false">Menu</button>
             <nav id="primary-nav" class="nav" data-public-nav data-open="false" aria-label="Primary navigation">
-                <a asp-controller="Home" asp-action="Index" data-cta="nav_home">Home</a>
-                <a asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment">Risk Assessment</a>
-                <a asp-controller="Quote" asp-action="Index" data-cta="nav_quote">Coverage</a>
-                <a asp-controller="Contact" asp-action="Index" data-cta="nav_contact">Contact</a>
+                <a asp-controller="Home" asp-action="Index" data-cta="nav_home" data-website-action-key="protect_home" data-website-analytics-event="cta_click">Home</a>
+                <a asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment" data-website-action-key="protect_risk_assessment" data-website-analytics-event="risk_assessment_click">Risk Assessment</a>
+                <a asp-controller="Quote" asp-action="Index" data-cta="nav_quote" data-website-action-key="protect_quote" data-website-analytics-event="quote_click">Coverage</a>
+                <a asp-controller="Contact" asp-action="Index" data-cta="nav_contact" data-website-action-key="protect_contact" data-website-analytics-event="cta_click">Contact</a>
                 <a href="@clientLoginUrl" class="nav-cta" data-cta="nav_client_login">Client Login</a>
             </nav>
         }

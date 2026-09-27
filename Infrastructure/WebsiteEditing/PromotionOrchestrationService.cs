@@ -540,8 +540,7 @@ public sealed class PromotionOrchestrationService(
         ?? throw new InvalidOperationException("The business is not active.");
 
     private static WebsiteContentDocument ReadDocument(string json) =>
-        WebsiteContentSanitizer.Sanitize(
-            JsonSerializer.Deserialize<WebsiteContentDocument>(json, JsonOptions) ?? new());
+        WebsiteContentSanitizer.ReadPersisted(json, JsonOptions);
 
     private static string NormalizePagePath(string? value)
     {

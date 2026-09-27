@@ -63,6 +63,15 @@ namespace AgentPortal.Controllers;
             _metaCapiCredentialProtector = metaCapiCredentialProtector;
         }
 
+    [HttpGet("event-map")]
+    public async Task<IActionResult> EventMap([FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var entries = await new Infrastructure.WebsiteEditing.WebsiteEventMapQuery(_db, _config).ReadAsync(scope, cancellationToken);
+        return View("EventMap", entries);
+    }
+
     [HttpGet("")]
     [HttpGet("Index")]
     public async Task<IActionResult> Index([FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] string? preset = null, [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null, [FromQuery] TrafficQualityMode? qualityMode = null)
@@ -174,49 +183,31 @@ namespace AgentPortal.Controllers;
         if (tracking is null) return Forbid();
 
         var profile = await ResolveMarketingSetupAgentProfileAsync(tracking, createIfMissing: false, cancellationToken);
-        var owner = ResolveOpenAiMarketingOwner(tracking);
+        var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
         var marketing = await GetMarketingSettingsAsync(tracking, owner, cancellationToken);
-        var metaConnection = await MarketingConnections.GetAdsAsync(owner, cancellationToken);
-        var adsConnected = metaConnection is not null;
-        var secureCapi = adsConnected;
+        var setup = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingProviderSetupProjection>()
+            .ReadAsync(owner, cancellationToken);
+        var adsConnected = setup.Meta.Connected;
+        var secureCapi = setup.Meta.CapiConfigured;
+        var evidence = setup.Evidence;
         var bookingLive = profile?.BookingEnabled == true &&
-            (!string.IsNullOrWhiteSpace(profile.MicrosoftBookingsEmbedUrl) ||
-             !string.IsNullOrWhiteSpace(profile.FallbackBookingUrl));
-
-        // ChatGPT Ads is projected from the exact Step 1-4 authorities. This surface
-        // owns no OpenAI settings, credentials, delivery ledger, or attribution state.
-        var openAiOwner = ResolveOpenAiMarketingOwner(tracking);
-        var openAiConnections = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
-        var openAiHealthService = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiMeasurementHealthService>();
-        var openAiConnection = await openAiConnections.GetAsync(openAiOwner, cancellationToken);
-        var openAiHealth = await openAiHealthService.GetAsync(openAiOwner, cancellationToken);
-        var openAiDirect = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
-        Infrastructure.Analytics.OpenAiAdsProviderAccountSnapshot? openAiProvider = null;
-        Infrastructure.Analytics.OpenAiAdsMeasurementCapabilitySnapshot? openAiMeasurement = null;
-        string? openAiProviderError = null;
-        if (openAiConnection.Connected)
-        {
-            try
-            {
-                openAiProvider = await openAiDirect.InspectAsync(openAiOwner, cancellationToken);
-                openAiMeasurement = await openAiDirect.InspectMeasurementAsync(openAiOwner, cancellationToken);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
-            {
-                openAiProviderError = "Provider status could not be refreshed.";
-            }
-        }
-        var opprefLineage = await LoadOpprefLineageVisibilityAsync(tracking, cancellationToken);
+            (!string.IsNullOrWhiteSpace(profile.MicrosoftBookingsEmbedUrl) || !string.IsNullOrWhiteSpace(profile.FallbackBookingUrl));
+        var openAiConnection = setup.Connection;
+        var openAiHealth = setup.Health;
+        var openAiProvider = setup.Account;
+        var openAiMeasurement = setup.Capability;
+        var openAiProviderError = setup.OpenAiError;
         var openAiAccountReady =
             string.Equals(openAiProvider?.Status, "active", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(openAiProvider?.ReviewStatus, Shared.Analytics.OpenAiAdsReviewStatuses.Approved, StringComparison.Ordinal) &&
             openAiConnection.PixelConfigured &&
-            openAiConnection.ConversionsApiConfigured &&
-            openAiHealth.Status == "ready";
+            openAiConnection.ConversionsApiConfigured && !string.IsNullOrWhiteSpace(openAiConnection.ConversionDataSourceId);
 
         return Json(new
         {
             source = "canonical_marketing_setup",
+            evidence,
+            evidenceError = setup.EvidenceError,
             agentProfileId = tracking.Id,
             agentName = tracking.DisplayName ?? tracking.AgentUpn ?? tracking.Slug,
             status = new
@@ -234,7 +225,9 @@ namespace AgentPortal.Controllers;
                 metaTestEventCode = marketing.TestEventCode,
                 metaTestEventsConfigured = !string.IsNullOrWhiteSpace(marketing.TestEventCode),
                 metaAdsConnected = adsConnected,
-                metaAccount = adsConnected ? metaConnection!.AccountName ?? metaConnection.AccountId ?? "Meta Ads" : null,
+                metaAccount = adsConnected ? setup.Meta.AccountName ?? setup.Meta.AccountId ?? "Meta Ads" : null,
+                available = setup.Meta.Available,
+                error = setup.Meta.Error,
                 metaCapiConfiguredSecurely = secureCapi,
                 metaCapiManagedAutomatically = true
             },
@@ -280,7 +273,6 @@ namespace AgentPortal.Controllers;
                     recentProviderEvents = openAiHealth.RecentProviderEvents
                 }
             },
-            attribution = opprefLineage,
             booking = new
             {
                 enabled = profile?.BookingEnabled == true,
@@ -344,7 +336,7 @@ namespace AgentPortal.Controllers;
             // through the same scoped DbContext SaveChanges transaction. No CAPI secret
             // is accepted here; OAuth-owned Meta Ads credentials remain the only active
             // secure CAPI authority.
-            var owner = ResolveOpenAiMarketingOwner(tracking);
+            var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
             if (owner == Shared.Analytics.MarketingOwnerScope.Founder)
                 await MarketingConnections.SaveSettingsAsync(owner, pixel, testEventCode, null, request.MarketingRevision, cancellationToken);
             else
@@ -371,7 +363,7 @@ namespace AgentPortal.Controllers;
         try
         {
             await connector.ConnectAsync(
-                ResolveOpenAiMarketingOwner(tracking),
+                await ResolveMarketingOwnerAsync(tracking, cancellationToken),
                 request.AdvertiserApiKey,
                 request.ExpectedRevision,
                 cancellationToken);
@@ -397,7 +389,7 @@ namespace AgentPortal.Controllers;
             return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads returned an invalid verification response." });
         }
 
-        return await MarketingSetup(tracking.Id, cancellationToken);
+        return await MarketingCommandReceiptAsync(tracking.Id, cancellationToken);
     }
 
     public sealed record OpenAiRefreshRequest(Guid? AgentProfileId, Guid ConnectionRevision);
@@ -414,7 +406,7 @@ namespace AgentPortal.Controllers;
         try
         {
             refresh = await connector.RefreshAsync(
-                ResolveOpenAiMarketingOwner(tracking),
+                await ResolveMarketingOwnerAsync(tracking, cancellationToken),
                 request.ConnectionRevision,
                 cancellationToken);
         }
@@ -435,10 +427,7 @@ namespace AgentPortal.Controllers;
             return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads returned an invalid refresh response." });
         }
 
-        var setupResult = await MarketingSetup(tracking.Id, cancellationToken);
-        if (setupResult is JsonResult setupJson)
-            return Json(new { setup = setupJson.Value, pixelProvisioning = refresh.PixelProvisioning });
-        return setupResult;
+        return await MarketingCommandReceiptAsync(tracking.Id, cancellationToken, refresh.PixelProvisioning);
     }
 
     public sealed record OpenAiDisconnectRequest(Guid? AgentProfileId, Guid ConnectionRevision);
@@ -453,66 +442,37 @@ namespace AgentPortal.Controllers;
         var authority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
         try
         {
-            await authority.DisconnectAsync(ResolveOpenAiMarketingOwner(tracking), request.ConnectionRevision, cancellationToken);
+            await authority.DisconnectAsync(await ResolveMarketingOwnerAsync(tracking, cancellationToken), request.ConnectionRevision, cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
             return Conflict(new { message = "ChatGPT Ads connection changed. Reload Marketing Setup and try again." });
         }
 
-        return await MarketingSetup(tracking.Id, cancellationToken);
+        return await MarketingCommandReceiptAsync(tracking.Id, cancellationToken);
     }
 
-    private Shared.Analytics.MarketingOwnerScope ResolveOpenAiMarketingOwner(AgentTrackingProfile tracking) =>
-        FounderGuard.IsFounder(User) && string.Equals(tracking.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase)
-            ? Shared.Analytics.MarketingOwnerScope.Founder
-            : Shared.Analytics.MarketingOwnerScope.Agent(tracking.Id);
-
-    private async Task<object> LoadOpprefLineageVisibilityAsync(AgentTrackingProfile tracking, CancellationToken cancellationToken)
+    private async Task<IActionResult> MarketingCommandReceiptAsync(Guid profileId, CancellationToken cancellationToken, object? pixelProvisioning = null)
     {
-        var analytics = await _db.AnalyticsEvents.AsNoTracking()
-            .CountAsync(x => x.AgentTrackingProfileId == tracking.Id && x.Oppref != null && x.Oppref != "", cancellationToken);
-        var leads = await _db.WebsiteLeads.AsNoTracking()
-            .CountAsync(x => x.AgentTrackingProfileId == tracking.Id && x.Oppref != null && x.Oppref != "", cancellationToken);
-
-        var agentUserId = tracking.AgentUserId ?? string.Empty;
-        var crmLeadIds = _db.WebsiteLeadIntakeLinks.AsNoTracking()
-            .Where(x => x.AgentUserId == agentUserId && x.Oppref != null && x.Oppref != "")
-            .Select(x => x.WorkstationLeadId);
-        var crm = await crmLeadIds.CountAsync(cancellationToken);
-        var appointments = await _db.LeadAppointments.AsNoTracking()
-            .CountAsync(x => x.WorkstationLeadId != null && crmLeadIds.Contains(x.WorkstationLeadId) && x.Oppref != null && x.Oppref != "", cancellationToken);
-
-        var commerceBusinessIds = _db.WebsiteLeads.AsNoTracking()
-            .Where(x => x.AgentTrackingProfileId == tracking.Id && x.CommerceBusinessId.HasValue)
-            .Select(x => x.CommerceBusinessId!.Value)
-            .Distinct();
-        var orders = await _db.CommerceOrders.AsNoTracking()
-            .CountAsync(x => commerceBusinessIds.Contains(x.CommerceBusinessId) && x.Oppref != null && x.Oppref != "", cancellationToken);
-
-        var productionRows = _db.ProductionRecords.AsNoTracking()
-            .Where(x => x.AgentUserId == agentUserId && x.Oppref != null && x.Oppref != "");
-        var production = await productionRows.CountAsync(cancellationToken);
-        var revenue = await productionRows
-            .Where(x => x.Status == ProductionStatus.Paid)
-            .SumAsync(x => (decimal?)x.Amount, cancellationToken) ?? 0m;
-
-        return new
+        // The mutation has committed. A read failure must not turn its receipt into a failed command.
+        try
         {
-            source = "canonical_oppref_lineage",
-            paidTrafficEvents = analytics,
-            leads,
-            crm,
-            appointments,
-            orders,
-            production,
-            paidRevenue = revenue,
-            complete = analytics > 0 && leads > 0 && crm > 0 && (appointments > 0 || orders > 0 || production > 0)
-        };
+            var refreshed = await MarketingSetup(profileId, cancellationToken);
+            return Json(new { ok = true, setup = (refreshed as JsonResult)?.Value,
+                setupStatus = refreshed is JsonResult ? "available" : "unavailable", pixelProvisioning });
+        }
+        catch (Exception)
+        { return Json(new { ok = true, setup = (object?)null, setupStatus = "unavailable", pixelProvisioning }); }
     }
+
+    private async Task<Shared.Analytics.MarketingOwnerScope> ResolveMarketingOwnerAsync(AgentTrackingProfile tracking, CancellationToken cancellationToken) =>
+        await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _config, tracking, cancellationToken)
+            ?? throw new InvalidOperationException("The selected website owner could not be resolved.");
 
     private async Task<AgentTrackingProfile?> ResolveMarketingSetupTrackingAsync(Guid? requestedAgentId, CancellationToken cancellationToken)
     {
+        // Aggregate reports are not credential owners, even if a profile is also supplied.
+        if (bool.TryParse(Request.Query["team"], out var team) && team) return null;
         if (!requestedAgentId.HasValue || requestedAgentId.Value == Guid.Empty)
             return await GetCallerProfileAsync();
 
@@ -1444,7 +1404,7 @@ namespace AgentPortal.Controllers;
     {
         var tracking = await ResolveMarketingSetupTrackingAsync(agentProfileId, cancellationToken);
         if (tracking is null) return Forbid();
-        var owner = ResolveOpenAiMarketingOwner(tracking);
+        var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
         var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
         try
         {
@@ -1605,7 +1565,7 @@ namespace AgentPortal.Controllers;
         CancellationToken cancellationToken)
     {
         var tracking = await ResolveMarketingSetupTrackingAsync(agentProfileId, cancellationToken);
-        return tracking is null ? null : ResolveOpenAiMarketingOwner(tracking);
+        return tracking is null ? null : await ResolveMarketingOwnerAsync(tracking, cancellationToken);
     }
 
     public sealed record MarketingManagerPlanHttpRequest(
@@ -1882,6 +1842,7 @@ namespace AgentPortal.Controllers;
 
     private async Task<Guid?> ResolveMetaConnectionAgentIdAsync(Guid? requestedAgentId = null, bool team = false)
     {
+        if (team) return null;
         var scope = await ResolveScopeAsync(requestedAgentId, team);
         return scope.ScopeType is (ScopeType.Agent or ScopeType.Founder) && scope.AgentTrackingProfileId != Guid.Empty
             ? scope.AgentTrackingProfileId : null;

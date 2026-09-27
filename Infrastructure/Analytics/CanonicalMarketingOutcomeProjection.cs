@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using Domain.Entities;
 using Shared.Analytics;
 
@@ -32,131 +31,31 @@ internal static class CanonicalMarketingOutcomeProjection
         };
     }
 
-    public static string ChannelFor(
-        MetaSignalEvent row,
-        IReadOnlyDictionary<string, string> sessionChannels,
-        IReadOnlyDictionary<string, string> visitorChannels)
-    {
-        if (ContainsTextProperty(row.MetadataJson, "oppref", out var oppref) &&
-            OpenAiClickReference.Normalize(oppref) is not null)
-            return MarketingChannels.ChatGptAds;
+    public static IReadOnlyList<AnalyticsEvent> ConfirmedOutcomes(IEnumerable<AnalyticsEvent> events) =>
+        events.Where(CanonicalAdvertisingEventProjection.CanProjectServer)
+            .DistinctBy(row => (row.AgentTrackingProfileId, row.CommerceBusinessId,
+                CanonicalAdvertisingEventProjection.ResolveEventId(row), CanonicalAdvertisingEventProjection.ResolveEventName(row)))
+            .ToArray();
 
-        if (!string.IsNullOrWhiteSpace(row.SessionId) &&
-            sessionChannels.TryGetValue(row.SessionId, out var bySession))
-            return bySession;
-
-        if (!string.IsNullOrWhiteSpace(row.VisitorId) &&
-            visitorChannels.TryGetValue(row.VisitorId, out var byVisitor))
-            return byVisitor;
-
-        var source = row.UtmSource?.Trim();
-        var medium = row.UtmMedium?.Trim();
-        if (source is not null &&
-            (source.Equals("meta", StringComparison.OrdinalIgnoreCase) ||
-             source.Contains("facebook", StringComparison.OrdinalIgnoreCase) ||
-             source.Contains("instagram", StringComparison.OrdinalIgnoreCase)))
-            return MarketingChannels.MetaAds;
-
-        return TrafficAttribution.Classify(source, medium, row.UtmCampaign, row.FbclidPresent ? "present" : null) switch
-        {
-            TrafficType.PaidAds => MarketingChannels.Unknown,
-            TrafficType.Organic => MarketingChannels.Organic,
-            TrafficType.Direct => MarketingChannels.Direct,
-            TrafficType.Referral => MarketingChannels.Referral,
-            _ => MarketingChannels.Unknown
-        };
-    }
+    public static string? OutcomeName(AnalyticsEvent row) => CanonicalAdvertisingEventProjection.ResolveEventName(row);
 
     public static decimal ReadMoney(string? json)
     {
-        if (string.IsNullOrWhiteSpace(json)) return 0m;
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            foreach (var key in new[] { "amount", "personalAmount", "revenue", "value", "paidPremium", "orderTotal" })
-            {
-                var value = FindNumber(doc.RootElement, key);
-                if (value.HasValue) return value.Value;
-            }
-        }
-        catch (JsonException) { }
+        foreach (var key in new[] { "valueCents", "totalCents", "revenueCents" })
+            if (decimal.TryParse(CanonicalAdvertisingEventProjection.ReadString(json, key), NumberStyles.Any, CultureInfo.InvariantCulture, out var cents))
+                return cents / 100m;
+        foreach (var key in new[] { "amount", "personalAmount", "revenue", "value", "paidPremium", "orderTotal" })
+            if (decimal.TryParse(CanonicalAdvertisingEventProjection.ReadString(json, key), NumberStyles.Any, CultureInfo.InvariantCulture, out var value))
+                return value;
         return 0m;
     }
 
     public static bool IsCustomer(string? eventName) =>
-        IsAny(eventName, "PolicyPaid", "Purchase", "OrderCreated");
+        IsAny(AnalyticsEventCatalog.ResolveConversionEventName(eventName), "PolicyPaid", "Purchase");
 
     public static bool IsPipeline(string? eventName) =>
-        IsAny(eventName, "QualifiedLead", "AppointmentBooked", "Schedule", "ApplicationSubmitted",
-            "SubmitApplication", "PolicyIssued", "CompleteRegistration");
+        IsAny(AnalyticsEventCatalog.ResolveConversionEventName(eventName), "QualifiedLead", "AppointmentBooked", "ApplicationSubmitted", "PolicyIssued");
 
     private static bool IsAny(string? value, params string[] candidates) =>
         candidates.Any(x => string.Equals(value, x, StringComparison.OrdinalIgnoreCase));
-
-    private static bool ContainsTextProperty(string? json, string name, out string? value)
-    {
-        value = null;
-        if (string.IsNullOrWhiteSpace(json)) return false;
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            value = FindText(doc.RootElement, name);
-            return !string.IsNullOrWhiteSpace(value);
-        }
-        catch (JsonException) { return false; }
-    }
-
-    private static string? FindText(JsonElement element, string name)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in element.EnumerateObject())
-            {
-                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) &&
-                    property.Value.ValueKind == JsonValueKind.String)
-                    return property.Value.GetString();
-                var nested = FindText(property.Value, name);
-                if (nested is not null) return nested;
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                var nested = FindText(item, name);
-                if (nested is not null) return nested;
-            }
-        }
-        return null;
-    }
-
-    private static decimal? FindNumber(JsonElement element, string name)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in element.EnumerateObject())
-            {
-                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetDecimal(out var number))
-                        return number;
-                    if (property.Value.ValueKind == JsonValueKind.String &&
-                        decimal.TryParse(property.Value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out number))
-                        return number;
-                }
-
-                var nested = FindNumber(property.Value, name);
-                if (nested.HasValue) return nested;
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                var nested = FindNumber(item, name);
-                if (nested.HasValue) return nested;
-            }
-        }
-        return null;
-    }
 }

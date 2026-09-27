@@ -173,7 +173,9 @@ public class AnalyticsEventCatalogTests
         }
 
         Assert.True(AnalyticsEventCatalog.TryGet(AppointmentAnalyticsEventCatalog.Booked, out var bookedDefinition));
-        Assert.True(bookedDefinition.AllowBrowser);
+        Assert.False(bookedDefinition.AllowBrowser);
+        Assert.True(AnalyticsEventCatalog.TryGet("appointment_confirmation_viewed", out var confirmation));
+        Assert.True(confirmation.AllowBrowser);
         Assert.True(bookedDefinition.AllowServer);
     }
 

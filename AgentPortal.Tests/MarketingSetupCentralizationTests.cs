@@ -38,8 +38,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("AgentMarketingProfileService", controller, StringComparison.Ordinal);
         Assert.Contains("ResolveMarketingSetupTrackingAsync", controller, StringComparison.Ordinal);
         Assert.Contains("MarketingConnections.GetAdsAsync(owner", controller, StringComparison.Ordinal);
-        Assert.Contains("var adsConnected = metaConnection is not null;", controller, StringComparison.Ordinal);
-        Assert.Contains("var secureCapi = adsConnected;", controller, StringComparison.Ordinal);
+        Assert.Contains("var adsConnected = setup.Meta.Connected;", controller, StringComparison.Ordinal);
+        Assert.Contains("var secureCapi = setup.Meta.CapiConfigured;", controller, StringComparison.Ordinal);
         Assert.Contains("profile.BookingEnabled = request.BookingEnabled", controller, StringComparison.Ordinal);
         Assert.Contains("metaCapiManagedAutomatically = true", controller, StringComparison.Ordinal);
         Assert.Contains("MetaTestEventCode", controller, StringComparison.Ordinal);
@@ -56,7 +56,7 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("Meta Events Manager", view, StringComparison.Ordinal);
 
         Assert.Contains("marketingSetup: analyticsEndpoint('/marketing-setup')", js, StringComparison.Ordinal);
-        Assert.Contains("state.agentProfileId || callerProfileId", js, StringComparison.Ordinal);
+        Assert.Contains("state.scope.agentProfileId || callerProfileId", js, StringComparison.Ordinal);
         Assert.Contains("marketingSetupConnectUrl", js, StringComparison.Ordinal);
         var fetchHelperIndex = js.IndexOf("async function fetchJson", StringComparison.Ordinal);
         var marketingSetupIndex = js.IndexOf("// Centralized marketing + booking configuration.", StringComparison.Ordinal);
@@ -76,9 +76,10 @@ public sealed class MarketingSetupCentralizationTests
         // ChatGPT Ads management is a projection of the Step 1-4 authorities,
         // never a second settings/credential model.
         Assert.Contains("IOpenAiAdsAccountConnectionAuthority", controller, StringComparison.Ordinal);
-        Assert.Contains("IOpenAiMeasurementHealthService", controller, StringComparison.Ordinal);
-        Assert.Contains("ResolveOpenAiMarketingOwner", controller, StringComparison.Ordinal);
-        Assert.Contains("LoadOpprefLineageVisibilityAsync", controller, StringComparison.Ordinal);
+        Assert.Contains("MarketingProviderSetupProjection", controller, StringComparison.Ordinal);
+        Assert.Contains("ResolveMarketingOwnerAsync", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("LoadOpprefLineageVisibilityAsync", controller, StringComparison.Ordinal);
+        Assert.Contains("var evidence = setup.Evidence", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"openai-disconnect\")]", controller, StringComparison.Ordinal);
         Assert.Contains("authority.DisconnectAsync", controller, StringComparison.Ordinal);
         Assert.Contains("openAiConnection.Permissions", controller, StringComparison.Ordinal);
@@ -86,7 +87,7 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("openAiHealth.RetryableDeliveries", controller, StringComparison.Ordinal);
         Assert.Contains("openAiHealth.FailedDeliveries", controller, StringComparison.Ordinal);
         Assert.Contains("openAiHealth.SentDeliveries", controller, StringComparison.Ordinal);
-        Assert.Contains("canonical_oppref_lineage", controller, StringComparison.Ordinal);
+        Assert.Contains("evidenceError = setup.EvidenceError", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("ConversionsApiKey =", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("ManagementApiKey =", controller, StringComparison.Ordinal);
 
@@ -99,13 +100,14 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("id=\"marketing-setup-openai-failed\"", view, StringComparison.Ordinal);
         Assert.Contains("id=\"marketing-setup-openai-sent\"", view, StringComparison.Ordinal);
         Assert.Contains("id=\"marketing-setup-openai-disconnect\"", view, StringComparison.Ordinal);
-        Assert.Contains("oppref</code> lineage visibility", view, StringComparison.Ordinal);
+        Assert.Contains("Measurement evidence", view, StringComparison.Ordinal);
+        Assert.Contains("A click reference is not proof of campaign credit.", view, StringComparison.Ordinal);
         Assert.DoesNotContain("OpenAI API key", view, StringComparison.OrdinalIgnoreCase);
 
         Assert.Contains("openAiDisconnect: analyticsEndpoint('/openai-disconnect')", js, StringComparison.Ordinal);
         Assert.Contains("status.openAiReady", js, StringComparison.Ordinal);
         Assert.Contains("openAi.health", js, StringComparison.Ordinal);
-        Assert.Contains("attribution.paidTrafficEvents", js, StringComparison.Ordinal);
+        Assert.Contains("attributionObserved", js, StringComparison.Ordinal);
         Assert.Contains("fetchPostJson('openAiDisconnect'", js, StringComparison.Ordinal);
         Assert.Contains(".marketing-setup-openai", css, StringComparison.Ordinal);
         Assert.Contains(".marketing-setup-lineage-grid", css, StringComparison.Ordinal);
@@ -129,7 +131,7 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("[HttpPost(\"openai-refresh\")]", controller, StringComparison.Ordinal);
         Assert.Contains("openAiRefresh: analyticsEndpoint('/openai-refresh')", js, StringComparison.Ordinal);
         Assert.Contains("pixelProvisioning = response?.pixelProvisioning", js, StringComparison.Ordinal);
-        Assert.Contains("pixelProvisioning = refresh.PixelProvisioning", controller, StringComparison.Ordinal);
+        Assert.Contains("MarketingCommandReceiptAsync(tracking.Id, cancellationToken, refresh.PixelProvisioning)", controller, StringComparison.Ordinal);
         Assert.Contains("providerStatusFresh", controller, StringComparison.Ordinal);
         Assert.Contains("accountStatus = openAiProvider?.Status", controller, StringComparison.Ordinal);
         Assert.Contains("currencyCode = openAiProvider?.CurrencyCode", controller, StringComparison.Ordinal);
@@ -149,15 +151,18 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("[HttpPost(\"analytics/marketing-setup\")]", business, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/openai-connect\")]", business, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/openai-refresh\")]", business, StringComparison.Ordinal);
-        Assert.Contains("pixelProvisioning = refresh.PixelProvisioning", business, StringComparison.Ordinal);
+        Assert.Contains("MarketingCommandReceiptAsync(businessId, cancellationToken, refresh.PixelProvisioning)", business, StringComparison.Ordinal);
+        Assert.Contains("setupStatus = refreshed is JsonResult", business, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/openai-disconnect\")]", business, StringComparison.Ordinal);
         Assert.Contains("MarketingOwnerScope.Business(businessId)", business, StringComparison.Ordinal);
         Assert.Contains("BusinessWebsiteProfileService", business, StringComparison.Ordinal);
         Assert.Contains("IOpenAiAdsAccountConnectionAuthority", business, StringComparison.Ordinal);
         Assert.Contains("IOpenAiAdsDirectConnectionService", business, StringComparison.Ordinal);
-        Assert.Contains("IOpenAiMeasurementHealthService", business, StringComparison.Ordinal);
+        Assert.Contains("MarketingProviderSetupProjection", business, StringComparison.Ordinal);
+        Assert.Contains("IOpenAiMeasurementHealthService", Read("Infrastructure", "Analytics", "MarketingProviderSetupProjection.cs"), StringComparison.Ordinal);
         Assert.Contains("canonical_business_marketing_setup", business, StringComparison.Ordinal);
-        Assert.Contains("canonical_oppref_lineage", business, StringComparison.Ordinal);
+        Assert.Contains("evidenceError = setup.EvidenceError", business, StringComparison.Ordinal);
+        Assert.Contains("OpenAiClickReference.Normalize", Read("Infrastructure", "Analytics", "MarketingMeasurementEvidenceService.cs"), StringComparison.Ordinal);
 
         var specificRoute = business.IndexOf("[HttpGet(\"analytics/marketing-setup\")]", StringComparison.Ordinal);
         var catchAllRoute = business.IndexOf("[HttpGet(\"analytics/{**section}\")]", StringComparison.Ordinal);
@@ -189,7 +194,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.DoesNotContain("ReplacementCapiToken", businessProfile, StringComparison.Ordinal);
         Assert.Contains("connections.SaveSettingsAsync(MarketingOwnerScope.Business(businessId), input.MetaPixelId", businessProfile, StringComparison.Ordinal);
         Assert.Contains("input.MetaTestEventCode, null, input.ConnectionRevision", businessProfile, StringComparison.Ordinal);
-        Assert.Contains("row.CapiAccessTokenCiphertext ?? row.AdsAccessTokenCiphertext", connectionStore, StringComparison.Ordinal);
+        Assert.Contains("protector.Unprotect(owner, row.CapiAccessTokenCiphertext)", connectionStore, StringComparison.Ordinal);
+        Assert.Contains("row.AccessTokenExpiresUtc <= DateTime.UtcNow", connectionStore, StringComparison.Ordinal);
     }
 
     [Fact]

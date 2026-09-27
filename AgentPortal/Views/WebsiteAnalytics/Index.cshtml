@@ -141,6 +141,7 @@
                             <div class="marketing-setup-detail"><span>Account status</span><strong id="marketing-setup-openai-account-status">—</strong><small id="marketing-setup-openai-account-meta">—</small></div>
                             <div class="marketing-setup-detail"><span>Brand review</span><strong id="marketing-setup-openai-review">—</strong><small id="marketing-setup-openai-review-detail">—</small></div>
                             <div class="marketing-setup-detail"><span>OpenAI Pixel</span><strong id="marketing-setup-openai-pixel">—</strong><small>Scoped browser destination</small></div>
+                            <div class="marketing-setup-detail"><span>Conversion data source</span><strong id="marketing-setup-openai-data-source">—</strong><small>Scoped server destination</small></div>
                             <div class="marketing-setup-detail"><span>Conversions API</span><strong id="marketing-setup-openai-capi">—</strong><small>Server credential remains protected</small></div>
                             <div class="marketing-setup-detail"><span>Delivery health</span><strong id="marketing-setup-openai-health">—</strong><small id="marketing-setup-openai-last-send">—</small></div>
                         </div>
@@ -165,26 +166,19 @@
 
                     </section>
 
-                    <section class="marketing-setup-section marketing-setup-attribution-card">
-                        <div class="marketing-setup-attribution">
-                            <div class="marketing-setup-section-head">
-                                <div>
-                                    <div class="marketing-setup-eyebrow">Attribution</div>
-                                    <h6><code>oppref</code> lineage visibility</h6>
-                                </div>
-                                <div class="marketing-setup-connection" id="marketing-setup-oppref-status">—</div>
-                            </div>
-                            <div class="marketing-setup-lineage-grid">
-                                <div><span>Paid traffic events</span><strong id="marketing-setup-oppref-events">0</strong></div>
-                                <div><span>Leads</span><strong id="marketing-setup-oppref-leads">0</strong></div>
-                                <div><span>CRM lineage</span><strong id="marketing-setup-oppref-crm">0</strong></div>
-                                <div><span>Appointments</span><strong id="marketing-setup-oppref-appointments">0</strong></div>
-                                <div><span>Orders</span><strong id="marketing-setup-oppref-orders">0</strong></div>
-                                <div><span>Production</span><strong id="marketing-setup-oppref-production">0</strong></div>
-                                <div><span>Paid revenue</span><strong id="marketing-setup-oppref-revenue">$0</strong></div>
-                            </div>
-                        </div>
-
+                    <section class="marketing-setup-section">
+                        <h6>Measurement evidence</h6>
+                        <p class="marketing-setup-help">Connection and configuration do not prove delivery or campaign attribution. Evidence below covers the selected owner over the last 30 days. A click reference is not proof of campaign credit.</p>
+                        <p id="marketing-setup-receiving-evidence">First-party events: not observed</p>
+                        <div class="table-responsive"><table class="table">
+                            <thead><tr><th>Provider</th><th>Connected</th><th>Configured</th><th>Server attempts</th><th>Provider accepted</th><th>Attribution reference</th></tr></thead>
+                            <tbody>
+                                <tr id="marketing-setup-meta-evidence"><th>Meta</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">—</td><td data-evidence="accepted">—</td><td data-evidence="attribution">—</td></tr>
+                                <tr id="marketing-setup-openai-evidence"><th>ChatGPT Ads</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">—</td><td data-evidence="accepted">—</td><td data-evidence="attribution">—</td></tr>
+                            </tbody>
+                        </table></div>
+                        <p id="marketing-setup-meta-receipt-evidence">Meta receipt evidence: unavailable</p>
+                        <p id="marketing-setup-openai-receipt-evidence">OpenAI receipt evidence: unavailable</p>
                     </section>
 
                     <section class="marketing-setup-section marketing-setup-booking">
@@ -399,6 +393,7 @@
                     <div class="hero-link-kicker">Shared Command Area</div>
                     <div class="hero-link-title-row">
                         <h3 class="hero-link-title">Marketing Links</h3>
+                        <a class="btn" href="@Url.Action("EventMap", "WebsiteAnalytics", new { agentProfileId = Context.Request.Query["agentProfileId"].ToString(), team = Context.Request.Query["team"].ToString() })">Event Map</a>
                         <button type="button"
                                 class="btn marketing-setup-trigger"
                                 id="marketing-setup-open"

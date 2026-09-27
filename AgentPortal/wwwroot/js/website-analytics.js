@@ -5039,8 +5039,21 @@ function escapeHtml(value) {
   let marketingSetupLoaded = false;
 
   function marketingSetupAgentProfileId() {
-    const selected = document.getElementById('wa-scope-select')?.value || '';
-    return selected || state.agentProfileId || callerProfileId || '';
+    if (isFounder && isGlobalScope()) return '';
+    return state.scope.agentProfileId || callerProfileId || '';
+  }
+
+  function requireMarketingOwner() {
+    if (!(isFounder && isGlobalScope())) return true;
+    marketingSetupLoaded = false;
+    marketingSetupModal?.querySelectorAll('.marketing-setup-section,.marketing-setup-status-grid').forEach(el => { el.hidden = true; });
+    const scopeLabel = document.getElementById('marketing-setup-scope-label');
+    if (scopeLabel) scopeLabel.textContent = 'Global reporting · no provider owner';
+    setMarketingSetupStatus('Select Founder Personal or an individual owner to manage provider connections.', 'error');
+    marketingSetupModal?.querySelectorAll('input,button[type="submit"],#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect').forEach(el => { el.disabled = true; });
+    const connect = document.getElementById('marketing-setup-meta-connect');
+    if (connect) { connect.removeAttribute('href'); connect.setAttribute('aria-disabled', 'true'); }
+    return false;
   }
 
   function setMarketingSetupStatus(message, kind = '') {
@@ -5081,7 +5094,7 @@ function escapeHtml(value) {
 
     setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
     setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
-    setMarketingSetupChip('openAiReady', status.openAiReady, 'Ready', 'Needs attention', true);
+    setMarketingSetupChip('openAiReady', status.openAiReady, 'Configured', 'Needs configuration', true);
     setMarketingSetupChip(
       'bookingPersonalLive',
       status.bookingPersonalLive,
@@ -5110,7 +5123,7 @@ function escapeHtml(value) {
     if (calendar) calendar.value = booking.calendarEmail || '';
 
     const account = document.getElementById('marketing-setup-meta-account');
-    if (account) account.textContent = marketing.metaAdsConnected
+    if (account) account.textContent = marketing.available === false ? 'Meta status unavailable' : marketing.metaAdsConnected
       ? `Meta Ads connected · ${marketing.metaAccount || 'Scoped account'}`
       : 'Meta Ads not connected for this scope';
 
@@ -5127,7 +5140,30 @@ function escapeHtml(value) {
 
     const openAi = payload.openAi || {};
     const openAiHealth = openAi.health || {};
-    const attribution = payload.attribution || {};
+    const evidence = payload.evidence || {};
+    const receiving = document.getElementById('marketing-setup-receiving-evidence');
+    if (receiving) receiving.textContent = payload.evidenceError ? 'First-party evidence unavailable' : evidence.receivingEvents
+      ? `First-party events received · latest ${evidence.lastReceivedUtc || 'timestamp unavailable'}`
+      : 'First-party events: not observed in this window';
+    function renderEvidence(provider, connected, configured) {
+      const item = evidence[provider === 'openai' ? 'openAi' : provider] || {};
+      if (payload.evidenceError) {
+        const row = document.getElementById(`marketing-setup-${provider}-evidence`);
+        row?.querySelectorAll('[data-evidence]').forEach(cell => { cell.textContent = 'Unavailable'; });
+        return;
+      }
+      const row = document.getElementById(`marketing-setup-${provider}-evidence`);
+      const values = { connected: connected ? 'Yes' : 'No', configured: configured ? 'Yes' : 'No',
+        attempted: Number(item.attempted || 0).toLocaleString(),
+        accepted: Number(item.accepted || 0) > 0 ? Number(item.accepted).toLocaleString() : 'Not observed',
+        attribution: item.attributionObserved ? 'Reference observed' : 'Not observed' };
+      Object.entries(values).forEach(([key, value]) => { const cell = row?.querySelector(`[data-evidence="${key}"]`); if (cell) cell.textContent = value; });
+      const detail = document.getElementById(`marketing-setup-${provider}-receipt-evidence`);
+      if (detail) detail.textContent = `Receipt evidence: ${item.acceptanceEvidence || 'unavailable'} · Pending ${item.pending || 0} · Retrying ${item.retrying || 0} · Failed ${item.failed || 0}`;
+    }
+    renderEvidence('meta', marketing.metaAdsConnected, !!marketing.metaPixelId && marketing.metaCapiConfiguredSecurely);
+    renderEvidence('openai', openAi.connected, openAi.pixelConfigured && openAi.conversionsApiConfigured && !!openAi.conversionDataSourceId);
+
     const setOpenAiText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value ?? '—';
@@ -5147,7 +5183,7 @@ function escapeHtml(value) {
       if (openAi.reviewStatus === 'in_review' || openAi.accountStatus !== 'active' ||
           openAiHealth.status === 'retrying' || !openAi.pixelConfigured || !openAi.conversionsApiConfigured ||
           Number(openAiHealth.retrying || 0) > 0 || Number(openAiHealth.pending || 0) > 0) return 'warn';
-      return openAiHealth.status === 'ready' ? 'good' : 'neutral';
+      return Number(payload.evidence?.openAi?.accepted || 0) > 0 ? 'good' : 'neutral';
     };
     const openAiStatus = document.getElementById('marketing-setup-openai-account');
     if (openAiStatus) {
@@ -5159,6 +5195,7 @@ function escapeHtml(value) {
 
     setOpenAiText('marketing-setup-openai-account-name', openAi.accountName || (openAi.connected ? 'Scoped advertiser' : 'Not connected'));
     setOpenAiText('marketing-setup-openai-account-id', openAi.accountId || 'No advertiser ID');
+    setOpenAiText('marketing-setup-openai-data-source', openAi.conversionDataSourceId || 'Not configured');
     setOpenAiText('marketing-setup-openai-connection-method', openAi.connectionMethod || 'Not connected');
     setOpenAiText('marketing-setup-openai-access-detail',
       openAi.providerRole ? `Provider role: ${openAi.providerRole}`
@@ -5218,8 +5255,8 @@ function escapeHtml(value) {
         : !openAi.pixelConfigured || !openAi.conversionsApiConfigured ? 'Moderate · measurement setup incomplete'
         : Number(openAiHealth.failed || 0) > 0 ? 'Critical · delivery failures'
         : Number(openAiHealth.retrying || 0) > 0 ? 'Moderate · retrying delivery'
-        : openAiHealth.status === 'ready' ? 'Ready · account and measurement healthy'
-        : 'Connected · awaiting delivery evidence';
+        : Number(evidence.openAi?.accepted || 0) > 0 ? 'Provider acceptance observed · attribution shown separately'
+        : 'Configured connection · awaiting delivery evidence';
       applySeverity(openAiAction.closest('.marketing-setup-secure-row'), severityForOpenAi());
     }
     const disconnect = document.getElementById('marketing-setup-openai-disconnect');
@@ -5236,27 +5273,13 @@ function escapeHtml(value) {
     const connectSubmit = document.getElementById('marketing-setup-openai-connect-submit');
     if (connectSubmit) connectSubmit.dataset.revision = openAi.exists && openAi.revision ? openAi.revision : '';
 
-    setOpenAiText('marketing-setup-oppref-events', Number(attribution.paidTrafficEvents || 0).toLocaleString());
-    setOpenAiText('marketing-setup-oppref-leads', Number(attribution.leads || 0).toLocaleString());
-    setOpenAiText('marketing-setup-oppref-crm', Number(attribution.crm || 0).toLocaleString());
-    setOpenAiText('marketing-setup-oppref-appointments', Number(attribution.appointments || 0).toLocaleString());
-    setOpenAiText('marketing-setup-oppref-orders', Number(attribution.orders || 0).toLocaleString());
-    setOpenAiText('marketing-setup-oppref-production', Number(attribution.production || 0).toLocaleString());
-    setOpenAiText('marketing-setup-oppref-revenue', new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(attribution.paidRevenue || 0)));
-    const opprefStatus = document.getElementById('marketing-setup-oppref-status');
-    if (opprefStatus) {
-      const observed = Number(attribution.paidTrafficEvents || 0) + Number(attribution.leads || 0) + Number(attribution.crm || 0);
-      opprefStatus.textContent = attribution.complete ? 'Lineage observed end to end'
-        : observed > 0 ? 'Partial lineage · follow-up needed'
-        : 'No ChatGPT Ads lineage observed yet';
-      applySeverity(opprefStatus, attribution.complete ? 'good' : observed > 0 ? 'warn' : 'neutral');
-    }
 
-    void loadOpenAiOnboarding();
-    if (isBusinessAnalytics) void loadOpenAiProductFeed();
   }
 
   async function loadMarketingSetup() {
+    if (!requireMarketingOwner()) return false;
+    marketingSetupModal?.querySelectorAll('input,button[type="submit"],#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect').forEach(el => { el.disabled = false; });
+    document.getElementById('marketing-setup-meta-connect')?.removeAttribute('aria-disabled');
     if (!marketingSetupForm) return false;
     marketingSetupLoaded = false;
     setMarketingSetupStatus('Loading centralized setup…');
@@ -5267,7 +5290,8 @@ function escapeHtml(value) {
         'marketingSetup',
         endpoints.marketingSetup,
         profileId ? { agentProfileId: profileId } : {});
-      if (!payload) return false;
+      if (!payload || !requireMarketingOwner() || profileId !== marketingSetupAgentProfileId()) return false;
+      marketingSetupModal?.querySelectorAll('.marketing-setup-section,.marketing-setup-status-grid').forEach(el => { el.hidden = false; });
       renderMarketingSetup(payload);
       const revision = document.getElementById('marketing-setup-revision')?.value || '';
       if (!revision) throw new Error('Canonical marketing settings did not return a revision.');
@@ -5284,6 +5308,7 @@ function escapeHtml(value) {
 
   async function saveMarketingSetup(event) {
     event?.preventDefault?.();
+    if (!requireMarketingOwner()) return;
     if (!marketingSetupForm || !marketingSetupSave) return;
 
     let revision = document.getElementById('marketing-setup-revision')?.value || '';
@@ -5337,6 +5362,7 @@ function escapeHtml(value) {
   marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
   marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
   document.getElementById('marketing-setup-openai-verify')?.addEventListener('click', async event => {
+    if (!requireMarketingOwner()) return;
     const button = event.currentTarget;
     if (button?.dataset?.connected !== 'true') {
       const panel = document.getElementById('marketing-setup-openai-connect-panel');
@@ -5358,6 +5384,7 @@ function escapeHtml(value) {
         agentProfileId: marketingSetupAgentProfileId() || null,
         connectionRevision: revision
       });
+      if (response?.ok && !response.setup) { setMarketingSetupStatus('Connection change saved. Status refresh unavailable; reload later.'); return; }
       const payload = response?.setup || response;
       const pixelProvisioning = response?.pixelProvisioning || null;
       renderMarketingSetup(payload);
@@ -5391,6 +5418,7 @@ function escapeHtml(value) {
     if (panel) panel.hidden = true;
   });
   document.getElementById('marketing-setup-openai-connect-submit')?.addEventListener('click', async event => {
+    if (!requireMarketingOwner()) return;
     const button = event.currentTarget;
     const keyInput = document.getElementById('marketing-setup-openai-api-key');
     const advertiserApiKey = (keyInput?.value || '').trim();
@@ -5409,7 +5437,8 @@ function escapeHtml(value) {
       if (keyInput) keyInput.value = '';
       const panel = document.getElementById('marketing-setup-openai-connect-panel');
       if (panel) panel.hidden = true;
-      renderMarketingSetup(payload);
+      if (payload?.ok && !payload.setup) { setMarketingSetupStatus('Connection change saved. Status refresh unavailable; reload later.'); return; }
+      renderMarketingSetup(payload?.setup || payload);
       setMarketingSetupStatus('ChatGPT Ads verified and connected to this scope.', 'success');
     } catch (error) {
       setMarketingSetupStatus(error?.message || 'Unable to verify ChatGPT Ads.', 'error');
@@ -5419,6 +5448,7 @@ function escapeHtml(value) {
     }
   });
   document.getElementById('marketing-setup-openai-disconnect')?.addEventListener('click', async event => {
+    if (!requireMarketingOwner()) return;
     const button = event.currentTarget;
     const revision = button?.dataset?.revision || '';
     if (!revision) return;
@@ -5429,7 +5459,8 @@ function escapeHtml(value) {
         agentProfileId: marketingSetupAgentProfileId() || null,
         connectionRevision: revision
       });
-      renderMarketingSetup(payload);
+      if (payload?.ok && !payload.setup) { setMarketingSetupStatus('Connection change saved. Status refresh unavailable; reload later.'); return; }
+      renderMarketingSetup(payload?.setup || payload);
       setMarketingSetupStatus('ChatGPT Ads disconnected for this scope.', 'success');
     } catch (error) {
       setMarketingSetupStatus(error?.message || 'Unable to disconnect ChatGPT Ads.', 'error');

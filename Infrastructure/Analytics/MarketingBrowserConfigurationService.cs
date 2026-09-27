@@ -5,7 +5,8 @@ namespace Infrastructure.Analytics;
 
 /// <summary>Public-safe projection only. No token, API key or credential-bearing context can leave this service.</summary>
 public sealed record MarketingBrowserConfiguration(string? MetaPixelId = null, string? OpenAiPixelId = null,
-    bool OpenAiAccountApproved = false, bool OpenAiConversionsApiConfigured = false, string MetaPixelOwnerType = "none");
+    bool OpenAiAccountApproved = false, bool OpenAiConversionsApiConfigured = false, string MetaPixelOwnerType = "none",
+    string? MarketingOwnerKey = null, bool MetaTestMode = false);
 
 public sealed class MarketingBrowserConfigurationService(IMetaPixelResolutionService meta,
     IOpenAiAdsAccountConnectionAuthority openAi, ILogger<MarketingBrowserConfigurationService> logger)
@@ -15,12 +16,14 @@ public sealed class MarketingBrowserConfigurationService(IMetaPixelResolutionSer
         if (owner is null) return new();
         string? metaPixel = null;
         var metaOwnerType = MetaPixelOwnerTypes.None;
+        var metaTestMode = false;
         OpenAiAdsConnectionSnapshot? openAiConnection = null;
         try
         {
             var pixel = await meta.ResolveForOwnerAsync(owner, ct);
             metaPixel = pixel.PixelId;
             metaOwnerType = pixel.PixelOwnerType;
+            metaTestMode = pixel.HasBrowserPixel && !string.IsNullOrWhiteSpace(pixel.TestEventCode);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { logger.LogWarning(ex, "Meta browser projection unavailable for {Owner}; first-party tracking continues.", owner.Key); }
@@ -29,6 +32,6 @@ public sealed class MarketingBrowserConfigurationService(IMetaPixelResolutionSer
         catch (Exception ex) { logger.LogWarning(ex, "OpenAI browser projection unavailable for {Owner}; first-party tracking continues.", owner.Key); }
         var connected = openAiConnection?.Owner == owner && openAiConnection.Connected;
         return new(metaPixel, connected ? openAiConnection!.PixelId : null,
-            connected && openAiConnection!.AccountApproved, connected && openAiConnection!.ConversionsApiConfigured, metaOwnerType);
+            connected && openAiConnection!.AccountApproved, connected && openAiConnection!.ConversionsApiConfigured, metaOwnerType, owner.Key, metaTestMode);
     }
 }

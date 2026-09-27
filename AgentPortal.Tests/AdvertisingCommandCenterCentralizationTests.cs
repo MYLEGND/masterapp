@@ -45,7 +45,7 @@ public sealed class AdvertisingCommandCenterCentralizationTests
         Assert.Contains("[HttpPost(\"advertising/promote/propose\")]", agent, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"advertising/approve\")]", agent, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"advertising/execute\")]", agent, StringComparison.Ordinal);
-        Assert.Contains("ResolveOpenAiMarketingOwner(tracking)", agent, StringComparison.Ordinal);
+        Assert.Contains("ResolveMarketingOwnerAsync(tracking, cancellationToken)", agent, StringComparison.Ordinal);
 
         Assert.Contains("IAdvertisingCommandCenterService", business, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/advertising\")]", business, StringComparison.Ordinal);

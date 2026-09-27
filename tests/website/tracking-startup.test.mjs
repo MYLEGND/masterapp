@@ -5,6 +5,31 @@ import { JSDOM } from 'jsdom';
 const source = readFileSync(new URL('../../SHARED/WebsitePlatform/tracking.js', import.meta.url), 'utf8');
 const cmsSource = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-cms.js', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../../Protect-Website/Views/Shared/_Layout.cshtml', import.meta.url), 'utf8');
+test('linked storefront CMS preserves the owning tracker and starts no second provider runtime', async () => {
+  const f = fixture();
+  try {
+    const w = f.window;
+    w.LEGEND_ANALYTICS_CONFIG.runtimeOwner = 'commerce';
+    w.eval(source);
+    const config = w.LEGEND_ANALYTICS_CONFIG, tracker = w.LegendAnalytics;
+    const calls = [];
+    w.fetch = async () => ({ok:true,json:async()=>({analytics:{endpoint:'/api/tracking/ingest',allowedBrowserEvents:['page_view']},meta:{enabled:true,pixelId:'other-meta'},openai:{enabled:true,pixelId:'other-openai'}})});
+    w.runtimeTest = {load:async x=>calls.push(x),provider:x=>calls.push(x),retry:()=>calls.push('retry'),bindings:()=>calls.push('bindings')};
+    const start = cmsSource.indexOf('  async function startPublicRuntime()');
+    const end = cmsSource.indexOf('  async function loadPublic()', start);
+    w.eval(`let publicRuntimeStarted=false,publicRuntimeStarting=false,publicRuntimeRetryCount=0,publicRuntimeRetryTimer=null;
+      const editorMode=false,renderInput=null,SITE_KEY='business',API_BASE=location.origin,pageKey='store';
+      const context={trackingAsset:'/legend-public-tracking.js',metaSignalAsset:'/meta.js',openAiMeasurementAsset:'/openai.js'};let ctaCatalog=[];
+      const applyRuntimeActionContracts=()=>{},installPublishedSignalBindings=runtimeTest.bindings,loadRuntimeScript=runtimeTest.load,schedulePublicRuntimeRetry=runtimeTest.retry,initializeMetaPixel=runtimeTest.provider;
+      ${cmsSource.slice(start,end)}
+      window.startRuntimeTest=startPublicRuntime;`);
+    await w.startRuntimeTest(); await w.startRuntimeTest();
+    assert.equal(w.LEGEND_ANALYTICS_CONFIG,config);
+    assert.equal(w.LegendAnalytics,tracker);
+    assert.deepEqual(calls,['bindings']);
+    assert.equal(f.events.filter(e=>e.EventType==='page_view').length,1);
+  } finally { f.dom.window.close(); }
+});
 function fixture() {
   const dom = new JSDOM('<body data-page-key="home"><form data-form-key="inquiry"><input name="FirstName"></form></body>', {
     url: 'https://protect.example.test/', runScripts: 'outside-only', pretendToBeVisual: true
@@ -78,7 +103,7 @@ test('CMS retries a failed tracker execution before starting providers, then ign
     window.eval(`let publicRuntimeStarted=false, publicRuntimeStarting=false, publicRuntimeRetryCount=0, publicRuntimeRetryTimer=null;
       const editorMode=false, renderInput=null, SITE_KEY='legend', API_BASE=location.origin, pageKey='home';
       const context={trackingAsset:'/legend-public-tracking.js'};let ctaCatalog=[];
-      const applyRuntimeActionContracts=()=>{},loadRuntimeScript=runtimeTest.load,schedulePublicRuntimeRetry=runtimeTest.retry,initializeMetaPixel=runtimeTest.provider;
+      const applyRuntimeActionContracts=()=>{},installPublishedSignalBindings=()=>{},loadRuntimeScript=runtimeTest.load,schedulePublicRuntimeRetry=runtimeTest.retry,initializeMetaPixel=runtimeTest.provider;
       ${cmsSource.slice(start,end)}
       window.startRuntimeTest=startPublicRuntime;`);
     window.console.error=window.runtimeTest.error;
@@ -117,10 +142,10 @@ test('late provider projections share one accepted page event and unique signals
     assert.equal(meta.at(-1).eventID,page.ClientEventId);
     assert.equal(openai.find(args=>args[0]==='measureSingle').at(-1).event_id,page.ClientEventId);
     assert.equal(f.events.filter(e=>e.EventType==='ViewContent').length,0);
-    await session.trackConfiguredEvent('PhoneFieldCompleted',{deliveryMode:'analytics',onceKey:'phone',metadata:{websiteBindingId:'phone'}});
+    await w.LegendAnalytics.trackBinding({id:'phone',eventName:'PhoneFieldCompleted',deliveryMode:'analytics',oncePerSession:true},{elementId:'phone'});
     const unique=f.events.find(e=>e.EventType==='PhoneFieldCompleted');
     assert.ok(unique);
-    assert.equal(unique.ClientEventId.replaceAll('-',''),unique.MetaSignal.eventId);
+    assert.equal(unique.WebsiteBindingId,'phone');
     assert.match(unique.ClientEventId,/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
     w.document.querySelector('input').dispatchEvent(new w.FocusEvent('focusin',{bubbles:true}));
     await new Promise(resolve=>setTimeout(resolve,0));
@@ -151,4 +176,71 @@ test('managed form bindings enrich the one canonical envelope and preserve deliv
     assert.equal(binding.elementId,'home.form');
     assert.equal(f.events.filter(e=>e.EventType==='LeadFormStart').length,0);
   } finally {f.dom.window.close();}
+});
+
+test('custom wording cannot change managed action identity and contact starts automatically once',async()=>{
+ const f=fixture();
+ try {
+  const w=f.window;
+  w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('form_field_focus');
+  const button=w.document.createElement('a');button.href='#';button.dataset.websiteActionKey='business_schedule';
+  button.dataset.websiteBindingId='binding-1';button.dataset.cmsId='home.button.node.5';button.dataset.websiteAnalyticsEvent='cta_click';
+  button.textContent='Book consultation';w.document.body.appendChild(button);
+  w.eval(source);
+  button.click();button.textContent='Purchase confirmed';button.click();
+  const field=w.document.querySelector('input');
+  field.dispatchEvent(new w.FocusEvent('focusin',{bubbles:true}));
+  field.dispatchEvent(new w.FocusEvent('focusin',{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,0));
+  const clicks=f.events.filter(e=>e.EventType==='cta_click');
+  assert.equal(clicks.length,2);
+  for(const click of clicks){assert.equal(click.ActionKey,'business_schedule');assert.equal(click.WebsiteBindingId,'binding-1');assert.equal(click.ElementKey,'home.button.node.5');}
+  assert.equal(clicks[1].ButtonLabel,'Purchase confirmed');
+  assert.equal(f.events.filter(e=>e.EventType==='Purchase').length,0);
+  assert.equal(f.events.filter(e=>e.EventType==='form_field_focus').length,1);
+ }finally{f.dom.window.close();}
+});
+
+test('editor binding uses canonical tracker without any provider and blocks server-only names',async()=>{
+ const f=fixture();try{
+  const w=f.window;w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('form_field_focus');w.eval(source);
+  const binding={id:'contact-input',eventName:'form_field_focus',actionKey:'contact_input_started',deliveryMode:'destinations',oncePerSession:true};
+  assert.equal(await w.LegendAnalytics.trackBinding(binding,{elementId:'field-1'}),true);
+  assert.equal(await w.LegendAnalytics.trackBinding(binding,{elementId:'field-1'}),true);
+  const events=f.events.filter(e=>e.WebsiteBindingId==='contact-input');assert.equal(events.length,1);
+  assert.equal(events[0].ActionKey,'contact_input_started');
+  assert.equal(JSON.parse(events[0].MetadataJson).configuredDeliveryMode,'destinations');
+  assert.equal(await w.LegendAnalytics.trackBinding({...binding,id:'forged',eventName:'Purchase'}),false);
+  assert.equal(f.events.some(e=>e.EventType==='Purchase'),false);
+ }finally{f.dom.window.close();}
+});
+
+test('managed form and cart presets delegate native behavior without claiming confirmed outcomes',async()=>{
+ const f=fixture();try{
+  const w=f.window;let cartCommands=0;
+  const product=w.document.createElement('button');product.id='spAddToCart';product.dataset.productId='sku';
+  product.addEventListener('click',()=>cartCommands++);w.document.body.appendChild(product);
+  const action=(key,runtime)=>{const a=w.document.createElement('a');a.href='#';a.dataset.websiteActionKey=key;a.dataset.websiteRuntimeAction=runtime;a.dataset.websiteAnalyticsEvent='cta_click';w.document.body.appendChild(a);return a;};
+  const focus=action('form_start','focus_form'),cart=action('commerce_add_to_cart','add_current_product');
+  w.eval(source);focus.click();cart.click();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(w.document.activeElement,w.document.querySelector('input'));
+  assert.equal(cartCommands,1);
+  assert.equal(f.events.filter(e=>e.EventType==='form_start').length,1);
+  assert.equal(f.events.filter(e=>e.ActionKey==='commerce_add_to_cart').length,1);
+  assert.equal(f.events.some(e=>['AddToCart','InitiateCheckout','Purchase','Lead'].includes(e.EventType)),false);
+ }finally{f.dom.window.close();}
+});
+
+test('explicit template action retains legacy click instrumentation without a second writer',async()=>{
+ const f=fixture();try{
+  const w=f.window;
+  w.document.body.dataset.pageCategory='quote';
+  w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('quote_click','quote_cta_click');
+  const link=w.document.createElement('a');link.href='#';link.dataset.cta='nav_quote';link.dataset.websiteActionKey='protect_quote';link.dataset.websiteAnalyticsEvent='quote_click';w.document.body.appendChild(link);
+  w.eval(source);link.click();await new Promise(resolve=>setTimeout(resolve,0));
+  const events=f.events.filter(e=>e.EventType==='quote_click');assert.equal(events.length,1);
+  assert.equal(events[0].ActionKey,'protect_quote');
+  assert.equal(f.events.filter(e=>e.EventType==='quote_cta_click').length,0);
+ }finally{f.dom.window.close();}
 });

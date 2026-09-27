@@ -128,6 +128,22 @@ public sealed class AnalyticsCanonicalArchitectureTests
     }
 
     [Fact]
+    public void ProviderReportingAndEditorAdaptersCannotReintroduceOwnerOrAccountFallbacks()
+    {
+        var reporting = File.ReadAllText(Path.Combine(Root, "Infrastructure/Analytics/MetaAdsService.cs"));
+        Assert.Contains("CanonicalAdvertisingEventProjection.ResolveOwnerAsync", reporting);
+        Assert.DoesNotContain("MetaAds:AccessToken", reporting);
+        Assert.DoesNotContain("MetaAds:DefaultAccountId", reporting);
+        Assert.DoesNotContain("MetaAds:AgentAccountMap", reporting);
+        var editor = File.ReadAllText(Path.Combine(Root, "Infrastructure/WebsiteEditing/WebsitePlatformController.cs"));
+        Assert.DoesNotContain("MarketingOwnerScope.Agent(", editor);
+        var commerce = File.ReadAllText(Path.Combine(Root, "ParfaitApp/Controllers/CommerceManagementController.cs"));
+        Assert.DoesNotContain("MarketingOwnerScope.Agent(", commerce);
+        var contract = typeof(IMetaAdsConnectionStore).GetMethods().Select(m => m.Name).ToArray();
+        Assert.Equal(new[] { "GetAsync" }, contract);
+    }
+
+    [Fact]
     public void DashboardLoadersHaveOneImplementationAndOneScriptInclude()
     {
         var sources = ProductionSources(".js").ToArray();

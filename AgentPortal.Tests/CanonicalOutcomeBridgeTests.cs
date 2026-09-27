@@ -161,7 +161,7 @@ public sealed class CanonicalOutcomeBridgeTests
     }
 
     [Fact]
-    public void CheckoutCampaignAttributionPreservesFirstTouchWithoutSelectingAnOwner()
+    public void CheckoutCampaignAttributionRejectsUnscopedHistoryWithoutSelectingAnOwner()
     {
         var owner = Guid.NewGuid();
         var context = new CommerceSignalContext(owner, null, null, WebsiteEditorSiteKeys.Business, "store", "Store", "https://store.example.test/checkout");
@@ -170,9 +170,9 @@ public sealed class CanonicalOutcomeBridgeTests
         http.Request.Headers.Cookie = "pf_attribution=" + Uri.EscapeDataString("{\"utm_campaign\":\"original\",\"utm_source\":\"meta\",\"fbclid\":\"click-origin\",\"commerceBusinessId\":\"forged\"}");
         var enriched = CommerceSignalAttribution.Apply(context, http.Request);
         Assert.Equal(owner, enriched.CommerceBusinessId);
-        Assert.Equal("original", enriched.UtmCampaign);
-        Assert.Equal("meta", enriched.UtmSource);
-        Assert.Equal("click-origin", enriched.Fbclid);
+        Assert.Equal("later", enriched.UtmCampaign);
+        Assert.Null(enriched.UtmSource);
+        Assert.Null(enriched.Fbclid);
         Assert.Equal("ad-one", enriched.MetaAdId);
         http.Request.Headers.Cookie = "pf_attribution=not-json";
         Assert.Equal("later", CommerceSignalAttribution.Apply(context, http.Request).UtmCampaign);
@@ -191,11 +191,15 @@ public sealed class CanonicalOutcomeBridgeTests
     public async Task BrowserCannotClaimCommerceServerAuthorityUsingTrackingVersion()
     {
         using var db = ControllerTestHelpers.BuildDb();
+        Assert.Throws<InvalidOperationException>(() => UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+            { EventName = "Purchase", IsBrowserSignal = true, IsServerAuthority = true }));
+        // Simulate an old durable row to retain the independent bridge-boundary regression.
         var source = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
         {
-            EventName = "Purchase", IsBrowserSignal = true, IsServerAuthority = false,
+            EventName = "page_view", IsBrowserSignal = true, IsServerAuthority = false,
             MetaServerAuthorityEligible = false, CommerceBusinessId = Guid.NewGuid()
         });
+        source.EventType = "Purchase";
         source.TrackingVersion = "commerce-server-authority-v1";
         UnifiedAnalyticsWriter.Write(db, source);
         await db.SaveChangesAsync();

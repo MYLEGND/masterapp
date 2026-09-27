@@ -23,6 +23,8 @@ public sealed class TrackingViewDataFilter(IHttpContextAccessor http, AgentTrack
             controller.ViewData["ResolvedMetaPixelId"] = browser.MetaPixelId;
             controller.ViewData["MetaPixelOwnerType"] = browser.MetaPixelOwnerType;
             controller.ViewData["ResolvedOpenAiPixelId"] = browser.OpenAiPixelId;
+            controller.ViewData["AnalyticsAttributionScope"] = browser.MarketingOwnerKey;
+            controller.ViewData["MetaTestMode"] = browser.MetaTestMode;
         }
         await next();
     }

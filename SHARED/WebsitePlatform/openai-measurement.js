@@ -75,6 +75,11 @@
 
   function trackCanonical(body, pixelId) {
     if (!body || body.IsInternal === true) return false;
+    let metadata = {}; try { metadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
+    const bindings = metadata.configuredSignalBindings;
+    if (Array.isArray(bindings) && bindings.length &&
+        !bindings.some(binding => ['destinations', 'meta'].includes(binding.deliveryMode) && !binding.duplicateBinding)) return false;
+    if (body.MetaSignal?.metadata?.configuredDeliveryMode === 'analytics') return false;
     const eventId = body.ClientEventId || body.EventId || null;
     switch (body.EventType) {
       case 'page_view':

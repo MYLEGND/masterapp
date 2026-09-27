@@ -49,10 +49,13 @@ public static class UnifiedAnalyticsWriter
 
     private static BrowserWriteResult ClassifyDuplicate(AnalyticsEvent prior, AnalyticsEvent row)
     {
+        // Historical accepted rows predate ActionKey. Preserve their receipt identity without rewriting history.
+        var priorAction = CanonicalAdvertisingEventProjection.ReadString(prior.MetadataJson, "actionKey");
         var matches = prior.AgentTrackingProfileId == row.AgentTrackingProfileId &&
             prior.CommerceBusinessId == row.CommerceBusinessId &&
             prior.WebsiteContentVersionId == row.WebsiteContentVersionId &&
             prior.WebsiteBindingId == row.WebsiteBindingId &&
+            (priorAction is null || priorAction == CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "actionKey")) &&
             string.Equals(prior.Host, row.Host, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(prior.EventType, row.EventType, StringComparison.OrdinalIgnoreCase) &&
             prior.SessionId == row.SessionId && prior.VisitorId == row.VisitorId && prior.PageKey == row.PageKey;

@@ -7,6 +7,8 @@
     var isManagementPreview = Context.Request.Path.StartsWithSegments("/commerce/manage");
     string metaPixelId = string.Empty;
     string openAiPixelId = string.Empty;
+    string? attributionScope = null;
+    var metaTestMode = false;
     try
     {
         if (!isManagementPreview && commerce is not null)
@@ -17,6 +19,8 @@
                 var browser = await BrowserMarketing.GetAsync(owner, Context.RequestAborted);
                 metaPixelId = browser.MetaPixelId ?? string.Empty;
                 openAiPixelId = browser.OpenAiPixelId ?? string.Empty;
+                attributionScope = browser.MarketingOwnerKey;
+                metaTestMode = browser.MetaTestMode;
             }
         }
     }
@@ -29,17 +33,12 @@
 @if (!isManagementPreview)
 {
 <script>
-(() => {
- if (document.cookie.split(';').some(value=>value.trim().startsWith('pf_attribution='))) return;
- const params=new URLSearchParams(location.search), attribution={};
- for(const key of ['utm_source','utm_medium','utm_campaign','utm_id','utm_content','fbclid','oppref','meta_campaign_id','meta_adset_id','meta_ad_id']) {
-   const value=params.get(key);if(value) attribution[key]=value.slice(0,256);
- }
- if(Object.keys(attribution).length) document.cookie='pf_attribution='+encodeURIComponent(JSON.stringify(attribution))+'; Path=/; Max-Age=7776000; SameSite=Lax; Secure';
-})();
 window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
     endpoint = "https://masterapp-protect.azurewebsites.net/api/tracking/ingest",
     siteKey = "commerce",
+    runtimeOwner = "commerce",
+    attributionScope,
+    metaTestMode,
     allowedBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.BrowserAllowedEventNames,
     criticalBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.CriticalBrowserEventNames,
     signalAliases = Shared.Analytics.MetaSignalAnalyticsAliasCatalog.BrowserProjectionMap
@@ -49,8 +48,23 @@ window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(System.Text.Json.JsonSerializer.Seria
 <script>
 (() => {
  const ids=window.LegendAnalytics?.ids;if(!ids)return;
- for(const [name,value] of Object.entries({pf_sid:ids.getSessionId(),pf_vid:ids.getVisitorId(),pf_oppref:ids.getAttribution()?.oppref}))
-   if(value)document.cookie=name+'='+encodeURIComponent(String(value).slice(0,512))+'; Path=/; Max-Age=7776000; SameSite=Lax; Secure';
+ const storeScope=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(commerce?.CommerceBusinessId.ToString("N")));
+ if(!storeScope)return;
+ function persistCurrentAttribution() {
+   const sessionId=ids.getSessionId(), value=ids.getAttribution() || {};
+   const attribution={};
+   for(const [cookieKey,field] of Object.entries({utm_source:'utmSource',utm_medium:'utmMedium',utm_campaign:'utmCampaign',utm_id:'utmId',utm_content:'utmContent',fbclid:'fbclid',oppref:'oppref',meta_campaign_id:'metaCampaignId',meta_adset_id:'metaAdSetId',meta_ad_id:'metaAdId'}))
+     if(value[field])attribution[cookieKey]=String(value[field]).slice(0,256);
+   const envelope={scope:storeScope,sessionId,updatedAt:Date.now(),attribution};
+   document.cookie='pf_attribution='+encodeURIComponent(JSON.stringify(envelope))+'; Path=/; SameSite=Lax; Secure';
+   for(const [name,id] of Object.entries({pf_sid:sessionId,pf_vid:ids.getVisitorId()}))
+     if(id)document.cookie=name+'='+encodeURIComponent(String(id).slice(0,512))+'; Path=/; SameSite=Lax; Secure';
+ }
+ persistCurrentAttribution();
+ // Refresh current session activity before a native cart/checkout command runs.
+ document.addEventListener('click',persistCurrentAttribution,true);
+ document.addEventListener('submit',persistCurrentAttribution,true);
+
 })();
 </script>
 @if (hasMetaPixel)

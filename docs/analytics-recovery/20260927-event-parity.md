@@ -1,5 +1,7 @@
 # Canonical event/provider parity audit — 2026-09-27
 
+**Historical snapshot, superseded by [normalized behavior parity](20260927-normalized-behavior-parity.md).**
+
 Source-derived working-tree inventory. **This is a mapping audit, not proof of provider acceptance or final SHA validation.** Provider decoupling and commerce/CRM lineage work were active while this snapshot was prepared. Recheck matrix after final changes.
 
 ## Authority and identity conventions
@@ -220,3 +222,9 @@ The shipped-JS regression executes tracker plus both providers: one page source,
 Business publication HTML normally references fixed asset paths whose bytes come from current `WebsiteCompiler/dist`; it does not ordinarily embed an old runtime. Rebuild/deploy current assets, invalidate stale caches, and inventory active plus rollback-eligible snapshots for exceptional inline/alternate retired code. Selectively recompile exceptional publications into new versions. See `20260927-runtime-migration-gate.md` for exact source contracts and predeployment commands. No deployment or republish occurred.
 
 Managed form/action bindings now enrich the same source envelope before transport, preserving every matched binding's identity, element, trigger, event name, delivery mode, and once-per-session policy. Meta projects those binding choices with the canonical event ID; analytics-only mappings suppress browser Pixel for that action. Element impressions and other independently observed configured signals retain their own stable canonical identity.
+
+### Action presentation normalization
+
+Managed navigation/CTA clicks persist the canonical browser event plus explicit ActionKey; visible text is presentation metadata only. Default `cta_click` has no Meta or OpenAI destination mapping. No advertising conversion is fabricated for a raw custom link or CTA click. Form focus/submit and cart/checkout presets delegate their existing native lifecycle or server command; their subsequent verified outcomes use the existing outcome mappings.
+
+New template element IDs use structural page/tag/ordinal identity. A read-only lookup translates historical label-derived IDs to the corresponding structural node and retains its saved binding identity. Changing template wording does not produce a new binding. Structural template reordering still requires publication migration review; this is not a claim that ordinal IDs survive arbitrary template restructuring.

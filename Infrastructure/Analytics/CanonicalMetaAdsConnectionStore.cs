@@ -12,9 +12,4 @@ public sealed class CanonicalMetaAdsConnectionStore(MarketingConnectionStore con
     public Task<MetaAdsConnectionRecord?> GetAsync(Guid agentTrackingProfileId, CancellationToken ct = default) =>
         connections.GetAdsAsync(MarketingOwnerScope.Agent(agentTrackingProfileId), ct);
 
-    public Task SaveAsync(MetaAdsConnectionRecord record, CancellationToken ct = default) =>
-        connections.SaveAdsAsync(MarketingOwnerScope.Agent(record.AgentTrackingProfileId), record, ct);
-
-    public Task DeleteAsync(Guid agentTrackingProfileId, CancellationToken ct = default) =>
-        connections.DisconnectAsync(MarketingOwnerScope.Agent(agentTrackingProfileId), ct);
 }

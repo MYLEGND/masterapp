@@ -362,7 +362,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             Environment = lead.Environment,
             IsBrowserSignal = false,
             IsServerAuthority = true,
-            MetaServerAuthorityEligible = submissionBinding is null || submissionBinding.DeliveryMode == "meta",
+            MetaServerAuthorityEligible = submissionBinding is null || submissionBinding.DeliveryMode is "meta" or "destinations",
             Metadata = new
             {
                 LeadId = lead.LeadId,
@@ -388,10 +388,11 @@ public class WebsiteInquiryAuthority : ControllerBase
 
         try
         {
-            var document = WebsiteContentSanitizer.Sanitize(
-                System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(
-                    scope.PublishedVersion.DocumentJson,
-                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new());
+            // Read-only binding identity translation from an already published version.
+            // New editor saves cannot create this retired manual outcome mapping.
+            var document = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(
+                scope.PublishedVersion.DocumentJson,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
 
             var route = path.TrimEnd('/');
             if (route.Length == 0) route = "/";

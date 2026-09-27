@@ -51,7 +51,7 @@ public sealed class MetaAdsService : IMetaAdsService
 
         var (token, accountId) = await ResolveCredentialsAsync(scope, ct);
         if (string.IsNullOrWhiteSpace(token))
-            throw new InvalidOperationException("Meta Ads access token missing. Connect Meta Ads or set MetaAds:AccessToken.");
+            throw new InvalidOperationException("Meta Ads is not connected for this permanent owner. Global/team views cannot select provider credentials.");
         if (string.IsNullOrWhiteSpace(accountId))
             throw new InvalidOperationException("No Meta Ads account mapping found for this agent. Connect Meta Ads to bind an account.");
 
@@ -458,125 +458,15 @@ public sealed class MetaAdsService : IMetaAdsService
 
     private async Task<(string Token, string AccountId)> ResolveCredentialsAsync(ScopeContext scope, CancellationToken ct)
     {
-        if (_marketingConnections is not null)
-        {
-            MarketingOwnerScope? owner = null;
-            if (scope.ScopeType == ScopeType.Business &&
-                scope.CommerceBusinessId is { } businessId &&
-                businessId != Guid.Empty &&
-                !scope.AgentTrackingProfileId.HasValue &&
-                !scope.HasSiteScope)
-            {
-                if (await _db.CommerceBusinesses.AsNoTracking()
-                    .AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct))
-                    owner = MarketingOwnerScope.Business(businessId);
-            }
-            else if (scope.ScopeType == ScopeType.Founder &&
-                     scope.AgentTrackingProfileId is { } founderId &&
-                     founderId != Guid.Empty && !scope.CommerceBusinessId.HasValue)
-            {
-                owner = MarketingOwnerScope.Founder;
-            }
-            else if (scope.ScopeType == ScopeType.Agent &&
-                     scope.AgentTrackingProfileId is { } agentId &&
-                     agentId != Guid.Empty &&
-                     !scope.CommerceBusinessId.HasValue &&
-                     !scope.HasSiteScope)
-            {
-                owner = MarketingOwnerScope.Agent(agentId);
-            }
-            else if (scope.ScopeType == ScopeType.Global &&
-                     scope.HasSiteScope &&
-                     string.Equals(scope.SiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
-            {
-                owner = MarketingOwnerScope.Founder;
-            }
-
-            if (owner is not null)
-            {
-                var connection = await _marketingConnections.GetAdsAsync(owner, ct);
-                if (connection is not null && !string.IsNullOrWhiteSpace(connection.AccessToken))
-                    return (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
-
-                // Agent-only compatibility is intentionally handled below so an
-                // owner-checked encrypted legacy connection can migrate into the
-                // canonical store. Business and Founder scopes must fail closed:
-                // they may never inherit process-global Meta credentials.
-                if (!string.Equals(owner.OwnerType, "agent", StringComparison.OrdinalIgnoreCase))
-                    return (string.Empty, string.Empty);
-            }
-        }
-
-        // Compatibility migration path for an agent-scoped encrypted connection.
-        // This never permits a business/founder to inherit another owner's account.
-        if (scope.ScopeType == ScopeType.Agent &&
-            scope.AgentTrackingProfileId.HasValue &&
-            scope.AgentTrackingProfileId.Value != Guid.Empty &&
-            !scope.CommerceBusinessId.HasValue && !scope.HasSiteScope)
-        {
-            var connection = await _connectionStore.GetAsync(scope.AgentTrackingProfileId.Value, ct);
-            if (connection != null && !string.IsNullOrWhiteSpace(connection.AccessToken))
-                return (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
-
-            return (string.Empty, string.Empty);
-        }
-
-        // A recognized scoped analytics owner without a canonical connection is
-        // explicitly disconnected. Global configuration is reserved for genuinely
-        // unscoped legacy/global callers and cannot satisfy a tenant-scoped request.
-        if (scope.ScopeType != ScopeType.Global || scope.HasSiteScope ||
-            scope.AgentTrackingProfileId.HasValue || scope.CommerceBusinessId.HasValue)
-            return (string.Empty, string.Empty);
-
-        var token = (_config["MetaAds:AccessToken"] ?? string.Empty).Trim();
-        var accountId = await ResolveAccountIdAsync(scope, ct);
-        return (token, accountId);
-    }
-
-    private async Task<string> ResolveAccountIdAsync(ScopeContext scope, CancellationToken ct)
-    {
-        var map = _config.GetSection("MetaAds:AgentAccountMap").Get<Dictionary<string, string>>()
-                  ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        string? defaultAccount = NormalizeAccountId(_config["MetaAds:DefaultAccountId"]);
-
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
-        {
-            var profileId = scope.AgentTrackingProfileId.Value;
-            var profile = await _db.AgentTrackingProfiles.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == profileId, ct);
-
-            var keys = new List<string>
-            {
-                profileId.ToString(),
-                profileId.ToString("D"),
-                profileId.ToString("N")
-            };
-
-            if (!string.IsNullOrWhiteSpace(profile?.Slug)) keys.Add(profile.Slug.Trim());
-            if (!string.IsNullOrWhiteSpace(profile?.AgentUpn)) keys.Add(profile.AgentUpn.Trim());
-            if (!string.IsNullOrWhiteSpace(profile?.AgentUserId)) keys.Add(profile.AgentUserId.Trim());
-
-            foreach (var key in keys)
-            {
-                if (TryGetMappedAccount(map, key, out var mapped)) return mapped;
-                if (TryGetMappedAccount(map, key.ToLowerInvariant(), out mapped)) return mapped;
-            }
-
-            return defaultAccount ?? string.Empty;
-        }
-
-        return defaultAccount ?? string.Empty;
-    }
-
-    private static bool TryGetMappedAccount(IReadOnlyDictionary<string, string> map, string key, out string accountId)
-    {
-        accountId = string.Empty;
-        if (!map.TryGetValue(key, out var raw)) return false;
-        var normalized = NormalizeAccountId(raw);
-        if (string.IsNullOrWhiteSpace(normalized)) return false;
-        accountId = normalized;
-        return true;
+        var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _config, scope, ct);
+        if (owner is null) return (string.Empty, string.Empty);
+        var connection = _marketingConnections is null ? null : await _marketingConnections.GetAdsAsync(owner, ct);
+        // Only a canonically resolved ordinary Agent can import its old encrypted account.
+        if (connection is null && owner.AgentTrackingProfileId is { } agentId)
+            connection = await _connectionStore.GetAsync(agentId, ct);
+        return connection is null || string.IsNullOrWhiteSpace(connection.AccessToken)
+            ? (string.Empty, string.Empty)
+            : (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
     }
 
     private static string? NormalizeAccountId(string? raw)

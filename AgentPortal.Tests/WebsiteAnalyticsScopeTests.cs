@@ -114,7 +114,9 @@ public class WebsiteAnalyticsScopeTests
         Assert.Equal(profileId, captured.AgentTrackingProfileId);
         await metaConnections.SaveAdsAsync(Shared.Analytics.MarketingOwnerScope.Agent(otherAgent),
             new Shared.Analytics.MetaAdsConnectionRecord { AgentTrackingProfileId = otherAgent, AccessToken = "foreign-token" });
-        Assert.IsType<JsonResult>(await controller.MetaDisconnect(otherAgent, team: true));
+        Assert.IsType<BadRequestObjectResult>(await controller.MetaDisconnect(otherAgent, team: true));
+        Assert.NotNull(await metaConnections.GetAdsAsync(Shared.Analytics.MarketingOwnerScope.Agent(profileId)));
+        Assert.IsType<JsonResult>(await controller.MetaDisconnect(profileId, team: false));
         Assert.Null(await metaConnections.GetAdsAsync(Shared.Analytics.MarketingOwnerScope.Agent(profileId)));
         Assert.Equal("foreign-token", (await metaConnections.GetAdsAsync(Shared.Analytics.MarketingOwnerScope.Agent(otherAgent)))!.AccessToken);
     }

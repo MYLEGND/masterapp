@@ -90,7 +90,10 @@ public sealed class AnalyticsTrackingProfileScopeTests
         using var db = ControllerTestHelpers.BuildDb();
         using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
         var connections = new MarketingConnectionStore(db, protector);
-        var founderId = Guid.NewGuid();
+        var founder = Profile("founder@example.test", "founder");
+        db.AgentTrackingProfiles.Add(founder);
+        await db.SaveChangesAsync();
+        var founderId = founder.Id;
         await connections.SaveAdsAsync(MarketingOwnerScope.Agent(founderId), new MetaAdsConnectionRecord
         {
             AgentTrackingProfileId = founderId, AccessToken = "agent-token", AccountId = "agent-account"
@@ -112,7 +115,10 @@ public sealed class AnalyticsTrackingProfileScopeTests
         using var db = ControllerTestHelpers.BuildDb();
         using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
         var connections = new MarketingConnectionStore(db, protector);
-        var founderId = Guid.NewGuid();
+        var founder = Profile("founder@example.test", "founder");
+        db.AgentTrackingProfiles.Add(founder);
+        await db.SaveChangesAsync();
+        var founderId = founder.Id;
         await connections.SaveAdsAsync(MarketingOwnerScope.Agent(founderId), new MetaAdsConnectionRecord
         {
             AgentTrackingProfileId = founderId, AccessToken = "agent-token", AccountId = "agent-account"
@@ -169,7 +175,7 @@ public sealed class AnalyticsTrackingProfileScopeTests
 
     private static MetaAdsService MetaService(Infrastructure.Data.MasterAppDbContext db, MarketingConnectionStore connections) =>
         new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            { ["MetaAds:AccessToken"] = "global-token", ["MetaAds:DefaultAccountId"] = "global-account" }).Build(),
+            { ["Founder:Upn"] = "founder@example.test", ["MetaAds:AccessToken"] = "global-token", ["MetaAds:DefaultAccountId"] = "global-account" }).Build(),
             db, Mock.Of<IHttpClientFactory>(), new Mock<IMetaAdsConnectionStore>(MockBehavior.Strict).Object,
             Mock.Of<IAnalyticsQueryService>(), NullLogger<MetaAdsService>.Instance, connections);
 
