@@ -2957,128 +2957,6 @@ function escapeHtml(value) {
   }
 
   // Fetch wrappers ---------------------------------------------------
-  async function loadMarketingPerformance() {
-    const grid = document.getElementById('channel-performance-grid');
-    if (!grid) return;
-    try {
-      const data = await fetchJson(
-        'marketingManagerPerformance',
-        endpoints.marketingManagerPerformance,
-        marketingManagerRequestBody());
-      if (!data) return;
-      renderMarketingPerformance(data);
-    } catch (error) {
-      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
-    }
-  }
-
-  async function loadGrowthEconomics() {
-    const grid = document.getElementById('growth-economics-grid');
-    if (!grid) return;
-    try {
-      const data = await fetchJson('growthEconomics', endpoints.growthEconomics, marketingManagerRequestBody());
-      if (!data) return;
-      setText('growth-economics-spend', marketingManagerMoney(data.totalMarketingSpend));
-      setText('growth-economics-customers', marketingManagerNumber(data.customersAcquired));
-      setText('growth-economics-cac', marketingManagerMoney(data.costPerCustomer));
-      setText('growth-economics-revenue', marketingManagerMoney(data.totalRevenue));
-      setText('growth-economics-roas', `${Number(data.blendedRoas || 0).toFixed(2)}x`);
-      setText('growth-economics-pipeline', marketingManagerMoney(data.pipelineValue));
-      grid.replaceChildren();
-      for (const row of data.channels || []) {
-        const card = document.createElement('article');
-        card.className = 'wa-growth-economics-card';
-        const title = document.createElement('div');
-        title.className = 'wa-channel-card-head';
-        const strong = document.createElement('strong');
-        strong.textContent = channelLabel(row.channel);
-        const basis = document.createElement('span');
-        basis.className = 'wa-channel-confidence';
-        basis.textContent = row.attributionBasis || 'canonical';
-        title.append(strong, basis);
-        const metrics = document.createElement('div');
-        metrics.className = 'wa-growth-economics-metrics';
-        for (const [label, value] of [
-          ['Spend', marketingManagerMoney(row.spend)],
-          ['Customers', marketingManagerNumber(row.customersAcquired)],
-          ['Cost / customer', marketingManagerMoney(row.costPerCustomer)],
-          ['Revenue', marketingManagerMoney(row.revenue)],
-          ['ROAS', `${Number(row.roas || 0).toFixed(2)}x`],
-          ['Pipeline', marketingManagerMoney(row.pipelineValue)]
-        ]) {
-          const item = document.createElement('div');
-          item.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
-          metrics.appendChild(item);
-        }
-        card.append(title, metrics);
-        grid.appendChild(card);
-      }
-      const note = document.getElementById('growth-economics-note');
-      if (note) note.textContent = (data.notes || []).join(' ');
-    } catch (error) {
-      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Growth economics are unavailable.')}</div>`;
-    }
-  }
-
-  async function loadOpenAiOnboarding() {
-    const host = document.getElementById('marketing-setup-openai-readiness-steps');
-    if (!host) return;
-    try {
-      const data = await fetchJson('openAiOnboarding', endpoints.openAiOnboarding, advertisingScopeParams());
-      if (!data) return;
-      const status = document.getElementById('marketing-setup-openai-readiness-status');
-      if (status) status.textContent = data.readyToAdvertise
-        ? 'Ready to advertise'
-        : `${Number(data.completedSteps || 0)}/${Number(data.totalSteps || 0)} complete`;
-      host.replaceChildren();
-      for (const step of data.steps || []) {
-        const row = document.createElement('div');
-        row.className = `marketing-setup-readiness-step ${step.complete ? 'is-complete' : 'is-open'}`;
-        const mark = document.createElement('span');
-        mark.className = 'marketing-setup-readiness-mark';
-        mark.textContent = step.complete ? '✓' : '•';
-        const copy = document.createElement('div');
-        const label = document.createElement('strong');
-        label.textContent = step.label || step.key;
-        const detail = document.createElement('small');
-        detail.textContent = step.detail || step.status || '';
-        copy.append(label, detail);
-        row.append(mark, copy);
-        host.appendChild(row);
-      }
-    } catch (error) {
-      host.innerHTML = `<div class="text-warning small">${escapeHtml(error.message || 'ChatGPT Ads readiness is unavailable.')}</div>`;
-    }
-  }
-
-  async function loadOpenAiProductFeed() {
-    const section = document.getElementById('marketing-setup-openai-product-feed');
-    if (!section) return;
-    section.hidden = !isBusinessAnalytics;
-    if (!isBusinessAnalytics) return;
-    try {
-      const data = await fetchJson('openAiProductFeed', endpoints.openAiProductFeed, {});
-      if (!data) return;
-      const status = document.getElementById('marketing-setup-openai-feed-status');
-      if (status) status.textContent = data.providerFeedId
-        ? `${Number(data.publishedProductCount || 0)}/${Number(data.eligibleProductCount || 0)} published`
-        : 'Not published';
-      const summary = document.getElementById('marketing-setup-openai-feed-summary');
-      if (summary) {
-        const errors = Array.isArray(data.validationErrors) ? data.validationErrors : [];
-        summary.innerHTML = `
-          <div><span>Canonical products</span><strong>${Number(data.canonicalProductCount || 0).toLocaleString()}</strong></div>
-          <div><span>Eligible</span><strong>${Number(data.eligibleProductCount || 0).toLocaleString()}</strong></div>
-          <div><span>Published</span><strong>${Number(data.publishedProductCount || 0).toLocaleString()}</strong></div>
-          <div><span>Errors</span><strong>${Number(data.errorCount || 0).toLocaleString()}</strong></div>
-          ${errors.length ? `<p>${escapeHtml(errors.join(' '))}</p>` : ''}`;
-      }
-    } catch (error) {
-      const summary = document.getElementById('marketing-setup-openai-feed-summary');
-      if (summary) summary.textContent = error.message || 'Product feed status is unavailable.';
-    }
-  }
-
   async function loadSummary() {
     const requestId = ++summaryRequestId;
 
@@ -5757,6 +5635,130 @@ function escapeHtml(value) {
     const id = state.scope.agentProfileId || (!isFounder ? callerProfileId : null);
     return id ? { agentProfileId: id } : {};
   }
+
+  async function loadMarketingPerformance() {
+    const grid = document.getElementById('channel-performance-grid');
+    if (!grid) return;
+    try {
+      const data = await fetchJson(
+        'marketingManagerPerformance',
+        endpoints.marketingManagerPerformance,
+        marketingManagerRequestBody());
+      if (!data) return;
+      renderMarketingPerformance(data);
+    } catch (error) {
+      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
+    }
+  }
+
+  async function loadGrowthEconomics() {
+    const grid = document.getElementById('growth-economics-grid');
+    if (!grid) return;
+    try {
+      const data = await fetchJson('growthEconomics', endpoints.growthEconomics, marketingManagerRequestBody());
+      if (!data) return;
+      setText('growth-economics-spend', marketingManagerMoney(data.totalMarketingSpend));
+      setText('growth-economics-customers', marketingManagerNumber(data.customersAcquired));
+      setText('growth-economics-cac', marketingManagerMoney(data.costPerCustomer));
+      setText('growth-economics-revenue', marketingManagerMoney(data.totalRevenue));
+      setText('growth-economics-roas', `${Number(data.blendedRoas || 0).toFixed(2)}x`);
+      setText('growth-economics-pipeline', marketingManagerMoney(data.pipelineValue));
+      grid.replaceChildren();
+      for (const row of data.channels || []) {
+        const card = document.createElement('article');
+        card.className = 'wa-growth-economics-card';
+        const title = document.createElement('div');
+        title.className = 'wa-channel-card-head';
+        const strong = document.createElement('strong');
+        strong.textContent = channelLabel(row.channel);
+        const basis = document.createElement('span');
+        basis.className = 'wa-channel-confidence';
+        basis.textContent = row.attributionBasis || 'canonical';
+        title.append(strong, basis);
+        const metrics = document.createElement('div');
+        metrics.className = 'wa-growth-economics-metrics';
+        for (const [label, value] of [
+          ['Spend', marketingManagerMoney(row.spend)],
+          ['Customers', marketingManagerNumber(row.customersAcquired)],
+          ['Cost / customer', marketingManagerMoney(row.costPerCustomer)],
+          ['Revenue', marketingManagerMoney(row.revenue)],
+          ['ROAS', `${Number(row.roas || 0).toFixed(2)}x`],
+          ['Pipeline', marketingManagerMoney(row.pipelineValue)]
+        ]) {
+          const item = document.createElement('div');
+          item.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+          metrics.appendChild(item);
+        }
+        card.append(title, metrics);
+        grid.appendChild(card);
+      }
+      const note = document.getElementById('growth-economics-note');
+      if (note) note.textContent = (data.notes || []).join(' ');
+    } catch (error) {
+      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Growth economics are unavailable.')}</div>`;
+    }
+  }
+
+  async function loadOpenAiOnboarding() {
+    const host = document.getElementById('marketing-setup-openai-readiness-steps');
+    if (!host) return;
+    try {
+      const data = await fetchJson('openAiOnboarding', endpoints.openAiOnboarding, advertisingScopeParams());
+      if (!data) return;
+      const status = document.getElementById('marketing-setup-openai-readiness-status');
+      if (status) status.textContent = data.readyToAdvertise
+        ? 'Ready to advertise'
+        : `${Number(data.completedSteps || 0)}/${Number(data.totalSteps || 0)} complete`;
+      host.replaceChildren();
+      for (const step of data.steps || []) {
+        const row = document.createElement('div');
+        row.className = `marketing-setup-readiness-step ${step.complete ? 'is-complete' : 'is-open'}`;
+        const mark = document.createElement('span');
+        mark.className = 'marketing-setup-readiness-mark';
+        mark.textContent = step.complete ? '✓' : '•';
+        const copy = document.createElement('div');
+        const label = document.createElement('strong');
+        label.textContent = step.label || step.key;
+        const detail = document.createElement('small');
+        detail.textContent = step.detail || step.status || '';
+        copy.append(label, detail);
+        row.append(mark, copy);
+        host.appendChild(row);
+      }
+    } catch (error) {
+      host.innerHTML = `<div class="text-warning small">${escapeHtml(error.message || 'ChatGPT Ads readiness is unavailable.')}</div>`;
+    }
+  }
+
+  async function loadOpenAiProductFeed() {
+    const section = document.getElementById('marketing-setup-openai-product-feed');
+    if (!section) return;
+    section.hidden = !isBusinessAnalytics;
+    if (!isBusinessAnalytics) return;
+    try {
+      const data = await fetchJson('openAiProductFeed', endpoints.openAiProductFeed, {});
+      if (!data) return;
+      const status = document.getElementById('marketing-setup-openai-feed-status');
+      if (status) status.textContent = data.providerFeedId
+        ? `${Number(data.publishedProductCount || 0)}/${Number(data.eligibleProductCount || 0)} published`
+        : 'Not published';
+      const summary = document.getElementById('marketing-setup-openai-feed-summary');
+      if (summary) {
+        const errors = Array.isArray(data.validationErrors) ? data.validationErrors : [];
+        summary.innerHTML = `
+          <div><span>Canonical products</span><strong>${Number(data.canonicalProductCount || 0).toLocaleString()}</strong></div>
+          <div><span>Eligible</span><strong>${Number(data.eligibleProductCount || 0).toLocaleString()}</strong></div>
+          <div><span>Published</span><strong>${Number(data.publishedProductCount || 0).toLocaleString()}</strong></div>
+          <div><span>Errors</span><strong>${Number(data.errorCount || 0).toLocaleString()}</strong></div>
+          ${errors.length ? `<p>${escapeHtml(errors.join(' '))}</p>` : ''}`;
+      }
+    } catch (error) {
+      const summary = document.getElementById('marketing-setup-openai-feed-summary');
+      if (summary) summary.textContent = error.message || 'Product feed status is unavailable.';
+    }
+  }
+
+
 
   function advertisingBody(payload = {}) {
     return { ...advertisingScopeParams(), ...payload };
