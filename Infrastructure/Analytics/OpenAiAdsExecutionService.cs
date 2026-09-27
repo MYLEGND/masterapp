@@ -28,6 +28,7 @@ public interface IOpenAiAdsExecutionService
     Task<OpenAiAdsProviderEntity> PreviewAdAsync(MarketingOwnerScope owner, string adId, CancellationToken ct = default);
 
     Task<OpenAiAdsImageUploadResult> UploadImageUrlAsync(MarketingOwnerScope owner, string imageUrl, CancellationToken ct = default);
+    Task<OpenAiAdsImageUploadResult> UploadImageAsync(MarketingOwnerScope owner, Stream content, string fileName, string contentType, CancellationToken ct = default);
     Task<OpenAiAdsGeoSearchResult> SearchGeoAsync(MarketingOwnerScope owner, string query, int limit = 20, CancellationToken ct = default);
     Task<OpenAiAdsProviderPage> ListConversionEventSettingsAsync(MarketingOwnerScope owner, CancellationToken ct = default);
     Task<OpenAiAdsProviderEntity> CreateConversionEventSettingAsync(MarketingOwnerScope owner, OpenAiAdsConversionEventSettingCreateRequest request, CancellationToken ct = default);
@@ -275,6 +276,33 @@ public sealed class OpenAiAdsExecutionService(
         var fileId = ReadString(entity.Payload, "file_id")
             ?? throw new InvalidOperationException("OpenAI Ads upload did not return a file_id.");
         return new(fileId, entity.Payload);
+    }
+
+    public async Task<OpenAiAdsImageUploadResult> UploadImageAsync(
+        MarketingOwnerScope owner,
+        Stream content,
+        string fileName,
+        string contentType,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (!content.CanRead) throw new ArgumentException("Image stream must be readable.", nameof(content));
+        var safeName = Text(fileName, 255, nameof(fileName));
+        var mediaType = Text(contentType, 100, nameof(contentType));
+        if (!mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("ChatGPT Ads creative upload must be an image.", nameof(contentType));
+
+        var key = await ManagementKeyAsync(owner, ct);
+        using var request = Request(HttpMethod.Post, "/upload", key);
+        using var form = new MultipartFormDataContent();
+        var file = new StreamContent(content);
+        file.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
+        form.Add(file, "file", safeName);
+        request.Content = form;
+        var payload = await SendAsync(request, ct);
+        var fileId = ReadString(payload, "file_id")
+            ?? throw new InvalidOperationException("OpenAI Ads upload did not return a file_id.");
+        return new(fileId, payload);
     }
 
     public async Task<OpenAiAdsGeoSearchResult> SearchGeoAsync(
