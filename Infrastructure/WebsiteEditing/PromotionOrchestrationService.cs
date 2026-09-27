@@ -237,7 +237,7 @@ public sealed class PromotionOrchestrationService(
             ?? throw new InvalidOperationException("The selected product is not active in this business.");
 
         var business = await ActiveBusinessAsync(businessId, ct);
-        var root = await BusinessPublicBaseAsync(businessId, ct);
+        var root = await businessPublicUrls.ResolveAsync(businessId, ct);
         var state = await PublishedStateAsync(owner, ct);
         var image = product.Images.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.DisplayOrder)
             .Select(x => x.ImageUrl)
@@ -276,7 +276,7 @@ public sealed class PromotionOrchestrationService(
             ?? throw new InvalidOperationException("The selected service is not present in the canonical business service facts.");
 
         var business = await ActiveBusinessAsync(businessId, ct);
-        var root = await BusinessPublicBaseAsync(businessId, ct);
+        var root = await businessPublicUrls.ResolveAsync(businessId, ct);
         var published = await PublishedStateAsync(owner, ct);
         var document = ReadDocument(published.Version.DocumentJson);
         var pagePath = NormalizePagePath(request.PagePath);
