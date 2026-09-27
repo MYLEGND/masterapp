@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized direct deployment of the validated canonical ChatGPT Ads Steps 5-8 integration and scoped Advertising Command Center. Deploy only AgentPortal and ClientApp because those are the affected hosts for the shared Website Analytics/Marketing Setup UI and business-scoped analytics projection. Preserve successful Protect, Parfait, and LEGEND Website releases by excluding them from this scoped release.",
-  "purpose": "Publish the canonical scoped ChatGPT Ads operating layer: conversion mapping, governed campaign execution, exact-action approval ledger, Promote This orchestration, and the shared Advertising Command Center UI, while preserving the current approved OpenAI Pixel/Marketing Setup behavior and one-source-of-truth owner scoping.",
-  "requestId": "chatgpt-ads-steps5-8-command-center-20260927",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36303279275",
-  "validatedHead": "c1afda10417a8075a1aa6836132008af2d8e7487",
+  "authorization": "Founder authorized one combined approved release for all currently undeployed canonical ChatGPT Ads and Marketing Manager work through Steps 5-13. Steps 1-4 are already live and must not be rolled back. The prior Steps 5-8 release failed before any application deployment at the migration gate, so no partial Steps 5-8 deployment is live to preserve. Deploy only AgentPortal and ClientApp because those are the affected hosts for the shared Website Analytics, Marketing Setup, Advertising Command Center, business analytics, Marketing Manager, growth economics, onboarding, and canonical business product-feed surfaces.",
+  "purpose": "Publish the complete undeployed canonical marketing system through Steps 5-13 in one release: conversion mapping, governed ChatGPT Ads execution, exact-action approval ledger, Promote This orchestration, Advertising Command Center, Marketing Manager planning, ChatGPT Ads performance ingestion, unified cross-channel outcomes, blended growth economics, canonical product-feed publication/reconciliation, and evidence-based ChatGPT Ads onboarding/readiness. Preserve the already-live Steps 1-4 foundation and all unrelated successful applications.",
+  "requestId": "chatgpt-ads-steps5-13-combined-20260927",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36305248105",
+  "validatedHead": "5afc69bf173ef5626faa754f93022ffc72fa1aa4",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
