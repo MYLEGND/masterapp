@@ -13,6 +13,39 @@ namespace AgentPortal.Tests;
 
 public sealed class UnifiedMarketingPerformanceIsolationTests
 {
+    [Fact]
+    public async Task ReportingUsesCanonicalFieldsAndDisclosesCompletedHourWindow()
+    {
+        var owner = MarketingOwnerScope.Founder;
+        var scope = ScopeContext.ForAgent(Guid.NewGuid());
+        var from = new DateTime(2026, 9, 20, 7, 12, 0, DateTimeKind.Utc);
+        var to = from.AddHours(3);
+        var range = new TimeRangeRequest { FromUtc = from, ToUtc = to };
+        var connections = new Mock<IOpenAiAdsAccountConnectionAuthority>();
+        connections.Setup(x => x.GetAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(new OpenAiAdsConnectionSnapshot(
+            owner, true, true, Guid.NewGuid(), "account", "Account", null, "approved", "api_key", null, null,
+            Array.Empty<string>(), "pixel", "source", true, true, DateTime.UtcNow, null, DateTime.UtcNow));
+        var openai = new Mock<IOpenAiAdsExecutionService>();
+        using var payload = System.Text.Json.JsonDocument.Parse("""{"data":[{"campaign_id":"cmpn_1","spend":12.5,"impressions":100,"clicks":4}]}""");
+        openai.Setup(x => x.GetAccountInsightsAsync(owner, "campaign", It.IsAny<OpenAiAdsInsightsQuery>(), It.IsAny<CancellationToken>()))
+            .Callback<MarketingOwnerScope, string, OpenAiAdsInsightsQuery, CancellationToken>((_, _, query, _) => {
+                Assert.Equal(new[] { "campaign.spend", "campaign.impressions", "campaign.clicks", "campaign.id", "campaign.name", "campaign.status" }, query.Fields);
+                Assert.Equal(from, query.FromUtc);
+                Assert.Equal(to, query.ToUtc);
+            })
+            .ReturnsAsync(new OpenAiAdsInsightsResult(payload.RootElement.Clone(), from.Date.AddHours(8), from.Date.AddHours(10)));
+        var analytics = new Mock<IAnalyticsQueryService>();
+        analytics.Setup(x => x.LoadAttributedEventsAsync(range, scope, TrafficType.All, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AnalyticsEvent>());
+        var meta = new Mock<IMetaAdsService>();
+        meta.Setup(x => x.GetCampaignsAsync(range, scope, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Meta unavailable"));
+        var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object)
+            .GetAsync(owner, scope, range);
+        Assert.Contains(result.DataQualityNotes, x => x.Contains("completed account-local hours", StringComparison.Ordinal));
+        analytics.Verify(x => x.LoadAttributedEventsAsync(range, scope, TrafficType.All, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

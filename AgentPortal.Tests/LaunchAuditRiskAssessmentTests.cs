@@ -22,6 +22,28 @@ namespace AgentPortal.Tests;
 public sealed class LaunchAuditRiskAssessmentTests
 {
     [Fact]
+    public async Task AssessmentRequiresConsentWithoutIncompatibleBooleanRangeValidation()
+    {
+        var property = typeof(RiskAssessmentModel).GetProperty(nameof(RiskAssessmentModel.AcknowledgedDisclaimer))!;
+        Assert.Empty(property.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.RangeAttribute), true));
+        await using var db = ControllerTestHelpers.BuildDb();
+        var sender = new Mock<IProtectEmailSender>(MockBehavior.Strict);
+        var controller = new RiskAssessmentController(new ConfigurationBuilder().Build(), sender.Object, db,
+            new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance),
+            new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance),
+            NullLogger<RiskAssessmentController>.Instance);
+        var result = await controller.SubmitRiskAssessment(new RiskAssessmentModel {
+            FirstName = "Test", LastName = "Only", Email = "controlled@example.test", AcknowledgedDisclaimer = false
+        });
+        Assert.IsType<ViewResult>(result);
+        Assert.False(controller.ModelState.IsValid);
+        Assert.Contains(nameof(RiskAssessmentModel.AcknowledgedDisclaimer), controller.ModelState.Keys);
+        Assert.Empty(db.WebsiteLeads);
+        Assert.Empty(db.AnalyticsEvents);
+        sender.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task AssessmentRetryKeepsOneLeadCrmHandoffAndEventAndRetriesFailedNotification()
     {
         await using var db = ControllerTestHelpers.BuildDb();

@@ -1,15 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit 2026-09-27 authorization: complete PR #249, merge only after final local and exact-SHA CI gates pass, then deploy affected applications through legend/approved-changes. Preserve successful deployments and resume only failed steps.",
-  "purpose": "Canonical analytics ingestion, behavior/ActionKey contract, scoped reporting and independent Meta/OpenAI projections; shared CRM/commerce lineage and attribution; current-destination delivery evidence.",
-  "requestId": "pr249-canonical-analytics-recovery-20260927",
+  "authorization": "Explicit Founder authorization on 2026-09-27 to fix release reliability, deploy necessary fixes without overrides or redundant restarts, and complete post-deployment Founder website and internal management tests.",
+  "purpose": "Fix live Protect assessment consent validation and account-local completed-hour OpenAI Ads reporting in Portal and Client management. Preserve successful unchanged Parfait and static Website deployments.",
+  "requestId": "founder-postdeployment-reporting-consent-20260927",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
+    "masterapp-protect"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
