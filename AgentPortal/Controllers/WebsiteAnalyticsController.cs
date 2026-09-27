@@ -1513,7 +1513,8 @@ namespace AgentPortal.Controllers;
                     metaAdId: e.MetaAdId,
                     isInternal: e.IsInternal,
                     environment: e.Environment,
-                    host: e.Host);
+                    host: e.Host,
+                    oppref: e.Oppref);
                 return new { e.EventType, e.SessionId, t };
             })
             .ToList();
@@ -1540,7 +1541,8 @@ namespace AgentPortal.Controllers;
                 metaAdId: l.MetaAdId,
                 isInternal: l.IsInternal,
                 environment: l.Environment,
-                host: l.Host))
+                host: l.Host,
+                oppref: l.Oppref))
             .OrderByDescending(g => g.Count())
             .Select(g => new
             {
