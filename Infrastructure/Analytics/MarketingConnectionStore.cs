@@ -188,6 +188,14 @@ public static class MarketingServiceRegistration
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, OpenAiMarketingDestination>());
         services.TryAddScoped<IMarketingDestinationRegistry, MarketingDestinationRegistry>();
         services.AddScoped<IOpenAiAdsAccountConnectionAuthority, OpenAiAdsAccountConnectionAuthority>();
+        services.AddHttpClient<IOpenAiConversionsApiService, OpenAiConversionsApiService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddHttpClient<IOpenAiMeasurementHealthService, OpenAiMeasurementHealthService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
         services.AddScoped<MarketingMetaAdsOAuthService>();
         services.TryAddScoped<IMetaAdsConnectionStore, CanonicalMetaAdsConnectionStore>();
         services.TryAddScoped<IMetaAdsService, MetaAdsService>();
