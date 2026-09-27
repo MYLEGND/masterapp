@@ -25,6 +25,11 @@ public interface IOpenAiAdsDirectConnectionService
         Guid? expectedRevision = null,
         CancellationToken cancellationToken = default);
 
+    Task<OpenAiAdsConnectionSnapshot> RefreshAsync(
+        MarketingOwnerScope owner,
+        Guid expectedRevision,
+        CancellationToken cancellationToken = default);
+
     Task<OpenAiAdsProviderAccountSnapshot?> InspectAsync(
         MarketingOwnerScope owner,
         CancellationToken cancellationToken = default);
@@ -84,6 +89,22 @@ public sealed class OpenAiAdsDirectConnectionService(
                 ConversionsApiKey: measurement.ConversionsApiKey),
             expectedRevision,
             cancellationToken);
+    }
+
+    public async Task<OpenAiAdsConnectionSnapshot> RefreshAsync(
+        MarketingOwnerScope owner,
+        Guid expectedRevision,
+        CancellationToken cancellationToken = default)
+    {
+        var connection = await authority.GetAsync(owner, cancellationToken);
+        if (!connection.Connected)
+            throw new InvalidOperationException("ChatGPT Ads is not connected for this scope.");
+
+        var secrets = await authority.GetSecretsAsync(owner, cancellationToken);
+        if (string.IsNullOrWhiteSpace(secrets.ManagementApiKey))
+            throw new InvalidOperationException("The scoped Advertiser API credential is unavailable.");
+
+        return await ConnectAsync(owner, secrets.ManagementApiKey, expectedRevision, cancellationToken);
     }
 
     public async Task<OpenAiAdsProviderAccountSnapshot?> InspectAsync(
