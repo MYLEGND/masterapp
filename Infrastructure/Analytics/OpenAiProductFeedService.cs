@@ -203,7 +203,7 @@ public sealed class OpenAiProductFeedService(
         }
         var image = product.Images.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.DisplayOrder)
             .Select(x => x.ImageUrl?.Trim())
-            .FirstOrDefault(x => Uri.TryCreate(x, UriKind.Absolute, out var uri) && uri.Scheme is Uri.UriSchemeHttps or Uri.UriSchemeHttp);
+            .FirstOrDefault(x => Uri.TryCreate(x, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp));
         if (string.IsNullOrWhiteSpace(image))
         {
             errors?.Add($"{product.Name} does not have an eligible HTTP(S) product image.");
