@@ -29,6 +29,8 @@ public partial class AddAdvertisingActionAuthorizations : Migration
                 ApprovedByUserId = table.Column<string>(maxLength: 450, nullable: true),
                 ApprovedUtc = table.Column<DateTime>(nullable: true),
                 ApprovalExpiresUtc = table.Column<DateTime>(nullable: true),
+                RejectedByUserId = table.Column<string>(maxLength: 450, nullable: true),
+                RejectedUtc = table.Column<DateTime>(nullable: true),
                 ExecutionClaimToken = table.Column<string>(maxLength: 64, nullable: true),
                 ExecutionStartedUtc = table.Column<DateTime>(nullable: true),
                 CompletedUtc = table.Column<DateTime>(nullable: true),
