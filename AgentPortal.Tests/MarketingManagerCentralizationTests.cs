@@ -58,6 +58,25 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
+    public void SharedAnalyticsUi_LoadersLiveInCanonicalAdvertisingScope()
+    {
+        var root = Root();
+        var js = Read(root, "AgentPortal", "wwwroot", "js", "website-analytics.js");
+
+        var scope = js.IndexOf("function advertisingScopeParams()", StringComparison.Ordinal);
+        var performance = js.IndexOf("async function loadMarketingPerformance()", StringComparison.Ordinal);
+        var onboarding = js.IndexOf("async function loadOpenAiOnboarding()", StringComparison.Ordinal);
+        var advertisingBody = js.IndexOf("function advertisingBody(", StringComparison.Ordinal);
+
+        Assert.True(scope >= 0, "Canonical advertising scope helper is required.");
+        Assert.True(performance > scope, "Marketing performance loader must share the top-level advertising scope.");
+        Assert.True(onboarding > scope, "OpenAI onboarding loader must share the top-level advertising scope.");
+        Assert.True(advertisingBody > onboarding, "Read-side loaders must be established before advertising body helpers and callers.");
+        Assert.Equal(1, js.Split("async function loadMarketingPerformance()", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, js.Split("async function loadOpenAiOnboarding()", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
     public void AppHosts_DoNotOwnParallelMarketingManagerImplementations()
     {
         var root = Root();
