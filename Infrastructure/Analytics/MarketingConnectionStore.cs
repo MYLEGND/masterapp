@@ -196,6 +196,7 @@ public static class MarketingServiceRegistration
         {
             client.Timeout = TimeSpan.FromSeconds(30);
         });
+        services.AddScoped<IAdvertisingActionAuthorizationService, AdvertisingActionAuthorizationService>();
         services.AddHttpClient<IOpenAiConversionsApiService, OpenAiConversionsApiService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(10);
