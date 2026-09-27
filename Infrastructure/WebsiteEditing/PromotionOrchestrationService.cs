@@ -11,18 +11,15 @@ namespace Infrastructure.WebsiteEditing;
 public interface IPromotionOrchestrationService
 {
     Task<IReadOnlyList<PromotionSourceOption>> SourcesAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         CancellationToken ct = default);
 
     Task<PromotionDraft> DraftAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         PromotionProposalRequest request,
         CancellationToken ct = default);
 
     Task<AdvertisingActionProposalSnapshot> ProposeAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         PromotionProposalRequest request,
         string proposedByUserId,
@@ -39,11 +36,10 @@ public sealed class PromotionOrchestrationService(
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<IReadOnlyList<PromotionSourceOption>> SourcesAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         CancellationToken ct = default)
     {
-        var published = await PublishedStateAsync(actor, ct);
+        var published = await PublishedStateAsync(owner, ct);
         var document = ReadDocument(published.Version.DocumentJson);
         var options = document.Pages
             .Where(x => !x.Value.Navigation.IsDeleted)
@@ -56,7 +52,7 @@ public sealed class PromotionOrchestrationService(
                 Detail: Clean(x.Value.Description, 500)))
             .ToList();
 
-        if (owner.CommerceBusinessId is not Guid businessId || actor.CommerceBusinessId != businessId)
+        if (owner.CommerceBusinessId is not Guid businessId)
             return options;
 
         var facts = await WebsiteBusinessFacts.LoadAsync(db, businessId, ct);
@@ -91,12 +87,10 @@ public sealed class PromotionOrchestrationService(
     }
 
     public async Task<PromotionDraft> DraftAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         PromotionProposalRequest request,
         CancellationToken ct = default)
     {
-        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(request);
 
@@ -120,7 +114,7 @@ public sealed class PromotionOrchestrationService(
             throw new ArgumentException("A conversion event setting applies only to a conversions objective.", nameof(request));
         }
 
-        var source = await ResolveSourceAsync(actor, owner, request, ct);
+        var source = await ResolveSourceAsync(owner, request, ct);
         var hints = BuildContextHints(source, request.ContextHints);
         var alternatives = BuildAlternatives(source, hints);
         var selected = string.IsNullOrWhiteSpace(request.SelectedCreativeKey)
@@ -141,13 +135,12 @@ public sealed class PromotionOrchestrationService(
     }
 
     public async Task<AdvertisingActionProposalSnapshot> ProposeAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         PromotionProposalRequest request,
         string proposedByUserId,
         CancellationToken ct = default)
     {
-        var draft = await DraftAsync(actor, owner, request, ct);
+        var draft = await DraftAsync(owner, request, ct);
         var sourceJson = JsonSerializer.SerializeToElement(new
         {
             draft.Source,
@@ -197,7 +190,6 @@ public sealed class PromotionOrchestrationService(
     }
 
     private async Task<PromotionSourceSnapshot> ResolveSourceAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         PromotionProposalRequest request,
         CancellationToken ct)
@@ -205,15 +197,14 @@ public sealed class PromotionOrchestrationService(
         var kind = (request.SourceKind ?? string.Empty).Trim().ToLowerInvariant();
         return kind switch
         {
-            PromotionSourceKinds.Product => await ResolveProductAsync(actor, owner, request, ct),
-            PromotionSourceKinds.Service => await ResolveServiceAsync(actor, owner, request, ct),
-            PromotionSourceKinds.WebsitePage => await ResolveWebsitePageAsync(actor, owner, request, ct),
+            PromotionSourceKinds.Product => await ResolveProductAsync(owner, request, ct),
+            PromotionSourceKinds.Service => await ResolveServiceAsync(owner, request, ct),
+            PromotionSourceKinds.WebsitePage => await ResolveWebsitePageAsync(owner, request, ct),
             _ => throw new ArgumentException("Promotion source must be website_page, service, or product.", nameof(request))
         };
     }
 
     private async Task<PromotionSourceSnapshot> ResolveProductAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         PromotionProposalRequest request,
         CancellationToken ct)
@@ -235,7 +226,7 @@ public sealed class PromotionOrchestrationService(
 
         var business = await ActiveBusinessAsync(businessId, ct);
         var root = await BusinessPublicBaseAsync(businessId, ct);
-        var state = await PublishedStateAsync(actor, ct);
+        var state = await PublishedStateAsync(owner, ct);
         var image = product.Images.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.DisplayOrder)
             .Select(x => x.ImageUrl)
             .FirstOrDefault(IsHttpUrl);
@@ -256,7 +247,6 @@ public sealed class PromotionOrchestrationService(
     }
 
     private async Task<PromotionSourceSnapshot> ResolveServiceAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         PromotionProposalRequest request,
         CancellationToken ct)
@@ -275,7 +265,7 @@ public sealed class PromotionOrchestrationService(
 
         var business = await ActiveBusinessAsync(businessId, ct);
         var root = await BusinessPublicBaseAsync(businessId, ct);
-        var published = await PublishedStateAsync(actor, ct);
+        var published = await PublishedStateAsync(owner, ct);
         var document = ReadDocument(published.Version.DocumentJson);
         var pagePath = NormalizePagePath(request.PagePath);
         var page = document.Pages.TryGetValue(pagePath, out var found) ? found : document.Pages.GetValueOrDefault("/");
@@ -297,18 +287,17 @@ public sealed class PromotionOrchestrationService(
     }
 
     private async Task<PromotionSourceSnapshot> ResolveWebsitePageAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         PromotionProposalRequest request,
         CancellationToken ct)
     {
-        var published = await PublishedStateAsync(actor, ct);
+        var published = await PublishedStateAsync(owner, ct);
         var document = ReadDocument(published.Version.DocumentJson);
         var path = NormalizePagePath(request.PagePath);
         if (!document.Pages.TryGetValue(path, out var page) || page.Navigation.IsDeleted)
             throw new InvalidOperationException("Only an existing published website page can be promoted.");
 
-        var baseUrl = await PublicBaseAsync(actor, owner, ct);
+        var baseUrl = await PublicBaseAsync(owner, ct);
         var title = Clean(page.Title, 300) ?? (path == "/" ? "Home" : path.Trim('/'));
         var description = Clean(page.Description, 4000);
         string? businessName = null;
@@ -466,11 +455,33 @@ public sealed class PromotionOrchestrationService(
     }
 
     private async Task<(WebsiteContentState State, WebsiteContentVersion Version)> PublishedStateAsync(
-        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
         CancellationToken ct)
     {
+        string ownerKey;
+        string siteKey;
+
+        if (owner.CommerceBusinessId is Guid businessId)
+        {
+            ownerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(businessId);
+            siteKey = WebsiteEditorSiteKeys.Business;
+        }
+        else if (owner.AgentTrackingProfileId is Guid agentId)
+        {
+            var agent = await db.AgentTrackingProfiles.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == agentId, ct)
+                ?? throw new InvalidOperationException("The scoped agent website owner no longer exists.");
+            ownerKey = (agent.AgentUserId ?? string.Empty).Trim().ToLowerInvariant();
+            siteKey = WebsiteEditorSiteKeys.Protect;
+        }
+        else
+        {
+            ownerKey = WebsiteEditorSiteKeys.GlobalOwnerKey;
+            siteKey = WebsiteEditorSiteKeys.Legend;
+        }
+
         var state = await db.Set<WebsiteContentState>().AsNoTracking()
-            .SingleOrDefaultAsync(x => x.OwnerKey == actor.OwnerUserId && x.SiteKey == actor.SiteKey, ct)
+            .SingleOrDefaultAsync(x => x.OwnerKey == ownerKey && x.SiteKey == siteKey, ct)
             ?? throw new InvalidOperationException("The website has no canonical content state.");
         if (state.PublishedVersionId is not Guid versionId)
             throw new InvalidOperationException("Publish the website before promoting it.");
@@ -482,21 +493,25 @@ public sealed class PromotionOrchestrationService(
     }
 
     private async Task<string> PublicBaseAsync(
-        WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
         CancellationToken ct)
     {
         if (owner.CommerceBusinessId is Guid businessId)
             return await BusinessPublicBaseAsync(businessId, ct);
 
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Legend)
-            return (configuration["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/');
-
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Protect && !string.IsNullOrWhiteSpace(actor.AgentSlug))
+        if (owner.AgentTrackingProfileId is Guid agentId)
+        {
+            var slug = await db.AgentTrackingProfiles.AsNoTracking()
+                .Where(x => x.Id == agentId)
+                .Select(x => x.Slug)
+                .SingleOrDefaultAsync(ct);
+            if (string.IsNullOrWhiteSpace(slug))
+                throw new InvalidOperationException("The scoped agent does not have a canonical public slug.");
             return (configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') +
-                   "/a/" + Uri.EscapeDataString(actor.AgentSlug.Trim());
+                   "/a/" + Uri.EscapeDataString(slug.Trim());
+        }
 
-        throw new InvalidOperationException("No canonical public landing base is available for this website scope.");
+        return (configuration["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/');
     }
 
     private async Task<string> BusinessPublicBaseAsync(Guid businessId, CancellationToken ct)
