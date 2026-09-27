@@ -1,10 +1,14 @@
 using System;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations;
 
+[DbContext(typeof(MasterAppDbContext))]
+[Migration("20260926235500_AddOpenAiMarketingConnectionAuthority")]
 public partial class AddOpenAiMarketingConnectionAuthority : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -12,62 +16,53 @@ public partial class AddOpenAiMarketingConnectionAuthority : Migration
         migrationBuilder.AddColumn<DateTime>(
             name: "LastVerifiedUtc",
             table: "MarketingConnections",
-            type: "datetime2",
             nullable: true);
 
         migrationBuilder.AddColumn<string>(
             name: "ProviderAccountRole",
             table: "MarketingConnections",
-            type: "nvarchar(32)",
             maxLength: 32,
             nullable: true);
 
         migrationBuilder.AddColumn<string>(
             name: "ProviderAuthorizationMethod",
             table: "MarketingConnections",
-            type: "nvarchar(32)",
             maxLength: 32,
             nullable: true);
 
         migrationBuilder.AddColumn<string>(
             name: "ProviderDataSourceId",
             table: "MarketingConnections",
-            type: "nvarchar(200)",
             maxLength: 200,
             nullable: true);
 
         migrationBuilder.AddColumn<string>(
             name: "ProviderPermissionsJson",
             table: "MarketingConnections",
-            type: "nvarchar(4000)",
             maxLength: 4000,
             nullable: true);
 
         migrationBuilder.AddColumn<string>(
             name: "ProviderPixelId",
             table: "MarketingConnections",
-            type: "nvarchar(200)",
             maxLength: 200,
             nullable: true);
 
         migrationBuilder.AddColumn<string>(
             name: "ProviderReviewStatus",
             table: "MarketingConnections",
-            type: "nvarchar(32)",
             maxLength: 32,
             nullable: true);
 
         migrationBuilder.AddColumn<string>(
             name: "ProviderUserEmail",
             table: "MarketingConnections",
-            type: "nvarchar(320)",
             maxLength: 320,
             nullable: true);
 
         migrationBuilder.AddColumn<string>(
             name: "ProviderUserId",
             table: "MarketingConnections",
-            type: "nvarchar(200)",
             maxLength: 200,
             nullable: true);
     }
