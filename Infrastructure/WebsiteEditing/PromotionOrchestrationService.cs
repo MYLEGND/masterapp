@@ -32,7 +32,8 @@ public sealed class PromotionOrchestrationService(
     IAdvertisingActionAuthorizationService authorizations,
     IOpenAiAdsAccountConnectionAuthority connections,
     IOpenAiAdsExecutionService ads,
-    IBusinessPublicUrlResolver businessPublicUrls) : IPromotionOrchestrationService
+    IBusinessPublicUrlResolver businessPublicUrls,
+    IOpenAiProductFeedService productFeeds) : IPromotionOrchestrationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -123,7 +124,17 @@ public sealed class PromotionOrchestrationService(
             : alternatives.SingleOrDefault(x => string.Equals(x.Key, request.SelectedCreativeKey, StringComparison.Ordinal))
               ?? throw new ArgumentException("Selected creative alternative does not exist.", nameof(request));
 
-        var plan = BuildPlan(source, selected, request, status, biddingType, hints);
+        string? providerFeedId = null;
+        if (source.SourceKind == PromotionSourceKinds.Product)
+        {
+            var feed = await productFeeds.GetAsync(owner, ct);
+            var productRow = feed.Products.SingleOrDefault(x => x.CanonicalProductId.ToString("D") == source.SourceId);
+            if (productRow is null || productRow.Status != OpenAiProductFeedStatuses.Published || string.IsNullOrWhiteSpace(productRow.ProviderFeedId))
+                throw new InvalidOperationException("Publish this canonical product to the scoped ChatGPT Ads product feed before creating a product campaign.");
+            providerFeedId = productRow.ProviderFeedId;
+        }
+
+        var plan = BuildPlan(source, selected, request, status, biddingType, hints, providerFeedId);
         return new(
             source,
             Objective: string.IsNullOrWhiteSpace(request.Goal) ? "Promote " + source.DisplayName : request.Goal.Trim(),
@@ -331,7 +342,8 @@ public sealed class PromotionOrchestrationService(
         PromotionProposalRequest request,
         string status,
         string biddingType,
-        IReadOnlyList<string> hints)
+        IReadOnlyList<string> hints,
+        string? providerFeedId)
     {
         if (!IsHttpUrl(creative.ImageUrl))
             throw new InvalidOperationException("The selected promotion source has no approved HTTP(S) image. Resolve an image before creating an executable promotion proposal.");
@@ -352,6 +364,8 @@ public sealed class PromotionOrchestrationService(
             Targeting: targeting,
             ConversionEventSettingId: request.ConversionEventSettingId,
             Description: Clean(request.Goal, 4000),
+            Mode: providerFeedId is null ? null : "product_feed",
+            ProductFeedId: providerFeedId,
             IdempotencyKey: "legend-promote-campaign-" + seed);
 
         var strategy = biddingType switch
@@ -370,6 +384,11 @@ public sealed class PromotionOrchestrationService(
             Bidding: new(strategy),
             ContextHints: hints,
             Description: "LEGEND Promote This context",
+            ProductFeedId: providerFeedId,
+            ProductFilters: providerFeedId is null ? null :
+            [
+                new OpenAiAdsProductSetFilter("external_id", "equals", [source.SourceId])
+            ],
             IdempotencyKey: "legend-promote-group-" + seed);
 
         var upload = JsonSerializer.SerializeToElement(new { imageUrl = creative.ImageUrl }, JsonOptions);
