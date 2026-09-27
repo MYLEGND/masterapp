@@ -197,6 +197,7 @@ public static class MarketingServiceRegistration
             client.Timeout = TimeSpan.FromSeconds(30);
         });
         services.AddScoped<IAdvertisingActionAuthorizationService, AdvertisingActionAuthorizationService>();
+        services.AddScoped<Infrastructure.WebsiteEditing.IPromotionOrchestrationService, Infrastructure.WebsiteEditing.PromotionOrchestrationService>();
         services.AddHttpClient<IOpenAiConversionsApiService, OpenAiConversionsApiService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(10);
