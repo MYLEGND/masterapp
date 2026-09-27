@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using ProtectWebsite.Services.Booking;
 using ProtectWebsite.Services.Communication;
 
+using Shared.Analytics;
 namespace Protect_Website.Controllers
 {
     [Route("Quote")]
