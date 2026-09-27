@@ -97,7 +97,9 @@ public sealed class PromotionOrchestrationTests
 
         var config = new ConfigurationBuilder().AddInMemoryCollection().Build();
         var approvals = new FakeApprovalService();
-        var service = new PromotionOrchestrationService(db, config, approvals);
+        var connection = new FakeConnectionAuthority();
+        var ads = new FakeAdsExecutionService();
+        var service = new PromotionOrchestrationService(db, config, approvals, connection, ads);
         var actor = new WebsiteEditorTicket(
             WebsiteEditorSiteKeys.Business,
             WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id),
@@ -192,6 +194,58 @@ public sealed class PromotionOrchestrationTests
             dir = dir.Parent;
         }
         throw new DirectoryNotFoundException();
+    }
+
+    private sealed class FakeConnectionAuthority : IOpenAiAdsAccountConnectionAuthority
+    {
+        public Task<OpenAiAdsConnectionSnapshot> GetAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new OpenAiAdsConnectionSnapshot(
+                owner, true, true, Guid.NewGuid(), "acct", "Scoped Ads", "admin", "approved", "api_key",
+                null, null, ["ad_account.read"], "pixel", "source", true, true, DateTime.UtcNow, null, DateTime.UtcNow));
+
+        public Task<OpenAiAdsConnectionSecrets> GetSecretsAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new OpenAiAdsConnectionSecrets("secret", "capi"));
+
+        public Task<OpenAiAdsConnectionSnapshot> BindVerifiedAsync(MarketingOwnerScope owner, VerifiedOpenAiAdsAccount verifiedAccount, OpenAiAdsConnectionSecrets secrets, Guid? expectedRevision = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<OpenAiAdsConnectionSnapshot> DisconnectAsync(MarketingOwnerScope owner, Guid expectedRevision, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class FakeAdsExecutionService : IOpenAiAdsExecutionService
+    {
+        public Task<OpenAiAdsProviderPage> ListConversionEventSettingsAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
+            Task.FromResult(new OpenAiAdsProviderPage(JsonSerializer.SerializeToElement(new
+            {
+                data = new[] { new { id = "ces_1", event_type = "lead_created", status = "active", name = "Lead" } }
+            })));
+
+        public Task<OpenAiAdsProviderPage> ListCampaignsAsync(MarketingOwnerScope owner, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> GetCampaignAsync(MarketingOwnerScope owner, string campaignId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> CreateCampaignAsync(MarketingOwnerScope owner, OpenAiAdsCampaignCreateRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> UpdateCampaignAsync(MarketingOwnerScope owner, OpenAiAdsCampaignUpdateRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> SetCampaignStatusAsync(MarketingOwnerScope owner, string campaignId, string status, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderPage> ListAdGroupsAsync(MarketingOwnerScope owner, string? campaignId = null, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> GetAdGroupAsync(MarketingOwnerScope owner, string adGroupId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> CreateAdGroupAsync(MarketingOwnerScope owner, OpenAiAdsAdGroupCreateRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> UpdateAdGroupAsync(MarketingOwnerScope owner, OpenAiAdsAdGroupUpdateRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> SetAdGroupStatusAsync(MarketingOwnerScope owner, string adGroupId, string status, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderPage> ListAdsAsync(MarketingOwnerScope owner, string? adGroupId = null, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> GetAdAsync(MarketingOwnerScope owner, string adId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> CreateAdAsync(MarketingOwnerScope owner, OpenAiAdsAdCreateRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> UpdateAdAsync(MarketingOwnerScope owner, OpenAiAdsAdUpdateRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> SetAdStatusAsync(MarketingOwnerScope owner, string adId, string status, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> PreviewAdAsync(MarketingOwnerScope owner, string adId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsImageUploadResult> UploadImageUrlAsync(MarketingOwnerScope owner, string imageUrl, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsImageUploadResult> UploadImageAsync(MarketingOwnerScope owner, Stream content, string fileName, string contentType, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsGeoSearchResult> SearchGeoAsync(MarketingOwnerScope owner, string query, int limit = 20, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> CreateConversionEventSettingAsync(MarketingOwnerScope owner, OpenAiAdsConversionEventSettingCreateRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsInsightsResult> GetConversionInsightsAsync(MarketingOwnerScope owner, OpenAiAdsConversionInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsInsightsResult> GetAccountInsightsAsync(MarketingOwnerScope owner, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsInsightsResult> GetCampaignInsightsAsync(MarketingOwnerScope owner, string campaignId, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsInsightsResult> GetAdGroupInsightsAsync(MarketingOwnerScope owner, string adGroupId, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsInsightsResult> GetAdInsightsAsync(MarketingOwnerScope owner, string adId, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
     }
 
     private sealed class FakeApprovalService : IAdvertisingActionAuthorizationService
