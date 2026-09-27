@@ -100,23 +100,14 @@ public sealed class PromotionOrchestrationTests
         var connection = new FakeConnectionAuthority();
         var ads = new FakeAdsExecutionService();
         var service = new PromotionOrchestrationService(db, config, approvals, connection, ads);
-        var actor = new WebsiteEditorTicket(
-            WebsiteEditorSiteKeys.Business,
-            WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id),
-            null,
-            false,
-            DateTime.UtcNow.AddHours(1),
-            business.Id,
-            ActorUserId: "owner",
-            ActorClientProfileId: Guid.NewGuid());
         var owner = MarketingOwnerScope.Business(business.Id);
 
-        var sources = await service.SourcesAsync(actor, owner);
+        var sources = await service.SourcesAsync(owner);
         Assert.Contains(sources, x => x.SourceKind == PromotionSourceKinds.Product && x.SourceId == product.Id.ToString("D"));
         Assert.Contains(sources, x => x.SourceKind == PromotionSourceKinds.Service && x.Label == "Roof repair");
         Assert.Contains(sources, x => x.SourceKind == PromotionSourceKinds.WebsitePage && x.PagePath == "/");
 
-        var draft = await service.DraftAsync(actor, owner, new PromotionProposalRequest(
+        var draft = await service.DraftAsync(owner, new PromotionProposalRequest(
             PromotionSourceKinds.Product,
             product.Id.ToString("D"),
             null,
@@ -259,6 +250,8 @@ public sealed class PromotionOrchestrationTests
         public Task<AdvertisingActionProposalSnapshot> RejectAsync(MarketingOwnerScope owner, Guid proposalId, string rejectedByUserId, string expectedRevision, CancellationToken ct = default) =>
             throw new NotSupportedException();
         public Task<AdvertisingActionProposalSnapshot?> GetAsync(MarketingOwnerScope owner, Guid proposalId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<AdvertisingActionProposalSnapshot>> ListAsync(MarketingOwnerScope owner, int limit = 100, CancellationToken ct = default) =>
             throw new NotSupportedException();
     }
 }
