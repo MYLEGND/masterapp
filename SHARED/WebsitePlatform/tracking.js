@@ -778,6 +778,14 @@
         quoteType: body.QuoteType,
         submitOutcome: body.SubmitOutcome
       });
+      try {
+        window.LegendOpenAiMeasurement?.trackCanonical?.(body);
+      } catch (openAiMeasurementError) {
+        debug('openai measurement projection failed', {
+          eventType: body.EventType,
+          message: openAiMeasurementError?.message || 'projection_error'
+        });
+      }
 
       const maxAttempts = criticalEvents.has(body.EventType) ? TRACKING_MAX_RETRIES : 1;
       let attempt = 0;
