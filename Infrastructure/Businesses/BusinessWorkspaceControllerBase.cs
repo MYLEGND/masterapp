@@ -327,6 +327,81 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         { return BadRequest(new { message = ex.Message }); }
     }
 
+    public sealed record BusinessMarketingManagerPlanRequest(
+        string? Preset,
+        DateTime? FromUtc,
+        DateTime? ToUtc,
+        TrafficQualityMode QualityMode,
+        MarketingManagerGoalRequest Goal);
+
+    [HttpPost("analytics/marketing-manager/plan")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MarketingManagerPlan(
+        Guid businessId,
+        [FromBody] BusinessMarketingManagerPlanRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+
+        try
+        {
+            var range = TimeRangeRequest.FromPreset(
+                string.IsNullOrWhiteSpace(request.Preset) ? "30d" : request.Preset,
+                request.FromUtc,
+                request.ToUtc,
+                TimeZoneInfo.Utc,
+                request.QualityMode);
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMarketingManagerService>();
+            return Json(await service.PlanAsync(
+                MarketingOwnerScope.Business(businessId),
+                ScopeContext.ForBusiness(businessId),
+                range,
+                request.Goal,
+                cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or Infrastructure.Analytics.OpenAiAdsExecutionException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("analytics/marketing-manager/performance")]
+    public async Task<IActionResult> MarketingManagerPerformance(
+        Guid businessId,
+        [FromQuery] string? preset = null,
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+
+        try
+        {
+            var timezone = AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes);
+            var range = TimeRangeRequest.FromPreset(
+                string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
+                fromUtc,
+                toUtc,
+                timezone,
+                qualityMode);
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IUnifiedMarketingPerformanceService>();
+            return Json(await service.GetAsync(
+                MarketingOwnerScope.Business(businessId),
+                ScopeContext.ForBusiness(businessId),
+                range,
+                cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or
+                                   Infrastructure.Analytics.OpenAiAdsExecutionException or
+                                   TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("analytics/meta-campaigns")]
     public async Task<IActionResult> MetaCampaigns(
         Guid businessId,
