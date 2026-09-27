@@ -116,6 +116,7 @@ namespace Protect_Website.Controllers
                     MetaAdSetId   = string.IsNullOrWhiteSpace(model.MetaAdSetId) ? null : model.MetaAdSetId.Trim(),
                     MetaAdId      = string.IsNullOrWhiteSpace(model.MetaAdId) ? null : model.MetaAdId.Trim(),
                     Fbclid        = string.IsNullOrWhiteSpace(model.Fbclid)      ? null : model.Fbclid.Trim(),
+                    Oppref        = OpenAiClickReference.Normalize(model.Oppref),
                     ClientIpAddress = !string.IsNullOrWhiteSpace(Request?.Headers["CF-Connecting-IP"].ToString())
                         ? Request!.Headers["CF-Connecting-IP"].ToString()
                         : (!string.IsNullOrWhiteSpace(Request?.Headers["X-Forwarded-For"].ToString())
@@ -143,6 +144,7 @@ namespace Protect_Website.Controllers
                         AddressState   = model.AddressState,
                         UtmId          = model.UtmId,
                         Fbclid         = model.Fbclid,
+                        Oppref         = OpenAiClickReference.Normalize(model.Oppref),
                         UtmTerm        = model.UtmTerm,
                         UtmContent     = model.UtmContent,
                         MetaCampaignId = model.MetaCampaignId,
