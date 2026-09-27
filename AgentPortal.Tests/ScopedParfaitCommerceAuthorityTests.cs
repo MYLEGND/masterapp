@@ -45,10 +45,12 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var workflow = ReadSource(".github", "workflows", "all-intentional-direct-release-20260918.yml");
         var routingConfig = ReadSource("Legend-Cloudflare", "wrangler.website-routing.jsonc");
 
-        Assert.Contains("/commerce/manage/products?ticket=", platform, StringComparison.Ordinal);
-        Assert.DoesNotContain("CommercePublicBaseUrl() + \"/commerce/manage", platform, StringComparison.Ordinal);
-        Assert.Contains("managerUrl = string.IsNullOrWhiteSpace(ticket)", platform, StringComparison.Ordinal);
-        Assert.Contains(": \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
+        Assert.Contains("ResolveCanonicalStoreRootAsync", platform, StringComparison.Ordinal);
+        Assert.Contains("Commerce:LegendPublicBaseUrl", platform, StringComparison.Ordinal);
+        Assert.Contains("WebsiteDomainBinding", platform, StringComparison.Ordinal);
+        Assert.Contains("managerBase + \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
+        Assert.Contains("managerBase + \"/commerce/manage/preview?ticket=\"", platform, StringComparison.Ordinal);
+        Assert.DoesNotContain(": \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection:BlobUri", tickets, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection:KeyVaultKeyId", tickets, StringComparison.Ordinal);
         Assert.Contains("id: editorauth", workflow, StringComparison.Ordinal);
