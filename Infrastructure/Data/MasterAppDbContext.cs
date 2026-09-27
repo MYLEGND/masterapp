@@ -62,6 +62,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<FounderAiActionAuthorization> FounderAiActionAuthorizations => Set<FounderAiActionAuthorization>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<MarketingConnection> MarketingConnections => Set<MarketingConnection>();
+    public DbSet<MarketingDestinationDelivery> MarketingDestinationDeliveries => Set<MarketingDestinationDelivery>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
@@ -1528,6 +1529,31 @@ public class MasterAppDbContext : DbContext
             // Behavior intelligence indexes
             e.HasIndex(x => x.DeviceType);
             e.HasIndex(x => x.SessionId).HasDatabaseName("IX_AnalyticsEvents_SessionId_Behavior");
+        });
+
+        modelBuilder.Entity<MarketingDestinationDelivery>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerKey).HasMaxLength(64).IsRequired();
+            e.Property(x => x.OwnerType).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Provider).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Channel).HasMaxLength(20).IsRequired();
+            e.Property(x => x.CanonicalSource).HasMaxLength(80).IsRequired();
+            e.Property(x => x.CanonicalEventId).HasMaxLength(160).IsRequired();
+            e.Property(x => x.CanonicalEventName).HasMaxLength(120).IsRequired();
+            e.Property(x => x.ProviderEventName).HasMaxLength(120).IsRequired();
+            e.Property(x => x.PixelId).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderReceiptJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.ErrorCode).HasMaxLength(120);
+            e.Property(x => x.ErrorMessage).HasMaxLength(4000);
+            e.Property(x => x.ClaimToken).HasMaxLength(64);
+            e.HasIndex(x => new { x.OwnerKey, x.Provider, x.Channel, x.CanonicalEventId, x.ProviderEventName }).IsUnique();
+            e.HasIndex(x => new { x.Provider, x.Status, x.NextAttemptUtc });
+            e.HasIndex(x => x.ClaimExpiresUtc);
+            e.HasIndex(x => x.SentUtc);
+            e.HasOne<AgentTrackingProfile>().WithMany().HasForeignKey(x => x.AgentTrackingProfileId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<MetaSignalEvent>(e =>
