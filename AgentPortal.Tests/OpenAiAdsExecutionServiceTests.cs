@@ -204,6 +204,66 @@ public sealed class OpenAiAdsExecutionServiceTests
     }
 
     [Fact]
+    public async Task ConversionEventSetting_CreateUsesCanonicalSourceAndThirtyDayWindow()
+    {
+        var owner = MarketingOwnerScope.Business(Guid.NewGuid());
+        var handler = new RecordingHandler((_, _) =>
+            Json(HttpStatusCode.OK, """{"id":"ces_1","event_type":"order_created"}"""));
+        var service = Service(owner, handler);
+
+        await service.CreateConversionEventSettingAsync(owner, new(
+            "Purchases", "order_created", "clidsrc_1", IdempotencyKey: "ces-purchase-1"));
+
+        var sent = Assert.Single(handler.Requests);
+        Assert.Equal("POST", sent.Method);
+        Assert.EndsWith("/conversions/event_settings", sent.Url, StringComparison.Ordinal);
+        Assert.Equal("ces-purchase-1", sent.IdempotencyKey);
+        using var body = JsonDocument.Parse(sent.Body!);
+        Assert.Equal(30, body.RootElement.GetProperty("attribution_window_days").GetInt32());
+        Assert.Equal("clidsrc_1", body.RootElement.GetProperty("source_ids")[0].GetString());
+    }
+
+    [Fact]
+    public async Task ConversionInsights_UsesProviderGoalReportingEndpoint()
+    {
+        var owner = MarketingOwnerScope.Agent(Guid.NewGuid());
+        var handler = new RecordingHandler((_, _) =>
+            Json(HttpStatusCode.OK, """{"object":"list","data":[{"entity_id":"cmpn_1","conversions":3}],"count":1}"""));
+        var service = Service(owner, handler);
+        var from = new DateTime(2026, 9, 20, 0, 0, 0, DateTimeKind.Utc);
+        var to = new DateTime(2026, 9, 21, 0, 0, 0, DateTimeKind.Utc);
+
+        await service.GetConversionInsightsAsync(owner, new(
+            from, to, "campaign", ["cmpn_1"], EventNames: ["order_created"]));
+
+        var sent = Assert.Single(handler.Requests);
+        Assert.EndsWith("/conversions/insights", sent.Url, StringComparison.Ordinal);
+        using var body = JsonDocument.Parse(sent.Body!);
+        Assert.Equal("campaign", body.RootElement.GetProperty("aggregation_level").GetString());
+        Assert.Equal("cmpn_1", body.RootElement.GetProperty("entity_ids")[0].GetString());
+        Assert.Equal("attributed_events", body.RootElement.GetProperty("include")[0].GetString());
+        Assert.Equal("order_created", body.RootElement.GetProperty("event_names")[0].GetString());
+    }
+
+    [Fact]
+    public async Task BinaryCreativeUpload_UsesMultipartFileAndScopedCredential()
+    {
+        var owner = MarketingOwnerScope.Founder;
+        var handler = new RecordingHandler((_, _) =>
+            Json(HttpStatusCode.OK, """{"file_id":"file_1"}"""));
+        var service = Service(owner, handler);
+        await using var stream = new System.IO.MemoryStream([1, 2, 3, 4]);
+
+        var result = await service.UploadImageAsync(owner, stream, "roof.png", "image/png");
+
+        Assert.Equal("file_1", result.FileId);
+        var sent = Assert.Single(handler.Requests);
+        Assert.EndsWith("/upload", sent.Url, StringComparison.Ordinal);
+        Assert.Contains("Bearer secret", sent.Authorization, StringComparison.Ordinal);
+        Assert.Contains("roof.png", sent.Body ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ProviderFailuresAreClassifiedWithoutEchoingSecrets()
     {
         var owner = MarketingOwnerScope.Founder;
