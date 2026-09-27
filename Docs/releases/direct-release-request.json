@@ -1,18 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized deployment of the fully validated Steps 1-4 provider-neutral marketing and attribution vertical slice after Run #445 passed fully green. Deploy only the affected web targets: AgentPortal, ClientApp, Protect Website, Parfait, and LEGEND Website. Preserve successful live releases and fail forward only from concrete failed steps.",
-  "purpose": "Establish the new production marketing/attribution base: provider-neutral destination authority, scoped OpenAI/ChatGPT Ads account authority, OpenAI Pixel and Conversions API delivery, durable delivery diagnostics, oppref end-to-end attribution through analytics, leads, CRM, appointments, commerce and production revenue, plus the canonical Website Analytics > Marketing Setup management and health UI.",
-  "requestId": "openai-marketing-attribution-base-20260926-r1",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36287131680",
-  "validatedHead": "0350d9d0d216f2712b4f9196ba224edf77c2cc9b",
-  "promotedMerge": "2a2571accb4723c5531b7d6b7de4d847061c2ad3",
+  "authorization": "Founder authorized fail-forward deployment of the Run #447 validated Website Analytics Marketing Setup refinement. Deploy AgentPortal only. Preserve the fully successful #245 ClientApp, Protect, Parfait, and LEGEND Website releases and do not redeploy them.",
+  "purpose": "Publish the canonical Website Analytics UI refinement and direct ChatGPT Ads connection flow: wide two-column premium modal, server-verified Advertiser API key connection through the existing MarketingConnection authority, and semantic green/orange/red health states. No parallel settings, credentials, analytics, or attribution source.",
+  "requestId": "openai-direct-connect-marketing-setup-ui-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36289215753",
+  "validatedHead": "0e7a724d4aeeec5b9c995f7c8edd689c87d38524",
+  "promotedMerge": "5dc4f3cfd926ce402ddcbd7c2bef3df62036adad",
+  "preserveSuccessfulRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36287540976",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
+    "masterapp-portal"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
