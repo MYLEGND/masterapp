@@ -128,6 +128,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains(".is-good", css, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"openai-refresh\")]", controller, StringComparison.Ordinal);
         Assert.Contains("openAiRefresh: analyticsEndpoint('/openai-refresh')", js, StringComparison.Ordinal);
+        Assert.Contains("pixelProvisioning = response?.pixelProvisioning", js, StringComparison.Ordinal);
+        Assert.Contains("pixelProvisioning = refresh.PixelProvisioning", controller, StringComparison.Ordinal);
         Assert.Contains("providerStatusFresh", controller, StringComparison.Ordinal);
         Assert.Contains("accountStatus = openAiProvider?.Status", controller, StringComparison.Ordinal);
         Assert.Contains("currencyCode = openAiProvider?.CurrencyCode", controller, StringComparison.Ordinal);
@@ -147,6 +149,7 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("[HttpPost(\"analytics/marketing-setup\")]", business, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/openai-connect\")]", business, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/openai-refresh\")]", business, StringComparison.Ordinal);
+        Assert.Contains("pixelProvisioning = refresh.PixelProvisioning", business, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/openai-disconnect\")]", business, StringComparison.Ordinal);
         Assert.Contains("MarketingOwnerScope.Business(businessId)", business, StringComparison.Ordinal);
         Assert.Contains("BusinessWebsiteProfileService", business, StringComparison.Ordinal);

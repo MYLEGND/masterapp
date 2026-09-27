@@ -409,9 +409,10 @@ namespace AgentPortal.Controllers;
         if (tracking is null) return Forbid();
 
         var connector = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
+        Infrastructure.Analytics.OpenAiAdsRefreshResult refresh;
         try
         {
-            await connector.RefreshAsync(
+            refresh = await connector.RefreshAsync(
                 ResolveOpenAiMarketingOwner(tracking),
                 request.ConnectionRevision,
                 cancellationToken);
@@ -433,7 +434,10 @@ namespace AgentPortal.Controllers;
             return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads returned an invalid refresh response." });
         }
 
-        return await MarketingSetup(tracking.Id, cancellationToken);
+        var setupResult = await MarketingSetup(tracking.Id, cancellationToken);
+        if (setupResult is JsonResult setupJson)
+            return Json(new { setup = setupJson.Value, pixelProvisioning = refresh.PixelProvisioning });
+        return setupResult;
     }
 
     public sealed record OpenAiDisconnectRequest(Guid? AgentProfileId, Guid ConnectionRevision);

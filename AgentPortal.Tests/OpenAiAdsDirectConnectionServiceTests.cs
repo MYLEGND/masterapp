@@ -80,11 +80,40 @@ public sealed class OpenAiAdsDirectConnectionServiceTests
 
         var result = await service.RefreshAsync(owner, authority.Current.Revision);
 
-        Assert.True(result.Connected);
-        Assert.Equal("adacct_1", result.AccountId);
-        Assert.False(result.PixelConfigured);
-        Assert.False(result.ConversionsApiConfigured);
+        Assert.True(result.Connection.Connected);
+        Assert.Equal("adacct_1", result.Connection.AccountId);
+        Assert.False(result.Connection.PixelConfigured);
+        Assert.False(result.Connection.ConversionsApiConfigured);
+        Assert.Equal("not_authorized", result.PixelProvisioning.Status);
+        Assert.Equal(403, result.PixelProvisioning.HttpStatusCode);
+        Assert.Equal("Conversion setup is not enabled", result.PixelProvisioning.Detail);
         Assert.Equal("stored_ads_key", authority.Secrets!.ManagementApiKey);
+    }
+
+    [Fact]
+    public async Task Refresh_ReturnsExactPixelCreateFailure_WhenListIsAvailableButCreationIsNot()
+    {
+        var owner = MarketingOwnerScope.Founder;
+        var authority = new FakeAuthority(owner)
+        {
+            Current = Snapshot(owner, pixelId: null, hasCapi: true),
+            StoredSecrets = new OpenAiAdsConnectionSecrets("stored_ads_key", "stored_capi_key")
+        };
+        var handler = new QueueHandler(
+            Json(HttpStatusCode.OK, """{"id":"adacct_1","name":"LEGEND","status":"active","timezone":"America/Phoenix","currency_code":"USD","review":{"status":"in_review"}}"""),
+            Json(HttpStatusCode.OK, """{"object":"list","data":[]}"""),
+            Json(HttpStatusCode.NotFound, """{"error":{"message":"Not found"}}"""));
+        var service = new OpenAiAdsDirectConnectionService(new HttpClient(handler), authority);
+
+        var result = await service.RefreshAsync(owner, authority.Current.Revision);
+
+        Assert.True(result.Connection.Connected);
+        Assert.Equal("not_enabled", result.PixelProvisioning.Status);
+        Assert.Equal(404, result.PixelProvisioning.HttpStatusCode);
+        Assert.Equal("Not found", result.PixelProvisioning.Detail);
+        Assert.False(result.Connection.PixelConfigured);
+        Assert.True(result.Connection.ConversionsApiConfigured);
+        Assert.Equal("stored_capi_key", authority.Secrets!.ConversionsApiKey);
     }
 
     [Fact]

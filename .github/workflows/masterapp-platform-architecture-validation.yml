@@ -18,6 +18,7 @@ on:
       - feature/openai-ads-direct-connect-ui-20260926
       - fix/openai-ads-account-readiness-20260926
       - fix/openai-measurement-refresh-failsoft-20260926
+      - fix/openai-pixel-provisioning-outcome-20260927
     paths-ignore:
       - 'Docs/**'
   pull_request:
