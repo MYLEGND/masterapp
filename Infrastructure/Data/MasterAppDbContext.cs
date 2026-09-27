@@ -1577,8 +1577,8 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Revision).IsConcurrencyToken();
             e.HasIndex(x => new { x.CommerceBusinessId, x.CommerceProductId, x.Provider }).IsUnique();
             e.HasIndex(x => new { x.CommerceBusinessId, x.ProviderFeedId });
-            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne<CommerceProduct>().WithMany().HasForeignKey(x => x.CommerceProductId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<CommerceProduct>().WithMany().HasForeignKey(x => x.CommerceProductId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<MarketingDestinationDelivery>(e =>
