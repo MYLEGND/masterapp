@@ -436,6 +436,7 @@ public sealed class StoreCheckoutController : Controller
             Request.Headers.UserAgent.ToString(),
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Query["fbclid"].FirstOrDefault(),
+            OpenAiClickReference.Normalize(Cookie("pf_oppref") ?? Request.Query["oppref"].FirstOrDefault()),
             Cookie("_fbc"),
             Cookie("_fbp"));
     }
