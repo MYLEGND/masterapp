@@ -248,7 +248,6 @@ namespace AgentPortal.Controllers;
                 accountName = openAiConnection.AccountName,
                 role = openAiConnection.Role,
                 permissions = openAiConnection.Permissions,
-                reviewStatus = openAiConnection.ReviewStatus,
                 authorizationMethod = openAiConnection.AuthorizationMethod,
                 connectionMethod = openAiConnection.Connected ? "Advertiser API key verified" : null,
                 providerRole = openAiConnection.Role,
