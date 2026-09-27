@@ -38,14 +38,14 @@ public sealed class MarketingDestinationLayerTests
     }
 
     [Fact]
-    public async Task OpenAiDestinationIsRegisteredButCannotSendBeforeItsImplementationStep()
+    public async Task OpenAiDestinationRecognizesCanonicalEventButFailsClosedWhenScopeIsDisconnected()
     {
         var decision = await new OpenAiMarketingDestination(new FakeOpenAiAuthority()).EvaluateAsync(
             MarketingOwnerScope.Business(Guid.NewGuid()),
             new MarketingOutcome("Lead", "event-1", IsServerAuthority: true));
 
         Assert.Equal(MarketingDestinationKeys.OpenAi, decision.DestinationKey);
-        Assert.False(decision.Supported);
+        Assert.True(decision.Supported);
         Assert.False(decision.Configured);
         Assert.False(decision.Eligible);
         Assert.Equal("destination_not_configured", decision.Reason);
