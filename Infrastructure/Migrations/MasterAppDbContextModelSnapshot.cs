@@ -14458,13 +14458,13 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.Entities.CommerceBusiness", null)
                         .WithMany()
                         .HasForeignKey("CommerceBusinessId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Domain.Entities.CommerceProduct", null)
                         .WithMany()
                         .HasForeignKey("CommerceProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
