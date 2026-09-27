@@ -1,14 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized deployment of the Run #451 validated ChatGPT Ads account-readiness and measurement-provisioning correction. Deploy AgentPortal only. Preserve all successful releases of ClientApp, Protect, Parfait, and LEGEND Website; do not redeploy them.",
-  "purpose": "Publish the canonical ChatGPT Ads readiness correction: live provider account status/review/currency/timezone projection, separate authentication vs account readiness, canonical server-side Verify/Refresh using the stored encrypted Advertiser API key, automatic reuse/provisioning of the OpenAI web Pixel and separate Conversions API key when supported, and precise green/orange/red health states in Website Analytics > Marketing Setup.",
-  "requestId": "openai-account-readiness-measurement-provisioning-20260926-r1",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36292053724",
-  "validatedHead": "cd8878a12bd7b0d376b80b1bf78cf163c68bfbcf",
+  "authorization": "Founder authorized direct deployment of the Run #488 validated OpenAI measurement refresh fail-soft replacement. Deploy only AgentPortal and ClientApp because those are the affected Marketing Setup hosts. Preserve successful Protect, Parfait, and LEGEND Website releases and do not redeploy them.",
+  "purpose": "Publish the canonical OpenAI Ads refresh correction: verified advertiser account refresh no longer fails when independent Pixel/CAPI provisioning is unavailable; measurement capability is reported separately; existing Pixel/CAPI state is preserved; no parallel settings or credential authority is created.",
+  "requestId": "openai-measurement-refresh-failsoft-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36296984617",
+  "validatedHead": "3c06a8fb6ab1ef4b735abc56e9c03221fb069d99",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal"
+    "masterapp-portal",
+    "masterapp-client"
   ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": true
 }
