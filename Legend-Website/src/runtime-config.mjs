@@ -3,5 +3,6 @@
 export const publicApiBase = 'https://masterapp-protect.azurewebsites.net';
 export const publicRuntimeAssets = Object.freeze({
   tracking: '/legend-public-tracking.js',
-  metaSignal: '/legend-public-meta-signal-intelligence.js'
+  metaSignal: '/legend-public-meta-signal-intelligence.js',
+  openAiMeasurement: '/legend-public-openai-measurement.js'
 });

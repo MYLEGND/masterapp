@@ -34,6 +34,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             var allowed = ids is { Length: > 0 } ? ids : new[] { scope.AgentTrackingProfileId ?? Guid.Empty };
             query = query.Where(x => x.AgentTrackingProfileId.HasValue && allowed.Contains(x.AgentTrackingProfileId.Value));
         }
+        else if (scope.ScopeType == ScopeType.Founder)
+        {
+            var allowed = ids is { Length: > 0 } ? ids : new[] { scope.AgentTrackingProfileId ?? Guid.Empty };
+            query = query.Where(x =>
+                (x.AgentTrackingProfileId.HasValue && allowed.Contains(x.AgentTrackingProfileId.Value)) ||
+                (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
+                 (x.MetadataJson.Contains("\"siteKey\":\"legend\"") ||
+                  x.MetadataJson.Contains("\"reportingOwner\":\"founder\""))));
+        }
         var sessions = events.Select(x => x.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         var visitors = events.Select(x => x.VisitorId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         return await query.Where(x => (!string.IsNullOrWhiteSpace(x.SessionId) && sessions.Contains(x.SessionId)) ||
@@ -288,6 +297,20 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (scope.ScopeType == ScopeType.Business)
             return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
+                return e => false;
+
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            return e => e.CommerceBusinessId == null &&
+                ((e.AgentTrackingProfileId.HasValue && founderIds.Contains(e.AgentTrackingProfileId.Value)) ||
+                 (!e.AgentTrackingProfileId.HasValue && e.MetadataJson != null &&
+                  (e.MetadataJson.Contains("\"siteKey\":\"legend\"") ||
+                   e.MetadataJson.Contains("\"reportingOwner\":\"founder\""))));
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return e => false;
@@ -313,6 +336,19 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (scope.ScopeType == ScopeType.Business)
             return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
+                return e => false;
+
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            return l => l.CommerceBusinessId == null &&
+                ((l.AgentTrackingProfileId.HasValue && founderIds.Contains(l.AgentTrackingProfileId.Value)) ||
+                 (!l.AgentTrackingProfileId.HasValue && l.MetadataJson != null &&
+                  l.MetadataJson.Contains("\"SiteKey\":\"legend\"")));
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return e => false;
@@ -338,7 +374,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     /// </summary>
     private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope)
     {
-        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
+        if ((scope.ScopeType != ScopeType.Agent && scope.ScopeType != ScopeType.Founder) || !scope.AgentTrackingProfileId.HasValue)
             return null;
 
         var selectedId = scope.AgentTrackingProfileId.Value;
@@ -953,6 +989,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? UtmCampaign,
         string? UtmId,
         string? Fbclid,
+        string? Oppref,
         string? UtmTerm,
         string? UtmContent,
         string? MetaCampaignId,
@@ -1006,6 +1043,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(e.UtmCampaign),
             NormalizeAttributionToken(e.UtmId),
             NormalizeAttributionToken(e.Fbclid),
+            NormalizeAttributionToken(e.Oppref),
             NormalizeAttributionToken(e.UtmTerm),
             NormalizeAttributionToken(e.UtmContent),
             NormalizeAttributionToken(e.MetaCampaignId),
@@ -1022,6 +1060,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         !string.IsNullOrWhiteSpace(snapshot.UtmCampaign) ||
         !string.IsNullOrWhiteSpace(snapshot.UtmId) ||
         !string.IsNullOrWhiteSpace(snapshot.Fbclid) ||
+        !string.IsNullOrWhiteSpace(snapshot.Oppref) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaCampaignId) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaAdSetId) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaAdId) ||
@@ -1039,7 +1078,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             metaAdId: snapshot.MetaAdId,
             isInternal: snapshot.IsInternal,
             environment: snapshot.Environment,
-            host: snapshot.Host);
+            host: snapshot.Host,
+            oppref: snapshot.Oppref);
 
     private static bool IsMetaAttributedPaid(EventAttributionSnapshot snapshot) =>
         TrafficAttribution.IsMetaAttributedPaid(
@@ -1060,6 +1100,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         if (!HasAttributionSignal(snapshot))
             return -1;
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Oppref))
+            return 550;
 
         if (IsMetaAttributedPaid(snapshot))
             return 500;
@@ -1242,6 +1285,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(lead.UtmCampaign),
             NormalizeAttributionToken(lead.UtmId) ?? metadata.UtmId,
             NormalizeAttributionToken(lead.Fbclid),
+            NormalizeAttributionToken(lead.Oppref),
             metadata.UtmTerm,
             metadata.UtmContent,
             NormalizeAttributionToken(lead.MetaCampaignId) ?? metadata.MetaCampaignId,

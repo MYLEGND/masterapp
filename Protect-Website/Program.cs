@@ -131,6 +131,7 @@ builder.Services.AddHttpClient<Infrastructure.Analytics.IMetaConversionsApiServi
 });
 builder.Services.AddHostedService<Infrastructure.Analytics.MetaSignalAnalyticsBridge>();
 builder.Services.AddHostedService<Infrastructure.Analytics.MetaSignalOutcomeDispatcherHostedService>();
+builder.Services.AddHostedService<Infrastructure.Analytics.OpenAiConversionDispatcherHostedService>();
 
 // Data Protection — platform authority. Shares the "AgentPortal" application
 // name and (in dev) the AgentPortal key directory so protected agent-scoped Meta

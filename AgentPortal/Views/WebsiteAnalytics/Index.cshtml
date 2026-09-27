@@ -30,6 +30,360 @@
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
 <div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="modal fade fa-modal" id="marketingSetupModal" tabindex="-1" aria-labelledby="marketingSetupModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable marketing-setup-modal-dialog">
+        <div class="modal-content marketing-setup-modal">
+            <div class="modal-header marketing-setup-modal-header">
+                <div>
+                    <div class="wa-modal-kicker">Centralized Marketing Authority</div>
+                    <h5 class="modal-title mb-0" id="marketingSetupModalLabel">Marketing Setup</h5>
+                    <div class="wa-modal-subtitle" id="marketing-setup-scope-label">Loading scoped setup…</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body marketing-setup-modal-body">
+                <form id="marketing-setup-form" class="marketing-setup-form-grid" novalidate>
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" id="marketing-setup-revision" />
+                    <input type="hidden" id="marketing-setup-profile-revision" />
+
+                    <div class="marketing-setup-status-grid" aria-label="Marketing setup status">
+                        <div class="marketing-setup-status" data-status-key="publicReady"><span>Public</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="metaCustomPixel"><span>Meta</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="openAiReady"><span>ChatGPT Ads</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="bookingPersonalLive"><span>Booking</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="calendarLinked"><span>Calendar</span><strong>—</strong></div>
+                    </div>
+
+                    <section class="marketing-setup-section marketing-setup-meta">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Marketing</div>
+                                <h6>Meta destination</h6>
+                            </div>
+                            <div class="marketing-setup-connection" id="marketing-setup-meta-account">Meta Ads status: —</div>
+                        </div>
+                        <p class="marketing-setup-help">Leave the Pixel ID blank to keep using the default LEGEND tracking setup. Meta CAPI credentials are never entered here; they are stored securely and managed automatically when the scoped Meta Ads account is connected.</p>
+                        <label class="marketing-setup-field" for="marketing-setup-pixel">
+                            <span>Meta Pixel ID</span>
+                            <input id="marketing-setup-pixel" type="text" inputmode="numeric" maxlength="32" autocomplete="off" placeholder="Optional custom Pixel ID" />
+                        </label>
+                        <label class="marketing-setup-field" for="marketing-setup-test-code">
+                            <span>Meta Test Event Code</span>
+                            <input id="marketing-setup-test-code" type="text" maxlength="100" autocomplete="off" placeholder="TEST12345 from Meta Events Manager" />
+                            <small>Use the code shown in Meta Events Manager &gt; Test Events. Test traffic stays on the same scoped Pixel/CAPI destination and does not create a second sender.</small>
+                        </label>
+                        <div class="marketing-setup-readiness" id="marketing-setup-openai-readiness">
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Readiness</div>
+                                    <h6>ChatGPT Ads onboarding</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-openai-readiness-status">Checking…</div>
+                            </div>
+                            <div class="marketing-setup-readiness-grid" id="marketing-setup-openai-readiness-steps"></div>
+                        </div>
+
+                        <div class="marketing-setup-product-feed" id="marketing-setup-openai-product-feed" hidden>
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Catalog</div>
+                                    <h6>ChatGPT Ads product feed</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-openai-feed-status">Not published</div>
+                            </div>
+                            <div class="marketing-setup-feed-summary" id="marketing-setup-openai-feed-summary"></div>
+                            <div class="d-flex gap-2 flex-wrap mt-3">
+                                <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-openai-feed-publish">Publish / reconcile feed</button>
+                                <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-feed-refresh">Refresh feed status</button>
+                            </div>
+                        </div>
+
+                        <div class="marketing-setup-secure-row">
+                            <div>
+                                <span class="marketing-setup-secure-label">Meta CAPI</span>
+                                <strong id="marketing-setup-capi-status">Checking secure connection…</strong>
+                            </div>
+                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="#">Connect Meta Ads</a>
+                        </div>
+                    </section>
+
+                    <section class="marketing-setup-section marketing-setup-openai" id="marketing-setup-openai">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Marketing</div>
+                                <h6>ChatGPT Ads destination</h6>
+                            </div>
+                            <div class="marketing-setup-connection" id="marketing-setup-openai-account">ChatGPT Ads status: —</div>
+                        </div>
+                        <p class="marketing-setup-help">Connect the scoped ChatGPT Ads account here. Your Advertiser API key is sent once to the server for OpenAI verification, encrypted in the existing marketing authority, and never returned to the browser.</p>
+
+                        <div class="marketing-setup-connect-panel" id="marketing-setup-openai-connect-panel" hidden>
+                            <div class="marketing-setup-connect-copy">
+                                <strong>Connect ChatGPT Ads</strong>
+                                <span>Paste the Advertiser API key from OpenAI Ads Manager Settings. LEGEND verifies the key against the ad account before saving anything.</span>
+                            </div>
+                            <div class="marketing-setup-connect-controls">
+                                <label class="marketing-setup-field" for="marketing-setup-openai-api-key">
+                                    <span>Advertiser API key</span>
+                                    <input id="marketing-setup-openai-api-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="Paste once to verify and connect" />
+                                </label>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-openai-connect-submit">Verify &amp; connect</button>
+                                    <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-connect-cancel">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="marketing-setup-detail-grid">
+                            <div class="marketing-setup-detail"><span>Advertiser account</span><strong id="marketing-setup-openai-account-name">—</strong><small id="marketing-setup-openai-account-id">—</small></div>
+                            <div class="marketing-setup-detail"><span>Connection</span><strong id="marketing-setup-openai-connection-method">—</strong><small id="marketing-setup-openai-access-detail">—</small></div>
+                            <div class="marketing-setup-detail"><span>Account status</span><strong id="marketing-setup-openai-account-status">—</strong><small id="marketing-setup-openai-account-meta">—</small></div>
+                            <div class="marketing-setup-detail"><span>Brand review</span><strong id="marketing-setup-openai-review">—</strong><small id="marketing-setup-openai-review-detail">—</small></div>
+                            <div class="marketing-setup-detail"><span>OpenAI Pixel</span><strong id="marketing-setup-openai-pixel">—</strong><small>Scoped browser destination</small></div>
+                            <div class="marketing-setup-detail"><span>Conversions API</span><strong id="marketing-setup-openai-capi">—</strong><small>Server credential remains protected</small></div>
+                            <div class="marketing-setup-detail"><span>Delivery health</span><strong id="marketing-setup-openai-health">—</strong><small id="marketing-setup-openai-last-send">—</small></div>
+                        </div>
+
+                        <div class="marketing-setup-delivery-grid" aria-label="ChatGPT Ads delivery diagnostics">
+                            <div><span>Pending</span><strong id="marketing-setup-openai-pending">0</strong></div>
+                            <div><span>Retrying</span><strong id="marketing-setup-openai-retrying">0</strong></div>
+                            <div><span>Failed</span><strong id="marketing-setup-openai-failed">0</strong></div>
+                            <div><span>Sent</span><strong id="marketing-setup-openai-sent">0</strong></div>
+                        </div>
+
+                        <div class="marketing-setup-secure-row">
+                            <div>
+                                <span class="marketing-setup-secure-label">Connection controls</span>
+                                <strong id="marketing-setup-openai-action-status">Read-only authority projection</strong>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-verify">Verify / refresh</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="marketing-setup-openai-disconnect">Disconnect</button>
+                            </div>
+                        </div>
+
+                    </section>
+
+                    <section class="marketing-setup-section marketing-setup-attribution-card">
+                        <div class="marketing-setup-attribution">
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Attribution</div>
+                                    <h6><code>oppref</code> lineage visibility</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-oppref-status">—</div>
+                            </div>
+                            <div class="marketing-setup-lineage-grid">
+                                <div><span>Paid traffic events</span><strong id="marketing-setup-oppref-events">0</strong></div>
+                                <div><span>Leads</span><strong id="marketing-setup-oppref-leads">0</strong></div>
+                                <div><span>CRM lineage</span><strong id="marketing-setup-oppref-crm">0</strong></div>
+                                <div><span>Appointments</span><strong id="marketing-setup-oppref-appointments">0</strong></div>
+                                <div><span>Orders</span><strong id="marketing-setup-oppref-orders">0</strong></div>
+                                <div><span>Production</span><strong id="marketing-setup-oppref-production">0</strong></div>
+                                <div><span>Paid revenue</span><strong id="marketing-setup-oppref-revenue">$0</strong></div>
+                            </div>
+                        </div>
+
+                    </section>
+
+                    <section class="marketing-setup-section marketing-setup-booking">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Booking</div>
+                                <h6>Personal scheduler</h6>
+                            </div>
+                        </div>
+                        <p class="marketing-setup-help">Use your own Bookings setup only when you want a personal scheduler in public quote handoff flows.</p>
+                        <label class="marketing-setup-toggle">
+                            <input id="marketing-setup-booking-enabled" type="checkbox" />
+                            <span>Use my personal scheduler on public quote handoff flows</span>
+                        </label>
+                        <div class="marketing-setup-field-grid">
+                            <label class="marketing-setup-field" for="marketing-setup-embed">
+                                <span>Embed URL</span>
+                                <input id="marketing-setup-embed" type="url" maxlength="2048" autocomplete="off" placeholder="https://outlook.office.com/bookings/..." />
+                            </label>
+                            <label class="marketing-setup-field" for="marketing-setup-fallback">
+                                <span>Fallback URL</span>
+                                <input id="marketing-setup-fallback" type="url" maxlength="2048" autocomplete="off" placeholder="Optional backup scheduler link" />
+                            </label>
+                            <label class="marketing-setup-field" for="marketing-setup-mailbox">
+                                <span>Mailbox / Page ID</span>
+                                <input id="marketing-setup-mailbox" type="text" maxlength="320" autocomplete="off" placeholder="Mailbox, page ID, or calendar handle" />
+                            </label>
+                            <label class="marketing-setup-field" for="marketing-setup-calendar">
+                                <span>Calendar email</span>
+                                <input id="marketing-setup-calendar" type="email" maxlength="320" autocomplete="email" placeholder="calendar@example.com" />
+                            </label>
+                        </div>
+                    </section>
+
+                    <div class="marketing-setup-save-row">
+                        <div id="marketing-setup-status" role="status" aria-live="polite"></div>
+                        <button type="submit" class="btn btn-gold" id="marketing-setup-save">Save Marketing Setup</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade fa-modal" id="advertisingCommandModal" tabindex="-1" aria-labelledby="advertisingCommandModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable advertising-command-dialog">
+        <div class="modal-content advertising-command-modal">
+            <div class="modal-header advertising-command-header">
+                <div>
+                    <div class="wa-modal-kicker">Canonical Advertising Authority</div>
+                    <h5 class="modal-title mb-0" id="advertisingCommandModalLabel">Advertising Command Center</h5>
+                    <div class="wa-modal-subtitle" id="advertising-command-scope">Scoped campaigns, approvals, performance, and promotion execution.</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body advertising-command-body">
+                <div class="advertising-command-statusbar">
+                    <div><span>ChatGPT Ads</span><strong id="advertising-command-connection">Checking…</strong></div>
+                    <div><span>Campaigns</span><strong id="advertising-command-campaign-count">0</strong></div>
+                    <div><span>Awaiting approval</span><strong id="advertising-command-approval-count">0</strong></div>
+                    <div><span>Executed / audited</span><strong id="advertising-command-audit-count">0</strong></div>
+                </div>
+
+                <div class="advertising-command-toolbar">
+                    <button type="button" class="btn btn-gold" id="advertising-command-promote">Promote This</button>
+                    <button type="button" class="btn btn-outline-light" id="advertising-command-refresh">Refresh</button>
+                    <span id="advertising-command-status" role="status" aria-live="polite"></span>
+                </div>
+
+                <section class="advertising-command-section">
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Live provider state</span>
+                            <h6>Campaigns</h6>
+                        </div>
+                        <small>Reads the scoped ChatGPT Ads account. Mutations always become approval proposals first.</small>
+                    </div>
+                    <div id="advertising-command-campaigns" class="advertising-command-grid"></div>
+                </section>
+
+                <section class="advertising-command-section" id="advertising-command-promotion" hidden>
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Promotion Builder</span>
+                            <h6>Promote an existing LEGEND asset</h6>
+                        </div>
+                        <small>Published pages, canonical services, and active store products only.</small>
+                    </div>
+                    <div class="advertising-command-form-grid">
+                        <label><span>Source</span><select id="advertising-promote-source" class="form-select"></select></label>
+                        <label><span>Objective</span><select id="advertising-promote-objective" class="form-select"><option value="clicks">Drive qualified visits</option><option value="conversions">Optimize for conversion</option></select></label>
+                        <label id="advertising-promote-conversion-wrap" hidden><span>Conversion</span><select id="advertising-promote-conversion" class="form-select"></select></label>
+                        <label><span>Daily budget</span><input id="advertising-promote-budget" class="form-control" type="number" min="1" step="0.01" placeholder="25.00" /></label>
+                        <label class="advertising-command-wide"><span>Goal / offer</span><input id="advertising-promote-goal" class="form-control" type="text" maxlength="4000" placeholder="What result should this campaign drive?" /></label>
+                        <label class="advertising-command-wide"><span>Context hints</span><input id="advertising-promote-hints" class="form-control" type="text" placeholder="roof repair, storm damage, local contractor" /></label>
+                        <label><span>Countries</span><input id="advertising-promote-countries" class="form-control" type="text" placeholder="US" /></label>
+                        <label><span>Provider state after approval</span><select id="advertising-promote-status" class="form-select"><option value="paused">Create paused</option><option value="active">Launch active</option></select></label>
+                    </div>
+                    <div class="advertising-command-toolbar advertising-command-builder-actions">
+                        <button type="button" class="btn btn-gold" id="advertising-promote-preview">Build Preview</button>
+                        <button type="button" class="btn btn-outline-light" id="advertising-promote-cancel">Close Builder</button>
+                    </div>
+                    <div id="advertising-promote-preview-panel" class="advertising-command-preview" hidden></div>
+                </section>
+
+                <section class="advertising-command-section">
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Governance</span>
+                            <h6>Approval Queue &amp; Audit History</h6>
+                        </div>
+                        <small>Every consequential change is digest-bound, approved, executed once, and retained with provider receipts.</small>
+                    </div>
+                    <div id="advertising-command-proposals" class="advertising-command-ledger"></div>
+                </section>
+
+                <section class="advertising-command-section" id="advertising-command-insights" hidden>
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Performance</span>
+                            <h6 id="advertising-command-insights-title">Campaign performance</h6>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-light" id="advertising-command-insights-close">Close</button>
+                    </div>
+                    <div id="advertising-command-insights-body" class="advertising-command-insights-grid"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade fa-modal" id="marketingManagerModal" tabindex="-1" aria-labelledby="marketingManagerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable marketing-manager-dialog">
+        <div class="modal-content marketing-manager-modal">
+            <div class="modal-header marketing-manager-header">
+                <div>
+                    <div class="wa-modal-kicker">LEGEND Growth Operator</div>
+                    <h5 class="modal-title mb-0" id="marketingManagerModalLabel">Marketing Manager</h5>
+                    <div class="wa-modal-subtitle">Turn a business outcome into a scoped, evidence-backed growth plan. Consequential changes still require exact-action approval.</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body marketing-manager-body">
+                <section class="marketing-manager-goal-panel">
+                    <div>
+                        <span class="marketing-manager-eyebrow">Outcome first</span>
+                        <h6>What do you want the business to accomplish?</h6>
+                        <p>LEGEND will read the current funnel, CRM outcomes, traffic, landing inventory, and paid-channel performance before proposing the next moves.</p>
+                    </div>
+                    <div class="marketing-manager-goal-grid">
+                        <label class="marketing-manager-goal-wide">
+                            <span>Growth goal</span>
+                            <textarea id="marketing-manager-goal" class="form-control" rows="3" maxlength="1000" placeholder="I want 15 more estimates next month."></textarea>
+                        </label>
+                        <label>
+                            <span>Target increase</span>
+                            <input id="marketing-manager-target" class="form-control" type="number" min="1" step="1" placeholder="15" />
+                        </label>
+                        <label>
+                            <span>Monthly paid budget</span>
+                            <input id="marketing-manager-budget" class="form-control" type="number" min="0" step="1" placeholder="Optional" />
+                        </label>
+                    </div>
+                    <div class="marketing-manager-toolbar">
+                        <button type="button" class="btn btn-gold" id="marketing-manager-build">Build Growth Plan</button>
+                        <button type="button" class="btn btn-outline-light" id="marketing-manager-refresh">Refresh Evidence</button>
+                        <span id="marketing-manager-status" role="status" aria-live="polite"></span>
+                    </div>
+                </section>
+
+                <section id="marketing-manager-result" class="marketing-manager-result" hidden>
+                    <div class="marketing-manager-result-head">
+                        <div>
+                            <span class="marketing-manager-eyebrow">Governed plan</span>
+                            <h6 id="marketing-manager-plan-goal">Growth plan</h6>
+                        </div>
+                        <div class="marketing-manager-result-meta" id="marketing-manager-generated">—</div>
+                    </div>
+                    <div class="marketing-manager-evidence-grid" id="marketing-manager-evidence"></div>
+                    <div class="marketing-manager-plan-grid">
+                        <div>
+                            <div class="marketing-manager-section-title">Recommended moves</div>
+                            <div id="marketing-manager-recommendations" class="marketing-manager-recommendations"></div>
+                        </div>
+                        <div>
+                            <div class="marketing-manager-section-title">Guardrails</div>
+                            <div id="marketing-manager-guardrails" class="marketing-manager-guardrails"></div>
+                        </div>
+                    </div>
+                    <div class="marketing-manager-toolbar">
+                        <button type="button" class="btn btn-gold" id="marketing-manager-open-advertising">Open Advertising Command Center</button>
+                        <span class="marketing-manager-governance-note">Planning never executes provider changes by itself.</span>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
     Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
 </div>
@@ -43,7 +397,35 @@
             <div class="hero-link-top">
                 <div class="hero-link-intro">
                     <div class="hero-link-kicker">Shared Command Area</div>
-                    <h3 class="hero-link-title">Marketing Links</h3>
+                    <div class="hero-link-title-row">
+                        <h3 class="hero-link-title">Marketing Links</h3>
+                        <button type="button"
+                                class="btn marketing-setup-trigger"
+                                id="marketing-setup-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#marketingSetupModal"
+                                aria-controls="marketingSetupModal">
+                            Marketing Setup
+                        </button>
+                        <button type="button"
+                                class="btn advertising-command-trigger"
+                                id="advertising-command-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#advertisingCommandModal"
+                                aria-controls="advertisingCommandModal">
+                            Advertising Command Center
+                        </button>
+
+
+                        <button type="button"
+                                class="btn marketing-manager-trigger"
+                                id="marketing-manager-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#marketingManagerModal"
+                                aria-controls="marketingManagerModal">
+                            Marketing Manager
+                        </button>
+                     </div>
                     <div class="hero-link-subtitle text-silver">Open the website and jump into behavior review fast. Meta Ads controls now live inside Core Metrics for quicker access.</div>
                 </div>
             </div>
@@ -285,6 +667,40 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="wa-growth-economics" id="growth-economics-command">
+            <div class="wa-channel-command-head">
+                <div>
+                    <div class="wa-kpi-band-label">Growth Economics</div>
+                    <div class="wa-kpi-band-copy">Blended spend, acquisition cost, revenue, ROAS, and pipeline value</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-light" id="growth-economics-refresh">Refresh</button>
+            </div>
+            <div class="wa-growth-economics-summary">
+                <div><span>Total marketing spend</span><strong id="growth-economics-spend">—</strong></div>
+                <div><span>Customers acquired</span><strong id="growth-economics-customers">—</strong></div>
+                <div><span>Cost / customer</span><strong id="growth-economics-cac">—</strong></div>
+                <div><span>Total revenue</span><strong id="growth-economics-revenue">—</strong></div>
+                <div><span>Blended ROAS</span><strong id="growth-economics-roas">—</strong></div>
+                <div><span>Pipeline value</span><strong id="growth-economics-pipeline">—</strong></div>
+            </div>
+            <div class="wa-growth-economics-grid" id="growth-economics-grid"></div>
+            <div class="wa-channel-note" id="growth-economics-note"></div>
+        </div>
+
+        <div class="wa-channel-command" id="channel-performance-command" aria-live="polite">
+            <div class="wa-channel-command-head">
+                <div>
+                    <div class="wa-kpi-band-label">Channel Outcomes</div>
+                    <div class="wa-kpi-band-copy">Spend through revenue, joined to canonical downstream outcomes</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-light" id="channel-performance-refresh">Refresh</button>
+            </div>
+            <div class="wa-channel-grid" id="channel-performance-grid">
+                <div class="wa-channel-loading">Loading unified channel performance…</div>
+            </div>
+            <div class="wa-channel-note" id="channel-performance-note"></div>
         </div>
 
         <div class="wa-kpi-band wa-kpi-band-primary">

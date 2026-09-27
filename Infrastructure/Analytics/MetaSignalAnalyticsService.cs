@@ -100,6 +100,17 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 baseQuery = baseQuery.Where(x => x.AgentTrackingProfileId == agentId);
             }
         }
+        else if (scope.ScopeType == ScopeType.Founder && scope.AgentTrackingProfileId.HasValue)
+        {
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            baseQuery = baseQuery.Where(x =>
+                (x.AgentTrackingProfileId.HasValue && founderIds.Contains(x.AgentTrackingProfileId.Value)) ||
+                (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
+                 (x.MetadataJson.Contains("\"siteKey\":\"legend\"") ||
+                  x.MetadataJson.Contains("\"reportingOwner\":\"founder\""))));
+        }
 
         baseQuery = ApplyTrafficFilter(baseQuery, trafficType);
         baseQuery = await ApplyQualityFilterAsync(baseQuery, range, scope, scopedAgentIds, ct);
@@ -773,6 +784,17 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 query = query.Where(x => x.AgentTrackingProfileId == agentId);
             }
         }
+        else if (scope.ScopeType == ScopeType.Founder && scope.AgentTrackingProfileId.HasValue)
+        {
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            query = query.Where(x =>
+                (x.AgentTrackingProfileId.HasValue && founderIds.Contains(x.AgentTrackingProfileId.Value)) ||
+                (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
+                 (x.MetadataJson.Contains("\"siteKey\":\"legend\"") ||
+                  x.MetadataJson.Contains("\"reportingOwner\":\"founder\""))));
+        }
 
         return ApplyHealthMetaQualityFilter(query, range, analyticsRows);
     }
@@ -819,6 +841,19 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         if (scope.ScopeType == ScopeType.Business)
             return query.Where(x => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 scope.AgentTrackingProfileId == null && x.CommerceBusinessId == scope.CommerceBusinessId && x.AgentTrackingProfileId == null);
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
+                return query.Where(x => false);
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            query = query.Where(x => x.CommerceBusinessId == null &&
+                ((x.AgentTrackingProfileId.HasValue && founderIds.Contains(x.AgentTrackingProfileId.Value)) ||
+                 (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
+                  x.MetadataJson.Contains("\"SiteKey\":\"legend\""))));
+            return ApplyHealthLeadQualityFilter(query, range.QualityMode);
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return query.Where(x => false);
@@ -1400,7 +1435,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
     /// </summary>
     private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct)
     {
-        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
+        if ((scope.ScopeType != ScopeType.Agent && scope.ScopeType != ScopeType.Founder) || !scope.AgentTrackingProfileId.HasValue)
             return null;
 
         var selectedId = scope.AgentTrackingProfileId.Value;

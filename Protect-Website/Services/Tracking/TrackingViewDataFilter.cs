@@ -12,11 +12,16 @@ public sealed class TrackingViewDataFilter : IAsyncActionFilter
 {
     private readonly IHttpContextAccessor _http;
     private readonly IMetaPixelResolutionService _metaPixelResolution;
+    private readonly IOpenAiAdsAccountConnectionAuthority _openAiConnections;
 
-    public TrackingViewDataFilter(IHttpContextAccessor http, IMetaPixelResolutionService metaPixelResolution)
+    public TrackingViewDataFilter(
+        IHttpContextAccessor http,
+        IMetaPixelResolutionService metaPixelResolution,
+        IOpenAiAdsAccountConnectionAuthority openAiConnections)
     {
         _http = http;
         _metaPixelResolution = metaPixelResolution;
+        _openAiConnections = openAiConnections;
     }
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
@@ -42,6 +47,12 @@ public sealed class TrackingViewDataFilter : IAsyncActionFilter
             controller.ViewData["IsFounderPath"] = resolvedAgentContext ? false : isFounder;
             controller.ViewData["ResolvedMetaPixelId"] = metaPixelContext.PixelId;
             controller.ViewData["MetaPixelOwnerType"] = metaPixelContext.PixelOwnerType;
+
+            var openAiOwner = metaPixelContext.AgentTrackingProfileId.HasValue
+                ? Shared.Analytics.MarketingOwnerScope.Agent(metaPixelContext.AgentTrackingProfileId.Value)
+                : Shared.Analytics.MarketingOwnerScope.Founder;
+            var openAi = await _openAiConnections.GetAsync(openAiOwner, context.HttpContext.RequestAborted);
+            controller.ViewData["ResolvedOpenAiPixelId"] = openAi.Connected && openAi.PixelConfigured ? openAi.PixelId : null;
         }
 
         await next();

@@ -6,6 +6,7 @@ using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Data.Configurations;
 
+using Shared.Analytics;
 namespace Infrastructure.Data;
 
 public class MasterAppDbContext : DbContext
@@ -62,6 +63,9 @@ public class MasterAppDbContext : DbContext
     public DbSet<FounderAiActionAuthorization> FounderAiActionAuthorizations => Set<FounderAiActionAuthorization>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<MarketingConnection> MarketingConnections => Set<MarketingConnection>();
+    public DbSet<MarketingDestinationDelivery> MarketingDestinationDeliveries => Set<MarketingDestinationDelivery>();
+    public DbSet<AdvertisingActionAuthorization> AdvertisingActionAuthorizations => Set<AdvertisingActionAuthorization>();
+    public DbSet<OpenAiProductFeedProjection> OpenAiProductFeedProjections => Set<OpenAiProductFeedProjection>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
@@ -780,6 +784,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Source).IsRequired().HasMaxLength(120);
             e.Property(x => x.UserAgent).HasMaxLength(1000);
             e.Property(x => x.RequestIp).HasMaxLength(80);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.DiscountCode).HasMaxLength(80);
             e.Property(x => x.DiscountLabel).HasMaxLength(160);
             e.HasIndex(x => new { x.CommerceBusinessId, x.OrderNumber }).IsUnique();
@@ -1460,6 +1465,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.UtmCampaign).HasMaxLength(160);
             e.Property(x => x.UtmId).HasMaxLength(160);
             e.Property(x => x.Fbclid).HasMaxLength(120);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.Environment).HasMaxLength(40);
             e.Property(x => x.Host).HasMaxLength(160);
             e.Property(x => x.SubmitOutcome).HasMaxLength(40);
@@ -1486,6 +1492,7 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.UtmSource);
             e.HasIndex(x => x.UtmCampaign);
             e.HasIndex(x => x.UtmId);
+            e.HasIndex(x => x.Oppref);
             e.HasIndex(x => new { x.AgentTrackingProfileId, x.EventUtc });
             e.HasIndex(x => new { x.Environment, x.EventUtc });
             e.HasIndex(x => new { x.EventType, x.EventUtc });
@@ -1528,6 +1535,75 @@ public class MasterAppDbContext : DbContext
             // Behavior intelligence indexes
             e.HasIndex(x => x.DeviceType);
             e.HasIndex(x => x.SessionId).HasDatabaseName("IX_AnalyticsEvents_SessionId_Behavior");
+        });
+
+        modelBuilder.Entity<AdvertisingActionAuthorization>(e =>
+        {
+            e.ToTable("AdvertisingActionAuthorizations");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerKey).HasMaxLength(64).IsRequired();
+            e.Property(x => x.OwnerType).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Provider).HasMaxLength(20).IsRequired();
+            e.Property(x => x.ProposalKind).HasMaxLength(40).IsRequired();
+            e.Property(x => x.ActionDigest).HasMaxLength(64).IsRequired();
+            e.Property(x => x.ExactPlanJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT").IsRequired();
+            e.Property(x => x.SourceSnapshotJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.State).HasMaxLength(32).IsRequired();
+            e.Property(x => x.ProposedByUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.ApprovedByUserId).HasMaxLength(450);
+            e.Property(x => x.RejectedByUserId).HasMaxLength(450);
+            e.Property(x => x.ExecutionClaimToken).HasMaxLength(64);
+            e.Property(x => x.ProviderReceiptJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.ErrorCode).HasMaxLength(120);
+            e.Property(x => x.ErrorMessage).HasMaxLength(4000);
+            e.Property(x => x.Revision).HasMaxLength(32).IsRequired().IsConcurrencyToken();
+            e.HasIndex(x => new { x.OwnerKey, x.Provider, x.ActionDigest }).IsUnique();
+            e.HasIndex(x => new { x.OwnerKey, x.State, x.ProposedUtc });
+            e.HasIndex(x => x.ExecutionClaimToken);
+            e.HasOne<AgentTrackingProfile>().WithMany().HasForeignKey(x => x.AgentTrackingProfileId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<OpenAiProductFeedProjection>(e =>
+        {
+            e.ToTable("OpenAiProductFeedProjections");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Provider).HasMaxLength(20).IsRequired();
+            e.Property(x => x.ProviderFeedId).HasMaxLength(200);
+            e.Property(x => x.ProviderProductId).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            e.Property(x => x.CanonicalFingerprint).HasMaxLength(64).IsRequired();
+            e.Property(x => x.LastError).HasMaxLength(2000);
+            e.Property(x => x.Revision).IsConcurrencyToken();
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CommerceProductId, x.Provider }).IsUnique();
+            e.HasIndex(x => new { x.CommerceBusinessId, x.ProviderFeedId });
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<CommerceProduct>().WithMany().HasForeignKey(x => x.CommerceProductId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<MarketingDestinationDelivery>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerKey).HasMaxLength(64).IsRequired();
+            e.Property(x => x.OwnerType).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Provider).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Channel).HasMaxLength(20).IsRequired();
+            e.Property(x => x.CanonicalSource).HasMaxLength(80).IsRequired();
+            e.Property(x => x.CanonicalEventId).HasMaxLength(160).IsRequired();
+            e.Property(x => x.CanonicalEventName).HasMaxLength(120).IsRequired();
+            e.Property(x => x.ProviderEventName).HasMaxLength(120).IsRequired();
+            e.Property(x => x.PixelId).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderReceiptJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.ErrorCode).HasMaxLength(120);
+            e.Property(x => x.ErrorMessage).HasMaxLength(4000);
+            e.Property(x => x.ClaimToken).HasMaxLength(64);
+            e.HasIndex(x => new { x.OwnerKey, x.Provider, x.Channel, x.CanonicalEventId, x.ProviderEventName }).IsUnique();
+            e.HasIndex(x => new { x.Provider, x.Status, x.NextAttemptUtc });
+            e.HasIndex(x => x.ClaimExpiresUtc);
+            e.HasIndex(x => x.SentUtc);
+            e.HasOne<AgentTrackingProfile>().WithMany().HasForeignKey(x => x.AgentTrackingProfileId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<MetaSignalEvent>(e =>
@@ -1624,6 +1700,8 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.SourceCtaKey);
             e.HasIndex(x => x.UtmSource);
             e.HasIndex(x => x.UtmCampaign);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
+            e.HasIndex(x => x.Oppref);
         });
 
         modelBuilder.Entity<WebsiteLeadIntakeLink>(e =>
@@ -1651,6 +1729,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.UtmTerm).HasMaxLength(160);
             e.Property(x => x.UtmContent).HasMaxLength(160);
             e.Property(x => x.Fbclid).HasMaxLength(160);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.Fbp).HasMaxLength(256);
             e.Property(x => x.Fbc).HasMaxLength(512);
             e.Property(x => x.ClientIpAddress).HasMaxLength(128);
@@ -1882,6 +1961,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
             e.Property(x => x.WebsiteLeadId).HasMaxLength(64);
             e.Property(x => x.ClientProfileId).HasMaxLength(450);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
             e.Property(x => x.BookingProvider).HasMaxLength(80);
             e.Property(x => x.BookingSource).HasMaxLength(80).IsRequired();
@@ -2776,6 +2856,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Amount).HasColumnType("decimal(18,2)");
             e.Property(x => x.PersonalAmount).HasColumnType("decimal(18,2)");
             e.Property(x => x.Notes).HasMaxLength(240);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
 
             e.HasIndex(x => x.AgentUserId);
             e.HasIndex(x => new { x.AgentUserId, x.Side });

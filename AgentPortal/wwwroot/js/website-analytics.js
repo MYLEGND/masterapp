@@ -38,7 +38,7 @@
     preset: initialPreset,
     from: initialFrom,
     to: initialTo,
-    pollMs: 45000,
+    pollMs: 1500,
     qualityMode: initialQualityMode,
     dashboardTrafficType: 'all',
     controllers: {},
@@ -140,6 +140,24 @@
     metaConnect: analyticsEndpoint('/meta-connect'),
     metaConnectionStatus: analyticsEndpoint('/meta-connection-status'),
     metaDisconnect: analyticsEndpoint('/meta-disconnect'),
+    marketingSetup: analyticsEndpoint('/marketing-setup'),
+    openAiConnect: analyticsEndpoint('/openai-connect'),
+    openAiRefresh: analyticsEndpoint('/openai-refresh'),
+    openAiDisconnect: analyticsEndpoint('/openai-disconnect'),
+    advertising: analyticsEndpoint('/advertising'),
+    advertisingPromotionDraft: analyticsEndpoint('/advertising/promote/draft'),
+    advertisingPromotionPropose: analyticsEndpoint('/advertising/promote/propose'),
+    advertisingCampaignStatusPropose: analyticsEndpoint('/advertising/campaign/status/propose'),
+    advertisingCampaignBudgetPropose: analyticsEndpoint('/advertising/campaign/budget/propose'),
+    advertisingApprove: analyticsEndpoint('/advertising/approve'),
+    advertisingExecute: analyticsEndpoint('/advertising/execute'),
+    advertisingReject: analyticsEndpoint('/advertising/reject'),
+    marketingManagerPlan: analyticsEndpoint('/marketing-manager/plan'),
+    marketingManagerPerformance: analyticsEndpoint('/marketing-manager/performance'),
+    growthEconomics: analyticsEndpoint('/growth-economics'),
+    openAiOnboarding: analyticsEndpoint('/openai-onboarding'),
+    openAiProductFeed: analyticsEndpoint('/openai-product-feed'),
+    openAiProductFeedPublish: analyticsEndpoint('/openai-product-feed/publish'),
     behaviorSummary: analyticsEndpoint('/behavior/summary'),
     behaviorTime: analyticsEndpoint('/behavior/time-on-page'),
     behaviorExit: analyticsEndpoint('/behavior/exit-analysis'),
@@ -2952,6 +2970,8 @@ function escapeHtml(value) {
       // Health uses the same current range, quality and scope as the summary.
       // Refresh it whenever the summary does, including filter changes.
       void loadMarketingHealth();
+      void loadMarketingPerformance();
+      void loadGrowthEconomics();
     } catch (err) {
       if (requestId !== summaryRequestId) return;
 
@@ -4241,10 +4261,18 @@ function escapeHtml(value) {
     }
   }
 
+  function refreshLiveAnalytics() {
+    loadSummary();
+    if (state.openModal) refreshOpenModal();
+  }
+
   function initPolling() {
-    setInterval(() => {
-      refreshOpenModal();
-    }, state.pollMs);
+    setInterval(refreshLiveAnalytics, state.pollMs);
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshLiveAnalytics();
+    });
+    window.addEventListener('focus', refreshLiveAnalytics);
   }
 
   function initModules() {
@@ -4342,6 +4370,9 @@ function escapeHtml(value) {
       },
       getRangeParams(options) {
         return rangeParams(options || {});
+      },
+      endpoint(path) {
+        return analyticsEndpoint(path);
       }
     };
   }
@@ -4952,6 +4983,421 @@ function escapeHtml(value) {
     if (baseOpen) baseOpen.href = base;
     rerenderProductLinks();
   }
+
+
+  // Centralized marketing + booking configuration. This UI reads/writes the
+  // existing canonical MarketingConnection and AgentProfile authorities only.
+  const marketingSetupModal = document.getElementById('marketingSetupModal');
+  const marketingSetupForm = document.getElementById('marketing-setup-form');
+  const marketingSetupStatus = document.getElementById('marketing-setup-status');
+  const marketingSetupSave = document.getElementById('marketing-setup-save');
+  let marketingSetupLoaded = false;
+
+  function marketingSetupAgentProfileId() {
+    const selected = document.getElementById('wa-scope-select')?.value || '';
+    return selected || state.agentProfileId || callerProfileId || '';
+  }
+
+  function setMarketingSetupStatus(message, kind = '') {
+    if (!marketingSetupStatus) return;
+    marketingSetupStatus.textContent = message || '';
+    marketingSetupStatus.classList.toggle('is-error', kind === 'error');
+    marketingSetupStatus.classList.toggle('is-success', kind === 'success');
+  }
+
+  function setMarketingSetupChip(key, value, goodLabel, emptyLabel, warn = false) {
+    const chip = document.querySelector(`[data-status-key="${key}"]`);
+    if (!chip) return;
+    const strong = chip.querySelector('strong');
+    if (strong) strong.textContent = value ? goodLabel : emptyLabel;
+    chip.classList.toggle('is-good', !!value);
+    chip.classList.toggle('is-warn', !value && warn);
+    chip.classList.toggle('is-neutral', !value && !warn);
+  }
+
+  function marketingSetupConnectUrl(profileId) {
+    const params = new URLSearchParams();
+    params.set('returnUrl', window.location.pathname + window.location.search);
+    if (profileId) params.set('agentProfileId', profileId);
+    return `${endpoints.metaConnect}?${params.toString()}`;
+  }
+
+  function renderMarketingSetup(payload) {
+    if (!payload) return;
+    const status = payload.status || {};
+    const marketing = payload.marketing || {};
+    const booking = payload.booking || {};
+    const profileId = payload.agentProfileId || marketingSetupAgentProfileId();
+
+    const scopeLabel = document.getElementById('marketing-setup-scope-label');
+    if (scopeLabel) scopeLabel.textContent = payload.agentName
+      ? `Configuring ${payload.agentName}`
+      : 'Scoped marketing configuration';
+
+    setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
+    setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
+    setMarketingSetupChip('openAiReady', status.openAiReady, 'Ready', 'Needs attention', true);
+    setMarketingSetupChip(
+      'bookingPersonalLive',
+      status.bookingPersonalLive,
+      'Personal live',
+      booking.enabled ? 'Needs scheduler' : 'Shared scheduler',
+      booking.enabled && !status.bookingPersonalLive);
+    setMarketingSetupChip('calendarLinked', status.calendarLinked, 'Linked', 'Not linked');
+
+    const revision = document.getElementById('marketing-setup-revision');
+    if (revision) revision.value = marketing.revision || '';
+    const profileRevision = document.getElementById('marketing-setup-profile-revision');
+    if (profileRevision) profileRevision.value = booking.revision || '';
+    const pixel = document.getElementById('marketing-setup-pixel');
+    if (pixel) pixel.value = marketing.metaPixelId || '';
+    const testCode = document.getElementById('marketing-setup-test-code');
+    if (testCode) testCode.value = marketing.metaTestEventCode || '';
+    const enabled = document.getElementById('marketing-setup-booking-enabled');
+    if (enabled) enabled.checked = booking.enabled === true;
+    const embed = document.getElementById('marketing-setup-embed');
+    if (embed) embed.value = booking.microsoftBookingsEmbedUrl || '';
+    const fallback = document.getElementById('marketing-setup-fallback');
+    if (fallback) fallback.value = booking.fallbackBookingUrl || '';
+    const mailbox = document.getElementById('marketing-setup-mailbox');
+    if (mailbox) mailbox.value = booking.bookingPageIdOrMailbox || '';
+    const calendar = document.getElementById('marketing-setup-calendar');
+    if (calendar) calendar.value = booking.calendarEmail || '';
+
+    const account = document.getElementById('marketing-setup-meta-account');
+    if (account) account.textContent = marketing.metaAdsConnected
+      ? `Meta Ads connected · ${marketing.metaAccount || 'Scoped account'}`
+      : 'Meta Ads not connected for this scope';
+
+    const capi = document.getElementById('marketing-setup-capi-status');
+    if (capi) capi.textContent = marketing.metaCapiConfiguredSecurely
+      ? 'Configured securely through the scoped Meta Ads connection'
+      : 'Connect Meta Ads to configure CAPI securely and automatically';
+
+    const connect = document.getElementById('marketing-setup-meta-connect');
+    if (connect) {
+      connect.href = marketingSetupConnectUrl(profileId);
+      connect.textContent = marketing.metaAdsConnected ? 'Reconnect Meta Ads' : 'Connect Meta Ads';
+    }
+
+    const openAi = payload.openAi || {};
+    const openAiHealth = openAi.health || {};
+    const attribution = payload.attribution || {};
+    const setOpenAiText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value ?? '—';
+    };
+    const applySeverity = (element, severity) => {
+      if (!element) return;
+      element.classList.remove('is-good', 'is-warn', 'is-critical', 'is-neutral');
+      element.classList.add(severity === 'good' ? 'is-good'
+        : severity === 'warn' ? 'is-warn'
+        : severity === 'critical' ? 'is-critical'
+        : 'is-neutral');
+    };
+    const severityForOpenAi = () => {
+      if (!openAi.connected) return 'neutral';
+      if (openAi.providerStatusFresh === false || openAi.accountStatus === 'disabled' ||
+          openAi.reviewStatus === 'rejected' || Number(openAiHealth.failed || 0) > 0) return 'critical';
+      if (openAi.reviewStatus === 'in_review' || openAi.accountStatus !== 'active' ||
+          openAiHealth.status === 'retrying' || !openAi.pixelConfigured || !openAi.conversionsApiConfigured ||
+          Number(openAiHealth.retrying || 0) > 0 || Number(openAiHealth.pending || 0) > 0) return 'warn';
+      return openAiHealth.status === 'ready' ? 'good' : 'neutral';
+    };
+    const openAiStatus = document.getElementById('marketing-setup-openai-account');
+    if (openAiStatus) {
+      openAiStatus.textContent = openAi.connected
+        ? `ChatGPT Ads connected · ${openAi.accountName || openAi.accountId || 'Scoped account'}`
+        : 'ChatGPT Ads not connected for this scope';
+      applySeverity(openAiStatus, severityForOpenAi());
+    }
+
+    setOpenAiText('marketing-setup-openai-account-name', openAi.accountName || (openAi.connected ? 'Scoped advertiser' : 'Not connected'));
+    setOpenAiText('marketing-setup-openai-account-id', openAi.accountId || 'No advertiser ID');
+    setOpenAiText('marketing-setup-openai-connection-method', openAi.connectionMethod || 'Not connected');
+    setOpenAiText('marketing-setup-openai-access-detail',
+      openAi.providerRole ? `Provider role: ${openAi.providerRole}`
+        : openAi.connected ? 'Account-scoped key verified · role not exposed by Advertiser API' : '—');
+    setOpenAiText('marketing-setup-openai-account-status', openAi.accountStatus || (openAi.connected ? 'Provider status unavailable' : '—'));
+    setOpenAiText('marketing-setup-openai-account-meta',
+      [openAi.currencyCode, openAi.timezone].filter(Boolean).join(' · ') || openAi.accountUrl || '—');
+    setOpenAiText('marketing-setup-openai-review', openAi.reviewStatus || '—');
+    setOpenAiText('marketing-setup-openai-review-detail',
+      openAi.reviewReason ? `Reason: ${openAi.reviewReason}`
+        : openAi.lastVerifiedUtc ? `Last verified ${new Date(openAi.lastVerifiedUtc).toLocaleString()}`
+        : 'Not yet verified');
+    setOpenAiText('marketing-setup-openai-pixel', openAi.pixelConfigured ? (openAi.pixelId || 'Configured')
+      : openAi.measurementCapabilityStatus === 'not_enabled' ? 'API provisioning not enabled'
+      : openAi.measurementCapabilityStatus === 'not_authorized' ? 'API provisioning not authorized'
+      : 'Not configured');
+    setOpenAiText('marketing-setup-openai-capi', openAi.conversionsApiConfigured ? 'Configured securely'
+      : openAi.measurementCapabilityStatus === 'not_enabled' ? 'API provisioning not enabled'
+      : openAi.measurementCapabilityStatus === 'not_authorized' ? 'API provisioning not authorized'
+      : 'Not configured');
+    setOpenAiText('marketing-setup-openai-health', (openAiHealth.status || 'unknown').replaceAll('_', ' '));
+    setOpenAiText('marketing-setup-openai-last-send', openAiHealth.lastSentUtc ? `Last sent ${new Date(openAiHealth.lastSentUtc).toLocaleString()}` : 'No successful delivery yet');
+    setOpenAiText('marketing-setup-openai-pending', Number(openAiHealth.pending || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-retrying', Number(openAiHealth.retrying || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-failed', Number(openAiHealth.failed || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-sent', Number(openAiHealth.sent || 0).toLocaleString());
+
+    applySeverity(document.getElementById('marketing-setup-openai-connection-method')?.closest('.marketing-setup-detail'),
+      openAi.connected && openAi.providerStatusFresh !== false ? 'good' : openAi.connected ? 'critical' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-account-status')?.closest('.marketing-setup-detail'),
+      openAi.accountStatus === 'active' ? 'good' : openAi.connected ? 'warn' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-review')?.closest('.marketing-setup-detail'),
+      openAi.reviewStatus === 'rejected' ? 'critical' : openAi.reviewStatus === 'in_review' ? 'warn' : openAi.reviewStatus === 'approved' ? 'good' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-pixel')?.closest('.marketing-setup-detail'),
+      openAi.pixelConfigured ? 'good' : openAi.connected ? 'warn' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-capi')?.closest('.marketing-setup-detail'),
+      openAi.conversionsApiConfigured ? 'good' : openAi.connected ? 'warn' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-health')?.closest('.marketing-setup-detail'), severityForOpenAi());
+    applySeverity(document.getElementById('marketing-setup-openai-pending')?.parentElement, Number(openAiHealth.pending || 0) > 0 ? 'warn' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-retrying')?.parentElement, Number(openAiHealth.retrying || 0) > 0 ? 'warn' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-failed')?.parentElement, Number(openAiHealth.failed || 0) > 0 ? 'critical' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-sent')?.parentElement, Number(openAiHealth.sent || 0) > 0 ? 'good' : 'neutral');
+
+    const openAiReadyChip = document.querySelector('[data-status-key="openAiReady"]');
+    applySeverity(openAiReadyChip, severityForOpenAi());
+
+    const openAiAction = document.getElementById('marketing-setup-openai-action-status');
+    if (openAiAction) {
+      openAiAction.textContent = !openAi.connected ? 'Connect ChatGPT Ads'
+        : openAi.providerStatusFresh === false ? 'Critical · provider status unavailable'
+        : openAi.reviewStatus === 'rejected' ? 'Critical · brand review rejected'
+        : openAi.reviewStatus === 'in_review' ? 'Moderate · brand review in progress'
+        : openAi.accountStatus !== 'active' ? 'Moderate · account is not active'
+        : openAi.measurementCapabilityStatus === 'not_enabled' ? 'Moderate · OpenAI Ads API measurement provisioning not enabled'
+        : openAi.measurementCapabilityStatus === 'not_authorized' ? 'Moderate · Advertiser API key cannot provision measurement'
+        : openAi.measurementCapabilityStatus === 'provider_unavailable' ? 'Moderate · OpenAI measurement provisioning temporarily unavailable'
+        : !openAi.pixelConfigured || !openAi.conversionsApiConfigured ? 'Moderate · measurement setup incomplete'
+        : Number(openAiHealth.failed || 0) > 0 ? 'Critical · delivery failures'
+        : Number(openAiHealth.retrying || 0) > 0 ? 'Moderate · retrying delivery'
+        : openAiHealth.status === 'ready' ? 'Ready · account and measurement healthy'
+        : 'Connected · awaiting delivery evidence';
+      applySeverity(openAiAction.closest('.marketing-setup-secure-row'), severityForOpenAi());
+    }
+    const disconnect = document.getElementById('marketing-setup-openai-disconnect');
+    if (disconnect) {
+      disconnect.disabled = !openAi.connected || !openAi.revision;
+      disconnect.dataset.revision = openAi.revision || '';
+    }
+
+    const verify = document.getElementById('marketing-setup-openai-verify');
+    if (verify) {
+      verify.textContent = openAi.connected ? 'Verify / refresh' : 'Connect ChatGPT Ads';
+      verify.dataset.connected = openAi.connected ? 'true' : 'false';
+    }
+    const connectSubmit = document.getElementById('marketing-setup-openai-connect-submit');
+    if (connectSubmit) connectSubmit.dataset.revision = openAi.exists && openAi.revision ? openAi.revision : '';
+
+    setOpenAiText('marketing-setup-oppref-events', Number(attribution.paidTrafficEvents || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-leads', Number(attribution.leads || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-crm', Number(attribution.crm || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-appointments', Number(attribution.appointments || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-orders', Number(attribution.orders || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-production', Number(attribution.production || 0).toLocaleString());
+    setOpenAiText('marketing-setup-oppref-revenue', new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(attribution.paidRevenue || 0)));
+    const opprefStatus = document.getElementById('marketing-setup-oppref-status');
+    if (opprefStatus) {
+      const observed = Number(attribution.paidTrafficEvents || 0) + Number(attribution.leads || 0) + Number(attribution.crm || 0);
+      opprefStatus.textContent = attribution.complete ? 'Lineage observed end to end'
+        : observed > 0 ? 'Partial lineage · follow-up needed'
+        : 'No ChatGPT Ads lineage observed yet';
+      applySeverity(opprefStatus, attribution.complete ? 'good' : observed > 0 ? 'warn' : 'neutral');
+    }
+
+    void loadOpenAiOnboarding();
+    if (isBusinessAnalytics) void loadOpenAiProductFeed();
+  }
+
+  async function loadMarketingSetup() {
+    if (!marketingSetupForm) return false;
+    marketingSetupLoaded = false;
+    setMarketingSetupStatus('Loading centralized setup…');
+    if (marketingSetupSave) marketingSetupSave.disabled = true;
+    try {
+      const profileId = marketingSetupAgentProfileId();
+      const payload = await fetchJson(
+        'marketingSetup',
+        endpoints.marketingSetup,
+        profileId ? { agentProfileId: profileId } : {});
+      if (!payload) return false;
+      renderMarketingSetup(payload);
+      const revision = document.getElementById('marketing-setup-revision')?.value || '';
+      if (!revision) throw new Error('Canonical marketing settings did not return a revision.');
+      marketingSetupLoaded = true;
+      setMarketingSetupStatus('Loaded from the canonical marketing and booking authorities.');
+      return true;
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to load Marketing Setup.', 'error');
+      return false;
+    } finally {
+      if (marketingSetupSave) marketingSetupSave.disabled = !marketingSetupLoaded;
+    }
+  }
+
+  async function saveMarketingSetup(event) {
+    event?.preventDefault?.();
+    if (!marketingSetupForm || !marketingSetupSave) return;
+
+    let revision = document.getElementById('marketing-setup-revision')?.value || '';
+    if (!marketingSetupLoaded || !revision) {
+      const loaded = await loadMarketingSetup();
+      revision = document.getElementById('marketing-setup-revision')?.value || '';
+      if (!loaded || !revision) {
+        setMarketingSetupStatus('Unable to load the canonical Marketing Setup. Nothing was saved.', 'error');
+        return;
+      }
+    }
+
+    const pixel = (document.getElementById('marketing-setup-pixel')?.value || '').trim();
+    if (pixel && !/^\d{1,32}$/.test(pixel)) {
+      setMarketingSetupStatus('Meta Pixel ID must contain only digits.', 'error');
+      return;
+    }
+
+    const testEventCode = (document.getElementById('marketing-setup-test-code')?.value || '').trim();
+    if (testEventCode.length > 100) {
+      setMarketingSetupStatus('Meta Test Event Code is too long.', 'error');
+      return;
+    }
+
+    const body = {
+      agentProfileId: marketingSetupAgentProfileId() || null,
+      marketingRevision: revision,
+      profileRevision: document.getElementById('marketing-setup-profile-revision')?.value || null,
+      metaPixelId: pixel || null,
+      metaTestEventCode: testEventCode || null,
+      bookingEnabled: document.getElementById('marketing-setup-booking-enabled')?.checked === true,
+      microsoftBookingsEmbedUrl: (document.getElementById('marketing-setup-embed')?.value || '').trim() || null,
+      fallbackBookingUrl: (document.getElementById('marketing-setup-fallback')?.value || '').trim() || null,
+      bookingPageIdOrMailbox: (document.getElementById('marketing-setup-mailbox')?.value || '').trim() || null,
+      calendarEmail: (document.getElementById('marketing-setup-calendar')?.value || '').trim() || null
+    };
+
+    marketingSetupSave.disabled = true;
+    setMarketingSetupStatus('Saving centralized setup…');
+    try {
+      const payload = await fetchPostJson('marketingSetupSave', endpoints.marketingSetup, body);
+      renderMarketingSetup(payload);
+      setMarketingSetupStatus('Marketing Setup saved.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to save Marketing Setup.', 'error');
+    } finally {
+      marketingSetupSave.disabled = false;
+    }
+  }
+
+  marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
+  marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
+  document.getElementById('marketing-setup-openai-verify')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    if (button?.dataset?.connected !== 'true') {
+      const panel = document.getElementById('marketing-setup-openai-connect-panel');
+      if (panel) panel.hidden = false;
+      document.getElementById('marketing-setup-openai-api-key')?.focus();
+      return;
+    }
+
+    const revision = document.getElementById('marketing-setup-openai-disconnect')?.dataset?.revision || '';
+    if (!revision) {
+      setMarketingSetupStatus('Reload Marketing Setup before refreshing ChatGPT Ads.', 'error');
+      return;
+    }
+
+    button.disabled = true;
+    setMarketingSetupStatus('Refreshing ChatGPT Ads account and measurement setup…');
+    try {
+      const response = await fetchPostJson('openAiRefresh', endpoints.openAiRefresh, {
+        agentProfileId: marketingSetupAgentProfileId() || null,
+        connectionRevision: revision
+      });
+      const payload = response?.setup || response;
+      const pixelProvisioning = response?.pixelProvisioning || null;
+      renderMarketingSetup(payload);
+      const refreshedOpenAi = payload?.openAi || {};
+      if (refreshedOpenAi.pixelConfigured && refreshedOpenAi.conversionsApiConfigured) {
+        setMarketingSetupStatus('ChatGPT Ads account and measurement setup refreshed.', 'success');
+      } else if (pixelProvisioning?.status === 'not_enabled') {
+        setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. OpenAI has not enabled Ads API Pixel provisioning for this advertiser account yet.');
+      } else if (pixelProvisioning?.status === 'not_authorized') {
+        setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. This Advertiser API key cannot provision the OpenAI Pixel for this account.');
+      } else if (pixelProvisioning?.status === 'provider_unavailable') {
+        setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. OpenAI Pixel provisioning is temporarily unavailable.');
+      } else if (pixelProvisioning?.status === 'provider_error') {
+        const code = pixelProvisioning.httpStatusCode ? ` (HTTP ${pixelProvisioning.httpStatusCode})` : '';
+        setMarketingSetupStatus(`${pixelProvisioning.detail || 'OpenAI rejected Pixel provisioning.'}${code}`, 'error');
+      } else if (refreshedOpenAi.measurementCapabilityStatus === 'not_enabled') {
+        setMarketingSetupStatus('ChatGPT Ads account refreshed. OpenAI has not enabled Ads API conversion provisioning for this advertiser account yet.');
+      } else {
+        setMarketingSetupStatus(refreshedOpenAi.measurementCapabilityDetail || 'ChatGPT Ads account refreshed; measurement setup is still incomplete.');
+      }
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to refresh ChatGPT Ads.', 'error');
+    } finally {
+      button.disabled = false;
+    }
+  });
+  document.getElementById('marketing-setup-openai-connect-cancel')?.addEventListener('click', () => {
+    const key = document.getElementById('marketing-setup-openai-api-key');
+    if (key) key.value = '';
+    const panel = document.getElementById('marketing-setup-openai-connect-panel');
+    if (panel) panel.hidden = true;
+  });
+  document.getElementById('marketing-setup-openai-connect-submit')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const keyInput = document.getElementById('marketing-setup-openai-api-key');
+    const advertiserApiKey = (keyInput?.value || '').trim();
+    if (!advertiserApiKey) {
+      setMarketingSetupStatus('Enter the Advertiser API key from OpenAI Ads Manager Settings.', 'error');
+      return;
+    }
+    button.disabled = true;
+    setMarketingSetupStatus('Verifying ChatGPT Ads directly with OpenAI…');
+    try {
+      const payload = await fetchPostJson('openAiConnect', endpoints.openAiConnect, {
+        agentProfileId: marketingSetupAgentProfileId() || null,
+        advertiserApiKey,
+        expectedRevision: button.dataset.revision || null
+      });
+      if (keyInput) keyInput.value = '';
+      const panel = document.getElementById('marketing-setup-openai-connect-panel');
+      if (panel) panel.hidden = true;
+      renderMarketingSetup(payload);
+      setMarketingSetupStatus('ChatGPT Ads verified and connected to this scope.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to verify ChatGPT Ads.', 'error');
+    } finally {
+      if (keyInput) keyInput.value = '';
+      button.disabled = false;
+    }
+  });
+  document.getElementById('marketing-setup-openai-disconnect')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const revision = button?.dataset?.revision || '';
+    if (!revision) return;
+    button.disabled = true;
+    setMarketingSetupStatus('Disconnecting ChatGPT Ads from this scope…');
+    try {
+      const payload = await fetchPostJson('openAiDisconnect', endpoints.openAiDisconnect, {
+        agentProfileId: marketingSetupAgentProfileId() || null,
+        connectionRevision: revision
+      });
+      renderMarketingSetup(payload);
+      setMarketingSetupStatus('ChatGPT Ads disconnected for this scope.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to disconnect ChatGPT Ads.', 'error');
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+  document.getElementById('wa-scope-select')?.addEventListener('change', () => {
+    marketingSetupLoaded = false;
+    if (marketingSetupSave) marketingSetupSave.disabled = true;
+    if (marketingSetupModal?.classList.contains('show')) void loadMarketingSetup();
+  });
+
 })();
 
 ;(() => {
@@ -5096,7 +5542,11 @@ function escapeHtml(value) {
     const content = document.getElementById('deviceIntelligenceContent');
     if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
 
-    const deviceUrl = `${analyticsEndpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
+    const endpoint = window.websiteAnalyticsBridge?.endpoint;
+    if (typeof endpoint !== 'function') {
+      throw new Error('Analytics endpoint authority is unavailable.');
+    }
+    const deviceUrl = `${endpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
     const res = await fetchCachedDeviceRequest(deviceUrl, () => fetch(deviceUrl, {
       headers: { 'Accept': 'application/json' }
     }));
@@ -5173,4 +5623,903 @@ function escapeHtml(value) {
       window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
     });
   });
+
+  // ── Canonical Advertising Command Center ─────────────────────────────
+  const advertisingModal = document.getElementById('advertisingCommandModal');
+  const isBusinessAnalytics = /^\/business\/[0-9a-f-]+\/analytics\/?$/i.test(analyticsBase);
+  let advertisingSnapshot = null;
+  let advertisingSelectedCreative = null;
+
+  function advertisingScopeParams() {
+    if (isBusinessAnalytics) return {};
+    const id = state.scope.agentProfileId || (!isFounder ? callerProfileId : null);
+    return id ? { agentProfileId: id } : {};
+  }
+
+  function advertisingBody(payload = {}) {
+    return { ...advertisingScopeParams(), ...payload };
+  }
+
+  function advertisingData(payload) {
+    if (!payload || typeof payload !== 'object') return [];
+    return Array.isArray(payload.data) ? payload.data : [];
+  }
+
+  function advertisingText(id, value) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value == null || value === '' ? '—' : String(value);
+  }
+
+  function advertisingSetStatus(message, tone = '') {
+    const node = document.getElementById('advertising-command-status');
+    if (!node) return;
+    node.textContent = message || '';
+    node.dataset.tone = tone || '';
+  }
+
+  function advertisingFormatMoneyMicros(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    return (n / 1000000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function advertisingBudgetLabel(campaign) {
+    const budget = campaign?.budget || {};
+    const daily = budget.daily_spend_limit_micros ?? budget.dailySpendLimitMicros ?? campaign?.daily_spend_limit_micros;
+    const lifetime = budget.lifetime_spend_limit_micros ?? budget.lifetimeSpendLimitMicros ?? campaign?.lifetime_spend_limit_micros;
+    if (daily != null) return `${advertisingFormatMoneyMicros(daily)} / day`;
+    if (lifetime != null) return `${advertisingFormatMoneyMicros(lifetime)} lifetime`;
+    return 'Budget not returned';
+  }
+
+  function advertisingProposalCounts(proposals) {
+    const pending = proposals.filter(p => p.state === 'Proposed' || p.state === 'Approved').length;
+    const audited = proposals.filter(p => ['Completed', 'Failed', 'OutcomeUnknown', 'Rejected'].includes(p.state)).length;
+    return { pending, audited };
+  }
+
+  function advertisingCampaignId(campaign) {
+    return campaign?.id || campaign?.campaign_id || campaign?.campaignId || '';
+  }
+
+  function advertisingCampaignName(campaign) {
+    return campaign?.name || campaign?.campaign_name || campaign?.campaignName || advertisingCampaignId(campaign) || 'Campaign';
+  }
+
+  function advertisingCampaignStatus(campaign) {
+    return campaign?.status || campaign?.effective_status || campaign?.configured_status || 'unknown';
+  }
+
+  function advertisingButton(label, onClick, className = 'btn btn-sm btn-outline-light') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = className;
+    btn.textContent = label;
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  function advertisingMetaSpan(text) {
+    const span = document.createElement('span');
+    span.textContent = text;
+    return span;
+  }
+
+  async function loadAdvertisingCommandCenter() {
+    advertisingSetStatus('Loading scoped advertising authority…');
+    const snapshot = await fetchJson('advertisingCommandCenter', endpoints.advertising, advertisingScopeParams());
+    if (!snapshot) return;
+    advertisingSnapshot = snapshot;
+    renderAdvertisingCommandCenter(snapshot);
+    advertisingSetStatus('Scoped advertising authority is current.', 'success');
+  }
+
+  function renderAdvertisingCommandCenter(snapshot) {
+    const campaigns = advertisingData(snapshot.campaigns);
+    const proposals = Array.isArray(snapshot.proposals) ? snapshot.proposals : [];
+    const counts = advertisingProposalCounts(proposals);
+    const connected = snapshot.connection?.connected === true && snapshot.connection?.hasManagementCredential === true;
+
+    advertisingText('advertising-command-scope', state.scope.scopeLabel || 'Current scope');
+    advertisingText('advertising-command-connection', connected ? (snapshot.connection?.accountName || 'Connected') : 'Not connected');
+    advertisingText('advertising-command-campaign-count', campaigns.length);
+    advertisingText('advertising-command-approval-count', counts.pending);
+    advertisingText('advertising-command-audit-count', counts.audited);
+
+    const promote = document.getElementById('advertising-command-promote');
+    if (promote) {
+      promote.disabled = !connected;
+      promote.title = connected ? 'Build a governed campaign proposal' : 'Connect ChatGPT Ads in Marketing Setup first';
+    }
+
+    renderAdvertisingCampaigns(campaigns, connected);
+    renderAdvertisingLedger(proposals);
+    hydrateAdvertisingPromotionSources(snapshot);
+  }
+
+  function renderAdvertisingCampaigns(campaigns, connected) {
+    const host = document.getElementById('advertising-command-campaigns');
+    if (!host) return;
+    host.replaceChildren();
+
+    if (!connected) {
+      const empty = document.createElement('div');
+      empty.className = 'advertising-command-card';
+      empty.innerHTML = '<h6>Connect ChatGPT Ads</h6><div class="advertising-command-meta"><span>Use Marketing Setup to verify the scoped advertiser account before managing campaigns.</span></div>';
+      host.appendChild(empty);
+      return;
+    }
+
+    if (!campaigns.length) {
+      const empty = document.createElement('div');
+      empty.className = 'advertising-command-card';
+      empty.innerHTML = '<h6>No campaigns yet</h6><div class="advertising-command-meta"><span>Use Promote This to build your first governed campaign proposal from a published LEGEND asset.</span></div>';
+      host.appendChild(empty);
+      return;
+    }
+
+    for (const campaign of campaigns) {
+      const id = advertisingCampaignId(campaign);
+      const name = advertisingCampaignName(campaign);
+      const status = advertisingCampaignStatus(campaign);
+      const card = document.createElement('article');
+      card.className = 'advertising-command-card';
+
+      const title = document.createElement('h6');
+      title.textContent = name;
+      const meta = document.createElement('div');
+      meta.className = 'advertising-command-meta';
+      meta.append(
+        advertisingMetaSpan(`Status: ${status}`),
+        advertisingMetaSpan(`Objective: ${campaign.bidding_type || campaign.biddingType || '—'}`),
+        advertisingMetaSpan(advertisingBudgetLabel(campaign))
+      );
+      const actions = document.createElement('div');
+      actions.className = 'advertising-command-actions';
+
+      actions.append(advertisingButton('Performance', () => void openAdvertisingCampaignInsights(id, name)));
+      const nextStatus = String(status).toLowerCase() === 'active' ? 'paused' : 'active';
+      actions.append(advertisingButton(
+        nextStatus === 'active' ? 'Propose activation' : 'Propose pause',
+        () => void proposeAdvertisingCampaignStatus(id, name, nextStatus),
+        nextStatus === 'active' ? 'btn btn-sm btn-gold' : 'btn btn-sm btn-outline-light'
+      ));
+      actions.append(advertisingButton('Change budget', () => renderAdvertisingBudgetEditor(card, id, name)));
+
+      card.append(title, meta, actions);
+      host.appendChild(card);
+    }
+  }
+
+  function renderAdvertisingBudgetEditor(card, campaignId, campaignName) {
+    card.querySelector('.advertising-budget-editor')?.remove();
+    const box = document.createElement('div');
+    box.className = 'advertising-budget-editor advertising-command-actions';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '1';
+    input.step = '0.01';
+    input.className = 'form-control form-control-sm';
+    input.placeholder = 'New daily budget';
+    input.style.maxWidth = '180px';
+    const propose = advertisingButton('Create budget proposal', async () => {
+      const value = Number(input.value);
+      if (!Number.isFinite(value) || value < 1) {
+        advertisingSetStatus('Enter a daily budget of at least 1.00 in the connected account currency.', 'error');
+        return;
+      }
+      await proposeAdvertisingCampaignBudget(campaignId, campaignName, Math.round(value * 1000000));
+      box.remove();
+    }, 'btn btn-sm btn-gold');
+    box.append(input, propose, advertisingButton('Cancel', () => box.remove()));
+    card.appendChild(box);
+    input.focus();
+  }
+
+  async function proposeAdvertisingCampaignStatus(campaignId, campaignName, status) {
+    advertisingSetStatus(`Creating exact ${status} proposal…`);
+    try {
+      await fetchPostJson('advertisingCampaignStatusPropose', endpoints.advertisingCampaignStatusPropose,
+        advertisingBody({ campaignId, campaignName, status }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Status change is awaiting explicit approval. Nothing has executed.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to create campaign status proposal.', 'error');
+    }
+  }
+
+  async function proposeAdvertisingCampaignBudget(campaignId, campaignName, dailySpendLimitMicros) {
+    advertisingSetStatus('Creating exact budget proposal…');
+    try {
+      await fetchPostJson('advertisingCampaignBudgetPropose', endpoints.advertisingCampaignBudgetPropose,
+        advertisingBody({ campaignId, campaignName, budget: { dailySpendLimitMicros } }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Budget change is awaiting explicit approval. Nothing has executed.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to create budget proposal.', 'error');
+    }
+  }
+
+  function renderAdvertisingLedger(proposals) {
+    const host = document.getElementById('advertising-command-proposals');
+    if (!host) return;
+    host.replaceChildren();
+
+    if (!proposals.length) {
+      const empty = document.createElement('div');
+      empty.className = 'advertising-ledger-card';
+      empty.innerHTML = '<h6>No advertising actions yet</h6><div class="advertising-command-meta"><span>Proposals, approvals, provider receipts, rejections, and terminal failures will remain visible here.</span></div>';
+      host.appendChild(empty);
+      return;
+    }
+
+    for (const proposal of proposals) {
+      const card = document.createElement('article');
+      card.className = 'advertising-ledger-card';
+      card.dataset.state = proposal.state || '';
+
+      const title = document.createElement('h6');
+      title.textContent = proposal.plan?.title || proposal.proposalKind || 'Advertising action';
+      const meta = document.createElement('div');
+      meta.className = 'advertising-command-meta';
+      meta.append(
+        advertisingMetaSpan(`State: ${proposal.state || '—'}`),
+        advertisingMetaSpan(`Proposed: ${proposal.proposedUtc ? new Date(proposal.proposedUtc).toLocaleString() : '—'}`),
+        advertisingMetaSpan(`Digest: ${String(proposal.actionDigest || '').slice(0, 12)}…`)
+      );
+
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Exact approved-plan payload / provider receipt';
+      const pre = document.createElement('pre');
+      pre.className = 'advertising-plan-json';
+      pre.textContent = JSON.stringify({
+        plan: proposal.plan,
+        source: proposal.sourceSnapshot,
+        providerReceipt: proposal.providerReceipt,
+        errorCode: proposal.errorCode,
+        errorMessage: proposal.errorMessage
+      }, null, 2);
+      details.append(summary, pre);
+
+      const actions = document.createElement('div');
+      actions.className = 'advertising-command-actions';
+      if (proposal.state === 'Proposed') {
+        actions.append(
+          advertisingButton('Approve exact plan', () => void approveAdvertisingProposal(proposal), 'btn btn-sm btn-gold'),
+          advertisingButton('Reject', () => void rejectAdvertisingProposal(proposal))
+        );
+      } else if (proposal.state === 'Approved') {
+        actions.append(
+          advertisingButton('Execute approved plan', () => void executeAdvertisingProposal(proposal), 'btn btn-sm btn-gold'),
+          advertisingButton('Reject', () => void rejectAdvertisingProposal(proposal))
+        );
+      }
+
+      card.append(title, meta, details, actions);
+      host.appendChild(card);
+    }
+  }
+
+  async function approveAdvertisingProposal(proposal) {
+    advertisingSetStatus('Binding approval to the exact reviewed plan…');
+    try {
+      await fetchPostJson('advertisingApprove', endpoints.advertisingApprove,
+        advertisingBody({ proposalId: proposal.id, revision: proposal.revision }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Exact plan approved. Execution is still a separate action.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Approval failed.', 'error');
+    }
+  }
+
+  async function executeAdvertisingProposal(proposal) {
+    advertisingSetStatus('Executing the one approved plan…');
+    try {
+      const receipt = await fetchPostJson('advertisingExecute', endpoints.advertisingExecute,
+        advertisingBody({ proposalId: proposal.id, revision: proposal.revision }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus(
+        receipt?.state === 'Completed'
+          ? 'Provider execution completed and receipt was audited.'
+          : `Execution ended in ${receipt?.state || 'unknown'}; the ledger is preserved.`,
+        receipt?.state === 'Completed' ? 'success' : 'error');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Execution failed.', 'error');
+    }
+  }
+
+  async function rejectAdvertisingProposal(proposal) {
+    advertisingSetStatus('Rejecting proposal without provider execution…');
+    try {
+      await fetchPostJson('advertisingReject', endpoints.advertisingReject,
+        advertisingBody({ proposalId: proposal.id, revision: proposal.revision }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Proposal rejected. No provider mutation occurred.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Rejection failed.', 'error');
+    }
+  }
+
+  function hydrateAdvertisingPromotionSources(snapshot) {
+    const source = document.getElementById('advertising-promote-source');
+    const conversion = document.getElementById('advertising-promote-conversion');
+    if (source) {
+      source.replaceChildren();
+      for (const item of snapshot.sources || []) {
+        const option = document.createElement('option');
+        option.value = JSON.stringify({ sourceKind: item.sourceKind, sourceId: item.sourceId, pagePath: item.pagePath || null });
+        option.textContent = item.detail ? `${item.label} · ${item.detail}` : item.label;
+        source.appendChild(option);
+      }
+    }
+    if (conversion) {
+      conversion.replaceChildren();
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Choose a standard conversion';
+      conversion.appendChild(placeholder);
+      for (const row of advertisingData(snapshot.conversionSettings)) {
+        if (String(row.event_type || row.eventType || '').toLowerCase() === 'custom') continue;
+        if (String(row.status || '').toLowerCase() === 'archived') continue;
+        const option = document.createElement('option');
+        option.value = row.id || '';
+        option.textContent = row.name || row.event_name || row.eventType || 'Conversion';
+        conversion.appendChild(option);
+      }
+    }
+  }
+
+  function advertisingPromotionRequest(selectedCreativeKey = null) {
+    const raw = document.getElementById('advertising-promote-source')?.value;
+    if (!raw) throw new Error('Choose a published page, service, or active product.');
+    const source = JSON.parse(raw);
+    const objective = document.getElementById('advertising-promote-objective')?.value || 'clicks';
+    const conversion = document.getElementById('advertising-promote-conversion')?.value || null;
+    const budget = Number(document.getElementById('advertising-promote-budget')?.value);
+    if (!Number.isFinite(budget) || budget < 1) throw new Error('Enter a daily budget of at least 1.00 in the connected account currency.');
+    if (objective === 'conversions' && !conversion) throw new Error('Choose a standard conversion objective.');
+
+    const split = id => (document.getElementById(id)?.value || '')
+      .split(',').map(value => value.trim()).filter(Boolean);
+
+    return {
+      ...source,
+      goal: document.getElementById('advertising-promote-goal')?.value?.trim() || null,
+      dailyBudgetMicros: Math.round(budget * 1000000),
+      biddingType: objective,
+      contextHints: split('advertising-promote-hints'),
+      countries: split('advertising-promote-countries').map(value => value.toUpperCase()),
+      platforms: null,
+      status: document.getElementById('advertising-promote-status')?.value || 'paused',
+      conversionEventSettingId: objective === 'conversions' ? conversion : null,
+      selectedCreativeKey
+    };
+  }
+
+  async function buildAdvertisingPromotionPreview() {
+    advertisingSetStatus('Building governed promotion preview…');
+    try {
+      const draft = await fetchPostJson('advertisingPromotionDraft', endpoints.advertisingPromotionDraft,
+        advertisingBody({ promotion: advertisingPromotionRequest(null) }));
+      renderAdvertisingPromotionPreview(draft);
+      advertisingSetStatus('Preview built. Nothing is approved or executed.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to build promotion preview.', 'error');
+    }
+  }
+
+  function renderAdvertisingPromotionPreview(draft) {
+    const host = document.getElementById('advertising-promote-preview-panel');
+    if (!host) return;
+    host.hidden = false;
+    host.replaceChildren();
+    advertisingSelectedCreative = draft.selectedAlternativeKey || null;
+
+    const intro = document.createElement('div');
+    intro.className = 'advertising-command-card';
+    intro.innerHTML = `<h6>${escapeHtml(draft.source?.displayName || 'Promotion')}</h6>
+      <div class="advertising-command-meta"><span>${escapeHtml(draft.source?.landingUrl || '')}</span><span>Budget: ${advertisingFormatMoneyMicros(draft.dailyBudgetMicros)} / day</span></div>`;
+    host.appendChild(intro);
+
+    for (const creative of draft.alternatives || []) {
+      const label = document.createElement('label');
+      label.className = 'advertising-creative-card';
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'advertising-promote-creative';
+      radio.value = creative.key;
+      radio.checked = creative.key === advertisingSelectedCreative;
+      radio.addEventListener('change', () => { advertisingSelectedCreative = creative.key; });
+      const content = document.createElement('div');
+      const heading = document.createElement('strong');
+      heading.textContent = creative.title || creative.name;
+      const body = document.createElement('div');
+      body.textContent = creative.body || '';
+      content.append(heading, body);
+      if (creative.imageUrl) {
+        const img = document.createElement('img');
+        img.src = creative.imageUrl;
+        img.alt = '';
+        img.loading = 'lazy';
+        content.appendChild(img);
+      }
+      label.append(radio, content);
+      host.appendChild(label);
+    }
+
+    const exact = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Exact provider mutation plan';
+    const pre = document.createElement('pre');
+    pre.className = 'advertising-plan-json';
+    pre.textContent = JSON.stringify(draft.plan?.steps || [], null, 2);
+    exact.append(summary, pre);
+    host.appendChild(exact);
+
+    host.appendChild(advertisingButton('Create approval proposal', () => void createAdvertisingPromotionProposal(), 'btn btn-gold'));
+  }
+
+  async function createAdvertisingPromotionProposal() {
+    advertisingSetStatus('Persisting exact promotion proposal…');
+    try {
+      await fetchPostJson('advertisingPromotionPropose', endpoints.advertisingPromotionPropose,
+        advertisingBody({ promotion: advertisingPromotionRequest(advertisingSelectedCreative) }));
+      document.getElementById('advertising-command-promotion')?.setAttribute('hidden', '');
+      document.getElementById('advertising-promote-preview-panel')?.setAttribute('hidden', '');
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Proposal created. Explicit approval is required before execution.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to create promotion proposal.', 'error');
+    }
+  }
+
+  async function openAdvertisingCampaignInsights(campaignId, campaignName) {
+    advertisingSetStatus('Loading campaign performance…');
+    try {
+      const params = advertisingScopeParams();
+      params.preset = state.scope.preset || '7d';
+      const custom = resolveCustomRangeUtc();
+      if (custom) Object.assign(params, custom);
+      const url = analyticsEndpoint(`/advertising/campaign/${encodeURIComponent(campaignId)}/insights`);
+      const result = await fetchJson('advertisingCampaignInsights', url, params);
+      const section = document.getElementById('advertising-command-insights');
+      const body = document.getElementById('advertising-command-insights-body');
+      advertisingText('advertising-command-insights-title', campaignName);
+      if (section) section.hidden = false;
+      if (body) {
+        body.replaceChildren();
+        const rows = advertisingData(result?.payload || result);
+        const totals = rows.reduce((acc, row) => {
+          for (const key of ['impressions', 'clicks', 'spend']) acc[key] += Number(row[key] || row[`campaign.${key}`] || 0);
+          return acc;
+        }, { impressions: 0, clicks: 0, spend: 0 });
+        const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+        for (const [label, value] of [
+          ['Impressions', totals.impressions.toLocaleString()],
+          ['Clicks', totals.clicks.toLocaleString()],
+          ['Spend', totals.spend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })],
+          ['CTR', `${ctr.toFixed(2)}%`]
+        ]) {
+          const card = document.createElement('div');
+          card.className = 'advertising-insight';
+          card.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+          body.appendChild(card);
+        }
+      }
+      advertisingSetStatus('Campaign performance loaded.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to load campaign performance.', 'error');
+    }
+  }
+
+  // ── LEGEND Marketing Manager + unified channel outcomes ─────────────
+  const marketingManagerModal = document.getElementById('marketingManagerModal');
+
+  function marketingManagerQualityModeValue() {
+    const key = normalizeQualityModeKey(state.qualityMode || 'real_human_traffic');
+    return {
+      real_human_traffic: 0,
+      likely_human: 1,
+      reviewed_needed: 2,
+      suspicious_activity: 3,
+      likely_bots_automation: 4,
+      internal_qa: 5,
+      all_traffic: 6
+    }[key] ?? 0;
+  }
+
+  function marketingManagerRangePayload() {
+    const body = {
+      preset: state.scope.preset || '30d',
+      qualityMode: marketingManagerQualityModeValue()
+    };
+    const custom = resolveCustomRangeUtc();
+    if (custom) Object.assign(body, custom);
+    return body;
+  }
+
+  function marketingManagerRequestBody(extra = {}) {
+    const scope = isBusinessAnalytics ? {} : advertisingScopeParams();
+    return { ...scope, ...marketingManagerRangePayload(), ...extra };
+  }
+
+  function marketingManagerMoney(value) {
+    const n = Number(value || 0);
+    return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  }
+
+  function marketingManagerNumber(value) {
+    const n = Number(value || 0);
+    return Number.isFinite(n) ? n.toLocaleString() : '0';
+  }
+
+  function channelLabel(channel) {
+    return {
+      chatgpt_ads: 'ChatGPT Ads',
+      meta_ads: 'Meta Ads',
+      organic: 'Organic',
+      direct: 'Direct',
+      referral: 'Referral',
+      unknown: 'Unknown'
+    }[channel] || channel || 'Channel';
+  }
+
+  async function loadMarketingPerformance() {
+    const grid = document.getElementById('channel-performance-grid');
+    if (!grid) return;
+    try {
+      const data = await fetchJson(
+        'marketingManagerPerformance',
+        endpoints.marketingManagerPerformance,
+        marketingManagerRequestBody());
+      if (!data) return;
+      renderMarketingPerformance(data);
+    } catch (error) {
+      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
+    }
+  }
+
+  function renderMarketingPerformance(snapshot) {
+    const grid = document.getElementById('channel-performance-grid');
+    if (!grid) return;
+    grid.replaceChildren();
+
+    const rows = Array.isArray(snapshot?.channels) ? snapshot.channels : [];
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'wa-channel-loading';
+      empty.textContent = 'No channel outcomes are available for this range.';
+      grid.appendChild(empty);
+    }
+
+    for (const row of rows) {
+      const card = document.createElement('article');
+      card.className = 'wa-channel-card';
+      card.dataset.channel = row.channel || '';
+
+      const head = document.createElement('div');
+      head.className = 'wa-channel-card-head';
+      const title = document.createElement('strong');
+      title.textContent = channelLabel(row.channel);
+      const confidence = document.createElement('span');
+      confidence.className = 'wa-channel-confidence';
+      confidence.textContent = row.attributionConfidence || 'observed';
+      head.append(title, confidence);
+
+      const metrics = document.createElement('div');
+      metrics.className = 'wa-channel-metrics';
+      const values = [
+        ['Spend', marketingManagerMoney(row.spend)],
+        ['Clicks', marketingManagerNumber(row.clicks)],
+        ['Leads', marketingManagerNumber(row.leads)],
+        ['Qualified', marketingManagerNumber(row.qualifiedLeads)],
+        ['Appointments', marketingManagerNumber(row.appointments)],
+        ['Customers', marketingManagerNumber(row.customers)],
+        ['Revenue', marketingManagerMoney(row.revenue)],
+        ['ROAS', `${Number(row.roas || 0).toFixed(2)}x`]
+      ];
+      for (const [label, value] of values) {
+        const item = document.createElement('div');
+        const key = document.createElement('span');
+        key.textContent = label;
+        const val = document.createElement('strong');
+        val.textContent = value;
+        item.append(key, val);
+        metrics.appendChild(item);
+      }
+
+      const basis = document.createElement('div');
+      basis.className = 'wa-channel-basis';
+      basis.textContent = row.attributionBasis || '';
+      card.append(head, metrics, basis);
+      grid.appendChild(card);
+    }
+
+    const notes = Array.isArray(snapshot?.dataQualityNotes) ? snapshot.dataQualityNotes : [];
+    const note = document.getElementById('channel-performance-note');
+    if (note) note.textContent = notes.join(' ');
+  }
+
+  async function loadGrowthEconomics() {
+    const grid = document.getElementById('growth-economics-grid');
+    if (!grid) return;
+    try {
+      const data = await fetchJson('growthEconomics', endpoints.growthEconomics, marketingManagerRequestBody());
+      if (!data) return;
+      setText('growth-economics-spend', marketingManagerMoney(data.totalMarketingSpend));
+      setText('growth-economics-customers', marketingManagerNumber(data.customersAcquired));
+      setText('growth-economics-cac', marketingManagerMoney(data.costPerCustomer));
+      setText('growth-economics-revenue', marketingManagerMoney(data.totalRevenue));
+      setText('growth-economics-roas', `${Number(data.blendedRoas || 0).toFixed(2)}x`);
+      setText('growth-economics-pipeline', marketingManagerMoney(data.pipelineValue));
+      grid.replaceChildren();
+      for (const row of data.channels || []) {
+        const card = document.createElement('article');
+        card.className = 'wa-growth-economics-card';
+        const title = document.createElement('div');
+        title.className = 'wa-channel-card-head';
+        const strong = document.createElement('strong');
+        strong.textContent = channelLabel(row.channel);
+        const basis = document.createElement('span');
+        basis.className = 'wa-channel-confidence';
+        basis.textContent = row.attributionBasis || 'canonical';
+        title.append(strong, basis);
+        const metrics = document.createElement('div');
+        metrics.className = 'wa-growth-economics-metrics';
+        for (const [label, value] of [
+          ['Spend', marketingManagerMoney(row.spend)],
+          ['Customers', marketingManagerNumber(row.customersAcquired)],
+          ['Cost / customer', marketingManagerMoney(row.costPerCustomer)],
+          ['Revenue', marketingManagerMoney(row.revenue)],
+          ['ROAS', `${Number(row.roas || 0).toFixed(2)}x`],
+          ['Pipeline', marketingManagerMoney(row.pipelineValue)]
+        ]) {
+          const item = document.createElement('div');
+          item.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+          metrics.appendChild(item);
+        }
+        card.append(title, metrics);
+        grid.appendChild(card);
+      }
+      const note = document.getElementById('growth-economics-note');
+      if (note) note.textContent = (data.notes || []).join(' ');
+    } catch (error) {
+      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Growth economics are unavailable.')}</div>`;
+    }
+  }
+
+  async function loadOpenAiOnboarding() {
+    const host = document.getElementById('marketing-setup-openai-readiness-steps');
+    if (!host) return;
+    try {
+      const data = await fetchJson('openAiOnboarding', endpoints.openAiOnboarding, advertisingScopeParams());
+      if (!data) return;
+      const status = document.getElementById('marketing-setup-openai-readiness-status');
+      if (status) status.textContent = data.readyToAdvertise
+        ? 'Ready to advertise'
+        : `${Number(data.completedSteps || 0)}/${Number(data.totalSteps || 0)} complete`;
+      host.replaceChildren();
+      for (const step of data.steps || []) {
+        const row = document.createElement('div');
+        row.className = `marketing-setup-readiness-step ${step.complete ? 'is-complete' : 'is-open'}`;
+        const mark = document.createElement('span');
+        mark.className = 'marketing-setup-readiness-mark';
+        mark.textContent = step.complete ? '✓' : '•';
+        const copy = document.createElement('div');
+        const label = document.createElement('strong');
+        label.textContent = step.label || step.key;
+        const detail = document.createElement('small');
+        detail.textContent = step.detail || step.status || '';
+        copy.append(label, detail);
+        row.append(mark, copy);
+        host.appendChild(row);
+      }
+    } catch (error) {
+      host.innerHTML = `<div class="text-warning small">${escapeHtml(error.message || 'ChatGPT Ads readiness is unavailable.')}</div>`;
+    }
+  }
+
+  async function loadOpenAiProductFeed() {
+    const section = document.getElementById('marketing-setup-openai-product-feed');
+    if (!section) return;
+    section.hidden = !isBusinessAnalytics;
+    if (!isBusinessAnalytics) return;
+    try {
+      const data = await fetchJson('openAiProductFeed', endpoints.openAiProductFeed, {});
+      if (!data) return;
+      const status = document.getElementById('marketing-setup-openai-feed-status');
+      if (status) status.textContent = data.providerFeedId
+        ? `${Number(data.publishedProductCount || 0)}/${Number(data.eligibleProductCount || 0)} published`
+        : 'Not published';
+      const summary = document.getElementById('marketing-setup-openai-feed-summary');
+      if (summary) {
+        const errors = Array.isArray(data.validationErrors) ? data.validationErrors : [];
+        summary.innerHTML = `
+          <div><span>Canonical products</span><strong>${Number(data.canonicalProductCount || 0).toLocaleString()}</strong></div>
+          <div><span>Eligible</span><strong>${Number(data.eligibleProductCount || 0).toLocaleString()}</strong></div>
+          <div><span>Published</span><strong>${Number(data.publishedProductCount || 0).toLocaleString()}</strong></div>
+          <div><span>Errors</span><strong>${Number(data.errorCount || 0).toLocaleString()}</strong></div>
+          ${errors.length ? `<p>${escapeHtml(errors.join(' '))}</p>` : ''}`;
+      }
+    } catch (error) {
+      const summary = document.getElementById('marketing-setup-openai-feed-summary');
+      if (summary) summary.textContent = error.message || 'Product feed status is unavailable.';
+    }
+  }
+
+  async function publishOpenAiProductFeed() {
+    const button = document.getElementById('marketing-setup-openai-feed-publish');
+    if (!button || !isBusinessAnalytics) return;
+    button.disabled = true;
+    button.textContent = 'Publishing…';
+    try {
+      const result = await fetchPostJson('openAiProductFeedPublish', endpoints.openAiProductFeedPublish, {});
+      setMarketingSetupStatus(
+        `ChatGPT Ads feed reconciled: ${Number(result?.published || 0)} published, ${Number(result?.failed || 0)} failed.`,
+        Number(result?.failed || 0) > 0 ? 'error' : 'success');
+      await loadOpenAiProductFeed();
+    } catch (error) {
+      setMarketingSetupStatus(error.message || 'Product feed publication failed.', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Publish / reconcile feed';
+    }
+  }
+
+  function marketingManagerSetStatus(message, tone = '') {
+    const node = document.getElementById('marketing-manager-status');
+    if (!node) return;
+    node.textContent = message || '';
+    node.dataset.tone = tone || '';
+  }
+
+  async function buildMarketingManagerPlan() {
+    const goalText = document.getElementById('marketing-manager-goal')?.value?.trim() || '';
+    if (!goalText) {
+      marketingManagerSetStatus('Enter the business outcome you want LEGEND to plan for.', 'error');
+      document.getElementById('marketing-manager-goal')?.focus();
+      return;
+    }
+
+    const targetRaw = Number(document.getElementById('marketing-manager-target')?.value);
+    const budgetRaw = Number(document.getElementById('marketing-manager-budget')?.value);
+    const goal = {
+      goal: goalText,
+      targetIncrement: Number.isFinite(targetRaw) && targetRaw > 0 ? Math.round(targetRaw) : null,
+      targetOutcome: null,
+      monthlyBudget: Number.isFinite(budgetRaw) && budgetRaw > 0 ? budgetRaw : null,
+      notes: null
+    };
+
+    marketingManagerSetStatus('Reading the current scoped business evidence and building a governed plan…');
+    try {
+      const plan = await fetchPostJson(
+        'marketingManagerPlan',
+        endpoints.marketingManagerPlan,
+        marketingManagerRequestBody({ goal }));
+      renderMarketingManagerPlan(plan);
+      marketingManagerSetStatus('Growth plan built from current canonical evidence. Nothing has executed.', 'success');
+    } catch (error) {
+      marketingManagerSetStatus(error.message || 'Unable to build the growth plan.', 'error');
+    }
+  }
+
+  function renderMarketingManagerPlan(plan) {
+    const result = document.getElementById('marketing-manager-result');
+    if (!result) return;
+    result.hidden = false;
+    setText('marketing-manager-plan-goal', plan?.goal || 'Growth plan');
+    setText('marketing-manager-generated', plan?.generatedUtc ? `Built ${formatDisplayDate(plan.generatedUtc)}` : 'Current evidence');
+
+    const evidence = document.getElementById('marketing-manager-evidence');
+    if (evidence) {
+      evidence.replaceChildren();
+      for (const row of plan?.evidence || []) {
+        const card = document.createElement('div');
+        card.className = 'marketing-manager-evidence-card';
+        const label = document.createElement('span');
+        label.textContent = row.label || row.key || 'Evidence';
+        const value = document.createElement('strong');
+        value.textContent = row.value || '—';
+        const source = document.createElement('small');
+        source.textContent = row.source || 'canonical';
+        card.append(label, value, source);
+        evidence.appendChild(card);
+      }
+    }
+
+    const recommendations = document.getElementById('marketing-manager-recommendations');
+    if (recommendations) {
+      recommendations.replaceChildren();
+      for (const row of plan?.recommendations || []) {
+        const card = document.createElement('article');
+        card.className = 'marketing-manager-recommendation';
+        const top = document.createElement('div');
+        top.className = 'marketing-manager-recommendation-top';
+        const priority = document.createElement('span');
+        priority.className = 'marketing-manager-priority';
+        priority.textContent = `P${row.priority || '—'} · ${String(row.lane || 'plan').replace('_', ' ')}`;
+        const approval = document.createElement('span');
+        approval.className = 'marketing-manager-approval';
+        approval.textContent = row.requiresApproval ? 'Approval required' : 'No provider mutation';
+        top.append(priority, approval);
+        const action = document.createElement('strong');
+        action.textContent = row.action || 'Recommendation';
+        const why = document.createElement('p');
+        why.textContent = row.why || '';
+        const impact = document.createElement('small');
+        impact.textContent = row.expectedImpact || '';
+        card.append(top, action, why, impact);
+        if (row.provider === 'chatgpt_ads') {
+          const button = advertisingButton('Open governed ad workflow', () => {
+            bootstrap.Modal.getOrCreateInstance(marketingManagerModal)?.hide();
+            bootstrap.Modal.getOrCreateInstance(advertisingModal)?.show();
+          }, 'btn btn-sm btn-gold');
+          card.appendChild(button);
+        }
+        recommendations.appendChild(card);
+      }
+    }
+
+    const guardrails = document.getElementById('marketing-manager-guardrails');
+    if (guardrails) {
+      guardrails.replaceChildren();
+      for (const text of plan?.guardrails || []) {
+        const row = document.createElement('div');
+        row.className = 'marketing-manager-guardrail';
+        row.textContent = text;
+        guardrails.appendChild(row);
+      }
+    }
+  }
+
+  function initMarketingManager() {
+    document.getElementById('marketing-manager-build')?.addEventListener('click', () => void buildMarketingManagerPlan());
+    document.getElementById('marketing-manager-refresh')?.addEventListener('click', () => {
+      void loadMarketingPerformance();
+      marketingManagerSetStatus('Current channel evidence refreshed.', 'success');
+    });
+    document.getElementById('marketing-manager-open-advertising')?.addEventListener('click', () => {
+      bootstrap.Modal.getOrCreateInstance(marketingManagerModal)?.hide();
+      bootstrap.Modal.getOrCreateInstance(advertisingModal)?.show();
+    });
+    document.getElementById('channel-performance-refresh')?.addEventListener('click', () => void loadMarketingPerformance());
+    document.getElementById('growth-economics-refresh')?.addEventListener('click', () => void loadGrowthEconomics());
+    document.getElementById('marketing-setup-openai-feed-refresh')?.addEventListener('click', () => void loadOpenAiProductFeed());
+    document.getElementById('marketing-setup-openai-feed-publish')?.addEventListener('click', () => void publishOpenAiProductFeed());
+    window.addEventListener('wa:scope-changed', () => void loadMarketingPerformance());
+  }
+
+  function initAdvertisingCommandCenter() {
+    advertisingModal?.addEventListener('show.bs.modal', () => { void loadAdvertisingCommandCenter(); });
+    document.getElementById('advertising-command-refresh')?.addEventListener('click', () => void loadAdvertisingCommandCenter());
+    document.getElementById('advertising-command-promote')?.addEventListener('click', () => {
+      const section = document.getElementById('advertising-command-promotion');
+      if (section) section.hidden = false;
+      document.getElementById('advertising-promote-budget')?.focus();
+    });
+    document.getElementById('advertising-promote-cancel')?.addEventListener('click', () => {
+      const section = document.getElementById('advertising-command-promotion');
+      if (section) section.hidden = true;
+      const preview = document.getElementById('advertising-promote-preview-panel');
+      if (preview) preview.hidden = true;
+    });
+    document.getElementById('advertising-promote-objective')?.addEventListener('change', event => {
+      const wrap = document.getElementById('advertising-promote-conversion-wrap');
+      if (wrap) wrap.hidden = event.currentTarget.value !== 'conversions';
+    });
+    document.getElementById('advertising-promote-preview')?.addEventListener('click', () => void buildAdvertisingPromotionPreview());
+    document.getElementById('advertising-command-insights-close')?.addEventListener('click', () => {
+      const section = document.getElementById('advertising-command-insights');
+      if (section) section.hidden = true;
+    });
+    window.addEventListener('wa:scope-changed', () => {
+      if (advertisingModal?.classList.contains('show')) void loadAdvertisingCommandCenter();
+    });
+  }
+
+  initAdvertisingCommandCenter();
+  initMarketingManager();
+
 })();

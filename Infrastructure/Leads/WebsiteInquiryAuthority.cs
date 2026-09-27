@@ -62,6 +62,7 @@ public class WebsiteInquiryAuthority : ControllerBase
         string? UtmTerm = null,
         string? UtmContent = null,
         string? Fbclid = null,
+        string? Oppref = null,
         string? Fbp = null,
         string? Fbc = null,
         string? MetaCampaignId = null,
@@ -154,6 +155,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmCampaign = Optional(request.UtmCampaign, 160),
             UtmId = Optional(request.UtmId, 160),
             Fbclid = Optional(request.Fbclid, 120),
+            Oppref = OpenAiClickReference.Normalize(request.Oppref),
             Fbp = Optional(request.Fbp, 512),
             Fbc = Optional(request.Fbc, 512),
             MetaCampaignId = Optional(request.MetaCampaignId, 200),
@@ -171,6 +173,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             SourceActionKey = lead.SourceCtaKey,
             UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
+            Oppref = lead.Oppref,
             PublishedWebsiteVersionId = scope.PublishedVersion?.Id
         });
         lead.LeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));

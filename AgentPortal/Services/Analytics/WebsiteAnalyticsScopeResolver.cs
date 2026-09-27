@@ -48,7 +48,7 @@ public sealed class WebsiteAnalyticsScopeResolver(
             var founderProfile = await GetCallerProfileAsync();
             if (founderProfile != null)
             {
-                return ScopeContext.ForAgent(founderProfile.Id);
+                return ScopeContext.ForFounder(founderProfile.Id);
             }
 
             return ScopeContext.Global;
