@@ -60,11 +60,14 @@ jobs:
         shell: bash
         run: |
           git checkout --detach FETCH_HEAD
-          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
-          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
+          # A different source revision must not reuse candidate Razor/compiler
+          # intermediates or test binaries. Preserve the candidate evidence.
+          baseline_artifacts=/tmp/masterapp-step5-baseline
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj -p:MasterAppArtifactsRoot="$baseline_artifacts"
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -p:MasterAppArtifactsRoot="$baseline_artifacts"
           set +e
           rm -rf /tmp/step5-baseline
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --logger "trx;LogFileName=baseline.trx" --results-directory /tmp/step5-baseline
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build -p:MasterAppArtifactsRoot="$baseline_artifacts" --logger "trx;LogFileName=baseline.trx" --results-directory /tmp/step5-baseline
           exit 0
 
       - name: Prove Step 5 adds no full-suite failures

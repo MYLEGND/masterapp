@@ -108,3 +108,9 @@ Coordinated closure build passed with zero warnings/errors. Affected .NET regres
 All 11 corrected source-contract/test-host cases subsequently passed: 10 in `canonical-contract-recheck.trx`, then the final tracker contract in `canonical-final-contract.trx`. No production source changed during these selective corrections. Aggregate affected coverage: 942 passing identities/executions of 943, with the unchanged baseline messaging-translation case remaining failed. The 931 initially passing cases and successful a09b40e CI runs were not restarted. Final committed-revision full-suite/baseline comparison and CI remain a separate gate.
 
 Repository evidence is in `20260927-repository-proof.md`; per-event parity is in `20260927-event-parity.md`; runtime asset/publication checks are in `20260927-runtime-migration-gate.md`. The server cart currently uses the existing ASP.NET session store and instance-local serialization; this is not a claim of distributed cart exactly-once state. Canonical event insertion has stable command identity and database deduplication.
+
+## Exact committed revision and follow-up
+
+Revision `b2d878956bcf3e31cd3f35eeda0d9d648ec4ecdd` has tree `d7d81937b738db4db4832372e38ab7a1fa984c83`. Its build passed; full .NET result is 3,786 passed, 43 failed, 5 skipped, with zero introduced baseline identities. Three CI checks passed. Conversion CI failed building the approved baseline after the candidate phase, not during candidate compilation or focused tests.
+
+Full-suite execution exposed a test-environment leak that invalidated the earlier scope-fix conclusion: the baseline greeting test failed before restoring FOUNDER_OID. Failure-safe cleanup is now implemented and selectively verified with the failing test running before all seven passing scope cases. The follow-up also isolates baseline CI build artifacts. See the baseline audit for exact evidence and remaining validation. No production analytics code changed in this follow-up.
