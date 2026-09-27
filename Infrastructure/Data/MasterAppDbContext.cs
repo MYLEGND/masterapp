@@ -781,6 +781,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Source).IsRequired().HasMaxLength(120);
             e.Property(x => x.UserAgent).HasMaxLength(1000);
             e.Property(x => x.RequestIp).HasMaxLength(80);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.DiscountCode).HasMaxLength(80);
             e.Property(x => x.DiscountLabel).HasMaxLength(160);
             e.HasIndex(x => new { x.CommerceBusinessId, x.OrderNumber }).IsUnique();
@@ -1461,6 +1462,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.UtmCampaign).HasMaxLength(160);
             e.Property(x => x.UtmId).HasMaxLength(160);
             e.Property(x => x.Fbclid).HasMaxLength(120);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.Environment).HasMaxLength(40);
             e.Property(x => x.Host).HasMaxLength(160);
             e.Property(x => x.SubmitOutcome).HasMaxLength(40);
@@ -1487,6 +1489,7 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.UtmSource);
             e.HasIndex(x => x.UtmCampaign);
             e.HasIndex(x => x.UtmId);
+            e.HasIndex(x => x.Oppref);
             e.HasIndex(x => new { x.AgentTrackingProfileId, x.EventUtc });
             e.HasIndex(x => new { x.Environment, x.EventUtc });
             e.HasIndex(x => new { x.EventType, x.EventUtc });
@@ -1650,6 +1653,8 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.SourceCtaKey);
             e.HasIndex(x => x.UtmSource);
             e.HasIndex(x => x.UtmCampaign);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
+            e.HasIndex(x => x.Oppref);
         });
 
         modelBuilder.Entity<WebsiteLeadIntakeLink>(e =>
@@ -1677,6 +1682,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.UtmTerm).HasMaxLength(160);
             e.Property(x => x.UtmContent).HasMaxLength(160);
             e.Property(x => x.Fbclid).HasMaxLength(160);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.Fbp).HasMaxLength(256);
             e.Property(x => x.Fbc).HasMaxLength(512);
             e.Property(x => x.ClientIpAddress).HasMaxLength(128);
@@ -1883,6 +1889,7 @@ public class MasterAppDbContext : DbContext
             e.ToTable("AppointmentSyncLogs");
             e.Property(x => x.WorkstationLeadId).HasMaxLength(64);
             e.Property(x => x.ClientProfileId).HasMaxLength(450);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
             e.Property(x => x.AgentUserId).HasMaxLength(450);
             e.Property(x => x.CalendarUserId).HasMaxLength(450);
             e.Property(x => x.CalendarEmail).HasMaxLength(320);
@@ -2707,6 +2714,7 @@ public class MasterAppDbContext : DbContext
 
             e.Property(x => x.Amount).HasColumnType("decimal(18,2)");
             e.Property(x => x.Notes).HasMaxLength(240);
+            e.Property(x => x.Oppref).HasMaxLength(OpenAiClickReference.MaxLength);
 
             e.HasIndex(x => new { x.OwnerUserId, x.Scope, x.EntryDate });
 
