@@ -65,6 +65,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<MarketingConnection> MarketingConnections => Set<MarketingConnection>();
     public DbSet<MarketingDestinationDelivery> MarketingDestinationDeliveries => Set<MarketingDestinationDelivery>();
     public DbSet<AdvertisingActionAuthorization> AdvertisingActionAuthorizations => Set<AdvertisingActionAuthorization>();
+    public DbSet<OpenAiProductFeedProjection> OpenAiProductFeedProjections => Set<OpenAiProductFeedProjection>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
@@ -1561,6 +1562,23 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.ExecutionClaimToken);
             e.HasOne<AgentTrackingProfile>().WithMany().HasForeignKey(x => x.AgentTrackingProfileId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<OpenAiProductFeedProjection>(e =>
+        {
+            e.ToTable("OpenAiProductFeedProjections");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Provider).HasMaxLength(20).IsRequired();
+            e.Property(x => x.ProviderFeedId).HasMaxLength(200);
+            e.Property(x => x.ProviderProductId).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            e.Property(x => x.CanonicalFingerprint).HasMaxLength(64).IsRequired();
+            e.Property(x => x.LastError).HasMaxLength(2000);
+            e.Property(x => x.Revision).IsConcurrencyToken();
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CommerceProductId, x.Provider }).IsUnique();
+            e.HasIndex(x => new { x.CommerceBusinessId, x.ProviderFeedId });
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<CommerceProduct>().WithMany().HasForeignKey(x => x.CommerceProductId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<MarketingDestinationDelivery>(e =>
