@@ -157,7 +157,7 @@ public class WebsitePlatformController : ControllerBase
             businessName = business?.DisplayName,
             facts = publicFacts,
             collections = publicCollections.Values,
-            store = StorePayload(siteKey, document, publicStoreScope, ticket: null),
+            store = await StorePayloadAsync(siteKey, document, publicStoreScope, ticket: null, cancellationToken),
             document
         });
     }
@@ -291,7 +291,7 @@ public class WebsitePlatformController : ControllerBase
             dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
             collections = collectionData.Values,
             ctaCatalog = new { options = ctaOptions },
-            store = StorePayload(actor.SiteKey, draft, commerceScope, ticket),
+            store = await StorePayloadAsync(actor.SiteKey, draft, commerceScope, ticket, cancellationToken),
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
@@ -348,7 +348,7 @@ public class WebsitePlatformController : ControllerBase
         {
             document,
             revision = state.Revision,
-            store = StorePayload(actor.SiteKey, document, scope, request.Ticket)
+            store = await StorePayloadAsync(actor.SiteKey, document, scope, request.Ticket, cancellationToken)
         });
     }
 
@@ -385,7 +385,7 @@ public class WebsitePlatformController : ControllerBase
         {
             document,
             revision = state.Revision,
-            store = StorePayload(actor.SiteKey, document, scope, request.Ticket)
+            store = await StorePayloadAsync(actor.SiteKey, document, scope, request.Ticket, cancellationToken)
         });
     }
 
@@ -1871,11 +1871,47 @@ public class WebsitePlatformController : ControllerBase
     private string CommercePublicBaseUrl() =>
         (_configuration["Commerce:PublicBaseUrl"] ?? "https://shopparfait.com").TrimEnd('/');
 
-    private object StorePayload(
+    private async Task<string?> ResolveCanonicalStoreRootAsync(
+        string siteKey,
+        WebsiteCommerceScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (siteKey == WebsiteEditorSiteKeys.Legend)
+            return (_configuration["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/') + "/store";
+
+        if (siteKey == WebsiteEditorSiteKeys.Protect)
+            return (_configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') +
+                   "/store/s/" + Uri.EscapeDataString(scope.BusinessKey);
+
+        if (siteKey != WebsiteEditorSiteKeys.Business)
+            return null;
+
+        // Business websites use the same verified custom-domain authority as
+        // the public commerce resolver. Never synthesize a mylegnd.com store
+        // path for a business tenant.
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var hostname = await _db.Set<WebsiteDomainBinding>()
+            .AsNoTracking()
+            .Where(binding =>
+                binding.CommerceBusinessId == scope.CommerceBusinessId &&
+                binding.Status == "active" &&
+                binding.CertificateStatus == "active" &&
+                binding.LastCheckedUtc >= cutoff)
+            .OrderBy(binding => binding.CreatedUtc)
+            .Select(binding => binding.Hostname)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return string.IsNullOrWhiteSpace(hostname)
+            ? null
+            : "https://" + hostname.Trim().TrimEnd('.') + "/store";
+    }
+
+    private async Task<object> StorePayloadAsync(
         string siteKey,
         WebsiteContentDocument document,
         WebsiteCommerceScope? scope,
-        string? ticket)
+        string? ticket,
+        CancellationToken cancellationToken)
     {
         var label = string.IsNullOrWhiteSpace(document.Store.NavigationLabel)
             ? "Store"
@@ -1896,10 +1932,9 @@ public class WebsitePlatformController : ControllerBase
                 managerUrl = (string?)null
             };
 
-        var root = siteKey == WebsiteEditorSiteKeys.Protect
-            ? (_configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') +
-              "/store/s/" + Uri.EscapeDataString(scope.BusinessKey)
-            : "/store";
+        var root = await ResolveCanonicalStoreRootAsync(siteKey, scope, cancellationToken);
+        var managerBase = CommercePublicBaseUrl();
+        var escapedTicket = string.IsNullOrWhiteSpace(ticket) ? null : Uri.EscapeDataString(ticket);
         return new
         {
             enabled = document.Store.Enabled,
@@ -1909,13 +1944,13 @@ public class WebsitePlatformController : ControllerBase
             commerceBusinessId = (Guid?)scope.CommerceBusinessId,
             businessKey = scope.BusinessKey,
             storefrontUrl = root,
-            cartUrl = root + "/cart",
-            previewUrl = string.IsNullOrWhiteSpace(ticket)
+            cartUrl = root is null ? null : root + "/cart",
+            previewUrl = escapedTicket is null
                 ? null
-                : "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket),
-            managerUrl = string.IsNullOrWhiteSpace(ticket)
+                : managerBase + "/commerce/manage/preview?ticket=" + escapedTicket,
+            managerUrl = escapedTicket is null
                 ? null
-                : "/commerce/manage/products?ticket=" + Uri.EscapeDataString(ticket)
+                : managerBase + "/commerce/manage/products?ticket=" + escapedTicket
         };
     }
 

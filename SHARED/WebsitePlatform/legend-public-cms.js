@@ -67,7 +67,7 @@
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap', 'display', 'flexDirection', 'gap', 'gridTemplateColumns', 'alignItems', 'justifyContent', 'flexWrap'];
+  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'minHeight', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap', 'display', 'flexDirection', 'gap', 'gridTemplateColumns', 'alignItems', 'justifyContent', 'flexWrap'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -726,10 +726,11 @@
     }
     if (positiveNumber(style.heightPx)) {
       if (sectionLocked) {
-        // Sections are content-sized canvases. Vertical resize changes only their
-        // minimum breathing room; content must never become an internal scroller.
-        el.style.minHeight = `${style.heightPx}px`;
-        el.style.height = 'auto';
+        // A manually resized section is the canvas boundary itself. Use an
+        // explicit height so shrinking actually reclaims empty space; never
+        // turn the section into an internal scroll container.
+        el.style.minHeight = '0';
+        el.style.height = `${style.heightPx}px`;
         el.style.overflow = 'visible';
       } else {
         el.style.height = `${style.heightPx}px`;
@@ -739,7 +740,7 @@
       }
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
-    const hasOffsetY = style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
+    const hasOffsetY = !sectionLocked && style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
     if (hasOffsetX || hasOffsetY) {
       el.style.position = 'relative';
       if (hasOffsetX) el.style.left = `${Number(style.offsetXPercent)}%`;
@@ -2483,54 +2484,38 @@
       const style = gesture.style;
       const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
       const parentWidth = gesture.parentRect.width || sectionWidth || 1;
-      const cell = sectionWidth / 12;
-      const verticalStep = 24;
-      let snappedDx = dx;
-      let snappedDy = dy;
+      let nextDx = dx;
+      let nextDy = dy;
       gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
 
       if (gesture.mode === 'move') {
-        // Movement is free-form inside the selected section. The grid is visual
-        // guidance only; only near-center alignment gets a soft snap.
-        snappedDx = dx;
-        snappedDy = dy;
-        const desiredCenterX = gesture.selectedRect.left + snappedDx + gesture.selectedRect.width / 2;
-        const sectionCenterX = gesture.sectionRect.left + gesture.sectionRect.width / 2;
-        if (Math.abs(desiredCenterX - sectionCenterX) <= Math.max(8, cell * .18)) {
-          snappedDx += sectionCenterX - desiredCenterX;
-          gridOverlay.classList.add('legend-cms-snap-x');
-        }
-        const desiredCenterY = gesture.selectedRect.top + snappedDy + gesture.selectedRect.height / 2;
-        const sectionCenterY = gesture.sectionRect.top + gesture.sectionRect.height / 2;
-        if (gesture.sectionRect.height > 0 && Math.abs(desiredCenterY - sectionCenterY) <= 12) {
-          snappedDy += sectionCenterY - desiredCenterY;
-          gridOverlay.classList.add('legend-cms-snap-y');
-        }
+        // Direct manipulation is continuous: no grid snap, no center magnet.
+        // The section boundary is the only containment rule.
         const minDx = gesture.sectionRect.left - gesture.selectedRect.left;
         const maxDx = gesture.sectionRect.right - gesture.selectedRect.right;
         const minDy = gesture.sectionRect.top - gesture.selectedRect.top;
         const maxDy = gesture.sectionRect.bottom - gesture.selectedRect.bottom;
-        snappedDx = Math.max(minDx, Math.min(maxDx, snappedDx));
-        snappedDy = Math.max(minDy, Math.min(maxDy, snappedDy));
-        style.offsetXPercent = Math.round((gesture.startOffsetXPercent + snappedDx / parentWidth * 100) * 1000) / 1000;
-        style.offsetYPx = Math.round((gesture.startOffsetYPx + snappedDy) * 1000) / 1000;
+        nextDx = Math.max(minDx, Math.min(maxDx, nextDx));
+        nextDy = Math.max(minDy, Math.min(maxDy, nextDy));
+        style.offsetXPercent = Math.round((gesture.startOffsetXPercent + nextDx / parentWidth * 100) * 1000) / 1000;
+        style.offsetYPx = Math.round((gesture.startOffsetYPx + nextDy) * 1000) / 1000;
       } else {
         if (gesture.mode === 'resize-x' || gesture.mode === 'resize-xy') {
           const fromLeft = gesture.edge.includes('left');
           const widthDelta = (fromLeft ? -dx : dx) / parentWidth * 100;
           const rawWidth = gesture.startWidthPercent + widthDelta;
-          const snappedWidth = cell > 0 ? Math.round((rawWidth / 100 * parentWidth) / cell) * cell / parentWidth * 100 : rawWidth;
-          const nextWidth = Math.max(5, Math.min(100, Math.round(snappedWidth * 1000) / 1000));
-          style.widthPercent = nextWidth;
-          if (fromLeft) {
+          style.widthPercent = Math.max(5, Math.min(100, Math.round(rawWidth * 1000) / 1000));
+          if (fromLeft && !gesture.target.dataset.cmsSection) {
             style.offsetXPercent = Math.round((gesture.startOffsetXPercent + dx / parentWidth * 100) * 1000) / 1000;
           }
         }
         if (gesture.mode === 'resize-y' || gesture.mode === 'resize-xy') {
           const fromTop = gesture.edge.includes('top');
           const heightDelta = fromTop ? -dy : dy;
-          style.heightPx = Math.max(24, Math.round((gesture.startHeightPx + heightDelta) / verticalStep) * verticalStep);
-          if (fromTop) {
+          style.heightPx = Math.max(24, Math.round((gesture.startHeightPx + heightDelta) * 1000) / 1000);
+          // Whole sections stay in document flow. Resizing their top edge must
+          // never create a relative top offset (which leaves phantom space).
+          if (fromTop && !gesture.target.dataset.cmsSection) {
             style.offsetYPx = Math.round((gesture.startOffsetYPx + dy) * 1000) / 1000;
           }
         }
