@@ -1550,6 +1550,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.State).HasMaxLength(32).IsRequired();
             e.Property(x => x.ProposedByUserId).HasMaxLength(450).IsRequired();
             e.Property(x => x.ApprovedByUserId).HasMaxLength(450);
+            e.Property(x => x.RejectedByUserId).HasMaxLength(450);
             e.Property(x => x.ExecutionClaimToken).HasMaxLength(64);
             e.Property(x => x.ProviderReceiptJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
             e.Property(x => x.ErrorCode).HasMaxLength(120);
