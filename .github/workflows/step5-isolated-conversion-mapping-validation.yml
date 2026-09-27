@@ -36,7 +36,7 @@ jobs:
         run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
 
       - name: Run Step 5 focused tests
-        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~OpenAiMeasurementDeliveryTests"
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~MarketingScopeParityContractTests"
 
       - name: Run full AgentPortal candidate suite
         shell: bash
