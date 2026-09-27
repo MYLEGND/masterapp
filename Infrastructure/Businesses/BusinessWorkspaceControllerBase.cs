@@ -684,9 +684,10 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var connector = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
+        Infrastructure.Analytics.OpenAiAdsRefreshResult refresh;
         try
         {
-            await connector.RefreshAsync(MarketingOwnerScope.Business(businessId), request.ConnectionRevision, cancellationToken);
+            refresh = await connector.RefreshAsync(MarketingOwnerScope.Business(businessId), request.ConnectionRevision, cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         { return Conflict(new { message = "ChatGPT Ads connection changed. Reload Marketing Setup and try again." }); }
@@ -695,7 +696,10 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         catch (HttpRequestException)
         { return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads could not be refreshed right now." }); }
 
-        return await MarketingSetup(businessId, cancellationToken);
+        var setupResult = await MarketingSetup(businessId, cancellationToken);
+        if (setupResult is JsonResult setupJson)
+            return Json(new { setup = setupJson.Value, pixelProvisioning = refresh.PixelProvisioning });
+        return setupResult;
     }
 
     [HttpPost("analytics/openai-disconnect")]
