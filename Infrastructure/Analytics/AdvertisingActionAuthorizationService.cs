@@ -188,7 +188,9 @@ public sealed class AdvertisingActionAuthorizationService(
             foreach (var step in plan.Steps)
             {
                 var result = await ExecuteStepAsync(owner, step, createdIds, ct);
-                var providerId = ReadString(result, "id");
+                var providerId = step.ActionType == AdvertisingActionTypes.CreativeUploadUrl
+                    ? ReadString(result, "file_id")
+                    : ReadString(result, "id");
                 if (!string.IsNullOrWhiteSpace(providerId))
                     createdIds[step.StepKey] = providerId!;
                 receipts.Add(new
