@@ -54,7 +54,7 @@ public static class OpenAiAdsAuthorizationMethods
 public sealed record VerifiedOpenAiAdsAccount(
     string AccountId,
     string AccountName,
-    string Role,
+    string? Role,
     string ReviewStatus,
     string AuthorizationMethod,
     string? ProviderUserId = null,
