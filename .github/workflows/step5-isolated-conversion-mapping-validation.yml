@@ -46,10 +46,14 @@ jobs:
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --logger "trx;LogFileName=candidate.trx" --results-directory /tmp/step5-candidate
           exit 0
 
+      - name: Fetch approved baseline commit
+        shell: bash
+        run: git fetch --no-tags --depth=1 origin 9bc143ef4b420cda349751b623a84e586ca9f4a8
+
       - name: Run identical suite on approved baseline
         shell: bash
         run: |
-          git checkout 9bc143ef4b420cda349751b623a84e586ca9f4a8
+          git checkout --detach FETCH_HEAD
           dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
           set +e
