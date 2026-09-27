@@ -68,11 +68,11 @@ public sealed class OpenAiAttributionLineageResolver(MasterAppDbContext db)
     }
 
     public Task<string?> ResolveForProductionAsync(
-        Domain.Enums.ProductionSide side,
+        Domain.Entities.ProductionSide side,
         string? leadId,
         string? clientUserId,
         CancellationToken ct = default) =>
-        side == Domain.Enums.ProductionSide.Lead
+        side == Domain.Entities.ProductionSide.Lead
             ? ResolveForWorkstationLeadAsync(leadId, ct)
             : ResolveForClientAsync(clientUserId, ct);
 
