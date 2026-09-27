@@ -274,6 +274,267 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         return Json(new { ok = true });
     }
 
+    public sealed record BusinessMarketingSetupUpdateRequest(
+        Guid MarketingRevision,
+        Guid ProfileRevision,
+        string? MetaPixelId,
+        string? MetaTestEventCode,
+        bool BookingEnabled,
+        string? MicrosoftBookingsEmbedUrl,
+        string? FallbackBookingUrl,
+        string? BookingPageIdOrMailbox,
+        string? CalendarEmail);
+
+    public sealed record BusinessOpenAiConnectRequest(string AdvertiserApiKey, Guid? ExpectedRevision);
+    public sealed record BusinessOpenAiRevisionRequest(Guid ConnectionRevision);
+
+    [HttpGet("analytics/marketing-setup")]
+    public async Task<IActionResult> MarketingSetup(Guid businessId, CancellationToken cancellationToken = default)
+    {
+        var business = await ResolveBusinessAsync(businessId, "analytics", cancellationToken);
+        if (business is null) return Forbid();
+
+        var owner = MarketingOwnerScope.Business(businessId);
+        var profileService = ActivatorUtilities.CreateInstance<Infrastructure.WebsiteEditing.BusinessWebsiteProfileService>(HttpContext.RequestServices);
+        var profile = await profileService.GetAsync(businessId, cancellationToken);
+
+        var openAiConnections = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
+        var openAiHealthService = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiMeasurementHealthService>();
+        var openAiDirect = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
+        var openAiConnection = await openAiConnections.GetAsync(owner, cancellationToken);
+        var openAiHealth = await openAiHealthService.GetAsync(owner, cancellationToken);
+
+        Infrastructure.Analytics.OpenAiAdsProviderAccountSnapshot? openAiProvider = null;
+        string? openAiProviderError = null;
+        if (openAiConnection.Connected)
+        {
+            try { openAiProvider = await openAiDirect.InspectAsync(owner, cancellationToken); }
+            catch (Exception ex) when (ex is HttpRequestException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+            { openAiProviderError = "Provider status could not be refreshed."; }
+        }
+
+        var db = HttpContext.RequestServices.GetRequiredService<Infrastructure.Data.MasterAppDbContext>();
+        var paidTrafficEvents = await db.AnalyticsEvents.AsNoTracking()
+            .CountAsync(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "", cancellationToken);
+        var leads = await db.WebsiteLeads.AsNoTracking()
+            .CountAsync(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "", cancellationToken);
+        var crmLeadIds = db.WebsiteLeadIntakeLinks.AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "")
+            .Select(x => x.WorkstationLeadId);
+        var crm = await crmLeadIds.CountAsync(cancellationToken);
+        var appointments = await db.LeadAppointments.AsNoTracking()
+            .CountAsync(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "", cancellationToken);
+        var orders = await db.CommerceOrders.AsNoTracking()
+            .CountAsync(x => x.CommerceBusinessId == businessId && x.Oppref != null && x.Oppref != "", cancellationToken);
+        var productionRows = db.ProductionRecords.AsNoTracking()
+            .Where(x => x.LeadId != null && crmLeadIds.Contains(x.LeadId) && x.Oppref != null && x.Oppref != "");
+        var production = await productionRows.CountAsync(cancellationToken);
+        var paidRevenue = await productionRows.Where(x => x.Status == ProductionStatus.Paid)
+            .SumAsync(x => (decimal?)x.Amount, cancellationToken) ?? 0m;
+
+        var accountReady =
+            string.Equals(openAiProvider?.Status, "active", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(openAiProvider?.ReviewStatus, OpenAiAdsReviewStatuses.Approved, StringComparison.Ordinal) &&
+            openAiConnection.PixelConfigured &&
+            openAiConnection.ConversionsApiConfigured &&
+            openAiHealth.Status == "ready";
+
+        return Json(new
+        {
+            source = "canonical_business_marketing_setup",
+            agentProfileId = (Guid?)null,
+            agentName = business.DisplayName,
+            status = new
+            {
+                publicReady = business.IsActive && string.Equals(business.Status, "Active", StringComparison.OrdinalIgnoreCase),
+                metaCustomPixel = !string.IsNullOrWhiteSpace(profile.Settings.MetaPixelId),
+                openAiReady = accountReady,
+                bookingPersonalLive = profile.Settings.BookingEnabled &&
+                    (!string.IsNullOrWhiteSpace(profile.Settings.BookingEmbedUrl) || !string.IsNullOrWhiteSpace(profile.Settings.BookingFallbackUrl)),
+                calendarLinked = !string.IsNullOrWhiteSpace(profile.Settings.BookingCalendarEmail)
+            },
+            marketing = new
+            {
+                revision = profile.Settings.ConnectionRevision,
+                metaPixelId = profile.Settings.MetaPixelId,
+                metaTestEventCode = profile.Settings.MetaTestEventCode,
+                metaTestEventsConfigured = !string.IsNullOrWhiteSpace(profile.Settings.MetaTestEventCode),
+                metaAdsConnected = profile.AdsConnected,
+                metaAccount = profile.ConnectedAccount,
+                metaCapiConfiguredSecurely = profile.HasSecureCapiToken,
+                metaCapiManagedAutomatically = true
+            },
+            openAi = new
+            {
+                revision = openAiConnection.Revision,
+                exists = openAiConnection.Exists,
+                connected = openAiConnection.Connected,
+                accountId = openAiConnection.AccountId,
+                accountName = openAiConnection.AccountName,
+                role = openAiConnection.Role,
+                permissions = openAiConnection.Permissions,
+                authorizationMethod = openAiConnection.AuthorizationMethod,
+                connectionMethod = openAiConnection.Connected ? "Advertiser API key verified" : null,
+                providerRole = openAiConnection.Role,
+                accountStatus = openAiProvider?.Status,
+                accountUrl = openAiProvider?.AccountUrl,
+                previewUrl = openAiProvider?.PreviewUrl,
+                timezone = openAiProvider?.Timezone,
+                currencyCode = openAiProvider?.CurrencyCode,
+                reviewStatus = openAiProvider?.ReviewStatus ?? openAiConnection.ReviewStatus,
+                reviewReason = openAiProvider?.ReviewReason,
+                providerStatusFresh = openAiProvider is not null,
+                providerStatusError = openAiProviderError,
+                pixelId = openAiConnection.PixelId,
+                pixelConfigured = openAiConnection.PixelConfigured,
+                conversionsApiConfigured = openAiConnection.ConversionsApiConfigured,
+                conversionDataSourceId = openAiConnection.ConversionDataSourceId,
+                lastVerifiedUtc = openAiConnection.LastVerifiedUtc,
+                connectedUtc = openAiConnection.ConnectedUtc,
+                health = new
+                {
+                    status = openAiHealth.Status,
+                    pending = openAiHealth.PendingDeliveries,
+                    retrying = openAiHealth.RetryableDeliveries,
+                    failed = openAiHealth.FailedDeliveries,
+                    sent = openAiHealth.SentDeliveries,
+                    lastSentUtc = openAiHealth.LastSentUtc,
+                    providerMonitoringAvailable = openAiHealth.ProviderMonitoringAvailable,
+                    recentProviderEvents = openAiHealth.RecentProviderEvents
+                }
+            },
+            attribution = new
+            {
+                source = "canonical_oppref_lineage",
+                paidTrafficEvents,
+                leads,
+                crm,
+                appointments,
+                orders,
+                production,
+                paidRevenue,
+                complete = paidTrafficEvents > 0 && leads > 0 && crm > 0 && (appointments > 0 || orders > 0 || production > 0)
+            },
+            booking = new
+            {
+                revision = profile.Settings.ProfileRevision,
+                enabled = profile.Settings.BookingEnabled,
+                microsoftBookingsEmbedUrl = profile.Settings.BookingEmbedUrl,
+                fallbackBookingUrl = profile.Settings.BookingFallbackUrl,
+                bookingPageIdOrMailbox = profile.Settings.BookingMailboxId,
+                calendarEmail = profile.Settings.BookingCalendarEmail
+            }
+        });
+    }
+
+    [HttpPost("analytics/marketing-setup")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveMarketingSetup(
+        Guid businessId,
+        [FromBody] BusinessMarketingSetupUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+
+        var profileService = ActivatorUtilities.CreateInstance<Infrastructure.WebsiteEditing.BusinessWebsiteProfileService>(HttpContext.RequestServices);
+        try
+        {
+            await profileService.SaveAsync(businessId, new Infrastructure.WebsiteEditing.BusinessWebsiteProfileInput
+            {
+                ProfileRevision = request.ProfileRevision,
+                ConnectionRevision = request.MarketingRevision,
+                BookingEnabled = request.BookingEnabled,
+                BookingEmbedUrl = request.MicrosoftBookingsEmbedUrl,
+                BookingFallbackUrl = request.FallbackBookingUrl,
+                BookingMailboxId = request.BookingPageIdOrMailbox,
+                BookingCalendarEmail = request.CalendarEmail,
+                MetaPixelId = request.MetaPixelId,
+                MetaTestEventCode = request.MetaTestEventCode
+            }, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { message = "Marketing Setup changed. Reload and try again." });
+        }
+        catch (ValidationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
+        return await MarketingSetup(businessId, cancellationToken);
+    }
+
+    [HttpPost("analytics/openai-connect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConnectOpenAi(
+        Guid businessId,
+        [FromBody] BusinessOpenAiConnectRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var connector = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
+        try
+        {
+            await connector.ConnectAsync(MarketingOwnerScope.Business(businessId), request.AdvertiserApiKey, request.ExpectedRevision, cancellationToken);
+        }
+        catch (Exception ex) when (ex is ArgumentException or UnauthorizedAccessException or InvalidOperationException)
+        { return BadRequest(new { message = ex.Message }); }
+        catch (DbUpdateConcurrencyException)
+        { return Conflict(new { message = "ChatGPT Ads connection changed. Reload Marketing Setup and try again." }); }
+        catch (HttpRequestException)
+        { return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads could not be verified right now." }); }
+
+        return await MarketingSetup(businessId, cancellationToken);
+    }
+
+    [HttpPost("analytics/openai-refresh")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RefreshOpenAi(
+        Guid businessId,
+        [FromBody] BusinessOpenAiRevisionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var connector = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
+        try
+        {
+            await connector.RefreshAsync(MarketingOwnerScope.Business(businessId), request.ConnectionRevision, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        { return Conflict(new { message = "ChatGPT Ads connection changed. Reload Marketing Setup and try again." }); }
+        catch (InvalidOperationException ex)
+        { return BadRequest(new { message = ex.Message }); }
+        catch (HttpRequestException)
+        { return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads could not be refreshed right now." }); }
+
+        return await MarketingSetup(businessId, cancellationToken);
+    }
+
+    [HttpPost("analytics/openai-disconnect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DisconnectOpenAi(
+        Guid businessId,
+        [FromBody] BusinessOpenAiRevisionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var authority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
+        try
+        {
+            await authority.DisconnectAsync(MarketingOwnerScope.Business(businessId), request.ConnectionRevision, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        { return Conflict(new { message = "ChatGPT Ads connection changed. Reload Marketing Setup and try again." }); }
+        catch (InvalidOperationException ex)
+        { return BadRequest(new { message = ex.Message }); }
+
+        return await MarketingSetup(businessId, cancellationToken);
+    }
+
     [HttpGet("analytics/{**section}")]
     public async Task<IActionResult> AnalyticsData(Guid businessId, string section, string? preset = null,
         DateTime? fromUtc = null, DateTime? toUtc = null, TrafficType trafficType = TrafficType.All,
