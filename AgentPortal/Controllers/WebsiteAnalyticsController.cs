@@ -394,6 +394,43 @@ namespace AgentPortal.Controllers;
         return await MarketingSetup(tracking.Id, cancellationToken);
     }
 
+    public sealed record OpenAiRefreshRequest(Guid? AgentProfileId, Guid ConnectionRevision);
+
+    [HttpPost("openai-refresh")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RefreshOpenAi([FromBody] OpenAiRefreshRequest request, CancellationToken cancellationToken = default)
+    {
+        var tracking = await ResolveMarketingSetupTrackingAsync(request.AgentProfileId, cancellationToken);
+        if (tracking is null) return Forbid();
+
+        var connector = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
+        try
+        {
+            await connector.RefreshAsync(
+                ResolveOpenAiMarketingOwner(tracking),
+                request.ConnectionRevision,
+                cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { message = "ChatGPT Ads connection changed. Reload Marketing Setup and try again." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (HttpRequestException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads could not be refreshed right now. The current saved connection was not replaced." });
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = "OpenAI Ads returned an invalid refresh response." });
+        }
+
+        return await MarketingSetup(tracking.Id, cancellationToken);
+    }
+
     public sealed record OpenAiDisconnectRequest(Guid? AgentProfileId, Guid ConnectionRevision);
 
     [HttpPost("openai-disconnect")]
