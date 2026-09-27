@@ -1,0 +1,70 @@
+name: Validate Steps 5-13 feed FK repair
+
+on:
+  push:
+    branches:
+      - repair/steps5-13-feed-fk-20260927
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repair-steps5-13-feed-fk
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      ConnectionStrings__MasterAppDb: 'Server=127.0.0.1;Database=masterapp_ef_design_time;Integrated Security=true;TrustServerCertificate=true;Encrypt=false'
+      EF_FORCE_SQLSERVER: 'true'
+      DOTNET_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restore
+        run: |
+          dotnet tool restore
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+      - name: Build
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo -warnaserror
+      - name: Canonical marketing tests
+        run: >
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo
+          --filter "FullyQualifiedName~AdvertisingActionAuthorizationServiceTests|FullyQualifiedName~PromotionOrchestrationTests|FullyQualifiedName~AdvertisingCommandCenterCentralizationTests|FullyQualifiedName~OpenAiAdsExecutionServiceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~MarketingManagerCentralizationTests|FullyQualifiedName~GrowthEconomicsOpenAiFeedOnboardingTests"
+      - name: Shared website UI tests
+        run: |
+          cd tests/website
+          npm ci
+          npm test
+      - name: Prove EF snapshot parity
+        run: |
+          dotnet tool run dotnet-ef migrations has-pending-model-changes \
+            --project Infrastructure/Infrastructure.csproj \
+            --startup-project AgentPortal/AgentPortal.csproj \
+            --context MasterAppDbContext \
+            --configuration Release \
+            --no-build
+      - name: Prove feed migration uses no-action foreign keys
+        run: |
+          dotnet tool run dotnet-ef migrations script 20260927080618_SyncCanonicalMarketingModel20260927 20260927090000_AddOpenAiProductFeedProjections \
+            --project Infrastructure/Infrastructure.csproj \
+            --startup-project AgentPortal/AgentPortal.csproj \
+            --context MasterAppDbContext \
+            --configuration Release \
+            --no-build > /tmp/feed.sql
+          grep -q 'FK_OpenAiProductFeedProjections_CommerceProducts_CommerceProductId' /tmp/feed.sql
+          grep -q 'FK_OpenAiProductFeedProjections_CommerceBusinesses_CommerceBusinessId' /tmp/feed.sql
+          if grep -A12 -B4 'FK_OpenAiProductFeedProjections' /tmp/feed.sql | grep -qi 'ON DELETE CASCADE'; then
+            echo "::error::Feed projection migration still contains cascade delete."
+            exit 1
+          fi
