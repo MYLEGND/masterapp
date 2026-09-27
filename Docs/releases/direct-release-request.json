@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized direct deployment of the Run #525 validated OpenAI Pixel provisioning outcome replacement. Deploy only AgentPortal and ClientApp. Preserve successful Protect, Parfait, LEGEND Website, and Cloudflare releases by excluding them from this scoped release.",
-  "purpose": "Publish the canonical OpenAI Pixel provisioning outcome fix: preserve the exact POST /conversions/pixels result through Verify / refresh so LEGEND reports the real provider capability/error instead of collapsing it to generic Not configured. No new storage, authority, credential path, override, or parallel system.",
-  "requestId": "openai-pixel-provisioning-outcome-20260927-r1",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36302503895",
-  "validatedHead": "ea5bbea2b342f0c1e153c527dede3e36d89839dc",
+  "authorization": "Founder authorized direct deployment of the validated canonical ChatGPT Ads Steps 5-8 integration and scoped Advertising Command Center. Deploy only AgentPortal and ClientApp because those are the affected hosts for the shared Website Analytics/Marketing Setup UI and business-scoped analytics projection. Preserve successful Protect, Parfait, and LEGEND Website releases by excluding them from this scoped release.",
+  "purpose": "Publish the canonical scoped ChatGPT Ads operating layer: conversion mapping, governed campaign execution, exact-action approval ledger, Promote This orchestration, and the shared Advertising Command Center UI, while preserving the current approved OpenAI Pixel/Marketing Setup behavior and one-source-of-truth owner scoping.",
+  "requestId": "chatgpt-ads-steps5-8-command-center-20260927",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36303279275",
+  "validatedHead": "c1afda10417a8075a1aa6836132008af2d8e7487",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
