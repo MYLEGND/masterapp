@@ -43,6 +43,11 @@ public interface IAdvertisingActionAuthorizationService
         MarketingOwnerScope owner,
         Guid proposalId,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<AdvertisingActionProposalSnapshot>> ListAsync(
+        MarketingOwnerScope owner,
+        int limit = 100,
+        CancellationToken ct = default);
 }
 
 public sealed class AdvertisingActionAuthorizationService(
@@ -274,6 +279,24 @@ public sealed class AdvertisingActionAuthorizationService(
         var row = await db.AdvertisingActionAuthorizations.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == proposalId && x.OwnerKey == owner.Key, ct);
         return row is null ? null : Snapshot(owner, row);
+    }
+
+    public async Task<IReadOnlyList<AdvertisingActionProposalSnapshot>> ListAsync(
+        MarketingOwnerScope owner,
+        int limit = 100,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (limit is < 1 or > 250) throw new ArgumentOutOfRangeException(nameof(limit));
+
+        var rows = await db.AdvertisingActionAuthorizations.AsNoTracking()
+            .Where(x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.OpenAi)
+            .OrderByDescending(x => x.ProposedUtc)
+            .ThenByDescending(x => x.Id)
+            .Take(limit)
+            .ToListAsync(ct);
+
+        return rows.Select(row => Snapshot(owner, row)).ToArray();
     }
 
     private async Task<JsonElement> ExecuteStepAsync(
