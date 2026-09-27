@@ -152,6 +152,8 @@
     advertisingApprove: analyticsEndpoint('/advertising/approve'),
     advertisingExecute: analyticsEndpoint('/advertising/execute'),
     advertisingReject: analyticsEndpoint('/advertising/reject'),
+    marketingManagerPlan: analyticsEndpoint('/marketing-manager/plan'),
+    marketingManagerPerformance: analyticsEndpoint('/marketing-manager/performance'),
     behaviorSummary: analyticsEndpoint('/behavior/summary'),
     behaviorTime: analyticsEndpoint('/behavior/time-on-page'),
     behaviorExit: analyticsEndpoint('/behavior/exit-analysis'),
@@ -2964,6 +2966,7 @@ function escapeHtml(value) {
       // Health uses the same current range, quality and scope as the summary.
       // Refresh it whenever the summary does, including filter changes.
       void loadMarketingHealth();
+      void loadMarketingPerformance();
     } catch (err) {
       if (requestId !== summaryRequestId) return;
 
@@ -6096,6 +6099,255 @@ function escapeHtml(value) {
     }
   }
 
+  // ── LEGEND Marketing Manager + unified channel outcomes ─────────────
+  const marketingManagerModal = document.getElementById('marketingManagerModal');
+
+  function marketingManagerQualityModeValue() {
+    const key = normalizeQualityModeKey(state.qualityMode || 'real_human_traffic');
+    return {
+      real_human_traffic: 0,
+      likely_human: 1,
+      reviewed_needed: 2,
+      suspicious_activity: 3,
+      likely_bots_automation: 4,
+      internal_qa: 5,
+      all_traffic: 6
+    }[key] ?? 0;
+  }
+
+  function marketingManagerRangePayload() {
+    const body = {
+      preset: state.scope.preset || '30d',
+      qualityMode: marketingManagerQualityModeValue()
+    };
+    const custom = resolveCustomRangeUtc();
+    if (custom) Object.assign(body, custom);
+    return body;
+  }
+
+  function marketingManagerRequestBody(extra = {}) {
+    const scope = isBusinessAnalytics ? {} : advertisingScopeParams();
+    return { ...scope, ...marketingManagerRangePayload(), ...extra };
+  }
+
+  function marketingManagerMoney(value) {
+    const n = Number(value || 0);
+    return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  }
+
+  function marketingManagerNumber(value) {
+    const n = Number(value || 0);
+    return Number.isFinite(n) ? n.toLocaleString() : '0';
+  }
+
+  function channelLabel(channel) {
+    return {
+      chatgpt_ads: 'ChatGPT Ads',
+      meta_ads: 'Meta Ads',
+      organic: 'Organic',
+      direct: 'Direct',
+      referral: 'Referral',
+      unknown: 'Unknown'
+    }[channel] || channel || 'Channel';
+  }
+
+  async function loadMarketingPerformance() {
+    const grid = document.getElementById('channel-performance-grid');
+    if (!grid) return;
+    try {
+      const data = await fetchJson(
+        'marketingManagerPerformance',
+        endpoints.marketingManagerPerformance,
+        marketingManagerRequestBody());
+      if (!data) return;
+      renderMarketingPerformance(data);
+    } catch (error) {
+      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
+    }
+  }
+
+  function renderMarketingPerformance(snapshot) {
+    const grid = document.getElementById('channel-performance-grid');
+    if (!grid) return;
+    grid.replaceChildren();
+
+    const rows = Array.isArray(snapshot?.channels) ? snapshot.channels : [];
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'wa-channel-loading';
+      empty.textContent = 'No channel outcomes are available for this range.';
+      grid.appendChild(empty);
+    }
+
+    for (const row of rows) {
+      const card = document.createElement('article');
+      card.className = 'wa-channel-card';
+      card.dataset.channel = row.channel || '';
+
+      const head = document.createElement('div');
+      head.className = 'wa-channel-card-head';
+      const title = document.createElement('strong');
+      title.textContent = channelLabel(row.channel);
+      const confidence = document.createElement('span');
+      confidence.className = 'wa-channel-confidence';
+      confidence.textContent = row.attributionConfidence || 'observed';
+      head.append(title, confidence);
+
+      const metrics = document.createElement('div');
+      metrics.className = 'wa-channel-metrics';
+      const values = [
+        ['Spend', marketingManagerMoney(row.spend)],
+        ['Clicks', marketingManagerNumber(row.clicks)],
+        ['Leads', marketingManagerNumber(row.leads)],
+        ['Qualified', marketingManagerNumber(row.qualifiedLeads)],
+        ['Appointments', marketingManagerNumber(row.appointments)],
+        ['Customers', marketingManagerNumber(row.customers)],
+        ['Revenue', marketingManagerMoney(row.revenue)],
+        ['ROAS', `${Number(row.roas || 0).toFixed(2)}x`]
+      ];
+      for (const [label, value] of values) {
+        const item = document.createElement('div');
+        const key = document.createElement('span');
+        key.textContent = label;
+        const val = document.createElement('strong');
+        val.textContent = value;
+        item.append(key, val);
+        metrics.appendChild(item);
+      }
+
+      const basis = document.createElement('div');
+      basis.className = 'wa-channel-basis';
+      basis.textContent = row.attributionBasis || '';
+      card.append(head, metrics, basis);
+      grid.appendChild(card);
+    }
+
+    const notes = Array.isArray(snapshot?.dataQualityNotes) ? snapshot.dataQualityNotes : [];
+    const note = document.getElementById('channel-performance-note');
+    if (note) note.textContent = notes.join(' ');
+  }
+
+  function marketingManagerSetStatus(message, tone = '') {
+    const node = document.getElementById('marketing-manager-status');
+    if (!node) return;
+    node.textContent = message || '';
+    node.dataset.tone = tone || '';
+  }
+
+  async function buildMarketingManagerPlan() {
+    const goalText = document.getElementById('marketing-manager-goal')?.value?.trim() || '';
+    if (!goalText) {
+      marketingManagerSetStatus('Enter the business outcome you want LEGEND to plan for.', 'error');
+      document.getElementById('marketing-manager-goal')?.focus();
+      return;
+    }
+
+    const targetRaw = Number(document.getElementById('marketing-manager-target')?.value);
+    const budgetRaw = Number(document.getElementById('marketing-manager-budget')?.value);
+    const goal = {
+      goal: goalText,
+      targetIncrement: Number.isFinite(targetRaw) && targetRaw > 0 ? Math.round(targetRaw) : null,
+      targetOutcome: null,
+      monthlyBudget: Number.isFinite(budgetRaw) && budgetRaw > 0 ? budgetRaw : null,
+      notes: null
+    };
+
+    marketingManagerSetStatus('Reading the current scoped business evidence and building a governed plan…');
+    try {
+      const plan = await fetchPostJson(
+        'marketingManagerPlan',
+        endpoints.marketingManagerPlan,
+        marketingManagerRequestBody({ goal }));
+      renderMarketingManagerPlan(plan);
+      marketingManagerSetStatus('Growth plan built from current canonical evidence. Nothing has executed.', 'success');
+    } catch (error) {
+      marketingManagerSetStatus(error.message || 'Unable to build the growth plan.', 'error');
+    }
+  }
+
+  function renderMarketingManagerPlan(plan) {
+    const result = document.getElementById('marketing-manager-result');
+    if (!result) return;
+    result.hidden = false;
+    setText('marketing-manager-plan-goal', plan?.goal || 'Growth plan');
+    setText('marketing-manager-generated', plan?.generatedUtc ? `Built ${formatDisplayDate(plan.generatedUtc)}` : 'Current evidence');
+
+    const evidence = document.getElementById('marketing-manager-evidence');
+    if (evidence) {
+      evidence.replaceChildren();
+      for (const row of plan?.evidence || []) {
+        const card = document.createElement('div');
+        card.className = 'marketing-manager-evidence-card';
+        const label = document.createElement('span');
+        label.textContent = row.label || row.key || 'Evidence';
+        const value = document.createElement('strong');
+        value.textContent = row.value || '—';
+        const source = document.createElement('small');
+        source.textContent = row.source || 'canonical';
+        card.append(label, value, source);
+        evidence.appendChild(card);
+      }
+    }
+
+    const recommendations = document.getElementById('marketing-manager-recommendations');
+    if (recommendations) {
+      recommendations.replaceChildren();
+      for (const row of plan?.recommendations || []) {
+        const card = document.createElement('article');
+        card.className = 'marketing-manager-recommendation';
+        const top = document.createElement('div');
+        top.className = 'marketing-manager-recommendation-top';
+        const priority = document.createElement('span');
+        priority.className = 'marketing-manager-priority';
+        priority.textContent = `P${row.priority || '—'} · ${String(row.lane || 'plan').replace('_', ' ')}`;
+        const approval = document.createElement('span');
+        approval.className = 'marketing-manager-approval';
+        approval.textContent = row.requiresApproval ? 'Approval required' : 'No provider mutation';
+        top.append(priority, approval);
+        const action = document.createElement('strong');
+        action.textContent = row.action || 'Recommendation';
+        const why = document.createElement('p');
+        why.textContent = row.why || '';
+        const impact = document.createElement('small');
+        impact.textContent = row.expectedImpact || '';
+        card.append(top, action, why, impact);
+        if (row.provider === 'chatgpt_ads') {
+          const button = advertisingButton('Open governed ad workflow', () => {
+            bootstrap.Modal.getOrCreateInstance(marketingManagerModal)?.hide();
+            bootstrap.Modal.getOrCreateInstance(advertisingModal)?.show();
+          }, 'btn btn-sm btn-gold');
+          card.appendChild(button);
+        }
+        recommendations.appendChild(card);
+      }
+    }
+
+    const guardrails = document.getElementById('marketing-manager-guardrails');
+    if (guardrails) {
+      guardrails.replaceChildren();
+      for (const text of plan?.guardrails || []) {
+        const row = document.createElement('div');
+        row.className = 'marketing-manager-guardrail';
+        row.textContent = text;
+        guardrails.appendChild(row);
+      }
+    }
+  }
+
+  function initMarketingManager() {
+    document.getElementById('marketing-manager-build')?.addEventListener('click', () => void buildMarketingManagerPlan());
+    document.getElementById('marketing-manager-refresh')?.addEventListener('click', () => {
+      void loadMarketingPerformance();
+      marketingManagerSetStatus('Current channel evidence refreshed.', 'success');
+    });
+    document.getElementById('marketing-manager-open-advertising')?.addEventListener('click', () => {
+      bootstrap.Modal.getOrCreateInstance(marketingManagerModal)?.hide();
+      bootstrap.Modal.getOrCreateInstance(advertisingModal)?.show();
+    });
+    document.getElementById('channel-performance-refresh')?.addEventListener('click', () => void loadMarketingPerformance());
+    window.addEventListener('wa:scope-changed', () => void loadMarketingPerformance());
+  }
+
   function initAdvertisingCommandCenter() {
     advertisingModal?.addEventListener('show.bs.modal', () => { void loadAdvertisingCommandCenter(); });
     document.getElementById('advertising-command-refresh')?.addEventListener('click', () => void loadAdvertisingCommandCenter());
@@ -6125,5 +6377,6 @@ function escapeHtml(value) {
   }
 
   initAdvertisingCommandCenter();
+  initMarketingManager();
 
 })();
