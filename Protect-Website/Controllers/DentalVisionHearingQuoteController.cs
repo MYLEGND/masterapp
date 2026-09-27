@@ -1241,6 +1241,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                     WorkstationLeadId = intakeLink.WorkstationLeadId,
                     OwnerAgentUserId = intakeLink.AgentUserId,
                     WebsiteLeadIntakeLinkId = intakeLink.Id,
+                    Oppref = OpenAiClickReference.Normalize(intakeLink.Oppref),
                     BookingSource = bookingSource,
                     RequestedBookingSource = bookingSource,
                     CreatedUtc = nowUtc,
@@ -1255,6 +1256,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                 appointment.WorkstationLeadId = intakeLink.WorkstationLeadId;
                 appointment.OwnerAgentUserId = intakeLink.AgentUserId;
                 appointment.WebsiteLeadIntakeLinkId = intakeLink.Id;
+                appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink.Oppref);
                 appointment.BookingSource = bookingSource;
                 appointment.RequestedBookingSource = bookingSource;
                 appointment.ConfirmationSource = null;
