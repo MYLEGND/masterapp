@@ -195,12 +195,14 @@ namespace AgentPortal.Controllers;
         var openAiHealth = await openAiHealthService.GetAsync(openAiOwner, cancellationToken);
         var openAiDirect = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>();
         Infrastructure.Analytics.OpenAiAdsProviderAccountSnapshot? openAiProvider = null;
+        Infrastructure.Analytics.OpenAiAdsMeasurementCapabilitySnapshot? openAiMeasurement = null;
         string? openAiProviderError = null;
         if (openAiConnection.Connected)
         {
             try
             {
                 openAiProvider = await openAiDirect.InspectAsync(openAiOwner, cancellationToken);
+                openAiMeasurement = await openAiDirect.InspectMeasurementAsync(openAiOwner, cancellationToken);
             }
             catch (Exception ex) when (ex is HttpRequestException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
             {
@@ -260,6 +262,9 @@ namespace AgentPortal.Controllers;
                 reviewReason = openAiProvider?.ReviewReason,
                 providerStatusFresh = openAiProvider is not null,
                 providerStatusError = openAiProviderError,
+                measurementCapabilityStatus = openAiMeasurement?.Status,
+                measurementCapabilityHttpStatus = openAiMeasurement?.HttpStatusCode,
+                measurementCapabilityDetail = openAiMeasurement?.Detail,
                 pixelId = openAiConnection.PixelId,
                 pixelConfigured = openAiConnection.PixelConfigured,
                 conversionsApiConfigured = openAiConnection.ConversionsApiConfigured,
