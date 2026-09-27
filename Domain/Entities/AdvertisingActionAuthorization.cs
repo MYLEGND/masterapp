@@ -23,6 +23,8 @@ public sealed class AdvertisingActionAuthorization
     public string? ApprovedByUserId { get; set; }
     public DateTime? ApprovedUtc { get; set; }
     public DateTime? ApprovalExpiresUtc { get; set; }
+    public string? RejectedByUserId { get; set; }
+    public DateTime? RejectedUtc { get; set; }
     public string? ExecutionClaimToken { get; set; }
     public DateTime? ExecutionStartedUtc { get; set; }
     public DateTime? CompletedUtc { get; set; }
