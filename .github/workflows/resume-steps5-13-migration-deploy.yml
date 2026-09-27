@@ -1,0 +1,181 @@
+name: Resume Steps 5-13 migration and deploy
+
+on:
+  push:
+    branches:
+      - recovery/steps5-13-migration-deploy-20260927
+    paths:
+      - '.github/workflows/resume-steps5-13-migration-deploy.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: agentportal-production
+  cancel-in-progress: false
+
+env:
+  APPROVED_SHA: a59e9ff37c049b88769b3cebf679d3be23025355
+  PRIOR_CANDIDATE_SHA: ac562e77336abed1292a82eba6ddedb939cbad56
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    steps:
+      - name: Check out exact approved candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.APPROVED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Prove recovery delta is EF metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only "$PRIOR_CANDIDATE_SHA" "$APPROVED_SHA")
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = "Infrastructure/Migrations/20260927080618_SyncCanonicalMarketingModel20260927.Designer.cs"
+          test "${changed[1]}" = "Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs"
+
+      - name: Restore only recovery build graph
+        run: |
+          dotnet tool restore
+          dotnet restore AgentPortal/AgentPortal.csproj
+          dotnet restore ClientApp/ClientApp.csproj
+
+      - name: Build only affected deploy hosts
+        run: |
+          dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo -warnaserror -p:SourceRevisionId="$APPROVED_SHA"
+          dotnet build ClientApp/ClientApp.csproj -c Release --no-restore --nologo -warnaserror -p:SourceRevisionId="$APPROVED_SHA"
+
+      - name: Prove EF model snapshot parity
+        env:
+          ConnectionStrings__MasterAppDb: 'Server=127.0.0.1;Database=masterapp_ef_design_time;Integrated Security=true;TrustServerCertificate=true;Encrypt=false'
+          EF_FORCE_SQLSERVER: 'true'
+          DOTNET_ENVIRONMENT: Development
+          ASPNETCORE_ENVIRONMENT: Development
+        run: |
+          set -euo pipefail
+          dotnet tool run dotnet-ef migrations has-pending-model-changes             --project Infrastructure/Infrastructure.csproj             --startup-project AgentPortal/AgentPortal.csproj             --context MasterAppDbContext             --configuration Release             --no-build
+
+      - name: Publish exact approved host packages
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/agentportal-publish /tmp/clientapp-publish /tmp/recovery-packages
+          dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-build --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$APPROVED_SHA" --nologo
+          dotnet publish ClientApp/ClientApp.csproj -c Release --no-build --no-restore -o /tmp/clientapp-publish -p:SourceRevisionId="$APPROVED_SHA" --nologo
+          mkdir -p /tmp/agentportal-publish/wwwroot /tmp/clientapp-publish/wwwroot /tmp/recovery-packages
+          printf '{"releaseSha":"%s","release":"steps5-13-migration-recovery"}\n' "$APPROVED_SHA" > /tmp/agentportal-publish/wwwroot/_deployment-provenance.json
+          printf '{"releaseSha":"%s","release":"steps5-13-migration-recovery"}\n' "$APPROVED_SHA" > /tmp/clientapp-publish/wwwroot/_deployment-provenance.json
+          (cd /tmp/clientapp-publish && zip -qr /tmp/recovery-packages/clientapp.zip .)
+          unzip -tq /tmp/recovery-packages/clientapp.zip >/dev/null
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resume at failed migration gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess
+          def az(*args):
+              return json.loads(subprocess.check_output(['az',*args,'-o','json'], text=True))
+          rows=az('webapp','config','connection-string','list','-g','masterapp-rg','-n','masterapp-portal')
+          connection=next((x['value'] for x in rows if x['name']=='MasterAppDb'),None)
+          if not connection:
+              settings={x['name']:x['value'] for x in az('webapp','config','appsettings','list','-g','masterapp-rg','-n','masterapp-portal')}
+              connection=next((settings[k] for k in ('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb') if settings.get(k)),None)
+          if not connection or '\n' in connection or not any(x in connection.lower() for x in ('server=tcp:','.database.windows.net','initial catalog=')):
+              raise SystemExit('Production SQL connection unavailable; no restart authorized.')
+          print('::add-mask::'+connection, flush=True)
+          env=os.environ | {
+              'ConnectionStrings__MasterAppDb':connection,
+              'EF_FORCE_SQLSERVER':'true',
+              'DOTNET_ENVIRONMENT':'Development',
+              'ASPNETCORE_ENVIRONMENT':'Development'
+          }
+          common=['--project','Infrastructure/Infrastructure.csproj','--startup-project','AgentPortal/AgentPortal.csproj','--context','MasterAppDbContext','--configuration','Release','--no-build']
+          listing=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
+          pending=[x.split()[0] for x in listing.splitlines() if '(Pending)' in x]
+          allowed={
+              '20260927080618_SyncCanonicalMarketingModel20260927',
+              '20260927090000_AddOpenAiProductFeedProjections'
+          }
+          print('Pending migrations:', pending)
+          if not set(pending) <= allowed:
+              raise SystemExit('Unexpected pending migrations; recovery stopped before deployment.')
+          subprocess.run(['dotnet','tool','run','dotnet-ef','database','update',*common],env=env,check=True)
+          after=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
+          if '(Pending)' in after:
+              raise SystemExit('Pending migrations remain; recovery stopped before deployment.')
+          print('Schema ready. Recovery resumed from the exact failed migration gate.')
+          PY
+
+      - name: Deploy AgentPortal exact approved package
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-portal
+          slot-name: Production
+          package: /tmp/agentportal-publish
+
+      - name: Deploy ClientApp exact approved immutable ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          package=/tmp/recovery-packages/clientapp.zip
+          for attempt in 1 2 3; do
+            echo "ClientApp exact ZIP deployment attempt $attempt/3"
+            if az webapp deploy               --resource-group masterapp-rg               --name masterapp-client               --src-path "$package"               --type zip               --clean true               --restart true               --async false               --timeout 600000               --enriched-errors true               --only-show-errors               --output none; then
+              exit 0
+            fi
+            [ "$attempt" -eq 3 ] && exit 1
+            sleep $((attempt * 30))
+          done
+
+      - name: Verify exact live provenance and client entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          expected=os.environ['APPROVED_SHA']
+          hosts=('portal.mylegnd.com','masterapp-portal.azurewebsites.net','client.mylegnd.com','masterapp-client.azurewebsites.net')
+          for host in hosts:
+              end=time.monotonic()+480
+              actual=None
+              while time.monotonic()<end:
+                  try:
+                      req=urllib.request.Request('https://'+host+'/api/runtime-provenance?release='+expected,headers={'Cache-Control':'no-cache','User-Agent':'LEGEND-steps5-13-recovery/1.0'})
+                      with urllib.request.urlopen(req,timeout=20) as response:
+                          actual=json.load(response).get('sourceRevision')
+                      if actual==expected:
+                          print(host, actual)
+                          break
+                  except Exception as exc:
+                      actual=type(exc).__name__
+                  time.sleep(5)
+              else:
+                  raise SystemExit(f'Live provenance mismatch for {host}: {actual}')
+          for host in ('client.mylegnd.com','masterapp-client.azurewebsites.net'):
+              req=urllib.request.Request('https://'+host+'/Account/Login',headers={'Cache-Control':'no-cache','User-Agent':'LEGEND-steps5-13-recovery/1.0','Accept':'text/html'})
+              with urllib.request.urlopen(req,timeout=20) as response:
+                  body=response.read(65537)
+                  if response.status!=200 or len(body)<512:
+                      raise SystemExit(f'Client login unhealthy: {host} status={response.status} bytes={len(body)}')
+          print('Steps 5-13 migration/deploy recovery verified live.')
+          PY
