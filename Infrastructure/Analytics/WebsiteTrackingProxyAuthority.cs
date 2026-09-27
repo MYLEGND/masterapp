@@ -787,13 +787,17 @@ public class WebsiteTrackingProxyAuthority : ControllerBase
         if (!string.IsNullOrWhiteSpace(sourceSlug))
         {
             var bySlug = await _resolver.ResolveBySlugAsync(sourceSlug, ct);
-            if (bySlug.Found && bySlug.Profile != null &&
-                !string.Equals(bySlug.Profile.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase))
+            if (!bySlug.Found || bySlug.Profile == null)
             {
-                req.AgentTrackingProfileId = bySlug.Profile.Id;
-                req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
+                // A scoped /a/{slug} request must never fall through to Founder.
+                // Unknown or temporarily unresolvable owners fail closed instead of
+                // contaminating Founder reporting.
                 return false;
             }
+
+            req.AgentTrackingProfileId = bySlug.Profile.Id;
+            req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
+            return string.Equals(bySlug.Profile.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase);
         }
 
         // The canonical root Protect site belongs to the Founder owner. The actual
