@@ -5,8 +5,13 @@ on:
     branches:
       - legend/approved-changes
     paths:
-      - 'SHARED/Analytics/**'
-      - 'Infrastructure/Analytics/**'
+      - 'SHARED/**'
+      - 'Infrastructure/**'
+      - 'Domain/**'
+      - 'AgentPortal/**'
+      - 'ClientApp/**'
+      - 'Protect-Website/**'
+      - 'ParfaitApp/**'
       - 'AgentPortal.Tests/**'
       - '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
 

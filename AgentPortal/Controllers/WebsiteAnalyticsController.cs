@@ -1124,6 +1124,20 @@ namespace AgentPortal.Controllers;
         return Json(result);
     }
 
+    [HttpGet("marketing-manager/context")]
+    public async Task<IActionResult> MarketingAnalyticsContext([FromQuery] Guid? agentProfileId = null,
+        [FromQuery] string? preset = "30d", [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null,
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, HttpContext.RequestAborted);
+        if (owner is null) return Forbid();
+        var scope = await ResolveScopeAsync(agentProfileId, team: false);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
+        Response.Headers.CacheControl = "no-store";
+        return Json(await _aiDataBuilder.BuildAsync(range, scope, range.Label, owner.OwnerType,
+            "All Traffic", TrafficType.All, HttpContext.RequestAborted));
+    }
+
     [HttpGet("ai-review-snapshot")]
     public async Task<IActionResult> AiReviewSnapshot([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
@@ -1132,158 +1146,15 @@ namespace AgentPortal.Controllers;
             var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
             var scope = await ResolveScopeAsync(agentProfileId, team);
 
-            async Task<(T Value, string? Warning)> SafeSnapshotLoadAsync<T>(Func<Task<T>> loader, Func<T> fallbackFactory, string area)
-            {
-                try
-                {
-                    return (await loader(), null);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "AI snapshot partial load failed for {Area}.", area);
-                    return (fallbackFactory(), $"{area} unavailable due to internal error.");
-                }
-            }
-
-            // All sections use the same trafficType so every metric is computed on a consistent
-            // population. Default is TrafficType.All (matches the dashboard default view).
-            var (summary, summaryWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetSummaryAsync(range, scope, trafficType),
-                () => new SummaryKpiDto
-                {
-                    RangeLabel = range.Label,
-                    EnvironmentLabel = "Environment: Mixed/Legacy",
-                    IntentDenominatorLabel = "Quote Submits / Quote Starts"
-                },
-                "Summary metrics");
-            var (traffic, trafficWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetTrafficAsync(range, scope, trafficType),
-                () => new TrafficOverviewDto { RangeLabel = range.Label },
-                "Traffic metrics");
-            var (quote, quoteWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetQuoteFunnelAsync(range, scope, trafficType),
-                () => new QuoteFunnelDto { RangeLabel = range.Label },
-                "Quote funnel metrics");
-            var (conversions, conversionsWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetConversionsAsync(range, scope, trafficType),
-                () => new ConversionCenterDto { RangeLabel = range.Label },
-                "Conversion metrics");
-            var (leads, leadsWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetLeadsAsync(range, scope, trafficType),
-                () => new LeadSnapshotDto { RangeLabel = range.Label },
-                "Lead snapshot metrics");
-            var (pagePerf, pagePerfWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetPagePerformanceAsync(range, scope, trafficType),
-                () => new PagePerformanceDto { RangeLabel = range.Label },
-                "Page performance metrics");
-            var (ctaPerf, ctaPerfWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetCtaPerformanceAsync(range, scope, trafficType),
-                () => new CtaPerformanceDto { RangeLabel = range.Label },
-                "CTA performance metrics");
-            var (timeOnPage, timeOnPageWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetTimeOnPageAsync(range, scope, trafficType),
-                () => new TimeOnPageDto { RangeLabel = range.Label },
-                "Time-on-page metrics");
-            var (exit, exitWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetExitAnalysisAsync(range, scope, trafficType),
-                () => new ExitAnalysisDto { RangeLabel = range.Label },
-                "Exit analysis metrics");
-            var (source, sourceWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetSourcePerformanceAsync(range, scope, trafficType),
-                () => new SourcePerformanceDto { RangeLabel = range.Label },
-                "Source performance metrics");
-            var (abandonment, abandonmentWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
-                () => new FormAbandonmentDto { RangeLabel = range.Label },
-                "Form abandonment metrics");
-            MetaCampaignsDto? metaCampaigns = null;
-            MetaSignalDashboardDto? metaSignal = null;
-            string? activeCampaignWarning = null;
-            string? metaSignalWarning = null;
-
-            try
-            {
-                metaCampaigns = await _metaAds.GetCampaignsAsync(range, scope, HttpContext.RequestAborted);
-            }
-            catch (InvalidOperationException ex)
-            {
-                activeCampaignWarning = $"Active campaign performance unavailable: {ex.Message}";
-                _logger.LogInformation(ex, "AI snapshot active campaign section unavailable due to Meta connection/configuration.");
-            }
-            catch (Exception ex)
-            {
-                activeCampaignWarning = "Active campaign performance unavailable due to Meta campaigns fetch error.";
-                _logger.LogWarning(ex, "AI snapshot active campaign section failed unexpectedly.");
-            }
-
-            try
-            {
-                metaSignal = await _metaSignalAnalytics.GetDashboardAsync(range, scope, trafficType, ct: HttpContext.RequestAborted);
-            }
-            catch (Exception ex)
-            {
-                metaSignalWarning = "Meta Signal Intelligence unavailable due to internal error.";
-                _logger.LogWarning(ex, "AI snapshot meta signal section failed unexpectedly.");
-            }
-
-            var generatedUtc = DateTime.UtcNow;
-            var generatedDisplay = generatedUtc.ToString("MM/dd/yyyy h:mm tt") + " UTC";
-            var generatedUtcIso = generatedUtc.ToString("o");
-            string scopeLabel;
-            string? scopeWarning = null;
-            try
-            {
-                scopeLabel = await ResolveScopeLabelAsync(scope, team);
-            }
-            catch (Exception ex)
-            {
-                scopeLabel = "Current Scope";
-                scopeWarning = "Scope label unavailable due to internal error.";
-                _logger.LogWarning(ex, "AI snapshot scope label resolution failed.");
-            }
-            var rangeLabel = !string.IsNullOrWhiteSpace(summary.RangeLabel) ? summary.RangeLabel : range.Label;
-
-            var warnings = BuildSnapshotWarnings(summary);
-            var partialWarnings = new[]
-            {
-                summaryWarning, trafficWarning, quoteWarning, conversionsWarning, leadsWarning,
-                pagePerfWarning, ctaPerfWarning, timeOnPageWarning, exitWarning, sourceWarning,
-                abandonmentWarning, scopeWarning
-            }.Where(w => !string.IsNullOrWhiteSpace(w)).Select(w => w!).ToList();
-            if (partialWarnings.Count > 0)
-                warnings.AddRange(partialWarnings);
-            if (!string.IsNullOrWhiteSpace(activeCampaignWarning))
-                warnings.Add(activeCampaignWarning);
-            if (!string.IsNullOrWhiteSpace(metaSignalWarning))
-                warnings.Add(metaSignalWarning);
-            var snapshotText = _aiDataBuilder.BuildAiReviewSnapshotText(
-                metaCampaigns,
-                metaSignal,
-                summary,
-                traffic,
-                quote,
-                conversions,
-                leads,
-                pagePerf,
-                ctaPerf,
-                timeOnPage,
-                exit,
-                source,
-                abandonment,
-                generatedDisplay,
-                scopeLabel,
-                rangeLabel,
-                TrafficAttribution.BucketLabel(trafficType),
-                warnings);
-
-            return Json(new AiReviewSnapshotDto
-            {
-                SnapshotText = snapshotText,
-                GeneratedAtLocal = generatedUtcIso,
-                ScopeLabel = scopeLabel,
-                RangeLabel = rangeLabel,
-                TrafficFilterLabel = TrafficAttribution.BucketLabel(trafficType),
-                Warnings = warnings
+            var payload = await _aiDataBuilder.BuildAsync(range, scope, range.Label, "Current Scope",
+                TrafficAttribution.BucketLabel(trafficType), trafficType, HttpContext.RequestAborted);
+            return Json(new AiReviewSnapshotDto {
+                SnapshotText = WebsiteAnalyticsAiDataBuilder.FormatSnapshot(payload),
+                GeneratedAtLocal = payload.GeneratedUtc.ToString("o"),
+                ScopeLabel = payload.ScopeLabel,
+                RangeLabel = payload.RangeLabel,
+                TrafficFilterLabel = payload.TrafficFilter,
+                Warnings = payload.Warnings
             });
         }
         catch (Exception ex)

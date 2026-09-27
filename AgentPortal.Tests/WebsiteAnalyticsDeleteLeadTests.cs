@@ -170,7 +170,8 @@ public class WebsiteAnalyticsDeleteLeadTests
             analytics,
             metaAds,
             metaSignalAnalytics,
-            NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance);
+            NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance, db, config,
+            Mock.Of<IUnifiedMarketingPerformanceService>(), Mock.Of<Infrastructure.WebsiteEditing.IPromotionOrchestrationService>());
         var protector = new MetaCapiCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"));
 
         return new WebsiteAnalyticsController(

@@ -111,7 +111,8 @@ public sealed record PromotionSourceOption(
     string SourceId,
     string Label,
     string? PagePath = null,
-    string? Detail = null);
+    string? Detail = null,
+    string? SiteKey = null);
 
 public sealed record PromotionSourceSnapshot(
     string SourceKind,

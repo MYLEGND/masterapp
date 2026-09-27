@@ -114,25 +114,54 @@ def ready(pr, repo, base):
         and pr['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'})
 
 
+def candidate_validation(api, pr):
+    """Require the latest exact-head PR workflows, never a same-name check collision."""
+    head = pr['head']['sha']
+    runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
+    latest = {}
+    for run in sorted(runs, key=lambda r: (r.get('created_at', ''), r.get('id', 0)), reverse=True):
+        if run.get('head_sha') != head or run.get('event') != 'pull_request':
+            continue
+        latest.setdefault(run['path'].split('@')[0], run)
+    architecture = '.github/workflows/masterapp-platform-architecture-validation.yml'
+    if architecture not in latest:
+        return 'Exact-head architecture validation has not started'
+    files = api.pages(f"pulls/{pr['number']}/files")
+    if any(f['filename'].startswith(('AgentPortal.Tests/', 'AgentPortal/', 'ClientApp/', 'Protect-Website/', 'ParfaitApp/', 'SHARED/', 'Infrastructure/', 'Domain/')) or
+           f['filename'] == '.github/workflows/step5-isolated-conversion-mapping-validation.yml' for f in files):
+        if '.github/workflows/step5-isolated-conversion-mapping-validation.yml' not in latest:
+            return 'Exact-head full-suite comparison has not started'
+    failed = [path for path, run in latest.items()
+              if run.get('status') != 'completed' or run.get('conclusion') != 'success']
+    return 'Awaiting successful exact-head validation: ' + ', '.join(sorted(failed)) if failed else None
+
+
+def merge_validated(api, pr):
+    pending = candidate_validation(api, pr)
+    if pending:
+        return {'retained': pending}
+    # Merge permission is not deployment permission. Only an exact changed release
+    # request authorizes publication; maintenance commits never expand to all apps.
+    publish = direct_only_request(pr['head']['sha'])
+    result = api.api(f"pulls/{pr['number']}/merge",
+        {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
+    if not result.get('merged'):
+        raise RuntimeError('Merge did not complete; source branch retained')
+    if publish:
+        api.dispatch(DIRECT, {'automatic': 'false'})
+    if any(f['filename'] == '.github/workflows/deployment-diagnostics.yml' for f in api.pages(f"pulls/{pr['number']}/files")):
+        api.dispatch('deployment-diagnostics.yml')
+    return {'mergedPr': pr['number'], 'sha': result['sha'], 'releaseDispatched': publish,
+            'automaticRelease': False}
+
+
 def integrate(api, number):
     if staging_only():
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     pr = api.api(f'pulls/{number}')
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
-    # An approved-only request is authorized only when the exact PR head changed
-    # the request file. Preserve that scope at dispatch time instead of expanding
-    # the release to every web target through automatic mode.
-    automatic = 'false' if direct_only_request(pr['head']['sha']) else 'true'
-    # GitHub enforces any configured branch requirements. No force update.
-    result = api.api(f'pulls/{number}/merge',
-        {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
-    if not result.get('merged'):
-        raise RuntimeError('Merge did not complete; source branch retained')
-    # GITHUB_TOKEN pushes do not trigger push workflows; explicitly dispatch.
-    api.dispatch(DIRECT, {'automatic': automatic})
-    return {'mergedPr': number, 'sha': result['sha'], 'releaseDispatched': True,
-            'automaticRelease': automatic == 'true'}
+    return merge_validated(api, pr)
 
 
 def pending_updates(api):
@@ -153,13 +182,7 @@ def pending_updates(api):
                 old['head']['repo'] and old['head']['repo']['full_name'] == api.repo and
                 old['head']['ref'] == pr['head']['ref']]
             if any(ancestor(old['head']['sha'], pr['head']['sha']) for old in prior):
-                automatic = 'false' if direct_only_request(pr['head']['sha']) else 'true'
-                result = api.api(f"pulls/{pr['number']}/merge", {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
-                if not result.get('merged'):
-                    raise RuntimeError('Correction merge remains blocked; source branch retained')
-                api.dispatch(DIRECT, {'automatic': automatic})
-                return {'correctionPr': pr['number'], 'releaseDispatched': True,
-                        'automaticRelease': automatic == 'true'}
+                return merge_validated(api, pr)
     open_names = {p['head']['ref'] for p in pulls if p['head']['repo'] and p['head']['repo']['full_name'] == api.repo}
     branches = {b['name']: b for b in api.pages('branches')}
     approved = api.ref(APPROVED)
@@ -179,15 +202,8 @@ def pending_updates(api):
             'title': 'Continue approved release corrections from ' + name,
             'body': 'Automatically carries new commits on the retained source branch after its previous approved PR. '
                     'The direct release and checked production gates will rerun; branch deletion remains gated.'})
-        # Creation by GITHUB_TOKEN has author_association NONE; the previous ready
-        # collaborator PR plus ancestry is the authorization, not the bot identity.
-        automatic = 'false' if direct_only_request(head) else 'true'
-        result = api.api(f"pulls/{correction['number']}/merge", {'merge_method': 'merge', 'sha': head}, method='PUT')
-        if not result.get('merged'):
-            raise RuntimeError('Correction merge failed; source branch retained')
-        api.dispatch(DIRECT, {'automatic': automatic})
-        return {'correctionPr': correction['number'], 'releaseDispatched': True,
-                'automaticRelease': automatic == 'true'}
+        # The previous collaborator PR authorizes review, not skipping fresh CI.
+        return {'correctionPr': correction['number'], 'retained': 'Fresh exact-head validation required'}
     return {'integration': 'no ready changes or retained-branch corrections'}
 
 
@@ -268,8 +284,8 @@ def direct_only_request(sha):
     # A one-release exception, bound to the commit which changes the request.
     # A later unrelated commit cannot inherit a stale promotion exemption.
     path = 'Docs/releases/direct-release-request.json'
-    last = git('log', '-1', '--format=%H', sha, '--', path).stdout.strip()
-    if last != sha:
+    changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, '--', path, check=False)
+    if changed.returncode or path not in changed.stdout.splitlines():
         return False
     result = git('show', sha + ':' + path, check=False)
     if result.returncode:
@@ -288,6 +304,15 @@ def reconcile(api, trigger=None):
     # schedule. A failed production attempt never authorizes this synchronization.
     production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
     if direct_only_request(approved):
+        runs = api.pages('actions/runs?head_sha=' + approved, 'workflow_runs')
+        if not any(r['path'].split('@')[0] == '.github/workflows/' + DIRECT for r in runs):
+            pulls = api.pages('commits/' + approved + '/pulls')
+            pr = next((p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == approved and p['base']['ref'] == APPROVED), None)
+            if pr is not None:
+                pending = candidate_validation(api, pr)
+                if pending: return {'retained': pending}
+                api.dispatch(DIRECT, {'automatic': 'false'})
+                return {'directRelease': 'recovered exact scoped request', 'promotion': 'disabled for approved-only release'}
         return {'promotion': 'disabled for this exact approved-only release'}
     if not ancestor(production, approved):
         if not release_proven(api, production, production=True):
@@ -295,8 +320,7 @@ def reconcile(api, trigger=None):
         api.api('merges', {'base': APPROVED, 'head': production,
             'commit_message': 'Preserve successfully validated production release in approved changes'})
         git('fetch', '--no-tags', 'origin')
-        api.dispatch(DIRECT, {'automatic': 'true'})
-        return {'synchronizedProduction': production, 'directReleaseDispatched': True}
+        return {'synchronizedProduction': production, 'directReleaseDispatched': False}
     # Never promote newer unreleased edits using an older workflow's green result.
     if ancestor(approved, production):
         return {'promotion': 'already preserved in production'}
@@ -304,15 +328,6 @@ def reconcile(api, trigger=None):
     direct_runs = [r for r in runs if r['path'].split('@')[0] == '.github/workflows/' + DIRECT
                    and r['head_branch'] == APPROVED]
     if not direct_runs:
-        # Recover a merge whose explicit dispatch failed. Arbitrary commits on
-        # approved changes are not silently reinterpreted as release requests.
-        closed = api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe=''))
-        released_pr = next((p for p in closed if p.get('merged_at') and
-            p.get('merge_commit_sha') == approved and p['head']['repo'] and
-            p['head']['repo']['full_name'] == api.repo), None)
-        if released_pr:
-            api.dispatch(DIRECT, {'automatic': 'true'})
-            return {'directRelease': 'recovered missing dispatch for integrated approved PR'}
         return {'promotion': 'awaiting successful direct release of current approved head'}
     if not successful_release(api, direct_runs[0]):
         return {'promotion': 'awaiting successful direct release of current approved head'}

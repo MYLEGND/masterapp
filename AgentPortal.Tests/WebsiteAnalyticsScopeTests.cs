@@ -70,7 +70,8 @@ public class WebsiteAnalyticsScopeTests
             analytics.Object,
             Mock.Of<IMetaAdsService>(),
             Mock.Of<IMetaSignalAnalyticsService>(),
-            NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance);
+            NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance, db, config,
+            Mock.Of<IUnifiedMarketingPerformanceService>(), Mock.Of<Infrastructure.WebsiteEditing.IPromotionOrchestrationService>());
 
         var metaConnections = new Infrastructure.Analytics.MarketingConnectionStore(db,
             new Infrastructure.Analytics.MarketingCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests")));

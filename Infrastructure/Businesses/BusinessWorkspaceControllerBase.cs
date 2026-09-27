@@ -334,6 +334,28 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         TrafficQualityMode QualityMode,
         MarketingManagerGoalRequest Goal);
 
+    [HttpGet("analytics/marketing-manager/context")]
+    [HttpGet("analytics/ai-review-snapshot")]
+    public async Task<IActionResult> MarketingAnalyticsContext(Guid businessId,
+        [FromQuery] string? preset = "30d", [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null,
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        [FromQuery] string? timezoneId = null, [FromQuery] int? timezoneOffsetMinutes = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc,
+            AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes), qualityMode);
+        var builder = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.WebsiteAnalyticsAiDataBuilder>();
+        var payload = await builder.BuildAsync(range, ScopeContext.ForBusiness(businessId), range.Label,
+            "business", "All Traffic", TrafficType.All, cancellationToken);
+        Response.Headers.CacheControl = "no-store";
+        if (Request.Path.Value?.EndsWith("ai-review-snapshot", StringComparison.OrdinalIgnoreCase) == true)
+            return Json(new { snapshotText = Infrastructure.Analytics.WebsiteAnalyticsAiDataBuilder.FormatSnapshot(payload),
+                generatedAtLocal = payload.GeneratedUtc.ToString("o"), payload.ScopeLabel, payload.RangeLabel,
+                trafficFilterLabel = payload.TrafficFilter, payload.Warnings });
+        return Json(payload);
+    }
+
     [HttpPost("analytics/marketing-manager/plan")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> MarketingManagerPlan(

@@ -57,10 +57,23 @@ class BranchSafety(unittest.TestCase):
         m.git('commit', '-m', 'later update')
         self.assertFalse(m.direct_only_request(m.git('rev-parse', 'HEAD').stdout.strip()))
 
+    def test_merge_request_is_authorized_but_later_control_merge_is_not(self):
+        path=Path('Docs/releases/direct-release-request.json');path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({'releaseMode':'approved-only','targets':['masterapp-protect']}))
+        m.git('add','.');m.git('commit','-m','scoped request')
+        m.git('switch','production');m.git('merge','--no-ff','work','-m','merge scoped request')
+        merged=m.git('rev-parse','HEAD').stdout.strip()
+        self.assertTrue(m.direct_only_request(merged))
+        m.git('switch','-c','maintenance');Path('workflow').write_text('read only')
+        m.git('add','.');m.git('commit','-m','maintenance')
+        m.git('switch','production');m.git('merge','--no-ff','maintenance','-m','merge maintenance')
+        self.assertFalse(m.direct_only_request(m.git('rev-parse','HEAD').stdout.strip()))
+
     def test_direct_only_reconcile_never_dispatches_production(self):
         from unittest.mock import Mock
         api = Mock()
         api.ref.side_effect = [self.base, self.work]
+        api.pages.return_value = []
         with patch.object(m, 'direct_only_request', return_value=True):
             result = m.reconcile(api)
         self.assertIn('disabled', result['promotion'])
@@ -223,8 +236,8 @@ class OrchestrationSafety(unittest.TestCase):
              patch.object(m, 'release_proven', return_value=True), \
              patch.object(m, 'ancestor', return_value=False), patch.object(m, 'git'):
             result = m.reconcile(api, 1)
-        self.assertTrue(result['directReleaseDispatched'])
-        api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'true'})
+        self.assertFalse(result['directReleaseDispatched'])
+        api.dispatch.assert_not_called()
         self.assertEqual(api.api.call_args.args[0], 'merges')
 
     def test_schedule_recovers_missed_successful_production_event(self):
@@ -235,8 +248,8 @@ class OrchestrationSafety(unittest.TestCase):
              patch.object(m, 'release_proven', return_value=True), patch.object(m, 'git'):
             with patch.object(m, 'direct_only_request', return_value=False):
                 result = m.reconcile(api)
-        self.assertTrue(result['directReleaseDispatched'])
-        api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'true'})
+        self.assertFalse(result['directReleaseDispatched'])
+        api.dispatch.assert_not_called()
         self.assertEqual(api.api.call_args.args[0], 'merges')
 
     def test_schedule_never_synchronizes_failed_production(self):
@@ -318,7 +331,7 @@ class OrchestrationSafety(unittest.TestCase):
 class ApprovedDispatchScope(unittest.TestCase):
     def ready_pr(self):
         return {
-            'state': 'open',
+            'number': 12, 'state': 'open',
             'draft': False,
             'base': {'ref': m.APPROVED},
             'head': {'ref': 'release/scoped', 'sha': 'a' * 40, 'repo': {'full_name': 'owner/repo'}},
@@ -329,22 +342,82 @@ class ApprovedDispatchScope(unittest.TestCase):
         from unittest.mock import Mock
         api = Mock()
         api.repo = 'owner/repo'
+        api.pages.return_value = []
         api.api.side_effect = [self.ready_pr(), {'merged': True, 'sha': 'b' * 40}]
-        with patch.object(m, 'direct_only_request', return_value=True) as scoped:
+        with patch.object(m, 'direct_only_request', return_value=True) as scoped, patch.object(m, 'candidate_validation', return_value=None):
             result = m.integrate(api, 12)
         scoped.assert_called_once_with('a' * 40)
         api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'false'})
         self.assertFalse(result['automaticRelease'])
 
-    def test_ordinary_approved_change_keeps_automatic_all_target_dispatch(self):
+    def test_maintenance_change_merges_without_any_application_dispatch(self):
         from unittest.mock import Mock
         api = Mock()
         api.repo = 'owner/repo'
+        api.pages.return_value = []
         api.api.side_effect = [self.ready_pr(), {'merged': True, 'sha': 'b' * 40}]
-        with patch.object(m, 'direct_only_request', return_value=False):
+        with patch.object(m, 'direct_only_request', return_value=False), patch.object(m, 'candidate_validation', return_value=None):
             result = m.integrate(api, 13)
-        api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'true'})
-        self.assertTrue(result['automaticRelease'])
+        api.dispatch.assert_not_called()
+        self.assertFalse(result['releaseDispatched'])
+        self.assertFalse(result['automaticRelease'])
+
+
+class ExactCandidateValidation(unittest.TestCase):
+    def run_record(self, path='masterapp-platform-architecture-validation.yml', **updates):
+        return dict({'head_sha':'a'*40, 'event':'pull_request', 'path':'.github/workflows/'+path,
+            'status':'completed','conclusion':'success','id':1,'created_at':'2026-09-27T00:00:00Z'}, **updates)
+
+    def api(self, runs, files=()):
+        from unittest.mock import Mock
+        api=Mock()
+        api.pages.side_effect=lambda path, *args: runs if path.startswith('actions/runs') else [{'filename':f} for f in files]
+        return api
+
+    def validate(self, runs, files=()):
+        return m.candidate_validation(self.api(runs, files), {'number':1,'head':{'sha':'a'*40}})
+
+    def test_missing_or_wrong_head_validation_blocks(self):
+        self.assertIsNotNone(self.validate([]))
+        self.assertIsNotNone(self.validate([self.run_record(head_sha='b'*40)]))
+
+    def test_pending_failed_cancelled_or_skipped_is_never_success(self):
+        for status,conclusion in [('queued',None),('in_progress',None),('completed','failure'),('completed','cancelled'),('completed','skipped')]:
+            with self.subTest(status=status,conclusion=conclusion):
+                self.assertIsNotNone(self.validate([self.run_record(status=status,conclusion=conclusion)]))
+
+    def test_same_named_green_workflow_cannot_hide_failed_architecture(self):
+        self.assertIsNotNone(self.validate([self.run_record(conclusion='failure'),self.run_record('step6-openai-ads-execution-validation.yml',id=2)]))
+
+    def test_latest_attempt_wins_over_old_green(self):
+        self.assertIsNotNone(self.validate([self.run_record(),self.run_record(id=2,conclusion='failure')]))
+
+    def test_analytics_changes_require_full_suite_workflow(self):
+        runs=[self.run_record()]
+        self.assertIsNotNone(self.validate(runs,['Infrastructure/Analytics/example.cs']))
+        runs.append(self.run_record('step5-isolated-conversion-mapping-validation.yml',id=2))
+        self.assertIsNone(self.validate(runs,['Infrastructure/Analytics/example.cs']))
+
+    def test_host_changes_also_require_full_suite(self):
+        for path in ['Protect-Website/Models/RiskAssessmentModel.cs','ClientApp/Program.cs','Domain/Entities/Lead.cs']:
+            with self.subTest(path=path):
+                self.assertIsNotNone(self.validate([self.run_record()],[path]))
+
+    def test_successful_maintenance_validation_is_sufficient_without_deploy(self):
+        self.assertIsNone(self.validate([self.run_record()],['.github/workflows/deployment-diagnostics.yml']))
+
+    def test_pending_validation_never_merges_or_dispatches(self):
+        api=self.api([self.run_record(status='in_progress',conclusion=None)])
+        result=m.merge_validated(api,{'number':1,'head':{'sha':'a'*40}})
+        self.assertIn('retained',result)
+        api.api.assert_not_called();api.dispatch.assert_not_called()
+
+    def test_pending_retained_branch_correction_is_not_auto_merged(self):
+        from unittest.mock import Mock
+        api=Mock();api.repo='owner/repo'
+        api.pages.side_effect=[[],[],[]];api.ref.return_value='a'*40
+        self.assertIn('integration',m.pending_updates(api))
+        api.api.assert_not_called();api.dispatch.assert_not_called()
 
 
 class ProductionSyncWorkflowSafety(unittest.TestCase):

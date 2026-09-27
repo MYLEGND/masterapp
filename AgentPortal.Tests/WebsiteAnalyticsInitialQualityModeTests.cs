@@ -257,7 +257,8 @@ public class WebsiteAnalyticsInitialQualityModeTests
             analytics,
             metaAds,
             metaSignalAnalytics,
-            NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance);
+            NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance, db, analyticsConfig,
+            Mock.Of<IUnifiedMarketingPerformanceService>(), Mock.Of<Infrastructure.WebsiteEditing.IPromotionOrchestrationService>());
 
         var user = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {

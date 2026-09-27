@@ -209,6 +209,9 @@ public static class MarketingServiceRegistration
         services.AddScoped<Infrastructure.WebsiteEditing.IBusinessPublicUrlResolver, Infrastructure.WebsiteEditing.BusinessPublicUrlResolver>();
         services.AddScoped<IUnifiedMarketingPerformanceService, UnifiedMarketingPerformanceService>();
         services.AddScoped<IMarketingManagerService, MarketingManagerService>();
+        services.AddScoped<WebsiteAnalyticsAiDataBuilder>();
+        services.TryAddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
+        services.TryAddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
         services.AddScoped<IBlendedGrowthEconomicsService, BlendedGrowthEconomicsService>();
         services.AddScoped<IOpenAiProductFeedService, OpenAiProductFeedService>();
         services.AddScoped<IOpenAiAdsOnboardingService, OpenAiAdsOnboardingService>();

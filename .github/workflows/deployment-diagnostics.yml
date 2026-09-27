@@ -1,4 +1,5 @@
 name: LEGEND deployment diagnostics
+# Lifecycle dispatches this reviewed read-only workflow after bot merges; no app publication.
 on:
   push:
     branches: [legend/approved-changes]

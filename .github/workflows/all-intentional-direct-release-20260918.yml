@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       automatic:
-        description: Release all existing web targets for an automatically integrated change
+        description: Compatibility input; the committed release request always controls target scope
         type: boolean
         default: false
   push:
@@ -12,6 +12,8 @@ on:
     paths: ['Docs/releases/direct-release-request.json']
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
   id-token: write
 concurrency:
   group: agentportal-production
@@ -44,6 +46,7 @@ jobs:
         id: live
         env:
           AUTOMATIC_RELEASE: ${{ inputs.automatic }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           args=()
           if [ "$AUTOMATIC_RELEASE" = true ]; then args+=(--automatic); fi

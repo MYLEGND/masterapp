@@ -21,7 +21,7 @@ public class WebsiteAnalyticsAiContractTests
         Assert.Contains("public string? DataTrustWarning { get; set; }", dtoFile, StringComparison.Ordinal);
         Assert.Contains("public List<string> DoNotScaleBecause { get; set; } = new();", dtoFile, StringComparison.Ordinal);
         Assert.Contains("public List<string> NextThreeActions { get; set; } = new();", dtoFile, StringComparison.Ordinal);
-        Assert.Contains("public MarketingHealthAiPayload? MarketingHealth { get; set; }", dtoFile, StringComparison.Ordinal);
+        Assert.Contains("public MarketingHealthAiPayload? MarketingHealth { get; set; }", File.ReadAllText(Path.Combine(repoRoot, "SHARED", "Analytics", "AiSafeAnalyticsPayload.cs")), StringComparison.Ordinal);
 
         Assert.Contains("ScaleReadinessVerdict = \"DoNotScale\"", controllerFile, StringComparison.Ordinal);
         Assert.Contains("DataTrustWarning = message", controllerFile, StringComparison.Ordinal);

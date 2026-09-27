@@ -4,6 +4,9 @@ namespace Protect_Website.Models
 {
     public class RiskAssessmentModel
     {
+        public static ValidationResult? ValidateAcknowledgement(bool acknowledged) =>
+            acknowledged ? ValidationResult.Success : new ValidationResult("You must acknowledge the disclaimer.");
+
         // STEP TRACKER (keeps user on same step if server validation fails)
         public int CurrentStep { get; set; } = 1;
 
@@ -114,6 +117,7 @@ namespace Protect_Website.Models
         public string? Oppref { get; set; }
 
         [Display(Name = "Acknowledged Disclaimer")]
+        [CustomValidation(typeof(RiskAssessmentModel), nameof(ValidateAcknowledgement))]
         public bool AcknowledgedDisclaimer { get; set; } = false;
     }
 }
