@@ -5110,8 +5110,14 @@ function escapeHtml(value) {
       openAi.reviewReason ? `Reason: ${openAi.reviewReason}`
         : openAi.lastVerifiedUtc ? `Last verified ${new Date(openAi.lastVerifiedUtc).toLocaleString()}`
         : 'Not yet verified');
-    setOpenAiText('marketing-setup-openai-pixel', openAi.pixelConfigured ? (openAi.pixelId || 'Configured') : 'Not configured');
-    setOpenAiText('marketing-setup-openai-capi', openAi.conversionsApiConfigured ? 'Configured securely' : 'Not configured');
+    setOpenAiText('marketing-setup-openai-pixel', openAi.pixelConfigured ? (openAi.pixelId || 'Configured')
+      : openAi.measurementCapabilityStatus === 'not_enabled' ? 'API provisioning not enabled'
+      : openAi.measurementCapabilityStatus === 'not_authorized' ? 'API provisioning not authorized'
+      : 'Not configured');
+    setOpenAiText('marketing-setup-openai-capi', openAi.conversionsApiConfigured ? 'Configured securely'
+      : openAi.measurementCapabilityStatus === 'not_enabled' ? 'API provisioning not enabled'
+      : openAi.measurementCapabilityStatus === 'not_authorized' ? 'API provisioning not authorized'
+      : 'Not configured');
     setOpenAiText('marketing-setup-openai-health', (openAiHealth.status || 'unknown').replaceAll('_', ' '));
     setOpenAiText('marketing-setup-openai-last-send', openAiHealth.lastSentUtc ? `Last sent ${new Date(openAiHealth.lastSentUtc).toLocaleString()}` : 'No successful delivery yet');
     setOpenAiText('marketing-setup-openai-pending', Number(openAiHealth.pending || 0).toLocaleString());
@@ -5145,6 +5151,9 @@ function escapeHtml(value) {
         : openAi.reviewStatus === 'rejected' ? 'Critical · brand review rejected'
         : openAi.reviewStatus === 'in_review' ? 'Moderate · brand review in progress'
         : openAi.accountStatus !== 'active' ? 'Moderate · account is not active'
+        : openAi.measurementCapabilityStatus === 'not_enabled' ? 'Moderate · OpenAI Ads API measurement provisioning not enabled'
+        : openAi.measurementCapabilityStatus === 'not_authorized' ? 'Moderate · Advertiser API key cannot provision measurement'
+        : openAi.measurementCapabilityStatus === 'provider_unavailable' ? 'Moderate · OpenAI measurement provisioning temporarily unavailable'
         : !openAi.pixelConfigured || !openAi.conversionsApiConfigured ? 'Moderate · measurement setup incomplete'
         : Number(openAiHealth.failed || 0) > 0 ? 'Critical · delivery failures'
         : Number(openAiHealth.retrying || 0) > 0 ? 'Moderate · retrying delivery'
@@ -5286,7 +5295,18 @@ function escapeHtml(value) {
         connectionRevision: revision
       });
       renderMarketingSetup(payload);
-      setMarketingSetupStatus('ChatGPT Ads account and measurement setup refreshed.', 'success');
+      const refreshedOpenAi = payload?.openAi || {};
+      if (refreshedOpenAi.pixelConfigured && refreshedOpenAi.conversionsApiConfigured) {
+        setMarketingSetupStatus('ChatGPT Ads account and measurement setup refreshed.', 'success');
+      } else if (refreshedOpenAi.measurementCapabilityStatus === 'not_enabled') {
+        setMarketingSetupStatus('ChatGPT Ads account refreshed. OpenAI has not enabled Ads API conversion provisioning for this advertiser account yet.');
+      } else if (refreshedOpenAi.measurementCapabilityStatus === 'not_authorized') {
+        setMarketingSetupStatus('ChatGPT Ads account refreshed. This Advertiser API key cannot provision conversion measurement for the account.');
+      } else if (refreshedOpenAi.measurementCapabilityStatus === 'provider_unavailable') {
+        setMarketingSetupStatus('ChatGPT Ads account refreshed. OpenAI conversion provisioning is temporarily unavailable.');
+      } else {
+        setMarketingSetupStatus(refreshedOpenAi.measurementCapabilityDetail || 'ChatGPT Ads account refreshed; measurement setup is still incomplete.');
+      }
     } catch (error) {
       setMarketingSetupStatus(error?.message || 'Unable to refresh ChatGPT Ads.', 'error');
     } finally {
