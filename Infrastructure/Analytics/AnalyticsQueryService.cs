@@ -2801,6 +2801,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         });
 
         var warnings = new List<string>();
+        if (events.Count == 0 && leads.Count == 0)
+        {
+            warnings.Add("No canonical analytics evidence is visible in this selected scope and traffic-quality window. Zero tracking errors alone does not establish healthy ingest.");
+        }
         if (clientTrackingErrorEvents.Count > 0)
         {
             var mostRecentTrackingError = recentTrackingErrors.FirstOrDefault();
