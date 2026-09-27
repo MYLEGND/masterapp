@@ -182,6 +182,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
         Assert.Contains("ScopeType.Founder", queryScope, StringComparison.Ordinal);
         Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, ct)", proxy, StringComparison.Ordinal);
+        Assert.Contains("A scoped /a/{slug} request must never fall through to Founder.", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
         Assert.Contains("siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect", layout, StringComparison.Ordinal);
         Assert.Contains("endpoint(path)", analyticsJs, StringComparison.Ordinal);
