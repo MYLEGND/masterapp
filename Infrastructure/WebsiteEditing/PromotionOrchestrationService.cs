@@ -251,7 +251,7 @@ public sealed class PromotionOrchestrationService(
         PromotionProposalRequest request,
         CancellationToken ct)
     {
-        if (owner.CommerceBusinessId is not Guid businessId || actor.CommerceBusinessId != businessId)
+        if (owner.CommerceBusinessId is not Guid businessId)
             throw new InvalidOperationException("Service promotion uses the owning business service facts.");
 
         var requested = Clean(request.SourceId, 500)
