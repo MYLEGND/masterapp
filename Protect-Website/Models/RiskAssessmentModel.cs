@@ -113,6 +113,8 @@ namespace Protect_Website.Models
 
                         [Display(Name = "Acknowledged Disclaimer")]
         [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the disclaimer.")]
+        public string? Oppref { get; set; }
+
         public bool AcknowledgedDisclaimer { get; set; } = false;
     }
 }
