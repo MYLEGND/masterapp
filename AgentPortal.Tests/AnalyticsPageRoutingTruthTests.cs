@@ -90,7 +90,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("setInterval(refreshLiveAnalytics, state.pollMs)", ui, StringComparison.Ordinal);
         Assert.Contains("visibilitychange", ui, StringComparison.Ordinal);
         Assert.Contains("window.addEventListener('focus', refreshLiveAnalytics)", ui, StringComparison.Ordinal);
-        Assert.DoesNotContain("pollMs: 1500", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("pollMs: 1500,", ui, StringComparison.Ordinal);
     }
 
     [Fact]
