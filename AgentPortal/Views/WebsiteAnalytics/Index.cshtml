@@ -31,7 +31,7 @@
 
 <div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
 <div class="modal fade fa-modal" id="marketingSetupModal" tabindex="-1" aria-labelledby="marketingSetupModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable marketing-setup-modal-dialog">
         <div class="modal-content marketing-setup-modal">
             <div class="modal-header marketing-setup-modal-header">
                 <div>
@@ -42,7 +42,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body marketing-setup-modal-body">
-                <form id="marketing-setup-form" novalidate>
+                <form id="marketing-setup-form" class="marketing-setup-form-grid" novalidate>
                     @Html.AntiForgeryToken()
                     <input type="hidden" id="marketing-setup-revision" />
 
@@ -54,7 +54,7 @@
                         <div class="marketing-setup-status" data-status-key="calendarLinked"><span>Calendar</span><strong>—</strong></div>
                     </div>
 
-                    <section class="marketing-setup-section">
+                    <section class="marketing-setup-section marketing-setup-meta">
                         <div class="marketing-setup-section-head">
                             <div>
                                 <div class="marketing-setup-eyebrow">Marketing</div>
@@ -89,7 +89,24 @@
                             </div>
                             <div class="marketing-setup-connection" id="marketing-setup-openai-account">ChatGPT Ads status: —</div>
                         </div>
-                        <p class="marketing-setup-help">This panel reads the scoped OpenAI Ads authority, Pixel/CAPI delivery ledger, and canonical <code>oppref</code> lineage. Credentials are never exposed or entered here.</p>
+                        <p class="marketing-setup-help">Connect the scoped ChatGPT Ads account here. Your Advertiser API key is sent once to the server for OpenAI verification, encrypted in the existing marketing authority, and never returned to the browser.</p>
+
+                        <div class="marketing-setup-connect-panel" id="marketing-setup-openai-connect-panel" hidden>
+                            <div class="marketing-setup-connect-copy">
+                                <strong>Connect ChatGPT Ads</strong>
+                                <span>Paste the Advertiser API key from OpenAI Ads Manager Settings. LEGEND verifies the key against the ad account before saving anything.</span>
+                            </div>
+                            <div class="marketing-setup-connect-controls">
+                                <label class="marketing-setup-field" for="marketing-setup-openai-api-key">
+                                    <span>Advertiser API key</span>
+                                    <input id="marketing-setup-openai-api-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="Paste once to verify and connect" />
+                                </label>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-openai-connect-submit">Verify &amp; connect</button>
+                                    <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-connect-cancel">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
 
                         <div class="marketing-setup-detail-grid">
                             <div class="marketing-setup-detail"><span>Advertiser account</span><strong id="marketing-setup-openai-account-name">—</strong><small id="marketing-setup-openai-account-id">—</small></div>
@@ -118,6 +135,9 @@
                             </div>
                         </div>
 
+                    </section>
+
+                    <section class="marketing-setup-section marketing-setup-attribution-card">
                         <div class="marketing-setup-attribution">
                             <div class="marketing-setup-section-head">
                                 <div>
@@ -136,9 +156,10 @@
                                 <div><span>Paid revenue</span><strong id="marketing-setup-oppref-revenue">$0</strong></div>
                             </div>
                         </div>
+
                     </section>
 
-                    <section class="marketing-setup-section">
+                    <section class="marketing-setup-section marketing-setup-booking">
                         <div class="marketing-setup-section-head">
                             <div>
                                 <div class="marketing-setup-eyebrow">Booking</div>
