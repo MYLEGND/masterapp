@@ -42,6 +42,73 @@ public sealed class OpenAiAdsDirectConnectionServiceTests
     }
 
     [Fact]
+    public async Task Connect_PreservesVerifiedAccount_WhenMeasurementProvisioningIsNotEnabled()
+    {
+        var owner = MarketingOwnerScope.Founder;
+        var authority = new FakeAuthority(owner);
+        var handler = new QueueHandler(
+            Json(HttpStatusCode.OK, """{"id":"adacct_1","name":"LEGEND","status":"active","timezone":"America/Phoenix","currency_code":"USD","review":{"status":"in_review"}}"""),
+            Json(HttpStatusCode.NotFound, """{"error":{"message":"Not found"}}"""),
+            Json(HttpStatusCode.NotFound, """{"error":{"message":"Not found"}}"""));
+        var service = new OpenAiAdsDirectConnectionService(new HttpClient(handler), authority);
+
+        var result = await service.ConnectAsync(owner, "ads_secret");
+
+        Assert.True(result.Connected);
+        Assert.Equal("adacct_1", result.AccountId);
+        Assert.Null(result.PixelId);
+        Assert.False(result.ConversionsApiConfigured);
+        Assert.Equal("ads_secret", authority.Secrets!.ManagementApiKey);
+        Assert.Null(authority.Secrets.ConversionsApiKey);
+        Assert.Equal(new[] { "ad_account.read" }, authority.Verified!.Permissions);
+    }
+
+    [Fact]
+    public async Task Refresh_DoesNotInvalidateConnection_WhenMeasurementEndpointRejectsProvisioning()
+    {
+        var owner = MarketingOwnerScope.Founder;
+        var authority = new FakeAuthority(owner)
+        {
+            Current = Snapshot(owner, pixelId: null, hasCapi: false),
+            StoredSecrets = new OpenAiAdsConnectionSecrets("stored_ads_key", null)
+        };
+        var handler = new QueueHandler(
+            Json(HttpStatusCode.OK, """{"id":"adacct_1","name":"LEGEND","status":"active","timezone":"America/Phoenix","currency_code":"USD","review":{"status":"in_review"}}"""),
+            Json(HttpStatusCode.Forbidden, """{"error":{"message":"Conversion setup is not enabled"}}"""),
+            Json(HttpStatusCode.Forbidden, """{"error":{"message":"Conversion setup is not enabled"}}"""));
+        var service = new OpenAiAdsDirectConnectionService(new HttpClient(handler), authority);
+
+        var result = await service.RefreshAsync(owner, authority.Current.Revision);
+
+        Assert.True(result.Connected);
+        Assert.Equal("adacct_1", result.AccountId);
+        Assert.False(result.PixelConfigured);
+        Assert.False(result.ConversionsApiConfigured);
+        Assert.Equal("stored_ads_key", authority.Secrets!.ManagementApiKey);
+    }
+
+    [Fact]
+    public async Task InspectMeasurement_ReportsProviderCapabilityWithoutExposingSecrets()
+    {
+        var owner = MarketingOwnerScope.Founder;
+        var authority = new FakeAuthority(owner)
+        {
+            Current = Snapshot(owner, pixelId: null, hasCapi: false),
+            StoredSecrets = new OpenAiAdsConnectionSecrets("stored_ads_key", null)
+        };
+        var handler = new QueueHandler(
+            Json(HttpStatusCode.NotFound, """{"error":{"message":"Not found"}}"""));
+        var service = new OpenAiAdsDirectConnectionService(new HttpClient(handler), authority);
+
+        var measurement = await service.InspectMeasurementAsync(owner);
+
+        Assert.NotNull(measurement);
+        Assert.Equal("not_enabled", measurement!.Status);
+        Assert.Equal(404, measurement.HttpStatusCode);
+        Assert.DoesNotContain("stored_ads_key", measurement.Detail ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Refresh_UsesStoredAdvertiserKeyAndReturnsLiveProviderReadiness()
     {
         var owner = MarketingOwnerScope.Founder;
