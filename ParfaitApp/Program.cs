@@ -156,8 +156,6 @@ builder.Services.AddScoped<ParfaitAnalyticsService>();
 builder.Services.AddScoped<IParfaitAnalyticsService>(serviceProvider => serviceProvider.GetRequiredService<ParfaitAnalyticsService>());
 builder.Services.AddScoped<Infrastructure.Commerce.CommerceSignalService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
-builder.Services.AddScoped<Infrastructure.Analytics.IUnifiedMarketingPerformanceService, Infrastructure.Analytics.UnifiedMarketingPerformanceService>();
-builder.Services.AddScoped<Infrastructure.Analytics.IMarketingManagerService, Infrastructure.Analytics.MarketingManagerService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
 builder.Services.AddSingleton<ParfaitInternalAnalyticsCacheStamp>();
 builder.Services.AddScoped<ParfaitInternalAnalyticsService>();
