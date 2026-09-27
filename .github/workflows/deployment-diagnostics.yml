@@ -13,23 +13,75 @@ jobs:
     timeout-minutes: 6
     environment: Production
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Read deployment state without restarting or deploying
+      - name: Observe current app state and recent capacity without mutations
         shell: bash
         run: |
-          set -euo pipefail
-          resource="$(az webapp show -g masterapp-rg -n masterapp-portal --query id -o tsv)"
-          az webapp show -g masterapp-rg -n masterapp-portal --query '{state:state,availabilityState:availabilityState,lastModifiedTimeUtc:lastModifiedTimeUtc}' -o json
-          timeout 90 az webapp log deployment show -g masterapp-rg -n masterapp-portal --deployment-id 3cbe3cf0e67c45dabfbde3f1b7709268 --query '[].{time:log_time,type:type,message:message}' -o json || true
-          plan="$(az webapp show -g masterapp-rg -n masterapp-portal --query appServicePlanId -o tsv)"
-          if [ -n "$plan" ]; then
-            timeout 45 az monitor metrics list --resource "$plan" --metric CpuPercentage MemoryPercentage --interval PT5M --aggregation Average Maximum --start-time 2026-09-23T07:15:00Z --query 'value[].{metric:name.value,series:timeseries[].data}' -o json || true
-          fi
-          for host in portal.mylegnd.com masterapp-portal.azurewebsites.net; do
-            echo "Runtime receipt: $host"
-            curl -sS --max-time 25 -w '\nHTTP %{http_code}\n' "https://$host/api/runtime-provenance" || true
-          done
+          python3 - <<'PYAZ'
+          import datetime, json, subprocess
+          def az(*args):
+              try:
+                  r=subprocess.run(['az', *args, '--only-show-errors', '-o', 'json'],capture_output=True,text=True,timeout=40)
+                  if r.returncode: return {'unavailable': True}
+                  return json.loads(r.stdout)
+              except (subprocess.TimeoutExpired, ValueError): return {'unavailable': True}
+          plans=set()
+          for app in ('portal','client','protect','parfait','website'):
+              name='masterapp-'+app
+              info=az('webapp','show','-g','masterapp-rg','-n',name,'--query','{state:state,availability:availabilityState,modified:lastModifiedTimeUtc,plan:appServicePlanId}')
+              print(json.dumps({'app':app,'state':info}))
+              if info.get('plan'): plans.add(info['plan'])
+              status=az('webapp','log','deployment','list','-g','masterapp-rg','-n',name,'--query','[:3].{id:id,status:status,active:active,received:received_time,start:start_time,end:end_time}')
+              print(json.dumps({'app':app,'recentDeployments':status}))
+          start=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(minutes=30)).isoformat()
+          for plan in sorted(plans):
+              data=az('monitor','metrics','list','--resource',plan,'--metric','CpuPercentage','MemoryPercentage','--interval','PT5M','--aggregation','Average','Maximum','--start-time',start,'--query','value[].{metric:name.value,series:timeseries[].data}')
+              print(json.dumps({'plan':plan.rsplit('/',1)[-1],'last30Minutes':data}))
+          PYAZ
+      - name: Observe canonical Cloudflare route and DNS inventory without changes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          python3 - <<'PYCF'
+          import importlib.util, json
+          spec=importlib.util.spec_from_file_location('routing','scripts/cloudflare-routing-authority.py')
+          authority=importlib.util.module_from_spec(spec);spec.loader.exec_module(authority)
+          token=authority.required_env('CLOUDFLARE_API_TOKEN');zone=authority.required_env('CLOUDFLARE_ZONE_ID');account=authority.required_env('CLOUDFLARE_ACCOUNT_ID')
+          routes=authority.api_request('GET',f'{authority.API}/zones/{zone}/workers/routes',token)['result']
+          print(json.dumps({'routes':[{'pattern':r.get('pattern'),'script':r.get('script')} for r in routes]}))
+          for host in ('mylegnd.com','www.mylegnd.com','protect.mylegnd.com'):
+              records=authority.api_request('GET',f'{authority.API}/zones/{zone}/dns_records?name={host}',token)['result']
+              print(json.dumps({'host':host,'dns':[{'type':r.get('type'),'target':r.get('content'),'proxied':r.get('proxied')} for r in records]}))
+          data=authority.api_request('GET',f'{authority.API}/accounts/{account}/workers/scripts/{authority.ROUTER_SCRIPT}/deployments?per_page=1',token,allow=(200,404))
+          print(json.dumps({'routerDeployments':data.get('result',{}).get('deployments',[])}))
+          PYCF
+      - name: Observe public runtime and storefront responses
+        shell: bash
+        run: |
+          python3 - <<'PYHTTP'
+          import concurrent.futures, hashlib, json, urllib.request, urllib.error
+          urls=[f'https://{host}/api/runtime-provenance' for host in ('portal.mylegnd.com','client.mylegnd.com','masterapp-protect.azurewebsites.net','masterapp-parfait.azurewebsites.net')]
+          urls+=['https://masterapp-website.azurewebsites.net/_deployment-provenance.txt','https://mylegnd.com/store','https://protect.mylegnd.com/store','https://masterapp-parfait.azurewebsites.net/store']
+          def observe(url):
+              try:
+                  try: response=urllib.request.urlopen(urllib.request.Request(url,headers={'Cache-Control':'no-cache'}),timeout=20)
+                  except urllib.error.HTTPError as error: response=error
+                  with response:
+                      body=response.read(262144)
+                      data={'url':url,'status':response.status,'finalUrl':response.url,'server':response.headers.get('Server'),'bytes':len(body),'sha256':hashlib.sha256(body).hexdigest()}
+                      if 'provenance' in url: data['provenance']=body.decode('utf-8','replace')[:1500]
+                      return data
+              except Exception as error: return {'url':url,'unavailable':type(error).__name__}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+              for result in pool.map(observe,urls): print(json.dumps(result))
+          PYHTTP
