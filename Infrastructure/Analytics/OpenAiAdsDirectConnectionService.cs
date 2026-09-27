@@ -17,6 +17,14 @@ public sealed record OpenAiAdsProviderAccountSnapshot(
     string ReviewStatus,
     string? ReviewReason);
 
+public sealed record OpenAiAdsMeasurementCapabilitySnapshot(
+    string Status,
+    int? HttpStatusCode,
+    string? Detail)
+{
+    public bool ApiAvailable => Status is "available" or "configured";
+}
+
 public interface IOpenAiAdsDirectConnectionService
 {
     Task<OpenAiAdsConnectionSnapshot> ConnectAsync(
@@ -33,12 +41,18 @@ public interface IOpenAiAdsDirectConnectionService
     Task<OpenAiAdsProviderAccountSnapshot?> InspectAsync(
         MarketingOwnerScope owner,
         CancellationToken cancellationToken = default);
+
+    Task<OpenAiAdsMeasurementCapabilitySnapshot?> InspectMeasurementAsync(
+        MarketingOwnerScope owner,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// Verifies an account-scoped OpenAI Advertiser API key against the provider,
-/// projects live provider account readiness, and provisions canonical conversion
-/// resources through the existing MarketingConnection authority.
+/// then persists that verified binding through the canonical MarketingConnection
+/// authority. Conversion provisioning is intentionally fail-soft: an independently
+/// unavailable measurement capability never invalidates a successfully verified ad
+/// account or replaces existing measurement secrets.
 /// </summary>
 public sealed class OpenAiAdsDirectConnectionService(
     HttpClient httpClient,
@@ -55,6 +69,9 @@ public sealed class OpenAiAdsDirectConnectionService(
         ArgumentNullException.ThrowIfNull(owner);
         var key = CleanKey(advertiserApiKey);
 
+        // Account verification is the connection authority. Measurement setup is a
+        // separate provider capability and must never turn a verified account into a
+        // failed connection.
         var provider = await ReadAccountAsync(key, cancellationToken);
         var existing = await authority.GetAsync(owner, cancellationToken);
         var sameAccount = existing.Connected &&
@@ -76,7 +93,7 @@ public sealed class OpenAiAdsDirectConnectionService(
             Role: null,
             ReviewStatus: provider.ReviewStatus,
             AuthorizationMethod: OpenAiAdsAuthorizationMethods.ApiKey,
-            Permissions: new[] { "ad_account.read", "conversion_setup" },
+            Permissions: new[] { "ad_account.read" },
             PixelId: measurement.PixelId,
             ConversionDataSourceId: measurement.DataSourceId,
             VerifiedUtc: DateTime.UtcNow);
@@ -120,6 +137,29 @@ public sealed class OpenAiAdsDirectConnectionService(
         return await ReadAccountAsync(secrets.ManagementApiKey, cancellationToken);
     }
 
+    public async Task<OpenAiAdsMeasurementCapabilitySnapshot?> InspectMeasurementAsync(
+        MarketingOwnerScope owner,
+        CancellationToken cancellationToken = default)
+    {
+        var connection = await authority.GetAsync(owner, cancellationToken);
+        if (!connection.Connected) return null;
+        if (connection.PixelConfigured && connection.ConversionsApiConfigured)
+            return new("configured", null, "Pixel and Conversions API are configured.");
+
+        var secrets = await authority.GetSecretsAsync(owner, cancellationToken);
+        if (string.IsNullOrWhiteSpace(secrets.ManagementApiKey)) return null;
+
+        var pixels = await ListPixelsAsync(secrets.ManagementApiKey, cancellationToken);
+        if (pixels.Status != "available") return new(pixels.Status, pixels.HttpStatusCode, pixels.Detail);
+
+        return new(
+            "available",
+            pixels.HttpStatusCode,
+            connection.PixelConfigured
+                ? "Pixel capability is available; Conversions API setup is incomplete."
+                : "Conversion provisioning is available; measurement setup is incomplete.");
+    }
+
     private async Task<(string? PixelId, string? DataSourceId, string? ConversionsApiKey)> ResolveMeasurementAsync(
         string key,
         string accountName,
@@ -127,28 +167,39 @@ public sealed class OpenAiAdsDirectConnectionService(
         OpenAiAdsConnectionSecrets existingSecrets,
         CancellationToken cancellationToken)
     {
+        // Preserve anything already working. Provisioning never clears canonical
+        // measurement state just because the provider temporarily rejects a setup call.
         string? pixelId = existing?.PixelId;
         string? dataSourceId = existing?.ConversionDataSourceId;
         string? capiKey = existingSecrets.ConversionsApiKey;
 
         if (string.IsNullOrWhiteSpace(pixelId) || string.IsNullOrWhiteSpace(dataSourceId))
         {
-            var listed = await TryListPixelsAsync(key, cancellationToken);
-            if (listed.Available && listed.Source is not null)
+            var listed = await ListPixelsAsync(key, cancellationToken);
+            if (listed.Source is not null)
             {
                 pixelId = listed.Source.Value.PixelId;
                 dataSourceId = listed.Source.Value.Id;
             }
-            else if (listed.Available)
+            else if (listed.Status == "available")
             {
-                var created = await CreatePixelAsync(key, $"{accountName} website", cancellationToken);
-                pixelId = created.PixelId;
-                dataSourceId = created.Id;
+                var created = await TryCreatePixelAsync(key, $"{accountName} website", cancellationToken);
+                if (created.Source is not null)
+                {
+                    pixelId = created.Source.Value.PixelId;
+                    dataSourceId = created.Source.Value.Id;
+                }
             }
         }
 
         if (string.IsNullOrWhiteSpace(capiKey))
-            capiKey = await TryCreateConversionsApiKeyAsync(key, $"{accountName} production conversions", cancellationToken);
+        {
+            var createdKey = await TryCreateConversionsApiKeyAsync(
+                key,
+                $"{accountName} production conversions",
+                cancellationToken);
+            capiKey = createdKey.ApiKey;
+        }
 
         return (pixelId, dataSourceId, capiKey);
     }
@@ -182,32 +233,43 @@ public sealed class OpenAiAdsDirectConnectionService(
             ReadNested(root, "review", "reason"));
     }
 
-    private async Task<(bool Available, (string Id, string PixelId)? Source)> TryListPixelsAsync(
+    private async Task<(string Status, int? HttpStatusCode, string? Detail, (string Id, string PixelId)? Source)> ListPixelsAsync(
         string key,
         CancellationToken cancellationToken)
     {
         using var request = CreateRequest(HttpMethod.Get, $"{BaseUrl}/conversions/pixels", key);
         using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound) return (false, null);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
         if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"OpenAI Pixel lookup failed with HTTP {(int)response.StatusCode}.");
-
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-        if (!json.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
-            return (true, null);
-
-        foreach (var item in data.EnumerateArray())
         {
-            var id = ReadString(item, "id");
-            var pixelId = ReadString(item, "pixel_id");
-            if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(pixelId))
-                return (true, (id!, pixelId!));
+            var status = MeasurementStatus(response.StatusCode);
+            return (status, (int)response.StatusCode, SafeProviderDetail(body, status), null);
         }
 
-        return (true, null);
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            if (!json.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                return ("provider_error", (int)response.StatusCode, "OpenAI returned an invalid Pixel list response.", null);
+
+            foreach (var item in data.EnumerateArray())
+            {
+                var id = ReadString(item, "id");
+                var candidatePixelId = ReadString(item, "pixel_id");
+                if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(candidatePixelId))
+                    return ("available", (int)response.StatusCode, null, (id!, candidatePixelId!));
+            }
+
+            return ("available", (int)response.StatusCode, null, null);
+        }
+        catch (JsonException)
+        {
+            return ("provider_error", (int)response.StatusCode, "OpenAI returned an invalid Pixel list response.", null);
+        }
     }
 
-    private async Task<(string Id, string PixelId)> CreatePixelAsync(
+    private async Task<(string Status, int? HttpStatusCode, string? Detail, (string Id, string PixelId)? Source)> TryCreatePixelAsync(
         string key,
         string name,
         CancellationToken cancellationToken)
@@ -220,13 +282,25 @@ public sealed class OpenAiAdsDirectConnectionService(
         using var response = await httpClient.SendAsync(request, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"OpenAI Pixel provisioning failed with HTTP {(int)response.StatusCode}.");
+        {
+            var status = MeasurementStatus(response.StatusCode);
+            return (status, (int)response.StatusCode, SafeProviderDetail(body, status), null);
+        }
 
-        using var json = JsonDocument.Parse(body);
-        return (Required(json.RootElement, "id", 200), Required(json.RootElement, "pixel_id", 200));
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            var id = Required(json.RootElement, "id", 200);
+            var pixelId = Required(json.RootElement, "pixel_id", 200);
+            return ("configured", (int)response.StatusCode, null, (id, pixelId));
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return ("provider_error", (int)response.StatusCode, "OpenAI returned an invalid Pixel creation response.", null);
+        }
     }
 
-    private async Task<string?> TryCreateConversionsApiKeyAsync(
+    private async Task<(string Status, int? HttpStatusCode, string? Detail, string? ApiKey)> TryCreateConversionsApiKeyAsync(
         string key,
         string name,
         CancellationToken cancellationToken)
@@ -237,13 +311,61 @@ public sealed class OpenAiAdsDirectConnectionService(
             key,
             new { name });
         using var response = await httpClient.SendAsync(request, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound) return null;
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"OpenAI Conversions API key provisioning failed with HTTP {(int)response.StatusCode}.");
+        {
+            var status = MeasurementStatus(response.StatusCode);
+            return (status, (int)response.StatusCode, SafeProviderDetail(body, status), null);
+        }
 
-        using var json = JsonDocument.Parse(body);
-        return Required(json.RootElement, "api_key", 4096);
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            return ("configured", (int)response.StatusCode, null, Required(json.RootElement, "api_key", 4096));
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return ("provider_error", (int)response.StatusCode, "OpenAI returned an invalid Conversions API key response.", null);
+        }
+    }
+
+    private static string MeasurementStatus(HttpStatusCode statusCode) => statusCode switch
+    {
+        HttpStatusCode.NotFound => "not_enabled",
+        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "not_authorized",
+        _ when (int)statusCode >= 500 => "provider_unavailable",
+        _ => "provider_error"
+    };
+
+    private static string SafeProviderDetail(string body, string status)
+    {
+        var fallback = status switch
+        {
+            "not_enabled" => "OpenAI has not enabled Ads API conversion provisioning for this ad account.",
+            "not_authorized" => "This Advertiser API credential cannot manage conversion provisioning for this ad account.",
+            "provider_unavailable" => "OpenAI conversion provisioning is temporarily unavailable.",
+            _ => "OpenAI rejected the conversion provisioning request."
+        };
+
+        if (string.IsNullOrWhiteSpace(body)) return fallback;
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            var root = json.RootElement;
+            var detail = ReadString(root, "message")
+                         ?? ReadString(root, "detail")
+                         ?? (root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
+                             ? ReadString(error, "message")
+                             : null);
+            if (string.IsNullOrWhiteSpace(detail)) return fallback;
+            detail = detail.Trim();
+            if (detail.Length > 240) detail = detail[..240];
+            return detail.Any(char.IsControl) ? fallback : detail;
+        }
+        catch (JsonException)
+        {
+            return fallback;
+        }
     }
 
     private static HttpRequestMessage CreateRequest(HttpMethod method, string url, string key)
