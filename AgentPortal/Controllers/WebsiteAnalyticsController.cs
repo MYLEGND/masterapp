@@ -84,7 +84,7 @@ namespace AgentPortal.Controllers;
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var initialQualityMode = ResolveInitialQualityMode(qualityMode);
         range = CloneRangeWithQualityMode(range, initialQualityMode);
-        var summary = await LoadSummarySafelyAsync(range, scope);
+        var summary = await LoadSummarySafelyAsync(range, scope, cancellationToken: HttpContext.RequestAborted);
         summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         ViewData["InitialRangePreset"] = range.Preset;
         ViewData["InitialRangeLabel"] = range.Label;
@@ -594,11 +594,12 @@ namespace AgentPortal.Controllers;
     private async Task<SummaryKpiDto> LoadSummarySafelyAsync(
         TimeRangeRequest range,
         ScopeContext scope,
-        TrafficType trafficType = TrafficType.All)
+        TrafficType trafficType = TrafficType.All,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            return await _analytics.GetSummaryAsync(range, scope, trafficType);
+            return await _analytics.GetSummaryAsync(range, scope, trafficType, cancellationToken);
         }
         catch (Exception ex) when (IsAnalyticsTimeout(ex))
         {
@@ -678,11 +679,11 @@ namespace AgentPortal.Controllers;
         => TrafficQualityBucketFilters.ToClientValue(qualityMode);
 
     [HttpGet("summary")]
-    public async Task<IActionResult> Summary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
+    public async Task<IActionResult> Summary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic, CancellationToken cancellationToken = default)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await LoadSummarySafelyAsync(range, scope, trafficType);
+        var result = await LoadSummarySafelyAsync(range, scope, trafficType, cancellationToken);
         result.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         return Json(result);
     }
