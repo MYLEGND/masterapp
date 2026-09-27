@@ -209,7 +209,7 @@ public sealed class PromotionOrchestrationService(
         PromotionProposalRequest request,
         CancellationToken ct)
     {
-        if (owner.CommerceBusinessId is not Guid businessId || actor.CommerceBusinessId != businessId)
+        if (owner.CommerceBusinessId is not Guid businessId)
             throw new InvalidOperationException("Products can only be promoted inside their owning business scope.");
 
         var id = (request.SourceId ?? string.Empty).Trim();
