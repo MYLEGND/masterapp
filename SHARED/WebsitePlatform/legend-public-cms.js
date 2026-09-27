@@ -8,7 +8,8 @@
     apiBase: renderInput.runtime?.apiBase || '',
     businessId: renderInput.business.id,
     trackingAsset: renderInput.runtime?.trackingAsset || '/legend-public-tracking.js',
-    metaSignalAsset: renderInput.runtime?.metaSignalAsset || '/legend-public-meta-signal-intelligence.js'
+    metaSignalAsset: renderInput.runtime?.metaSignalAsset || '/legend-public-meta-signal-intelligence.js',
+    openAiMeasurementAsset: renderInput.runtime?.openAiMeasurementAsset || '/legend-public-openai-measurement.js'
   } : null);
   if (!context || !context.siteKey || typeof context.apiBase !== 'string') return;
 
@@ -2251,6 +2252,13 @@
 
       const meta = payload.meta || {};
       initializeMetaPixel(meta.pixelId);
+
+      const openai = payload.openai || {};
+      if (openai.enabled && openai.pixelId) {
+        await loadRuntimeScript(context.openAiMeasurementAsset || '/legend-public-openai-measurement.js');
+        await window.LegendOpenAiMeasurement?.configure?.({ pixelId: openai.pixelId });
+      }
+
       await loadRuntimeScript(context.trackingAsset || '/legend-public-tracking.js');
       await loadRuntimeScript(context.metaSignalAsset || '/legend-public-meta-signal-intelligence.js');
       if (meta.enabled && window.metaSignalIntelligence?.createLandingSession) {
