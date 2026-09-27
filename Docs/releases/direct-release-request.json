@@ -1,12 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized fail-forward deployment of the Run #447 validated Website Analytics Marketing Setup refinement. Deploy AgentPortal only. Preserve the fully successful #245 ClientApp, Protect, Parfait, and LEGEND Website releases and do not redeploy them.",
-  "purpose": "Publish the canonical Website Analytics UI refinement and direct ChatGPT Ads connection flow: wide two-column premium modal, server-verified Advertiser API key connection through the existing MarketingConnection authority, and semantic green/orange/red health states. No parallel settings, credentials, analytics, or attribution source.",
-  "requestId": "openai-direct-connect-marketing-setup-ui-20260926-r1",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36289215753",
-  "validatedHead": "0e7a724d4aeeec5b9c995f7c8edd689c87d38524",
-  "promotedMerge": "5dc4f3cfd926ce402ddcbd7c2bef3df62036adad",
-  "preserveSuccessfulRelease": "https://github.com/MYLEGND/masterapp/actions/runs/36287540976",
+  "authorization": "Founder authorized deployment of the Run #451 validated ChatGPT Ads account-readiness and measurement-provisioning correction. Deploy AgentPortal only. Preserve all successful releases of ClientApp, Protect, Parfait, and LEGEND Website; do not redeploy them.",
+  "purpose": "Publish the canonical ChatGPT Ads readiness correction: live provider account status/review/currency/timezone projection, separate authentication vs account readiness, canonical server-side Verify/Refresh using the stored encrypted Advertiser API key, automatic reuse/provisioning of the OpenAI web Pixel and separate Conversions API key when supported, and precise green/orange/red health states in Website Analytics > Marketing Setup.",
+  "requestId": "openai-account-readiness-measurement-provisioning-20260926-r1",
+  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36292053724",
+  "validatedHead": "cd8878a12bd7b0d376b80b1bf78cf163c68bfbcf",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"
