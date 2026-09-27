@@ -49,28 +49,26 @@ jobs:
 
           migration_file="$(find Infrastructure/Migrations -maxdepth 1 -type f -name '*_SyncCanonicalMarketingModel20260927.cs' ! -name '*.Designer.cs' | head -n 1)"
           test -n "$migration_file"
-          cat > "$migration_file" <<'CS'
-using Microsoft.EntityFrameworkCore.Migrations;
-
-#nullable disable
-
-namespace Infrastructure.Migrations;
-
-public partial class SyncCanonicalMarketingModel20260927 : Migration
-{
-    protected override void Up(MigrationBuilder migrationBuilder)
-    {
-        // Snapshot-only synchronization. Schema operations are owned by the preceding
-        // additive canonical marketing migrations already present in this release.
-    }
-
-    protected override void Down(MigrationBuilder migrationBuilder)
-    {
-        // Snapshot-only synchronization; no schema rollback is performed here.
-    }
-}
-CS
-
+          printf '%s\n' \
+            'using Microsoft.EntityFrameworkCore.Migrations;' \
+            '' \
+            '#nullable disable' \
+            '' \
+            'namespace Infrastructure.Migrations;' \
+            '' \
+            'public partial class SyncCanonicalMarketingModel20260927 : Migration' \
+            '{' \
+            '    protected override void Up(MigrationBuilder migrationBuilder)' \
+            '    {' \
+            '        // Snapshot-only synchronization. Schema operations are owned by the preceding' \
+            '        // additive canonical marketing migrations already present in this release.' \
+            '    }' \
+            '' \
+            '    protected override void Down(MigrationBuilder migrationBuilder)' \
+            '    {' \
+            '        // Snapshot-only synchronization; no schema rollback is performed here.' \
+            '    }' \
+            '}' > "$migration_file"
           dotnet build Infrastructure/Infrastructure.csproj -c Release --no-restore --nologo -warnaserror
           dotnet tool run dotnet-ef migrations has-pending-model-changes \
             --project Infrastructure/Infrastructure.csproj \
