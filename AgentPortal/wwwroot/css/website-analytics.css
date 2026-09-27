@@ -8957,3 +8957,168 @@ body {
     flex-direction: column;
   }
 }
+
+
+/* ── Steps 11-13 growth economics and OpenAI readiness ── */
+.wa-growth-economics {
+  margin: 0 0 16px;
+  padding: 17px;
+  border: 1px solid rgba(214,178,94,.26);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0 0, rgba(214,178,94,.1), transparent 34%),
+    rgba(5,15,31,.58);
+}
+.wa-growth-economics-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px,1fr));
+  gap: 9px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+.wa-growth-economics-summary > div,
+.wa-growth-economics-card {
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 14px;
+  background: rgba(255,255,255,.03);
+}
+.wa-growth-economics-summary > div {
+  min-width: 130px;
+  padding: 12px 13px;
+}
+.wa-growth-economics-summary span,
+.wa-growth-economics-summary strong {
+  display: block;
+}
+.wa-growth-economics-summary span {
+  color: rgba(232,238,248,.56);
+  font-size: .66rem;
+}
+.wa-growth-economics-summary strong {
+  margin-top: 3px;
+  font-size: .9rem;
+}
+.wa-growth-economics-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(180px,1fr));
+  gap: 9px;
+  overflow-x: auto;
+}
+.wa-growth-economics-card {
+  min-width: 180px;
+  padding: 13px;
+}
+.wa-growth-economics-metrics {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+}
+.wa-growth-economics-metrics span,
+.wa-growth-economics-metrics strong {
+  display: block;
+}
+.wa-growth-economics-metrics span {
+  color: rgba(232,238,248,.54);
+  font-size: .63rem;
+}
+.wa-growth-economics-metrics strong {
+  margin-top: 2px;
+  font-size: .8rem;
+  overflow-wrap: anywhere;
+}
+.marketing-setup-readiness,
+.marketing-setup-product-feed {
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 15px;
+  background: rgba(255,255,255,.025);
+}
+.marketing-setup-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.marketing-setup-readiness-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 12px;
+  background: rgba(0,0,0,.14);
+}
+.marketing-setup-readiness-step.is-complete {
+  border-color: rgba(121,210,164,.24);
+}
+.marketing-setup-readiness-step.is-open {
+  border-color: rgba(226,191,112,.22);
+}
+.marketing-setup-readiness-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  border-radius: 999px;
+  background: rgba(214,178,94,.14);
+  color: #e5c67c;
+  font-weight: 900;
+  font-size: .72rem;
+}
+.marketing-setup-readiness-step.is-complete .marketing-setup-readiness-mark {
+  background: rgba(94,190,139,.15);
+  color: #94dfb7;
+}
+.marketing-setup-readiness-step strong,
+.marketing-setup-readiness-step small {
+  display: block;
+}
+.marketing-setup-readiness-step strong {
+  font-size: .76rem;
+}
+.marketing-setup-readiness-step small {
+  margin-top: 2px;
+  color: rgba(231,237,247,.57);
+  font-size: .66rem;
+  line-height: 1.35;
+}
+.marketing-setup-feed-summary {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.marketing-setup-feed-summary > div {
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 11px;
+  background: rgba(0,0,0,.13);
+}
+.marketing-setup-feed-summary span,
+.marketing-setup-feed-summary strong {
+  display: block;
+}
+.marketing-setup-feed-summary span {
+  color: rgba(231,237,247,.55);
+  font-size: .64rem;
+}
+.marketing-setup-feed-summary strong {
+  margin-top: 2px;
+  font-size: .82rem;
+}
+.marketing-setup-feed-summary p {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: #efc582;
+  font-size: .7rem;
+}
+@media (max-width: 800px) {
+  .wa-growth-economics-summary { grid-template-columns: repeat(3,minmax(130px,1fr)); }
+  .marketing-setup-readiness-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 575.98px) {
+  .wa-growth-economics-summary { grid-template-columns: repeat(2,minmax(125px,1fr)); }
+  .marketing-setup-feed-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
