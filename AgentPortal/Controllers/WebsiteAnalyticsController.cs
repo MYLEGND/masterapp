@@ -1653,6 +1653,50 @@ namespace AgentPortal.Controllers;
         }
     }
 
+    [HttpGet("growth-economics")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> GrowthEconomics(
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] string? preset = null,
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        [FromQuery] Shared.Analytics.TrafficQualityMode qualityMode = Shared.Analytics.TrafficQualityMode.RealHumanTraffic,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        try
+        {
+            var range = TimeRangeRequest.FromPreset(
+                string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
+                fromUtc,
+                toUtc,
+                GetViewerTimeZone(),
+                qualityMode);
+            var scope = await ResolveScopeAsync(agentProfileId, team: false);
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IBlendedGrowthEconomicsService>();
+            return Json(await service.GetAsync(owner, scope, range, cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or Infrastructure.Analytics.OpenAiAdsExecutionException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("openai-onboarding")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> OpenAiOnboarding(
+        [FromQuery] Guid? agentProfileId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsOnboardingService>();
+        try { return Json(await service.GetAsync(owner, cancellationToken)); }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or Infrastructure.Analytics.OpenAiAdsExecutionException)
+        { return BadRequest(new { message = ex.Message }); }
+    }
+
     [HttpGet("meta-campaigns")]
     public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
