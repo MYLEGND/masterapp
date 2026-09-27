@@ -12,6 +12,7 @@ using ProtectWebsite.Services.Tracking;
 using ProtectWebsite.Services.Communication;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
+using Shared.Analytics;
 namespace Protect_Website.Controllers
 {
     [Route("Quote")]
