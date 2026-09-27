@@ -1,0 +1,468 @@
+using System.Text.Json;
+using Domain.Entities;
+using Infrastructure.Analytics;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Shared.Analytics;
+
+namespace Infrastructure.WebsiteEditing;
+
+public interface IPromotionOrchestrationService
+{
+    Task<PromotionDraft> DraftAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        PromotionProposalRequest request,
+        CancellationToken ct = default);
+
+    Task<AdvertisingActionProposalSnapshot> ProposeAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        PromotionProposalRequest request,
+        string proposedByUserId,
+        CancellationToken ct = default);
+}
+
+public sealed class PromotionOrchestrationService(
+    MasterAppDbContext db,
+    IConfiguration configuration,
+    IAdvertisingActionAuthorizationService authorizations) : IPromotionOrchestrationService
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public async Task<PromotionDraft> DraftAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        PromotionProposalRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.DailyBudgetMicros < 1_000_000)
+            throw new ArgumentException("Promotion budget must be at least one unit of the account currency per day.", nameof(request));
+
+        var status = OpenAiAdsEntityStatuses.NormalizeCreate(request.Status);
+        var biddingType = OpenAiAdsBiddingTypes.Normalize(request.BiddingType);
+        if (biddingType == OpenAiAdsBiddingTypes.Conversions && string.IsNullOrWhiteSpace(request.ConversionEventSettingId))
+            throw new ArgumentException("Select a standard conversion event setting for conversion optimization.", nameof(request));
+
+        var source = await ResolveSourceAsync(actor, owner, request, ct);
+        var hints = BuildContextHints(source, request.ContextHints);
+        var alternatives = BuildAlternatives(source, hints);
+        var selected = string.IsNullOrWhiteSpace(request.SelectedCreativeKey)
+            ? alternatives[0]
+            : alternatives.SingleOrDefault(x => string.Equals(x.Key, request.SelectedCreativeKey, StringComparison.Ordinal))
+              ?? throw new ArgumentException("Selected creative alternative does not exist.", nameof(request));
+
+        var plan = BuildPlan(source, selected, request, status, biddingType, hints);
+        return new(
+            source,
+            Objective: string.IsNullOrWhiteSpace(request.Goal) ? "Promote " + source.DisplayName : request.Goal.Trim(),
+            biddingType,
+            request.DailyBudgetMicros,
+            request.ConversionEventSettingId,
+            alternatives,
+            selected.Key,
+            plan);
+    }
+
+    public async Task<AdvertisingActionProposalSnapshot> ProposeAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        PromotionProposalRequest request,
+        string proposedByUserId,
+        CancellationToken ct = default)
+    {
+        var draft = await DraftAsync(actor, owner, request, ct);
+        var sourceJson = JsonSerializer.SerializeToElement(new
+        {
+            draft.Source,
+            draft.Objective,
+            draft.BiddingType,
+            draft.DailyBudgetMicros,
+            draft.ConversionEventSettingId,
+            creativeAlternatives = draft.Alternatives,
+            selectedCreativeKey = draft.SelectedAlternativeKey
+        }, JsonOptions);
+
+        return await authorizations.ProposeAsync(
+            owner,
+            proposalKind: "promote_this",
+            draft.Plan,
+            proposedByUserId,
+            sourceJson,
+            ct);
+    }
+
+    private async Task<PromotionSourceSnapshot> ResolveSourceAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        PromotionProposalRequest request,
+        CancellationToken ct)
+    {
+        var kind = (request.SourceKind ?? string.Empty).Trim().ToLowerInvariant();
+        return kind switch
+        {
+            PromotionSourceKinds.Product => await ResolveProductAsync(actor, owner, request, ct),
+            PromotionSourceKinds.Service => await ResolveServiceAsync(actor, owner, request, ct),
+            PromotionSourceKinds.WebsitePage => await ResolveWebsitePageAsync(actor, owner, request, ct),
+            _ => throw new ArgumentException("Promotion source must be website_page, service, or product.", nameof(request))
+        };
+    }
+
+    private async Task<PromotionSourceSnapshot> ResolveProductAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        PromotionProposalRequest request,
+        CancellationToken ct)
+    {
+        if (owner.CommerceBusinessId is not Guid businessId || actor.CommerceBusinessId != businessId)
+            throw new InvalidOperationException("Products can only be promoted inside their owning business scope.");
+
+        var id = (request.SourceId ?? string.Empty).Trim();
+        if (id.Length == 0) throw new ArgumentException("Select a product to promote.", nameof(request));
+
+        var product = await db.CommerceProducts.AsNoTracking()
+            .Include(x => x.Images)
+            .SingleOrDefaultAsync(x =>
+                x.CommerceBusinessId == businessId &&
+                x.IsActive &&
+                (x.Id.ToString() == id || x.Slug == id), ct)
+            ?? throw new InvalidOperationException("The selected product is not active in this business.");
+
+        var business = await ActiveBusinessAsync(businessId, ct);
+        var root = await BusinessPublicBaseAsync(businessId, ct);
+        var state = await PublishedStateAsync(actor, ct);
+        var image = product.Images.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.DisplayOrder)
+            .Select(x => x.ImageUrl)
+            .FirstOrDefault(IsHttpUrl);
+
+        return new(
+            PromotionSourceKinds.Product,
+            product.Id.ToString("D"),
+            product.Name,
+            Clean(product.Description, 4000),
+            $"{root}/store/product/{Uri.EscapeDataString(product.Slug)}",
+            image,
+            Clean(product.PriceLabel, 100),
+            business.DisplayName,
+            business.BusinessType,
+            state.Version.Id,
+            state.Version.Revision,
+            DateTime.UtcNow);
+    }
+
+    private async Task<PromotionSourceSnapshot> ResolveServiceAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        PromotionProposalRequest request,
+        CancellationToken ct)
+    {
+        if (owner.CommerceBusinessId is not Guid businessId || actor.CommerceBusinessId != businessId)
+            throw new InvalidOperationException("Service promotion uses the owning business service facts.");
+
+        var requested = Clean(request.SourceId, 500)
+            ?? throw new ArgumentException("Select a service to promote.", nameof(request));
+        var facts = await WebsiteBusinessFacts.LoadAsync(db, businessId, ct);
+        var services = (facts.Services ?? string.Empty)
+            .Split(new[] { '\r', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var service = services.FirstOrDefault(x => string.Equals(x, requested, StringComparison.OrdinalIgnoreCase))
+            ?? services.FirstOrDefault(x => x.Contains(requested, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("The selected service is not present in the canonical business service facts.");
+
+        var business = await ActiveBusinessAsync(businessId, ct);
+        var root = await BusinessPublicBaseAsync(businessId, ct);
+        var published = await PublishedStateAsync(actor, ct);
+        var document = ReadDocument(published.Version.DocumentJson);
+        var pagePath = NormalizePagePath(request.PagePath);
+        var page = document.Pages.TryGetValue(pagePath, out var found) ? found : document.Pages.GetValueOrDefault("/");
+        var image = FindHttpImage(page);
+
+        return new(
+            PromotionSourceKinds.Service,
+            service,
+            service,
+            "Service offered by " + business.DisplayName,
+            root + (pagePath == "/" ? string.Empty : pagePath),
+            image,
+            null,
+            business.DisplayName,
+            business.BusinessType,
+            published.Version.Id,
+            published.Version.Revision,
+            DateTime.UtcNow);
+    }
+
+    private async Task<PromotionSourceSnapshot> ResolveWebsitePageAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        PromotionProposalRequest request,
+        CancellationToken ct)
+    {
+        var published = await PublishedStateAsync(actor, ct);
+        var document = ReadDocument(published.Version.DocumentJson);
+        var path = NormalizePagePath(request.PagePath);
+        if (!document.Pages.TryGetValue(path, out var page) || page.Navigation.IsDeleted)
+            throw new InvalidOperationException("Only an existing published website page can be promoted.");
+
+        var baseUrl = await PublicBaseAsync(actor, owner, ct);
+        var title = Clean(page.Title, 300) ?? (path == "/" ? "Home" : path.Trim('/'));
+        var description = Clean(page.Description, 4000);
+        string? businessName = null;
+        string? businessType = null;
+        if (owner.CommerceBusinessId is Guid businessId)
+        {
+            var business = await ActiveBusinessAsync(businessId, ct);
+            businessName = business.DisplayName;
+            businessType = business.BusinessType;
+        }
+
+        return new(
+            PromotionSourceKinds.WebsitePage,
+            path,
+            title,
+            description,
+            baseUrl + (path == "/" ? string.Empty : path),
+            FindHttpImage(page),
+            null,
+            businessName,
+            businessType,
+            published.Version.Id,
+            published.Version.Revision,
+            DateTime.UtcNow);
+    }
+
+    private AdvertisingMutationPlan BuildPlan(
+        PromotionSourceSnapshot source,
+        PromotionCreativeAlternative creative,
+        PromotionProposalRequest request,
+        string status,
+        string biddingType,
+        IReadOnlyList<string> hints)
+    {
+        if (!IsHttpUrl(creative.ImageUrl))
+            throw new InvalidOperationException("The selected promotion source has no approved HTTP(S) image. Resolve an image before creating an executable promotion proposal.");
+
+        var seed = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(source.SourceKind + "\n" + source.SourceId + "\n" + source.LandingUrl + "\n" + creative.Key)))
+            .ToLowerInvariant()[..24];
+
+        var targeting = new OpenAiAdsTargeting(
+            Countries: CleanList(request.Countries, 250, 10),
+            Platforms: CleanList(request.Platforms, 3, 20));
+
+        var campaign = new OpenAiAdsCampaignCreateRequest(
+            Name: Trim($"{source.DisplayName} · ChatGPT Ads", 1000),
+            Status: status,
+            Budget: new(DailySpendLimitMicros: request.DailyBudgetMicros),
+            BiddingType: biddingType,
+            Targeting: targeting,
+            ConversionEventSettingId: request.ConversionEventSettingId,
+            Description: Clean(request.Goal, 4000),
+            IdempotencyKey: "legend-promote-campaign-" + seed);
+
+        var strategy = biddingType switch
+        {
+            OpenAiAdsBiddingTypes.Conversions => OpenAiAdsBiddingStrategies.MaximizeConversions,
+            OpenAiAdsBiddingTypes.Clicks => OpenAiAdsBiddingStrategies.MaximizeClicks,
+            _ => OpenAiAdsBiddingStrategies.FixedBid
+        };
+        if (strategy == OpenAiAdsBiddingStrategies.FixedBid)
+            throw new InvalidOperationException("Promote This requires an explicit manual bid before an impressions campaign can be proposed.");
+
+        var group = new OpenAiAdsAdGroupCreateRequest(
+            CampaignId: "pending-parent",
+            Name: Trim(source.DisplayName + " audience", 1000),
+            Status: status,
+            Bidding: new(strategy),
+            ContextHints: hints,
+            Description: "LEGEND Promote This context",
+            IdempotencyKey: "legend-promote-group-" + seed);
+
+        var upload = JsonSerializer.SerializeToElement(new { imageUrl = creative.ImageUrl }, JsonOptions);
+        var ad = new OpenAiAdsAdCreateRequest(
+            AdGroupId: "pending-parent",
+            Name: Trim(creative.Name, 1000),
+            Creative: new(
+                OpenAiAdsCreativeTypes.ChatCard,
+                Trim(creative.Title, 50),
+                Trim(creative.Body, 100),
+                creative.TargetUrl,
+                FileId: null,
+                Price: creative.PriceLabel),
+            Status: status,
+            IdempotencyKey: "legend-promote-ad-" + seed);
+
+        return new(
+            Trim("Promote " + source.DisplayName, 300),
+            [
+                new("campaign", AdvertisingActionTypes.CampaignCreate, JsonSerializer.SerializeToElement(campaign, JsonOptions)),
+                new("ad-group", AdvertisingActionTypes.AdGroupCreate, JsonSerializer.SerializeToElement(group, JsonOptions), ParentStepKey: "campaign"),
+                new("creative", AdvertisingActionTypes.CreativeUploadUrl, upload),
+                new("ad", AdvertisingActionTypes.AdCreate, JsonSerializer.SerializeToElement(ad, JsonOptions), ParentStepKey: "ad-group", CreativeStepKey: "creative")
+            ]);
+    }
+
+    private static IReadOnlyList<PromotionCreativeAlternative> BuildAlternatives(
+        PromotionSourceSnapshot source,
+        IReadOnlyList<string> hints)
+    {
+        var name = Trim(source.DisplayName, 50);
+        var description = Clean(source.Description, 100) ?? $"Discover {name}.";
+        var business = Clean(source.BusinessName, 50);
+
+        return new[]
+        {
+            new PromotionCreativeAlternative(
+                "direct",
+                Trim(name + " · Direct", 1000),
+                Trim(name, 50),
+                Trim(description, 100),
+                source.LandingUrl,
+                source.ImageUrl,
+                source.PriceLabel,
+                hints),
+            new PromotionCreativeAlternative(
+                "benefit",
+                Trim(name + " · Benefit", 1000),
+                Trim("Explore " + name, 50),
+                Trim(business is null ? $"See what {name} can do for you." : $"See why customers choose {business}.", 100),
+                source.LandingUrl,
+                source.ImageUrl,
+                source.PriceLabel,
+                hints),
+            new PromotionCreativeAlternative(
+                "action",
+                Trim(name + " · Action", 1000),
+                Trim("Get started today", 50),
+                Trim($"Learn more about {name} and take the next step.", 100),
+                source.LandingUrl,
+                source.ImageUrl,
+                source.PriceLabel,
+                hints)
+        };
+    }
+
+    private static IReadOnlyList<string> BuildContextHints(
+        PromotionSourceSnapshot source,
+        IReadOnlyList<string>? requested)
+    {
+        var values = new List<string>();
+        if (!string.IsNullOrWhiteSpace(source.DisplayName)) values.Add(source.DisplayName);
+        if (!string.IsNullOrWhiteSpace(source.BusinessType)) values.Add(source.BusinessType!);
+        if (!string.IsNullOrWhiteSpace(source.BusinessName)) values.Add(source.BusinessName!);
+        if (requested is not null) values.AddRange(requested);
+
+        return values
+            .Select(x => Clean(x, 500))
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(20)
+            .ToArray();
+    }
+
+    private async Task<(WebsiteContentState State, WebsiteContentVersion Version)> PublishedStateAsync(
+        WebsiteEditorTicket actor,
+        CancellationToken ct)
+    {
+        var state = await db.Set<WebsiteContentState>().AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OwnerKey == actor.OwnerUserId && x.SiteKey == actor.SiteKey, ct)
+            ?? throw new InvalidOperationException("The website has no canonical content state.");
+        if (state.PublishedVersionId is not Guid versionId)
+            throw new InvalidOperationException("Publish the website before promoting it.");
+
+        var version = await db.Set<WebsiteContentVersion>().AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == versionId && x.StateId == state.Id, ct)
+            ?? throw new InvalidOperationException("The published website version is unavailable.");
+        return (state, version);
+    }
+
+    private async Task<string> PublicBaseAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        CancellationToken ct)
+    {
+        if (owner.CommerceBusinessId is Guid businessId)
+            return await BusinessPublicBaseAsync(businessId, ct);
+
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Legend)
+            return (configuration["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/');
+
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Protect && !string.IsNullOrWhiteSpace(actor.AgentSlug))
+            return (configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') +
+                   "/a/" + Uri.EscapeDataString(actor.AgentSlug.Trim());
+
+        throw new InvalidOperationException("No canonical public landing base is available for this website scope.");
+    }
+
+    private async Task<string> BusinessPublicBaseAsync(Guid businessId, CancellationToken ct)
+    {
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var hostname = await db.Set<WebsiteDomainBinding>().AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId &&
+                        x.Status == "active" &&
+                        x.CertificateStatus == "active" &&
+                        x.LastCheckedUtc >= cutoff)
+            .OrderBy(x => x.CreatedUtc)
+            .Select(x => x.Hostname)
+            .FirstOrDefaultAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(hostname))
+            throw new InvalidOperationException("A verified active custom domain is required before promoting this business website.");
+        return "https://" + hostname.Trim().TrimEnd('.');
+    }
+
+    private async Task<CommerceBusiness> ActiveBusinessAsync(Guid businessId, CancellationToken ct) =>
+        await db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(
+            x => x.Id == businessId && x.IsActive && x.Status == "Active", ct)
+        ?? throw new InvalidOperationException("The business is not active.");
+
+    private static WebsiteContentDocument ReadDocument(string json) =>
+        WebsiteContentSanitizer.Sanitize(
+            JsonSerializer.Deserialize<WebsiteContentDocument>(json, JsonOptions) ?? new());
+
+    private static string NormalizePagePath(string? value)
+    {
+        var path = string.IsNullOrWhiteSpace(value) ? "/" : value.Trim();
+        if (!path.StartsWith('/')) path = "/" + path;
+        if (path.Length > 1) path = path.TrimEnd('/');
+        if (path.Contains("..", StringComparison.Ordinal) || path.Contains('?', StringComparison.Ordinal) || path.Contains('#', StringComparison.Ordinal))
+            throw new ArgumentException("Choose a canonical website page path.", nameof(value));
+        return path;
+    }
+
+    private static string? FindHttpImage(WebsitePageDocument? page)
+    {
+        if (page is null) return null;
+        var values = page.Elements.Values.Select(x => x.ImageDataUrl)
+            .Concat(page.Extras.Select(x => x.ImageDataUrl));
+        return values.FirstOrDefault(IsHttpUrl);
+    }
+
+    private static bool IsHttpUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
+
+    private static IReadOnlyList<string>? CleanList(IReadOnlyList<string>? values, int maxCount, int maxLength)
+    {
+        if (values is null) return null;
+        if (values.Count > maxCount) throw new ArgumentException("Too many promotion targeting values.");
+        return values.Select(x => Clean(x, maxLength) ?? throw new ArgumentException("Promotion targeting values cannot be blank."))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? Clean(string? value, int max)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var text = new string(value.Trim().Where(ch => !char.IsControl(ch) || ch is '\n' or '\t').Take(max).ToArray());
+        return text.Length == 0 ? null : text;
+    }
+
+    private static string Trim(string value, int max) =>
+        value.Length <= max ? value : value[..max];
+}
