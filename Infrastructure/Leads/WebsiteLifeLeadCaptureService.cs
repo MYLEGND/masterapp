@@ -9,6 +9,7 @@ using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Shared.Analytics;
 
 namespace Infrastructure.Leads;
 
