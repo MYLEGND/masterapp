@@ -135,6 +135,9 @@ public sealed class MarketingDestinationLayerTests
         public Task<OpenAiAdsConnectionSnapshot> GetAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default) =>
             Task.FromResult(new OpenAiAdsConnectionSnapshot(owner, false, false, Guid.Empty, null, null, null, null, null, null, null, [], null, null, false, false, null, null, null));
 
+        public Task<OpenAiAdsConnectionSecrets> GetSecretsAsync(MarketingOwnerScope owner, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new OpenAiAdsConnectionSecrets());
+
         public Task<OpenAiAdsConnectionSnapshot> BindVerifiedAsync(MarketingOwnerScope owner, VerifiedOpenAiAdsAccount verifiedAccount, OpenAiAdsConnectionSecrets secrets, Guid? expectedRevision = null, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
