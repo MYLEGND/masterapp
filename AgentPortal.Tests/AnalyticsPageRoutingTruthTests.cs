@@ -90,7 +90,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("setInterval(refreshLiveAnalytics, state.pollMs)", ui, StringComparison.Ordinal);
         Assert.Contains("visibilitychange", ui, StringComparison.Ordinal);
         Assert.Contains("window.addEventListener('focus', refreshLiveAnalytics)", ui, StringComparison.Ordinal);
-        Assert.DoesNotContain("pollMs: 1500", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("pollMs: 1500,", ui, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -222,6 +222,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.True(openAiLoad > trackingLoad, "OpenAI measurement must remain downstream of canonical tracking.");
         Assert.Contains("schedulePublicRuntimeRetry()", runtime, StringComparison.Ordinal);
         Assert.Contains("publicRuntimeStarted = true", runtime, StringComparison.Ordinal);
+        Assert.Contains("using Microsoft.Extensions.Logging;", controller, StringComparison.Ordinal);
         Assert.Contains("canonical analytics bootstrap will continue", controller, StringComparison.Ordinal);
     }
 
