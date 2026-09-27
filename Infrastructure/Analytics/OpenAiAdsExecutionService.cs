@@ -614,8 +614,12 @@ public sealed class OpenAiAdsExecutionService(
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
             throw new ArgumentException("ChatGPT Ads target URL must be an absolute HTTP(S) URL.", nameof(value));
-        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        if (!string.IsNullOrWhiteSpace(query["oppref"]) || !string.IsNullOrWhiteSpace(query["olref"]))
+        var query = uri.Query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split('=', 2)[0])
+            .Select(Uri.UnescapeDataString);
+        if (query.Any(key => string.Equals(key, "oppref", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(key, "olref", StringComparison.OrdinalIgnoreCase)))
             throw new ArgumentException("ChatGPT Ads target URL must not contain oppref or olref attribution parameters.", nameof(value));
     }
 
