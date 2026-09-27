@@ -69,7 +69,7 @@ jobs:
             '        // Snapshot-only synchronization; no schema rollback is performed here.' \
             '    }' \
             '}' > "$migration_file"
-          dotnet build Infrastructure/Infrastructure.csproj -c Release --no-restore --nologo -warnaserror
+          dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo -warnaserror
           dotnet tool run dotnet-ef migrations has-pending-model-changes \
             --project Infrastructure/Infrastructure.csproj \
             --startup-project AgentPortal/AgentPortal.csproj \
