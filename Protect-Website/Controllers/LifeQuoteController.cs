@@ -397,16 +397,6 @@ if (!ModelState.IsValid)
                 var submittedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(submittedCtx);
                 UnifiedAnalyticsWriter.Write(_db, submittedAnalyticsEvent);
 
-                var persistedCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
-                    lead,
-                    "lead_persisted",
-                    eventMetadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    lead.CreatedUtc);
-                var persistedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(persistedCtx);
-                UnifiedAnalyticsWriter.Write(_db, persistedAnalyticsEvent);
                 await _db.SaveChangesAsync();
 
                         }))
@@ -419,7 +409,7 @@ if (!ModelState.IsValid)
                 pageMode.EffectivePageKey,
                 cfg.OfferKey,
                 HttpContext?.RequestAborted ?? CancellationToken.None);
-                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = "lead_" + lead.LeadId.ToString("N"), booking = replayBookingHint });
+                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), booking = replayBookingHint });
                     return RedirectToAction("Index", "ThankYou");
                 }
                 _logger.LogInformation(
@@ -564,7 +554,7 @@ if (!ModelState.IsValid)
                     });
             }
 
-            var metaLeadEventId = "lead_" + lead.LeadId.ToString("N");
+            var metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead);
             await TryPersistMetaTrackingAsync(
                 lead,
                 correlationId,
@@ -2155,6 +2145,8 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
         {
             return UnifiedEventContextBuilder.Build(
                 httpContext: HttpContext,
+                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
+                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
                 eventName: eventType,
                 eventUtc: eventUtc,
                 sessionId: lead.SessionId,

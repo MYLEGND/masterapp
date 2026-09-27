@@ -29,20 +29,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var ids = await ResolveScopedAgentIdsAsync(scope);
         var query = _db.MetaSignalEvents.AsNoTracking().ApplySiteScope(scope)
             .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
-        if (scope.ScopeType == ScopeType.Agent)
-        {
-            var allowed = ids is { Length: > 0 } ? ids : new[] { scope.AgentTrackingProfileId ?? Guid.Empty };
-            query = query.Where(x => x.AgentTrackingProfileId.HasValue && allowed.Contains(x.AgentTrackingProfileId.Value));
-        }
-        else if (scope.ScopeType == ScopeType.Founder)
-        {
-            var allowed = ids is { Length: > 0 } ? ids : new[] { scope.AgentTrackingProfileId ?? Guid.Empty };
-            query = query.Where(x =>
-                (x.AgentTrackingProfileId.HasValue && allowed.Contains(x.AgentTrackingProfileId.Value)) ||
-                (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
-                 (x.MetadataJson.Contains("\"siteKey\":\"legend\"") ||
-                  x.MetadataJson.Contains("\"reportingOwner\":\"founder\""))));
-        }
+        query = query.Where(ScopePredicateMetaEvents(scope, ids));
         var sessions = events.Select(x => x.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         var visitors = events.Select(x => x.VisitorId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         return await query.Where(x => (!string.IsNullOrWhiteSpace(x.SessionId) && sessions.Contains(x.SessionId)) ||
@@ -326,7 +313,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return e => false;
 
-        if (scope.HasSiteScope)
+        if (scope.HasSiteScope && scope.ScopeType == ScopeType.Global)
             return e => true;
 
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
@@ -342,11 +329,50 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return e => true;
     }
 
-    private static Expression<Func<WebsiteLead, bool>> ScopePredicateLeads(ScopeContext scope, Guid[]? scopedAgentIds)
+    internal static Expression<Func<MetaSignalEvent, bool>> ScopePredicateMetaEvents(ScopeContext scope, Guid[]? scopedAgentIds)
     {
         if (scope.ScopeType == ScopeType.Business)
             return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
+                return e => false;
+
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            return e => e.CommerceBusinessId == null &&
+                ((e.AgentTrackingProfileId.HasValue && founderIds.Contains(e.AgentTrackingProfileId.Value)) ||
+                 (!e.AgentTrackingProfileId.HasValue && e.MetadataJson != null &&
+                  (e.MetadataJson.Contains("\"siteKey\":\"legend\"") ||
+                   e.MetadataJson.Contains("\"reportingOwner\":\"founder\""))));
+        }
+        if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
+            (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
+            return e => false;
+
+        if (scope.HasSiteScope && scope.ScopeType == ScopeType.Global)
+            return e => true;
+
+        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
+        {
+            if (scopedAgentIds != null && scopedAgentIds.Length > 0)
+            {
+                return e => e.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(e.AgentTrackingProfileId.Value);
+            }
+            var agentId = scope.AgentTrackingProfileId.Value;
+            return e => e.AgentTrackingProfileId == agentId;
+        }
+        // founder/global: include all, including null/unattributed
+        return e => true;
+    }
+
+    internal static Expression<Func<WebsiteLead, bool>> ScopePredicateLeads(ScopeContext scope, Guid[]? scopedAgentIds)
+    {
+        if (scope.ScopeType == ScopeType.Business)
+            return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
+                !scope.HasSiteScope && scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
         if (scope.ScopeType == ScopeType.Founder)
         {
             if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
@@ -383,31 +409,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     /// Expands an agent scope to all tracking profile IDs sharing the same UPN.
     /// This prevents analytics drop-offs when duplicate profile rows exist for one user.
     /// </summary>
-    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope)
-    {
-        if ((scope.ScopeType != ScopeType.Agent && scope.ScopeType != ScopeType.Founder) || !scope.AgentTrackingProfileId.HasValue)
-            return null;
-
-        var selectedId = scope.AgentTrackingProfileId.Value;
-        var upn = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.Id == selectedId)
-            .Select(p => p.AgentUpn)
-            .FirstOrDefaultAsync();
-
-        if (string.IsNullOrWhiteSpace(upn))
-            return new[] { selectedId };
-
-        var ids = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.AgentUpn == upn)
-            .Select(p => p.Id)
-            .Distinct()
-            .ToListAsync();
-
-        if (!ids.Contains(selectedId))
-            ids.Add(selectedId);
-
-        return ids.ToArray();
-    }
+    private Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope) =>
+        AnalyticsTrackingProfileScope.ResolveAsync(_db, scope);
 
     private static string? NormalizeEnv(string? env)
     {
@@ -1851,7 +1854,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (!string.IsNullOrWhiteSpace(fetchUrl))
             return fetchUrl!;
 
-        return "/api/analytics/ingest";
+        return "/api/tracking/ingest";
     }
 
     private static string BuildTrackingErrorWarningSummary(int count, MarketingHealthTrackingErrorDto? recentError)

@@ -14,7 +14,10 @@ using Infrastructure.Data;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using MarketingOwnerScope = Shared.Analytics.MarketingOwnerScope;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -110,7 +113,51 @@ public class WebsiteAnalyticsInitialQualityModeTests
         finally { Environment.SetEnvironmentVariable("FOUNDER_OID", previous); }
     }
 
-    private static WebsiteAnalyticsController BuildController(MasterAppDbContext db, AgentTrackingProfile profile)
+    [Fact]
+    public async Task FounderMetaStatusSettingsAndDisconnectUseOnlyFounderOwner()
+    {
+        var previous = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var oid = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", oid);
+        try
+        {
+            using var db = ControllerTestHelpers.BuildDb();
+            var profile = SeedTrackingProfile(db);
+            profile.AgentUserId = oid;
+            profile.AgentUpn = "founder@example.com";
+            await db.SaveChangesAsync();
+            var controller = BuildController(db, profile);
+            var store = controller.HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
+            await store.SaveAdsAsync(MarketingOwnerScope.Founder, new Shared.Analytics.MetaAdsConnectionRecord { AccessToken = "founder-token", AccountId = "founder-account" });
+            await store.SaveAdsAsync(MarketingOwnerScope.Agent(profile.Id), new Shared.Analytics.MetaAdsConnectionRecord { AgentTrackingProfileId = profile.Id, AccessToken = "agent-token", AccountId = "legacy-agent-account" });
+            var status = Assert.IsType<MetaAdsConnectionStatusDto>(Assert.IsType<JsonResult>(await controller.MetaConnectionStatus(profile.Id)).Value);
+            Assert.Equal("founder-account", status.AccountId);
+            var method = typeof(WebsiteAnalyticsController).GetMethod("GetMarketingSettingsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            var settings = await (Task<MarketingConnection>)method.Invoke(controller, new object[] { profile, MarketingOwnerScope.Founder, CancellationToken.None })!;
+            Assert.Equal(MarketingOwnerScope.Founder.Key, settings.OwnerKey);
+            await controller.MetaDisconnect(profile.Id);
+            Assert.Null(await store.GetAdsAsync(MarketingOwnerScope.Founder));
+            Assert.Equal("legacy-agent-account", (await store.GetAdsAsync(MarketingOwnerScope.Agent(profile.Id)))!.AccountId);
+        }
+        finally { Environment.SetEnvironmentVariable("FOUNDER_OID", previous); }
+    }
+
+    [Fact]
+    public async Task MetaCallbackRejectsForeignOwnerBeforeExchangeOrSave()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = SeedTrackingProfile(db);
+        await db.SaveChangesAsync();
+        var oauth = new Mock<IMetaAdsOAuthService>();
+        oauth.Setup(x => x.InspectState("state")).Returns(new Infrastructure.Analytics.MarketingMetaOAuthState(
+            MarketingOwnerScope.Agent(Guid.NewGuid()), "/WebsiteAnalytics/Index", "https://example.com/callback"));
+        var controller = BuildController(db, profile, oauth.Object);
+        Assert.IsType<ForbidResult>(await controller.MetaCallback("code", "state"));
+        oauth.Verify(x => x.CompleteCallbackAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(db.MarketingConnections);
+    }
+
+    private static WebsiteAnalyticsController BuildController(MasterAppDbContext db, AgentTrackingProfile profile, IMetaAdsOAuthService? oauth = null)
     {
         var analyticsConfig = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -148,7 +195,10 @@ public class WebsiteAnalyticsInitialQualityModeTests
             new Claim("preferred_username", "agent@example.com")
         }, "TestAuth"));
 
-        var http = new DefaultHttpContext { User = user };
+        var services = new ServiceCollection();
+        services.AddSingleton(new Infrastructure.Analytics.MarketingConnectionStore(db,
+            new Infrastructure.Analytics.MarketingCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"))));
+        var http = new DefaultHttpContext { User = user, RequestServices = services.BuildServiceProvider() };
         var accessor = new HttpContextAccessor { HttpContext = http };
         var effective = new EffectiveAgentContext(accessor, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);
         var protector = new MetaCapiCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"));
@@ -156,8 +206,7 @@ public class WebsiteAnalyticsInitialQualityModeTests
         return new WebsiteAnalyticsController(
             analytics,
             metaAds,
-            Mock.Of<IMetaAdsOAuthService>(),
-            Mock.Of<IMetaAdsConnectionStore>(),
+            oauth ?? Mock.Of<IMetaAdsOAuthService>(),
             tracking.Object,
             metaSignalAnalytics,
             landingRoutes.Object,
@@ -172,7 +221,8 @@ public class WebsiteAnalyticsInitialQualityModeTests
             effective,
             protector)
         {
-            ControllerContext = new ControllerContext { HttpContext = http }
+            ControllerContext = new ControllerContext { HttpContext = http },
+            TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>())
         };
     }
 

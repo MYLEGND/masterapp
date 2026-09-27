@@ -337,7 +337,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             CommerceBusinessId = scope.CommerceBusinessId,
             WebsiteContentVersionId = scope.PublishedVersion?.Id,
             WebsiteBindingId = submissionBinding?.Id ?? Optional(request.SourceFormElementId, 120) ?? lead.SourceCtaKey,
-            EventId = scope.SiteKey + "_lead_" + lead.LeadId.ToString("N"),
+            EventId = CanonicalLeadEventIdentity.Resolve(lead),
             EventName = leadEvent.Name,
             EventCategory = leadEvent.Category,
             EventUtc = lead.CreatedUtc,

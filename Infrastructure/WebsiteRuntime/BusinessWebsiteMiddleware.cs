@@ -39,10 +39,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         // APIs retain their own authenticated/business-scoped authorities. Resolve the host first.
         if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) ||
             path == "/api/website-inquiries/public" ||
-            path == "/api/tracking/ingest" ||
-            path == "/api/analytics/ingest" ||
-            path == "/analytics/meta-signal" ||
-            path == "/analytics/business-page")
+            path == "/api/tracking/ingest")
         {
             await next(context);
             return;

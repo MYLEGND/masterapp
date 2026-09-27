@@ -124,31 +124,8 @@ public sealed class MetaAdsService : IMetaAdsService
         };
     }
 
-    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct)
-    {
-        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
-            return null;
-
-        var selectedId = scope.AgentTrackingProfileId.Value;
-        var upn = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.Id == selectedId)
-            .Select(p => p.AgentUpn)
-            .FirstOrDefaultAsync(ct);
-
-        if (string.IsNullOrWhiteSpace(upn))
-            return new[] { selectedId };
-
-        var ids = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.AgentUpn == upn)
-            .Select(p => p.Id)
-            .Distinct()
-            .ToListAsync(ct);
-
-        if (!ids.Contains(selectedId))
-            ids.Add(selectedId);
-
-        return ids.ToArray();
-    }
+    private Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct) =>
+        AnalyticsTrackingProfileScope.ResolveAsync(_db, scope, ct);
 
     private async Task<Dictionary<string, long>> BuildWebsiteLeadCountsAsync(
         TimeRangeRequest range,
@@ -338,11 +315,7 @@ public sealed class MetaAdsService : IMetaAdsService
         _db.MetaSignalEvents.AsNoTracking()
             .Where(e => e.CreatedUtc >= range.FromUtc && e.CreatedUtc <= range.ToUtc)
             .ApplySiteScope(scope)
-            .Where(e => scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue
-                ? true
-                : scopedAgentIds != null
-                    ? e.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(e.AgentTrackingProfileId.Value)
-                    : e.AgentTrackingProfileId == scope.AgentTrackingProfileId.Value);
+            .Where(AnalyticsQueryService.ScopePredicateMetaEvents(scope, scopedAgentIds));
 
     private IQueryable<WebsiteLead> BaseWebsiteLeadsWithoutQualityFilter(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
         _db.WebsiteLeads.AsNoTracking()
@@ -395,31 +368,8 @@ public sealed class MetaAdsService : IMetaAdsService
         QualityMode = qualityMode
     };
 
-    private static System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadScopePredicate(ScopeContext scope, Guid[]? scopedAgentIds)
-    {
-        if (scope.ScopeType == ScopeType.Business)
-        {
-            if (scope.CommerceBusinessId is not { } businessId || businessId == Guid.Empty || scope.AgentTrackingProfileId.HasValue || scope.HasSiteScope)
-                return l => false;
-            return l => l.CommerceBusinessId == businessId && l.AgentTrackingProfileId == null;
-        }
-
-        if (scope.HasSiteScope)
-            return l => false;
-
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
-        {
-            if (scopedAgentIds != null && scopedAgentIds.Length > 0)
-            {
-                return l => l.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(l.AgentTrackingProfileId.Value);
-            }
-
-            var agentId = scope.AgentTrackingProfileId.Value;
-            return l => l.AgentTrackingProfileId == agentId;
-        }
-
-        return l => true;
-    }
+    private static System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadScopePredicate(ScopeContext scope, Guid[]? scopedAgentIds) =>
+        AnalyticsQueryService.ScopePredicateLeads(scope, scopedAgentIds);
 
     private static string? NormalizeCampaignKey(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -521,6 +471,12 @@ public sealed class MetaAdsService : IMetaAdsService
                     .AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct))
                     owner = MarketingOwnerScope.Business(businessId);
             }
+            else if (scope.ScopeType == ScopeType.Founder &&
+                     scope.AgentTrackingProfileId is { } founderId &&
+                     founderId != Guid.Empty && !scope.CommerceBusinessId.HasValue)
+            {
+                owner = MarketingOwnerScope.Founder;
+            }
             else if (scope.ScopeType == ScopeType.Agent &&
                      scope.AgentTrackingProfileId is { } agentId &&
                      agentId != Guid.Empty &&
@@ -555,7 +511,8 @@ public sealed class MetaAdsService : IMetaAdsService
         // This never permits a business/founder to inherit another owner's account.
         if (scope.ScopeType == ScopeType.Agent &&
             scope.AgentTrackingProfileId.HasValue &&
-            scope.AgentTrackingProfileId.Value != Guid.Empty)
+            scope.AgentTrackingProfileId.Value != Guid.Empty &&
+            !scope.CommerceBusinessId.HasValue && !scope.HasSiteScope)
         {
             var connection = await _connectionStore.GetAsync(scope.AgentTrackingProfileId.Value, ct);
             if (connection != null && !string.IsNullOrWhiteSpace(connection.AccessToken))
@@ -567,7 +524,8 @@ public sealed class MetaAdsService : IMetaAdsService
         // A recognized scoped analytics owner without a canonical connection is
         // explicitly disconnected. Global configuration is reserved for genuinely
         // unscoped legacy/global callers and cannot satisfy a tenant-scoped request.
-        if (scope.ScopeType == ScopeType.Business || scope.HasSiteScope)
+        if (scope.ScopeType != ScopeType.Global || scope.HasSiteScope ||
+            scope.AgentTrackingProfileId.HasValue || scope.CommerceBusinessId.HasValue)
             return (string.Empty, string.Empty);
 
         var token = (_config["MetaAds:AccessToken"] ?? string.Empty).Trim();

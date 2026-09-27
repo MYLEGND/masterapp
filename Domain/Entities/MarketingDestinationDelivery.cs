@@ -14,6 +14,10 @@ public sealed class MarketingDestinationDelivery
 
     public string Provider { get; set; } = string.Empty;
     public string Channel { get; set; } = string.Empty;
+    public long? MetaSignalEventId { get; set; }
+    public long? AnalyticsEventId { get; set; }
+    public string? AdvertiserAccountId { get; set; }
+    public string? ConversionDataSourceId { get; set; }
     public string CanonicalSource { get; set; } = string.Empty;
     public string CanonicalEventId { get; set; } = string.Empty;
     public string CanonicalEventName { get; set; } = string.Empty;

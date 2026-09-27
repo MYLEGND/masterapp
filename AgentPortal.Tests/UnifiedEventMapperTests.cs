@@ -74,7 +74,8 @@ public class UnifiedEventMapperTests
         var analyticsEvent = UnifiedEventMapper.ToAnalytics(context);
 
         Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isBrowserSignal"));
-        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isServerAuthority"));
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isServerAuthority"));
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "measurementServerAuthorityEligible"));
         Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaServerAuthorityEligible"));
         Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaSingleTruthDispatchEligible"));
         Assert.Equal(

@@ -532,7 +532,6 @@
       sendServerEvents: rawConfig?.sendServerEvents !== false,
       persistEvents: rawConfig?.persistEvents !== false,
       debugMode: Boolean(rawConfig?.debugMode),
-      endpoint: asTrimmed(rawConfig?.endpoint) || '/analytics/meta-signal',
       pixelId: asTrimmed(rawConfig?.pixelId),
       siteKey: asTrimmed(rawConfig?.siteKey),
       quoteType: asTrimmed(rawConfig?.quoteType) || 'life',
@@ -1237,35 +1236,20 @@
       }
     }
 
-    async function postSignal(payload, useBeacon) {
-      if (useBeacon) {
-        try {
-          const json = JSON.stringify(payload);
-          const blob = new Blob([json], { type: 'application/json' });
-          if (navigator.sendBeacon && navigator.sendBeacon(config.endpoint, blob)) {
-            return { accepted: true, queued: true, metaServerStatus: 'beacon_queued' };
-          }
-        } catch {
-          // fall through to fetch
-        }
-      }
-
-      try {
-        const response = await fetch(config.endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          keepalive: true,
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-          return { accepted: false, metaServerStatus: 'http_error' };
-        }
-
-        return await response.json().catch(() => ({ accepted: true }));
-      } catch {
-        return { accepted: false, metaServerStatus: 'network_error' };
-      }
+    async function postSignal(payload) {
+      const analytics = window.LegendAnalytics;
+      if (!analytics?.track) return { accepted: false, status: 'canonical_runtime_unavailable' };
+      const accepted = await analytics.track({
+        ClientEventId: payload.eventId,
+        EventType: payload.eventName,
+        SiteKey: payload.siteKey,
+        WebsiteBindingId: payload.websiteBindingId,
+        PageKey: payload.pageKey,
+        QuoteType: payload.quoteType,
+        MetaSignal: payload,
+        MetadataJson: JSON.stringify(payload.metadata || {})
+      });
+      return { accepted, status: accepted ? 'canonical_ingest_accepted' : 'canonical_ingest_failed' };
     }
 
         function resolveClientContext() {
@@ -1338,7 +1322,41 @@
           }
         }
 
+    const signalAliases = window.LegendAnalytics?.signalAliases || {};
+    const trackerOwnedSignals = new Set(Object.entries(signalAliases)
+      .filter(([source, signal]) => source !== signal).map(([, signal]) => signal));
+    const projectedEventIds = new Set();
+    function projectCanonical(body) {
+      const eventName = signalAliases[body.EventType];
+      let bindingMetadata = {}; try { bindingMetadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
+      if ((!eventName && !bindingMetadata.configuredSignalBindings?.length) || projectedEventIds.has(body.ClientEventId)) return;
+      projectedEventIds.add(body.ClientEventId);
+      const metadata = body.MetaSignal?.metadata || {};
+      if (!body.MetaSignal) applyEventToState(eventName, null, metadata);
+      const score = computeScore();
+      const attribution = resolveAttribution();
+      const pixelPayload = buildPixelPayload(body.MetaSignal?.stepNumber || null,
+        body.MetaSignal?.stepName || null, score, metadata, attribution);
+      let canonicalMetadata = {}; try { canonicalMetadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
+      const bindings = canonicalMetadata.configuredSignalBindings;
+      const projections = Array.isArray(bindings) && bindings.length
+        ? bindings.filter(binding => binding.deliveryMode === 'meta' && !binding.duplicateBinding).map(binding => binding.eventName)
+        : metadata.configuredDeliveryMode === 'analytics' ? [] : [eventName];
+      for (const projection of new Set(projections)) {
+        const status = fireBrowserPixel(projection, body.ClientEventId, pixelPayload);
+        if (status === 'invoked') {
+          void window.LegendAnalytics.track({EventType:'meta_browser_event_success',
+            MetadataJson:JSON.stringify({sourceEventId:body.ClientEventId, signalName:projection, browserDispatchStatus:status})});
+        }
+      }
+      saveState();
+      maybeFireThresholdEvents(score);
+    }
+
     async function emitSignal(eventName, options = {}) {
+      // The tracker already owns these actions. Provider/session state is updated
+      // by its accepted envelope; never manufacture another source event here.
+      if (trackerOwnedSignals.has(eventName) && !options.metadata?.configuredWebsiteSignal) return null;
       const onceKey = options.onceKey || null;
       if (onceKey && state.fired[onceKey]) {
         debug(`Duplicate prevented for ${eventName}`, { onceKey, eventId: state.fired[onceKey] });
@@ -1364,12 +1382,8 @@
         metadata,
         buildLearningEnrichment(eventName, score, clientContext, attribution, metadata)
       );
-      const browserPixelPayload = buildPixelPayload(stepNumber, stepName, score, enrichedMetadata, attribution);
-      const browserDispatchStatus = options.sendBrowserPixel === false
-        ? 'suppressed_by_mapping'
-        : fireBrowserPixel(eventName, eventId, browserPixelPayload);
-      const browserEventSent = browserDispatchStatus === 'invoked';
-      enrichedMetadata.browserDispatchStatus = browserDispatchStatus;
+      const browserEventSent = false; // Projection follows canonical acceptance.
+      enrichedMetadata.browserDispatchStatus = 'awaiting_canonical_ingest';
       const payload = {
         siteKey: config.siteKey || null,
         websiteBindingId: asTrimmed(metadata?.websiteBindingId || metadata?.actionKey) || null,
@@ -1637,35 +1651,6 @@
       });
     }
 
-    function wireScrollTracking() {
-      const onScroll = () => {
-        const doc = document.documentElement;
-        const body = document.body;
-        const fullHeight = Math.max(doc.scrollHeight, body ? body.scrollHeight : 0);
-        const viewport = window.innerHeight || doc.clientHeight || 0;
-        const maxScrollable = Math.max(1, fullHeight - viewport);
-        const scrolled = Math.max(window.scrollY || window.pageYOffset || doc.scrollTop || 0, 0);
-        const percent = Math.min(100, Math.round((scrolled / maxScrollable) * 100));
-        updateScrollSignals(percent);
-
-        if (percent >= MEANINGFUL_SCROLL_THRESHOLD && !state.fired['meaningful-scroll']) {
-          void emitSignal('MeaningfulScroll', {
-            onceKey: 'meaningful-scroll',
-            metadata: {
-              scrollPercent: percent,
-              midIntentCandidate: percent >= MID_INTENT_SCROLL_THRESHOLD,
-              highIntentCandidate: percent >= HIGH_INTENT_SCROLL_THRESHOLD
-            }
-          });
-        }
-
-        if (percent >= HIGH_INTENT_SCROLL_THRESHOLD && state.fired['meaningful-scroll']) {
-          window.removeEventListener('scroll', onScroll);
-        }
-      };
-
-      window.addEventListener('scroll', onScroll, { passive: true });
-    }
 
     function wireGeneralInteractionTracking() {
       document.addEventListener('pointerdown', registerInteraction, { passive: true });
@@ -1750,40 +1735,14 @@
       });
     }
 
-    function scheduleEngagementTimers() {
-      const elapsed = Date.now() - Number(state.startedAt || Date.now());
-      const wait5s = Math.max(0, 5000 - elapsed);
-      const wait15s = Math.max(0, 15000 - elapsed);
-
-      if (!state.fired['engaged-5s']) {
-        window.setTimeout(() => {
-          if (!state.fired['engaged-5s']) {
-            void emitSignal('SessionEngaged5s', { onceKey: 'engaged-5s' });
-          }
-        }, wait5s);
-      }
-
-      if (!state.fired['engaged-15s']) {
-        window.setTimeout(() => {
-          if (!state.fired['engaged-15s']) {
-            void emitSignal('SessionEngaged15s', { onceKey: 'engaged-15s' });
-          }
-        }, wait15s);
-      }
-    }
-
     function init() {
       wireContactInputs();
-      wireScrollTracking();
       wireGeneralInteractionTracking();
       wireCtaHoverTracking();
       wireDisabledClickTracking();
-      scheduleEngagementTimers();
 
-      if (!state.fired['view-content']) {
-        ensureEarlyMetaCookies();
-        void emitSignal('ViewContent', { onceKey: 'view-content' });
-      }
+      ensureEarlyMetaCookies();
+      window.LegendAnalytics?.subscribe?.(`meta:${config.siteKey}:${state.pageKey}`, projectCanonical);
 
       window.addEventListener('pagehide', maybeTrackAbandon);
 

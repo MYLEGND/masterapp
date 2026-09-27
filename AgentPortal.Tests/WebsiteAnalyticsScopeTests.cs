@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -37,6 +38,9 @@ public class WebsiteAnalyticsScopeTests
             CreatedUtc = DateTime.UtcNow,
             UpdatedUtc = DateTime.UtcNow
         };
+
+        db.AgentTrackingProfiles.Add(trackingProfile);
+        await db.SaveChangesAsync();
 
         var tracking = new Mock<IAgentTrackingService>();
         tracking.Setup(x => x.GetByUserIdAsync("agent-1", It.IsAny<CancellationToken>()))
@@ -68,7 +72,11 @@ public class WebsiteAnalyticsScopeTests
             Mock.Of<IMetaSignalAnalyticsService>(),
             NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance);
 
-        var metaConnections = new Mock<IMetaAdsConnectionStore>();
+        var metaConnections = new Infrastructure.Analytics.MarketingConnectionStore(db,
+            new Infrastructure.Analytics.MarketingCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests")));
+        http.RequestServices = new ServiceCollection().AddSingleton(metaConnections).BuildServiceProvider();
+        await metaConnections.SaveAdsAsync(Shared.Analytics.MarketingOwnerScope.Agent(profileId),
+            new Shared.Analytics.MetaAdsConnectionRecord { AgentTrackingProfileId = profileId, AccessToken = "own-token" });
         analytics.Setup(x => x.LoadAttributedEventsAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), It.IsAny<TrafficType>(), It.IsAny<CancellationToken>()))
             .Callback<TimeRangeRequest, ScopeContext, TrafficType, CancellationToken>((_, scope, _, _) => captured = scope)
             .ReturnsAsync(new List<AnalyticsEvent>());
@@ -78,7 +86,6 @@ public class WebsiteAnalyticsScopeTests
             analytics.Object,
             Mock.Of<IMetaAdsService>(),
             Mock.Of<IMetaAdsOAuthService>(),
-            metaConnections.Object,
             tracking.Object,
             Mock.Of<IMetaSignalAnalyticsService>(),
             Mock.Of<ILandingRouteDiscoveryService>(),
@@ -105,8 +112,10 @@ public class WebsiteAnalyticsScopeTests
         var otherAgent = Guid.NewGuid();
         await controller.VisitorTimeline("shared-visitor", agentProfileId: otherAgent, team: true);
         Assert.Equal(profileId, captured.AgentTrackingProfileId);
-        await controller.MetaDisconnect(otherAgent, team: true);
-        metaConnections.Verify(x => x.DeleteAsync(profileId, It.IsAny<CancellationToken>()), Times.Once);
-        metaConnections.Verify(x => x.DeleteAsync(otherAgent, It.IsAny<CancellationToken>()), Times.Never);
+        await metaConnections.SaveAdsAsync(Shared.Analytics.MarketingOwnerScope.Agent(otherAgent),
+            new Shared.Analytics.MetaAdsConnectionRecord { AgentTrackingProfileId = otherAgent, AccessToken = "foreign-token" });
+        Assert.IsType<JsonResult>(await controller.MetaDisconnect(otherAgent, team: true));
+        Assert.Null(await metaConnections.GetAdsAsync(Shared.Analytics.MarketingOwnerScope.Agent(profileId)));
+        Assert.Equal("foreign-token", (await metaConnections.GetAdsAsync(Shared.Analytics.MarketingOwnerScope.Agent(otherAgent)))!.AccessToken);
     }
 }

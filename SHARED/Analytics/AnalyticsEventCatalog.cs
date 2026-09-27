@@ -141,7 +141,35 @@ public static class AnalyticsEventCatalog
         Define("life_contact_first_complete", "quote", LifeQuotes, "submit", confirmedLead: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["life_contact_first_complete", "submit_success", "confirmed_lead"]),
 
         Define("rage_click", "diagnostic", AllQuotes, "diagnostic", meta: true, allowBrowser: true, dashboardMetrics: ["rage_click"]),
-        Define("dead_click", "diagnostic", AllQuotes, "diagnostic", meta: true, allowBrowser: true, dashboardMetrics: ["dead_click"])
+        Define("dead_click", "diagnostic", AllQuotes, "diagnostic", meta: true, allowBrowser: true, dashboardMetrics: ["dead_click"]),
+        // Shared confirmed outcomes are canonical source events, not provider-created copies.
+        ..MarketingConversionDestinationCatalog.Definitions.Select(definition =>
+            Define(definition.CanonicalEventName, "conversion", AllQuotes, "confirmation",
+                confirmedLead: definition.CanonicalEventName == "Lead", meta: true,
+                allowServer: true, dashboardMetrics: [definition.CanonicalEventName])),
+        Define("ViewContent", "page", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["ViewContent"]),
+        Define("RapidBounce", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["RapidBounce"]),
+        Define("SessionEngaged5s", "engagement", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["SessionEngaged5s"]),
+        Define("SessionEngaged15s", "engagement", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["SessionEngaged15s"]),
+        Define("MeaningfulScroll", "engagement", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["MeaningfulScroll"]),
+        Define("LeadFormStart", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["LeadFormStart"]),
+        Define("DiscoveryComplete", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["DiscoveryComplete"]),
+        Define("FunnelStepComplete", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["FunnelStepComplete"]),
+        Define("RecommendationViewed", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["RecommendationViewed"]),
+        Define("ContactStepReached", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["ContactStepReached"]),
+        Define("ContactInputStarted", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["ContactInputStarted"]),
+        Define("PhoneFieldCompleted", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["PhoneFieldCompleted"]),
+        Define("RequiredContactFieldsCompleted", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["RequiredContactFieldsCompleted"]),
+        Define("FieldError", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["FieldError"]),
+        Define("SubmitAttempt", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["SubmitAttempt"]),
+        Define("HighIntentLeadSignal", "threshold", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["HighIntentLeadSignal"]),
+        Define("LeadReadySignal", "threshold", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["LeadReadySignal"]),
+        Define("Backtrack", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["Backtrack"]),
+        Define("DeadClick", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["DeadClick"]),
+        Define("RageClick", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["RageClick"]),
+        Define("AbandonedHighIntentLead", "abandon", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["AbandonedHighIntentLead"]),
+        Define("ProductViewed", "commerce", AllQuotes, "commerce", meta: true,
+            allowBrowser: true, dashboardMetrics: ["product_view"]),
     ];
 
     private static readonly ReadOnlyDictionary<string, AnalyticsEventDefinition> DefinitionsByNameInternal =

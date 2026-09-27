@@ -2,7 +2,25 @@
   if (window.__legendTrackingInitialized) {
     return;
   }
-  window.__legendTrackingInitialized = true;
+  // Startup is committed only after all listeners and the public API are ready.
+  // A failed attempt releases its resources before the shared loader retries it.
+  const startupCleanup = [];
+  const startupEvents = [];
+  const originalFetch = window.fetch;
+  let startupFailed = false;
+  function listen(target, type, handler, options) {
+    target.addEventListener(type, handler, options);
+    if (!window.__legendTrackingInitialized) startupCleanup.push(() => target.removeEventListener(type, handler, options));
+  }
+  function schedule(callback, delay) {
+    const id = window.setTimeout(callback, delay);
+    if (!window.__legendTrackingInitialized) startupCleanup.push(() => window.clearTimeout(id));
+    return id;
+  }
+  function animate(callback) {
+    return window.requestAnimationFrame(() => { if (!startupFailed) callback(); });
+  }
+  try {
 
   // ============================================================
   // MODULE: CORE CONFIG + SHARED UTILITIES
@@ -102,7 +120,7 @@
   }
 
   function sleep(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
+    return new Promise((resolve) => schedule(resolve, ms));
   }
 
   function asTrimmed(value) {
@@ -499,19 +517,19 @@
     }
   }
 
-  document.addEventListener('mousemove', () => {
+  listen(document, 'mousemove', () => {
     recordHumanInteraction(true);
   }, { passive: true });
 
-  document.addEventListener('pointerdown', () => {
+  listen(document, 'pointerdown', () => {
     recordHumanInteraction(false);
   }, { passive: true });
 
-  document.addEventListener('touchstart', () => {
+  listen(document, 'touchstart', () => {
     recordHumanInteraction(false);
   }, { passive: true });
 
-  document.addEventListener('click', (e) => {
+  listen(document, 'click', (e) => {
     if (e.isTrusted) {
       recordHumanInteraction(false);
     }
@@ -584,6 +602,40 @@
   const TRACKING_SCHEMA_VERSION = 1;
   const TRACKING_RUNTIME_VERSION = '2026.05.stabilized';
 
+  const canonicalBindings = new Map();
+  function enrichBindings(body) {
+    const trigger = body.EventType === 'form_start' ? 'form_started'
+      : body.EventType === 'form_submit_attempt' ? 'submit_attempt'
+      : body.EventType === 'form_field_focus' ? 'field_started'
+      : body.EventType === 'form_field_error' ? 'validation_failed'
+      : body.EventType === 'cta_click' || body.ElementKey ? 'click' : null;
+    if (!trigger) return body;
+    const matches = [];
+    for (const {node, binding, elementId} of canonicalBindings.values()) {
+      if (binding.trigger !== trigger) continue;
+      const form = node.matches?.('form') ? node : node.closest?.('form');
+      const matchesForm = body.FormKey && form && [form.id, form.dataset.formKey].includes(body.FormKey);
+      const matchesElement = body.ElementKey && [elementId, node.id, node.dataset.websiteActionKey, node.dataset.cta].includes(body.ElementKey);
+      if (!(matchesForm || matchesElement)) continue;
+      if (body.FieldName && node.name && node.name !== body.FieldName) continue;
+      const key = `canonical-binding:${getSessionId()}:${binding.id}`;
+      const duplicateBinding = Boolean(binding.oncePerSession && safeStorageGet(window.sessionStorage, key));
+      if (binding.oncePerSession && !duplicateBinding) safeStorageSet(window.sessionStorage, key, body.ClientEventId);
+      matches.push({...binding, elementId, duplicateBinding});
+    }
+    if (matches.length) {
+      let metadata = {}; try { metadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
+      body.MetadataJson = JSON.stringify({...metadata, configuredSignalBindings: matches});
+      body.WebsiteBindingId = matches[0].id;
+    }
+    return body;
+  }
+
+  function canonicalEventId(value) {
+    const compact = String(value || '').replaceAll('-', '');
+    return /^[a-fA-F0-9]{32}$/.test(compact)
+      ? compact.toLowerCase().replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5') : uuid();
+  }
   function buildBody(payload) {
     const sessionId = getSessionId();
     const attribution = resolveCurrentSessionAttribution(payload, sessionId);
@@ -592,7 +644,8 @@
       TrackingVersion: payload.TrackingVersion || payload.trackingVersion || TRACKING_RUNTIME_VERSION,
       SiteKey: payload.SiteKey || ANALYTICS_CONFIG.siteKey || null,
       WebsiteBindingId: payload.WebsiteBindingId || null,
-      ClientEventId: uuid(),
+      ClientEventId: canonicalEventId(payload.ClientEventId),
+      MetaSignal: payload.MetaSignal || null,
       EventType: payload.EventType,
       PageKey: payload.PageKey || PAGE_KEY,
       SectionKey: payload.SectionKey || null,
@@ -654,6 +707,7 @@
   }
 
   async function postBody(body) {
+    body.ClientEventId = canonicalEventId(body.ClientEventId);
     if (!nativeFetch) {
       return {
         ok: false,
@@ -752,10 +806,38 @@
     return result.ok;
   }
 
+  // Accepted canonical envelopes are the only browser projection source. A bounded
+  // replay lets optional providers attach after analytics has already started.
+  const canonicalSubscribers = new Map();
+  const canonicalHistory = [];
+  const canonicalPublished = new Set();
+  function publishCanonical(body) {
+    if (canonicalPublished.has(body.ClientEventId)) return;
+    canonicalPublished.add(body.ClientEventId);
+    const envelope = Object.freeze({ ...body });
+    canonicalHistory.push(envelope);
+    if (canonicalHistory.length > 128) canonicalHistory.shift();
+    for (const listener of canonicalSubscribers.values()) {
+      try { listener(envelope); } catch (error) { debug('optional projection failed', { message: error?.message }); }
+    }
+  }
+  function subscribeCanonical(key, listener) {
+    if (canonicalSubscribers.has(key)) return () => {};
+    canonicalSubscribers.set(key, listener);
+    for (const body of canonicalHistory) {
+      try { listener(body); } catch (error) { debug('optional replay failed', { message: error?.message }); }
+    }
+    return () => canonicalSubscribers.delete(key);
+  }
+
   // ── Async fetch (normal mid-session events) ───────────────────────────────
   async function sendEvent(payload) {
+    if (!window.__legendTrackingInitialized) {
+      startupEvents.push(payload);
+      return false;
+    }
     try {
-      const body = buildBody(payload);
+      const body = enrichBindings(buildBody(payload));
       if (!allowedEvents.has(body.EventType)) {
         debug('blocked uncataloged event', {
           eventType: body.EventType,
@@ -796,14 +878,7 @@
         attempt += 1;
         const result = await postBody(body);
         if (result.ok) {
-          try {
-            window.LegendOpenAiMeasurement?.trackCanonical?.(body);
-          } catch (openAiMeasurementError) {
-            debug('openai measurement projection failed after canonical ingest', {
-              eventType: body.EventType,
-              message: openAiMeasurementError?.message || 'projection_error'
-            });
-          }
+          publishCanonical(body);
           if (
             body.EventType === 'thank_you_view' ||
             body.EventType === 'life_step2_submit_success' ||
@@ -922,14 +997,7 @@
 
       const result = await postBody(queued.body);
       if (result.ok) {
-        try {
-          window.LegendOpenAiMeasurement?.trackCanonical?.(queued.body);
-        } catch (openAiMeasurementError) {
-          debug('openai measurement queued projection failed after canonical ingest', {
-            eventType: queued.body.EventType,
-            message: openAiMeasurementError?.message || 'projection_error'
-          });
-        }
+        publishCanonical(queued.body);
         continue;
       }
       if (!result.ok) {
@@ -1143,26 +1211,26 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     });
   }
 
-  window.addEventListener('scroll', function () {
+  listen(window, 'scroll', function () {
     if (_scrollTicking) return;
 
     _scrollTicking = true;
-    requestAnimationFrame(function () {
+    animate(function () {
       trackScrollDepth();
       _scrollTicking = false;
     });
   }, { passive: true });
 
-  window.addEventListener('resize', function () {
+  listen(window, 'resize', function () {
     trackScrollDepth();
   }, { passive: true });
 
   // Capture initial non-scrollable / already-short pages without waiting for manual scroll.
-  setTimeout(trackScrollDepth, 750);
+  schedule(trackScrollDepth, 750);
 
   // Engagement checkpoints
   [5000, 10000, 15000, 30000, 60000].forEach(function (ms) {
-    setTimeout(function () {
+    schedule(function () {
       if (document.visibilityState === 'visible') {
         sendEvent({
           EventType: 'page_engaged_' + (ms / 1000) + 's',
@@ -1289,7 +1357,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   // ============================================================
 
   function installGlobalDiagnostics() {
-    window.addEventListener('error', function (event) {
+    listen(window, 'error', function (event) {
       const target = event && event.target;
       const sourceUrl =
         target && typeof target.src === 'string' && target.src
@@ -1315,7 +1383,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       });
     }, true);
 
-    window.addEventListener('unhandledrejection', function (event) {
+    listen(window, 'unhandledrejection', function (event) {
       const reason = event && event.reason;
       const message =
         reason && reason.message
@@ -1377,7 +1445,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   }
 
   // ── Visibility/page lifecycle ──────────────────────────────────────────────
-  document.addEventListener('visibilitychange', function () {
+  listen(document, 'visibilitychange', function () {
     recordVisibilityForensics();
 
     if (document.visibilityState === 'hidden') {
@@ -1421,12 +1489,12 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     }
   });
 
-  window.addEventListener('pagehide', function (event) {
+  listen(window, 'pagehide', function (event) {
     fireExitSignals('pagehide', event);
     void flushQueuedEvents('pagehide', { useBeacon: true, maxItems: 15 });
   });
 
-  window.addEventListener('beforeunload', function (event) {
+  listen(window, 'beforeunload', function (event) {
     fireExitSignals('beforeunload', event);
     void flushQueuedEvents('beforeunload', { useBeacon: true, maxItems: 15 });
   });
@@ -1470,7 +1538,6 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
         EventType: 'thank_you_view',
         MetadataJson: buildPageContextMetadata()
       });
-      void flushQueuedEvents('thank_you_load');
     }
   }
 
@@ -1685,24 +1752,24 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     };
 
     const runCheck = (source) => {
-      window.requestAnimationFrame(() => {
+      animate(() => {
         targets.some(target => trackIfVisible(target, source));
       });
     };
 
     runCheck('initial');
-    window.setTimeout(() => runCheck('delayed_150ms'), 150);
-    window.setTimeout(() => runCheck('delayed_600ms'), 600);
-    window.setTimeout(() => runCheck('delayed_1200ms'), 1200);
+    schedule(() => runCheck('delayed_150ms'), 150);
+    schedule(() => runCheck('delayed_600ms'), 600);
+    schedule(() => runCheck('delayed_1200ms'), 1200);
 
     targets.forEach((target) => {
-      target.addEventListener('click', () => {
+      listen(target, 'click', () => {
         trackPrimaryCtaSeen(target, { source: 'cta_click_before_start' });
       });
     });
 
     if (!('IntersectionObserver' in window)) {
-      window.setTimeout(() => runCheck('fallback_no_intersection_observer'), 250);
+      schedule(() => runCheck('fallback_no_intersection_observer'), 250);
       return;
     }
 
@@ -1726,6 +1793,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       threshold: [0, 0.01, 0.1, 0.25]
     });
 
+    startupCleanup.push(() => observer.disconnect());
     targets.forEach((target) => observer.observe(target));
 
     const passiveCheck = () => {
@@ -1737,15 +1805,15 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       }
     };
 
-    window.addEventListener('scroll', passiveCheck, { passive: true });
-    window.addEventListener('resize', passiveCheck);
-    window.addEventListener('pageshow', passiveCheck);
-    window.addEventListener('load', passiveCheck);
+    listen(window, 'scroll', passiveCheck, { passive: true });
+    listen(window, 'resize', passiveCheck);
+    listen(window, 'pageshow', passiveCheck);
+    listen(window, 'load', passiveCheck);
   }
 
   function wireClick(selector, elementKey, eventType) {
     document.querySelectorAll(selector).forEach(el => {
-      el.addEventListener('click', () => {
+      listen(el, 'click', () => {
         if (el instanceof HTMLElement) {
           const existingLock = Number(el.dataset.analyticsClickLockedUntil || '0');
           const now = Date.now();
@@ -1805,7 +1873,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   }
 
   function installManagedWebsiteActionTracking() {
-    document.addEventListener('click', event => {
+    listen(document, 'click', event => {
       const target = event.target?.closest?.('[data-website-action-key]');
       if (!target || target.closest?.('.legend-cms-editor')) return;
       // Protect's original template CTAs retain their existing explicit data-cta
@@ -1827,18 +1895,18 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
           automaticActionContract: true
         })
       });
-      const metaIntent = target.dataset.websiteMetaIntent;
-      const meta = window.LEGEND_PUBLIC_META_SESSION;
-      if (metaIntent === 'ContactStepReached' && meta?.trackContactStepReached) {
-        Promise.resolve(meta.trackContactStepReached({ actionKey, automaticActionContract: true })).catch(() => {});
-      } else if (metaIntent === 'LeadFormStart' && meta?.trackLeadFormStart) {
-        Promise.resolve(meta.trackLeadFormStart({ actionKey, automaticActionContract: true })).catch(() => {});
-      }
+
     }, true);
   }
 
   function wireFormStart(form, formKey) {
     if (!form || form._legendTrackingBound) return;
+    const previousSubmitAttempt = form._trackSubmitAttempt;
+    startupCleanup.push(() => {
+      delete form._legendTrackingBound;
+      if (previousSubmitAttempt === undefined) delete form._trackSubmitAttempt;
+      else form._trackSubmitAttempt = previousSubmitAttempt;
+    });
     form._legendTrackingBound = true;
     const state = ensureFormTrackState(formKey);
     syncFormAttribution(form);
@@ -1846,8 +1914,8 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       state.lastFocusedField = event.target?.name || null;
       fireTrackedFormStartOnce(formKey);
     };
-    form.addEventListener('focusin', handler);
-    form.addEventListener('change', handler);
+    listen(form, 'focusin', handler);
+    listen(form, 'change', handler);
     let submitRevision = 0;
     const isAjax = form.dataset.ajaxSubmit === 'true';
     form._trackSubmitAttempt = (valid, errorCount = 0) => {
@@ -1856,13 +1924,9 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       state.nativeSubmissionPending = Boolean(valid) && !isAjax;
       sendEvent({ EventType: 'form_submit_attempt', FormKey: formKey,
         MetadataJson: JSON.stringify({ valid: Boolean(valid), errorCount: Number(errorCount) || 0 }) });
-      if (window.LEGEND_PUBLIC_META_SESSION?.trackSubmitAttempt) {
-        Promise.resolve(window.LEGEND_PUBLIC_META_SESSION.trackSubmitAttempt({
-          formId: formKey, valid: Boolean(valid), errorCount: Number(errorCount) || 0
-        })).catch(() => {});
-      }
+
     };
-    form.addEventListener('submit', event => {
+    listen(form, 'submit', event => {
       const initialRevision = submitRevision;
       syncFormAttribution(form);
       queueMicrotask(() => {
@@ -1908,16 +1972,6 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     sendEvent({
       clientContext: window.LegendAnalytics?.getClientContext?.() || {},
       EventType: 'form_start', FormKey: formKey });
-    if (PAGE_CATEGORY === 'quote' && allowedEvents.has('lead_form_start')) {
-      sendEvent({
-      clientContext: window.LegendAnalytics?.getClientContext?.() || {},
-      EventType: 'lead_form_start', FormKey: formKey });
-    }
-    if (window.LEGEND_PUBLIC_META_SESSION?.trackLeadFormStart) {
-      Promise.resolve(window.LEGEND_PUBLIC_META_SESSION.trackLeadFormStart({
-        formId: formKey, startSource: 'shared_form_interaction'
-      })).catch(() => {});
-    }
 
     return true;
   }
@@ -1945,8 +1999,6 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   // ============================================================
 
   installGlobalDiagnostics();
-  void flushQueuedEvents('page_load');
-  trackPageView();
   installQuotePrimaryCtaTracking();
   installManagedWebsiteActionTracking();
 
@@ -1996,6 +2048,12 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   // Page scripts should use this boundary instead of calling internal tracking helpers directly.
   window.LegendAnalytics = {
     ...(window.LegendAnalytics || {}),
+    subscribe: subscribeCanonical,
+    registerBinding(node, binding, elementId) {
+      canonicalBindings.set(binding.id, {node, binding, elementId});
+      return () => canonicalBindings.delete(binding.id);
+    },
+    signalAliases: Object.freeze({ ...(ANALYTICS_CONFIG.signalAliases || {}) }),
     track(payload) {
       return window.legendTrack(payload);
     },
@@ -2059,4 +2117,16 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   }
 
   window.legendTrackingIds = { getVisitorId, getSessionId, getAttribution, getFirstTouchAttribution };
+  trackPageView();
+  window.__legendTrackingInitialized = true;
+  void flushQueuedEvents('page_load');
+  startupEvents.splice(0).forEach(payload => { void sendEvent(payload); });
+  startupCleanup.length = 0;
+  } catch (error) {
+    startupFailed = true;
+    startupCleanup.reverse().forEach(cleanup => { try { cleanup(); } catch {} });
+    window.fetch = originalFetch;
+    window.__legendTrackingInitialized = false;
+    throw error;
+  }
 })();

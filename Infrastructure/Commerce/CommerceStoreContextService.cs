@@ -46,8 +46,6 @@ public sealed class CommerceStoreContextService(
     WebsiteDomainService domains,
     IConfiguration configuration)
 {
-    private static readonly HashSet<string> LegendHosts =
-        new(StringComparer.OrdinalIgnoreCase) { "mylegnd.com", "www.mylegnd.com" };
     private const string ProtectHost = "protect.mylegnd.com";
     private const string ParfaitAzureHost = "masterapp-parfait.azurewebsites.net";
 
@@ -73,17 +71,18 @@ public sealed class CommerceStoreContextService(
         CancellationToken ct = default)
     {
         var normalized = NormalizeKey(businessKey);
-        if (!string.IsNullOrWhiteSpace(normalized))
-            return await ResolvePublicAsync(normalized, ct);
-
         var host = WebsiteRequestHostResolver.Resolve(context, configuration, allowLegendCommerceHost: true);
+        if (!string.IsNullOrWhiteSpace(normalized))
+            return string.Equals(host, ProtectHost, StringComparison.OrdinalIgnoreCase)
+                ? await ResolvePublicAsync(normalized, ct) : null;
+
         if (IsParfaitHost(host))
         {
             var parfait = await parfaitScope.GetParfaitAsync(ct);
             return await BuildAsync(parfait, publishedOnly: false, ct, useScopedPath: false);
         }
 
-        if (LegendHosts.Contains(host))
+        if (PublicWebsiteRuntimeScopeResolver.IsLegendHost(host))
         {
             var state = await db.Set<WebsiteContentState>().AsNoTracking()
                 .SingleOrDefaultAsync(
@@ -147,6 +146,23 @@ public sealed class CommerceStoreContextService(
             explicitSiteKey: actor.SiteKey,
             explicitState: state,
             useScopedPath: true);
+    }
+
+    public async Task<CommerceStoreContext?> ResolveAnalyticsAsync(HttpContext context, string? path, CancellationToken ct = default)
+    {
+        if (!Uri.TryCreate(context.Request.Headers.Origin.ToString(), UriKind.Absolute, out var origin) ||
+            origin.Scheme != "https" || !origin.IsDefaultPort || !string.IsNullOrEmpty(origin.UserInfo) || origin.AbsolutePath != "/" ||
+            string.IsNullOrWhiteSpace(path) || !path.StartsWith('/') || path.StartsWith("//", StringComparison.Ordinal)) return null;
+        if (!IsParfaitHost(origin.IdnHost) && (!path.StartsWith("/store", StringComparison.Ordinal) ||
+            (path.Length > 6 && path[6] != '/'))) return null;
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var key = segments.Length > 1 && segments[1] == "s" ? segments.ElementAtOrDefault(2) : null;
+        if (segments.Length > 1 && segments[1] == "s" && string.IsNullOrWhiteSpace(key)) return null;
+        if (!string.IsNullOrWhiteSpace(key) && !string.Equals(origin.IdnHost, ProtectHost, StringComparison.OrdinalIgnoreCase)) return null;
+        var scopeContext = new DefaultHttpContext();
+        scopeContext.Request.Scheme = origin.Scheme;
+        scopeContext.Request.Host = new HostString(origin.IdnHost);
+        return await ResolvePublicAsync(scopeContext, key, ct);
     }
 
     public bool IsCentralCommerceHost(HttpContext context)

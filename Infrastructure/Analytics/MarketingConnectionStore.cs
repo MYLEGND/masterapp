@@ -184,6 +184,9 @@ public static class MarketingServiceRegistration
         services.AddSingleton(sp => MarketingCredentialProtector.CreateShared(
             sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
         services.AddScoped<MarketingConnectionStore>();
+        services.TryAddScoped<AgentTrackingResolver>();
+        services.TryAddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
+        services.TryAddScoped<MarketingBrowserConfigurationService>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, MetaMarketingDestination>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, OpenAiMarketingDestination>());
         services.TryAddScoped<IMarketingDestinationRegistry, MarketingDestinationRegistry>();

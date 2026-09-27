@@ -98,7 +98,7 @@ public static class UnifiedEventMapper
     {
         return new MetaSignalEvent
         {
-            CreatedUtc = DateTime.UtcNow,
+            CreatedUtc = ctx.EventUtc ?? DateTime.UtcNow,
 
             EventId = ctx.EventId ?? Guid.NewGuid().ToString(),
             EventName = ctx.EventName ?? "unknown",
@@ -151,8 +151,8 @@ public static class UnifiedEventMapper
             WebsiteContentVersionId = ctx.WebsiteContentVersionId,
             WebsiteBindingId = ctx.WebsiteBindingId,
 
-            Environment = null,
-            Host = null
+            Environment = ctx.Environment,
+            Host = ctx.Host
         };
     }
 
@@ -164,6 +164,9 @@ public static class UnifiedEventMapper
         businessType = ctx.CommerceBusinessId.HasValue ? "Business" : BusinessType,
         reportingOwner = ctx.CommerceBusinessId.HasValue ? "Business" : ReportingOwner,
         oppref = OpenAiClickReference.Normalize(ctx.Oppref),
+        fbc = ctx.Fbc,
+        fbp = ctx.Fbp,
+        canonicalOutcomeEventId = ctx.IsServerAuthority == true ? ctx.EventId : null,
         payload = ctx.Metadata
     };
 }

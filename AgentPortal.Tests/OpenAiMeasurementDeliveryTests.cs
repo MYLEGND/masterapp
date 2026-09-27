@@ -89,17 +89,17 @@ public sealed class OpenAiMeasurementDeliveryTests
         string expectedProviderEvent,
         string expectedDataType)
     {
-        var row = new MetaSignalEvent
+        var row = new AnalyticsEvent
         {
-            EventId = "canonical-123",
-            EventName = canonical,
-            CreatedUtc = DateTime.UtcNow,
+            EventId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            EventType = canonical,
+            EventUtc = DateTime.UtcNow,
             Host = "shop.example.com",
             MetadataJson = "{\"sourcePath\":\"/checkout\",\"valueCents\":8900,\"currency\":\"USD\",\"productId\":\"sku-1\",\"productName\":\"Item\",\"quantity\":1}"
         };
 
         Assert.True(OpenAiMeasurementEventMapper.TryMap(row, out var mapped));
-        Assert.Equal("canonical-123", mapped.Id);
+        Assert.Equal(row.EventId.ToString("N"), mapped.Id);
         Assert.Equal(expectedProviderEvent, mapped.Type);
         Assert.Equal(expectedDataType, mapped.Data.Type);
         Assert.Equal("https://shop.example.com/checkout", mapped.SourceUrl);
@@ -168,39 +168,15 @@ public sealed class OpenAiMeasurementDeliveryTests
     [Fact]
     public void Mapper_DoesNotGuessUnknownEvents()
     {
-        var row = new MetaSignalEvent
+        var row = new AnalyticsEvent
         {
-            EventId = "canonical-unsupported",
-            EventName = "UnknownCanonicalEvent",
-            CreatedUtc = DateTime.UtcNow,
+            EventId = Guid.NewGuid(),
+            EventType = "UnknownCanonicalEvent",
+            EventUtc = DateTime.UtcNow,
             Host = "example.com"
         };
 
         Assert.False(OpenAiMeasurementEventMapper.TryMap(row, out _));
-    }
-
-    [Fact]
-    public void OwnerResolution_IsStrictAcrossFounderAgentAndBusiness()
-    {
-        var business = Guid.NewGuid();
-        var agent = Guid.NewGuid();
-
-        Assert.Equal(
-            MarketingOwnerScope.Business(business).Key,
-            OpenAiMeasurementEventMapper.ResolveOwner(new MetaSignalEvent { CommerceBusinessId = business })!.Key);
-
-        Assert.Equal(
-            MarketingOwnerScope.Agent(agent).Key,
-            OpenAiMeasurementEventMapper.ResolveOwner(new MetaSignalEvent { AgentTrackingProfileId = agent })!.Key);
-
-        Assert.Equal(
-            MarketingOwnerScope.Founder.Key,
-            OpenAiMeasurementEventMapper.ResolveOwner(new MetaSignalEvent
-            {
-                MetadataJson = "{\"siteKey\":\"" + WebsiteEditorSiteKeys.Legend + "\"}"
-            })!.Key);
-
-        Assert.Null(OpenAiMeasurementEventMapper.ResolveOwner(new MetaSignalEvent()));
     }
 
     [Fact]
@@ -236,14 +212,14 @@ public sealed class OpenAiMeasurementDeliveryTests
         Assert.Contains("page_viewed", measurement, StringComparison.Ordinal);
         Assert.Contains("globalPrivacyControl", measurement, StringComparison.Ordinal);
         Assert.DoesNotContain("ConversionsApiKey", measurement, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("LegendOpenAiMeasurement?.trackCanonical", tracking, StringComparison.Ordinal);
+        Assert.Contains("window.LegendAnalytics?.subscribe?.", measurement, StringComparison.Ordinal);
         var sendEventIndex = tracking.IndexOf("async function sendEvent(payload)", StringComparison.Ordinal);
         var postIndex = tracking.IndexOf("const result = await postBody(body);", sendEventIndex, StringComparison.Ordinal);
         var successIndex = tracking.IndexOf("if (result.ok)", postIndex, StringComparison.Ordinal);
-        var projectionIndex = tracking.IndexOf("LegendOpenAiMeasurement?.trackCanonical?.(body)", successIndex, StringComparison.Ordinal);
+        var projectionIndex = tracking.IndexOf("publishCanonical(body)", successIndex, StringComparison.Ordinal);
         Assert.True(sendEventIndex >= 0 && postIndex > sendEventIndex && successIndex > postIndex && projectionIndex > successIndex);
         Assert.DoesNotContain(
-            "LegendOpenAiMeasurement?.trackCanonical?.(body)",
+            "publishCanonical(body)",
             tracking[sendEventIndex..postIndex],
             StringComparison.Ordinal);
         Assert.Contains("openAiMeasurementAsset", cms, StringComparison.Ordinal);

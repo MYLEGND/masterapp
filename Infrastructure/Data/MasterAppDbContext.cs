@@ -1589,6 +1589,9 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Provider).HasMaxLength(20).IsRequired();
             e.Property(x => x.Channel).HasMaxLength(20).IsRequired();
             e.Property(x => x.CanonicalSource).HasMaxLength(80).IsRequired();
+            e.Property(x => x.AdvertiserAccountId).HasMaxLength(100);
+            e.Property(x => x.ConversionDataSourceId).HasMaxLength(200);
+            e.HasIndex(x => x.AnalyticsEventId);
             e.Property(x => x.CanonicalEventId).HasMaxLength(160).IsRequired();
             e.Property(x => x.CanonicalEventName).HasMaxLength(120).IsRequired();
             e.Property(x => x.ProviderEventName).HasMaxLength(120).IsRequired();

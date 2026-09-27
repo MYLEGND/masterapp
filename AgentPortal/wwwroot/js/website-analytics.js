@@ -968,7 +968,7 @@
     }
 
     if (summaryEl) {
-      const endpoint = asTrimmed(row?.attemptedEndpoint) || asTrimmed(row?.rawFetchUrl) || '/api/analytics/ingest';
+      const endpoint = asTrimmed(row?.attemptedEndpoint) || asTrimmed(row?.rawFetchUrl) || '/api/tracking/ingest';
       const failureMessage = asTrimmed(row?.errorMessage) || 'tracking_error';
       summaryEl.innerHTML = `
         <div class="wa-health-detail-summary">

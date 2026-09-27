@@ -89,8 +89,10 @@ public sealed class MarketingScopeParityContractTests
 
         Assert.Contains("MarketingOwnerScope.Business(store.CommerceBusinessId)", controller, StringComparison.Ordinal);
         Assert.Contains("ScopeContext.ForBusiness(businessId)", analytics, StringComparison.Ordinal);
-        Assert.Contains("MarketingConnections.GetStatusAsync", tracking, StringComparison.Ordinal);
-        Assert.Contains("MarketingOwnerScope.Business(parfait.Id)", tracking, StringComparison.Ordinal);
+        Assert.Contains("BrowserMarketing.GetAsync(owner", tracking, StringComparison.Ordinal);
+        Assert.Contains("CanonicalAdvertisingEventProjection.ResolveOwnerAsync", tracking, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingConnections.GetStatusAsync", tracking, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingOwnerScope.Business(parfait.Id)", tracking, StringComparison.Ordinal);
         Assert.Contains("MarketingServiceRegistration.AddMarketingConnections", program, StringComparison.Ordinal);
 
         Assert.DoesNotContain("ParfaitMetaAdsConnectionStoreAdapter", program, StringComparison.Ordinal);

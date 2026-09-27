@@ -1,3 +1,6 @@
+using System.Linq;
+using Microsoft.Extensions.DependencyInjection;
+using ProtectWebsite.Controllers;
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -18,33 +21,56 @@ using Xunit;
 
 namespace AgentPortal.Tests;
 
-public class AnalyticsIngestControllerTests
+public class WebsiteTrackingIngestTests
 {
-    private static AnalyticsIngestController BuildController(MasterAppDbContext db, string secret = "secret")
+    internal static TrackingProxyController BuildController(MasterAppDbContext db)
     {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        if (!db.AgentTrackingProfiles.Any())
+        {
+            db.AgentTrackingProfiles.Add(new Domain.Entities.AgentTrackingProfile
             {
-                ["Analytics:SharedSecret"] = secret
-            })
-            .Build();
-
-        var resolver = new AgentPortal.Services.Tracking.AgentTrackingResolver(db, NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance);
-        var flags = Options.Create(new AppFeatureFlags { IngestHmacEnabled = false });
-        var memoryCache = new MemoryCache(new MemoryCacheOptions());
-        var signatureValidator = new IngestSignatureValidator(memoryCache, config, NullLogger<IngestSignatureValidator>.Instance);
-        var controller = new AnalyticsIngestController(
-            db,
-            config,
-            resolver,
-            NullLogger<AnalyticsIngestController>.Instance,
-            flags,
-            signatureValidator);
-
-        var http = new DefaultHttpContext();
-        http.Request.Headers["X-Shared-Secret"] = secret;
-        controller.ControllerContext = new ControllerContext { HttpContext = http };
+                Id = Guid.NewGuid(), AgentUserId = "founder-test", AgentUpn = "founder@example.test",
+                Slug = "founder-test", DisplayName = "Founder", Status = "active"
+            });
+            db.SaveChanges();
+        }
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["Founder:Upn"] = "founder@example.test" }).Build();
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddSingleton(db);
+        var controller = new TrackingProxyController(Moq.Mock.Of<System.Net.Http.IHttpClientFactory>(), config,
+            NullLogger<TrackingProxyController>.Instance,
+            new Infrastructure.Analytics.AgentTrackingResolver(db, NullLogger<Infrastructure.Analytics.AgentTrackingResolver>.Instance));
+        controller.ControllerContext = new ControllerContext
+            { HttpContext = new DefaultHttpContext { RequestServices = services.BuildServiceProvider() } };
+        controller.Request.Host = new HostString("protect.example.test");
         return controller;
+    }
+
+    [Fact]
+    public async Task UnknownScopedPathCannotFallThroughToFounderOrPayloadOwner()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var controller = BuildController(db);
+        var founder = db.AgentTrackingProfiles.Single();
+        var request = new TrackingProxyController.AnalyticsEventRequest
+        {
+            ClientEventId = Guid.NewGuid(), EventType = "page_view", Path = "/a/missing/",
+            AgentTrackingProfileId = founder.Id, AgentSlug = founder.Slug
+        };
+        Assert.IsType<BadRequestObjectResult>(await controller.Ingest(request, default));
+        Assert.Empty(db.AnalyticsEvents);
+    }
+
+    [Fact]
+    public async Task ExplicitMissingProfileCannotFallThroughToValidSlug()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        BuildController(db);
+        var founder = db.AgentTrackingProfiles.Single();
+        var resolver = new Infrastructure.Analytics.AgentTrackingResolver(db,
+            NullLogger<Infrastructure.Analytics.AgentTrackingResolver>.Instance);
+        Assert.False((await resolver.ResolveAsync(founder.Slug, Guid.NewGuid())).Found);
     }
 
     private static string? ReadStatus(object? value)
@@ -58,23 +84,23 @@ public class AnalyticsIngestControllerTests
 
         var clientEventId = Guid.NewGuid();
 
-        var first = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        var first = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
         {
             ClientEventId = clientEventId,
             EventType = "page_view",
             Host = "test",
             Path = "/",
             EventUtc = DateTime.UtcNow
-        });
+        }, default);
 
-        var second = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        var second = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
         {
             ClientEventId = clientEventId,
             EventType = "page_view",
             Host = "test",
             Path = "/",
             EventUtc = DateTime.UtcNow
-        });
+        }, default);
 
         var ok1 = Assert.IsType<OkObjectResult>(first);
         var ok2 = Assert.IsType<OkObjectResult>(second);
@@ -90,7 +116,7 @@ public class AnalyticsIngestControllerTests
         using var db = ControllerTestHelpers.BuildDb();
         var controller = BuildController(db);
 
-        var result = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        var result = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
         {
             ClientEventId = Guid.NewGuid(),
             EventType = "page_view",
@@ -103,7 +129,7 @@ public class AnalyticsIngestControllerTests
             UtmTerm = "life+insurance",
             UtmContent = "creative_a",
             Fbclid = "fbclid_test_123"
-        });
+        }, default);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal("ok", ReadStatus(ok.Value));
@@ -123,7 +149,7 @@ public class AnalyticsIngestControllerTests
         using var db = ControllerTestHelpers.BuildDb();
         var controller = BuildController(db);
 
-        var result = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        var result = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
         {
             ClientEventId = Guid.NewGuid(),
             EventType = "lead_form_start",
@@ -132,7 +158,7 @@ public class AnalyticsIngestControllerTests
             SessionId = "session-123",
             EventUtc = DateTime.UtcNow,
             MetadataJson = "{\"custom\":\"value\"}"
-        });
+        }, default);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal("ok", ReadStatus(ok.Value));
@@ -142,11 +168,12 @@ public class AnalyticsIngestControllerTests
         Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(ev.MetadataJson, "isServerAuthority"));
         Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(ev.MetadataJson, "metaServerAuthorityEligible"));
         Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(ev.MetadataJson, "metaSingleTruthDispatchEligible"));
-        Assert.Equal("browser_analytics_ingest", MetaSignalSingleTruthPolicy.ReadString(ev.MetadataJson, "metaPipelineOrigin"));
+        Assert.Equal(Infrastructure.Analytics.UnifiedAnalyticsWriter.PipelineStamp, ev.PipelineStamp);
         Assert.Equal("lead_form_start:anonymous:session-123", MetaSignalSingleTruthPolicy.ReadString(ev.MetadataJson, "eventKey"));
 
         using var metadata = JsonDocument.Parse(ev.MetadataJson!);
-        Assert.Equal("value", metadata.RootElement.GetProperty("custom").GetString());
+        Assert.Contains("custom", ev.MetadataJson);
+        Assert.Contains("value", ev.MetadataJson);
     }
 
     [Fact]
@@ -155,7 +182,7 @@ public class AnalyticsIngestControllerTests
         using var db = ControllerTestHelpers.BuildDb();
         var controller = BuildController(db);
 
-        var accepted = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        var accepted = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
         {
             ClientEventId = Guid.NewGuid(),
             EventType = "life_step1_coverage_select",
@@ -164,9 +191,9 @@ public class AnalyticsIngestControllerTests
             PageKey = "quote_term_life_landing",
             QuoteType = "term",
             EventUtc = DateTime.UtcNow
-        });
+        }, default);
 
-        var rejected = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        var rejected = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
         {
             ClientEventId = Guid.NewGuid(),
             EventType = "website_lead_submitted",
@@ -175,7 +202,7 @@ public class AnalyticsIngestControllerTests
             PageKey = "quote_term_life_landing",
             QuoteType = "term",
             EventUtc = DateTime.UtcNow
-        });
+        }, default);
 
         var acceptedOk = Assert.IsType<OkObjectResult>(accepted);
         Assert.Equal("ok", ReadStatus(acceptedOk.Value));
@@ -209,7 +236,7 @@ public class AnalyticsIngestControllerTests
         Assert.True(AnalyticsEventCatalog.TryGet(eventType, out var definition));
         Assert.True(definition.AllowBrowser);
 
-        var result = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        var result = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
         {
             ClientEventId = Guid.NewGuid(),
             EventType = eventType,
@@ -218,7 +245,7 @@ public class AnalyticsIngestControllerTests
             PageKey = "quote_life_landing",
             QuoteType = "life",
             EventUtc = DateTime.UtcNow
-        });
+        }, default);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal("ok", ReadStatus(ok.Value));

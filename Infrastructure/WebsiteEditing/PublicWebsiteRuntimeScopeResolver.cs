@@ -17,6 +17,8 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
     private static readonly HashSet<string> LegendHosts =
         new(StringComparer.OrdinalIgnoreCase) { "mylegnd.com", "www.mylegnd.com" };
 
+    public static bool IsLegendHost(string? host) => !string.IsNullOrWhiteSpace(host) && LegendHosts.Contains(host);
+
     public static bool HasValidPublicOrigin(HttpContext context) =>
         TryOrigin(context.Request.Headers.Origin.ToString(), out _);
 
@@ -43,13 +45,14 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
             // verified custom host itself. GET requests do not always carry Origin.
             var publicHost = WebsiteRequestHostResolver.Resolve(context, configuration);
             if (siteKey != WebsiteEditorSiteKeys.Business || !context.Request.IsHttps ||
-                string.IsNullOrWhiteSpace(publicHost))
+                !(HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)) ||
+                context.Request.Headers.ContainsKey("Origin") || string.IsNullOrWhiteSpace(publicHost))
                 return null;
             origin = new Uri("https://" + publicHost);
         }
         if (siteKey == WebsiteEditorSiteKeys.Legend)
         {
-            if (!LegendHosts.Contains(origin.IdnHost))
+            if (!IsLegendHost(origin.IdnHost))
                 return null;
 
             var version = await PublishedAsync(

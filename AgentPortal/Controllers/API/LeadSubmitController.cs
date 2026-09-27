@@ -24,13 +24,13 @@ public class LeadSubmitController : ControllerBase
     private readonly MasterAppDbContext _db;
     private readonly IConfiguration _config;
     private readonly IEmailSender _emailSender;
-    private readonly Services.Tracking.AgentTrackingResolver _resolver;
+    private readonly Infrastructure.Analytics.AgentTrackingResolver _resolver;
     private readonly ILogger<LeadSubmitController> _logger;
     private readonly string _founderUpn;
     private readonly AgentPortal.Models.AppFeatureFlags _flags;
     private readonly IngestSignatureValidator _signatureValidator;
 
-    public LeadSubmitController(MasterAppDbContext db, IConfiguration config, IEmailSender emailSender, Services.Tracking.AgentTrackingResolver resolver, ILogger<LeadSubmitController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> flags, IngestSignatureValidator signatureValidator)
+    public LeadSubmitController(MasterAppDbContext db, IConfiguration config, IEmailSender emailSender, Infrastructure.Analytics.AgentTrackingResolver resolver, ILogger<LeadSubmitController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> flags, IngestSignatureValidator signatureValidator)
     {
         _db = db;
         _config = config;
@@ -199,7 +199,8 @@ public class LeadSubmitController : ControllerBase
         {
             var evt = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
             {
-                EventName = "website_lead_submitted",
+                EventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                    EventName = "website_lead_submitted",
                 EventCategory = "lead",
                 EventUtc = now,
                 PageKey = lead.SourcePageKey,
@@ -222,7 +223,7 @@ public class LeadSubmitController : ControllerBase
                 Host = lead.Host,
                 IsInternal = lead.IsInternal,
                 IsBrowserSignal = false,
-                IsServerAuthority = false,
+                IsServerAuthority = true,
                 MetaServerAuthorityEligible = true,
                 Metadata = new { LeadId = lead.LeadId, CorrelationId = correlationId }
             });
@@ -233,10 +234,11 @@ public class LeadSubmitController : ControllerBase
                 payload: new
                 {
                     LeadId = lead.LeadId,
+                    canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
                     CorrelationId = correlationId
                 },
                 isBrowserSignal: false,
-                isServerAuthority: false,
+                isServerAuthority: true,
                 metaServerAuthorityEligible: true,
                 metaSingleTruthDispatchEligible: false,
                 metaPipelineOrigin: "lead_submit_controller");

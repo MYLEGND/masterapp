@@ -50,6 +50,9 @@ builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteMediaService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteImportService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.PublicWebsiteRuntimeScopeResolver>();
+builder.Services.AddScoped<Infrastructure.Businesses.CommerceBusinessScopeResolver>();
+builder.Services.AddScoped<ParfaitApp.Services.ParfaitBusinessScopeService>();
+builder.Services.AddScoped<ParfaitApp.Services.CommerceStoreContextService>();
 builder.Services.AddScoped<Infrastructure.Businesses.ICommerceBusinessProvisioningService, Infrastructure.Businesses.CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteCommerceScopeService>();
 builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
@@ -58,7 +61,8 @@ builder.Services.AddHostedService<Infrastructure.WebsitePublishing.WebsitePublis
 var publicWebsiteOrigins = new[]
 {
     "https://www.mylegnd.com", "https://mylegnd.com", "https://protect.mylegnd.com",
-    "https://portal.mylegnd.com", "https://client.mylegnd.com"
+    "https://portal.mylegnd.com", "https://client.mylegnd.com",
+    "https://shopparfait.com", "https://www.shopparfait.com"
 };
 builder.Services.AddRuntimeDiagnosticPublicWebsiteTransport(publicWebsiteOrigins);
 builder.Services.AddCors(options =>
@@ -111,10 +115,8 @@ builder.Services.AddScoped<BusinessInquiryNotificationService>();
 builder.Services.AddHostedService<BusinessInquiryNotificationWorker>();
 builder.Services.AddHostedService<WebsiteLeadNotificationRecoveryWorker>();
 
-builder.Services.AddScoped<Infrastructure.Analytics.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptureService>();
-builder.Services.AddScoped<Infrastructure.Analytics.IMetaPixelResolutionService, Infrastructure.Analytics.MetaPixelResolutionService>();
 builder.Services.AddScoped<Infrastructure.Analytics.IMetaSendAuthority, Infrastructure.Analytics.MetaSendAuthority>();
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();

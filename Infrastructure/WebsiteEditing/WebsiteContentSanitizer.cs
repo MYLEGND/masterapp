@@ -184,7 +184,10 @@ public static class WebsiteContentSanitizer
         {
             if (item is null || item.IsSystem || result.Count >= 8) continue;
             var key = SanitizeId(item.Key);
-            if (key.Length == 0 || !keys.Add(key)) continue;
+            if (key.Length == 0 || !string.Equals(key, item.Key, StringComparison.Ordinal) ||
+                item.MinWidth < 0 || item.MinWidth > 10000 ||
+                (item.MaxWidth.HasValue && (item.MaxWidth.Value < item.MinWidth || item.MaxWidth.Value > 10000)) ||
+                !keys.Add(key)) continue;
             var min = Math.Clamp(item.MinWidth, 0, 10000);
             var max = item.MaxWidth.HasValue ? Math.Clamp(item.MaxWidth.Value, min, 10000) : (int?)null;
             var label = ClampText(item.Label);

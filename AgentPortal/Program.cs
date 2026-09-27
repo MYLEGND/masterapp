@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Infrastructure.Diagnostics;
 using Infrastructure.DailyScripture;
 using AgentPortal.Hubs;
@@ -209,13 +210,12 @@ if (!AgentPortal.Services.Analytics.OpenAiKeyResolver.IsConfigured(builder.Confi
 {
     Console.WriteLine("[WARN] OpenAI API key is not configured. AI insights features will return error results until a key is set via OpenAI:ApiKey (config) or the OPENAI_API_KEY environment variable.");
 }
-builder.Services.AddScoped<IMetaAdsService, MetaAdsService>();
-builder.Services.AddScoped<IMetaAdsConnectionStore, MetaAdsConnectionStore>();
+// Retain the migration adapter as the sole registration; it delegates to SQL.
+builder.Services.Replace(ServiceDescriptor.Scoped<IMetaAdsConnectionStore, MetaAdsConnectionStore>());
 builder.Services.AddScoped<IMetaAdsOAuthService, MetaAdsOAuthService>();
 builder.Services.AddScoped<IAgentTrackingService, AgentTrackingService>();
 builder.Services.AddScoped<AgentTrackingProvisioningFilter>();
 builder.Services.AddScoped<AgentAccountLifecycleAuthorizeFilter>();
-builder.Services.AddScoped<AgentPortal.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<IExecutionEngine, ExecutionEngine>();
 builder.Services.AddScoped<IDecisionService, DecisionService>();
 builder.Services.AddScoped<IBlockerService, BlockerService>();

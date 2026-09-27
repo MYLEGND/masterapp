@@ -37,7 +37,7 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("[HttpPost(\"marketing-setup\")]", controller, StringComparison.Ordinal);
         Assert.Contains("AgentMarketingProfileService", controller, StringComparison.Ordinal);
         Assert.Contains("ResolveMarketingSetupTrackingAsync", controller, StringComparison.Ordinal);
-        Assert.Contains("_metaAdsConnectionStore.GetAsync(tracking.Id", controller, StringComparison.Ordinal);
+        Assert.Contains("MarketingConnections.GetAdsAsync(owner", controller, StringComparison.Ordinal);
         Assert.Contains("var adsConnected = metaConnection is not null;", controller, StringComparison.Ordinal);
         Assert.Contains("var secureCapi = adsConnected;", controller, StringComparison.Ordinal);
         Assert.Contains("profile.BookingEnabled = request.BookingEnabled", controller, StringComparison.Ordinal);

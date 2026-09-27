@@ -1260,8 +1260,8 @@ public sealed class LegendFounderAiContractTests
                 "agentportal-production-deploy.yml"));
 
         Assert.Contains("pull_request:", workflow, StringComparison.Ordinal);
-        Assert.Contains("- production", workflow, StringComparison.Ordinal);
-        Assert.Contains("- synchronize", workflow, StringComparison.Ordinal);
+        Assert.Contains("branches: [production]", workflow, StringComparison.Ordinal);
+        Assert.Contains("types: [opened, synchronize, reopened, ready_for_review]", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("- opened", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("- reopened", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("- ready_for_review", workflow, StringComparison.Ordinal);
@@ -1270,7 +1270,7 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("merge:", workflow, StringComparison.Ordinal);
         Assert.Contains("migrate:", workflow, StringComparison.Ordinal);
         Assert.Contains("deploy:", workflow, StringComparison.Ordinal);
-        Assert.Contains("needs: security", workflow, StringComparison.Ordinal);
+        Assert.Contains("needs: [security, candidate]", workflow, StringComparison.Ordinal);
         Assert.Contains("Test full suite including security regressions", workflow, StringComparison.Ordinal);
         Assert.Contains("dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj", workflow, StringComparison.Ordinal);
         Assert.Contains("FounderToolCatalog_SerializedContractIsRecursivelyProviderValid", workflow, StringComparison.Ordinal);
@@ -1290,7 +1290,8 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("verify-legend-convergence:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("push:", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("workflow_dispatch:", workflow, StringComparison.Ordinal);
+        Assert.Contains("workflow_dispatch:", workflow, StringComparison.Ordinal);
+        Assert.Contains("github.event.pull_request.draft == false", workflow, StringComparison.Ordinal);
     }
 
     [Fact]

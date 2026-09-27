@@ -212,50 +212,11 @@ public class WebsitePlatformController : ControllerBase
             facts,
             cancellationToken);
 
-        // Canonical analytics bootstrap must not depend on advertising-provider
-        // availability. Provider projections are optional enrichments of the same
-        // owner scope; failures here must never prevent the browser tracker from
-        // receiving its ingest endpoint and event catalog.
-        var runtimeLogger = HttpContext.RequestServices
-            .GetService<Microsoft.Extensions.Logging.ILogger<WebsitePlatformController>>();
-        var pixel = new Infrastructure.Analytics.ResolvedMetaPixelContext();
-        try
-        {
-            var metaResolver = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMetaPixelResolutionService>();
-            pixel = scope.CommerceBusinessId.HasValue
-                ? await metaResolver.ResolveForBusinessAsync(scope.CommerceBusinessId.Value, cancellationToken)
-                : await metaResolver.ResolveForLeadAsync(null, null, isFounderPath: true, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            runtimeLogger?.LogWarning(ex, "Public website Meta projection unavailable for {SiteKey}; canonical analytics bootstrap will continue.", scope.SiteKey);
-        }
-
+        var owner = await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _configuration, scope, cancellationToken);
+        var browser = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingBrowserConfigurationService>()
+            .GetAsync(owner, cancellationToken);
         var metaOptions = HttpContext.RequestServices
-            .GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<Infrastructure.Analytics.MetaSignalIntelligenceOptions>>()
-            .Value;
-
-        Shared.Analytics.OpenAiAdsConnectionSnapshot? openAi = null;
-        try
-        {
-            var openAiConnections = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
-            var openAiOwner = scope.CommerceBusinessId.HasValue
-                ? Shared.Analytics.MarketingOwnerScope.Business(scope.CommerceBusinessId.Value)
-                : Shared.Analytics.MarketingOwnerScope.Founder;
-            openAi = await openAiConnections.GetAsync(openAiOwner, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            runtimeLogger?.LogWarning(ex, "Public website ChatGPT Ads projection unavailable for {SiteKey}; canonical analytics bootstrap will continue.", scope.SiteKey);
-        }
+            .GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<Infrastructure.Analytics.MetaSignalIntelligenceOptions>>().Value;
 
         var apiBase = WebsiteContentApiBaseUrl();
 
@@ -268,6 +229,7 @@ public class WebsitePlatformController : ControllerBase
             {
                 endpoint = apiBase + "/api/tracking/ingest",
                 allowedBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.BrowserAllowedEventNames,
+                signalAliases = Shared.Analytics.MetaSignalAnalyticsAliasCatalog.BrowserProjectionMap,
                 criticalBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.CriticalBrowserEventNames,
                 clientTrackingErrorEvent = Shared.Analytics.AnalyticsEventCatalog.ClientTrackingErrorEventName
             },
@@ -280,8 +242,8 @@ public class WebsitePlatformController : ControllerBase
                 debugMode = metaOptions.DebugMode,
                 highIntentThreshold = metaOptions.HighIntentThreshold,
                 leadReadyThreshold = metaOptions.LeadReadyThreshold,
-                endpoint = apiBase + "/analytics/meta-signal",
-                pixelId = pixel.HasBrowserPixel ? pixel.PixelId : null,
+                endpoint = apiBase + "/api/tracking/ingest",
+                pixelId = browser.MetaPixelId,
                 browserEventNames = Shared.Analytics.MetaSignalEventCatalog.BrowserPixelEventNames,
                 browserSignalEventNames = Shared.Analytics.MetaSignalEventCatalog.Definitions
                     .Where(definition => !Shared.Analytics.MetaSignalEventCatalog.IsServerAuthorityEvent(definition.Name))
@@ -291,10 +253,10 @@ public class WebsitePlatformController : ControllerBase
             },
             openai = new
             {
-                enabled = openAi?.Connected == true && openAi.PixelConfigured,
-                pixelId = openAi?.Connected == true ? openAi.PixelId : null,
-                accountApproved = openAi?.AccountApproved == true,
-                conversionsApiConfigured = openAi?.ConversionsApiConfigured == true
+                enabled = !string.IsNullOrWhiteSpace(browser.OpenAiPixelId),
+                pixelId = browser.OpenAiPixelId,
+                accountApproved = browser.OpenAiAccountApproved,
+                conversionsApiConfigured = browser.OpenAiConversionsApiConfigured
             }
         });
     }

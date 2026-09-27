@@ -47,6 +47,7 @@
     {
         siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect,
         allowedBrowserEvents = AnalyticsEventCatalog.BrowserAllowedEventNames,
+        signalAliases = MetaSignalAnalyticsAliasCatalog.BrowserProjectionMap,
         criticalBrowserEvents = AnalyticsEventCatalog.CriticalBrowserEventNames,
         clientTrackingErrorEvent = AnalyticsEventCatalog.ClientTrackingErrorEventName
     });
@@ -109,22 +110,7 @@
         window.RESOLVED_META_PIXEL_OWNER_TYPE = "@metaPixelOwnerType";
     </script>
 
-    <!-- ================= META PIXEL ================= -->
-    @if (hasMetaPixel)
-    {
-        <script>
-        !function(f,b,e,v,n,t,s)
-        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-        n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t,s)}(window, document,'script',
-        'https://connect.facebook.net/en_US/fbevents.js');
-        fbq('init', '@metaPixelId');
-        </script>
-    }
-    <!-- ================= END META PIXEL ================= -->
+
 
     <script type="application/ld+json">
     {
@@ -321,14 +307,32 @@
         document.body.dataset.quoteType = "@ViewData["QuoteTypeForTracking"]";
         window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(analyticsBrowserConfigJson);
     </script>
+    <script src="~/js/tracking.js" asp-append-version="true"></script>
+    <!-- ================= META PIXEL ================= -->
+    @if (hasMetaPixel)
+    {
+        <script>
+        if (window.__legendTrackingInitialized) {
+        !function(f,b,e,v,n,t,s)
+        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', '@metaPixelId');
+        }
+        </script>
+    }
+    <!-- ================= END META PIXEL ================= -->
     @if (hasOpenAiPixel)
     {
         <script src="~/js/openai-measurement.js" asp-append-version="true"></script>
         <script>
-            window.LegendOpenAiMeasurement?.configure?.({ pixelId: @Html.Raw(JsonSerializer.Serialize(openAiPixelId)) });
+            if (window.__legendTrackingInitialized) window.LegendOpenAiMeasurement?.configure?.({ pixelId: @Html.Raw(JsonSerializer.Serialize(openAiPixelId)) });
         </script>
     }
-    <script src="~/js/tracking.js" asp-append-version="true"></script>
     <script src="~/js/lead-modal.js" asp-append-version="true"></script>
     <script>
         // Preserve agent slug across internal navigation

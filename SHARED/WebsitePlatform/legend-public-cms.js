@@ -2194,6 +2194,7 @@
       ...Object.entries(page.elements || {}).map(([id, override]) => ({ id, override, node: document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`) })),
       ...(page.extras || []).map(extra => ({ id: `extra:${extra.id}`, override: extra, node: document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`) }))
     ];
+    window.__legendWebsiteSignalBindingsCleanup?.();
     const cleanups = [];
 
     const emit = (binding, elementId) => {
@@ -2231,6 +2232,16 @@
       if (!candidate.node || !Array.isArray(candidate.override?.signals)) continue;
       for (const binding of candidate.override.signals) {
         if (!binding?.id || !binding.eventName || binding.deliveryMode === 'off' || !allowedTriggers.has(binding.trigger)) continue;
+        // Managed actions enrich the existing source envelope instead of creating
+        // a second event for this visual binding.
+        const managedForm = candidate.node.matches?.('form') ? candidate.node : candidate.node.closest?.('form');
+        const managedAction = candidate.node.matches?.('[data-website-action-key],[data-cta]');
+        if (window.LegendAnalytics?.registerBinding &&
+            ((managedForm && ['form_started','submit_attempt','field_started','validation_failed'].includes(binding.trigger)) ||
+             (managedAction && binding.trigger === 'click'))) {
+          cleanups.push(window.LegendAnalytics.registerBinding(candidate.node, binding, candidate.id));
+          continue;
+        }
         const fire = () => emit(binding, candidate.id);
         switch (binding.trigger) {
           case 'viewed':
@@ -2267,7 +2278,6 @@
       }
     }
 
-    window.__legendWebsiteSignalBindingsCleanup?.();
     window.__legendWebsiteSignalBindingsCleanup = () => cleanups.forEach(cleanup => cleanup());
   }
 
@@ -2303,7 +2313,15 @@
 
       // Analytics is foundational. Load it before any optional advertising or
       // measurement projection so provider failures cannot suppress traffic.
-      await loadRuntimeScript(context.trackingAsset || '/legend-public-tracking.js');
+      const trackingAsset = context.trackingAsset || '/legend-public-tracking.js';
+      await loadRuntimeScript(trackingAsset);
+      if (window.__legendTrackingInitialized !== true || typeof window.LegendAnalytics?.track !== 'function') {
+        // A downloaded script can still throw during execution. Remove that failed
+        // attempt so the retry can execute it again after tracker cleanup.
+        const source = new URL(trackingAsset, location.origin).href;
+        [...document.scripts].find(script => script.src === source)?.remove();
+        throw new Error('Canonical analytics tracker did not initialize.');
+      }
       publicRuntimeStarted = true;
       publicRuntimeRetryCount = 0;
       if (publicRuntimeRetryTimer) {

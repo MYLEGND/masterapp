@@ -132,12 +132,12 @@ public sealed class OpenAiClickReferenceLineageTests
     [Fact]
     public void OpenAiServerMapperReadsOpprefFromCanonicalServerMetadata()
     {
-        var row = new MetaSignalEvent
+        var row = new AnalyticsEvent
         {
-            EventId = "evt-1",
-            EventName = "Lead",
+            EventId = Guid.NewGuid(),
+            EventType = "Lead",
             Host = "example.com",
-            CreatedUtc = DateTime.UtcNow,
+            EventUtc = DateTime.UtcNow,
             MetadataJson = "{\"oppref\":\"opp_server\"}"
         };
 

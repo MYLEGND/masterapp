@@ -9,6 +9,7 @@ using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -51,11 +52,11 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
             PixelOwnerType = businessScope ? MetaPixelOwnerTypes.Business : MetaPixelOwnerTypes.Agency
         };
         if (businessScope)
-            pixelResolution.Setup(x => x.ResolveForBusinessAsync(businessId!.Value, It.IsAny<CancellationToken>())).ReturnsAsync(resolvedPixel);
+            pixelResolution.Setup(x => x.ResolveForOwnerAsync(MarketingOwnerScope.Business(businessId!.Value), It.IsAny<CancellationToken>())).ReturnsAsync(resolvedPixel);
         else
-            pixelResolution.Setup(x => x.ResolveForLeadAsync(null, null, false, It.IsAny<CancellationToken>())).ReturnsAsync(resolvedPixel);
+            pixelResolution.Setup(x => x.ResolveForOwnerAsync(MarketingOwnerScope.Founder, It.IsAny<CancellationToken>())).ReturnsAsync(resolvedPixel);
 
-        await using var provider = new ServiceCollection()
+        await using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(databaseName))
             .AddSingleton(capi.Object)
             .AddSingleton(pixelResolution.Object)
@@ -64,6 +65,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            if (businessId.HasValue) db.CommerceBusinesses.Add(new CommerceBusiness { Id = businessId.Value, Key = "business" });
             db.MetaSignalEvents.Add(new MetaSignalEvent
             {
                 Id = 1,
@@ -89,7 +91,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 MetaBrowserSent = false,
                 MetaServerSent = false,
                 MetaDeduplicationKey = "Lead:anonymous:session-1",
-                Host = "example.com",
+                Host = "mylegnd.com",
                 MetadataJson = BuildBridgeOwnedServerMetadata(dispatchEligible: true)
             });
 
@@ -117,7 +119,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 MetaBrowserSent = false,
                 MetaServerSent = false,
                 MetaDeduplicationKey = "Lead:anonymous:session-2",
-                Host = "example.com",
+                Host = "mylegnd.com",
                 MetadataJson = BuildBridgeOwnedServerMetadata(dispatchEligible: false)
             });
 
@@ -172,7 +174,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                     request.PixelOwnerType == MetaPixelOwnerTypes.Business),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MetaConversionsApiResult { Attempted = true, Sent = true, Status = "sent" });
-        pixel.Setup(x => x.ResolveForBusinessAsync(businessId, It.IsAny<CancellationToken>()))
+        pixel.Setup(x => x.ResolveForOwnerAsync(MarketingOwnerScope.Business(businessId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolvedMetaPixelContext
             {
                 PixelId = "business-pixel",
@@ -181,7 +183,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
             });
 
         var database = Guid.NewGuid().ToString();
-        await using var provider = new ServiceCollection()
+        await using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
             .AddSingleton(capi.Object)
             .AddSingleton(pixel.Object)
@@ -190,6 +192,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            db.CommerceBusinesses.Add(new CommerceBusiness { Id = businessId, Key = "business" });
             db.WebsiteLeads.Add(new WebsiteLead
             {
                 LeadId = leadId,
@@ -251,7 +254,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
         var pixel = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
 
-        pixel.Setup(x => x.ResolveForLeadAsync(agentId, "agent-one", false, It.IsAny<CancellationToken>()))
+        pixel.Setup(x => x.ResolveForOwnerAsync(MarketingOwnerScope.Agent(agentId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolvedMetaPixelContext
             {
                 PixelId = "agent-pixel",
@@ -284,7 +287,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
             });
 
         var database = Guid.NewGuid().ToString();
-        await using var provider = new ServiceCollection()
+        await using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
             .AddSingleton(capi.Object)
             .AddSingleton(pixel.Object)
@@ -293,6 +296,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            db.AgentTrackingProfiles.Add(new AgentTrackingProfile { Id = agentId, AgentUserId = "agent-one", AgentUpn = "agent@example.com", Slug = "agent-one", Status = "Active", CreatedUtc = DateTime.UtcNow, UpdatedUtc = DateTime.UtcNow });
             db.WebsiteLeads.Add(new WebsiteLead
             {
                 LeadId = leadId,
@@ -349,7 +353,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
         var pixel = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
         var database = Guid.NewGuid().ToString();
-        await using var scopedProvider = new ServiceCollection()
+        await using var scopedProvider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
             .AddSingleton(capi.Object).AddSingleton(pixel.Object).BuildServiceProvider();
         await using (var scope = scopedProvider.CreateAsyncScope())
@@ -383,10 +387,10 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 ? new MetaConversionsApiResult { Attempted = true, Status = "failed", Retryable = true, HttpStatusCode = 503 }
                 : new MetaConversionsApiResult { Attempted = true, Sent = true, Status = "sent", EventsReceived = 1 });
         var pixel = new Mock<IMetaPixelResolutionService>();
-        pixel.Setup(x => x.ResolveForLeadAsync(null, null, false, It.IsAny<CancellationToken>()))
+        pixel.Setup(x => x.ResolveForOwnerAsync(MarketingOwnerScope.Founder, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolvedMetaPixelContext { PixelId = "test", AccessToken = "test", PixelOwnerType = MetaPixelOwnerTypes.Agency });
         var database = Guid.NewGuid().ToString();
-        await using var provider = new ServiceCollection()
+        await using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
             .AddSingleton(capi.Object).AddSingleton(pixel.Object).BuildServiceProvider();
         await using (var scope = provider.CreateAsyncScope())
@@ -395,7 +399,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
             for (var i = 0; i < 27; i++)
                 db.MetaSignalEvents.Add(new MetaSignalEvent
                 {
-                    EventId = "retry-test-" + i, EventName = "Lead", TrafficType = "PaidAds",
+                    Host = "mylegnd.com", EventId = "retry-test-" + i, EventName = "Lead", TrafficType = "PaidAds",
                     SessionId = "retry-session-" + i, MetaDeduplicationKey = "retry-key-" + i,
                     CreatedUtc = DateTime.UtcNow.AddMinutes(-30).AddSeconds(i),
                     WebDriver = i < 26, MetadataJson = BuildBridgeOwnedServerMetadata(true)
@@ -429,6 +433,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
     {
         return JsonSerializer.Serialize(new
         {
+            siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend,
             bridgeSource = "analytics_events",
             isBrowserSignal = false,
             isServerAuthority = true,

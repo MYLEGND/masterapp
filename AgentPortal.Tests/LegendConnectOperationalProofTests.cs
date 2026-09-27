@@ -1410,7 +1410,9 @@ public sealed class LegendConnectOperationalProofTests
                     services.AddSingleton(optionalSectionFailure);
                     services.AddDbContext<MasterAppDbContext>(options =>
                         options.UseSqlite(connection).AddInterceptors(optionalSectionFailure));
-                    services.AddSingleton<IConfiguration>(Configuration());
+                    services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddConfiguration(Configuration())
+                        .AddInMemoryCollection(new Dictionary<string, string?> { ["Founder:Upn"] = "founder@example.test" }).Build());
+                    services.AddScoped<AgentPortal.Services.Tracking.IAgentTrackingService, AgentPortal.Services.Tracking.AgentTrackingService>();
                     services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
                     services.AddScoped<LegendConnectRuntimePolicyAuthority>();
                     services.AddScoped<ILegendConnectRuntimePolicyAuthority>(
@@ -1431,6 +1433,9 @@ public sealed class LegendConnectOperationalProofTests
                             curriculum: serviceProvider.GetRequiredService<LegendConnectCurriculumService>(),
                             founderTrainingIngestion: serviceProvider.GetRequiredService<LegendConnectFounderTrainingIngestionAuthority>(),
                             intelligence: serviceProvider.GetRequiredService<LegendConnectTranslationIntelligence>()));
+                    services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
+                    services.AddScoped<Infrastructure.Leads.WebsiteIntakeRecipientResolver>();
+                    services.AddScoped<Infrastructure.Analytics.IAnalyticsQueryService, Infrastructure.Analytics.AnalyticsQueryService>();
                     services.AddScoped<AgentProfileAccessResolver>();
                     services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
                     services.AddScoped<ITranslationEntitlementAuthority, TranslationEntitlementAuthority>();

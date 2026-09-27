@@ -318,9 +318,16 @@ async function metaSignalFixture() {
   const dom=new JSDOM('<!doctype html><html><body data-page-key="home"></body></html>',{url:'https://site.example/',runScripts:'outside-only'});
   const {window:w}=dom;
   const requests=[],pixels=[];
-  w.fetch=async(url,init={})=>{
-    requests.push({url:String(url),body:init.body?JSON.parse(init.body):null});
-    return {ok:true,json:async()=>({accepted:true,metaServerStatus:'accepted_for_test'})};
+  const subscribers = new Map();
+  w.LegendAnalytics = {
+    signalAliases: {ViewContent:'ViewContent', LeadFormStart:'LeadFormStart', SubmitAttempt:'SubmitAttempt'},
+    subscribe(key, listener) { if (!subscribers.has(key)) subscribers.set(key, listener); },
+    async track(body) {
+      if (body.EventType === 'meta_browser_event_success') return true;
+      if (body.MetaSignal?.metadata?.configuredWebsiteSignal) requests.push({url:'/api/tracking/ingest',body:body.MetaSignal,envelope:body});
+      for (const listener of subscribers.values()) listener(body);
+      return true;
+    }
   };
   w.fbq=(...args)=>pixels.push(args);
   w.eval(metaSignalSource);
@@ -329,7 +336,7 @@ async function metaSignalFixture() {
     sendBrowserEvents:true,
     sendServerEvents:true,
     persistEvents:true,
-    endpoint:'https://site.example/analytics/meta-signal',
+    endpoint:'https://site.example/api/tracking/ingest',
     pixelId:'pixel-legend',
     siteKey:'legend',
     quoteType:'legend',
@@ -368,7 +375,9 @@ test('configured signal runtime suppresses Pixel for analytics-only and allows o
     assert.equal(f.requests.length,1);
     assert.equal(f.requests[0].body.eventName,'SubmitAttempt');
     assert.equal(f.requests[0].body.websiteBindingId,'binding-analytics');
-    assert.equal(f.requests[0].body.metadata.browserDispatchStatus,'suppressed_by_mapping');
+    assert.equal(f.requests[0].body.metadata.browserDispatchStatus,'awaiting_canonical_ingest');
+    assert.equal(f.requests[0].url,'/api/tracking/ingest');
+    assert.equal(f.requests[0].envelope.ClientEventId,analyticsId);
     assert.equal(f.requests[0].body.metadata.configuredWebsiteSignal,true);
     assert.equal(f.requests[0].body.metadata.configuredDeliveryMode,'analytics');
 

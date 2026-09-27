@@ -52,7 +52,9 @@ jobs:
 
       - name: Fetch approved baseline commit
         shell: bash
-        run: git fetch --no-tags --depth=1 origin 9bc143ef4b420cda349751b623a84e586ca9f4a8
+        env:
+          APPROVED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git fetch --no-tags --depth=1 origin "$APPROVED_BASE_SHA"
 
       - name: Run identical suite on approved baseline
         shell: bash
