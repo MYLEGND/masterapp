@@ -35,13 +35,15 @@ public sealed class OpenAiProductFeedService(
 
         var errors = new List<string>();
         var mapped = new List<OpenAiProductFeedProjectionRow>();
+        var currency = (configuration["Commerce:CurrencyCode"] ?? "USD").Trim().ToUpperInvariant();
+        if (currency.Length != 3) currency = "USD";
         string? root = null;
         try { root = await publicUrls.ResolveAsync(businessId, ct); }
         catch (InvalidOperationException ex) { errors.Add(ex.Message); }
 
         foreach (var product in products)
         {
-            var eligibility = root is null ? null : ToItem(product, root, errors);
+            var eligibility = root is null ? null : ToItem(product, root, currency, errors);
             var row = projections.FirstOrDefault(x => x.CommerceProductId == product.Id);
             mapped.Add(new(
                 product.Id,
@@ -58,7 +60,7 @@ public sealed class OpenAiProductFeedService(
             owner,
             projections.Select(x => x.ProviderFeedId).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
             products.Count,
-            root is null ? 0 : products.Count(p => ToItem(p, root, null) is not null),
+            root is null ? 0 : products.Count(p => ToItem(p, root, currency, null) is not null),
             projections.Count(x => x.Status == OpenAiProductFeedStatuses.Published),
             projections.Count(x => x.Status is OpenAiProductFeedStatuses.Error or OpenAiProductFeedStatuses.Rejected),
             mapped,
@@ -79,7 +81,7 @@ public sealed class OpenAiProductFeedService(
         var currency = (configuration["Commerce:CurrencyCode"] ?? "USD").Trim().ToUpperInvariant();
         if (currency.Length != 3) currency = "USD";
 
-        var eligible = products.Select(p => (Product: p, Item: ToItem(p, root, null)))
+        var eligible = products.Select(p => (Product: p, Item: ToItem(p, root, currency, null)))
             .Where(x => x.Item is not null)
             .Select(x => (x.Product, Item: x.Item!))
             .ToList();
@@ -186,7 +188,7 @@ public sealed class OpenAiProductFeedService(
             .ThenBy(x => x.Name)
             .ToListAsync(ct);
 
-    private static OpenAiProductFeedItem? ToItem(CommerceProduct product, string root, ICollection<string>? errors)
+    private static OpenAiProductFeedItem? ToItem(CommerceProduct product, string root, string currency, ICollection<string>? errors)
     {
         if (!product.IsActive) return null;
         if (string.IsNullOrWhiteSpace(product.Name))
@@ -221,7 +223,7 @@ public sealed class OpenAiProductFeedService(
         var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintSource))).ToLowerInvariant();
 
         return new(product.Id, product.ExternalProductKey, product.Name.Trim(), description,
-            checked((long)product.PriceCents * 10_000L), "USD", landing, image!, true, fingerprint);
+            checked((long)product.PriceCents * 10_000L), currency, landing, image!, true, fingerprint);
     }
 
     private static Guid RequireBusiness(MarketingOwnerScope owner) =>
