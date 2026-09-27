@@ -58,10 +58,10 @@ for (const [built, authority] of [
 }
 for(const route of routes){
   const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
-  for(const required of ['trackingAsset:"/legend-public-tracking.js?v=','metaSignalAsset:"/legend-public-meta-signal-intelligence.js?v='])
+  for(const required of ['trackingAsset:"/legend-public-tracking.js?v=','metaSignalAsset:"/legend-public-meta-signal-intelligence.js?v=','openAiMeasurementAsset:"/legend-public-openai-measurement.js?v='])
     if(!html.includes(required))throw new Error('LEGEND public route missing canonical Protect runtime asset: '+required);
 }
-console.log('Shared platform tracking and Meta intelligence are the exact runtime source for Protect, LEGEND, and business builds.');
+console.log('Shared platform tracking, Meta intelligence, and OpenAI measurement are the exact runtime source for Protect, LEGEND, and business builds.');
 
 const businessPreview=await readFile(resolve(root,'dist',businessPreviewRoute,'index.html'),'utf8');
 for(const file of ['legend-public-cms.js','legend-public-web.js','site.css']){
