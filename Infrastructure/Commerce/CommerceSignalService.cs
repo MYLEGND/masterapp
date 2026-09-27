@@ -23,6 +23,7 @@ public sealed record CommerceSignalContext(
     string? UserAgent = null,
     string? ClientIpAddress = null,
     string? Fbclid = null,
+    string? Oppref = null,
     string? Fbc = null,
     string? Fbp = null);
 
@@ -134,6 +135,7 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
                 postalCode = customer.PostalCode
             },
             fbclid = context.Fbclid,
+            oppref = OpenAiClickReference.Normalize(context.Oppref),
             fbc = context.Fbc,
             fbp = context.Fbp,
             sourceClientIpAddress = context.ClientIpAddress,
@@ -161,6 +163,7 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
             QuoteType = "ecommerce",
             UserAgent = NormalizeNullable(context.UserAgent),
             Fbclid = NormalizeNullable(context.Fbclid),
+            Oppref = OpenAiClickReference.Normalize(context.Oppref),
             Fbc = NormalizeNullable(context.Fbc),
             Fbp = NormalizeNullable(context.Fbp),
             AgentTrackingProfileId = typedAgentId,
