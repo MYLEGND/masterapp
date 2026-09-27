@@ -5298,20 +5298,27 @@ function escapeHtml(value) {
     button.disabled = true;
     setMarketingSetupStatus('Refreshing ChatGPT Ads account and measurement setup…');
     try {
-      const payload = await fetchPostJson('openAiRefresh', endpoints.openAiRefresh, {
+      const response = await fetchPostJson('openAiRefresh', endpoints.openAiRefresh, {
         agentProfileId: marketingSetupAgentProfileId() || null,
         connectionRevision: revision
       });
+      const payload = response?.setup || response;
+      const pixelProvisioning = response?.pixelProvisioning || null;
       renderMarketingSetup(payload);
       const refreshedOpenAi = payload?.openAi || {};
       if (refreshedOpenAi.pixelConfigured && refreshedOpenAi.conversionsApiConfigured) {
         setMarketingSetupStatus('ChatGPT Ads account and measurement setup refreshed.', 'success');
+      } else if (pixelProvisioning?.status === 'not_enabled') {
+        setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. OpenAI has not enabled Ads API Pixel provisioning for this advertiser account yet.');
+      } else if (pixelProvisioning?.status === 'not_authorized') {
+        setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. This Advertiser API key cannot provision the OpenAI Pixel for this account.');
+      } else if (pixelProvisioning?.status === 'provider_unavailable') {
+        setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. OpenAI Pixel provisioning is temporarily unavailable.');
+      } else if (pixelProvisioning?.status === 'provider_error') {
+        const code = pixelProvisioning.httpStatusCode ? ` (HTTP ${pixelProvisioning.httpStatusCode})` : '';
+        setMarketingSetupStatus(`${pixelProvisioning.detail || 'OpenAI rejected Pixel provisioning.'}${code}`, 'error');
       } else if (refreshedOpenAi.measurementCapabilityStatus === 'not_enabled') {
         setMarketingSetupStatus('ChatGPT Ads account refreshed. OpenAI has not enabled Ads API conversion provisioning for this advertiser account yet.');
-      } else if (refreshedOpenAi.measurementCapabilityStatus === 'not_authorized') {
-        setMarketingSetupStatus('ChatGPT Ads account refreshed. This Advertiser API key cannot provision conversion measurement for the account.');
-      } else if (refreshedOpenAi.measurementCapabilityStatus === 'provider_unavailable') {
-        setMarketingSetupStatus('ChatGPT Ads account refreshed. OpenAI conversion provisioning is temporarily unavailable.');
       } else {
         setMarketingSetupStatus(refreshedOpenAi.measurementCapabilityDetail || 'ChatGPT Ads account refreshed; measurement setup is still incomplete.');
       }
@@ -5605,7 +5612,6 @@ function escapeHtml(value) {
       window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
     });
   });
-
 
   // ── Canonical Advertising Command Center ─────────────────────────────
   const advertisingModal = document.getElementById('advertisingCommandModal');
