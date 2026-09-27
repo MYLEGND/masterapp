@@ -173,8 +173,6 @@ if (!string.IsNullOrWhiteSpace(redisConn))
 else
     builder.Services.AddSingleton<ILeadBridgeStateService, LeadBridgeStateService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
-builder.Services.AddScoped<Infrastructure.Analytics.IUnifiedMarketingPerformanceService, Infrastructure.Analytics.UnifiedMarketingPerformanceService>();
-builder.Services.AddScoped<Infrastructure.Analytics.IMarketingManagerService, Infrastructure.Analytics.MarketingManagerService>();
 builder.Services.AddScoped<IAnalyticsIncidentQueryService, AnalyticsIncidentQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
 builder.Services.AddSingleton<ILandingRouteDiscoveryService, LandingRouteDiscoveryService>();
