@@ -109,6 +109,23 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("fetchPostJson('openAiDisconnect'", js, StringComparison.Ordinal);
         Assert.Contains(".marketing-setup-openai", css, StringComparison.Ordinal);
         Assert.Contains(".marketing-setup-lineage-grid", css, StringComparison.Ordinal);
+
+        Assert.Contains("[HttpPost(\"openai-connect\")]", controller, StringComparison.Ordinal);
+        Assert.Contains("IOpenAiAdsDirectConnectionService", controller, StringComparison.Ordinal);
+        Assert.Contains("advertiserApiKey", js, StringComparison.Ordinal);
+        Assert.Contains("openAiConnect: analyticsEndpoint('/openai-connect')", js, StringComparison.Ordinal);
+        Assert.Contains("marketing-setup-openai-api-key", view, StringComparison.Ordinal);
+        Assert.Contains("type=\"password\"", view, StringComparison.Ordinal);
+        Assert.Contains("Verify &amp; connect", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("AdvertiserApiKey = openAi", controller, StringComparison.Ordinal);
+
+        Assert.Contains(".marketing-setup-modal-dialog", css, StringComparison.Ordinal);
+        Assert.Contains("width: min(1480px, calc(100vw - 48px));", css, StringComparison.Ordinal);
+        Assert.Contains(".marketing-setup-form-grid", css, StringComparison.Ordinal);
+        Assert.Contains("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);", css, StringComparison.Ordinal);
+        Assert.Contains(".is-critical", css, StringComparison.Ordinal);
+        Assert.Contains(".is-warn", css, StringComparison.Ordinal);
+        Assert.Contains(".is-good", css, StringComparison.Ordinal);
     }
 
     [Fact]
