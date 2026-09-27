@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
 using ParfaitApp.Services;
 
+using Shared.Analytics;
 namespace ParfaitApp.Controllers;
 
 [Route("parfait-analytics")]
