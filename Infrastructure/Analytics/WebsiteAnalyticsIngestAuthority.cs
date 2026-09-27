@@ -10,7 +10,7 @@ using Shared.Analytics;
 
 namespace Infrastructure.Analytics;
 
-public class WebsiteAnalyticsIngestAuthority : Controller
+public abstract class WebsiteAnalyticsIngestAuthority : Controller
 {
     private readonly MasterAppDbContext _db;
     private readonly ILogger _logger;

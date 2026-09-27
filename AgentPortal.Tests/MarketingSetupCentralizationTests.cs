@@ -61,10 +61,10 @@ public sealed class MarketingSetupCentralizationTests
         var fetchHelperIndex = js.IndexOf("async function fetchJson", StringComparison.Ordinal);
         var marketingSetupIndex = js.IndexOf("// Centralized marketing + booking configuration.", StringComparison.Ordinal);
         var firstModuleCloseAfterSetup = js.IndexOf("})();", marketingSetupIndex, StringComparison.Ordinal);
-        var deviceModuleIndex = js.IndexOf(";(() => {", firstModuleCloseAfterSetup, StringComparison.Ordinal);
+        var deviceModuleIndex = js.IndexOf("async function loadDeviceIntelligence", marketingSetupIndex, StringComparison.Ordinal);
         Assert.True(fetchHelperIndex >= 0 && marketingSetupIndex > fetchHelperIndex);
         Assert.True(firstModuleCloseAfterSetup > marketingSetupIndex);
-        Assert.True(deviceModuleIndex > firstModuleCloseAfterSetup);
+        Assert.True(deviceModuleIndex > marketingSetupIndex && deviceModuleIndex < firstModuleCloseAfterSetup);
         Assert.Contains("let marketingSetupLoaded = false;", js, StringComparison.Ordinal);
         Assert.Contains("marketingSetupSave.disabled = !marketingSetupLoaded", js, StringComparison.Ordinal);
         Assert.Contains("marketing.metaTestEventCode", js, StringComparison.Ordinal);

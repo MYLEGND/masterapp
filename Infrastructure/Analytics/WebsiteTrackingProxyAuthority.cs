@@ -18,7 +18,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Analytics;
 
-public class WebsiteTrackingProxyAuthority : ControllerBase
+public abstract class WebsiteTrackingProxyAuthority : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonPascalCase = new()
     {

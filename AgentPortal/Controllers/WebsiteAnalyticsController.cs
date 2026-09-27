@@ -95,7 +95,7 @@ namespace AgentPortal.Controllers;
             ? TimeZoneInfo.ConvertTimeFromUtc(range.ToUtc, range.ViewerTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : string.Empty;
         ViewData["InitialQualityMode"] = ToClientQualityMode(initialQualityMode);
-        ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary);
+        ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         ViewData["InitialScopeLabel"] = summary.ScopeLabel;
         // Founder Personal must hydrate with the permanent Founder tracking-profile id
         // so the browser preserves the same canonical scope on every AJAX refresh.
@@ -519,7 +519,7 @@ namespace AgentPortal.Controllers;
             return await GetCallerProfileAsync();
 
         var scope = await ResolveScopeAsync(requestedAgentId, team: false);
-        if (scope.ScopeType != ScopeType.Agent || scope.AgentTrackingProfileId != requestedAgentId.Value)
+        if (scope.ScopeType is not (ScopeType.Agent or ScopeType.Founder) || scope.AgentTrackingProfileId != requestedAgentId.Value)
             return null;
 
         return await _db.AgentTrackingProfiles.AsNoTracking()
@@ -1851,7 +1851,7 @@ namespace AgentPortal.Controllers;
     private async Task<Guid?> ResolveMetaConnectionAgentIdAsync(Guid? requestedAgentId = null, bool team = false)
     {
         var scope = await ResolveScopeAsync(requestedAgentId, team);
-        return scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId != Guid.Empty
+        return scope.ScopeType is (ScopeType.Agent or ScopeType.Founder) && scope.AgentTrackingProfileId != Guid.Empty
             ? scope.AgentTrackingProfileId : null;
     }
 

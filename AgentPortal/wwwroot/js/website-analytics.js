@@ -1,4 +1,9 @@
 (() => {
+  if (window.__websiteAnalyticsInitialized) {
+    console.warn('WebsiteAnalytics already initialized; duplicate init blocked.');
+    return;
+  }
+  window.__websiteAnalyticsInitialized = true;
   const OPEN_MODAL_STORAGE_KEY = 'websiteAnalytics.openModal';
   const initialPreset = document.querySelector('.fa-shell')?.dataset.initialPreset || 'today';
   const initialFrom = document.querySelector('.fa-shell')?.dataset.initialFrom || null;
@@ -5438,15 +5443,6 @@ function escapeHtml(value) {
     if (marketingSetupModal?.classList.contains('show')) void loadMarketingSetup();
   });
 
-})();
-
-;(() => {
-
-  if (window.__websiteAnalyticsInitialized) {
-    console.warn('WebsiteAnalytics already initialized; duplicate init blocked.');
-    return;
-  }
-  window.__websiteAnalyticsInitialized = true;
 
   const analyticsRequestCache = window.__websiteAnalyticsRequestCache || new Map();
   window.__websiteAnalyticsRequestCache = analyticsRequestCache;
@@ -5467,7 +5463,6 @@ function escapeHtml(value) {
   const modalId = 'deviceIntelligenceModal';
   const moduleBtn = document.getElementById('mod-device-intelligence');
   const modalEl = document.getElementById(modalId);
-  if (!moduleBtn || !modalEl || !window.bootstrap) return;
 
   let localTraffic = 'all';
 
@@ -5587,12 +5582,11 @@ function escapeHtml(value) {
       throw new Error('Analytics endpoint authority is unavailable.');
     }
     const deviceUrl = `${endpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
-    const res = await fetchCachedDeviceRequest(deviceUrl, () => fetch(deviceUrl, {
-      headers: { 'Accept': 'application/json' }
-    }));
-
-    if (!res.ok) throw new Error('Unable to load Device Intelligence.');
-    const data = await res.json();
+    const data = await fetchCachedDeviceRequest(deviceUrl, async () => {
+      const res = await fetch(deviceUrl, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) throw new Error('Unable to load Device Intelligence.');
+      return res.json();
+    });
 
     const setText = (id, value) => {
       const el = document.getElementById(id);
@@ -5644,12 +5638,13 @@ function escapeHtml(value) {
     }
   };
 
-  moduleBtn.addEventListener('click', () => {
+  moduleBtn?.addEventListener('click', () => {
+    if (!modalEl || !window.bootstrap) return;
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
     window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
   });
 
-  moduleBtn.addEventListener('keydown', e => {
+  moduleBtn?.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       moduleBtn.click();

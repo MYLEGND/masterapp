@@ -21,6 +21,7 @@ using Xunit;
 
 namespace AgentPortal.Tests;
 
+[Collection("Profile website Founder environment")]
 public class WebsiteAnalyticsInitialQualityModeTests
 {
     [Fact]
@@ -47,7 +48,9 @@ public class WebsiteAnalyticsInitialQualityModeTests
         Assert.Equal("real_human_traffic", Assert.IsType<string>(view.ViewData["InitialQualityMode"]));
 
         using var doc = JsonDocument.Parse(Assert.IsType<string>(view.ViewData["InitialSummaryJson"]));
-        Assert.Equal(0, doc.RootElement.GetProperty("PageViews").GetInt32());
+        Assert.True(doc.RootElement.GetProperty("isAvailable").GetBoolean());
+        Assert.True(doc.RootElement.TryGetProperty("sessionConversionRate", out _));
+        Assert.Equal(0, doc.RootElement.GetProperty("pageViews").GetInt32());
     }
 
     [Fact]
@@ -76,7 +79,35 @@ public class WebsiteAnalyticsInitialQualityModeTests
         Assert.Equal("real_human_traffic", Assert.IsType<string>(view.ViewData["InitialQualityMode"]));
 
         using var doc = JsonDocument.Parse(Assert.IsType<string>(view.ViewData["InitialSummaryJson"]));
-        Assert.Equal(1, doc.RootElement.GetProperty("PageViews").GetInt32());
+        Assert.True(doc.RootElement.GetProperty("isAvailable").GetBoolean());
+        Assert.True(doc.RootElement.TryGetProperty("sessionConversionRate", out _));
+        Assert.Equal(1, doc.RootElement.GetProperty("pageViews").GetInt32());
+    }
+
+    [Fact]
+    public async Task FounderPersonalCanResolveItsOwnMarketingDestination()
+    {
+        var previous = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var founderOid = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderOid);
+        try
+        {
+            using var db = ControllerTestHelpers.BuildDb();
+            var profile = SeedTrackingProfile(db);
+            profile.AgentUserId = founderOid;
+            await db.SaveChangesAsync();
+            var controller = BuildController(db, profile);
+            var result = Assert.IsType<JsonResult>(await controller.MetaConnectionStatus(profile.Id));
+            var status = Assert.IsType<MetaAdsConnectionStatusDto>(result.Value);
+            Assert.False(status.RequiresAgentScope);
+            Assert.Equal(profile.Id, status.AgentTrackingProfileId);
+
+            var method = typeof(WebsiteAnalyticsController).GetMethod("ResolveMarketingSetupTrackingAsync",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var resolved = await (Task<AgentTrackingProfile?>)method.Invoke(controller, new object?[] { profile.Id, CancellationToken.None })!;
+            Assert.Equal(profile.Id, resolved?.Id);
+        }
+        finally { Environment.SetEnvironmentVariable("FOUNDER_OID", previous); }
     }
 
     private static WebsiteAnalyticsController BuildController(MasterAppDbContext db, AgentTrackingProfile profile)
@@ -91,7 +122,7 @@ public class WebsiteAnalyticsInitialQualityModeTests
             .Build();
 
         var tracking = new Mock<IAgentTrackingService>();
-        tracking.Setup(x => x.GetByUserIdAsync("agent-1", It.IsAny<CancellationToken>()))
+        tracking.Setup(x => x.GetByUserIdAsync(profile.AgentUserId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
         tracking.Setup(x => x.GetByUpnAsync("agent@example.com", It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
@@ -113,7 +144,7 @@ public class WebsiteAnalyticsInitialQualityModeTests
 
         var user = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
-            new Claim("oid", "agent-1"),
+            new Claim("oid", profile.AgentUserId!),
             new Claim("preferred_username", "agent@example.com")
         }, "TestAuth"));
 
