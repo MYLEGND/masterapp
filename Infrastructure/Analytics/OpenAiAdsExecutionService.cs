@@ -580,7 +580,7 @@ public sealed class OpenAiAdsExecutionService(
         ArgumentNullException.ThrowIfNull(request);
         if (!Uri.TryCreate(request.LandingUrl, UriKind.Absolute, out var landing) || landing.Scheme != Uri.UriSchemeHttps)
             throw new ArgumentException("Product landing URL must be HTTPS.", nameof(request));
-        if (!Uri.TryCreate(request.ImageUrl, UriKind.Absolute, out var image) || image.Scheme is not (Uri.UriSchemeHttps or Uri.UriSchemeHttp))
+        if (!Uri.TryCreate(request.ImageUrl, UriKind.Absolute, out var image) || (image.Scheme != Uri.UriSchemeHttps && image.Scheme != Uri.UriSchemeHttp))
             throw new ArgumentException("Product image URL must be HTTP(S).", nameof(request));
         if (request.PriceMicros < 0) throw new ArgumentOutOfRangeException(nameof(request.PriceMicros));
 
