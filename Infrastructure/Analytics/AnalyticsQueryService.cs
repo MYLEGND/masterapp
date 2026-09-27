@@ -2047,7 +2047,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static decimal ClampPercent(decimal value) => Math.Min(100m, Math.Max(0m, value));
 
-    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, CancellationToken cancellationToken = default)
+    public Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All) =>
+        GetSummaryAsync(range, scope, trafficType, CancellationToken.None);
+
+    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType, CancellationToken cancellationToken)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, cancellationToken);
         var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds, cancellationToken);
