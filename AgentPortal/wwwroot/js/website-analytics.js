@@ -5018,6 +5018,7 @@ function escapeHtml(value) {
 
     setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
     setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
+    setMarketingSetupChip('openAiReady', status.openAiReady, 'Ready', 'Needs attention', true);
     setMarketingSetupChip(
       'bookingPersonalLive',
       status.bookingPersonalLive,
