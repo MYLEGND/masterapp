@@ -1787,7 +1787,7 @@ public class WebsitePlatformController : ControllerBase
             return Ok(new
             {
                 source = "canonical_promotion_source_inventory",
-                items = await service.SourcesAsync(actor, owner, cancellationToken)
+                items = await service.SourcesAsync(owner, cancellationToken)
             });
         }
         catch (InvalidOperationException ex)
@@ -1833,7 +1833,7 @@ public class WebsitePlatformController : ControllerBase
         try
         {
             var service = HttpContext.RequestServices.GetRequiredService<IPromotionOrchestrationService>();
-            var draft = await service.DraftAsync(actor, owner, request.Promotion, cancellationToken);
+            var draft = await service.DraftAsync(owner, request.Promotion, cancellationToken);
             return Ok(new
             {
                 source = "canonical_promote_this",
@@ -1865,7 +1865,6 @@ public class WebsitePlatformController : ControllerBase
         {
             var service = HttpContext.RequestServices.GetRequiredService<IPromotionOrchestrationService>();
             var proposal = await service.ProposeAsync(
-                actor,
                 owner,
                 request.Promotion,
                 actor.ActorUserId,
