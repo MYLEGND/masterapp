@@ -1,0 +1,65 @@
+name: Step 5 approved-baseline control only
+
+on:
+  pull_request:
+    branches:
+      - legend/approved-changes
+    paths:
+      - '.github/workflows/step5-approved-baseline-control.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - name: Checkout PR metadata
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Fetch current approved baseline
+        run: git fetch --no-tags --depth=1 origin c9f04aa0f3c8fb205c3c053f670b3cfc794409e4
+
+      - name: Checkout approved baseline
+        run: git checkout --detach FETCH_HEAD
+
+      - name: Restore approved baseline
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+
+      - name: Build approved baseline
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
+
+      - name: Run approved baseline full AgentPortal suite
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/step5-approved-baseline
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --logger "trx;LogFileName=baseline.trx" --results-directory /tmp/step5-approved-baseline
+          test_exit=$?
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          path="/tmp/step5-approved-baseline/baseline.trx"
+          root=ET.parse(path).getroot()
+          failed=[
+              n.attrib.get("testName","")
+              for n in root.iter()
+              if n.tag.endswith("UnitTestResult") and n.attrib.get("outcome")=="Failed"
+          ]
+          passed=sum(1 for n in root.iter() if n.tag.endswith("UnitTestResult") and n.attrib.get("outcome")=="Passed")
+          skipped=sum(1 for n in root.iter() if n.tag.endswith("UnitTestResult") and n.attrib.get("outcome")=="NotExecuted")
+          print(f"APPROVED_BASELINE_FAILED={len(failed)}")
+          print(f"APPROVED_BASELINE_PASSED={passed}")
+          print(f"APPROVED_BASELINE_SKIPPED={skipped}")
+          for name in failed:
+              print(f"BASELINE_FAILURE={name}")
+          PY
+          exit 0
