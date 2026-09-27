@@ -165,30 +165,25 @@ public sealed class OpenAiConversionsApiService(HttpClient httpClient) : IOpenAi
 public static class OpenAiMeasurementEventMapper
 {
     public static readonly IReadOnlyCollection<string> SupportedCanonicalServerEvents =
-        ["Lead", "AppointmentBooked", "AddToCart", "InitiateCheckout", "Purchase"];
+        MarketingConversionDestinationCatalog.Definitions
+            .Select(definition => definition.CanonicalEventName)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     public static bool TryMap(MetaSignalEvent row, out OpenAiConversionEvent conversion)
     {
         conversion = null!;
         if (row is null || string.IsNullOrWhiteSpace(row.EventId)) return false;
 
-        var providerEvent = row.EventName switch
-        {
-            "Lead" => OpenAiMeasurementEventNames.LeadCreated,
-            "AppointmentBooked" => OpenAiMeasurementEventNames.AppointmentScheduled,
-            "AddToCart" => OpenAiMeasurementEventNames.ItemsAdded,
-            "InitiateCheckout" => OpenAiMeasurementEventNames.CheckoutStarted,
-            "Purchase" => OpenAiMeasurementEventNames.OrderCreated,
-            _ => null
-        };
-        if (providerEvent is null) return false;
+        var destination = MarketingConversionDestinationCatalog.ResolveOpenAi(row.EventName);
+        if (destination is null) return false;
+
+        var providerEvent = destination.EventName;
 
         var sourceUrl = SourceUrl(row);
         if (sourceUrl is null) return false;
 
-        var contentEvent = providerEvent is OpenAiMeasurementEventNames.ItemsAdded
-            or OpenAiMeasurementEventNames.CheckoutStarted
-            or OpenAiMeasurementEventNames.OrderCreated;
+        var contentEvent = string.Equals(destination.PayloadType, "contents", StringComparison.OrdinalIgnoreCase);
 
         long? amount = null;
         var currency = ReadString(row.MetadataJson, "currency");
@@ -225,7 +220,7 @@ public static class OpenAiMeasurementEventMapper
             TimestampMs: new DateTimeOffset(DateTime.SpecifyKind(row.CreatedUtc, DateTimeKind.Utc)).ToUnixTimeMilliseconds(),
             SourceUrl: sourceUrl,
             ActionSource: "web",
-            Data: new(contentEvent ? "contents" : "customer_action", amount, amount.HasValue ? currency : null, contents),
+            Data: new(destination.PayloadType ?? "customer_action", amount, amount.HasValue ? currency : null, contents),
             Oppref: ReadString(row.MetadataJson, "oppref"));
         return true;
     }
