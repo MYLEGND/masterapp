@@ -64,6 +64,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<MarketingConnection> MarketingConnections => Set<MarketingConnection>();
     public DbSet<MarketingDestinationDelivery> MarketingDestinationDeliveries => Set<MarketingDestinationDelivery>();
+    public DbSet<AdvertisingActionAuthorization> AdvertisingActionAuthorizations => Set<AdvertisingActionAuthorization>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
@@ -1533,6 +1534,33 @@ public class MasterAppDbContext : DbContext
             // Behavior intelligence indexes
             e.HasIndex(x => x.DeviceType);
             e.HasIndex(x => x.SessionId).HasDatabaseName("IX_AnalyticsEvents_SessionId_Behavior");
+        });
+
+        modelBuilder.Entity<AdvertisingActionAuthorization>(e =>
+        {
+            e.ToTable("AdvertisingActionAuthorizations");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerKey).HasMaxLength(64).IsRequired();
+            e.Property(x => x.OwnerType).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Provider).HasMaxLength(20).IsRequired();
+            e.Property(x => x.ProposalKind).HasMaxLength(40).IsRequired();
+            e.Property(x => x.ActionDigest).HasMaxLength(64).IsRequired();
+            e.Property(x => x.ExactPlanJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT").IsRequired();
+            e.Property(x => x.SourceSnapshotJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.State).HasMaxLength(32).IsRequired();
+            e.Property(x => x.ProposedByUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.ApprovedByUserId).HasMaxLength(450);
+            e.Property(x => x.RejectedByUserId).HasMaxLength(450);
+            e.Property(x => x.ExecutionClaimToken).HasMaxLength(64);
+            e.Property(x => x.ProviderReceiptJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.ErrorCode).HasMaxLength(120);
+            e.Property(x => x.ErrorMessage).HasMaxLength(4000);
+            e.Property(x => x.Revision).HasMaxLength(32).IsRequired().IsConcurrencyToken();
+            e.HasIndex(x => new { x.OwnerKey, x.Provider, x.ActionDigest }).IsUnique();
+            e.HasIndex(x => new { x.OwnerKey, x.State, x.ProposedUtc });
+            e.HasIndex(x => x.ExecutionClaimToken);
+            e.HasOne<AgentTrackingProfile>().WithMany().HasForeignKey(x => x.AgentTrackingProfileId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<MarketingDestinationDelivery>(e =>

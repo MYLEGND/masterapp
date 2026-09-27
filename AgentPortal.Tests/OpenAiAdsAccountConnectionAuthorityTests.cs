@@ -192,21 +192,24 @@ public sealed class OpenAiAdsAccountConnectionAuthorityTests
     }
 
     [Fact]
-    public async Task DestinationReportsConfiguredButNotEligibleUntilDeliveryStepExists()
+    public async Task DestinationUsesCanonicalMappingAndScopedMeasurementReadiness()
     {
         using var db = ControllerTestHelpers.BuildDb();
         using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
         var authority = new OpenAiAdsAccountConnectionAuthority(db, protector);
         var owner = MarketingOwnerScope.Founder;
-        await authority.BindVerifiedAsync(owner, Verified("acct", "Founder Ads", OpenAiAdsAccountRoles.Admin), new());
+        await authority.BindVerifiedAsync(
+            owner,
+            Verified("acct", "Founder Ads", OpenAiAdsAccountRoles.Admin),
+            new("management-secret", "capi-secret"));
 
         var destination = new OpenAiMarketingDestination(authority);
         var decision = await destination.EvaluateAsync(owner, new MarketingOutcome("Lead", "event-1", true));
 
-        Assert.False(decision.Supported);
+        Assert.True(decision.Supported);
         Assert.True(decision.Configured);
-        Assert.False(decision.Eligible);
-        Assert.Equal("delivery_not_implemented", decision.Reason);
+        Assert.True(decision.Eligible);
+        Assert.Equal("eligible", decision.Reason);
     }
 
     private static MarketingOwnerScope Owner(string kind) => kind switch

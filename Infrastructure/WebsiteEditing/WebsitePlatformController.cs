@@ -295,7 +295,7 @@ public class WebsitePlatformController : ControllerBase
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history, signalCatalog = SignalCatalogPayload(), capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken), canDelete = await CanPublishAsync(actor, cancellationToken) },
+            history, signalCatalog = SignalCatalogPayload(), capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken), canDelete = await CanPublishAsync(actor, cancellationToken), canPromote = await CanPublishAsync(actor, cancellationToken) },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
     }
@@ -1765,6 +1765,256 @@ public class WebsitePlatformController : ControllerBase
             nextAttemptUtc = StringValue("metaServerNextAttemptUtc"),
             dispatchedUtc = StringValue("metaServerDispatchedUtc")
         };
+    }
+
+    public sealed record PromotionRequest(string Ticket, Shared.Analytics.PromotionProposalRequest Promotion);
+    public sealed record AdvertisingProposalActionRequest(string Ticket, Guid ProposalId, string Revision);
+
+    [HttpGet("manage/promote/sources")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PromotionSources(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var owner = await ResolveAdvertisingOwnerAsync(actor, cancellationToken);
+        if (owner is null) return Forbid();
+
+        try
+        {
+            var service = HttpContext.RequestServices.GetRequiredService<IPromotionOrchestrationService>();
+            return Ok(new
+            {
+                source = "canonical_promotion_source_inventory",
+                items = await service.SourcesAsync(owner, cancellationToken)
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = "promotion_sources_unavailable", message = ex.Message });
+        }
+    }
+
+    [HttpGet("manage/promote/conversions")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PromotionConversions(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var owner = await ResolveAdvertisingOwnerAsync(actor, cancellationToken);
+        if (owner is null) return Forbid();
+
+        try
+        {
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IOpenAiAdsExecutionService>();
+            var settings = await service.ListConversionEventSettingsAsync(owner, cancellationToken);
+            return Ok(new { source = "scoped_openai_conversion_settings", payload = settings.Payload });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Infrastructure.Analytics.OpenAiAdsExecutionException)
+        {
+            return BadRequest(new { error = "promotion_conversions_unavailable", message = ex.Message });
+        }
+    }
+
+    [HttpPost("manage/promote/draft")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PromotionDraft(
+        [FromBody] PromotionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var owner = await ResolveAdvertisingOwnerAsync(actor, cancellationToken);
+        if (owner is null) return Forbid();
+
+        try
+        {
+            var service = HttpContext.RequestServices.GetRequiredService<IPromotionOrchestrationService>();
+            var draft = await service.DraftAsync(owner, request.Promotion, cancellationToken);
+            return Ok(new
+            {
+                source = "canonical_promote_this",
+                persisted = false,
+                approved = false,
+                executable = false,
+                draft
+            });
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { error = "promotion_draft_invalid", message = ex.Message });
+        }
+    }
+
+    [HttpPost("manage/promote/propose")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PromotionPropose(
+        [FromBody] PromotionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        var owner = await ResolveAdvertisingOwnerAsync(actor, cancellationToken);
+        if (owner is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Forbid();
+
+        try
+        {
+            var service = HttpContext.RequestServices.GetRequiredService<IPromotionOrchestrationService>();
+            var proposal = await service.ProposeAsync(
+                owner,
+                request.Promotion,
+                actor.ActorUserId,
+                cancellationToken);
+            return Ok(new
+            {
+                source = "canonical_advertising_action_ledger",
+                requiresApproval = true,
+                executed = false,
+                proposal
+            });
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { error = "promotion_proposal_invalid", message = ex.Message });
+        }
+    }
+
+    [HttpGet("manage/promote/proposals/{proposalId:guid}")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PromotionProposal(
+        Guid proposalId,
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var owner = await ResolveAdvertisingOwnerAsync(actor, cancellationToken);
+        if (owner is null) return Forbid();
+
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingActionAuthorizationService>();
+        var proposal = await service.GetAsync(owner, proposalId, cancellationToken);
+        return proposal is null ? NotFound() : Ok(new { source = "canonical_advertising_action_ledger", proposal });
+    }
+
+    [HttpPost("manage/promote/approve")]
+    public async Task<IActionResult> PromotionApprove(
+        [FromBody] AdvertisingProposalActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken) || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Forbid();
+        var owner = await ResolveAdvertisingOwnerAsync(actor, cancellationToken);
+        if (owner is null) return Forbid();
+
+        try
+        {
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingActionAuthorizationService>();
+            var receipt = await service.ApproveAsync(
+                owner,
+                request.ProposalId,
+                actor.ActorUserId,
+                request.Revision,
+                DateTime.UtcNow.AddMinutes(15),
+                cancellationToken);
+            return Ok(new { source = "canonical_advertising_action_ledger", approved = true, executed = false, receipt });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { error = "advertising_proposal_revision_conflict" });
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { error = "advertising_approval_denied", message = ex.Message });
+        }
+    }
+
+    [HttpPost("manage/promote/execute")]
+    public async Task<IActionResult> PromotionExecute(
+        [FromBody] AdvertisingProposalActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        var owner = await ResolveAdvertisingOwnerAsync(actor, cancellationToken);
+        if (owner is null) return Forbid();
+
+        try
+        {
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingActionAuthorizationService>();
+            var receipt = await service.ExecuteAsync(owner, request.ProposalId, request.Revision, cancellationToken);
+            return Ok(new { source = "canonical_advertising_action_ledger", receipt });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { error = "advertising_proposal_revision_conflict" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = "advertising_execution_denied", message = ex.Message });
+        }
+    }
+
+    [HttpPost("manage/promote/reject")]
+    public async Task<IActionResult> PromotionReject(
+        [FromBody] AdvertisingProposalActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken) || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Forbid();
+        var owner = await ResolveAdvertisingOwnerAsync(actor, cancellationToken);
+        if (owner is null) return Forbid();
+
+        try
+        {
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingActionAuthorizationService>();
+            var proposal = await service.RejectAsync(owner, request.ProposalId, actor.ActorUserId, request.Revision, cancellationToken);
+            return Ok(new { source = "canonical_advertising_action_ledger", proposal });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { error = "advertising_proposal_revision_conflict" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = "advertising_rejection_denied", message = ex.Message });
+        }
+    }
+
+    private async Task<Shared.Analytics.MarketingOwnerScope?> ResolveAdvertisingOwnerAsync(
+        WebsiteEditorTicket actor,
+        CancellationToken cancellationToken)
+    {
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Business &&
+            actor.CommerceBusinessId is Guid businessId &&
+            businessId != Guid.Empty)
+            return Shared.Analytics.MarketingOwnerScope.Business(businessId);
+
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Legend && actor.IsFounder)
+            return Shared.Analytics.MarketingOwnerScope.Founder;
+
+        if (actor.SiteKey != WebsiteEditorSiteKeys.Protect)
+            return null;
+
+        AgentTrackingProfile? profile = null;
+        if (!string.IsNullOrWhiteSpace(actor.AgentSlug))
+        {
+            var slug = actor.AgentSlug.Trim().ToLowerInvariant();
+            profile = await _db.AgentTrackingProfiles.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Slug.ToLower() == slug, cancellationToken);
+        }
+        profile ??= await _db.AgentTrackingProfiles.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.AgentUserId.ToLower() == actor.OwnerUserId.ToLower(), cancellationToken);
+
+        return profile is null
+            ? null
+            : Shared.Analytics.MarketingOwnerScope.Agent(profile.Id);
     }
 
     private async Task<bool> CanPublishAsync(WebsiteEditorTicket actor, CancellationToken cancellationToken) =>

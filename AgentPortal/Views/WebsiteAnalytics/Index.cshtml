@@ -203,6 +203,93 @@
     </div>
 </div>
 
+<div class="modal fade fa-modal" id="advertisingCommandModal" tabindex="-1" aria-labelledby="advertisingCommandModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable advertising-command-dialog">
+        <div class="modal-content advertising-command-modal">
+            <div class="modal-header advertising-command-header">
+                <div>
+                    <div class="wa-modal-kicker">Canonical Advertising Authority</div>
+                    <h5 class="modal-title mb-0" id="advertisingCommandModalLabel">Advertising Command Center</h5>
+                    <div class="wa-modal-subtitle" id="advertising-command-scope">Scoped campaigns, approvals, performance, and promotion execution.</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body advertising-command-body">
+                <div class="advertising-command-statusbar">
+                    <div><span>ChatGPT Ads</span><strong id="advertising-command-connection">Checking…</strong></div>
+                    <div><span>Campaigns</span><strong id="advertising-command-campaign-count">0</strong></div>
+                    <div><span>Awaiting approval</span><strong id="advertising-command-approval-count">0</strong></div>
+                    <div><span>Executed / audited</span><strong id="advertising-command-audit-count">0</strong></div>
+                </div>
+
+                <div class="advertising-command-toolbar">
+                    <button type="button" class="btn btn-gold" id="advertising-command-promote">Promote This</button>
+                    <button type="button" class="btn btn-outline-light" id="advertising-command-refresh">Refresh</button>
+                    <span id="advertising-command-status" role="status" aria-live="polite"></span>
+                </div>
+
+                <section class="advertising-command-section">
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Live provider state</span>
+                            <h6>Campaigns</h6>
+                        </div>
+                        <small>Reads the scoped ChatGPT Ads account. Mutations always become approval proposals first.</small>
+                    </div>
+                    <div id="advertising-command-campaigns" class="advertising-command-grid"></div>
+                </section>
+
+                <section class="advertising-command-section" id="advertising-command-promotion" hidden>
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Promotion Builder</span>
+                            <h6>Promote an existing LEGEND asset</h6>
+                        </div>
+                        <small>Published pages, canonical services, and active store products only.</small>
+                    </div>
+                    <div class="advertising-command-form-grid">
+                        <label><span>Source</span><select id="advertising-promote-source" class="form-select"></select></label>
+                        <label><span>Objective</span><select id="advertising-promote-objective" class="form-select"><option value="clicks">Drive qualified visits</option><option value="conversions">Optimize for conversion</option></select></label>
+                        <label id="advertising-promote-conversion-wrap" hidden><span>Conversion</span><select id="advertising-promote-conversion" class="form-select"></select></label>
+                        <label><span>Daily budget</span><input id="advertising-promote-budget" class="form-control" type="number" min="1" step="0.01" placeholder="25.00" /></label>
+                        <label class="advertising-command-wide"><span>Goal / offer</span><input id="advertising-promote-goal" class="form-control" type="text" maxlength="4000" placeholder="What result should this campaign drive?" /></label>
+                        <label class="advertising-command-wide"><span>Context hints</span><input id="advertising-promote-hints" class="form-control" type="text" placeholder="roof repair, storm damage, local contractor" /></label>
+                        <label><span>Countries</span><input id="advertising-promote-countries" class="form-control" type="text" placeholder="US" /></label>
+                        <label><span>Provider state after approval</span><select id="advertising-promote-status" class="form-select"><option value="paused">Create paused</option><option value="active">Launch active</option></select></label>
+                    </div>
+                    <div class="advertising-command-toolbar advertising-command-builder-actions">
+                        <button type="button" class="btn btn-gold" id="advertising-promote-preview">Build Preview</button>
+                        <button type="button" class="btn btn-outline-light" id="advertising-promote-cancel">Close Builder</button>
+                    </div>
+                    <div id="advertising-promote-preview-panel" class="advertising-command-preview" hidden></div>
+                </section>
+
+                <section class="advertising-command-section">
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Governance</span>
+                            <h6>Approval Queue &amp; Audit History</h6>
+                        </div>
+                        <small>Every consequential change is digest-bound, approved, executed once, and retained with provider receipts.</small>
+                    </div>
+                    <div id="advertising-command-proposals" class="advertising-command-ledger"></div>
+                </section>
+
+                <section class="advertising-command-section" id="advertising-command-insights" hidden>
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Performance</span>
+                            <h6 id="advertising-command-insights-title">Campaign performance</h6>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-light" id="advertising-command-insights-close">Close</button>
+                    </div>
+                    <div id="advertising-command-insights-body" class="advertising-command-insights-grid"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
     Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
 </div>
@@ -226,6 +313,15 @@
                                 aria-controls="marketingSetupModal">
                             Marketing Setup
                         </button>
+                        <button type="button"
+                                class="btn advertising-command-trigger"
+                                id="advertising-command-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#advertisingCommandModal"
+                                aria-controls="advertisingCommandModal">
+                            Advertising Command Center
+                        </button>
+
                     </div>
                     <div class="hero-link-subtitle text-silver">Open the website and jump into behavior review fast. Meta Ads controls now live inside Core Metrics for quicker access.</div>
                 </div>

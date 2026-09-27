@@ -425,16 +425,7 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
     }
 
     private static string MapToMetaStandardEventName(string eventName)
-        => eventName switch
-        {
-            "QualifiedLead" => "QualifiedLead",
-            "AppointmentBooked" => "AppointmentBooked",
-            "ApplicationSubmitted" => "ApplicationSubmitted",
-            "PolicyIssued" => "PolicyIssued",
-            "PolicyPaid" => "Purchase",
-            "AppointmentCompleted" => "AppointmentCompleted",
-            _ => eventName
-        };
+        => MarketingConversionDestinationCatalog.ResolveMeta(eventName)?.EventName ?? eventName;
 
     private static Dictionary<string, object?> BuildUserData(MetaConversionsApiEventRequest request)
     {

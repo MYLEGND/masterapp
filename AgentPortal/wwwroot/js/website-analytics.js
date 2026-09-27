@@ -144,6 +144,14 @@
     openAiConnect: analyticsEndpoint('/openai-connect'),
     openAiRefresh: analyticsEndpoint('/openai-refresh'),
     openAiDisconnect: analyticsEndpoint('/openai-disconnect'),
+    advertising: analyticsEndpoint('/advertising'),
+    advertisingPromotionDraft: analyticsEndpoint('/advertising/promote/draft'),
+    advertisingPromotionPropose: analyticsEndpoint('/advertising/promote/propose'),
+    advertisingCampaignStatusPropose: analyticsEndpoint('/advertising/campaign/status/propose'),
+    advertisingCampaignBudgetPropose: analyticsEndpoint('/advertising/campaign/budget/propose'),
+    advertisingApprove: analyticsEndpoint('/advertising/approve'),
+    advertisingExecute: analyticsEndpoint('/advertising/execute'),
+    advertisingReject: analyticsEndpoint('/advertising/reject'),
     behaviorSummary: analyticsEndpoint('/behavior/summary'),
     behaviorTime: analyticsEndpoint('/behavior/time-on-page'),
     behaviorExit: analyticsEndpoint('/behavior/exit-analysis'),
@@ -5604,5 +5612,524 @@ function escapeHtml(value) {
       window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
     });
   });
+
+  // ── Canonical Advertising Command Center ─────────────────────────────
+  const advertisingModal = document.getElementById('advertisingCommandModal');
+  const isBusinessAnalytics = /^\/business\/[0-9a-f-]+\/analytics\/?$/i.test(analyticsBase);
+  let advertisingSnapshot = null;
+  let advertisingSelectedCreative = null;
+
+  function advertisingScopeParams() {
+    if (isBusinessAnalytics) return {};
+    const id = state.scope.agentProfileId || (!isFounder ? callerProfileId : null);
+    return id ? { agentProfileId: id } : {};
+  }
+
+  function advertisingBody(payload = {}) {
+    return { ...advertisingScopeParams(), ...payload };
+  }
+
+  function advertisingData(payload) {
+    if (!payload || typeof payload !== 'object') return [];
+    return Array.isArray(payload.data) ? payload.data : [];
+  }
+
+  function advertisingText(id, value) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value == null || value === '' ? '—' : String(value);
+  }
+
+  function advertisingSetStatus(message, tone = '') {
+    const node = document.getElementById('advertising-command-status');
+    if (!node) return;
+    node.textContent = message || '';
+    node.dataset.tone = tone || '';
+  }
+
+  function advertisingFormatMoneyMicros(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    return (n / 1000000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function advertisingBudgetLabel(campaign) {
+    const budget = campaign?.budget || {};
+    const daily = budget.daily_spend_limit_micros ?? budget.dailySpendLimitMicros ?? campaign?.daily_spend_limit_micros;
+    const lifetime = budget.lifetime_spend_limit_micros ?? budget.lifetimeSpendLimitMicros ?? campaign?.lifetime_spend_limit_micros;
+    if (daily != null) return `${advertisingFormatMoneyMicros(daily)} / day`;
+    if (lifetime != null) return `${advertisingFormatMoneyMicros(lifetime)} lifetime`;
+    return 'Budget not returned';
+  }
+
+  function advertisingProposalCounts(proposals) {
+    const pending = proposals.filter(p => p.state === 'Proposed' || p.state === 'Approved').length;
+    const audited = proposals.filter(p => ['Completed', 'Failed', 'OutcomeUnknown', 'Rejected'].includes(p.state)).length;
+    return { pending, audited };
+  }
+
+  function advertisingCampaignId(campaign) {
+    return campaign?.id || campaign?.campaign_id || campaign?.campaignId || '';
+  }
+
+  function advertisingCampaignName(campaign) {
+    return campaign?.name || campaign?.campaign_name || campaign?.campaignName || advertisingCampaignId(campaign) || 'Campaign';
+  }
+
+  function advertisingCampaignStatus(campaign) {
+    return campaign?.status || campaign?.effective_status || campaign?.configured_status || 'unknown';
+  }
+
+  function advertisingButton(label, onClick, className = 'btn btn-sm btn-outline-light') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = className;
+    btn.textContent = label;
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  function advertisingMetaSpan(text) {
+    const span = document.createElement('span');
+    span.textContent = text;
+    return span;
+  }
+
+  async function loadAdvertisingCommandCenter() {
+    advertisingSetStatus('Loading scoped advertising authority…');
+    const snapshot = await fetchJson('advertisingCommandCenter', endpoints.advertising, advertisingScopeParams());
+    if (!snapshot) return;
+    advertisingSnapshot = snapshot;
+    renderAdvertisingCommandCenter(snapshot);
+    advertisingSetStatus('Scoped advertising authority is current.', 'success');
+  }
+
+  function renderAdvertisingCommandCenter(snapshot) {
+    const campaigns = advertisingData(snapshot.campaigns);
+    const proposals = Array.isArray(snapshot.proposals) ? snapshot.proposals : [];
+    const counts = advertisingProposalCounts(proposals);
+    const connected = snapshot.connection?.connected === true && snapshot.connection?.hasManagementCredential === true;
+
+    advertisingText('advertising-command-scope', state.scope.scopeLabel || 'Current scope');
+    advertisingText('advertising-command-connection', connected ? (snapshot.connection?.accountName || 'Connected') : 'Not connected');
+    advertisingText('advertising-command-campaign-count', campaigns.length);
+    advertisingText('advertising-command-approval-count', counts.pending);
+    advertisingText('advertising-command-audit-count', counts.audited);
+
+    const promote = document.getElementById('advertising-command-promote');
+    if (promote) {
+      promote.disabled = !connected;
+      promote.title = connected ? 'Build a governed campaign proposal' : 'Connect ChatGPT Ads in Marketing Setup first';
+    }
+
+    renderAdvertisingCampaigns(campaigns, connected);
+    renderAdvertisingLedger(proposals);
+    hydrateAdvertisingPromotionSources(snapshot);
+  }
+
+  function renderAdvertisingCampaigns(campaigns, connected) {
+    const host = document.getElementById('advertising-command-campaigns');
+    if (!host) return;
+    host.replaceChildren();
+
+    if (!connected) {
+      const empty = document.createElement('div');
+      empty.className = 'advertising-command-card';
+      empty.innerHTML = '<h6>Connect ChatGPT Ads</h6><div class="advertising-command-meta"><span>Use Marketing Setup to verify the scoped advertiser account before managing campaigns.</span></div>';
+      host.appendChild(empty);
+      return;
+    }
+
+    if (!campaigns.length) {
+      const empty = document.createElement('div');
+      empty.className = 'advertising-command-card';
+      empty.innerHTML = '<h6>No campaigns yet</h6><div class="advertising-command-meta"><span>Use Promote This to build your first governed campaign proposal from a published LEGEND asset.</span></div>';
+      host.appendChild(empty);
+      return;
+    }
+
+    for (const campaign of campaigns) {
+      const id = advertisingCampaignId(campaign);
+      const name = advertisingCampaignName(campaign);
+      const status = advertisingCampaignStatus(campaign);
+      const card = document.createElement('article');
+      card.className = 'advertising-command-card';
+
+      const title = document.createElement('h6');
+      title.textContent = name;
+      const meta = document.createElement('div');
+      meta.className = 'advertising-command-meta';
+      meta.append(
+        advertisingMetaSpan(`Status: ${status}`),
+        advertisingMetaSpan(`Objective: ${campaign.bidding_type || campaign.biddingType || '—'}`),
+        advertisingMetaSpan(advertisingBudgetLabel(campaign))
+      );
+      const actions = document.createElement('div');
+      actions.className = 'advertising-command-actions';
+
+      actions.append(advertisingButton('Performance', () => void openAdvertisingCampaignInsights(id, name)));
+      const nextStatus = String(status).toLowerCase() === 'active' ? 'paused' : 'active';
+      actions.append(advertisingButton(
+        nextStatus === 'active' ? 'Propose activation' : 'Propose pause',
+        () => void proposeAdvertisingCampaignStatus(id, name, nextStatus),
+        nextStatus === 'active' ? 'btn btn-sm btn-gold' : 'btn btn-sm btn-outline-light'
+      ));
+      actions.append(advertisingButton('Change budget', () => renderAdvertisingBudgetEditor(card, id, name)));
+
+      card.append(title, meta, actions);
+      host.appendChild(card);
+    }
+  }
+
+  function renderAdvertisingBudgetEditor(card, campaignId, campaignName) {
+    card.querySelector('.advertising-budget-editor')?.remove();
+    const box = document.createElement('div');
+    box.className = 'advertising-budget-editor advertising-command-actions';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '1';
+    input.step = '0.01';
+    input.className = 'form-control form-control-sm';
+    input.placeholder = 'New daily budget';
+    input.style.maxWidth = '180px';
+    const propose = advertisingButton('Create budget proposal', async () => {
+      const value = Number(input.value);
+      if (!Number.isFinite(value) || value < 1) {
+        advertisingSetStatus('Enter a daily budget of at least 1.00 in the connected account currency.', 'error');
+        return;
+      }
+      await proposeAdvertisingCampaignBudget(campaignId, campaignName, Math.round(value * 1000000));
+      box.remove();
+    }, 'btn btn-sm btn-gold');
+    box.append(input, propose, advertisingButton('Cancel', () => box.remove()));
+    card.appendChild(box);
+    input.focus();
+  }
+
+  async function proposeAdvertisingCampaignStatus(campaignId, campaignName, status) {
+    advertisingSetStatus(`Creating exact ${status} proposal…`);
+    try {
+      await fetchPostJson('advertisingCampaignStatusPropose', endpoints.advertisingCampaignStatusPropose,
+        advertisingBody({ campaignId, campaignName, status }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Status change is awaiting explicit approval. Nothing has executed.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to create campaign status proposal.', 'error');
+    }
+  }
+
+  async function proposeAdvertisingCampaignBudget(campaignId, campaignName, dailySpendLimitMicros) {
+    advertisingSetStatus('Creating exact budget proposal…');
+    try {
+      await fetchPostJson('advertisingCampaignBudgetPropose', endpoints.advertisingCampaignBudgetPropose,
+        advertisingBody({ campaignId, campaignName, budget: { dailySpendLimitMicros } }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Budget change is awaiting explicit approval. Nothing has executed.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to create budget proposal.', 'error');
+    }
+  }
+
+  function renderAdvertisingLedger(proposals) {
+    const host = document.getElementById('advertising-command-proposals');
+    if (!host) return;
+    host.replaceChildren();
+
+    if (!proposals.length) {
+      const empty = document.createElement('div');
+      empty.className = 'advertising-ledger-card';
+      empty.innerHTML = '<h6>No advertising actions yet</h6><div class="advertising-command-meta"><span>Proposals, approvals, provider receipts, rejections, and terminal failures will remain visible here.</span></div>';
+      host.appendChild(empty);
+      return;
+    }
+
+    for (const proposal of proposals) {
+      const card = document.createElement('article');
+      card.className = 'advertising-ledger-card';
+      card.dataset.state = proposal.state || '';
+
+      const title = document.createElement('h6');
+      title.textContent = proposal.plan?.title || proposal.proposalKind || 'Advertising action';
+      const meta = document.createElement('div');
+      meta.className = 'advertising-command-meta';
+      meta.append(
+        advertisingMetaSpan(`State: ${proposal.state || '—'}`),
+        advertisingMetaSpan(`Proposed: ${proposal.proposedUtc ? new Date(proposal.proposedUtc).toLocaleString() : '—'}`),
+        advertisingMetaSpan(`Digest: ${String(proposal.actionDigest || '').slice(0, 12)}…`)
+      );
+
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Exact approved-plan payload / provider receipt';
+      const pre = document.createElement('pre');
+      pre.className = 'advertising-plan-json';
+      pre.textContent = JSON.stringify({
+        plan: proposal.plan,
+        source: proposal.sourceSnapshot,
+        providerReceipt: proposal.providerReceipt,
+        errorCode: proposal.errorCode,
+        errorMessage: proposal.errorMessage
+      }, null, 2);
+      details.append(summary, pre);
+
+      const actions = document.createElement('div');
+      actions.className = 'advertising-command-actions';
+      if (proposal.state === 'Proposed') {
+        actions.append(
+          advertisingButton('Approve exact plan', () => void approveAdvertisingProposal(proposal), 'btn btn-sm btn-gold'),
+          advertisingButton('Reject', () => void rejectAdvertisingProposal(proposal))
+        );
+      } else if (proposal.state === 'Approved') {
+        actions.append(
+          advertisingButton('Execute approved plan', () => void executeAdvertisingProposal(proposal), 'btn btn-sm btn-gold'),
+          advertisingButton('Reject', () => void rejectAdvertisingProposal(proposal))
+        );
+      }
+
+      card.append(title, meta, details, actions);
+      host.appendChild(card);
+    }
+  }
+
+  async function approveAdvertisingProposal(proposal) {
+    advertisingSetStatus('Binding approval to the exact reviewed plan…');
+    try {
+      await fetchPostJson('advertisingApprove', endpoints.advertisingApprove,
+        advertisingBody({ proposalId: proposal.id, revision: proposal.revision }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Exact plan approved. Execution is still a separate action.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Approval failed.', 'error');
+    }
+  }
+
+  async function executeAdvertisingProposal(proposal) {
+    advertisingSetStatus('Executing the one approved plan…');
+    try {
+      const receipt = await fetchPostJson('advertisingExecute', endpoints.advertisingExecute,
+        advertisingBody({ proposalId: proposal.id, revision: proposal.revision }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus(
+        receipt?.state === 'Completed'
+          ? 'Provider execution completed and receipt was audited.'
+          : `Execution ended in ${receipt?.state || 'unknown'}; the ledger is preserved.`,
+        receipt?.state === 'Completed' ? 'success' : 'error');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Execution failed.', 'error');
+    }
+  }
+
+  async function rejectAdvertisingProposal(proposal) {
+    advertisingSetStatus('Rejecting proposal without provider execution…');
+    try {
+      await fetchPostJson('advertisingReject', endpoints.advertisingReject,
+        advertisingBody({ proposalId: proposal.id, revision: proposal.revision }));
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Proposal rejected. No provider mutation occurred.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Rejection failed.', 'error');
+    }
+  }
+
+  function hydrateAdvertisingPromotionSources(snapshot) {
+    const source = document.getElementById('advertising-promote-source');
+    const conversion = document.getElementById('advertising-promote-conversion');
+    if (source) {
+      source.replaceChildren();
+      for (const item of snapshot.sources || []) {
+        const option = document.createElement('option');
+        option.value = JSON.stringify({ sourceKind: item.sourceKind, sourceId: item.sourceId, pagePath: item.pagePath || null });
+        option.textContent = item.detail ? `${item.label} · ${item.detail}` : item.label;
+        source.appendChild(option);
+      }
+    }
+    if (conversion) {
+      conversion.replaceChildren();
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Choose a standard conversion';
+      conversion.appendChild(placeholder);
+      for (const row of advertisingData(snapshot.conversionSettings)) {
+        if (String(row.event_type || row.eventType || '').toLowerCase() === 'custom') continue;
+        if (String(row.status || '').toLowerCase() === 'archived') continue;
+        const option = document.createElement('option');
+        option.value = row.id || '';
+        option.textContent = row.name || row.event_name || row.eventType || 'Conversion';
+        conversion.appendChild(option);
+      }
+    }
+  }
+
+  function advertisingPromotionRequest(selectedCreativeKey = null) {
+    const raw = document.getElementById('advertising-promote-source')?.value;
+    if (!raw) throw new Error('Choose a published page, service, or active product.');
+    const source = JSON.parse(raw);
+    const objective = document.getElementById('advertising-promote-objective')?.value || 'clicks';
+    const conversion = document.getElementById('advertising-promote-conversion')?.value || null;
+    const budget = Number(document.getElementById('advertising-promote-budget')?.value);
+    if (!Number.isFinite(budget) || budget < 1) throw new Error('Enter a daily budget of at least 1.00 in the connected account currency.');
+    if (objective === 'conversions' && !conversion) throw new Error('Choose a standard conversion objective.');
+
+    const split = id => (document.getElementById(id)?.value || '')
+      .split(',').map(value => value.trim()).filter(Boolean);
+
+    return {
+      ...source,
+      goal: document.getElementById('advertising-promote-goal')?.value?.trim() || null,
+      dailyBudgetMicros: Math.round(budget * 1000000),
+      biddingType: objective,
+      contextHints: split('advertising-promote-hints'),
+      countries: split('advertising-promote-countries').map(value => value.toUpperCase()),
+      platforms: null,
+      status: document.getElementById('advertising-promote-status')?.value || 'paused',
+      conversionEventSettingId: objective === 'conversions' ? conversion : null,
+      selectedCreativeKey
+    };
+  }
+
+  async function buildAdvertisingPromotionPreview() {
+    advertisingSetStatus('Building governed promotion preview…');
+    try {
+      const draft = await fetchPostJson('advertisingPromotionDraft', endpoints.advertisingPromotionDraft,
+        advertisingBody({ promotion: advertisingPromotionRequest(null) }));
+      renderAdvertisingPromotionPreview(draft);
+      advertisingSetStatus('Preview built. Nothing is approved or executed.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to build promotion preview.', 'error');
+    }
+  }
+
+  function renderAdvertisingPromotionPreview(draft) {
+    const host = document.getElementById('advertising-promote-preview-panel');
+    if (!host) return;
+    host.hidden = false;
+    host.replaceChildren();
+    advertisingSelectedCreative = draft.selectedAlternativeKey || null;
+
+    const intro = document.createElement('div');
+    intro.className = 'advertising-command-card';
+    intro.innerHTML = `<h6>${escapeHtml(draft.source?.displayName || 'Promotion')}</h6>
+      <div class="advertising-command-meta"><span>${escapeHtml(draft.source?.landingUrl || '')}</span><span>Budget: ${advertisingFormatMoneyMicros(draft.dailyBudgetMicros)} / day</span></div>`;
+    host.appendChild(intro);
+
+    for (const creative of draft.alternatives || []) {
+      const label = document.createElement('label');
+      label.className = 'advertising-creative-card';
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'advertising-promote-creative';
+      radio.value = creative.key;
+      radio.checked = creative.key === advertisingSelectedCreative;
+      radio.addEventListener('change', () => { advertisingSelectedCreative = creative.key; });
+      const content = document.createElement('div');
+      const heading = document.createElement('strong');
+      heading.textContent = creative.title || creative.name;
+      const body = document.createElement('div');
+      body.textContent = creative.body || '';
+      content.append(heading, body);
+      if (creative.imageUrl) {
+        const img = document.createElement('img');
+        img.src = creative.imageUrl;
+        img.alt = '';
+        img.loading = 'lazy';
+        content.appendChild(img);
+      }
+      label.append(radio, content);
+      host.appendChild(label);
+    }
+
+    const exact = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Exact provider mutation plan';
+    const pre = document.createElement('pre');
+    pre.className = 'advertising-plan-json';
+    pre.textContent = JSON.stringify(draft.plan?.steps || [], null, 2);
+    exact.append(summary, pre);
+    host.appendChild(exact);
+
+    host.appendChild(advertisingButton('Create approval proposal', () => void createAdvertisingPromotionProposal(), 'btn btn-gold'));
+  }
+
+  async function createAdvertisingPromotionProposal() {
+    advertisingSetStatus('Persisting exact promotion proposal…');
+    try {
+      await fetchPostJson('advertisingPromotionPropose', endpoints.advertisingPromotionPropose,
+        advertisingBody({ promotion: advertisingPromotionRequest(advertisingSelectedCreative) }));
+      document.getElementById('advertising-command-promotion')?.setAttribute('hidden', '');
+      document.getElementById('advertising-promote-preview-panel')?.setAttribute('hidden', '');
+      await loadAdvertisingCommandCenter();
+      advertisingSetStatus('Proposal created. Explicit approval is required before execution.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to create promotion proposal.', 'error');
+    }
+  }
+
+  async function openAdvertisingCampaignInsights(campaignId, campaignName) {
+    advertisingSetStatus('Loading campaign performance…');
+    try {
+      const params = advertisingScopeParams();
+      params.preset = state.scope.preset || '7d';
+      const custom = resolveCustomRangeUtc();
+      if (custom) Object.assign(params, custom);
+      const url = analyticsEndpoint(`/advertising/campaign/${encodeURIComponent(campaignId)}/insights`);
+      const result = await fetchJson('advertisingCampaignInsights', url, params);
+      const section = document.getElementById('advertising-command-insights');
+      const body = document.getElementById('advertising-command-insights-body');
+      advertisingText('advertising-command-insights-title', campaignName);
+      if (section) section.hidden = false;
+      if (body) {
+        body.replaceChildren();
+        const rows = advertisingData(result?.payload || result);
+        const totals = rows.reduce((acc, row) => {
+          for (const key of ['impressions', 'clicks', 'spend']) acc[key] += Number(row[key] || row[`campaign.${key}`] || 0);
+          return acc;
+        }, { impressions: 0, clicks: 0, spend: 0 });
+        const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+        for (const [label, value] of [
+          ['Impressions', totals.impressions.toLocaleString()],
+          ['Clicks', totals.clicks.toLocaleString()],
+          ['Spend', totals.spend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })],
+          ['CTR', `${ctr.toFixed(2)}%`]
+        ]) {
+          const card = document.createElement('div');
+          card.className = 'advertising-insight';
+          card.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+          body.appendChild(card);
+        }
+      }
+      advertisingSetStatus('Campaign performance loaded.', 'success');
+    } catch (error) {
+      advertisingSetStatus(error.message || 'Unable to load campaign performance.', 'error');
+    }
+  }
+
+  function initAdvertisingCommandCenter() {
+    advertisingModal?.addEventListener('show.bs.modal', () => { void loadAdvertisingCommandCenter(); });
+    document.getElementById('advertising-command-refresh')?.addEventListener('click', () => void loadAdvertisingCommandCenter());
+    document.getElementById('advertising-command-promote')?.addEventListener('click', () => {
+      const section = document.getElementById('advertising-command-promotion');
+      if (section) section.hidden = false;
+      document.getElementById('advertising-promote-budget')?.focus();
+    });
+    document.getElementById('advertising-promote-cancel')?.addEventListener('click', () => {
+      const section = document.getElementById('advertising-command-promotion');
+      if (section) section.hidden = true;
+      const preview = document.getElementById('advertising-promote-preview-panel');
+      if (preview) preview.hidden = true;
+    });
+    document.getElementById('advertising-promote-objective')?.addEventListener('change', event => {
+      const wrap = document.getElementById('advertising-promote-conversion-wrap');
+      if (wrap) wrap.hidden = event.currentTarget.value !== 'conversions';
+    });
+    document.getElementById('advertising-promote-preview')?.addEventListener('click', () => void buildAdvertisingPromotionPreview());
+    document.getElementById('advertising-command-insights-close')?.addEventListener('click', () => {
+      const section = document.getElementById('advertising-command-insights');
+      if (section) section.hidden = true;
+    });
+    window.addEventListener('wa:scope-changed', () => {
+      if (advertisingModal?.classList.contains('show')) void loadAdvertisingCommandCenter();
+    });
+  }
+
+  initAdvertisingCommandCenter();
 
 })();

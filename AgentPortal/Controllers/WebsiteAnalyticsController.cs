@@ -1398,6 +1398,199 @@ namespace AgentPortal.Controllers;
             LoadVisitorConcentrationSafelyAsync, HttpContext.RequestAborted));
     }
 
+    public sealed record AdvertisingPromotionRequest(
+        Guid? AgentProfileId,
+        Shared.Analytics.PromotionProposalRequest Promotion);
+
+    public sealed record AdvertisingProposalActionRequest(
+        Guid? AgentProfileId,
+        Guid ProposalId,
+        string Revision);
+
+    public sealed record AdvertisingCampaignStatusRequest(
+        Guid? AgentProfileId,
+        string CampaignId,
+        string CampaignName,
+        string Status);
+
+    public sealed record AdvertisingCampaignBudgetRequest(
+        Guid? AgentProfileId,
+        string CampaignId,
+        string CampaignName,
+        Shared.Analytics.OpenAiAdsBudget Budget);
+
+    [HttpGet("advertising")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Advertising(
+        [FromQuery] Guid? agentProfileId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var tracking = await ResolveMarketingSetupTrackingAsync(agentProfileId, cancellationToken);
+        if (tracking is null) return Forbid();
+        var owner = ResolveOpenAiMarketingOwner(tracking);
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+        try
+        {
+            return Json(await service.GetAsync(owner, cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or
+                                   Infrastructure.Analytics.OpenAiAdsExecutionException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("advertising/promote/draft")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdvertisingPromotionDraft(
+        [FromBody] AdvertisingPromotionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+        try { return Json(await service.DraftPromotionAsync(owner, request.Promotion, cancellationToken)); }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or Infrastructure.Analytics.OpenAiAdsExecutionException)
+        { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpPost("advertising/promote/propose")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdvertisingPromotionPropose(
+        [FromBody] AdvertisingPromotionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+        try { return Json(await service.ProposePromotionAsync(owner, request.Promotion, User.GetCanonicalUserId(), cancellationToken)); }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or Infrastructure.Analytics.OpenAiAdsExecutionException)
+        { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpPost("advertising/campaign/status/propose")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdvertisingCampaignStatusPropose(
+        [FromBody] AdvertisingCampaignStatusRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+        try
+        {
+            return Json(await service.ProposeCampaignStatusAsync(
+                owner,
+                new Infrastructure.Analytics.AdvertisingCampaignStatusProposalRequest(
+                    request.CampaignId, request.CampaignName, request.Status),
+                User.GetCanonicalUserId(),
+                cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpPost("advertising/campaign/budget/propose")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdvertisingCampaignBudgetPropose(
+        [FromBody] AdvertisingCampaignBudgetRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+        try
+        {
+            return Json(await service.ProposeCampaignBudgetAsync(
+                owner,
+                new Infrastructure.Analytics.AdvertisingCampaignBudgetProposalRequest(
+                    request.CampaignId, request.CampaignName, request.Budget),
+                User.GetCanonicalUserId(),
+                cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpPost("advertising/approve")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdvertisingApprove(
+        [FromBody] AdvertisingProposalActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+        try { return Json(await service.ApproveAsync(owner, request.ProposalId, User.GetCanonicalUserId(), request.Revision, cancellationToken)); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { message = "Advertising proposal changed. Reload before approving." }); }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpPost("advertising/execute")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdvertisingExecute(
+        [FromBody] AdvertisingProposalActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+        try { return Json(await service.ExecuteAsync(owner, request.ProposalId, request.Revision, cancellationToken)); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { message = "Advertising proposal changed. Reload before execution." }); }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpPost("advertising/reject")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdvertisingReject(
+        [FromBody] AdvertisingProposalActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+        try { return Json(await service.RejectAsync(owner, request.ProposalId, User.GetCanonicalUserId(), request.Revision, cancellationToken)); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { message = "Advertising proposal changed. Reload before rejecting." }); }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpGet("advertising/campaign/{campaignId}/insights")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> AdvertisingCampaignInsights(
+        string campaignId,
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] string? preset = null,
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        try
+        {
+            var range = TimeRangeRequest.FromPreset(preset ?? "7d", fromUtc, toUtc, GetViewerTimeZone());
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+            return Json(await service.CampaignInsightsAsync(
+                owner,
+                campaignId,
+                new Shared.Analytics.OpenAiAdsInsightsQuery(range.FromUtc, range.ToUtc, "daily"),
+                cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or Infrastructure.Analytics.OpenAiAdsExecutionException)
+        { return BadRequest(new { message = ex.Message }); }
+    }
+
+    private async Task<Shared.Analytics.MarketingOwnerScope?> ResolveAdvertisingOwnerAsync(
+        Guid? agentProfileId,
+        CancellationToken cancellationToken)
+    {
+        var tracking = await ResolveMarketingSetupTrackingAsync(agentProfileId, cancellationToken);
+        return tracking is null ? null : ResolveOpenAiMarketingOwner(tracking);
+    }
+
     [HttpGet("meta-campaigns")]
     public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {

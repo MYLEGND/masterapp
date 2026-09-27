@@ -75,11 +75,16 @@ public sealed class OpenAiMeasurementDeliveryTests
 
     [Theory]
     [InlineData("Lead", "lead_created", "customer_action")]
+    [InlineData("QualifiedLead", "QualifiedLead", "customer_action")]
     [InlineData("AppointmentBooked", "appointment_scheduled", "customer_action")]
+    [InlineData("AppointmentCompleted", "AppointmentCompleted", "customer_action")]
+    [InlineData("ApplicationSubmitted", "ApplicationSubmitted", "customer_action")]
+    [InlineData("PolicyIssued", "PolicyIssued", "customer_action")]
+    [InlineData("PolicyPaid", "order_created", "contents")]
     [InlineData("AddToCart", "items_added", "contents")]
     [InlineData("InitiateCheckout", "checkout_started", "contents")]
     [InlineData("Purchase", "order_created", "contents")]
-    public void Mapper_ProjectsOnlyUnambiguousCanonicalServerEvents(
+    public void Mapper_ProjectsCanonicalServerEventsThroughDestinationCatalog(
         string canonical,
         string expectedProviderEvent,
         string expectedDataType)
@@ -107,12 +112,66 @@ public sealed class OpenAiMeasurementDeliveryTests
     }
 
     [Fact]
-    public void Mapper_DoesNotGuessUnsupportedCanonicalEvents()
+    public void DestinationCatalog_CoversEveryCanonicalServerConversionExactlyOnce()
+    {
+        var canonicalConversions = MetaSignalEventCatalog.Definitions
+            .Where(definition => string.Equals(definition.Category, "conversion", StringComparison.OrdinalIgnoreCase))
+            .Select(definition => definition.Name)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var mappedConversions = MarketingConversionDestinationCatalog.Definitions
+            .Select(definition => definition.CanonicalEventName)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.Equal(canonicalConversions, mappedConversions);
+        Assert.Equal(mappedConversions.Length, mappedConversions.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(mappedConversions, OpenAiMeasurementEventMapper.SupportedCanonicalServerEvents.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("Lead", "lead_created", MarketingConversionEventKind.Standard, true)]
+    [InlineData("QualifiedLead", "QualifiedLead", MarketingConversionEventKind.Custom, false)]
+    [InlineData("AppointmentBooked", "appointment_scheduled", MarketingConversionEventKind.Standard, true)]
+    [InlineData("AppointmentCompleted", "AppointmentCompleted", MarketingConversionEventKind.Custom, false)]
+    [InlineData("ApplicationSubmitted", "ApplicationSubmitted", MarketingConversionEventKind.Custom, false)]
+    [InlineData("PolicyIssued", "PolicyIssued", MarketingConversionEventKind.Custom, false)]
+    [InlineData("PolicyPaid", "order_created", MarketingConversionEventKind.Standard, true)]
+    [InlineData("AddToCart", "items_added", MarketingConversionEventKind.Standard, true)]
+    [InlineData("InitiateCheckout", "checkout_started", MarketingConversionEventKind.Standard, true)]
+    [InlineData("Purchase", "order_created", MarketingConversionEventKind.Standard, true)]
+    public void DestinationCatalog_ExplicitlyClassifiesOpenAiStandardVsCustomOptimizationEligibility(
+        string canonical,
+        string providerEvent,
+        MarketingConversionEventKind expectedKind,
+        bool optimizationEligible)
+    {
+        var destination = MarketingConversionDestinationCatalog.ResolveOpenAi(canonical);
+
+        Assert.NotNull(destination);
+        Assert.Equal(providerEvent, destination!.EventName);
+        Assert.Equal(expectedKind, destination.Kind);
+        Assert.Equal(optimizationEligible, destination.OptimizationEligible);
+    }
+
+    [Fact]
+    public void DestinationCatalog_PreservesExistingMetaPolicyPaidTranslation()
+    {
+        var destination = MarketingConversionDestinationCatalog.ResolveMeta("PolicyPaid");
+
+        Assert.NotNull(destination);
+        Assert.Equal("Purchase", destination!.EventName);
+        Assert.Equal(MarketingConversionEventKind.Standard, destination.Kind);
+    }
+
+    [Fact]
+    public void Mapper_DoesNotGuessUnknownEvents()
     {
         var row = new MetaSignalEvent
         {
             EventId = "canonical-unsupported",
-            EventName = "QualifiedLead",
+            EventName = "UnknownCanonicalEvent",
             CreatedUtc = DateTime.UtcNow,
             Host = "example.com"
         };
