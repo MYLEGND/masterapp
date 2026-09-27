@@ -10,6 +10,11 @@ namespace Infrastructure.WebsiteEditing;
 
 public interface IPromotionOrchestrationService
 {
+    Task<IReadOnlyList<PromotionSourceOption>> SourcesAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        CancellationToken ct = default);
+
     Task<PromotionDraft> DraftAsync(
         WebsiteEditorTicket actor,
         MarketingOwnerScope owner,
@@ -30,6 +35,58 @@ public sealed class PromotionOrchestrationService(
     IAdvertisingActionAuthorizationService authorizations) : IPromotionOrchestrationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public async Task<IReadOnlyList<PromotionSourceOption>> SourcesAsync(
+        WebsiteEditorTicket actor,
+        MarketingOwnerScope owner,
+        CancellationToken ct = default)
+    {
+        var published = await PublishedStateAsync(actor, ct);
+        var document = ReadDocument(published.Version.DocumentJson);
+        var options = document.Pages
+            .Where(x => !x.Value.Navigation.IsDeleted)
+            .OrderBy(x => x.Key, StringComparer.Ordinal)
+            .Select(x => new PromotionSourceOption(
+                PromotionSourceKinds.WebsitePage,
+                x.Key,
+                Clean(x.Value.Title, 300) ?? (x.Key == "/" ? "Home" : x.Key.Trim('/')),
+                PagePath: x.Key,
+                Detail: Clean(x.Value.Description, 500)))
+            .ToList();
+
+        if (owner.CommerceBusinessId is not Guid businessId || actor.CommerceBusinessId != businessId)
+            return options;
+
+        var facts = await WebsiteBusinessFacts.LoadAsync(db, businessId, ct);
+        foreach (var service in (facts.Services ?? string.Empty)
+                     .Split(new[] { '\r', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .Take(100))
+        {
+            options.Add(new PromotionSourceOption(
+                PromotionSourceKinds.Service,
+                service,
+                service,
+                PagePath: "/",
+                Detail: "Business service"));
+        }
+
+        var products = await db.CommerceProducts.AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.IsActive)
+            .OrderBy(x => x.DisplayOrder)
+            .ThenBy(x => x.Name)
+            .Take(500)
+            .Select(x => new { x.Id, x.Name, x.Slug, x.PriceLabel })
+            .ToListAsync(ct);
+        options.AddRange(products.Select(x => new PromotionSourceOption(
+            PromotionSourceKinds.Product,
+            x.Id.ToString("D"),
+            x.Name,
+            PagePath: "/store/product/" + x.Slug,
+            Detail: x.PriceLabel)));
+
+        return options;
+    }
 
     public async Task<PromotionDraft> DraftAsync(
         WebsiteEditorTicket actor,
