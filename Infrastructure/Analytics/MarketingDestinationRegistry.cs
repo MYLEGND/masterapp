@@ -99,9 +99,10 @@ public sealed class MetaMarketingDestination(MarketingConnectionStore connection
 }
 
 /// <summary>
-/// Reserved provider adapter for ChatGPT/OpenAI Ads. Step 1 registers the destination
-/// identity but deliberately fails closed. Account ownership, Pixel/CAPI, attribution,
-/// and delivery are added only by later validated steps.
+/// Canonical ChatGPT/OpenAI Ads destination projection. It evaluates only whether a
+/// canonical outcome has a supported OpenAI conversion mapping and whether the scoped
+/// owner has the required measurement connection. Provider delivery and advertising
+/// mutations remain owned by their dedicated shared services.
 /// </summary>
 public sealed class OpenAiMarketingDestination(
     IOpenAiAdsAccountConnectionAuthority connections) : IMarketingDestination
@@ -116,12 +117,18 @@ public sealed class OpenAiMarketingDestination(
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(outcome);
 
+        var destination = MarketingConversionDestinationCatalog.ResolveOpenAi(outcome.NormalizedEventName);
+        if (!outcome.IsServerAuthority || destination is null)
+            return new(Key, Supported: false, Configured: false, Eligible: false, Reason: "event_not_supported");
+
         var connection = await connections.GetAsync(owner, cancellationToken);
         if (!connection.Connected)
-            return new(Key, Supported: false, Configured: false, Eligible: false, Reason: "destination_not_configured");
+            return new(Key, Supported: true, Configured: false, Eligible: false, Reason: "destination_not_configured");
 
-        // Step 2 establishes only account/measurement connection authority. Event mapping
-        // and delivery remain intentionally unavailable until their dedicated steps.
-        return new(Key, Supported: false, Configured: true, Eligible: false, Reason: "delivery_not_implemented");
+        var configured = connection.PixelConfigured && connection.ConversionsApiConfigured;
+        if (!configured)
+            return new(Key, Supported: true, Configured: false, Eligible: false, Reason: "destination_not_ready");
+
+        return new(Key, Supported: true, Configured: true, Eligible: true, Reason: "eligible");
     }
 }
