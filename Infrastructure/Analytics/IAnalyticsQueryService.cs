@@ -12,7 +12,7 @@ public interface IAnalyticsQueryService
         IReadOnlyCollection<AnalyticsEvent> events, System.Threading.CancellationToken ct = default);
     Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(TimeRangeRequest range, ScopeContext scope,
         Guid[]? scopedAgentIds = null, System.Threading.CancellationToken cancellationToken = default);
-    Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
+    Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, System.Threading.CancellationToken cancellationToken = default);
     Task<TrafficOverviewDto> GetTrafficAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<PagePerformanceDto> GetPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<CtaPerformanceDto> GetCtaPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
