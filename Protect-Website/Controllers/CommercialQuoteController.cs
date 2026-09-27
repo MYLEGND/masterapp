@@ -14,6 +14,7 @@ using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 using ProtectWebsite.Services.Communication;
 
+using Shared.Analytics;
 namespace Protect_Website.Controllers
 {
     [Route("Quote")]
