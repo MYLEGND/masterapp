@@ -25,6 +25,10 @@ public sealed record OpenAiAdsMeasurementCapabilitySnapshot(
     public bool ApiAvailable => Status is "available" or "configured";
 }
 
+public sealed record OpenAiAdsRefreshResult(
+    OpenAiAdsConnectionSnapshot Connection,
+    OpenAiAdsMeasurementCapabilitySnapshot PixelProvisioning);
+
 public interface IOpenAiAdsDirectConnectionService
 {
     Task<OpenAiAdsConnectionSnapshot> ConnectAsync(
@@ -33,7 +37,7 @@ public interface IOpenAiAdsDirectConnectionService
         Guid? expectedRevision = null,
         CancellationToken cancellationToken = default);
 
-    Task<OpenAiAdsConnectionSnapshot> RefreshAsync(
+    Task<OpenAiAdsRefreshResult> RefreshAsync(
         MarketingOwnerScope owner,
         Guid expectedRevision,
         CancellationToken cancellationToken = default);
@@ -66,12 +70,35 @@ public sealed class OpenAiAdsDirectConnectionService(
         Guid? expectedRevision = null,
         CancellationToken cancellationToken = default)
     {
+        var result = await ConnectCoreAsync(owner, advertiserApiKey, expectedRevision, cancellationToken);
+        return result.Connection;
+    }
+
+    public async Task<OpenAiAdsRefreshResult> RefreshAsync(
+        MarketingOwnerScope owner,
+        Guid expectedRevision,
+        CancellationToken cancellationToken = default)
+    {
+        var connection = await authority.GetAsync(owner, cancellationToken);
+        if (!connection.Connected)
+            throw new InvalidOperationException("ChatGPT Ads is not connected for this scope.");
+
+        var secrets = await authority.GetSecretsAsync(owner, cancellationToken);
+        if (string.IsNullOrWhiteSpace(secrets.ManagementApiKey))
+            throw new InvalidOperationException("The scoped Advertiser API credential is unavailable.");
+
+        return await ConnectCoreAsync(owner, secrets.ManagementApiKey, expectedRevision, cancellationToken);
+    }
+
+    private async Task<OpenAiAdsRefreshResult> ConnectCoreAsync(
+        MarketingOwnerScope owner,
+        string advertiserApiKey,
+        Guid? expectedRevision,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(owner);
         var key = CleanKey(advertiserApiKey);
 
-        // Account verification is the connection authority. Measurement setup is a
-        // separate provider capability and must never turn a verified account into a
-        // failed connection.
         var provider = await ReadAccountAsync(key, cancellationToken);
         var existing = await authority.GetAsync(owner, cancellationToken);
         var sameAccount = existing.Connected &&
@@ -98,7 +125,7 @@ public sealed class OpenAiAdsDirectConnectionService(
             ConversionDataSourceId: measurement.DataSourceId,
             VerifiedUtc: DateTime.UtcNow);
 
-        return await authority.BindVerifiedAsync(
+        var bound = await authority.BindVerifiedAsync(
             owner,
             verified,
             new OpenAiAdsConnectionSecrets(
@@ -106,22 +133,13 @@ public sealed class OpenAiAdsDirectConnectionService(
                 ConversionsApiKey: measurement.ConversionsApiKey),
             expectedRevision,
             cancellationToken);
-    }
 
-    public async Task<OpenAiAdsConnectionSnapshot> RefreshAsync(
-        MarketingOwnerScope owner,
-        Guid expectedRevision,
-        CancellationToken cancellationToken = default)
-    {
-        var connection = await authority.GetAsync(owner, cancellationToken);
-        if (!connection.Connected)
-            throw new InvalidOperationException("ChatGPT Ads is not connected for this scope.");
-
-        var secrets = await authority.GetSecretsAsync(owner, cancellationToken);
-        if (string.IsNullOrWhiteSpace(secrets.ManagementApiKey))
-            throw new InvalidOperationException("The scoped Advertiser API credential is unavailable.");
-
-        return await ConnectAsync(owner, secrets.ManagementApiKey, expectedRevision, cancellationToken);
+        return new OpenAiAdsRefreshResult(
+            bound,
+            new OpenAiAdsMeasurementCapabilitySnapshot(
+                measurement.PixelStatus,
+                measurement.PixelHttpStatusCode,
+                measurement.PixelDetail));
     }
 
     public async Task<OpenAiAdsProviderAccountSnapshot?> InspectAsync(
@@ -160,7 +178,7 @@ public sealed class OpenAiAdsDirectConnectionService(
                 : "Conversion provisioning is available; measurement setup is incomplete.");
     }
 
-    private async Task<(string? PixelId, string? DataSourceId, string? ConversionsApiKey)> ResolveMeasurementAsync(
+    private async Task<(string? PixelId, string? DataSourceId, string? ConversionsApiKey, string PixelStatus, int? PixelHttpStatusCode, string? PixelDetail)> ResolveMeasurementAsync(
         string key,
         string accountName,
         OpenAiAdsConnectionSnapshot? existing,
@@ -172,22 +190,37 @@ public sealed class OpenAiAdsDirectConnectionService(
         string? pixelId = existing?.PixelId;
         string? dataSourceId = existing?.ConversionDataSourceId;
         string? capiKey = existingSecrets.ConversionsApiKey;
+        var pixelStatus = !string.IsNullOrWhiteSpace(pixelId) && !string.IsNullOrWhiteSpace(dataSourceId)
+            ? "configured"
+            : "available";
+        int? pixelHttpStatusCode = null;
+        string? pixelDetail = pixelStatus == "configured" ? "Pixel is configured." : null;
 
         if (string.IsNullOrWhiteSpace(pixelId) || string.IsNullOrWhiteSpace(dataSourceId))
         {
             var listed = await ListPixelsAsync(key, cancellationToken);
+            pixelStatus = listed.Status;
+            pixelHttpStatusCode = listed.HttpStatusCode;
+            pixelDetail = listed.Detail;
             if (listed.Source is not null)
             {
                 pixelId = listed.Source.Value.PixelId;
                 dataSourceId = listed.Source.Value.Id;
+                pixelStatus = "configured";
+                pixelDetail = "Existing OpenAI Pixel reused.";
             }
             else if (listed.Status == "available")
             {
                 var created = await TryCreatePixelAsync(key, $"{accountName} website", cancellationToken);
+                pixelStatus = created.Status;
+                pixelHttpStatusCode = created.HttpStatusCode;
+                pixelDetail = created.Detail;
                 if (created.Source is not null)
                 {
                     pixelId = created.Source.Value.PixelId;
                     dataSourceId = created.Source.Value.Id;
+                    pixelStatus = "configured";
+                    pixelDetail = "OpenAI Pixel created.";
                 }
             }
         }
@@ -201,7 +234,7 @@ public sealed class OpenAiAdsDirectConnectionService(
             capiKey = createdKey.ApiKey;
         }
 
-        return (pixelId, dataSourceId, capiKey);
+        return (pixelId, dataSourceId, capiKey, pixelStatus, pixelHttpStatusCode, pixelDetail);
     }
 
     private async Task<OpenAiAdsProviderAccountSnapshot> ReadAccountAsync(string key, CancellationToken cancellationToken)
