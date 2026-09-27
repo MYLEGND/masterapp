@@ -439,6 +439,22 @@ public sealed class OpenAiAdsExecutionService(
         if (granularity is not ("hourly" or "daily" or "monthly" or "none"))
             throw new ArgumentException("Unsupported OpenAI Ads time granularity.", nameof(query));
 
+        // Insights accepts completed full hours in the connected account's timezone.
+        // Resolve that timezone through the same owner-bound authority as the report.
+        var account = await GetJsonAsync(owner, "/ad_account", ct);
+        var timezoneId = ReadString(account, "timezone")
+            ?? throw new InvalidOperationException("The scoped ChatGPT Ads account did not return its reporting timezone.");
+        TimeZoneInfo timezone;
+        try { timezone = TimeZoneInfo.FindSystemTimeZoneById(timezoneId); }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        { throw new InvalidOperationException("The scoped ChatGPT Ads reporting timezone is unavailable.", ex); }
+        var now = DateTime.UtcNow;
+        var requestedEnd = query.ToUtc.ToUniversalTime();
+        var from = AlignReportingHour(query.FromUtc.ToUniversalTime(), timezone, forward: true);
+        var to = AlignReportingHour(requestedEnd < now ? requestedEnd : now, timezone, forward: false);
+        if (to <= from)
+            throw new ArgumentException("The selected range contains no completed full ChatGPT Ads reporting hour.", nameof(query));
+
         var parameters = new List<string>
         {
             "aggregation_level=" + Uri.EscapeDataString(aggregation),
@@ -446,8 +462,8 @@ public sealed class OpenAiAdsExecutionService(
             "time_ranges[]=" + Uri.EscapeDataString(JsonSerializer.Serialize(new
             {
                 type = "unix_range",
-                start = new DateTimeOffset(query.FromUtc.ToUniversalTime()).ToUnixTimeSeconds(),
-                end = new DateTimeOffset(query.ToUtc.ToUniversalTime()).ToUnixTimeSeconds()
+                start = new DateTimeOffset(from).ToUnixTimeSeconds(),
+                end = new DateTimeOffset(to).ToUnixTimeSeconds()
             }))
         };
         foreach (var field in CleanList(query.Fields, 100, 200) ?? [])
@@ -457,7 +473,18 @@ public sealed class OpenAiAdsExecutionService(
             if (query.Limit is < 1 or > 2000) throw new ArgumentOutOfRangeException(nameof(query.Limit));
             parameters.Add("limit=" + query.Limit.Value);
         }
-        return new(await GetJsonAsync(owner, path + "?" + string.Join("&", parameters), ct));
+        return new(await GetJsonAsync(owner, path + "?" + string.Join("&", parameters), ct), from, to);
+    }
+
+    private static DateTime AlignReportingHour(DateTime utc, TimeZoneInfo timezone, bool forward)
+    {
+        // Walk UTC minutes so DST gaps and repeated hours retain their actual instant;
+        // fractional-hour timezone offsets must not be rounded as UTC hours.
+        var minute = new DateTime(utc.Ticks - utc.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        if (forward && minute < utc) minute = minute.AddMinutes(1);
+        for (var i = 0; i < 180; i++, minute = minute.AddMinutes(forward ? 1 : -1))
+            if (TimeZoneInfo.ConvertTimeFromUtc(minute, timezone).Minute == 0) return minute;
+        throw new InvalidOperationException("No valid ChatGPT Ads reporting-hour boundary was found.");
     }
 
     private async Task ValidateConversionGoalAsync(

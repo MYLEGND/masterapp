@@ -183,24 +183,66 @@ public sealed class OpenAiAdsExecutionServiceTests
         Assert.Equal("ag-roofing-1", handler.Requests.Last().IdempotencyKey);
     }
 
-    [Fact]
-    public async Task Insights_ReadsUseOfficialScopedEndpointAndUnixRange()
+    [Theory]
+    [InlineData("founder", "America/Phoenix", "2026-09-20T07:12:34Z", "2026-09-20T10:57:03Z", "2026-09-20T08:00:00Z", "2026-09-20T10:00:00Z")]
+    [InlineData("agent", "Asia/Kolkata", "2026-09-20T07:12:34Z", "2026-09-20T10:57:03Z", "2026-09-20T07:30:00Z", "2026-09-20T10:30:00Z")]
+    [InlineData("business", "Asia/Kathmandu", "2026-09-20T07:12:34Z", "2026-09-20T10:57:03Z", "2026-09-20T07:15:00Z", "2026-09-20T10:15:00Z")]
+    [InlineData("founder", "America/New_York", "2025-11-02T05:00:00Z", "2025-11-02T06:00:00Z", "2025-11-02T05:00:00Z", "2025-11-02T06:00:00Z")]
+    [InlineData("agent", "Australia/Lord_Howe", "2026-04-04T14:40:00Z", "2026-04-04T16:10:00Z", "2026-04-04T15:30:00Z", "2026-04-04T15:30:00Z")]
+    public async Task Insights_UsesScopedAccountTimezoneAndCompletedHours(
+        string kind, string timezone, string start, string end, string expectedStart, string expectedEnd)
     {
-        var owner = MarketingOwnerScope.Founder;
-        var handler = new RecordingHandler((_, _) =>
-            Json(HttpStatusCode.OK, """{"object":"list","data":[{"campaign_id":"cmpn_1","clicks":4,"spend":12.50}],"has_more":false}"""));
+        var owner = Owner(kind);
+        var handler = new RecordingHandler((request, _) => request.Url.EndsWith("/ad_account", StringComparison.Ordinal)
+            ? Json(HttpStatusCode.OK, JsonSerializer.Serialize(new { timezone }))
+            : Json(HttpStatusCode.OK, """{"object":"list","data":[{"campaign_id":"cmpn_1","clicks":4,"spend":12.50}],"has_more":false}"""));
         var service = Service(owner, handler);
-
-        var from = new DateTime(2026, 9, 20, 0, 0, 0, DateTimeKind.Utc);
-        var to = new DateTime(2026, 9, 21, 0, 0, 0, DateTimeKind.Utc);
-        await service.GetAccountInsightsAsync(owner, "campaign", new(from, to, "none", ["campaign.id", "campaign.clicks", "campaign.spend"]));
-
-        var request = Assert.Single(handler.Requests);
+        var from = DateTimeOffset.Parse(start).UtcDateTime;
+        var to = DateTimeOffset.Parse(end).UtcDateTime;
+        if (expectedStart == expectedEnd)
+        {
+            await Assert.ThrowsAsync<ArgumentException>(() => service.GetAccountInsightsAsync(owner, "campaign", new(from, to)));
+            Assert.Single(handler.Requests); // No invalid provider report or fabricated zero metrics.
+            return;
+        }
+        var result = await service.GetAccountInsightsAsync(owner, "campaign", new(from, to, "none", ["campaign.id", "campaign.clicks", "campaign.spend"]));
+        Assert.Equal(2, handler.Requests.Count);
+        var request = handler.Requests.Last();
         Assert.Contains("/ad_account/insights?", request.Url, StringComparison.Ordinal);
         Assert.Contains("aggregation_level=campaign", request.Url, StringComparison.Ordinal);
         var decodedUrl = Uri.UnescapeDataString(request.Url);
-        Assert.Contains("time_ranges[]=", decodedUrl, StringComparison.Ordinal);
         Assert.Contains("fields[]=campaign.id", decodedUrl, StringComparison.Ordinal);
+        Assert.Contains("\"start\":" + DateTimeOffset.Parse(expectedStart).ToUnixTimeSeconds(), decodedUrl, StringComparison.Ordinal);
+        Assert.Contains("\"end\":" + DateTimeOffset.Parse(expectedEnd).ToUnixTimeSeconds(), decodedUrl, StringComparison.Ordinal);
+        Assert.Equal(DateTimeOffset.Parse(expectedStart).UtcDateTime, result.EffectiveFromUtc);
+        Assert.Equal(DateTimeOffset.Parse(expectedEnd).UtcDateTime, result.EffectiveToUtc);
+        Assert.All(handler.Requests, r => Assert.Equal("Bearer secret", r.Authorization));
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"timezone\":\"invalid/account-zone\"}")]
+    public async Task Insights_MissingOrInvalidAccountTimezoneDoesNotGuess(string account)
+    {
+        var handler = new RecordingHandler((_, _) => Json(HttpStatusCode.OK, account));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Service(MarketingOwnerScope.Founder, handler)
+            .GetAccountInsightsAsync(MarketingOwnerScope.Founder, "campaign", new(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow)));
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Insights_FutureEndIsLimitedToCompletedHours()
+    {
+        var handler = new RecordingHandler((request, _) => request.Url.EndsWith("/ad_account", StringComparison.Ordinal)
+            ? Json(HttpStatusCode.OK, """{"timezone":"America/Phoenix"}""")
+            : Json(HttpStatusCode.OK, """{"data":[]}"""));
+        var before = DateTime.UtcNow;
+        var result = await Service(MarketingOwnerScope.Founder, handler).GetAccountInsightsAsync(
+            MarketingOwnerScope.Founder, "campaign", new(before.AddDays(-1), before.AddDays(1)));
+        Assert.True(result.EffectiveToUtc <= DateTime.UtcNow);
+        Assert.True(result.EffectiveToUtc >= before.AddHours(-1));
+        Assert.Equal(0, result.EffectiveToUtc!.Value.Minute);
+        Assert.Equal(0, result.EffectiveToUtc.Value.Second);
     }
 
     [Fact]

@@ -205,7 +205,9 @@ public sealed record OpenAiAdsConversionInsightsQuery(
     bool IncludeZeroRows = true);
 
 public sealed record OpenAiAdsInsightsResult(
-    JsonElement Payload);
+    JsonElement Payload,
+    DateTime? EffectiveFromUtc = null,
+    DateTime? EffectiveToUtc = null);
 
 
 public sealed record OpenAiAdsProductFeedCreateRequest(

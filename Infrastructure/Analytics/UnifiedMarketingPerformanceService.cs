@@ -44,9 +44,12 @@ public sealed class UnifiedMarketingPerformanceService(
                         range.FromUtc,
                         range.ToUtc,
                         TimeGranularity: "none",
-                        Fields: ["spend", "impressions", "clicks", "conversions", "campaign_id", "campaign_name", "status"]),
+                        Fields: ["campaign.spend", "campaign.impressions", "campaign.clicks", "campaign.id", "campaign.name", "campaign.status"]),
                     ct);
                 delivery.AddRange(ParseOpenAiRows(provider.Payload));
+                if (provider.EffectiveFromUtc is { } effectiveFrom && provider.EffectiveToUtc is { } effectiveTo &&
+                    (effectiveFrom != range.FromUtc.ToUniversalTime() || effectiveTo != range.ToUtc.ToUniversalTime()))
+                    notes.Add($"ChatGPT Ads delivery covers completed account-local hours: {effectiveFrom:O} to {effectiveTo:O} (UTC). Canonical outcomes retain the selected range.");
             }
             catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or OpenAiAdsExecutionException or HttpRequestException ||
                 ex is OperationCanceledException && !ct.IsCancellationRequested)
