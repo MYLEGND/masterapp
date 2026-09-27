@@ -97,9 +97,12 @@ namespace AgentPortal.Controllers;
         ViewData["InitialQualityMode"] = ToClientQualityMode(initialQualityMode);
         ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary);
         ViewData["InitialScopeLabel"] = summary.ScopeLabel;
-        ViewData["InitialScopeProfileId"] = scope.ScopeType == ScopeType.Agent
-            ? scope.AgentTrackingProfileId
-            : null;
+        // Founder Personal must hydrate with the permanent Founder tracking-profile id
+        // so the browser preserves the same canonical scope on every AJAX refresh.
+        ViewData["InitialScopeProfileId"] =
+            scope.ScopeType is ScopeType.Founder or ScopeType.Agent
+                ? scope.AgentTrackingProfileId
+                : null;
         var landingRoutes = _landingRouteDiscovery.GetAllRoutes();
         ViewData["LandingRoutesBaseUrl"] = _landingRouteDiscovery.GetBaseUrl();
         ViewData["LandingRoutesJson"] = System.Text.Json.JsonSerializer.Serialize(
