@@ -206,3 +206,21 @@ public sealed record OpenAiAdsConversionInsightsQuery(
 
 public sealed record OpenAiAdsInsightsResult(
     JsonElement Payload);
+
+
+public sealed record OpenAiAdsProductFeedCreateRequest(
+    string Name,
+    string Currency,
+    string? IdempotencyKey = null);
+
+public sealed record OpenAiAdsProductFeedItemUpsertRequest(
+    string ProductFeedId,
+    string ExternalId,
+    string Title,
+    string Description,
+    long PriceMicros,
+    string Currency,
+    string LandingUrl,
+    string ImageUrl,
+    string Availability,
+    string? IdempotencyKey = null);
