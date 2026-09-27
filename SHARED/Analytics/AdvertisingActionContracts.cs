@@ -106,6 +106,13 @@ public sealed record PromotionProposalRequest(
     string? ConversionEventSettingId = null,
     string? SelectedCreativeKey = null);
 
+public sealed record PromotionSourceOption(
+    string SourceKind,
+    string SourceId,
+    string Label,
+    string? PagePath = null,
+    string? Detail = null);
+
 public sealed record PromotionSourceSnapshot(
     string SourceKind,
     string SourceId,
