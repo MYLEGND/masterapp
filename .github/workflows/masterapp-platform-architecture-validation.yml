@@ -16,6 +16,7 @@ on:
       - architecture/meta-test-events-seo-20260926
       - architecture/provider-neutral-marketing-destinations-20260926
       - feature/openai-ads-direct-connect-ui-20260926
+      - fix/openai-ads-account-readiness-20260926
     paths-ignore:
       - 'Docs/**'
   pull_request:
@@ -86,7 +87,7 @@ jobs:
       - name: Run Meta authority regressions
         run: >
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
-          --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
+          --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
 
       - name: Verify consolidated release scope and routing policy
         run: python3 scripts/test-release-policy.py
