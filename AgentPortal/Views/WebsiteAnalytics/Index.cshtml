@@ -126,6 +126,32 @@
                             <div><span>Sent</span><strong id="marketing-setup-openai-sent">0</strong></div>
                         </div>
 
+                        <div class="marketing-setup-readiness" id="marketing-setup-openai-readiness">
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Readiness</div>
+                                    <h6>ChatGPT Ads onboarding</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-openai-readiness-status">Checking…</div>
+                            </div>
+                            <div class="marketing-setup-readiness-grid" id="marketing-setup-openai-readiness-steps"></div>
+                        </div>
+
+                        <div class="marketing-setup-product-feed" id="marketing-setup-openai-product-feed" hidden>
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Catalog</div>
+                                    <h6>ChatGPT Ads product feed</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-openai-feed-status">Not published</div>
+                            </div>
+                            <div class="marketing-setup-feed-summary" id="marketing-setup-openai-feed-summary"></div>
+                            <div class="d-flex gap-2 flex-wrap mt-3">
+                                <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-openai-feed-publish">Publish / reconcile feed</button>
+                                <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-feed-refresh">Refresh feed status</button>
+                            </div>
+                        </div>
+
                         <div class="marketing-setup-secure-row">
                             <div>
                                 <span class="marketing-setup-secure-label">Connection controls</span>
@@ -639,6 +665,26 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="wa-growth-economics" id="growth-economics-command">
+            <div class="wa-channel-command-head">
+                <div>
+                    <div class="wa-kpi-band-label">Growth Economics</div>
+                    <div class="wa-kpi-band-copy">Blended spend, acquisition cost, revenue, ROAS, and pipeline value</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-light" id="growth-economics-refresh">Refresh</button>
+            </div>
+            <div class="wa-growth-economics-summary">
+                <div><span>Total marketing spend</span><strong id="growth-economics-spend">—</strong></div>
+                <div><span>Customers acquired</span><strong id="growth-economics-customers">—</strong></div>
+                <div><span>Cost / customer</span><strong id="growth-economics-cac">—</strong></div>
+                <div><span>Total revenue</span><strong id="growth-economics-revenue">—</strong></div>
+                <div><span>Blended ROAS</span><strong id="growth-economics-roas">—</strong></div>
+                <div><span>Pipeline value</span><strong id="growth-economics-pipeline">—</strong></div>
+            </div>
+            <div class="wa-growth-economics-grid" id="growth-economics-grid"></div>
+            <div class="wa-channel-note" id="growth-economics-note"></div>
         </div>
 
         <div class="wa-channel-command" id="channel-performance-command" aria-live="polite">
