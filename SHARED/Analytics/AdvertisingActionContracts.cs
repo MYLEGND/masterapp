@@ -26,13 +26,14 @@ public static class AdvertisingActionTypes
     public const string AdUpdate = "ad.update";
     public const string AdStatus = "ad.status";
     public const string ConversionSettingCreate = "conversion_setting.create";
+    public const string CreativeUploadUrl = "creative.upload_url";
 
     public static readonly IReadOnlySet<string> Supported = new HashSet<string>(StringComparer.Ordinal)
     {
         CampaignCreate, CampaignUpdate, CampaignStatus,
         AdGroupCreate, AdGroupUpdate, AdGroupStatus,
         AdCreate, AdUpdate, AdStatus,
-        ConversionSettingCreate
+        ConversionSettingCreate, CreativeUploadUrl
     };
 }
 
@@ -45,7 +46,8 @@ public sealed record AdvertisingMutationPlanStep(
     string StepKey,
     string ActionType,
     JsonElement Payload,
-    string? ParentStepKey = null);
+    string? ParentStepKey = null,
+    string? CreativeStepKey = null);
 
 public sealed record AdvertisingActionProposalSnapshot(
     Guid Id,
@@ -100,7 +102,9 @@ public sealed record PromotionProposalRequest(
     IReadOnlyList<string>? ContextHints = null,
     IReadOnlyList<string>? Countries = null,
     IReadOnlyList<string>? Platforms = null,
-    string Status = OpenAiAdsEntityStatuses.Paused);
+    string Status = OpenAiAdsEntityStatuses.Paused,
+    string? ConversionEventSettingId = null,
+    string? SelectedCreativeKey = null);
 
 public sealed record PromotionSourceSnapshot(
     string SourceKind,
