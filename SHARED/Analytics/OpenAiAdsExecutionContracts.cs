@@ -183,5 +183,26 @@ public sealed record OpenAiAdsInsightsQuery(
     IReadOnlyList<string>? Fields = null,
     int? Limit = null);
 
+public sealed record OpenAiAdsConversionEventSettingCreateRequest(
+    string Name,
+    string EventType,
+    string SourceId,
+    string? CustomEventName = null,
+    string? IdempotencyKey = null);
+
+public sealed record OpenAiAdsConversionInsightsQuery(
+    DateTime FromUtc,
+    DateTime ToUtc,
+    string AggregationLevel,
+    IReadOnlyList<string>? EntityIds = null,
+    string TimeGranularity = "none",
+    bool GroupByEntity = true,
+    string? Breakdown = null,
+    string AttributionTimeBasis = "ad_event_time",
+    int AttributionWindowDays = 30,
+    int ViewThroughAttributionWindowDays = 1,
+    IReadOnlyList<string>? EventNames = null,
+    bool IncludeZeroRows = true);
+
 public sealed record OpenAiAdsInsightsResult(
     JsonElement Payload);
