@@ -199,6 +199,12 @@ public static class MarketingServiceRegistration
         services.AddScoped<IAdvertisingActionAuthorizationService, AdvertisingActionAuthorizationService>();
         services.AddScoped<Infrastructure.WebsiteEditing.IPromotionOrchestrationService, Infrastructure.WebsiteEditing.PromotionOrchestrationService>();
         services.AddScoped<IAdvertisingCommandCenterService, AdvertisingCommandCenterService>();
+        services.AddScoped<Infrastructure.WebsiteEditing.IBusinessPublicUrlResolver, Infrastructure.WebsiteEditing.BusinessPublicUrlResolver>();
+        services.AddScoped<IUnifiedMarketingPerformanceService, UnifiedMarketingPerformanceService>();
+        services.AddScoped<IMarketingManagerService, MarketingManagerService>();
+        services.AddScoped<IBlendedGrowthEconomicsService, BlendedGrowthEconomicsService>();
+        services.AddScoped<IOpenAiProductFeedService, OpenAiProductFeedService>();
+        services.AddScoped<IOpenAiAdsOnboardingService, OpenAiAdsOnboardingService>();
         services.AddHttpClient<IOpenAiConversionsApiService, OpenAiConversionsApiService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(10);

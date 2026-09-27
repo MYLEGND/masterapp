@@ -100,7 +100,7 @@ public sealed class PromotionOrchestrationTests
         var approvals = new FakeApprovalService();
         var connection = new FakeConnectionAuthority();
         var ads = new FakeAdsExecutionService();
-        var service = new PromotionOrchestrationService(db, config, approvals, connection, ads);
+        var service = new PromotionOrchestrationService(db, config, approvals, connection, ads, new FakeBusinessPublicUrlResolver(), new FakeProductFeedService(product.Id));
         var owner = MarketingOwnerScope.Business(business.Id);
 
         var sources = await service.SourcesAsync(owner);
@@ -238,6 +238,42 @@ public sealed class PromotionOrchestrationTests
         public Task<OpenAiAdsInsightsResult> GetCampaignInsightsAsync(MarketingOwnerScope owner, string campaignId, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<OpenAiAdsInsightsResult> GetAdGroupInsightsAsync(MarketingOwnerScope owner, string adGroupId, string aggregationLevel, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<OpenAiAdsInsightsResult> GetAdInsightsAsync(MarketingOwnerScope owner, string adId, OpenAiAdsInsightsQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderPage> ListProductFeedsAsync(MarketingOwnerScope owner, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> CreateProductFeedAsync(MarketingOwnerScope owner, OpenAiAdsProductFeedCreateRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderPage> ListProductFeedItemsAsync(MarketingOwnerScope owner, string productFeedId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<OpenAiAdsProviderEntity> UpsertProductFeedItemAsync(MarketingOwnerScope owner, OpenAiAdsProductFeedItemUpsertRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+
+    private sealed class FakeBusinessPublicUrlResolver : IBusinessPublicUrlResolver
+    {
+        public Task<string> ResolveAsync(Guid businessId, CancellationToken ct = default) =>
+            Task.FromResult("https://roofing.example");
+    }
+
+    private sealed class FakeProductFeedService(Guid productId) : IOpenAiProductFeedService
+    {
+        public Task<OpenAiProductFeedSnapshot> GetAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
+            Task.FromResult(new OpenAiProductFeedSnapshot(
+                owner,
+                "feed_1",
+                1,
+                1,
+                1,
+                0,
+                [new OpenAiProductFeedProjectionRow(
+                    productId,
+                    "Roof Tune-Up",
+                    "feed_1",
+                    "provider_product_1",
+                    OpenAiProductFeedStatuses.Published,
+                    null,
+                    DateTime.UtcNow,
+                    "fingerprint")],
+                []));
+
+        public Task<OpenAiProductFeedPublishReceipt> PublishAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeApprovalService : IAdvertisingActionAuthorizationService

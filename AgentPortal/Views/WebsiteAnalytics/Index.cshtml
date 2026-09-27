@@ -73,6 +73,32 @@
                             <input id="marketing-setup-test-code" type="text" maxlength="100" autocomplete="off" placeholder="TEST12345 from Meta Events Manager" />
                             <small>Use the code shown in Meta Events Manager &gt; Test Events. Test traffic stays on the same scoped Pixel/CAPI destination and does not create a second sender.</small>
                         </label>
+                        <div class="marketing-setup-readiness" id="marketing-setup-openai-readiness">
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Readiness</div>
+                                    <h6>ChatGPT Ads onboarding</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-openai-readiness-status">Checking…</div>
+                            </div>
+                            <div class="marketing-setup-readiness-grid" id="marketing-setup-openai-readiness-steps"></div>
+                        </div>
+
+                        <div class="marketing-setup-product-feed" id="marketing-setup-openai-product-feed" hidden>
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Catalog</div>
+                                    <h6>ChatGPT Ads product feed</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-openai-feed-status">Not published</div>
+                            </div>
+                            <div class="marketing-setup-feed-summary" id="marketing-setup-openai-feed-summary"></div>
+                            <div class="d-flex gap-2 flex-wrap mt-3">
+                                <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-openai-feed-publish">Publish / reconcile feed</button>
+                                <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-feed-refresh">Refresh feed status</button>
+                            </div>
+                        </div>
+
                         <div class="marketing-setup-secure-row">
                             <div>
                                 <span class="marketing-setup-secure-label">Meta CAPI</span>
@@ -290,6 +316,74 @@
     </div>
 </div>
 
+<div class="modal fade fa-modal" id="marketingManagerModal" tabindex="-1" aria-labelledby="marketingManagerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable marketing-manager-dialog">
+        <div class="modal-content marketing-manager-modal">
+            <div class="modal-header marketing-manager-header">
+                <div>
+                    <div class="wa-modal-kicker">LEGEND Growth Operator</div>
+                    <h5 class="modal-title mb-0" id="marketingManagerModalLabel">Marketing Manager</h5>
+                    <div class="wa-modal-subtitle">Turn a business outcome into a scoped, evidence-backed growth plan. Consequential changes still require exact-action approval.</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body marketing-manager-body">
+                <section class="marketing-manager-goal-panel">
+                    <div>
+                        <span class="marketing-manager-eyebrow">Outcome first</span>
+                        <h6>What do you want the business to accomplish?</h6>
+                        <p>LEGEND will read the current funnel, CRM outcomes, traffic, landing inventory, and paid-channel performance before proposing the next moves.</p>
+                    </div>
+                    <div class="marketing-manager-goal-grid">
+                        <label class="marketing-manager-goal-wide">
+                            <span>Growth goal</span>
+                            <textarea id="marketing-manager-goal" class="form-control" rows="3" maxlength="1000" placeholder="I want 15 more estimates next month."></textarea>
+                        </label>
+                        <label>
+                            <span>Target increase</span>
+                            <input id="marketing-manager-target" class="form-control" type="number" min="1" step="1" placeholder="15" />
+                        </label>
+                        <label>
+                            <span>Monthly paid budget</span>
+                            <input id="marketing-manager-budget" class="form-control" type="number" min="0" step="1" placeholder="Optional" />
+                        </label>
+                    </div>
+                    <div class="marketing-manager-toolbar">
+                        <button type="button" class="btn btn-gold" id="marketing-manager-build">Build Growth Plan</button>
+                        <button type="button" class="btn btn-outline-light" id="marketing-manager-refresh">Refresh Evidence</button>
+                        <span id="marketing-manager-status" role="status" aria-live="polite"></span>
+                    </div>
+                </section>
+
+                <section id="marketing-manager-result" class="marketing-manager-result" hidden>
+                    <div class="marketing-manager-result-head">
+                        <div>
+                            <span class="marketing-manager-eyebrow">Governed plan</span>
+                            <h6 id="marketing-manager-plan-goal">Growth plan</h6>
+                        </div>
+                        <div class="marketing-manager-result-meta" id="marketing-manager-generated">—</div>
+                    </div>
+                    <div class="marketing-manager-evidence-grid" id="marketing-manager-evidence"></div>
+                    <div class="marketing-manager-plan-grid">
+                        <div>
+                            <div class="marketing-manager-section-title">Recommended moves</div>
+                            <div id="marketing-manager-recommendations" class="marketing-manager-recommendations"></div>
+                        </div>
+                        <div>
+                            <div class="marketing-manager-section-title">Guardrails</div>
+                            <div id="marketing-manager-guardrails" class="marketing-manager-guardrails"></div>
+                        </div>
+                    </div>
+                    <div class="marketing-manager-toolbar">
+                        <button type="button" class="btn btn-gold" id="marketing-manager-open-advertising">Open Advertising Command Center</button>
+                        <span class="marketing-manager-governance-note">Planning never executes provider changes by itself.</span>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
     Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
 </div>
@@ -322,7 +416,16 @@
                             Advertising Command Center
                         </button>
 
-                    </div>
+
+                        <button type="button"
+                                class="btn marketing-manager-trigger"
+                                id="marketing-manager-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#marketingManagerModal"
+                                aria-controls="marketingManagerModal">
+                            Marketing Manager
+                        </button>
+                     </div>
                     <div class="hero-link-subtitle text-silver">Open the website and jump into behavior review fast. Meta Ads controls now live inside Core Metrics for quicker access.</div>
                 </div>
             </div>
@@ -564,6 +667,40 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="wa-growth-economics" id="growth-economics-command">
+            <div class="wa-channel-command-head">
+                <div>
+                    <div class="wa-kpi-band-label">Growth Economics</div>
+                    <div class="wa-kpi-band-copy">Blended spend, acquisition cost, revenue, ROAS, and pipeline value</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-light" id="growth-economics-refresh">Refresh</button>
+            </div>
+            <div class="wa-growth-economics-summary">
+                <div><span>Total marketing spend</span><strong id="growth-economics-spend">—</strong></div>
+                <div><span>Customers acquired</span><strong id="growth-economics-customers">—</strong></div>
+                <div><span>Cost / customer</span><strong id="growth-economics-cac">—</strong></div>
+                <div><span>Total revenue</span><strong id="growth-economics-revenue">—</strong></div>
+                <div><span>Blended ROAS</span><strong id="growth-economics-roas">—</strong></div>
+                <div><span>Pipeline value</span><strong id="growth-economics-pipeline">—</strong></div>
+            </div>
+            <div class="wa-growth-economics-grid" id="growth-economics-grid"></div>
+            <div class="wa-channel-note" id="growth-economics-note"></div>
+        </div>
+
+        <div class="wa-channel-command" id="channel-performance-command" aria-live="polite">
+            <div class="wa-channel-command-head">
+                <div>
+                    <div class="wa-kpi-band-label">Channel Outcomes</div>
+                    <div class="wa-kpi-band-copy">Spend through revenue, joined to canonical downstream outcomes</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-light" id="channel-performance-refresh">Refresh</button>
+            </div>
+            <div class="wa-channel-grid" id="channel-performance-grid">
+                <div class="wa-channel-loading">Loading unified channel performance…</div>
+            </div>
+            <div class="wa-channel-note" id="channel-performance-note"></div>
         </div>
 
         <div class="wa-kpi-band wa-kpi-band-primary">

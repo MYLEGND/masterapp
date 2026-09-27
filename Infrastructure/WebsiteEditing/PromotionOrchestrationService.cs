@@ -31,7 +31,9 @@ public sealed class PromotionOrchestrationService(
     IConfiguration configuration,
     IAdvertisingActionAuthorizationService authorizations,
     IOpenAiAdsAccountConnectionAuthority connections,
-    IOpenAiAdsExecutionService ads) : IPromotionOrchestrationService
+    IOpenAiAdsExecutionService ads,
+    IBusinessPublicUrlResolver businessPublicUrls,
+    IOpenAiProductFeedService productFeeds) : IPromotionOrchestrationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -122,7 +124,17 @@ public sealed class PromotionOrchestrationService(
             : alternatives.SingleOrDefault(x => string.Equals(x.Key, request.SelectedCreativeKey, StringComparison.Ordinal))
               ?? throw new ArgumentException("Selected creative alternative does not exist.", nameof(request));
 
-        var plan = BuildPlan(source, selected, request, status, biddingType, hints);
+        string? providerFeedId = null;
+        if (source.SourceKind == PromotionSourceKinds.Product)
+        {
+            var feed = await productFeeds.GetAsync(owner, ct);
+            var productRow = feed.Products.SingleOrDefault(x => x.CanonicalProductId.ToString("D") == source.SourceId);
+            if (productRow is null || productRow.Status != OpenAiProductFeedStatuses.Published || string.IsNullOrWhiteSpace(productRow.ProviderFeedId))
+                throw new InvalidOperationException("Publish this canonical product to the scoped ChatGPT Ads product feed before creating a product campaign.");
+            providerFeedId = productRow.ProviderFeedId;
+        }
+
+        var plan = BuildPlan(source, selected, request, status, biddingType, hints, providerFeedId);
         return new(
             source,
             Objective: string.IsNullOrWhiteSpace(request.Goal) ? "Promote " + source.DisplayName : request.Goal.Trim(),
@@ -225,7 +237,7 @@ public sealed class PromotionOrchestrationService(
             ?? throw new InvalidOperationException("The selected product is not active in this business.");
 
         var business = await ActiveBusinessAsync(businessId, ct);
-        var root = await BusinessPublicBaseAsync(businessId, ct);
+        var root = await businessPublicUrls.ResolveAsync(businessId, ct);
         var state = await PublishedStateAsync(owner, ct);
         var image = product.Images.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.DisplayOrder)
             .Select(x => x.ImageUrl)
@@ -264,7 +276,7 @@ public sealed class PromotionOrchestrationService(
             ?? throw new InvalidOperationException("The selected service is not present in the canonical business service facts.");
 
         var business = await ActiveBusinessAsync(businessId, ct);
-        var root = await BusinessPublicBaseAsync(businessId, ct);
+        var root = await businessPublicUrls.ResolveAsync(businessId, ct);
         var published = await PublishedStateAsync(owner, ct);
         var document = ReadDocument(published.Version.DocumentJson);
         var pagePath = NormalizePagePath(request.PagePath);
@@ -330,7 +342,8 @@ public sealed class PromotionOrchestrationService(
         PromotionProposalRequest request,
         string status,
         string biddingType,
-        IReadOnlyList<string> hints)
+        IReadOnlyList<string> hints,
+        string? providerFeedId)
     {
         if (!IsHttpUrl(creative.ImageUrl))
             throw new InvalidOperationException("The selected promotion source has no approved HTTP(S) image. Resolve an image before creating an executable promotion proposal.");
@@ -351,6 +364,8 @@ public sealed class PromotionOrchestrationService(
             Targeting: targeting,
             ConversionEventSettingId: request.ConversionEventSettingId,
             Description: Clean(request.Goal, 4000),
+            Mode: providerFeedId is null ? null : "product_feed",
+            ProductFeedId: providerFeedId,
             IdempotencyKey: "legend-promote-campaign-" + seed);
 
         var strategy = biddingType switch
@@ -369,6 +384,11 @@ public sealed class PromotionOrchestrationService(
             Bidding: new(strategy),
             ContextHints: hints,
             Description: "LEGEND Promote This context",
+            ProductFeedId: providerFeedId,
+            ProductFilters: providerFeedId is null ? null :
+            [
+                new OpenAiAdsProductSetFilter("external_id", "equals", [source.SourceId])
+            ],
             IdempotencyKey: "legend-promote-group-" + seed);
 
         var upload = JsonSerializer.SerializeToElement(new { imageUrl = creative.ImageUrl }, JsonOptions);
@@ -497,7 +517,7 @@ public sealed class PromotionOrchestrationService(
         CancellationToken ct)
     {
         if (owner.CommerceBusinessId is Guid businessId)
-            return await BusinessPublicBaseAsync(businessId, ct);
+            return await businessPublicUrls.ResolveAsync(businessId, ct);
 
         if (owner.AgentTrackingProfileId is Guid agentId)
         {
@@ -512,23 +532,6 @@ public sealed class PromotionOrchestrationService(
         }
 
         return (configuration["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/');
-    }
-
-    private async Task<string> BusinessPublicBaseAsync(Guid businessId, CancellationToken ct)
-    {
-        var cutoff = DateTime.UtcNow.AddHours(-24);
-        var hostname = await db.Set<WebsiteDomainBinding>().AsNoTracking()
-            .Where(x => x.CommerceBusinessId == businessId &&
-                        x.Status == "active" &&
-                        x.CertificateStatus == "active" &&
-                        x.LastCheckedUtc >= cutoff)
-            .OrderBy(x => x.CreatedUtc)
-            .Select(x => x.Hostname)
-            .FirstOrDefaultAsync(ct);
-
-        if (string.IsNullOrWhiteSpace(hostname))
-            throw new InvalidOperationException("A verified active custom domain is required before promoting this business website.");
-        return "https://" + hostname.Trim().TrimEnd('.');
     }
 
     private async Task<CommerceBusiness> ActiveBusinessAsync(Guid businessId, CancellationToken ct) =>

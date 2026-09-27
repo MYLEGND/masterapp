@@ -8621,3 +8621,504 @@ body {
     .advertising-command-wide { grid-column: auto; }
     .advertising-command-section-head { display: grid; }
 }
+
+
+/* ── Marketing Manager + unified channel outcomes ── */
+.marketing-manager-trigger {
+  border: 1px solid rgba(214, 178, 94, .72);
+  background: linear-gradient(135deg, rgba(214, 178, 94, .2), rgba(255, 255, 255, .04));
+  color: #f8e7b2;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 28px rgba(0,0,0,.18);
+}
+.marketing-manager-trigger:hover,
+.marketing-manager-trigger:focus {
+  color: #fff8df;
+  border-color: rgba(238, 202, 119, .95);
+  transform: translateY(-1px);
+}
+.marketing-manager-dialog {
+  max-width: min(1180px, calc(100vw - 32px));
+}
+.marketing-manager-modal {
+  overflow: hidden;
+  border: 1px solid rgba(214, 178, 94, .28);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(214, 178, 94, .14), transparent 34%),
+    linear-gradient(160deg, #0b1730 0%, #081326 54%, #050d1c 100%);
+  color: #f7f9fc;
+  box-shadow: 0 30px 90px rgba(0,0,0,.42);
+}
+.marketing-manager-header {
+  padding: 24px 28px;
+  border-bottom: 1px solid rgba(255,255,255,.09);
+  background: rgba(255,255,255,.025);
+}
+.marketing-manager-body {
+  padding: 24px;
+}
+.marketing-manager-goal-panel,
+.marketing-manager-result {
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 20px;
+  background: rgba(255,255,255,.035);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+}
+.marketing-manager-goal-panel {
+  padding: 22px;
+}
+.marketing-manager-goal-panel h6,
+.marketing-manager-result h6 {
+  margin: 4px 0 8px;
+  font-size: 1.18rem;
+  font-weight: 750;
+}
+.marketing-manager-goal-panel p {
+  max-width: 850px;
+  margin: 0 0 18px;
+  color: rgba(232,238,248,.72);
+}
+.marketing-manager-eyebrow,
+.marketing-manager-section-title {
+  color: #e4c477;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.marketing-manager-goal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, .32fr);
+  gap: 14px;
+}
+.marketing-manager-goal-grid label {
+  display: grid;
+  gap: 7px;
+  color: rgba(241,245,251,.82);
+  font-size: .82rem;
+  font-weight: 700;
+}
+.marketing-manager-goal-wide {
+  grid-row: span 2;
+}
+.marketing-manager-goal-grid .form-control {
+  min-height: 44px;
+  border-color: rgba(255,255,255,.12);
+  background: rgba(0,0,0,.2);
+  color: #fff;
+}
+.marketing-manager-goal-grid textarea.form-control {
+  min-height: 106px;
+  resize: vertical;
+}
+.marketing-manager-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+#marketing-manager-status[data-tone="success"] { color: #9be2bd; }
+#marketing-manager-status[data-tone="error"] { color: #ffb2ad; }
+#marketing-manager-status {
+  color: rgba(232,238,248,.72);
+  font-size: .82rem;
+}
+.marketing-manager-result {
+  margin-top: 18px;
+  padding: 22px;
+}
+.marketing-manager-result-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.marketing-manager-result-meta {
+  color: rgba(232,238,248,.62);
+  font-size: .78rem;
+}
+.marketing-manager-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.marketing-manager-evidence-card {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 14px;
+  background: rgba(255,255,255,.03);
+}
+.marketing-manager-evidence-card span,
+.marketing-manager-evidence-card small {
+  display: block;
+  color: rgba(229,235,245,.6);
+  font-size: .7rem;
+}
+.marketing-manager-evidence-card strong {
+  display: block;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+  font-size: .98rem;
+}
+.marketing-manager-plan-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, .8fr);
+  gap: 18px;
+}
+.marketing-manager-recommendations,
+.marketing-manager-guardrails {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.marketing-manager-recommendation,
+.marketing-manager-guardrail {
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 14px;
+  background: rgba(255,255,255,.028);
+}
+.marketing-manager-recommendation {
+  padding: 15px;
+}
+.marketing-manager-recommendation-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.marketing-manager-priority {
+  color: #e5c77f;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.marketing-manager-approval {
+  color: rgba(231,237,247,.55);
+  font-size: .68rem;
+}
+.marketing-manager-recommendation > strong {
+  display: block;
+  line-height: 1.35;
+}
+.marketing-manager-recommendation p {
+  margin: 7px 0 5px;
+  color: rgba(232,238,248,.73);
+  font-size: .82rem;
+}
+.marketing-manager-recommendation small {
+  display: block;
+  margin-bottom: 10px;
+  color: rgba(232,238,248,.56);
+}
+.marketing-manager-guardrail {
+  padding: 13px 14px 13px 36px;
+  position: relative;
+  color: rgba(235,240,248,.75);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+.marketing-manager-guardrail::before {
+  content: "✓";
+  position: absolute;
+  left: 14px;
+  top: 13px;
+  color: #dfbf70;
+  font-weight: 900;
+}
+.marketing-manager-governance-note {
+  color: rgba(232,238,248,.6);
+  font-size: .76rem;
+}
+
+.wa-channel-command {
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid rgba(214,178,94,.18);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(214,178,94,.07), transparent 38%),
+    rgba(5,15,31,.52);
+}
+.wa-channel-command-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.wa-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(190px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.wa-channel-card {
+  min-width: 190px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 15px;
+  background: rgba(255,255,255,.035);
+}
+.wa-channel-card[data-channel="chatgpt_ads"] {
+  border-color: rgba(214,178,94,.42);
+  background: linear-gradient(145deg, rgba(214,178,94,.11), rgba(255,255,255,.025));
+}
+.wa-channel-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.wa-channel-card-head strong {
+  font-size: .88rem;
+}
+.wa-channel-confidence {
+  padding: 3px 7px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 999px;
+  color: rgba(232,238,248,.62);
+  font-size: .61rem;
+  text-transform: uppercase;
+}
+.wa-channel-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 9px 10px;
+}
+.wa-channel-metrics div {
+  min-width: 0;
+}
+.wa-channel-metrics span,
+.wa-channel-metrics strong {
+  display: block;
+}
+.wa-channel-metrics span {
+  color: rgba(232,238,248,.55);
+  font-size: .65rem;
+}
+.wa-channel-metrics strong {
+  margin-top: 2px;
+  font-size: .84rem;
+  overflow-wrap: anywhere;
+}
+.wa-channel-basis,
+.wa-channel-note,
+.wa-channel-loading {
+  color: rgba(232,238,248,.58);
+  font-size: .7rem;
+  line-height: 1.4;
+}
+.wa-channel-basis {
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.wa-channel-note {
+  margin-top: 10px;
+}
+
+@media (max-width: 900px) {
+  .marketing-manager-goal-grid,
+  .marketing-manager-plan-grid {
+    grid-template-columns: 1fr;
+  }
+  .marketing-manager-goal-wide {
+    grid-row: auto;
+  }
+  .marketing-manager-evidence-grid {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+  }
+}
+@media (max-width: 575.98px) {
+  .marketing-manager-dialog {
+    max-width: calc(100vw - 12px);
+    margin: 6px auto;
+  }
+  .marketing-manager-header,
+  .marketing-manager-body,
+  .marketing-manager-goal-panel,
+  .marketing-manager-result {
+    padding: 16px;
+  }
+  .marketing-manager-evidence-grid {
+    grid-template-columns: 1fr;
+  }
+  .marketing-manager-result-head,
+  .marketing-manager-recommendation-top,
+  .wa-channel-command-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+
+/* ── Steps 11-13 growth economics and OpenAI readiness ── */
+.wa-growth-economics {
+  margin: 0 0 16px;
+  padding: 17px;
+  border: 1px solid rgba(214,178,94,.26);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0 0, rgba(214,178,94,.1), transparent 34%),
+    rgba(5,15,31,.58);
+}
+.wa-growth-economics-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px,1fr));
+  gap: 9px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+.wa-growth-economics-summary > div,
+.wa-growth-economics-card {
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 14px;
+  background: rgba(255,255,255,.03);
+}
+.wa-growth-economics-summary > div {
+  min-width: 130px;
+  padding: 12px 13px;
+}
+.wa-growth-economics-summary span,
+.wa-growth-economics-summary strong {
+  display: block;
+}
+.wa-growth-economics-summary span {
+  color: rgba(232,238,248,.56);
+  font-size: .66rem;
+}
+.wa-growth-economics-summary strong {
+  margin-top: 3px;
+  font-size: .9rem;
+}
+.wa-growth-economics-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(180px,1fr));
+  gap: 9px;
+  overflow-x: auto;
+}
+.wa-growth-economics-card {
+  min-width: 180px;
+  padding: 13px;
+}
+.wa-growth-economics-metrics {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+}
+.wa-growth-economics-metrics span,
+.wa-growth-economics-metrics strong {
+  display: block;
+}
+.wa-growth-economics-metrics span {
+  color: rgba(232,238,248,.54);
+  font-size: .63rem;
+}
+.wa-growth-economics-metrics strong {
+  margin-top: 2px;
+  font-size: .8rem;
+  overflow-wrap: anywhere;
+}
+.marketing-setup-readiness,
+.marketing-setup-product-feed {
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 15px;
+  background: rgba(255,255,255,.025);
+}
+.marketing-setup-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.marketing-setup-readiness-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 12px;
+  background: rgba(0,0,0,.14);
+}
+.marketing-setup-readiness-step.is-complete {
+  border-color: rgba(121,210,164,.24);
+}
+.marketing-setup-readiness-step.is-open {
+  border-color: rgba(226,191,112,.22);
+}
+.marketing-setup-readiness-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  border-radius: 999px;
+  background: rgba(214,178,94,.14);
+  color: #e5c67c;
+  font-weight: 900;
+  font-size: .72rem;
+}
+.marketing-setup-readiness-step.is-complete .marketing-setup-readiness-mark {
+  background: rgba(94,190,139,.15);
+  color: #94dfb7;
+}
+.marketing-setup-readiness-step strong,
+.marketing-setup-readiness-step small {
+  display: block;
+}
+.marketing-setup-readiness-step strong {
+  font-size: .76rem;
+}
+.marketing-setup-readiness-step small {
+  margin-top: 2px;
+  color: rgba(231,237,247,.57);
+  font-size: .66rem;
+  line-height: 1.35;
+}
+.marketing-setup-feed-summary {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.marketing-setup-feed-summary > div {
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 11px;
+  background: rgba(0,0,0,.13);
+}
+.marketing-setup-feed-summary span,
+.marketing-setup-feed-summary strong {
+  display: block;
+}
+.marketing-setup-feed-summary span {
+  color: rgba(231,237,247,.55);
+  font-size: .64rem;
+}
+.marketing-setup-feed-summary strong {
+  margin-top: 2px;
+  font-size: .82rem;
+}
+.marketing-setup-feed-summary p {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: #efc582;
+  font-size: .7rem;
+}
+@media (max-width: 800px) {
+  .wa-growth-economics-summary { grid-template-columns: repeat(3,minmax(130px,1fr)); }
+  .marketing-setup-readiness-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 575.98px) {
+  .wa-growth-economics-summary { grid-template-columns: repeat(2,minmax(125px,1fr)); }
+  .marketing-setup-feed-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
