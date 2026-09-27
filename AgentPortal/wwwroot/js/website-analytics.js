@@ -5640,22 +5640,24 @@ function escapeHtml(value) {
 
   async function loadMarketingPerformance() {
     const grid = document.getElementById('channel-performance-grid');
-    if (!grid) return;
+    if (!grid) return false;
     try {
       const data = await fetchJson(
         'marketingManagerPerformance',
         endpoints.marketingManagerPerformance,
         marketingManagerRequestBody());
-      if (!data) return;
+      if (!data) return false;
       renderMarketingPerformance(data);
+      return true;
     } catch (error) {
       grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
+      return false;
     }
   }
 
   async function loadGrowthEconomics() {
     const grid = document.getElementById('growth-economics-grid');
-    if (!grid) return;
+    if (!grid) return false;
     try {
       const data = await fetchJson('growthEconomics', endpoints.growthEconomics, marketingManagerRequestBody());
       if (!data) return;
@@ -5696,8 +5698,10 @@ function escapeHtml(value) {
       }
       const note = document.getElementById('growth-economics-note');
       if (note) note.textContent = (data.notes || []).join(' ');
+      return true;
     } catch (error) {
       grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Growth economics are unavailable.')}</div>`;
+      return false;
     }
   }
 
@@ -6488,9 +6492,17 @@ function escapeHtml(value) {
 
   function initMarketingManager() {
     document.getElementById('marketing-manager-build')?.addEventListener('click', () => void buildMarketingManagerPlan());
-    document.getElementById('marketing-manager-refresh')?.addEventListener('click', () => {
-      void loadMarketingPerformance();
-      marketingManagerSetStatus('Current channel evidence refreshed.', 'success');
+    document.getElementById('marketing-manager-refresh')?.addEventListener('click', async () => {
+      marketingManagerSetStatus('Refreshing current channel evidence…');
+      const [performanceOk, economicsOk] = await Promise.all([
+        loadMarketingPerformance(),
+        loadGrowthEconomics()
+      ]);
+      if (performanceOk && economicsOk) {
+        marketingManagerSetStatus('Current channel evidence refreshed.', 'success');
+      } else {
+        marketingManagerSetStatus('Some current evidence could not be refreshed. Review the channel panels for details.', 'error');
+      }
     });
     document.getElementById('marketing-manager-open-advertising')?.addEventListener('click', () => {
       bootstrap.Modal.getOrCreateInstance(marketingManagerModal)?.hide();

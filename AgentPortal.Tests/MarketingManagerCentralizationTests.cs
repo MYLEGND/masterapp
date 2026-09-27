@@ -116,6 +116,51 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
+    public void SharedAnalyticsUi_MarketingManagerRuntimeContract_IsCanonicalAndLive()
+    {
+        var root = Root();
+        var view = Read(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml");
+        var js = Read(root, "AgentPortal", "wwwroot", "js", "website-analytics.js");
+        var agent = Read(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
+        var business = Read(root, "Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+
+        var postHelper = js.IndexOf("async function fetchPostJson(", StringComparison.Ordinal);
+        var scopeHelper = js.IndexOf("function advertisingScopeParams()", StringComparison.Ordinal);
+        var planBuilder = js.IndexOf("async function buildMarketingManagerPlan()", StringComparison.Ordinal);
+        var initializer = js.IndexOf("function initMarketingManager()", StringComparison.Ordinal);
+
+        Assert.True(postHelper >= 0, "Canonical POST helper is required.");
+        Assert.True(scopeHelper > postHelper, "Advertising scope must remain in the same canonical IIFE after the shared POST helper.");
+        Assert.True(planBuilder > scopeHelper, "Marketing Manager plan builder must remain in the same canonical IIFE.");
+        Assert.True(initializer > planBuilder, "Marketing Manager initializer must remain in the same canonical IIFE.");
+        Assert.Equal(1, js.Split("async function fetchPostJson(", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, js.Split("async function buildMarketingManagerPlan()", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, js.Split("function initMarketingManager()", StringSplitOptions.None).Length - 1);
+
+        foreach (var id in new[]
+        {
+            "marketing-manager-build",
+            "marketing-manager-refresh",
+            "marketing-manager-open-advertising",
+            "channel-performance-refresh",
+            "growth-economics-refresh"
+        })
+        {
+            Assert.Contains($"id=\"{id}\"", view, StringComparison.Ordinal);
+            Assert.Contains($"getElementById('{id}')?.addEventListener", js, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("fetchPostJson(\n        'marketingManagerPlan'", js, StringComparison.Ordinal);
+        Assert.Contains("endpoints.marketingManagerPlan", js, StringComparison.Ordinal);
+        Assert.Contains("await Promise.all([\n        loadMarketingPerformance(),\n        loadGrowthEconomics()", js, StringComparison.Ordinal);
+        Assert.Contains("if (performanceOk && economicsOk)", js, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"marketing-manager/plan\")]", agent, StringComparison.Ordinal);
+        Assert.Contains("[HttpGet(\"marketing-manager/performance\")]", agent, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"analytics/marketing-manager/plan\")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpGet(\"analytics/marketing-manager/performance\")]", business, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AppHosts_DoNotOwnParallelMarketingManagerImplementations()
     {
         var root = Root();
