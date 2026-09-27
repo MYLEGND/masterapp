@@ -198,8 +198,9 @@ public sealed class OpenAiAdsExecutionServiceTests
         var request = Assert.Single(handler.Requests);
         Assert.Contains("/ad_account/insights?", request.Url, StringComparison.Ordinal);
         Assert.Contains("aggregation_level=campaign", request.Url, StringComparison.Ordinal);
-        Assert.Contains("time_ranges%5B%5D=", request.Url, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("fields%5B%5D=campaign.id", request.Url, StringComparison.OrdinalIgnoreCase);
+        var decodedUrl = Uri.UnescapeDataString(request.Url);
+        Assert.Contains("time_ranges[]=", decodedUrl, StringComparison.Ordinal);
+        Assert.Contains("fields[]=campaign.id", decodedUrl, StringComparison.Ordinal);
     }
 
     [Fact]
