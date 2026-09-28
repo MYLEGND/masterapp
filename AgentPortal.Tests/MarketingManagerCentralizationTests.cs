@@ -116,7 +116,7 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
-    public void CanonicalOpenAiMatchingParityRelease_RemainsScopedToActualRuntimeConsumers()
+    public void CanonicalMarketingHardeningRelease_RemainsScopedToActualRuntimeConsumers()
     {
         var root = Root();
         var request = Read(root, "Docs", "releases", "direct-release-request.json");
@@ -125,11 +125,12 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("\"masterapp-protect\"", request, StringComparison.Ordinal);
         Assert.Contains("\"masterapp-parfait\"", request, StringComparison.Ordinal);
         Assert.Contains("\"masterapp-website\"", request, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"masterapp-client\"", request, StringComparison.Ordinal);
+        Assert.Contains("\"masterapp-client\"", request, StringComparison.Ordinal);
         Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
-        Assert.Contains("canonical-openai-matching-parity-20260928", request, StringComparison.Ordinal);
+        Assert.Contains("canonical-marketing-hardening-20260928", request, StringComparison.Ordinal);
+        Assert.Contains("Protect and Parfait", request, StringComparison.Ordinal);
     }
 
     [Fact]
