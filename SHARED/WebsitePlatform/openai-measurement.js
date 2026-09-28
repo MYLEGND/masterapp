@@ -3,7 +3,13 @@
 
   const SDK_URL = 'https://bzrcdn.openai.com/sdk/oaiq.min.js';
   const initializedPixels = new Set();
+  const configuredPixels = new Map();
   let sdkPromise = null;
+  let consentListenerInstalled = false;
+
+  function measurementConsentAllowed() {
+    return window.LegendAnalytics?.measurementConsent?.isAllowed?.() === true;
+  }
 
   function queueApi() {
     if (typeof window.oaiq === 'function') return window.oaiq;
@@ -44,30 +50,55 @@
     return pixelId && pixelId.length <= 200 ? pixelId : '';
   }
 
-  async function configure(options) {
-    const pixelId = cleanPixelId(options?.pixelId);
-    if (!pixelId) return false;
-
+  async function ensureInitialized(pixelId, debug = false) {
     const q = queueApi();
-    const consent = options?.consent !== false && navigator.globalPrivacyControl !== true;
+    const consent = measurementConsentAllowed();
     q('consent', consent);
+    if (!consent) return false;
+
     if (!initializedPixels.has(pixelId)) {
-      q('init', { pixelId, debug: options?.debug === true });
+      q('init', { pixelId, debug: debug === true });
       initializedPixels.add(pixelId);
     }
-    window.LEGEND_OPENAI_PIXEL_ID = pixelId;
-    window.LegendAnalytics?.subscribe?.(`openai:${pixelId}`, body => trackCanonical(body, pixelId));
     await loadSdk().catch(() => {});
     return true;
   }
 
+  function installConsentListener() {
+    if (consentListenerInstalled) return;
+    consentListenerInstalled = true;
+    window.addEventListener('legend:measurement-consent-changed', event => {
+      const allowed = event?.detail?.allowed === true && measurementConsentAllowed();
+      queueApi()('consent', allowed);
+      if (!allowed) return;
+      for (const [pixelId, debug] of configuredPixels) {
+        void ensureInitialized(pixelId, debug);
+      }
+    });
+  }
+
+  async function configure(options) {
+    const pixelId = cleanPixelId(options?.pixelId);
+    if (!pixelId) return false;
+
+    configuredPixels.set(pixelId, options?.debug === true);
+    window.LEGEND_OPENAI_PIXEL_ID = pixelId;
+    window.LegendAnalytics?.subscribe?.(`openai:${pixelId}`, body => trackCanonical(body, pixelId));
+    installConsentListener();
+    return await ensureInitialized(pixelId, options?.debug === true);
+  }
+
   function setConsent(value) {
-    queueApi()('consent', value === true);
+    const authority = window.LegendAnalytics?.measurementConsent;
+    if (!authority?.set) return false;
+    const state = authority.set(value === true, 'openai_compatibility_adapter');
+    queueApi()('consent', state?.allowed === true);
+    return state?.allowed === true;
   }
 
   function measure(eventName, eventData, eventId, pixelId) {
     const targetPixel = cleanPixelId(pixelId || window.LEGEND_OPENAI_PIXEL_ID);
-    if (!targetPixel || !initializedPixels.has(targetPixel)) return false;
+    if (!measurementConsentAllowed() || !targetPixel || !initializedPixels.has(targetPixel)) return false;
     const options = eventId ? { event_id: String(eventId) } : undefined;
     queueApi()('measureSingle', targetPixel, eventName, eventData, options);
     return true;
