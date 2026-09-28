@@ -43,7 +43,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
 
         if (string.Equals(origin.IdnHost, ProtectHost, StringComparison.OrdinalIgnoreCase))
         {
-            var profiles = context.RequestServices.GetService<AgentTrackingResolver>();
+            var profiles = context.RequestServices?.GetService<AgentTrackingResolver>();
             if (profiles is null) return null;
             var owner = await ProtectWebsiteOwnerResolver.ResolveAsync(
                 context,
@@ -68,7 +68,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
                 false);
         }
 
-        var stores = context.RequestServices.GetService<ParfaitApp.Services.CommerceStoreContextService>();
+        var stores = context.RequestServices?.GetService<ParfaitApp.Services.CommerceStoreContextService>();
         if (stores is not null)
         {
             var store = await stores.ResolveAnalyticsAsync(context, sourcePath, cancellationToken);
