@@ -637,6 +637,16 @@
     return /^[a-fA-F0-9]{32}$/.test(compact)
       ? compact.toLowerCase().replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5') : uuid();
   }
+  function readFirstPartyCookie(name) {
+    try {
+      const prefix = name + '=';
+      const value = document.cookie.split(';').map(part => part.trim())
+        .find(part => part.startsWith(prefix));
+      return value ? decodeURIComponent(value.slice(prefix.length)).trim() || null : null;
+    } catch {
+      return null;
+    }
+  }
   function buildBody(payload) {
     const sessionId = getSessionId();
     const attribution = resolveCurrentSessionAttribution(payload, sessionId);
@@ -669,6 +679,7 @@
       UtmContent: attribution.utmContent || null,
       Fbclid: attribution.fbclid || null,
       Oppref: attribution.oppref || null,
+      Obref: readFirstPartyCookie('__obref'),
       MetaCampaignId: attribution.metaCampaignId || null,
       MetaAdSetId: attribution.metaAdSetId || null,
       MetaAdId: attribution.metaAdId || null,
