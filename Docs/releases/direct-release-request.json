@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to canonically replace split Microsoft calendar configuration with owner-scoped authenticated calendar connections, preserve manual calendar target fields, validate without regressing the proven Founder flow, merge through legend/approved-changes, and deploy only the affected AgentPortal, ClientApp, and Protect applications while preserving successful unrelated targets.",
-  "purpose": "Deploy the canonical Microsoft Calendar connection authority and Marketing Setup connection controls for Founder, Agent, and Business owners. AgentPortal owns authenticated setup, booking execution, subscriptions, and webhook synchronization; ClientApp consumes the shared business Marketing Setup controller/UI; Protect consumes owner-scoped public booking confirmation. Parfait and the static LEGEND website are unaffected and must not be redeployed.",
-  "requestId": "canonical-calendar-auth-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to canonically replace split Microsoft calendar configuration with owner-scoped authenticated calendar connections, preserve manual calendar target fields, validate without regressing the proven Founder flow, merge through legend/approved-changes, and deploy only the affected AgentPortal, ClientApp, and Protect applications while preserving successful unrelated targets. This request also explicitly authorizes recovery of the direct-release dispatch after the validated calendar repair merged without publication.",
+  "purpose": "Dispatch the already-validated canonical Microsoft Calendar repair now present on legend/approved-changes. Deploy only AgentPortal, ClientApp, and Protect; Parfait and the static LEGEND website remain excluded.",
+  "requestId": "canonical-calendar-auth-dispatch-20260928",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
