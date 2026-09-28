@@ -12,4 +12,7 @@
 .public-form :disabled{cursor:not-allowed}
 .public-form>p{margin:12px 0 0;color:var(--muted,#667785);font-size:.9rem}
 .public-form [role=status]:empty{display:none}
+.public-form .btn.primary{display:inline-flex;align-items:center;justify-content:center;min-height:50px;padding:12px 20px;border:0;border-radius:999px;background:var(--navy,#0d2940);color:#fff;font:inherit;font-weight:800;line-height:1.2;text-decoration:none;cursor:pointer}
+.public-form .btn.primary:hover{filter:brightness(1.07)}
+.public-form .btn.primary:focus-visible{outline:3px solid color-mix(in srgb,var(--gold,#c9a55d) 70%,transparent);outline-offset:3px}
 @media(max-width:650px){.public-form-grid{grid-template-columns:1fr;gap:14px}.public-form-grid>label{grid-column:1/-1}}
