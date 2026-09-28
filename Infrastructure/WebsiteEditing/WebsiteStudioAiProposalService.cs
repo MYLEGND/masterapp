@@ -64,7 +64,7 @@ public sealed class WebsiteStudioAiProposalService(
     ILogger<WebsiteStudioAiProposalService> logger) : IWebsiteStudioAiProposalService
 {
     private const string DefaultBaseUrl = "https://api.openai.com";
-    private const int MaxInstructionChars = 2_000;
+    private const int MaxInstructionChars = 6_000;
     private const int MaxContextChars = 120_000;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -86,7 +86,7 @@ public sealed class WebsiteStudioAiProposalService(
 
         var instruction = (request.Instruction ?? string.Empty).Trim();
         if (instruction.Length == 0 || instruction.Length > MaxInstructionChars)
-            throw new ArgumentException("Website AI instructions must be 1–2,000 characters.");
+            throw new ArgumentException("Website AI instructions must be 1–6,000 characters.");
 
         var payload = BuildContextPayload(request.Context);
         if (payload.Length > MaxContextChars)
