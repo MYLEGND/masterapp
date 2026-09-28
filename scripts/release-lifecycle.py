@@ -323,11 +323,12 @@ def direct_only_request(sha):
 
 
 def reconcile_history_only(api, production=None, approved=None):
-    """Preserve a proven, tree-neutral production merge in approved history.
+    """Preserve tree-neutral canonical production lineage in approved history.
 
     No product content, release request, deployment scope, or application state is
-    changed. Any content-bearing divergence remains blocked for the normal checked
-    release lifecycle instead of being silently merged here.
+    changed. Safety comes from the current production tip having the exact tree of
+    the common merge base, plus a post-merge proof that approved's tree is unchanged.
+    Any content-bearing divergence remains blocked for the checked release lifecycle.
     """
     production = production or api.ref(PRODUCTION)
     approved = approved or api.ref(APPROVED)
@@ -339,14 +340,11 @@ def reconcile_history_only(api, production=None, approved=None):
     if not history_only_production_divergence(production, approved):
         return {'relation': 'diverged-content', 'reconciled': False}
 
-    if not release_proven(api, production, production=True):
-        return {'retained': 'Tree-neutral production history lacks successful release proof'}
-
     before_tree = commit_tree(approved)
     merge = api.api('merges', {
         'base': APPROVED,
         'head': production,
-        'commit_message': 'Preserve proven production synchronization history in approved changes'
+        'commit_message': 'Preserve tree-neutral production synchronization history in approved changes'
     })
     merged_sha = (merge or {}).get('sha')
     if not SHA.fullmatch(merged_sha or ''):
