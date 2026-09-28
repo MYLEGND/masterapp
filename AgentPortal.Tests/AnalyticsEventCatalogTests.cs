@@ -226,9 +226,9 @@ public class AnalyticsEventCatalogTests
     }
 
     [Fact]
-    public void MetaSignalEventCatalog_CoversBrowserPixelAndServerForwardEvents()
+    public void MetaSignalEventCatalog_SeparatesRichAnalyticsSignalsFromLowNoiseOptimizationDelivery()
     {
-        var requiredBrowserEvents = new[]
+        var internalBrowserSignals = new[]
         {
             "ViewContent",
             "LeadFormStart",
@@ -240,13 +240,15 @@ public class AnalyticsEventCatalogTests
             "AbandonedHighIntentLead"
         };
 
-        foreach (var eventName in requiredBrowserEvents)
+        foreach (var eventName in internalBrowserSignals)
         {
             Assert.True(MetaSignalEventCatalog.TryGet(eventName, out var definition), $"Meta signal catalog missing '{eventName}'.");
-            Assert.True(definition.AllowBrowserPixel, $"Meta signal browser event '{eventName}' must remain browser-enabled.");
-            Assert.False(definition.AllowServerForward, $"Meta signal browser event '{eventName}' must not be server-forwarded.");
-            Assert.True(MetaSignalEventCatalog.IsBrowserSignalEvent(eventName), $"Meta signal browser event '{eventName}' must remain browser-classified.");
+            Assert.False(definition.AllowServerForward, $"Browser analytics signal '{eventName}' must not be server-forwarded.");
+            Assert.True(MetaSignalEventCatalog.IsBrowserSignalEvent(eventName), $"Browser analytics signal '{eventName}' must remain available to internal analytics.");
+            Assert.Equal(eventName == "ViewContent", definition.AllowBrowserPixel);
         }
+
+        Assert.Equal(new[] { "ViewContent" }, MetaSignalEventCatalog.BrowserPixelEventNames.OrderBy(x => x).ToArray());
 
         Assert.True(MetaSignalEventCatalog.TryGet("QualifiedLead", out var qualifiedLead));
         Assert.True(qualifiedLead.AllowServerForward);
