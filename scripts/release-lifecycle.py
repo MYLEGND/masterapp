@@ -38,6 +38,35 @@ def ancestor(before, after):
     return result.returncode == 0
 
 
+def commit_tree(revision):
+    result = git('rev-parse', revision + '^{tree}')
+    value = result.stdout.strip()
+    if not SHA.fullmatch(value):
+        raise RuntimeError('Cannot establish commit tree for canonical history')
+    return value
+
+
+def merge_base(left, right):
+    result = git('merge-base', left, right)
+    value = result.stdout.strip()
+    if not SHA.fullmatch(value):
+        raise RuntimeError('Cannot establish merge base for canonical history')
+    return value
+
+
+def history_only_production_divergence(production, approved):
+    """True only when production's unique lineage contributes zero tree changes.
+
+    This is the exact topology created by a protected production synchronization
+    merge whose content already came from approved changes. Preserving that merge
+    in approved changes repairs ancestry without changing the approved tree.
+    """
+    if ancestor(production, approved) or ancestor(approved, production):
+        return False
+    base = merge_base(production, approved)
+    return commit_tree(production) == commit_tree(base)
+
+
 def eligible(branch, approved, production, live, open_refs, active_refs, failed_refs):
     name, sha = branch['name'], branch['commit']['sha']
     if name in KEEP or branch.get('protected'):
@@ -293,6 +322,71 @@ def direct_only_request(sha):
     return json.loads(result.stdout).get('releaseMode') == 'approved-only'
 
 
+def reconcile_history_only(api, production=None, approved=None):
+    """Preserve a proven, tree-neutral production merge in approved history.
+
+    No product content, release request, deployment scope, or application state is
+    changed. Any content-bearing divergence remains blocked for the normal checked
+    release lifecycle instead of being silently merged here.
+    """
+    production = production or api.ref(PRODUCTION)
+    approved = approved or api.ref(APPROVED)
+
+    if ancestor(production, approved):
+        return {'relation': 'production-preserved', 'reconciled': False}
+    if ancestor(approved, production):
+        return {'relation': 'production-ahead', 'reconciled': False}
+    if not history_only_production_divergence(production, approved):
+        return {'relation': 'diverged-content', 'reconciled': False}
+
+    if not release_proven(api, production, production=True):
+        return {'retained': 'Tree-neutral production history lacks successful release proof'}
+
+    before_tree = commit_tree(approved)
+    merge = api.api('merges', {
+        'base': APPROVED,
+        'head': production,
+        'commit_message': 'Preserve proven production synchronization history in approved changes'
+    })
+    merged_sha = (merge or {}).get('sha')
+    if not SHA.fullmatch(merged_sha or ''):
+        raise RuntimeError('Canonical history reconciliation did not return a merge revision')
+
+    git('fetch', '--no-tags', 'origin', merged_sha)
+    current_approved = api.ref(APPROVED)
+    if current_approved != merged_sha:
+        raise RuntimeError('Approved branch moved during canonical history reconciliation')
+    if commit_tree(current_approved) != before_tree:
+        raise RuntimeError('History-only reconciliation changed approved product content')
+    if not ancestor(production, current_approved):
+        raise RuntimeError('Production history was not preserved by reconciliation')
+
+    return {
+        'relation': 'production-history-reconciled',
+        'reconciled': True,
+        'productionSha': production,
+        'approvedSha': current_approved
+    }
+
+
+def branch_parity(api):
+    """Canonical verifier/reconciler used by the branch-parity workflow."""
+    production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
+    history = reconcile_history_only(api, production, approved)
+    if history.get('retained'):
+        raise RuntimeError(history['retained'])
+    if history.get('reconciled'):
+        production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
+
+    if production == approved:
+        return {'relation': 'identical', 'productionSha': production, 'approvedSha': approved}
+    if ancestor(production, approved):
+        return {'relation': 'approved-ahead', 'productionSha': production, 'approvedSha': approved}
+    if ancestor(approved, production):
+        return {'relation': 'production-ahead', 'productionSha': production, 'approvedSha': approved}
+    raise RuntimeError('Canonical branches contain content-bearing divergent history')
+
+
 def reconcile(api, trigger=None):
     if staging_only():
         return {'promotion': 'disabled while validation-only staging hold is active'}
@@ -303,6 +397,17 @@ def reconcile(api, trigger=None):
     # Recover missed workflow events and transient merge-back failures on every
     # schedule. A failed production attempt never authorizes this synchronization.
     production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
+
+    # Protected production synchronization creates a merge commit that can be
+    # topologically unique while contributing no content beyond the shared base.
+    # Preserve only that proven, tree-neutral lineage before evaluating an exact
+    # approved-only release request; this repairs ancestry without expanding scope.
+    history = reconcile_history_only(api, production, approved)
+    if history.get('retained'):
+        return history
+    if history.get('reconciled'):
+        return history
+
     if direct_only_request(approved):
         runs = api.pages('actions/runs?head_sha=' + approved, 'workflow_runs')
         if not any(r['path'].split('@')[0] == '.github/workflows/' + DIRECT for r in runs):
@@ -469,7 +574,7 @@ def cleanup(api, apply=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'resolve-production', 'reconcile', 'cleanup'])
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'resolve-production', 'reconcile', 'branch-parity', 'cleanup'])
     parser.add_argument('--pr', type=int)
     parser.add_argument('--run', type=int)
     parser.add_argument('--expected-head')
@@ -489,6 +594,8 @@ def main():
                 out.write(key + '=' + value + '\n')
     elif args.command == 'reconcile':
         result = reconcile(api, args.run)
+    elif args.command == 'branch-parity':
+        result = branch_parity(api)
     else:
         result = cleanup(api, args.apply)
     if args.output:
