@@ -145,6 +145,11 @@ public static class WebsiteDraftQualityInspector
                     if (node.Type == "form" &&
                         !string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
                         checks.Add(new("form_authority_invalid", "error", "Website forms must use the canonical inquiry authority.", pagePath, node.Id));
+
+                    if (node.Type == "reusable" &&
+                        (string.IsNullOrWhiteSpace(node.SyncSourceId) ||
+                         !(document.ReusableComponents?.ContainsKey(node.SyncSourceId) ?? false)))
+                        checks.Add(new("reusable_component_missing", "error", "Reusable component instances must reference an existing synchronized definition.", pagePath, node.Id));
                 }
 
                 Visit(node.Children);
