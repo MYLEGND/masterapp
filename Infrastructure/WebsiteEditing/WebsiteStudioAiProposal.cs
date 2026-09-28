@@ -198,17 +198,17 @@ public static class WebsiteStudioAiProposalPolicy
                     break;
 
                 case "add_section":
-                    AddCompositionNode(document, route, null, operation withDefaults("section", "section"), beforeNodeId: operation.BeforeNodeId);
+                    AddCompositionNode(document, route, null, operation.WithDefaults("section", "section"), beforeNodeId: operation.BeforeNodeId);
                     break;
 
                 case "add_text":
                     AddCompositionNode(document, route, operation.ParentId ?? selectedSectionId,
-                        operation withDefaults("text", "p"), operation.BeforeNodeId);
+                        operation.WithDefaults("text", "p"), operation.BeforeNodeId);
                     break;
 
                 case "add_button":
                     AddCompositionNode(document, route, operation.ParentId ?? selectedSectionId,
-                        operation withDefaults("cta", "a"), operation.BeforeNodeId, allowedActions);
+                        operation.WithDefaults("cta", "a"), operation.BeforeNodeId, allowedActions);
                     break;
 
                 case "add_node":
@@ -276,7 +276,7 @@ public static class WebsiteStudioAiProposalPolicy
             operations);
     }
 
-    private static WebsiteStudioAiOperation withDefaults(
+    private static WebsiteStudioAiOperation WithDefaults(
         this WebsiteStudioAiOperation operation,
         string type,
         string tag)
