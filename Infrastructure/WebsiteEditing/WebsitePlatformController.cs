@@ -296,7 +296,16 @@ public class WebsitePlatformController : ControllerBase
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history, signalCatalog = SignalCatalogPayload(), capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken), canDelete = await CanPublishAsync(actor, cancellationToken), canPromote = await CanPublishAsync(actor, cancellationToken) },
+            history, signalCatalog = SignalCatalogPayload(), capabilities = new {
+                canPublish = await CanPublishAsync(actor, cancellationToken),
+                canManageDomains = await CanPublishAsync(actor, cancellationToken),
+                canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business,
+                canSchedule = await CanPublishAsync(actor, cancellationToken),
+                canDelete = await CanPublishAsync(actor, cancellationToken),
+                canPromote = await CanPublishAsync(actor, cancellationToken),
+                compositionV3 = true,
+                requiresCompositionMaterialization = !string.Equals(draft.CompositionMode, "canonical", StringComparison.Ordinal)
+            },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
     }
