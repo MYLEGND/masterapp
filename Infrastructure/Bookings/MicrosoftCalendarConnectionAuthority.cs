@@ -1,9 +1,9 @@
-using System.ComponentModel.DataAnnotations;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Azure.Core;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
