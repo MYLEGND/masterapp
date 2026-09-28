@@ -59,6 +59,7 @@
   let inlineEditCheckpointed = false;
   let activeEditorPanel = 'content';
   let dirty = false;
+  let sourceEditorDirty = false;
   let autoSaveTimer = null;
   const pendingDeletedKeys = new Set();
 
@@ -2823,6 +2824,7 @@
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
     if (status) status.textContent = 'Saving changes…';
+    if (activeEditorPanel === 'source' && !sourceEditorDirty) refreshSiteSourceEditor();
     if (editorMode) {
       clearTimeout(autoSaveTimer);
       autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
@@ -2843,6 +2845,11 @@
     renderSignalControls();
     if (activeEditorPanel === 'motion') renderMotionControls();
     if (activeEditorPanel === 'data') renderDataControls();
+    if (activeEditorPanel === 'source' && !sourceEditorDirty) {
+      const scope=document.getElementById('legend-cms-source-scope');
+      if(scope && el?.dataset?.cmsCompositionId) scope.value='selection';
+      refreshSiteSourceEditor();
+    }
     if (openContent) showPanel('content');
     refreshLayers();
     updateDirectCanvasUi();
@@ -3515,12 +3522,140 @@
     const dynamicStatus=document.getElementById('legend-cms-dynamic-status');
     if(dynamicStatus) dynamicStatus.textContent=dynamic ? `Dynamic route ${dynamic.routePattern || ''} from ${dynamicSource?.label || dynamic.collectionId}.` : 'This page is static.';
   }
+  function sourceProjectionNode(node) {
+    const copy=structuredClone(node || {});
+    delete copy.signals;
+    copy.children=(node?.children || []).map(sourceProjectionNode);
+    return copy;
+  }
+
+  function siteSourceProjection() {
+    const pages=Object.entries(documentState.pages || {})
+      .sort((a,b)=>(Number(a[1]?.navigation?.order)||0)-(Number(b[1]?.navigation?.order)||0) || a[0].localeCompare(b[0]))
+      .map(([path,page])=>({
+        path,
+        title:page?.title ?? null,
+        description:page?.description ?? null,
+        navigation:structuredClone(page?.navigation || {showInNavigation:true,order:0,isDeleted:false}),
+        dynamicBinding:structuredClone(page?.dynamicBinding || null),
+        composition:(page?.composition || []).map(sourceProjectionNode)
+      }));
+    return {
+      schema:'legend-site-source/v1',
+      version:3,
+      store:structuredClone(documentState.store || {}),
+      breakpoints:structuredClone(documentState.breakpoints || []),
+      theme:structuredClone(documentState.theme || {}),
+      pages,
+      reusableComponents:structuredClone(documentState.reusableComponents || {}),
+      collections:structuredClone(documentState.collections || {})
+    };
+  }
+
+  function sourceFindNode(nodes,id) {
+    for(const node of nodes || []){
+      if(node?.id===id) return node;
+      const child=sourceFindNode(node?.children,id); if(child) return child;
+    }
+    return null;
+  }
+
+  function sourceReplaceNode(nodes,id,replacement) {
+    for(let index=0;index<(nodes || []).length;index++){
+      const node=nodes[index];
+      if(node?.id===id){ nodes[index]=replacement; return true; }
+      if(sourceReplaceNode(node?.children,id,replacement)) return true;
+    }
+    return false;
+  }
+
+  function sourceSelectedNodeId() {
+    return selected?.dataset?.cmsCompositionId || null;
+  }
+
+  function refreshSiteSourceEditor(force=false) {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const label=document.getElementById('legend-cms-source-location');
+    if(!textarea || (sourceEditorDirty && !force)) return;
+    const selectedId=sourceSelectedNodeId();
+    if(scope && scope.value==='selection' && !selectedId) scope.value='site';
+    const mode=scope?.value || 'site';
+    if(mode==='selection' && selectedId){
+      const node=compositionNode(selectedId);
+      textarea.value=JSON.stringify(sourceProjectionNode(node),null,2);
+      if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+    }else{
+      textarea.value=JSON.stringify(siteSourceProjection(),null,2);
+      if(label) label.textContent='Master Source · entire website';
+      if(selectedId){
+        const marker='"id": "'+selectedId+'"';
+        const index=textarea.value.indexOf(marker);
+        if(index>=0){ textarea.setSelectionRange(index,index+marker.length); }
+      }
+    }
+    sourceEditorDirty=false;
+    const status=document.getElementById('legend-cms-source-status');
+    if(status) status.textContent='Source is synchronized with the current draft.';
+  }
+
+  async function applySiteSource() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const status=document.getElementById('legend-cms-source-status');
+    if(!textarea) return;
+    let sourceText=textarea.value;
+    try{
+      if(scope?.value==='selection'){
+        const id=sourceSelectedNodeId();
+        if(!id) throw new Error('Select a page component before editing Selected Source.');
+        const replacement=JSON.parse(sourceText);
+        if(replacement?.id!==id) throw new Error('Selected Source must keep the stable node ID '+id+'.');
+        const projected=siteSourceProjection();
+        let replaced=false;
+        for(const page of projected.pages){
+          if(sourceReplaceNode(page.composition,id,replacement)){ replaced=true; break; }
+        }
+        if(!replaced) throw new Error('The selected source node is no longer present in this draft.');
+        sourceText=JSON.stringify(projected,null,2);
+      }else{
+        JSON.parse(sourceText);
+      }
+    }catch(error){
+      if(status) status.textContent=error?.message || 'Source syntax is invalid.';
+      return;
+    }
+
+    if(status) status.textContent='Validating protected actions, media, and structure…';
+    try{
+      const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText})
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(payload.message || payload.error || 'Site Source validation failed.');
+      checkpoint();
+      documentState=normalizeDocument(payload.proposedDocument || {});
+      for(const key of payload.deletedKeys || []) pendingDeletedKeys.add(key);
+      sourceEditorDirty=false;
+      applyDocument(documentState);
+      dirty=true;
+      const saved=await save(false);
+      if(!saved || dirty) throw new Error('Validated source could not be saved.');
+      refreshSiteSourceEditor(true);
+      if(status) status.textContent='Applied to the canonical draft. Protected wiring unchanged.';
+    }catch(error){
+      if(status) status.textContent=error?.message || 'Site Source could not be applied.';
+    }
+  }
+
   function showPanel(name) {
     activeEditorPanel = name;
     document.querySelectorAll('[data-cms-view]').forEach(view => { view.hidden = view.dataset.cmsView !== name; });
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
     if (name === 'layers') refreshLayers();
     if (name === 'media') void refreshMediaLibrary();
+    if (name === 'source') refreshSiteSourceEditor();
     if (name === 'components') renderReusableComponents();
     if (name === 'data') renderDataControls();
     if (name === 'ai') renderAiProposal();
@@ -4391,7 +4526,7 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="ai">AI Assist</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="collaboration">Collaborate</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="ai">AI Build</button><button type="button" data-open="source">Source</button><button type="button" data-open="media">Media</button><button type="button" data-open="publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
@@ -4401,6 +4536,17 @@
       <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
+    const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
+    sourceView.innerHTML='<h2>LEGEND Site Source</h2><p>One deterministic source view of the same v3 graph used by the canvas and AI. Canonical actions and system forms are validated server-side and provider/event wiring is not editable here.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Entire site</option><option value="selection">Selected component / section</option></select></label><small id="legend-cms-source-location">Master Source · entire website</small><textarea id="legend-cms-site-source" class="legend-cms-site-source" rows="28" spellcheck="false"></textarea><small id="legend-cms-source-status" role="status">Source is synchronized with the current draft.</small><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button">Apply validated source</button><button id="legend-cms-source-reload" type="button">Reload from canvas</button></div>';
+    tools.appendChild(sourceView);
+
+    const publishView=document.createElement('section'); publishView.dataset.cmsView='publish'; publishView.hidden=true;
+    publishView.innerHTML='<h2>Publish</h2><p>The same immutable publish authority validates canonical CTAs, media ownership, forms, navigation, responsive structure, and website versioning before anything becomes live.</p><div class="legend-cms-row"><button id="legend-cms-publish-save-draft" type="button">Save named draft</button><button id="legend-cms-publish-now" type="button">Publish current draft</button></div><button id="legend-cms-publish-quality" type="button">Run quality preflight</button><small id="legend-cms-publish-note">Publishing never bypasses the canonical action/event catalogs.</small>';
+    tools.appendChild(publishView);
+
+    const advanced=document.createElement('section'); advanced.dataset.cmsView='advanced'; advanced.hidden=true;
+    advanced.innerHTML='<h2>Advanced controls</h2><p>Precision tools remain available without crowding the everyday workflow.</p><div class="legend-cms-menu"><button data-advanced-open="content">Selected content</button><button data-advanced-open="add">Add blocks</button><button data-advanced-open="appearance">Design</button><button data-advanced-open="layout">Responsive</button><button data-advanced-open="layers">Layers</button><button data-advanced-open="components">Components</button><button data-advanced-open="data">Dynamic data</button><button data-advanced-open="motion">Motion</button><button data-advanced-open="signals">Analytics</button><button data-advanced-open="quality">Quality</button><button data-advanced-open="collaboration">Collaborate</button><button data-advanced-open="theme">Site theme</button><button data-advanced-open="page">Pages & SEO</button></div>';
+    tools.appendChild(advanced);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
     signals.innerHTML = '<h2>Analytics & Meta</h2><p>Standard page engagement, managed buttons, and the canonical inquiry form are wired automatically from the shared Protect Website analytics and Meta authorities. Select content to review that wiring. Advanced custom mappings are only for non-standard interactions.</p><div id="legend-cms-signal-controls"></div>';
     tools.appendChild(signals);
