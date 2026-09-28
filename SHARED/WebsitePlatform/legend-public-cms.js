@@ -2585,10 +2585,17 @@
       'field_started', 'validation_failed', 'field_completed', 'scroll_threshold'
     ]);
     const page = pageState();
-    const candidates = [
-      ...Object.entries(page.elements || {}).map(([id, override]) => ({ id, override, node: findEditableElement(id) })),
-      ...(page.extras || []).map(extra => ({ id: `extra:${extra.id}`, override: extra, node: document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`) }))
-    ];
+    const candidates = [];
+    if (usesCanonicalComposition()) {
+      walkComposition(page.composition, node => {
+        candidates.push({ id:node.id, override:node, node:findEditableElement(node.id) });
+      });
+    } else {
+      candidates.push(
+        ...Object.entries(page.elements || {}).map(([id, override]) => ({ id, override, node: findEditableElement(id) })),
+        ...(page.extras || []).map(extra => ({ id: `extra:${extra.id}`, override: extra, node: document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`) }))
+      );
+    }
     window.__legendWebsiteSignalBindingsCleanup?.();
     const cleanups = [];
 
@@ -3848,12 +3855,27 @@
     if(!isImage && !isVideo) return;
     if(selected && ((isImage && selected instanceof HTMLImageElement) || (isVideo && selected.tagName==='VIDEO'))){
       checkpoint(); const override=selectedOverride(); if(!override) return;
-      if(isImage) override.imageDataUrl=asset.url; else override.videoUrl=asset.url;
+      if (selected.dataset.cmsCompositionId) {
+        override.mediaAssetId=asset.id || compositionMediaAssetId(asset.url);
+        override.mediaUrl=asset.url;
+        if(isImage) override.alt ||= asset.name || '';
+      } else if(isImage) override.imageDataUrl=asset.url; else override.videoUrl=asset.url;
       applyElementOverride(selected,override); syncEditorControls(); markDirty(); return;
     }
     const section=selectedSection || document.querySelector('[data-cms-section]');
     if(!section){ alert('Select a section before inserting media.'); return; }
     checkpoint();
+    if (usesCanonicalComposition()) {
+      const parent=section.dataset.cmsCompositionId ? compositionNode(section.dataset.cmsCompositionId) : null;
+      if(!parent){ alert('Select a canonical section before inserting media.'); return; }
+      const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
+      const node={id,type:isImage?'image':'video',tag:isImage?'img':'video',className:isImage?'cms-extra-image':null,
+        mediaAssetId:asset.id || compositionMediaAssetId(asset.url),mediaUrl:asset.url,alt:isImage?(asset.name||''):null,
+        signals:[],style:{widthPercent:isImage?70:100},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]};
+      parent.children ||= []; parent.children.push(node);
+      renderCanonicalCompositionPage();
+      setSelected(findEditableElement(id)); markDirty(); return;
+    }
     const extra={id:crypto.randomUUID(),type:isImage?'image':'video',sectionId:section.dataset.cmsSection,style:{widthPercent:isImage?70:100}};
     if(isImage){ extra.imageDataUrl=asset.url; extra.alt=asset.name || ''; } else extra.videoUrl=asset.url;
     pageState().extras.push(extra); const created=createExtra(extra); setSelected(created); markDirty();
@@ -4052,8 +4074,18 @@
       if(SITE_KEY!=='business') return; const route=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
       if(!route || route==='/' || websitePageEntries(true).some(entry=>entry.route===route)){ alert('Enter a unique website route such as /team or /services/commercial.'); return; }
       checkpoint(); const label=(document.getElementById('legend-cms-page-nav-label')?.value || route.split('/').filter(Boolean).at(-1) || 'Page').trim();
-      const sectionId=crypto.randomUUID(); const textId=crypto.randomUUID();
-      documentState.pages[route]={title:label,description:'',templatePath:null,navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},elements:{},sectionOrder:{},extras:[{id:sectionId,type:'section',sectionId:'custom.root',style:{}},{id:textId,type:'text',sectionId:'extra:'+sectionId,text:label,style:{}}]};
+      if (usesCanonicalComposition()) {
+        const sectionId=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
+        const textId=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+1)).replaceAll('-','');
+        documentState.pages[route]={title:label,description:'',navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},elements:{},sectionOrder:{},extras:[],composition:[
+          {id:sectionId,type:'section',tag:'section',className:'section',signals:[],style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],children:[
+            {id:textId,type:'heading',tag:'h1',text:label,signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]}
+          ]}
+        ]};
+      } else {
+        const sectionId=crypto.randomUUID(); const textId=crypto.randomUUID();
+        documentState.pages[route]={title:label,description:'',templatePath:null,navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},elements:{},sectionOrder:{},extras:[{id:sectionId,type:'section',sectionId:'custom.root',style:{}},{id:textId,type:'text',sectionId:'extra:'+sectionId,text:label,style:{}}]};
+      }
       markDirty(); await navigateToEditorPage(route);
     });
     document.getElementById('legend-cms-page-duplicate')?.addEventListener('click',async()=>{
@@ -4067,7 +4099,7 @@
       if(SITE_KEY!=='business') return; const sourceRoute=currentPageRoute(); const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
       if(sourceRoute==='/' || !target || target==='/' || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){ alert('Enter a unique route. The home page route cannot be renamed.'); return; }
       checkpoint(); const source=JSON.parse(JSON.stringify(pageState())); const template=templatePageEntries().has(sourceRoute)?sourceRoute:(normalizePageRoute(source.templatePath)||null); source.templatePath=template;
-      documentState.pages[target]=source; const tombstone=ensurePageRecord(sourceRoute); tombstone.navigation={...(tombstone.navigation||{}),showInNavigation:false,isDeleted:true}; tombstone.elements={}; tombstone.sectionOrder={}; tombstone.extras=[];
+      documentState.pages[target]=source; const tombstone=ensurePageRecord(sourceRoute); tombstone.navigation={...(tombstone.navigation||{}),showInNavigation:false,isDeleted:true}; tombstone.elements={}; tombstone.sectionOrder={}; tombstone.extras=[]; tombstone.composition=[];
       markDirty(); await navigateToEditorPage(target);
     });
     document.getElementById('legend-cms-page-delete')?.addEventListener('click',async()=>{
@@ -4077,6 +4109,34 @@
     });
     document.getElementById('legend-cms-duplicate').addEventListener('click', () => {
       if (!selected || !selectedSection || selected.dataset.cmsSignalOnly) return;
+      if (usesCanonicalComposition() && selected.dataset.cmsCompositionId) {
+        const entry=compositionEntry(selected.dataset.cmsCompositionId);
+        if(!entry?.node || entry.node.type==='form'){
+          if(entry?.node?.type==='form') alert('Each page uses one canonical inquiry form.');
+          return;
+        }
+        const remap=node=>{
+          const copy=structuredClone(node);
+          const rewrite=current=>{
+            current.id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random())).replaceAll('-','').replace('.','');
+            current.signals=[];
+            (current.children||[]).forEach(rewrite);
+          };
+          rewrite(copy);
+          copy.style ||= {};
+          copy.style.offsetYPx=(Number(copy.style.offsetYPx)||0)+16;
+          return copy;
+        };
+        checkpoint();
+        const copy=remap(entry.node);
+        const siblings=compositionChildren(entry.parent);
+        const index=siblings.findIndex(node=>node.id===entry.node.id);
+        siblings.splice(index+1,0,copy);
+        renderCanonicalCompositionPage();
+        setSelected(findEditableElement(copy.id));
+        markDirty();
+        return;
+      }
       const sourceExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
       if (sourceExtra?.type === 'form' || selected.tagName === 'FORM') {
         alert('Each page uses one canonical inquiry form. Duplicate the surrounding content instead.');
