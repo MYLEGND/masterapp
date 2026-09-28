@@ -3538,6 +3538,12 @@
     return copy;
   }
 
+  function sourceProjectionOverride(value) {
+    const copy=structuredClone(value || {});
+    delete copy.signals;
+    return copy;
+  }
+
   function siteSourceProjection() {
     const pages=Object.entries(documentState.pages || {})
       .sort((a,b)=>(Number(a[1]?.navigation?.order)||0)-(Number(b[1]?.navigation?.order)||0) || a[0].localeCompare(b[0]))
@@ -3549,12 +3555,18 @@
         dynamicBinding:structuredClone(page?.dynamicBinding || null),
         composition:(page?.composition || []).map(sourceProjectionNode)
       }));
+    const shellElements={};
+    for(const [id,value] of Object.entries(documentState.elements || {}))
+      shellElements[id]=sourceProjectionOverride(value);
     return {
       schema:'legend-site-source/v1',
       version:3,
+      faviconImageDataUrl:documentState.faviconImageDataUrl || null,
       store:structuredClone(documentState.store || {}),
       breakpoints:structuredClone(documentState.breakpoints || []),
       theme:structuredClone(documentState.theme || {}),
+      shellElements,
+      globalExtras:(documentState.extras || []).map(sourceProjectionOverride),
       pages,
       reusableComponents:structuredClone(documentState.reusableComponents || {}),
       collections:structuredClone(documentState.collections || {})
