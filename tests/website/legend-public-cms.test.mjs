@@ -7,6 +7,9 @@ const source = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-
 const publicCss = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-web.css', import.meta.url), 'utf8');
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
 const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
+const publicInquiryFormSource = readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.mjs', import.meta.url), 'utf8');
+const protectContactSource = readFileSync(new URL('../../Protect-Website/Views/Contact/Index.cshtml', import.meta.url), 'utf8');
+const parfaitContactSource = readFileSync(new URL('../../ParfaitApp/Views/Contact/Index.cshtml', import.meta.url), 'utf8');
 const metaSignalSource = readFileSync(new URL('../../SHARED/WebsitePlatform/meta-signal-intelligence.js', import.meta.url), 'utf8');
 const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
@@ -634,11 +637,20 @@ test('shared business inquiry uses Protect contact identity and two-column rows'
 });
 
 test('Founder and business websites use one shared inquiry runtime with no hard-coded founder email form path',()=>{
-  assert.ok(businessBuildSource.includes('function publicInquiryForm'));
-  assert.ok(businessBuildSource.includes('data-website-inquiry data-form-key="website_inquiry"'));
+  assert.ok(businessBuildSource.includes("import { publicInquiryForm } from '../../SHARED/WebsitePlatform/public-inquiry-form.mjs'"));
+  assert.ok(publicInquiryFormSource.includes('data-website-inquiry data-form-key="website_inquiry"'));
   assert.ok(businessBuildSource.includes('${publicInquiryForm()}</section>'));
   assert.ok(businessBuildSource.includes('publicInquiryForm({preview:true,business:true})'));
   assert.ok(businessBuildSource.includes('/legend-public-inquiry.js?v='));
+  assert.ok(publicInquiryFormSource.includes('name="FirstName"'));
+  assert.ok(publicInquiryFormSource.includes('name="LastName"'));
+  assert.ok(publicInquiryFormSource.includes('name="Phone"'));
+  assert.ok(publicInquiryFormSource.includes('name="Email"'));
+  assert.ok(publicInquiryFormSource.includes('name="Message"'));
+  assert.ok(protectContactSource.includes('data-legend-public-inquiry-form'));
+  assert.ok(parfaitContactSource.includes('data-legend-public-inquiry-form'));
+  assert.equal(protectContactSource.includes('mailto:'),false);
+  assert.equal(parfaitContactSource.includes('mailto:'),false);
   assert.equal(businessBuildSource.includes('mailto:connect@mylegnd.com'),false);
   assert.equal(editorContractsSource.includes('legend_email'),false);
   assert.ok(publicInquirySource.includes("new URLSearchParams(location.search).has('legendEdit')"));
