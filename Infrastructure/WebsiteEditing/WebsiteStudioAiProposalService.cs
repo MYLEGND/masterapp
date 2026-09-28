@@ -153,7 +153,7 @@ public sealed class WebsiteStudioAiProposalService(
 
             var json = await response.Content.ReadAsStringAsync(timeout.Token);
             var proposal = ParseResponse(json);
-            if (proposal.Operations.Count > 20)
+            if (proposal.Operations.Count > 120)
                 throw new InvalidOperationException("website_studio_ai_too_many_operations");
             return proposal;
         }
@@ -310,7 +310,7 @@ public sealed class WebsiteStudioAiProposalService(
                 ["operations"] = new
                 {
                     type = "array",
-                    maxItems = 20,
+                    maxItems = 120,
                     items = new
                     {
                         type = "object",
