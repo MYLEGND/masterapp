@@ -208,8 +208,10 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
             Oppref = OpenAiClickReference.Normalize(req.Oppref),
-            Obref = OpenAiBrowserReference.Normalize(req.Obref)
-                ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]),
+            Obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(Request)
+                ? OpenAiBrowserReference.Normalize(req.Obref)
+                    ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"])
+                : null,
             MetaCampaignId = Clean(req.MetaCampaignId),
             MetaAdSetId = Clean(req.MetaAdSetId),
             MetaAdId = Clean(req.MetaAdId),
@@ -306,8 +308,10 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
             Oppref = OpenAiClickReference.Normalize(req.Oppref),
-            Obref = OpenAiBrowserReference.Normalize(req.Obref)
-                ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]),
+            Obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(Request)
+                ? OpenAiBrowserReference.Normalize(req.Obref)
+                    ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"])
+                : null,
             MetaCampaignId = Clean(req.MetaCampaignId),
             MetaAdSetId = Clean(req.MetaAdSetId),
             MetaAdId = Clean(req.MetaAdId),
@@ -354,8 +358,10 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         req.Host = FirstNonBlank(req.Host, Request.Host.Value);
         req.Oppref = OpenAiClickReference.Normalize(req.Oppref)
             ?? OpenAiClickReference.Normalize(Request.Cookies["__oppref"]);
-        req.Obref = OpenAiBrowserReference.Normalize(req.Obref)
-            ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]);
+        req.Obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(Request)
+            ? OpenAiBrowserReference.Normalize(req.Obref)
+                ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"])
+            : null;
         req.Fbp = FirstNonBlank(req.Fbp, Request.Cookies["_fbp"]);
         req.Fbc = FirstNonBlank(req.Fbc, Request.Cookies["_fbc"]);
         // Network identity is observed at this trusted proxy boundary. Never let a
