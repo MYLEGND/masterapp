@@ -122,8 +122,10 @@ public static class UnifiedEventContextBuilder
 
             Fbclid = fbclid,
             Oppref = OpenAiClickReference.Normalize(oppref),
-            Obref = OpenAiBrowserReference.Normalize(obref)
-                ?? OpenAiBrowserReference.Normalize(MetaLeadTrackingWorkflow.ResolveCookieValue(request, "__obref")),
+            Obref = CanUseOpenAiBrowserReference(request)
+                ? OpenAiBrowserReference.Normalize(obref)
+                    ?? OpenAiBrowserReference.Normalize(MetaLeadTrackingWorkflow.ResolveCookieValue(request, "__obref"))
+                : null,
             Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbc"),
             Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbp"),
 
@@ -144,4 +146,12 @@ public static class UnifiedEventContextBuilder
             Metadata = metadata
         };
     }
+
+    public static bool CanUseOpenAiBrowserReference(HttpRequest? request)
+    {
+        if (request is null) return true;
+        var gpc = request.Headers["Sec-GPC"].FirstOrDefault()?.Trim();
+        return !string.Equals(gpc, "1", StringComparison.Ordinal);
+    }
+
 }
