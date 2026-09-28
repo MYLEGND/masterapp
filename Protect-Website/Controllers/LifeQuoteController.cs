@@ -295,8 +295,8 @@ if (!ModelState.IsValid)
                             ? Request!.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim()
                             : HttpContext?.Connection?.RemoteIpAddress?.ToString()),
                     ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
-                    Fbp = Request?.Cookies.TryGetValue("_fbp", out var fbp) == true ? fbp : null,
-                    Fbc = Request?.Cookies.TryGetValue("_fbc", out var fbc) == true ? fbc : null,
+                    Fbp = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbp"),
+                    Fbc = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbc"),
                     SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
                     VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
                     MarketingEmailConsent = model.MarketingEmailConsent,
