@@ -148,6 +148,80 @@ class BranchSafety(unittest.TestCase):
         self.assertFalse(m.undeployed_artifact_changes(self.work, self.base))
 
 
+class CanonicalHistoryReconciliation(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.previous = Path.cwd()
+        os.chdir(self.tmp.name)
+        m.git('init', '-b', 'base')
+        m.git('config', 'user.name', 'Test')
+        m.git('config', 'user.email', 'test@example.invalid')
+        Path('shared').write_text('canonical')
+        m.git('add', '.')
+        m.git('commit', '-m', 'shared base')
+        self.base = m.git('rev-parse', 'HEAD').stdout.strip()
+
+    def tearDown(self):
+        os.chdir(self.previous)
+        self.tmp.cleanup()
+
+    def test_tree_neutral_production_lineage_is_safe_history_only_divergence(self):
+        m.git('switch', '-c', 'production')
+        m.git('commit', '--allow-empty', '-m', 'protected production synchronization merge')
+        production = m.git('rev-parse', 'HEAD').stdout.strip()
+        m.git('switch', '-c', 'approved', self.base)
+        Path('approved').write_text('new approved work')
+        m.git('add', '.')
+        m.git('commit', '-m', 'approved work')
+        approved = m.git('rev-parse', 'HEAD').stdout.strip()
+
+        self.assertFalse(m.ancestor(production, approved))
+        self.assertFalse(m.ancestor(approved, production))
+        self.assertEqual(m.commit_tree(production), m.commit_tree(self.base))
+        self.assertTrue(m.history_only_production_divergence(production, approved))
+
+    def test_content_bearing_production_divergence_is_never_history_only(self):
+        m.git('switch', '-c', 'production')
+        Path('production-only').write_text('real content')
+        m.git('add', '.')
+        m.git('commit', '-m', 'production content')
+        production = m.git('rev-parse', 'HEAD').stdout.strip()
+        m.git('switch', '-c', 'approved', self.base)
+        Path('approved').write_text('approved content')
+        m.git('add', '.')
+        m.git('commit', '-m', 'approved content')
+        approved = m.git('rev-parse', 'HEAD').stdout.strip()
+
+        self.assertFalse(m.history_only_production_divergence(production, approved))
+
+    def test_direct_only_tip_reconciles_safe_history_before_scope_short_circuit(self):
+        from unittest.mock import Mock
+        api = Mock()
+        api.ref.side_effect = ['a' * 40, 'b' * 40]
+        safe = {
+            'relation': 'production-history-reconciled',
+            'reconciled': True,
+            'productionSha': 'a' * 40,
+            'approvedSha': 'c' * 40,
+        }
+        with patch.object(m, 'reconcile_history_only', return_value=safe) as history, \
+             patch.object(m, 'direct_only_request', return_value=True) as direct_only:
+            result = m.reconcile(api)
+        self.assertEqual(safe, result)
+        history.assert_called_once_with(api, 'a' * 40, 'b' * 40)
+        direct_only.assert_not_called()
+
+
+class BranchParitySingleAuthority(unittest.TestCase):
+    def test_workflow_delegates_to_release_lifecycle_without_parallel_git_or_pr_logic(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/legend-canonical-branch-parity.yml').read_text()
+        self.assertIn('python3 scripts/release-lifecycle.py branch-parity', workflow)
+        self.assertNotIn('git merge-base --is-ancestor', workflow)
+        self.assertNotIn('gh pr create', workflow)
+        self.assertNotIn('Fast-forward approved changes to production', workflow)
+        self.assertNotIn('Ensure protected production synchronization PR exists', workflow)
+
+
 class ReleaseTruth(unittest.TestCase):
     def setUp(self):
         self.api = type('API', (), {'repo': 'owner/repo', 'pages': lambda *args: []})()
