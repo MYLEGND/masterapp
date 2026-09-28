@@ -8,6 +8,18 @@ using Infrastructure.WebsiteEditing;
 
 namespace Infrastructure.WebsiteEditing;
 
+public sealed record WebsiteStudioAiActionContext(
+    string Key,
+    string Label,
+    string DefaultText,
+    string Group);
+
+public sealed record WebsiteStudioAiMediaContext(
+    Guid Id,
+    string Name,
+    string ContentType,
+    long SizeBytes);
+
 public sealed record WebsiteStudioAiContext(
     string SiteKey,
     string PagePath,
@@ -20,7 +32,10 @@ public sealed record WebsiteStudioAiContext(
     string? Hours,
     IReadOnlyList<WebsiteBreakpointDefinition> Breakpoints,
     string? PageTitle,
-    string? PageDescription);
+    string? PageDescription,
+    string? SiteSource = null,
+    IReadOnlyList<WebsiteStudioAiActionContext>? Actions = null,
+    IReadOnlyList<WebsiteStudioAiMediaContext>? Media = null);
 
 public sealed record WebsiteStudioAiProviderRequest(
     string Mode,
@@ -50,7 +65,7 @@ public sealed class WebsiteStudioAiProposalService(
 {
     private const string DefaultBaseUrl = "https://api.openai.com";
     private const int MaxInstructionChars = 2_000;
-    private const int MaxContextChars = 18_000;
+    private const int MaxContextChars = 120_000;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -66,8 +81,8 @@ public sealed class WebsiteStudioAiProposalService(
             throw new InvalidOperationException("website_studio_ai_not_configured");
 
         var mode = (request.Mode ?? string.Empty).Trim().ToLowerInvariant();
-        if (mode is not ("responsive" or "create"))
-            throw new ArgumentException("Website AI mode must be responsive or create.");
+        if (mode is not ("responsive" or "create" or "build" or "transform" or "selection" or "fix"))
+            throw new ArgumentException("Website AI mode is unsupported.");
 
         var instruction = (request.Instruction ?? string.Empty).Trim();
         if (instruction.Length == 0 || instruction.Length > MaxInstructionChars)
@@ -77,9 +92,15 @@ public sealed class WebsiteStudioAiProposalService(
         if (payload.Length > MaxContextChars)
             payload = payload[..MaxContextChars];
 
-        var system = mode == "responsive"
-            ? ResponsiveSystemPrompt
-            : CreationSystemPrompt;
+        var system = mode switch
+        {
+            "responsive" => ResponsiveSystemPrompt,
+            "build" => BuildSystemPrompt,
+            "transform" => TransformSystemPrompt,
+            "selection" => SelectionSystemPrompt,
+            "fix" => FixSystemPrompt,
+            _ => CreationSystemPrompt
+        };
         var body = new
         {
             model,
@@ -213,7 +234,22 @@ public sealed class WebsiteStudioAiProposalService(
             {
                 context.PageTitle,
                 context.PageDescription
-            }
+            },
+            siteSource = Clamp(context.SiteSource, 90_000),
+            canonicalActions = (context.Actions ?? []).Select(action => new
+            {
+                action.Key,
+                action.Label,
+                action.DefaultText,
+                action.Group
+            }),
+            media = (context.Media ?? []).Take(200).Select(asset => new
+            {
+                asset.Id,
+                asset.Name,
+                asset.ContentType,
+                asset.SizeBytes
+            })
         };
         return JsonSerializer.Serialize(safe, JsonOptions);
     }
@@ -286,14 +322,30 @@ public sealed class WebsiteStudioAiProposalService(
                                 @enum = new[]
                                 {
                                     "set_text", "set_style", "set_layout",
-                                    "add_section", "add_text", "add_button", "suggest_image"
+                                    "create_page", "delete_page", "set_page", "set_seo",
+                                    "add_section", "add_text", "add_button", "add_node",
+                                    "delete_node", "move_node", "set_action", "bind_media",
+                                    "set_theme", "enable_store", "suggest_image"
                                 }
                             },
+                            ["pagePath"] = nullableString,
+                            ["nodeId"] = nullableString,
+                            ["parentId"] = nullableString,
+                            ["beforeNodeId"] = nullableString,
                             ["breakpointKey"] = nullableString,
+                            ["nodeType"] = nullableString,
+                            ["tag"] = nullableString,
+                            ["className"] = nullableString,
                             ["text"] = nullableString,
                             ["title"] = nullableString,
+                            ["description"] = nullableString,
+                            ["navigationLabel"] = nullableString,
+                            ["actionKey"] = nullableString,
                             ["href"] = nullableString,
+                            ["alt"] = nullableString,
+                            ["mediaAssetId"] = nullableString,
                             ["imagePrompt"] = nullableString,
+                            ["enabled"] = new { type = new[] { "boolean", "null" } },
                             ["style"] = new
                             {
                                 type = new[] { "object", "null" },
@@ -331,6 +383,24 @@ public sealed class WebsiteStudioAiProposalService(
                                     ["wrap"] = nullableString
                                 },
                                 additionalProperties = false
+                            },
+                            ["theme"] = new
+                            {
+                                type = new[] { "object", "null" },
+                                properties = new Dictionary<string, object>
+                                {
+                                    ["navy"] = nullableString,
+                                    ["navyDeep"] = nullableString,
+                                    ["gold"] = nullableString,
+                                    ["goldStrong"] = nullableString,
+                                    ["muted"] = nullableString,
+                                    ["surface"] = nullableString,
+                                    ["text"] = nullableString,
+                                    ["fontFamily"] = nullableString,
+                                    ["fontSize"] = nullableNumber,
+                                    ["borderRadius"] = nullableNumber
+                                },
+                                additionalProperties = false
                             }
                         },
                         required = new[] { "kind" },
@@ -363,14 +433,49 @@ public sealed class WebsiteStudioAiProposalService(
 
     private const string CreationSystemPrompt =
         """
-        You are LEGEND Website Studio creation assistance.
-        Produce only bounded typed proposals for the CURRENT PAGE and SELECTED ELEMENT/SECTION.
-        Allowed operations: set_text, set_style, set_layout, add_section, add_text, add_button,
-        and suggest_image. suggest_image is advisory only and must never invent an image URL.
-        Never create or alter analytics/Meta outcomes, credentials, domains, CRM records,
-        business ownership, bookings, purchases, or database data.
-        Never emit HTML/CSS/JavaScript. Keep copy factual and grounded only in supplied context.
-        A button may include a URL only when the user's instruction/context provides a real
-        destination; otherwise omit the URL so the editor can require a valid action before publish.
+        You are LEGEND Website Studio creation assistance operating on the canonical v3 website graph.
+        Produce only typed operations. Prefer stable existing node IDs for edits.
+        Use only canonicalActions supplied in context for actionKey. Never invent an action key.
+        Use only supplied media asset IDs for bind_media. suggest_image is advisory only.
+        Never create or alter analytics events, Meta/OpenAI provider events, credentials, owner scope,
+        domains, CRM records, consent semantics, booking authority, purchases, or server outcomes.
+        Never emit HTML/CSS/JavaScript. Keep claims grounded in supplied business context.
+        """;
+
+    private const string BuildSystemPrompt =
+        """
+        You are LEGEND Site Composer. Build a complete premium website draft through typed operations only.
+        You may create pages, sections, text, CTA/link/image/video nodes, set SEO/theme/layout, bind existing
+        authorized media, and choose only canonicalActions supplied in context. Preserve protected system
+        components and all existing canonical actions unless the user explicitly asks to choose another listed
+        canonical action. Never emit or invent analytics, Meta/OpenAI events, owner IDs, endpoints, credentials,
+        booking/commerce implementations, consent semantics, server outcomes, HTML, CSS, or JavaScript.
+        The siteSource is the exact editable website graph; treat stable IDs as durable identities.
+        """;
+
+    private const string TransformSystemPrompt =
+        """
+        You are LEGEND Site Composer in full-site transformation mode. Improve design, hierarchy, copy,
+        responsiveness, CTA placement, SEO, and use of authorized media across the supplied siteSource.
+        Return typed operations against stable node/page identities. Protected actions/system components
+        must remain protected; only choose actionKey values present in canonicalActions. Never create provider
+        events or backend behavior. Never emit HTML/CSS/JavaScript.
+        """;
+
+    private const string SelectionSystemPrompt =
+        """
+        You are LEGEND Site Composer in selection-only mode. Change only the selected node/section subtree
+        on the current page. Use typed operations and stable IDs. Do not create/delete pages, change theme/store,
+        or modify anything outside the selected subtree. Preserve protected actions and system components.
+        Never emit analytics/provider events, backend behavior, HTML, CSS, or JavaScript.
+        """;
+
+    private const string FixSystemPrompt =
+        """
+        You are LEGEND Site Composer quality-repair mode. Inspect the supplied canonical siteSource and propose
+        only typed fixes for structure, accessibility, missing alt text, responsive layout, weak hierarchy,
+        incomplete SEO, broken safe links, and visual consistency. Preserve intentional content and protected
+        semantic wiring. Use only listed canonicalActions and authorized media. Never invent backend/provider
+        behavior or HTML/CSS/JavaScript.
         """;
 }
