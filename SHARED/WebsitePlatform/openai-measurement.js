@@ -50,7 +50,7 @@
     return pixelId && pixelId.length <= 200 ? pixelId : '';
   }
 
-  async function ensureInitialized(pixelId, debug = false) {
+  function ensureInitialized(pixelId, debug = false) {
     const q = queueApi();
     const consent = measurementConsentAllowed();
     q('consent', consent);
@@ -60,7 +60,10 @@
       q('init', { pixelId, debug: debug === true });
       initializedPixels.add(pixelId);
     }
-    await loadSdk().catch(() => {});
+    // Queueing init/measure is synchronous. SDK transport loads independently
+    // so a late canonical subscriber can replay the accepted page envelope
+    // after initialization without waiting on the network script.
+    void loadSdk().catch(() => {});
     return true;
   }
 
@@ -83,9 +86,10 @@
 
     configuredPixels.set(pixelId, options?.debug === true);
     window.LEGEND_OPENAI_PIXEL_ID = pixelId;
-    window.LegendAnalytics?.subscribe?.(`openai:${pixelId}`, body => trackCanonical(body, pixelId));
     installConsentListener();
-    return await ensureInitialized(pixelId, options?.debug === true);
+    const initialized = ensureInitialized(pixelId, options?.debug === true);
+    window.LegendAnalytics?.subscribe?.(`openai:${pixelId}`, body => trackCanonical(body, pixelId));
+    return initialized;
   }
 
   function setConsent(value) {
