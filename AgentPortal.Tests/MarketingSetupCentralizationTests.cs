@@ -199,6 +199,59 @@ public sealed class MarketingSetupCentralizationTests
     }
 
     [Fact]
+    public void MicrosoftCalendarAuth_UsesOneOwnerScopedConnectionAuthority_AndKeepsManualTargets()
+    {
+        var authority = Read("Infrastructure", "Bookings", "MicrosoftCalendarConnectionAuthority.cs");
+        var registration = Read("Infrastructure", "Analytics", "MarketingConnectionStore.cs");
+        var controller = Read("AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
+        var business = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var view = Read("AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml");
+        var js = Read("AgentPortal", "wwwroot", "js", "website-analytics.js");
+        var subscriptions = Read("AgentPortal", "Services", "GraphCalendarSubscriptionHostedService.cs");
+        var confirmation = Read("Protect-Website", "Services", "Booking", "PublicBookingConfirmationService.cs");
+
+        Assert.Contains("Provider = \"microsoft-calendar\"", authority, StringComparison.Ordinal);
+        Assert.Contains("MarketingConnection", authority, StringComparison.Ordinal);
+        Assert.Contains("MarketingCredentialProtector", authority, StringComparison.Ordinal);
+        Assert.Contains("delegated_oauth", authority, StringComparison.Ordinal);
+        Assert.Contains("refresh_token", authority, StringComparison.Ordinal);
+        Assert.Contains("TryImportFounderApplicationConnectionAsync", authority, StringComparison.Ordinal);
+        Assert.Contains("IMicrosoftCalendarConnectionAuthority", registration, StringComparison.Ordinal);
+
+        Assert.Contains("calendarLinked = calendarConnection.Connected", controller, StringComparison.Ordinal);
+        Assert.Contains("[HttpGet(\"calendar-connect\")]", controller, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"calendar-disconnect\")]", controller, StringComparison.Ordinal);
+        Assert.Contains("calendarLinked = calendarConnection.Connected", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpGet(\"analytics/calendar-connect\")]", business, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"analytics/calendar-disconnect\")]", business, StringComparison.Ordinal);
+
+        Assert.Contains("id=\"marketing-setup-calendar-connect\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-calendar-disconnect\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-mailbox\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-calendar\"", view, StringComparison.Ordinal);
+        Assert.Contains("calendarConnect: analyticsEndpoint('/calendar-connect')", js, StringComparison.Ordinal);
+        Assert.Contains("calendarDisconnect: analyticsEndpoint('/calendar-disconnect')", js, StringComparison.Ordinal);
+        Assert.Contains("Manual fields below select a specific target but do not authenticate it.", js, StringComparison.Ordinal);
+
+        Assert.Contains("calendarConnections.GetAccessTokenAsync(owner", subscriptions, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClientSecretCredential", subscriptions, StringComparison.Ordinal);
+        Assert.Contains("_calendarConnections.GetAccessTokenAsync(owner", confirmation, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClientSecretCredential", confirmation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BusinessPublicBooking_UsesBusinessMarketingSetup_NotAgentFallback()
+    {
+        var resolver = Read("Infrastructure", "Bookings", "PublicBookingResolver.cs");
+
+        Assert.Contains("CommerceBusinessStorefrontSettings", resolver, StringComparison.Ordinal);
+        Assert.Contains("BuildBusinessProfileResolution", resolver, StringComparison.Ordinal);
+        Assert.Contains("PublicBookingConfigurationSources.BusinessProfile", resolver, StringComparison.Ordinal);
+        Assert.Contains("settings.BookingCalendarEmail", resolver, StringComparison.Ordinal);
+        Assert.Contains("settings.BookingMailboxId", resolver, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BookingRuntime_StillConsumesTheSameCanonicalAgentProfileFields()
     {
         var resolver = Read("Infrastructure", "Bookings", "PublicBookingResolver.cs");
