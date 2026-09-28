@@ -628,7 +628,7 @@ public sealed class MicrosoftCalendarConnectionAuthority : IMicrosoftCalendarCon
 
     private static string LocalReturnUrl(string? value) =>
         string.IsNullOrWhiteSpace(value) ||
-        !value.StartsWith('/', StringComparison.Ordinal) ||
+        !value.StartsWith("/", StringComparison.Ordinal) ||
         value.StartsWith("//", StringComparison.Ordinal)
             ? "/WebsiteAnalytics/Index"
             : value;
