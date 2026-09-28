@@ -889,19 +889,8 @@ public sealed class WebsiteContentEditorRoundTripTests
             _services = new ServiceCollection()
                 .AddSingleton(meta.Object)
                 .AddSingleton(new WebsitePageCompiler(environment, _configuration))
-                .AddSingleton<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService>(new FixtureWebsiteStudioAi())
                 .BuildServiceProvider();
             Controller = CreateController();
-        }
-
-        private sealed class FixtureWebsiteStudioAi : Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService
-        {
-            public Task<Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal> ProposeAsync(
-                Infrastructure.WebsiteEditing.WebsiteStudioAiProviderRequest request,
-                System.Threading.CancellationToken cancellationToken = default) =>
-                Task.FromResult(new Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal(
-                    "Improve the selected heading.",
-                    [new WebsiteStudioAiOperation { Kind = "set_text", Text = "AI proposed heading" }]));
         }
 
         public WebsitePlatformController CreateController() => new(Db, _tickets, _configuration) { ControllerContext = new() { HttpContext = new DefaultHttpContext { RequestServices = _services! } } };
