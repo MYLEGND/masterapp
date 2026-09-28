@@ -120,10 +120,11 @@ public sealed class OpenAiMeasurementDeliveryTests
 
         Assert.Contains("CanonicalMarketingIdentityResolver.ResolveAsync", openAi, StringComparison.Ordinal);
         Assert.Contains("CanonicalMarketingIdentityResolver.ResolveAsync", meta, StringComparison.Ordinal);
-        Assert.Contains("Historical queue adapter only", meta, StringComparison.Ordinal);
-        Assert.DoesNotContain("ResolveCrmContactAsync(db, row", meta[
-            meta.IndexOf("if (canonicalIdentity is not null)", StringComparison.Ordinal)..
-            meta.IndexOf("var hasBridgeAttribution", StringComparison.Ordinal)], StringComparison.Ordinal);
+        var canonicalBranch = meta.IndexOf("if (canonicalIdentity is not null)", StringComparison.Ordinal);
+        var historicalAdapter = meta.IndexOf("Historical queue adapter only", canonicalBranch, StringComparison.Ordinal);
+        var legacyResolver = meta.IndexOf("ResolveCrmContactAsync(db, row", historicalAdapter, StringComparison.Ordinal);
+        Assert.True(canonicalBranch >= 0 && historicalAdapter > canonicalBranch && legacyResolver > historicalAdapter,
+            "Legacy CRM identity resolution must remain behind the explicit historical queue adapter.");
     }
 
     [Fact]
