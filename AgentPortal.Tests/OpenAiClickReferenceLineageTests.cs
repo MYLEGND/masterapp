@@ -128,8 +128,9 @@ public sealed class OpenAiClickReferenceLineageTests
         Assert.Contains("hasAttribution(queryAttribution) ? queryAttribution", tracking, StringComparison.Ordinal);
         Assert.Contains("legend_attr_first_touch:${storageScope}", tracking, StringComparison.Ordinal);
         Assert.Contains("oppref: attribution.oppref", inquiry, StringComparison.Ordinal);
-        Assert.Contains("obref: navigator.globalPrivacyControl === true ? null : cookie('__obref')", inquiry, StringComparison.Ordinal);
-        Assert.Contains("readFirstPartyCookie('__obref')", tracking, StringComparison.Ordinal);
+        Assert.Contains("obref: measurementAllowed ? cookie('__obref') : null", inquiry, StringComparison.Ordinal);
+        Assert.Contains("Obref: measurementAllowed() ? readFirstPartyCookie('__obref') : null", tracking, StringComparison.Ordinal);
+        Assert.Contains("legend_measurement_consent", tracking, StringComparison.Ordinal);
         Assert.Contains("oppref:'oppref'", commerce, StringComparison.Ordinal);
         Assert.Contains("scope:storeScope,sessionId", commerce, StringComparison.Ordinal);
     }
