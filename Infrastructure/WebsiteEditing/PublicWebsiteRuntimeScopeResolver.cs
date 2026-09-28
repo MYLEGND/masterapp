@@ -4,6 +4,8 @@ using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Infrastructure.Analytics;
 
 namespace Infrastructure.WebsiteEditing;
 
@@ -16,6 +18,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
 {
     private static readonly HashSet<string> LegendHosts =
         new(StringComparer.OrdinalIgnoreCase) { "mylegnd.com", "www.mylegnd.com" };
+    private const string ProtectHost = "protect.mylegnd.com";
 
     public static bool IsLegendHost(string? host) => !string.IsNullOrWhiteSpace(host) && LegendHosts.Contains(host);
 
@@ -24,13 +27,72 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
 
     public async Task<PublicWebsiteRuntimeScope?> ResolveInquiryAsync(
         HttpContext context,
+        string? sourcePath = null,
         CancellationToken cancellationToken = default)
     {
         // The verified browser Origin selects the public owner. The form never sends
         // an owner ID or site key that could redirect an inquiry to another scope.
         var legend = await ResolveAsync(context, WebsiteEditorSiteKeys.Legend, cancellationToken);
         if (legend is not null) return legend;
-        return await ResolveAsync(context, WebsiteEditorSiteKeys.Business, cancellationToken);
+
+        var business = await ResolveAsync(context, WebsiteEditorSiteKeys.Business, cancellationToken);
+        if (business is not null) return business;
+
+        if (!TryOrigin(context.Request.Headers.Origin.ToString(), out var origin))
+            return null;
+
+        if (string.Equals(origin.IdnHost, ProtectHost, StringComparison.OrdinalIgnoreCase))
+        {
+            var profiles = context.RequestServices?.GetService<AgentTrackingResolver>();
+            if (profiles is null) return null;
+            var owner = await ProtectWebsiteOwnerResolver.ResolveAsync(
+                context,
+                profiles,
+                configuration["Founder:Upn"],
+                sourcePath,
+                cancellationToken);
+            if (owner is null || owner.Profile.Id == Guid.Empty || string.IsNullOrWhiteSpace(owner.Profile.AgentUserId))
+                return null;
+
+            var ownerKey = owner.Profile.AgentUserId.Trim().ToLowerInvariant();
+            var version = await PublishedAsync(ownerKey, WebsiteEditorSiteKeys.Protect, cancellationToken);
+            return new PublicWebsiteRuntimeScope(
+                WebsiteEditorSiteKeys.Protect,
+                ownerKey,
+                null,
+                version,
+                origin.IdnHost,
+                owner.Profile.Id,
+                owner.Slug,
+                owner.IsFounder,
+                false);
+        }
+
+        var stores = context.RequestServices?.GetService<ParfaitApp.Services.CommerceStoreContextService>();
+        if (stores is not null)
+        {
+            var store = await stores.ResolveAnalyticsAsync(context, sourcePath, cancellationToken);
+            if (store?.IsParfait == true && store.CommerceBusinessId != Guid.Empty)
+            {
+                WebsiteContentVersion? version = null;
+                if (store.WebsiteContentVersionId is Guid versionId && versionId != Guid.Empty)
+                    version = await db.Set<WebsiteContentVersion>().AsNoTracking()
+                        .SingleOrDefaultAsync(x => x.Id == versionId, cancellationToken);
+
+                return new PublicWebsiteRuntimeScope(
+                    store.WebsiteSiteKey,
+                    store.BusinessKey,
+                    store.CommerceBusinessId,
+                    version,
+                    origin.IdnHost,
+                    null,
+                    null,
+                    false,
+                    true);
+            }
+        }
+
+        return null;
     }
 
     public async Task<PublicWebsiteRuntimeScope?> ResolveAsync(
@@ -98,6 +160,12 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
         if (scope.SiteKey == WebsiteEditorSiteKeys.Legend)
             return true;
 
+        if (scope.SiteKey == WebsiteEditorSiteKeys.Protect)
+            return IsContactPath(normalized, allowAgentPrefix: true);
+
+        if (scope.IsCommerceApp)
+            return IsContactPath(normalized, allowAgentPrefix: false);
+
         if (scope.SiteKey != WebsiteEditorSiteKeys.Business ||
             string.IsNullOrWhiteSpace(scope.PublishedVersion?.CompiledPagesJson))
             return false;
@@ -113,6 +181,20 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
         {
             return false;
         }
+    }
+
+    private static bool IsContactPath(string normalizedPath, bool allowAgentPrefix)
+    {
+        var path = normalizedPath;
+        if (allowAgentPrefix && path.StartsWith("/a/", StringComparison.OrdinalIgnoreCase))
+        {
+            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length != 3 || !string.Equals(segments[2], "contact", StringComparison.OrdinalIgnoreCase))
+                return false;
+            return !string.IsNullOrWhiteSpace(segments[1]);
+        }
+
+        return string.Equals(path, "/contact", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<WebsiteContentVersion?> PublishedAsync(
@@ -171,4 +253,8 @@ public sealed record PublicWebsiteRuntimeScope(
     string OwnerKey,
     Guid? CommerceBusinessId,
     WebsiteContentVersion? PublishedVersion,
-    string OriginHost);
+    string OriginHost,
+    Guid? AgentTrackingProfileId = null,
+    string? AgentSlug = null,
+    bool IsFounder = false,
+    bool IsCommerceApp = false);

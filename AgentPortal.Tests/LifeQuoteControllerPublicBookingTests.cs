@@ -448,6 +448,7 @@ public class LifeQuoteControllerPublicBookingTests
         return new LifeQuoteController(
             BuildConfig(),
             resolver,
+            new WebsiteIntakeRecipientResolver(db, BuildConfig()),
             db,
             metaPixelResolutionService ?? Mock.Of<IMetaPixelResolutionService>(),
             websiteLifeLeadCaptureService ?? Mock.Of<IWebsiteLifeLeadCaptureService>(),
@@ -473,7 +474,7 @@ public class LifeQuoteControllerPublicBookingTests
                 ["AzureAd:ClientId"] = "client",
                 ["AzureAd:ClientSecret"] = "secret",
                 ["Contact:SenderEmail"] = "",
-                ["Contact:RecipientEmail"] = "founder@example.test",
+                ["Founder:Upn"] = "founder@example.test",
                 ["Tracking:ApiBase"] = "https://portal.example.test"
             })
             .Build();

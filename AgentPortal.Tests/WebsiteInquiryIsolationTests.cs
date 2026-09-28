@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Linq;
 using System.Threading;
@@ -7,6 +8,10 @@ using System.Threading.Tasks;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Leads;
+using Infrastructure.Analytics;
+using Infrastructure.Businesses;
+using ParfaitApp.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -237,6 +242,173 @@ public sealed class WebsiteInquiryIsolationTests
     }
 
     [Fact]
+    public async Task ProtectAgentContactUsesCanonicalInquiryLeadCrmAnalyticsAndPrimaryEmail()
+    {
+        using var f = new Fixture("https://protect.mylegnd.com");
+        var tracking = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "advisor-user",
+            AgentUpn = "legacy-advisor@example.org",
+            Slug = "advisor",
+            DisplayName = "Advisor",
+            Status = "active",
+            UpdatedUtc = DateTime.UtcNow
+        };
+        f.Db.Add(tracking);
+        f.Db.Add(new AgentProfile
+        {
+            AgentUserId = tracking.AgentUserId,
+            AgentUpn = "Primary.Advisor@Example.org",
+            NormalizedEmail = "primary.advisor@example.org",
+            IsActive = true,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await f.Db.SaveChangesAsync();
+
+        var services = new ServiceCollection();
+        services.AddSingleton(f.Db);
+        services.AddSingleton(new AgentTrackingResolver(f.Db, NullLogger<AgentTrackingResolver>.Instance));
+        f.Controller.HttpContext.RequestServices = services.BuildServiceProvider();
+
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.Submit(
+            f.Request() with
+            {
+                SourcePath = "/a/advisor/Contact",
+                SourceActionKey = "protect_contact",
+                SessionId = "protect-session",
+                VisitorId = "protect-visitor"
+            },
+            CancellationToken.None));
+        Assert.Contains("\"accepted\":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Equal(tracking.Id, lead.AgentTrackingProfileId);
+        Assert.Null(lead.CommerceBusinessId);
+        Assert.Equal("ProtectionInquiry", lead.InterestType);
+        Assert.Equal("/a/advisor/Contact", lead.SourcePageKey);
+
+        var crm = Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Equal(tracking.AgentUserId, crm.AgentUserId);
+        Assert.Null(crm.CommerceBusinessId);
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(tracking.Id, analytics.AgentTrackingProfileId);
+        Assert.Null(analytics.CommerceBusinessId);
+
+        f.EmailSender.Verify(sender => sender.TrySendAsync(
+            "primary.advisor@example.org",
+            It.Is<string>(subject => subject.Contains("Protection", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            "visitor@example.org",
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ParfaitContactUsesCanonicalBusinessInquiryLeadCrmAnalyticsAndPrimaryEmail()
+    {
+        using var f = new Fixture("https://shopparfait.com");
+        var businessId = Guid.NewGuid();
+        f.Db.Add(new CommerceBusiness
+        {
+            Id = businessId,
+            Key = ParfaitBusinessScopeService.ParfaitBusinessKey,
+            DisplayName = "Parfait",
+            LegalName = "MyLegnd LLC",
+            BusinessType = "Apparel / Ecommerce",
+            PrimaryDomain = "shopparfait.com",
+            Status = "Active",
+            IsActive = true,
+            OwnerEmail = "parfait-primary@example.org"
+        });
+        f.Db.Add(new CommerceBusinessStorefrontSettings
+        {
+            CommerceBusinessId = businessId,
+            WorkspacePreferencesJson = new Shared.Crm.BusinessWorkspacePreferences().Write()
+        });
+        await f.Db.SaveChangesAsync();
+
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Commerce:PublicBaseUrl"] = "https://shopparfait.com"
+        }).Build();
+        var domains = new WebsiteDomainService(f.Db, Mock.Of<IHttpClientFactory>(), config);
+        var stores = new CommerceStoreContextService(
+            f.Db,
+            new CommerceBusinessScopeResolver(f.Db),
+            new ParfaitBusinessScopeService(f.Db),
+            domains,
+            config);
+        var services = new ServiceCollection();
+        services.AddSingleton(f.Db);
+        services.AddSingleton(stores);
+        f.Controller.HttpContext.RequestServices = services.BuildServiceProvider();
+
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.Submit(
+            f.Request() with
+            {
+                SourcePath = "/Contact",
+                SourceActionKey = "parfait_contact",
+                SessionId = "parfait-session",
+                VisitorId = "parfait-visitor"
+            },
+            CancellationToken.None));
+        Assert.Contains("\"accepted\":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Equal(businessId, lead.CommerceBusinessId);
+        Assert.Null(lead.AgentTrackingProfileId);
+        Assert.Equal("BusinessInquiry", lead.InterestType);
+
+        var crm = Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Equal(businessId, crm.CommerceBusinessId);
+        Assert.Equal(string.Empty, crm.AgentUserId);
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(businessId, analytics.CommerceBusinessId);
+        Assert.Null(analytics.AgentTrackingProfileId);
+
+        f.EmailSender.Verify(sender => sender.TrySendAsync(
+            "parfait-primary@example.org",
+            It.Is<string>(subject => subject.Contains("Parfait", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            "visitor@example.org",
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeniedMeasurementConsentDropsProviderMatchingIdentifiersFromInquiryTruth()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+        var request = f.Request() with
+        {
+            Obref = "browser-ref",
+            Fbp = "fb-browser",
+            Fbc = "fb-click",
+            MeasurementConsent = "denied"
+        };
+
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, CancellationToken.None));
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Null(lead.Fbp);
+        Assert.Null(lead.Fbc);
+        Assert.Null(CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "Obref"));
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Null(CanonicalAdvertisingEventProjection.ReadString(analytics.MetadataJson, "obref"));
+    }
+
+    [Fact]
     public async Task ConsentRequiredAndSourceCannotContainPrivateQuery()
     {
         using var f = new Fixture();
@@ -366,7 +538,7 @@ public sealed class WebsiteInquiryIsolationTests
         {
             var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
             {
-                new System.Collections.Generic.KeyValuePair<string, string?>("Contact:RecipientEmail", "founder@example.org")
+                new System.Collections.Generic.KeyValuePair<string, string?>("Founder:Upn", "founder@example.org")
             }).Build();
             var domains = new WebsiteDomainService(Db, Mock.Of<IHttpClientFactory>(), config);
             var scopes = new PublicWebsiteRuntimeScopeResolver(Db, domains, config);

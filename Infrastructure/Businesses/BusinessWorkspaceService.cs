@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Infrastructure.Leads;
 using Domain.Entities;
 using Infrastructure.Analytics;
 using Infrastructure.Data;
@@ -11,7 +10,7 @@ using Shared.Crm;
 
 namespace Infrastructure.Businesses;
 
-public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, WebsiteIntakeRecipientResolver recipients, IConfiguration? configuration = null)
+public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, IConfiguration? configuration = null)
 {
     public async Task<List<BusinessWorkspaceNavigationItem>> NavigationForBusinessAsync(Guid? businessId, string actor, string? email, CancellationToken ct)
     {
@@ -193,8 +192,7 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
     {
         var settings = await SettingsAsync(business.Id, ct);
         return new() { BusinessId = business.Id, BusinessName = business.DisplayName, Tab = "settings", CanCustomize = true,
-            Preferences = settings.Preferences, SettingsRevision = settings.Row.Revision,
-            Recipients = await recipients.BusinessOptionsAsync(business.Id, ct) };
+            Preferences = settings.Preferences, SettingsRevision = settings.Row.Revision };
     }
 
     public async Task CustomizeAsync(Guid businessId, BusinessWorkspaceSettingsInput input, CancellationToken ct)
@@ -203,14 +201,6 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
         if (settings.Row.Revision != input.Revision) throw new DbUpdateConcurrencyException();
         var preferences = new BusinessWorkspacePreferences { LeadLabel = input.LeadLabel, ClientLabel = input.ClientLabel,
             Stages = input.Stages.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList(), Metrics = input.Metrics };
-        if (!string.IsNullOrEmpty(input.Recipient))
-        {
-            var options = await recipients.BusinessOptionsAsync(businessId, ct);
-            if (!options.Any(x => x.Key == input.Recipient)) throw new ValidationException("Choose an active team member or assigned agent.");
-            var id = Guid.Parse(input.Recipient[(input.Recipient.IndexOf(':') + 1)..]);
-            if (input.Recipient.StartsWith("member:")) preferences.NotificationMemberId = id;
-            else preferences.NotificationAgentTrackingProfileId = id;
-        }
         var json = preferences.Write();
         var removed = settings.Preferences.Stages.Except(preferences.Stages).ToArray();
         if (removed.Length > 0 && await Contacts(businessId).AnyAsync(x => removed.Contains(x.CrmStage), ct))

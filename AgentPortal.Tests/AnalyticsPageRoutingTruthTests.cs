@@ -123,7 +123,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         await db.SaveChangesAsync();
 
         var analytics = new AnalyticsQueryService(db, new ConfigurationBuilder().Build());
-        var service = new BusinessWorkspaceService(db, analytics, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics);
         var range = new TimeRangeRequest
         {
             FromUtc = now.AddHours(-1),
@@ -273,9 +273,11 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("WebsiteLeadNotificationRecoveryWorker", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("WebsiteLeadNotificationAuthority.DeliverAsync(", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("WebsiteIntakeRecipientResolver", notificationAuthority, StringComparison.Ordinal);
-        Assert.Contains("x.CommerceBusinessId == null", notificationAuthority, StringComparison.Ordinal);
-        Assert.Contains("lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : null", submission, StringComparison.Ordinal);
-        Assert.Contains("DateTime.UtcNow.AddMinutes(-15)", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("MarketingOwnerScope.Business(scopedBusinessId)", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("CommerceWebsiteInquiry", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("AnyAsync(x => x.WebsiteLeadId == lead.LeadId", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : DateTime.UtcNow", submission, StringComparison.Ordinal);
+        Assert.Contains("WebsiteLeadSubmission.NotificationRetryCutoff", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", program, StringComparison.Ordinal);
     }
 

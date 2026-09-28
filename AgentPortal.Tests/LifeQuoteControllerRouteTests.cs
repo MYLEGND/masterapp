@@ -29,6 +29,7 @@ public class LifeQuoteControllerRouteTests
         var controller = new LifeQuoteController(
             BuildConfig(),
             resolver,
+            new WebsiteIntakeRecipientResolver(db, BuildConfig()),
             db,
             Mock.Of<IMetaPixelResolutionService>(),
             Mock.Of<IWebsiteLifeLeadCaptureService>(),
@@ -67,7 +68,7 @@ public class LifeQuoteControllerRouteTests
                 ["AzureAd:TenantId"] = "tenant",
                 ["AzureAd:ClientId"] = "client",
                 ["AzureAd:ClientSecret"] = "secret",
-                ["Contact:RecipientEmail"] = "team@example.test",
+                ["Founder:Upn"] = "team@example.test",
                 ["Tracking:ApiBase"] = "https://portal.example.test"
             })
             .Build();

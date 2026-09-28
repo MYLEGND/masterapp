@@ -35,9 +35,9 @@ namespace Protect_Website.Controllers
         private readonly string clientId;
         private readonly string clientSecret;
         private readonly string senderEmail;
-        private readonly string recipientEmail;
         private readonly string websiteName;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly MasterAppDbContext _db;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
@@ -47,16 +47,16 @@ namespace Protect_Website.Controllers
         private readonly ILogger<DentalVisionHearingQuoteController> _logger;
         private readonly IProtectEmailSender _emailSender;
 
-        public DentalVisionHearingQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+        public DentalVisionHearingQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
             MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<DentalVisionHearingQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
             clientSecret = configuration["AzureAd:ClientSecret"]!;
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
-            recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _db = db;
             _metaPixelResolution = metaPixelResolution;
             _websiteLeadCapture = websiteLeadCapture;
@@ -152,8 +152,8 @@ namespace Protect_Website.Controllers
                             ? Request!.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim()
                             : HttpContext?.Connection?.RemoteIpAddress?.ToString()),
                     ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
-                    Fbp = Request?.Cookies.TryGetValue("_fbp", out var fbp) == true ? fbp : null,
-                    Fbc = Request?.Cookies.TryGetValue("_fbc", out var fbc) == true ? fbc : null,
+                    Fbp = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbp"),
+                    Fbc = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbc"),
                     SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
                     VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
                     MarketingEmailConsent = model.AcknowledgedDisclaimer,
@@ -442,15 +442,11 @@ await TryWriteLeadEventAsync(
                 HttpContext?.RequestAborted ?? CancellationToken.None);
 
             // ── 2. Send agent/prospect emails through unified sender ───────────────
-            string? primary = null;
-            if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
-                primary = leadRecipientEmail.Trim();
-            else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(senderEmail))
-                primary = senderEmail.Trim();
+            // The permanent website-owner authority has already resolved the
+            // scoped account's primary email. Do not fall back to global/sender config.
+            string? primary = string.IsNullOrWhiteSpace(leadRecipientEmail)
+                ? null
+                : leadRecipientEmail.Trim();
 
             if (!string.IsNullOrWhiteSpace(primary))
             {
@@ -1099,7 +1095,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
             var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
                 HttpContext,
                 _resolver,
-                recipientEmail,
+                _intakeRecipients,
                 ResolveExplicitAgentSlugFromRequest(),
                 HttpContext?.RequestAborted ?? CancellationToken.None);
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);

@@ -13,7 +13,17 @@
     }
   } catch {}
 
-  const endpoint = new URL('/api/website-inquiries/public', apiBase).toString();
+  function resolveApiBase() {
+    if (configuredBase) return apiBase;
+    const analyticsEndpoint = window.LEGEND_ANALYTICS_CONFIG?.endpoint;
+    try {
+      if (typeof analyticsEndpoint === 'string' && analyticsEndpoint.trim()) {
+        const candidate = new URL(analyticsEndpoint, location.origin);
+        if (candidate.protocol === 'https:' || candidate.origin === location.origin) return candidate.origin;
+      }
+    } catch {}
+    return location.origin;
+  }
 
   document.querySelectorAll('[data-website-inquiry]:not([data-preview])').forEach(form => {
     let submissionId = null;
@@ -33,6 +43,8 @@
       const fields = new FormData(form);
       const analytics = window.LegendAnalytics;
       const attribution = analytics?.ids?.getAttribution?.() || {};
+      const measurementConsent = analytics?.measurementConsent?.get?.() || null;
+      const measurementAllowed = measurementConsent?.allowed === true;
       const cookie = name => document.cookie.split(';').map(value => value.trim())
         .find(value => value.startsWith(name + '='))?.slice(name.length + 1) || null;
 
@@ -59,12 +71,13 @@
         utmContent: attribution.utmContent || null,
         fbclid: attribution.fbclid || null,
         oppref: attribution.oppref || null,
-        obref: navigator.globalPrivacyControl === true ? null : cookie('__obref'),
-        fbp: cookie('_fbp'),
-        fbc: cookie('_fbc'),
+        obref: measurementAllowed ? cookie('__obref') : null,
+        fbp: measurementAllowed ? cookie('_fbp') : null,
+        fbc: measurementAllowed ? cookie('_fbc') : null,
         metaCampaignId: attribution.metaCampaignId || null,
         metaAdSetId: attribution.metaAdSetId || null,
-        metaAdId: attribution.metaAdId || null
+        metaAdId: attribution.metaAdId || null,
+        measurementConsent: measurementConsent?.state || null
       };
 
       const fingerprint = JSON.stringify(values);
@@ -76,6 +89,7 @@
       button.disabled = true;
       status.textContent = 'Sending your inquiry…';
       try {
+        const endpoint = new URL('/api/website-inquiries/public', resolveApiBase()).toString();
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

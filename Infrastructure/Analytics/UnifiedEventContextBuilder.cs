@@ -123,8 +123,8 @@ public static class UnifiedEventContextBuilder
             Fbclid = fbclid,
             Oppref = OpenAiClickReference.Normalize(oppref),
             Obref = ResolveOpenAiBrowserReference(request, obref),
-            Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbc"),
-            Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbp"),
+            Fbc = ResolveMarketingCookie(request, "_fbc"),
+            Fbp = ResolveMarketingCookie(request, "_fbp"),
 
             AgentSlug = agentSlug,
             AgentTrackingProfileId = agentTrackingProfileId,
@@ -151,11 +151,23 @@ public static class UnifiedEventContextBuilder
             ?? OpenAiBrowserReference.Normalize(MetaLeadTrackingWorkflow.ResolveCookieValue(request, "__obref"));
     }
 
-    public static bool CanUseOpenAiBrowserReference(HttpRequest? request)
+    public static bool CanUseOpenAiBrowserReference(HttpRequest? request) =>
+        CanUseMarketingIdentifiers(request);
+
+    public static string? ResolveMarketingCookie(HttpRequest? request, string cookieName)
+    {
+        if (!CanUseMarketingIdentifiers(request)) return null;
+        return MetaLeadTrackingWorkflow.ResolveCookieValue(request, cookieName);
+    }
+
+    public static bool CanUseMarketingIdentifiers(HttpRequest? request)
     {
         if (request is null) return true;
         var gpc = request.Headers["Sec-GPC"].FirstOrDefault()?.Trim();
-        return !string.Equals(gpc, "1", StringComparison.Ordinal);
+        if (string.Equals(gpc, "1", StringComparison.Ordinal)) return false;
+
+        var consent = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "legend_measurement_consent");
+        return !string.Equals(consent, "denied", StringComparison.OrdinalIgnoreCase);
     }
 
 }

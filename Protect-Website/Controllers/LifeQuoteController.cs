@@ -42,10 +42,10 @@ namespace Protect_Website.Controllers
         private readonly string clientId;
         private readonly string clientSecret;
         private readonly string senderEmail;
-        private readonly string recipientEmail;
         private readonly string websiteName;
         private readonly string trackingApiBase;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly MasterAppDbContext _db;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IWebsiteLifeLeadCaptureService _websiteLifeLeadCapture;
@@ -55,17 +55,17 @@ namespace Protect_Website.Controllers
         private readonly ILogger<LifeQuoteController> _logger;
         private readonly IProtectEmailSender _emailSender;
 
-        public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+        public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
             MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
             clientSecret = configuration["AzureAd:ClientSecret"]!;
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
-            recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _db = db;
             _metaPixelResolution = metaPixelResolution;
             _websiteLifeLeadCapture = websiteLifeLeadCapture;
@@ -295,8 +295,8 @@ if (!ModelState.IsValid)
                             ? Request!.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim()
                             : HttpContext?.Connection?.RemoteIpAddress?.ToString()),
                     ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
-                    Fbp = Request?.Cookies.TryGetValue("_fbp", out var fbp) == true ? fbp : null,
-                    Fbc = Request?.Cookies.TryGetValue("_fbc", out var fbc) == true ? fbc : null,
+                    Fbp = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbp"),
+                    Fbc = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbc"),
                     SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
                     VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
                     MarketingEmailConsent = model.MarketingEmailConsent,
@@ -574,15 +574,11 @@ if (!ModelState.IsValid)
                 });
 
             // ── 2. Send agent/founder notification email ───────────────────────────
-            string? primary = null;
-            if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
-                primary = leadRecipientEmail.Trim();
-            else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(senderEmail))
-                primary = senderEmail.Trim();
+            // The permanent website-owner authority has already resolved the
+            // scoped account's primary email. Do not fall back to global/sender config.
+            string? primary = string.IsNullOrWhiteSpace(leadRecipientEmail)
+                ? null
+                : leadRecipientEmail.Trim();
 
             if (!string.IsNullOrWhiteSpace(primary))
             {
@@ -883,7 +879,7 @@ if (!ModelState.IsValid)
             var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
                 HttpContext,
                 _resolver,
-                recipientEmail,
+                _intakeRecipients,
                 ResolveExplicitAgentSlugFromRequest(),
                 HttpContext?.RequestAborted ?? CancellationToken.None);
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);

@@ -28,7 +28,7 @@ public sealed class BusinessAnalyticsDetailTests
         analytics.Setup(x => x.GetSummaryAsync(It.IsAny<TimeRangeRequest>(),
             It.Is<ScopeContext>(s => s.ScopeType == ScopeType.Business && s.CommerceBusinessId == business), TrafficType.All))
             .ReturnsAsync(new SummaryKpiDto { Sessions = 7 });
-        var service = new BusinessWorkspaceService(db, analytics.Object, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics.Object);
         var result = Assert.IsType<AgentPortal.Models.Analytics.KpiDetailDto>(await service.AnalyticsDataAsync(business,
             "kpi-detail", new TimeRangeRequest { FromUtc = DateTime.UtcNow.AddDays(-7), ToUtc = DateTime.UtcNow }, TrafficType.All, metric: "sessions"));
         Assert.Equal(7, result.Totals.Total);
@@ -102,7 +102,7 @@ public sealed class BusinessAnalyticsDetailTests
             It.Is<ScopeContext>(scope => scope.ScopeType == ScopeType.Business && scope.CommerceBusinessId == business.Id)))
             .ReturnsAsync(new MarketingHealthDto());
 
-        var service = new BusinessWorkspaceService(db, analytics.Object, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics.Object);
         var model = await service.AnalyticsAsync(business, 30, CancellationToken.None);
 
         Assert.Contains(model.EventMap, row => row.Element == "automatic:page_view" && row.Event == "page_view" && row.Mode == "automatic");
@@ -137,7 +137,7 @@ public sealed class BusinessAnalyticsDetailTests
             It.Is<ScopeContext>(s => s.CommerceBusinessId == business),
             It.Is<IReadOnlyCollection<AnalyticsEvent>>(events => events.Count == 1 && events.Contains(selected)), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<MetaSignalEvent>());
-        var service = new BusinessWorkspaceService(db, analytics.Object, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics.Object);
         Assert.NotNull(await service.AnalyticsDataAsync(business, "visitor-timeline", new(), TrafficType.All,
             visitorId: "visitor", sessionId: "session"));
         analytics.VerifyAll();

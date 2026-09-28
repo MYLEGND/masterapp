@@ -353,8 +353,12 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         req.Oppref = OpenAiClickReference.Normalize(req.Oppref)
             ?? OpenAiClickReference.Normalize(Request.Cookies["__oppref"]);
         req.Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, req.Obref);
-        req.Fbp = FirstNonBlank(req.Fbp, Request.Cookies["_fbp"]);
-        req.Fbc = FirstNonBlank(req.Fbc, Request.Cookies["_fbc"]);
+        req.Fbp = FirstNonBlank(
+            UnifiedEventContextBuilder.CanUseMarketingIdentifiers(Request) ? req.Fbp : null,
+            UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbp"));
+        req.Fbc = FirstNonBlank(
+            UnifiedEventContextBuilder.CanUseMarketingIdentifiers(Request) ? req.Fbc : null,
+            UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbc"));
         // Network identity is observed at this trusted proxy boundary. Never let a
         // public payload override the connection evidence used for provider matching.
         req.ClientIpAddress = ResolveClientIp();

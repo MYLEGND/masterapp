@@ -3,43 +3,32 @@
     ViewData["PageKey"] = "contact";
     ViewData["SeoTitle"] = "Contact Legend";
     ViewData["SeoDescription"] = "Contact Legend for help with protection planning, insurance reviews, family coverage, and financial clarity.";
-
-    var contactEmail = (ViewData["ContactEmail"] as string ?? "zac.owen@mylegnd.com").Trim();
-    var subject = Uri.EscapeDataString("Legend Legacy Protection Inquiry");
-    var body = Uri.EscapeDataString("Hi Legend Legacy Protection,\n\nName:\nBest number:\nQuestion:\n\nThank you!");
-    var mailto = $"mailto:{contactEmail}?subject={subject}&body={body}";
 }
+<link rel="stylesheet" href="~/css/public-inquiry-form.css" asp-append-version="true" />
+
 <section class="page-hero">
     <p class="eyebrow">CONTACT LEGEND LEGACY PROTECTION</p>
     <h1>Clear questions deserve clear next steps.</h1>
     <p>Ask about protection planning, an existing review, available coverage paths, or what to do next. We’ll help you understand the next step without pressure.</p>
 </section>
 
-<section class="section">
+<section class="section surface">
     <div class="section-head">
         <p class="eyebrow">START A CONVERSATION</p>
-        <h2>Reach the protection team directly.</h2>
-        <p class="lead">Send a message with what you are trying to solve and we’ll respond with the most relevant next step.</p>
+        <h2>Send the protection team a message.</h2>
+        <p class="lead">Your inquiry is saved to the scoped website owner’s CRM, tracked through the canonical analytics pipeline, and routed to that account’s primary email.</p>
     </div>
-    <div class="contact-grid">
-        <a class="contact-card" href="@mailto" data-cta="contact_email">
-            <span class="icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>
-            </span>
-            <p class="eyebrow">EMAIL</p>
-            <h2>@contactEmail</h2>
-            <p>Best for questions, planning context, and requests that benefit from a written response.</p>
-            <span>Send email →</span>
-        </a>
-        <a class="contact-card" href="/RiskAssessment" data-cta="contact_assessment" data-website-action-key="protect_risk_assessment" data-website-analytics-event="risk_assessment_click">
-            <span class="icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.4 8-8 10-4.6-2-8-5-8-10V6l8-3Z"/><path d="M9 12l2 2 4-5"/></svg>
-            </span>
-            <p class="eyebrow">PREFER STRUCTURE?</p>
-            <h2>Start with the risk assessment.</h2>
-            <p>Organize income, obligations, existing protection, and priorities before discussing products.</p>
-            <span>Start assessment →</span>
-        </a>
+    <div data-legend-public-inquiry-form data-owner-label="LEGEND Legacy Protection"></div>
+</section>
+
+<section class="section">
+    <div class="section-head">
+        <p class="eyebrow">PREFER STRUCTURE?</p>
+        <h2>Start with the risk assessment.</h2>
+        <p class="lead">Organize income, obligations, existing protection, and priorities before discussing products.</p>
+    </div>
+    <div class="actions">
+        <a class="btn primary" href="/RiskAssessment" data-cta="contact_assessment" data-website-action-key="protect_risk_assessment" data-website-analytics-event="risk_assessment_click">Start assessment</a>
     </div>
 </section>
 
@@ -49,3 +38,7 @@
     <p>For the broader LEGEND community, personal growth, wellness, and stewardship experience, visit the main LEGEND website.</p>
     <div class="actions"><a class="btn primary" href="https://www.mylegnd.com/">Visit LEGEND</a></div>
 </section>
+
+@section Scripts {
+    <script type="module" src="~/js/public-inquiry-form.mjs" asp-append-version="true"></script>
+}
