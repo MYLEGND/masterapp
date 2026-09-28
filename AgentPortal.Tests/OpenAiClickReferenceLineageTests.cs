@@ -148,6 +148,7 @@ public sealed class OpenAiClickReferenceLineageTests
             utmTerm: "ad-group-1",
             utmContent: "ad-1",
             oppref: "opp-click-1",
+            obref: "browser-ref-1",
             host: "protect.mylegnd.com",
             isServerAuthority: true);
 
@@ -157,6 +158,7 @@ public sealed class OpenAiClickReferenceLineageTests
         Assert.Equal("ad-group-1", row.UtmTerm);
         Assert.Equal("ad-1", row.UtmContent);
         Assert.Equal("opp-click-1", row.Oppref);
+        Assert.Equal("browser-ref-1", CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "obref"));
     }
 
     [Fact]
@@ -177,6 +179,7 @@ public sealed class OpenAiClickReferenceLineageTests
             Assert.Contains("utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmTerm\")", source, StringComparison.Ordinal);
             Assert.Contains("utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmContent\")", source, StringComparison.Ordinal);
             Assert.Contains("oppref: lead.Oppref", source, StringComparison.Ordinal);
+            Assert.Contains("OpenAiBrowserReference.Normalize(Request.Cookies[\"__obref\"])", source, StringComparison.Ordinal);
         }
     }
 
