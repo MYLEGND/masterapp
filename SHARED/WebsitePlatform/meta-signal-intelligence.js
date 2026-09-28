@@ -89,6 +89,10 @@
   // the server catalog. Rich behavior still persists through canonical analytics.
   const DEFAULT_META_BROWSER_EVENTS = ['ViewContent'];
 
+  function measurementConsentAllowed() {
+    return window.LegendAnalytics?.measurementConsent?.isAllowed?.() === true;
+  }
+
   function uuidNoDash() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
       return window.crypto.randomUUID().replace(/-/g, '');
@@ -269,6 +273,7 @@
   }
 
   function ensureEarlyMetaCookies() {
+    if (!measurementConsentAllowed()) return;
     const attribution = resolveAttribution();
     const fbp = ensureFbpCookie();
     const fbc = ensureFbcCookie(attribution);
@@ -1134,6 +1139,7 @@
 
     function fireBrowserPixel(eventName, eventId, pixelPayload) {
       if (!config.enabled || !config.sendBrowserEvents) return 'disabled';
+      if (!measurementConsentAllowed()) return 'consent_denied';
       if (!config.browserEventNames.has(eventName)) return 'not_required';
       if (!hasHumanBehaviorForMetaBrowserEvent(eventName)) return 'human_gate';
       if (typeof window.fbq !== 'function') return 'pixel_unavailable';
