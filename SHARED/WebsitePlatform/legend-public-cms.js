@@ -26,7 +26,8 @@
     || 'home';
 
   const editorTicket = params.get('legendEdit') || '';
-  const editorMode = !!editorTicket;
+  const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
+  const editorMode = !!editorTicket && !materializeMode;
   const originalTitle = document.title || '';
   const originalDescription = document.querySelector('meta[name="description"]')?.content || '';
   const initialFaviconLink = document.querySelector('link[rel~="icon"]');
@@ -37,7 +38,7 @@
     { key: 'tablet', label: 'Tablet', minWidth: 768, maxWidth: 1199, isSystem: true },
     { key: 'desktop', label: 'Desktop', minWidth: 1200, maxWidth: null, isSystem: true }
   ];
-  let documentState = { version: 2, faviconImageDataUrl: null, breakpoints: defaultBreakpoints(), elements: {}, sectionOrder: {}, extras: [], reusableComponents: {}, collections: {}, theme: {}, pages: {} };
+  let documentState = { version: 3, compositionMode: null, faviconImageDataUrl: null, breakpoints: defaultBreakpoints(), elements: {}, sectionOrder: {}, extras: [], reusableComponents: {}, collections: {}, theme: {}, pages: {} };
   let signalCatalog = null;
   let ctaCatalog = [];
   let managementPayload = null;
@@ -145,9 +146,14 @@
   function constrainDocumentGeometry(doc) {
     Object.values(doc.elements || {}).forEach(constrainOverrideGeometry);
     (doc.extras || []).forEach(constrainOverrideGeometry);
+    const visitComposition = nodes => (nodes || []).forEach(node => {
+      constrainOverrideGeometry(node);
+      visitComposition(node?.children);
+    });
     Object.values(doc.pages || {}).forEach(page => {
       Object.values(page?.elements || {}).forEach(constrainOverrideGeometry);
       (page?.extras || []).forEach(constrainOverrideGeometry);
+      visitComposition(page?.composition);
     });
     Object.values(doc.reusableComponents || {}).forEach(component => {
       Object.values(component?.elements || {}).forEach(constrainOverrideGeometry);
@@ -169,11 +175,13 @@
         ...previous, ...value,
         elements: { ...previous.elements, ...value.elements },
         sectionOrder: { ...previous.sectionOrder, ...value.sectionOrder },
-        extras: [...new Map([...(previous.extras || []), ...(value.extras || [])].map(extra => [extra.id, extra])).values()]
+        extras: [...new Map([...(previous.extras || []), ...(value.extras || [])].map(extra => [extra.id, extra])).values()],
+        composition: Array.isArray(value.composition) ? value.composition : (previous.composition || [])
       } : value;
     }
     const normalized = {
-      version: 2,
+      version: 3,
+      compositionMode: input?.compositionMode === 'canonical' ? 'canonical' : null,
       faviconImageDataUrl: typeof input?.faviconImageDataUrl === 'string' ? input.faviconImageDataUrl : null,
       breakpoints: normalizeBreakpoints(input?.breakpoints),
       elements: input?.elements && typeof input.elements === 'object' ? input.elements : {},
@@ -226,8 +234,59 @@
       Object.keys(sectionOrder).forEach(id => delete documentState.sectionOrder[id]);
       documentState.extras = documentState.extras.filter(extra => !extras.includes(extra));
     }
-    const page = documentState.pages[routeKey]; page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.navigation ||= { showInNavigation: true, order: 0, isDeleted: false };
+    const page = documentState.pages[routeKey];
+    page.elements ||= {};
+    page.sectionOrder ||= {};
+    page.extras ||= [];
+    page.composition ||= [];
+    page.navigation ||= { showInNavigation: true, order: 0, isDeleted: false };
     return page;
+  }
+
+  function usesCanonicalComposition() {
+    return documentState?.compositionMode === 'canonical';
+  }
+
+  function walkComposition(nodes, visit, parent = null) {
+    for (const node of Array.isArray(nodes) ? nodes : []) {
+      if (!node || typeof node !== 'object') continue;
+      if (visit(node, parent) === false) return false;
+      if (walkComposition(node.children, visit, node) === false) return false;
+    }
+    return true;
+  }
+
+  function compositionEntry(id) {
+    let found = null;
+    walkComposition(pageState().composition, (node, parent) => {
+      if (node.id !== id) return;
+      found = { node, parent };
+      return false;
+    });
+    return found;
+  }
+
+  function compositionNode(id) {
+    return compositionEntry(id)?.node || null;
+  }
+
+  function compositionChildren(parent) {
+    return parent ? (parent.children ||= []) : (pageState().composition ||= []);
+  }
+
+  function removeCompositionNode(id) {
+    let removed = null;
+    const removeFrom = nodes => {
+      if (!Array.isArray(nodes)) return false;
+      const index = nodes.findIndex(node => node?.id === id);
+      if (index >= 0) {
+        [removed] = nodes.splice(index, 1);
+        return true;
+      }
+      return nodes.some(node => removeFrom(node?.children));
+    };
+    removeFrom(pageState().composition);
+    return removed;
   }
 
   function safeId(value) {
