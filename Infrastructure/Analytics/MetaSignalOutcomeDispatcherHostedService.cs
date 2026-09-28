@@ -386,7 +386,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
             var capiRequest = new MetaConversionsApiEventRequest
             {
-                LeadId = row.LeadId,
+                LeadId = canonicalIdentity?.WebsiteLeadId ?? row.LeadId,
                 CommerceBusinessId = row.CommerceBusinessId,
                 AgentTrackingProfileId = row.AgentTrackingProfileId,
                 CorrelationId = Guid.NewGuid(),
