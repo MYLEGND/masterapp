@@ -384,6 +384,30 @@ public sealed class WebsiteInquiryIsolationTests
     }
 
     [Fact]
+    public async Task DeniedMeasurementConsentDropsProviderMatchingIdentifiersFromInquiryTruth()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+        var request = f.Request() with
+        {
+            Obref = "browser-ref",
+            Fbp = "fb-browser",
+            Fbc = "fb-click",
+            MeasurementConsent = "denied"
+        };
+
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, CancellationToken.None));
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Null(lead.Fbp);
+        Assert.Null(lead.Fbc);
+        Assert.Null(CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "Obref"));
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Null(CanonicalAdvertisingEventProjection.ReadString(analytics.MetadataJson, "obref"));
+    }
+
+    [Fact]
     public async Task ConsentRequiredAndSourceCannotContainPrivateQuery()
     {
         using var f = new Fixture();
