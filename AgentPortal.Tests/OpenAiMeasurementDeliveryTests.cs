@@ -431,7 +431,8 @@ public sealed class OpenAiMeasurementDeliveryTests
         Assert.Contains("event_id", measurement, StringComparison.Ordinal);
         Assert.Contains("ClientEventId", measurement, StringComparison.Ordinal);
         Assert.Contains("page_viewed", measurement, StringComparison.Ordinal);
-        Assert.Contains("globalPrivacyControl", measurement, StringComparison.Ordinal);
+        Assert.Contains("measurementConsent?.isAllowed", measurement, StringComparison.Ordinal);
+        Assert.DoesNotContain("options?.consent", measurement, StringComparison.Ordinal);
         Assert.DoesNotContain("ConversionsApiKey", measurement, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("window.LegendAnalytics?.subscribe?.", measurement, StringComparison.Ordinal);
         var sendEventIndex = tracking.IndexOf("async function sendEvent(payload)", StringComparison.Ordinal);
