@@ -679,7 +679,7 @@
       UtmContent: attribution.utmContent || null,
       Fbclid: attribution.fbclid || null,
       Oppref: attribution.oppref || null,
-      Obref: readFirstPartyCookie('__obref'),
+      Obref: navigator.globalPrivacyControl === true ? null : readFirstPartyCookie('__obref'),
       MetaCampaignId: attribution.metaCampaignId || null,
       MetaAdSetId: attribution.metaAdSetId || null,
       MetaAdId: attribution.metaAdId || null,
