@@ -54,6 +54,9 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Run branch lifecycle safety contracts
+        run: python3 scripts/test-release-lifecycle.py
+
       - name: Restore .NET graph
         run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
 

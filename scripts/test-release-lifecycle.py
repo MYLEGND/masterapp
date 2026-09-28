@@ -307,6 +307,7 @@ class OrchestrationSafety(unittest.TestCase):
         api.api.return_value = {'id': 1, 'path': '.github/workflows/' + m.RIGOROUS}
         api.ref.side_effect = ['a' * 40, 'b' * 40]
         with patch.object(m, 'successful_release', return_value=True), \
+             patch.object(m, 'reconcile_history_only', return_value={'relation': 'diverged-content', 'reconciled': False}), \
              patch.object(m, 'release_proven', return_value=True), \
              patch.object(m, 'ancestor', return_value=False), patch.object(m, 'git'):
             result = m.reconcile(api, 1)
@@ -318,7 +319,8 @@ class OrchestrationSafety(unittest.TestCase):
         from unittest.mock import Mock
         api = Mock()
         api.ref.side_effect = ['a' * 40, 'b' * 40]
-        with patch.object(m, 'ancestor', return_value=False), \
+        with patch.object(m, 'reconcile_history_only', return_value={'relation': 'diverged-content', 'reconciled': False}), \
+             patch.object(m, 'ancestor', return_value=False), \
              patch.object(m, 'release_proven', return_value=True), patch.object(m, 'git'):
             with patch.object(m, 'direct_only_request', return_value=False):
                 result = m.reconcile(api)
@@ -330,7 +332,8 @@ class OrchestrationSafety(unittest.TestCase):
         from unittest.mock import Mock
         api = Mock()
         api.ref.side_effect = ['a' * 40, 'b' * 40]
-        with patch.object(m, 'ancestor', return_value=False), \
+        with patch.object(m, 'reconcile_history_only', return_value={'relation': 'diverged-content', 'reconciled': False}), \
+             patch.object(m, 'ancestor', return_value=False), \
              patch.object(m, 'release_proven', return_value=False):
             with patch.object(m, 'direct_only_request', return_value=False):
                 result = m.reconcile(api)
@@ -394,7 +397,8 @@ class OrchestrationSafety(unittest.TestCase):
         api.ref.side_effect = ['a' * 40, 'b' * 40]
         api.api.return_value = {'workflow_runs': []}
         api.pages.return_value = []
-        with patch.object(m, 'ancestor', side_effect=[True, False]):
+        with patch.object(m, 'reconcile_history_only', return_value={'relation': 'diverged-content', 'reconciled': False}), \
+             patch.object(m, 'ancestor', side_effect=[True, False]):
             with patch.object(m, 'direct_only_request', return_value=False):
                 result = m.reconcile(api)
         self.assertIn('awaiting successful', result['promotion'])
