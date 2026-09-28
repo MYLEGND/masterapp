@@ -24,6 +24,8 @@ public static class WebsiteDraftQualityInspector
     public static WebsiteQualityReport Inspect(WebsiteContentDocument document)
     {
         var checks = new List<WebsiteQualityCheck>();
+        var reusableSyncIds = (document.ReusableComponents ?? new Dictionary<string, WebsiteReusableComponentDefinition>())
+            .Keys.ToHashSet(StringComparer.Ordinal);
         foreach (var (path, page) in document.Pages ?? new Dictionary<string, WebsitePageDocument>())
         {
             if (page.Navigation?.IsDeleted == true) continue;
@@ -42,8 +44,6 @@ public static class WebsiteDraftQualityInspector
         }
         InspectElements(document.Elements, document.Extras, checks, null);
 
-        var reusableSyncIds = (document.ReusableComponents ?? new Dictionary<string, WebsiteReusableComponentDefinition>())
-            .Keys.ToHashSet(StringComparer.Ordinal);
         foreach (var (path, page) in document.Pages ?? new Dictionary<string, WebsitePageDocument>())
         {
             foreach (var (id, value) in page.Elements)
