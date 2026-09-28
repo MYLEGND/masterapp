@@ -20,22 +20,22 @@ namespace Protect_Website.Controllers
     [Route("RiskAssessment")]
     public class RiskAssessmentController : Controller
     {
-        private readonly string recipientEmail;
         private readonly IProtectEmailSender _emailSender;
 
         private readonly MasterAppDbContext _db;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly IWebsiteLifeLeadCaptureService _capture;
         private readonly ILogger<RiskAssessmentController> _logger;
 
         public RiskAssessmentController(IConfiguration configuration, IProtectEmailSender emailSender,
-            MasterAppDbContext db, AgentTrackingResolver resolver, IWebsiteLifeLeadCaptureService capture,
+            MasterAppDbContext db, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients, IWebsiteLifeLeadCaptureService capture,
             ILogger<RiskAssessmentController> logger)
         {
-            recipientEmail = configuration["Contact:RecipientEmail"]!;
             _emailSender = emailSender;
             _db = db;
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _capture = capture;
             _logger = logger;
         }
@@ -65,7 +65,7 @@ namespace Protect_Website.Controllers
                 var ownership = await WebsiteLeadOwnerAuthority.ResolveAsync(
                     HttpContext,
                     _resolver,
-                    recipientEmail,
+                    _intakeRecipients,
                     requestedSlug,
                     ct);
                 if (!string.IsNullOrWhiteSpace(requestedSlug) && ownership.ExplicitSlugInvalid)
