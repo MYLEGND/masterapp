@@ -825,13 +825,16 @@
 
   function overrideForElement(el, create = true) {
     if (!el?.dataset?.cmsId) return null;
-    // Shared website shell edits are document-global and therefore render on
-    // every page. Page-specific content remains in the page record.
+    // Shared website shell edits remain document-global platform presentation.
     if (isSharedShellElement(el))
       return globalShellOverride(el.dataset.cmsId, create);
-    // An added composite block (for example a service card) owns its content,
-    // but each selectable child owns its own geometry/style. This keeps one
-    // canonical document store while allowing title/copy/etc. to move independently.
+    // v3 canvas/source/AI all mutate this exact composition node.
+    if (el.dataset.cmsCompositionId) {
+      const node=compositionNode(el.dataset.cmsCompositionId);
+      if (node && create) { node.style ||= {}; node.signals ||= []; node.children ||= []; }
+      return node;
+    }
+    // v2 compatibility exists only until one-time effective-DOM materialization.
     if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
       return pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
     return create ? ensureOverride(el.dataset.cmsId) : pageState().elements[el.dataset.cmsId] || null;
@@ -1429,9 +1432,11 @@
     const entityBound = el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field');
     const commerceControl = !!el.dataset.legendStoreNav;
     if (el instanceof HTMLImageElement) {
-      el.src = override.imageDataUrl ? mediaUrl(override.imageDataUrl) : (original.src || '');
+      const media = override.mediaAssetId ? API_BASE + '/api/website-content/media/' + override.mediaAssetId : override.mediaUrl;
+      el.src = media ? mediaUrl(media) : override.imageDataUrl ? mediaUrl(override.imageDataUrl) : (original.src || '');
     } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
-      setContentText(el, override.text != null ? override.text : (original.text || ''), override.text != null);
+      const compositionHasChildren = !!el.dataset.cmsCompositionId && Array.isArray(override.children) && override.children.length > 0;
+      if (!compositionHasChildren) setContentText(el, override.text != null ? override.text : (original.text || ''), override.text != null);
     }
 
     if (el.tagName === 'A' && !commerceControl) {
@@ -1440,7 +1445,10 @@
       el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
     }
     if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
-    if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
+    if (el.tagName === 'VIDEO') {
+      const media = override.mediaAssetId ? API_BASE + '/api/website-content/media/' + override.mediaAssetId : (override.mediaUrl || override.videoUrl);
+      if (media && safeUrl(media, true)) el.src = mediaUrl(media);
+    }
     applyDataBinding(el, override.dataBinding);
     applyStyle(el, effectiveStyle(override));
     applyLayout(el, effectiveLayout(override));
