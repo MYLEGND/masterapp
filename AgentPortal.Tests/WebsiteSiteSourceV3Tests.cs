@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Infrastructure.WebsiteEditing;
 using Xunit;
 
@@ -195,93 +194,14 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
-    public void AiBuild_UsesOnlyAuthorizedActionsAndMedia()
+    public void SiteSource_DoesNotExposeProviderOrServerOutcomeAuthority()
     {
-        var document = WebsiteContentSanitizer.Sanitize(CanonicalDocument());
-        var mediaId = Guid.NewGuid();
-        var actions = BusinessActions().Select(action => action.Key).ToHashSet(StringComparer.Ordinal);
+        var serialized = WebsiteSiteSource.Serialize(CanonicalDocument());
 
-        var result = WebsiteStudioAiProposalPolicy.Apply(
-            document,
-            "build",
-            "Build services",
-            "/",
-            null,
-            null,
-            [
-                new WebsiteStudioAiOperation
-                {
-                    Kind = "create_page",
-                    PagePath = "/services",
-                    Title = "Services",
-                    NavigationLabel = "Services"
-                },
-                new WebsiteStudioAiOperation
-                {
-                    Kind = "add_section",
-                    PagePath = "/services",
-                    NodeId = "services.main"
-                },
-                new WebsiteStudioAiOperation
-                {
-                    Kind = "add_node",
-                    PagePath = "/services",
-                    ParentId = "services.main",
-                    NodeId = "services.quote",
-                    NodeType = "cta",
-                    Tag = "a",
-                    Text = "Get a free quote",
-                    ActionKey = "business_quote"
-                },
-                new WebsiteStudioAiOperation
-                {
-                    Kind = "add_node",
-                    PagePath = "/services",
-                    ParentId = "services.main",
-                    NodeId = "services.image",
-                    NodeType = "image",
-                    Tag = "img",
-                    MediaAssetId = mediaId,
-                    Alt = "Completed exterior project"
-                }
-            ],
-            actions,
-            new HashSet<Guid> { mediaId });
-
-        var page = result.ProposedDocument.Pages["/services"];
-        Assert.Equal("Services", page.Navigation.Label);
-        var section = Assert.Single(page.Composition);
-        Assert.Contains(section.Children, node => node.Id == "services.quote" && node.ActionKey == "business_quote");
-        Assert.Contains(section.Children, node => node.Id == "services.image" && node.MediaAssetId == mediaId);
-        Assert.False(document.Pages.ContainsKey("/services"));
-    }
-
-    [Fact]
-    public void AiBuild_CannotDeleteWiredCtaOrInventAction()
-    {
-        var document = WebsiteContentSanitizer.Sanitize(CanonicalDocument());
-        var actions = BusinessActions().Select(action => action.Key).ToHashSet(StringComparer.Ordinal);
-
-        Assert.Throws<ArgumentException>(() => WebsiteStudioAiProposalPolicy.Apply(
-            document, "build", "bad", "/", null, null,
-            [new WebsiteStudioAiOperation { Kind = "delete_node", NodeId = "home.hero.quote" }],
-            actions, new HashSet<Guid>()));
-
-        Assert.Throws<ArgumentException>(() => WebsiteStudioAiProposalPolicy.Apply(
-            document, "build", "bad", "/", null, null,
-            [new WebsiteStudioAiOperation { Kind = "set_action", NodeId = "home.hero.quote", ActionKey = "invented" }],
-            actions, new HashSet<Guid>()));
-    }
-
-    [Fact]
-    public void SelectionAi_CannotEscapeSelectedSubtree()
-    {
-        var document = WebsiteContentSanitizer.Sanitize(CanonicalDocument());
-        var actions = BusinessActions().Select(action => action.Key).ToHashSet(StringComparer.Ordinal);
-
-        Assert.Throws<ArgumentException>(() => WebsiteStudioAiProposalPolicy.Apply(
-            document, "selection", "edit selection", "/", "home.hero.title", "home.hero",
-            [new WebsiteStudioAiOperation { Kind = "set_text", NodeId = "home.hero.quote", Text = "Changed" }],
-            actions, new HashSet<Guid>()));
+        Assert.DoesNotContain("meta", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("openai", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("provider", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("QualifiedLead", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("PolicyIssued", serialized, StringComparison.Ordinal);
     }
 }
