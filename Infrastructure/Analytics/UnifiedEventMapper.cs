@@ -170,6 +170,7 @@ public static class UnifiedEventMapper
         behaviorKey = AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var behavior) ? behavior.Key : null,
         actionKey = ctx.ActionKey ?? (AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var action) ? action.Key : null),
         oppref = OpenAiClickReference.Normalize(ctx.Oppref),
+        obref = OpenAiBrowserReference.Normalize(ctx.Obref),
         fbc = ctx.Fbc,
         fbp = ctx.Fbp,
         canonicalOutcomeEventId = ctx.IsServerAuthority == true ? ctx.EventId : null,

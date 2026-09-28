@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Shared.Analytics;
+using Infrastructure.Analytics;
 
 namespace Infrastructure.Commerce;
 
@@ -48,6 +49,7 @@ public static class CommerceSignalAttribution
         {
             Fbclid = Read("fbclid"),
             Oppref = OpenAiClickReference.Normalize(Read("oppref")),
+            Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(request),
             UtmSource = Read("utm_source"),
             UtmMedium = Read("utm_medium"),
             UtmCampaign = Read("utm_campaign"),

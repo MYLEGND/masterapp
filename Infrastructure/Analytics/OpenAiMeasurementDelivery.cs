@@ -65,6 +65,21 @@ public sealed class OpenAiConversionsApiService(HttpClient httpClient) : IOpenAi
                     Oppref = conversion.Oppref,
                     SourceUrl = conversion.SourceUrl,
                     ActionSource = conversion.ActionSource,
+                    User = conversion.User is null ? null : new()
+                    {
+                        Obref = conversion.User.Obref,
+                        EmailsSha256 = conversion.User.EmailsSha256,
+                        PhoneNumbersSha256 = conversion.User.PhoneNumbersSha256,
+                        ExternalIdsSha256 = conversion.User.ExternalIdsSha256,
+                        FirstNamesSha256 = conversion.User.FirstNamesSha256,
+                        LastNamesSha256 = conversion.User.LastNamesSha256,
+                        Regions = conversion.User.Regions,
+                        PostalCodes = conversion.User.PostalCodes,
+                        Cities = conversion.User.Cities,
+                        Countries = conversion.User.Countries,
+                        IpAddress = conversion.User.IpAddress,
+                        UserAgent = conversion.User.UserAgent
+                    },
                     Data = new()
                     {
                         Type = conversion.Data.Type,
@@ -146,7 +161,24 @@ public sealed class OpenAiConversionsApiService(HttpClient httpClient) : IOpenAi
         [JsonPropertyName("oppref")] public string? Oppref { get; set; }
         [JsonPropertyName("source_url")] public string SourceUrl { get; set; } = string.Empty;
         [JsonPropertyName("action_source")] public string ActionSource { get; set; } = "web";
+        [JsonPropertyName("user")] public OpenAiUserPayload? User { get; set; }
         [JsonPropertyName("data")] public OpenAiDataPayload Data { get; set; } = new();
+    }
+
+    private sealed class OpenAiUserPayload
+    {
+        [JsonPropertyName("obref")] public string? Obref { get; set; }
+        [JsonPropertyName("emails_sha256")] public IReadOnlyList<string>? EmailsSha256 { get; set; }
+        [JsonPropertyName("phone_numbers_sha256")] public IReadOnlyList<string>? PhoneNumbersSha256 { get; set; }
+        [JsonPropertyName("external_ids_sha256")] public IReadOnlyList<string>? ExternalIdsSha256 { get; set; }
+        [JsonPropertyName("first_names_sha256")] public IReadOnlyList<string>? FirstNamesSha256 { get; set; }
+        [JsonPropertyName("last_names_sha256")] public IReadOnlyList<string>? LastNamesSha256 { get; set; }
+        [JsonPropertyName("regions")] public IReadOnlyList<string>? Regions { get; set; }
+        [JsonPropertyName("postal_codes")] public IReadOnlyList<string>? PostalCodes { get; set; }
+        [JsonPropertyName("cities")] public IReadOnlyList<string>? Cities { get; set; }
+        [JsonPropertyName("countries")] public IReadOnlyList<string>? Countries { get; set; }
+        [JsonPropertyName("ip_address")] public string? IpAddress { get; set; }
+        [JsonPropertyName("user_agent")] public string? UserAgent { get; set; }
     }
 
     private sealed class OpenAiDataPayload
@@ -176,7 +208,10 @@ public static class OpenAiMeasurementEventMapper
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-    public static bool TryMap(AnalyticsEvent row, out OpenAiConversionEvent conversion)
+    public static bool TryMap(AnalyticsEvent row, out OpenAiConversionEvent conversion) =>
+        TryMap(row, null, out conversion);
+
+    public static bool TryMap(AnalyticsEvent row, OpenAiConversionUser? user, out OpenAiConversionEvent conversion)
     {
         conversion = null!;
         if (row is null || row.EventId == Guid.Empty) return false;
@@ -192,14 +227,9 @@ public static class OpenAiMeasurementEventMapper
         if (sourceUrl is null) return false;
 
         var contentEvent = string.Equals(destination.PayloadType, "contents", StringComparison.OrdinalIgnoreCase);
-
-        long? amount = null;
-        var currency = ReadString(row.MetadataJson, "currency");
-        if (contentEvent && TryReadLong(row.MetadataJson, "valueCents", out var cents) && cents >= 0)
-        {
-            amount = cents;
-            currency = string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim().ToUpperInvariant();
-        }
+        var canonicalValue = CanonicalConversionValueProjection.Resolve(row.MetadataJson);
+        long? amount = canonicalValue?.AmountMinorUnits;
+        var currency = canonicalValue?.Currency;
 
         IReadOnlyList<OpenAiConversionContent>? contents = null;
         if (contentEvent)
@@ -249,7 +279,8 @@ public static class OpenAiMeasurementEventMapper
             ActionSource: "web",
             Data: new(isCustomEvent ? "custom" : destination.PayloadType ?? "customer_action", amount, amount.HasValue ? currency : null, contents),
             Oppref: row.Oppref ?? ReadString(row.MetadataJson, "oppref"),
-            CustomEventName: customEventName);
+            CustomEventName: customEventName,
+            User: user);
         return true;
     }
 
@@ -270,12 +301,6 @@ public static class OpenAiMeasurementEventMapper
     }
 
     internal static string? ReadString(string? json, string property) => CanonicalAdvertisingEventProjection.ReadString(json, property);
-    private static bool TryReadLong(string? json, string property, out long value)
-    {
-        var number = CanonicalAdvertisingEventProjection.ReadInt64(json, property);
-        value = number ?? 0;
-        return number.HasValue;
-    }
     private static bool TryReadInt(string? json, string property, out int value)
     {
         var number = CanonicalAdvertisingEventProjection.ReadInt64(json, property);
@@ -324,7 +349,9 @@ public sealed class OpenAiConversionDispatcherHostedService(
             if (!CanonicalAdvertisingEventProjection.CanProjectServer(source)) continue;
             var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
             if (owner is null) continue;
-            if (!OpenAiMeasurementEventMapper.TryMap(source, out var conversion)) continue;
+            var identity = await CanonicalMarketingIdentityResolver.ResolveAsync(db, source, ct: ct);
+            var user = OpenAiConversionUserMapper.Map(identity);
+            if (!OpenAiMeasurementEventMapper.TryMap(source, user, out var conversion)) continue;
             var providerEventIdentity = conversion.CustomEventName ?? conversion.Type;
 
             var connection = await connections.GetAsync(owner, ct);

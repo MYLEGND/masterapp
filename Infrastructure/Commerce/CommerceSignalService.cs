@@ -39,7 +39,8 @@ public sealed record CommerceSignalContext(
     string? UtmContent = null,
     string? MetaCampaignId = null,
     string? MetaAdSetId = null,
-    string? MetaAdId = null);
+    string? MetaAdId = null,
+    string? Obref = null);
 
 public sealed record CommerceSignalCustomer(
     string? FirstName,
@@ -150,6 +151,7 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
             },
             fbclid = context.Fbclid,
             oppref = OpenAiClickReference.Normalize(context.Oppref),
+            obref = OpenAiBrowserReference.Normalize(context.Obref),
             fbc = context.Fbc,
             fbp = context.Fbp,
             sourceClientIpAddress = context.ClientIpAddress,
@@ -188,6 +190,7 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
             MetaAdId = NormalizeNullable(context.MetaAdId),
             Fbclid = NormalizeNullable(context.Fbclid),
             Oppref = OpenAiClickReference.Normalize(context.Oppref),
+            Obref = OpenAiBrowserReference.Normalize(context.Obref),
             Fbc = NormalizeNullable(context.Fbc),
             Fbp = NormalizeNullable(context.Fbp),
             AgentTrackingProfileId = typedAgentId,

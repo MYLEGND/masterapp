@@ -162,7 +162,8 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("ApplyLeadBucketMembershipInMemory", ads, StringComparison.Ordinal);
         Assert.DoesNotContain("BuildLeadPredicate(range.QualityMode)", ads, StringComparison.Ordinal);
         Assert.Contains("Scoped agent traffic is tenant-owned", resolver, StringComparison.Ordinal);
-        Assert.Contains("trackSingleCustom", metaRuntime, StringComparison.Ordinal);
+        Assert.Contains("trackSingle", metaRuntime, StringComparison.Ordinal);
+        Assert.DoesNotContain("trackSingleCustom", metaRuntime, StringComparison.Ordinal);
         Assert.Contains("config.pixelId", metaRuntime, StringComparison.Ordinal);
         Assert.Contains("ResolvedMetaPixelId", protectBootstrap, StringComparison.Ordinal);
     }

@@ -1140,7 +1140,7 @@
 
       try {
         if (!config.pixelId) return 'pixel_unavailable';
-        window.fbq('trackSingleCustom', config.pixelId, eventName, pixelPayload, { eventID: eventId });
+        window.fbq('trackSingle', config.pixelId, eventName, pixelPayload, { eventID: eventId });
         // fbq can queue locally. Returning from it does not acknowledge delivery to Meta.
         return 'invoked';
       } catch {

@@ -128,6 +128,8 @@ public sealed class OpenAiClickReferenceLineageTests
         Assert.Contains("hasAttribution(queryAttribution) ? queryAttribution", tracking, StringComparison.Ordinal);
         Assert.Contains("legend_attr_first_touch:${storageScope}", tracking, StringComparison.Ordinal);
         Assert.Contains("oppref: attribution.oppref", inquiry, StringComparison.Ordinal);
+        Assert.Contains("obref: navigator.globalPrivacyControl === true ? null : cookie('__obref')", inquiry, StringComparison.Ordinal);
+        Assert.Contains("readFirstPartyCookie('__obref')", tracking, StringComparison.Ordinal);
         Assert.Contains("oppref:'oppref'", commerce, StringComparison.Ordinal);
         Assert.Contains("scope:storeScope,sessionId", commerce, StringComparison.Ordinal);
     }
@@ -146,6 +148,7 @@ public sealed class OpenAiClickReferenceLineageTests
             utmTerm: "ad-group-1",
             utmContent: "ad-1",
             oppref: "opp-click-1",
+            obref: "browser-ref-1",
             host: "protect.mylegnd.com",
             isServerAuthority: true);
 
@@ -155,6 +158,7 @@ public sealed class OpenAiClickReferenceLineageTests
         Assert.Equal("ad-group-1", row.UtmTerm);
         Assert.Equal("ad-1", row.UtmContent);
         Assert.Equal("opp-click-1", row.Oppref);
+        Assert.Equal("browser-ref-1", CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "obref"));
     }
 
     [Fact]
@@ -175,7 +179,50 @@ public sealed class OpenAiClickReferenceLineageTests
             Assert.Contains("utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmTerm\")", source, StringComparison.Ordinal);
             Assert.Contains("utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmContent\")", source, StringComparison.Ordinal);
             Assert.Contains("oppref: lead.Oppref", source, StringComparison.Ordinal);
+            Assert.Contains("UnifiedEventContextBuilder.Build(", source, StringComparison.Ordinal);
+            Assert.Contains("httpContext: HttpContext", source, StringComparison.Ordinal);
+            Assert.Contains("UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(HttpContext?.Request)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Request.Cookies[\"__obref\"]", source, StringComparison.Ordinal);
         }
+
+        var builder = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "UnifiedEventContextBuilder.cs"));
+        Assert.Contains("ResolveOpenAiBrowserReference(HttpRequest? request", builder, StringComparison.Ordinal);
+        Assert.Contains("MetaLeadTrackingWorkflow.ResolveCookieValue(request, \"__obref\")", builder, StringComparison.Ordinal);
+        Assert.Contains("CanUseOpenAiBrowserReference(request)", builder, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CommerceAndPublicTrackingPreserveOpenAiBrowserReferenceWithoutAParallelStore()
+    {
+        var root = FindRoot();
+        var commerce = File.ReadAllText(Path.Combine(root, "Infrastructure", "Commerce", "CommerceSignalService.cs"));
+        var attribution = File.ReadAllText(Path.Combine(root, "Infrastructure", "Commerce", "CommerceSignalAttribution.cs"));
+        var inquiry = File.ReadAllText(Path.Combine(root, "Infrastructure", "Leads", "WebsiteInquiryAuthority.cs"));
+        var mapper = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "UnifiedEventMapper.cs"));
+
+        Assert.Contains("obref = OpenAiBrowserReference.Normalize(context.Obref)", commerce, StringComparison.Ordinal);
+        Assert.Contains("ResolveOpenAiBrowserReference(request)", attribution, StringComparison.Ordinal);
+        Assert.Contains("ResolveOpenAiBrowserReference(Request, request.Obref)", inquiry, StringComparison.Ordinal);
+        Assert.Contains("obref = OpenAiBrowserReference.Normalize(ctx.Obref)", mapper, StringComparison.Ordinal);
+        Assert.DoesNotContain("DbSet<OpenAiBrowser", File.ReadAllText(Path.Combine(root, "Infrastructure", "Data", "MasterAppDbContext.cs")), StringComparison.Ordinal);
+        var risk = File.ReadAllText(Path.Combine(root, "Protect-Website", "Controllers", "RiskAssessmentController.cs"));
+        Assert.Contains("ResolveOpenAiBrowserReference(Request)", risk, StringComparison.Ordinal);
+        Assert.DoesNotContain("Request.Cookies[\"__obref\"]", risk, StringComparison.Ordinal);
+        var tracking = File.ReadAllText(Path.Combine(root, "SHARED", "WebsitePlatform", "tracking.js"));
+        Assert.Contains("navigator.globalPrivacyControl === true ? null : readFirstPartyCookie('__obref')", tracking, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OpenAiBrowserReferenceHonorsGlobalPrivacyControlAtCanonicalBuilder()
+    {
+        var allowed = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        allowed.Request.Headers.Cookie = "__obref=browser-reference";
+        Assert.Equal("browser-reference", UnifiedEventContextBuilder.Build(allowed).Obref);
+
+        var blocked = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        blocked.Request.Headers.Cookie = "__obref=browser-reference";
+        blocked.Request.Headers["Sec-GPC"] = "1";
+        Assert.Null(UnifiedEventContextBuilder.Build(blocked).Obref);
     }
 
     [Fact]

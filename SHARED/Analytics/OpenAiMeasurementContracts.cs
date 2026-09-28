@@ -26,6 +26,20 @@ public sealed record OpenAiConversionData(
     string? Currency = null,
     IReadOnlyList<OpenAiConversionContent>? Contents = null);
 
+public sealed record OpenAiConversionUser(
+    string? Obref = null,
+    IReadOnlyList<string>? EmailsSha256 = null,
+    IReadOnlyList<string>? PhoneNumbersSha256 = null,
+    IReadOnlyList<string>? ExternalIdsSha256 = null,
+    IReadOnlyList<string>? FirstNamesSha256 = null,
+    IReadOnlyList<string>? LastNamesSha256 = null,
+    IReadOnlyList<string>? Regions = null,
+    IReadOnlyList<string>? PostalCodes = null,
+    IReadOnlyList<string>? Cities = null,
+    IReadOnlyList<string>? Countries = null,
+    string? IpAddress = null,
+    string? UserAgent = null);
+
 public sealed record OpenAiConversionEvent(
     string Id,
     string Type,
@@ -34,7 +48,8 @@ public sealed record OpenAiConversionEvent(
     string ActionSource,
     OpenAiConversionData Data,
     string? Oppref = null,
-    string? CustomEventName = null);
+    string? CustomEventName = null,
+    OpenAiConversionUser? User = null);
 
 public sealed record OpenAiConversionsApiResult(
     bool Attempted,

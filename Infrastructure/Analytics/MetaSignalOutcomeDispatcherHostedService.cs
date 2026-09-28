@@ -209,58 +209,108 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 ReadMetadataString(row.MetadataJson, "sourceFbc"),
                 ReadMetadataString(row.MetadataJson, "fbc"));
 
-            WebsiteLead? websiteLead = null;
-            if (row.LeadId.HasValue)
+            var sourceId = CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "sourceAnalyticsEventId");
+            AnalyticsEvent? source = sourceId.HasValue
+                ? await db.AnalyticsEvents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sourceId.Value, cancellationToken)
+                : null;
+            CanonicalMarketingIdentity? canonicalIdentity = null;
+            if (source is not null &&
+                source.AgentTrackingProfileId == row.AgentTrackingProfileId &&
+                source.CommerceBusinessId == row.CommerceBusinessId &&
+                CanonicalAdvertisingEventProjection.CanProjectServer(source))
             {
-                leadsById.TryGetValue(row.LeadId.Value, out websiteLead);
+                canonicalIdentity = await CanonicalMarketingIdentityResolver.ResolveAsync(
+                    db, source, row.LeadId, cancellationToken);
+                bridgeClientIp = FirstNonBlank(canonicalIdentity.ClientIpAddress, bridgeClientIp);
+                bridgeUserAgent = FirstNonBlank(canonicalIdentity.ClientUserAgent, bridgeUserAgent);
+                bridgeFbclid = FirstNonBlank(canonicalIdentity.Fbclid, bridgeFbclid);
+                bridgeFbp = FirstNonBlank(canonicalIdentity.Fbp, bridgeFbp);
+                bridgeFbc = FirstNonBlank(canonicalIdentity.Fbc, bridgeFbc);
+            }
 
-                if (websiteLead == null &&
-                    intakeLinksByWorkstationLeadId.TryGetValue(row.LeadId.Value.ToString("N"), out var intakeLink))
+            WebsiteLead? websiteLead = canonicalIdentity?.WebsiteLead;
+            CrmContactIdentity crmContact;
+            string? email;
+            string? phone;
+            string? firstName;
+            string? lastName;
+            string? city;
+            string? state;
+            string? zipCode;
+            bool hasContactData;
+
+            if (canonicalIdentity is not null)
+            {
+                email = canonicalIdentity.Email;
+                phone = canonicalIdentity.Phone;
+                firstName = canonicalIdentity.FirstName;
+                lastName = canonicalIdentity.LastName;
+                city = canonicalIdentity.City;
+                state = canonicalIdentity.State;
+                zipCode = canonicalIdentity.PostalCode;
+                hasContactData = canonicalIdentity.HasContactData;
+                crmContact = new(
+                    canonicalIdentity.Email,
+                    canonicalIdentity.Phone,
+                    canonicalIdentity.FirstName,
+                    canonicalIdentity.LastName,
+                    canonicalIdentity.DateOfBirth,
+                    canonicalIdentity.Gender,
+                    canonicalIdentity.City,
+                    canonicalIdentity.State,
+                    canonicalIdentity.PostalCode);
+            }
+            else
+            {
+                // Historical queue adapter only. New bridge rows always use the shared
+                // CanonicalMarketingIdentityResolver above.
+                if (row.LeadId.HasValue)
                 {
-                    leadsById.TryGetValue(intakeLink.WebsiteLeadPublicId, out websiteLead);
+                    leadsById.TryGetValue(row.LeadId.Value, out websiteLead);
+                    if (websiteLead == null &&
+                        intakeLinksByWorkstationLeadId.TryGetValue(row.LeadId.Value.ToString("N"), out var intakeLink))
+                        leadsById.TryGetValue(intakeLink.WebsiteLeadPublicId, out websiteLead);
                 }
-            }
 
-            if (websiteLead is not null && websiteLead.CommerceBusinessId != row.CommerceBusinessId)
-            {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                if (websiteLead is not null && websiteLead.CommerceBusinessId != row.CommerceBusinessId)
                 {
-                    Status = "skipped_owner_conflict", Note = "website_lead_owner_mismatch"
-                });
-                await db.SaveChangesAsync(cancellationToken);
-                continue;
+                    row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                    {
+                        Status = "skipped_owner_conflict", Note = "website_lead_owner_mismatch"
+                    });
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+
+                crmContact = await ResolveCrmContactAsync(db, row, cancellationToken);
+                var metadataEmail = ReadNestedMetadataString(row.MetadataJson, "customer", "email");
+                var metadataPhone = ReadNestedMetadataString(row.MetadataJson, "customer", "phone");
+                var metadataFirstName = ReadNestedMetadataString(row.MetadataJson, "customer", "firstName");
+                var metadataLastName = ReadNestedMetadataString(row.MetadataJson, "customer", "lastName");
+                var metadataCity = ReadNestedMetadataString(row.MetadataJson, "customer", "city");
+                var metadataState = ReadNestedMetadataString(row.MetadataJson, "customer", "state");
+                var metadataZipCode = FirstNonBlank(
+                    ReadNestedMetadataString(row.MetadataJson, "customer", "zipCode"),
+                    ReadNestedMetadataString(row.MetadataJson, "customer", "postalCode"));
+
+                email = FirstNonBlank(websiteLead?.Email, crmContact.Email, metadataEmail);
+                phone = FirstNonBlank(websiteLead?.Phone, crmContact.Phone, metadataPhone);
+                firstName = FirstNonBlank(websiteLead?.FirstName, crmContact.FirstName, metadataFirstName);
+                lastName = FirstNonBlank(websiteLead?.LastName, crmContact.LastName, metadataLastName);
+                city = FirstNonBlank(crmContact.City, metadataCity);
+                state = FirstNonBlank(crmContact.State, metadataState);
+                zipCode = FirstNonBlank(crmContact.ZipCode, metadataZipCode);
+                hasContactData =
+                    !string.IsNullOrWhiteSpace(email) ||
+                    !string.IsNullOrWhiteSpace(phone) ||
+                    !string.IsNullOrWhiteSpace(firstName) ||
+                    !string.IsNullOrWhiteSpace(lastName) ||
+                    crmContact.DateOfBirth.HasValue ||
+                    !string.IsNullOrWhiteSpace(crmContact.Gender) ||
+                    !string.IsNullOrWhiteSpace(city) ||
+                    !string.IsNullOrWhiteSpace(state) ||
+                    !string.IsNullOrWhiteSpace(zipCode);
             }
-
-            var crmContact = await ResolveCrmContactAsync(db, row, cancellationToken);
-
-            var metadataEmail = ReadNestedMetadataString(row.MetadataJson, "customer", "email");
-            var metadataPhone = ReadNestedMetadataString(row.MetadataJson, "customer", "phone");
-            var metadataFirstName = ReadNestedMetadataString(row.MetadataJson, "customer", "firstName");
-            var metadataLastName = ReadNestedMetadataString(row.MetadataJson, "customer", "lastName");
-            var metadataCity = ReadNestedMetadataString(row.MetadataJson, "customer", "city");
-            var metadataState = ReadNestedMetadataString(row.MetadataJson, "customer", "state");
-            var metadataZipCode = FirstNonBlank(
-                ReadNestedMetadataString(row.MetadataJson, "customer", "zipCode"),
-                ReadNestedMetadataString(row.MetadataJson, "customer", "postalCode"));
-
-            var email = FirstNonBlank(websiteLead?.Email, crmContact.Email, metadataEmail);
-            var phone = FirstNonBlank(websiteLead?.Phone, crmContact.Phone, metadataPhone);
-            var firstName = FirstNonBlank(websiteLead?.FirstName, crmContact.FirstName, metadataFirstName);
-            var lastName = FirstNonBlank(websiteLead?.LastName, crmContact.LastName, metadataLastName);
-            var city = FirstNonBlank(crmContact.City, metadataCity);
-            var state = FirstNonBlank(crmContact.State, metadataState);
-            var zipCode = FirstNonBlank(crmContact.ZipCode, metadataZipCode);
-
-            var hasContactData =
-                !string.IsNullOrWhiteSpace(email) ||
-                !string.IsNullOrWhiteSpace(phone) ||
-                !string.IsNullOrWhiteSpace(firstName) ||
-                !string.IsNullOrWhiteSpace(lastName) ||
-                crmContact.DateOfBirth.HasValue ||
-                !string.IsNullOrWhiteSpace(crmContact.Gender) ||
-                !string.IsNullOrWhiteSpace(city) ||
-                !string.IsNullOrWhiteSpace(state) ||
-                !string.IsNullOrWhiteSpace(zipCode);
 
             var hasBridgeAttribution =
                 !string.IsNullOrWhiteSpace(bridgeFbp) ||
@@ -292,21 +342,14 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 continue;
             }
 
-            var sourceId = CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "sourceAnalyticsEventId");
-            AnalyticsEvent? source = null;
-            MarketingOwnerScope? owner;
-            if (sourceId.HasValue)
-            {
-                source = await db.AnalyticsEvents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sourceId.Value, cancellationToken);
-                owner = source is null || source.AgentTrackingProfileId != row.AgentTrackingProfileId ||
-                    source.CommerceBusinessId != row.CommerceBusinessId || !CanonicalAdvertisingEventProjection.CanProjectServer(source)
-                    ? null : await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, cancellationToken);
-            }
-            else
-            {
-                // Required queue-history adapter only; new bridge rows always resolve their persisted source.
-                owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, row, cancellationToken);
-            }
+            MarketingOwnerScope? owner = source is not null &&
+                source.AgentTrackingProfileId == row.AgentTrackingProfileId &&
+                source.CommerceBusinessId == row.CommerceBusinessId &&
+                CanonicalAdvertisingEventProjection.CanProjectServer(source)
+                ? await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, cancellationToken)
+                : sourceId.HasValue
+                    ? null
+                    : await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, row, cancellationToken);
             if (owner is null)
             {
                 row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
@@ -343,7 +386,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
             var capiRequest = new MetaConversionsApiEventRequest
             {
-                LeadId = row.LeadId,
+                LeadId = canonicalIdentity?.WebsiteLeadId ?? row.LeadId,
                 CommerceBusinessId = row.CommerceBusinessId,
                 AgentTrackingProfileId = row.AgentTrackingProfileId,
                 CorrelationId = Guid.NewGuid(),
@@ -640,54 +683,13 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             customData["source_analytics_event_id"] = MetaSignalAnalyticsBridgeMetadata.ReadInt64(row.MetadataJson, "sourceAnalyticsEventId");
         }
 
-        if (IsProductionValueEvent(row.EventName) &&
-            TryReadPositiveDecimal(row.MetadataJson, "personalAmount", out var personalAmount))
+        if (CanonicalConversionValueProjection.Resolve(row.MetadataJson) is { } canonicalValue)
         {
-            customData["value"] = decimal.Round(personalAmount, 2);
-            customData["currency"] = "USD";
-        }
-
-        if (string.Equals(row.EventName, "Purchase", StringComparison.OrdinalIgnoreCase) &&
-            TryReadPositiveDecimal(row.MetadataJson, "valueCents", out var valueCents))
-        {
-            customData["value"] = decimal.Round(valueCents / 100m, 2);
-            customData["currency"] = FirstNonBlank(ReadMetadataString(row.MetadataJson, "currency"), "USD");
+            customData["value"] = decimal.Round(canonicalValue.AmountMinorUnits / 100m, 2);
+            customData["currency"] = canonicalValue.Currency;
         }
 
         return customData;
-    }
-
-    private static bool IsProductionValueEvent(string? eventName)
-        => string.Equals(eventName, "ApplicationSubmitted", StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(eventName, "PolicyIssued", StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(eventName, "PolicyPaid", StringComparison.OrdinalIgnoreCase);
-
-    private static bool TryReadPositiveDecimal(string? metadataJson, string propertyName, out decimal value)
-    {
-        value = 0;
-
-        if (string.IsNullOrWhiteSpace(metadataJson))
-            return false;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(metadataJson);
-            if (!doc.RootElement.TryGetProperty(propertyName, out var element))
-                return false;
-
-            if (element.ValueKind == JsonValueKind.Number && element.TryGetDecimal(out value))
-                return value > 0;
-
-            if (element.ValueKind == JsonValueKind.String &&
-                decimal.TryParse(element.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out value))
-                return value > 0;
-        }
-        catch
-        {
-            value = 0;
-        }
-
-        return false;
     }
 
     private static string? ResolveEventSourceUrl(MetaSignalEvent row, WebsiteLead? websiteLead)

@@ -328,6 +328,7 @@ if (!ModelState.IsValid)
                         UtmId          = model.UtmId,
                         Fbclid         = model.Fbclid,
                         Oppref         = OpenAiClickReference.Normalize(model.Oppref),
+                        Obref          = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(HttpContext?.Request),
                         UtmTerm        = model.UtmTerm,
                         UtmContent     = model.UtmContent,
                         MetaCampaignId = model.MetaCampaignId,
