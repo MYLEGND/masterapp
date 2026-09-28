@@ -94,6 +94,9 @@ public static class WebsiteSiteSource
             throw new ArgumentException("LEGEND Site Source uses an unsupported schema or document version.");
 
         var current = WebsiteContentSanitizer.Sanitize(baseline);
+        if ((source.Store?.Enabled == true) != current.Store.Enabled)
+            throw new ArgumentException("Enable or remove the website store through the canonical Store authority, not Site Source.");
+
         var sourcePages = source.Pages ?? [];
         if (sourcePages.Count > 100) throw new ArgumentException("Website page limit exceeded.");
 
@@ -114,11 +117,10 @@ public static class WebsiteSiteSource
             Elements = ProtectShellElements(source.ShellElements, current.Elements, allowedActions),
             Extras = ProtectGlobalExtras(source.GlobalExtras, current.Extras, allowedActions),
             SectionOrder = Clone(current.SectionOrder),
-            ReusableComponents = new(
-                (source.ReusableComponents ?? new(StringComparer.Ordinal))
-                    .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                    .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
-                StringComparer.Ordinal),
+            ReusableComponents = ProtectReusableComponents(
+                source.ReusableComponents,
+                current.ReusableComponents,
+                allowedActions),
             Collections = new(
                 (source.Collections ?? new(StringComparer.Ordinal))
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal)
@@ -154,6 +156,19 @@ public static class WebsiteSiteSource
         foreach (var path in current.Pages.Keys)
             if (!output.Pages.ContainsKey(path))
                 deleted.Add("page:" + path);
+
+        if (!output.Pages.TryGetValue("/", out var home) || home.Navigation.IsDeleted)
+            throw new ArgumentException("LEGEND Site Source must keep one active home page.");
+
+        var proposedNodeIds = Flatten(output).Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var entry in protectedNodes.Values)
+        {
+            var protectedSemantic = !string.IsNullOrWhiteSpace(entry.Node.ActionKey) ||
+                !string.IsNullOrWhiteSpace(entry.Node.SystemKey) ||
+                !string.IsNullOrWhiteSpace(entry.Node.SystemBinding);
+            if (protectedSemantic && !proposedNodeIds.Contains(entry.Node.Id))
+                throw new ArgumentException($"Protected component '{entry.Node.Id}' cannot be removed through Site Source. Use an explicit visual management action.");
+        }
 
         output = WebsiteContentSanitizer.Sanitize(output);
         ValidateCanonical(output, ctaCatalog);
@@ -249,7 +264,7 @@ public static class WebsiteSiteSource
             ReusableComponents = new(
                 document.ReusableComponents
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                    .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+                    .ToDictionary(pair => pair.Key, pair => ProjectReusable(pair.Value), StringComparer.Ordinal),
                 StringComparer.Ordinal),
             Collections = new(
                 document.Collections
@@ -335,6 +350,63 @@ public static class WebsiteSiteSource
         foreach (var previous in previousById.Values)
             if (!result.Any(value => value.Id == previous.Id))
                 result.Add(Clone(previous));
+        return result;
+    }
+
+    private static WebsiteReusableComponentDefinition ProjectReusable(WebsiteReusableComponentDefinition value)
+    {
+        var copy = Clone(value);
+        foreach (var element in copy.Elements.Values) element.Signals = [];
+        foreach (var extra in copy.Extras) extra.Signals = [];
+        return copy;
+    }
+
+    private static SortedDictionary<string, WebsiteReusableComponentDefinition> ProtectReusableComponents(
+        IReadOnlyDictionary<string, WebsiteReusableComponentDefinition>? proposed,
+        IReadOnlyDictionary<string, WebsiteReusableComponentDefinition>? baseline,
+        IReadOnlySet<string> allowedActions)
+    {
+        var result = new SortedDictionary<string, WebsiteReusableComponentDefinition>(StringComparer.Ordinal);
+        foreach (var (key, candidate) in proposed ?? new Dictionary<string, WebsiteReusableComponentDefinition>())
+        {
+            var next = Clone(candidate);
+            baseline?.TryGetValue(key, out var previous);
+
+            foreach (var (id, element) in next.Elements)
+            {
+                if (previous?.Elements.TryGetValue(id, out var prior) == true)
+                {
+                    element.Signals = Clone(prior.Signals);
+                    if (!string.IsNullOrWhiteSpace(prior.ActionKey) && string.IsNullOrWhiteSpace(element.ActionKey))
+                        element.ActionKey = prior.ActionKey;
+                }
+                else element.Signals = [];
+
+                if (!string.IsNullOrWhiteSpace(element.ActionKey) && !allowedActions.Contains(element.ActionKey))
+                    throw new ArgumentException($"Reusable component action '{element.ActionKey}' is unavailable for this website.");
+            }
+
+            var previousExtras = (previous?.Extras ?? []).ToDictionary(value => value.Id, StringComparer.Ordinal);
+            foreach (var extra in next.Extras)
+            {
+                if (previousExtras.TryGetValue(extra.Id, out var prior))
+                {
+                    extra.Signals = Clone(prior.Signals);
+                    if (!string.IsNullOrWhiteSpace(prior.ActionKey) && string.IsNullOrWhiteSpace(extra.ActionKey))
+                        extra.ActionKey = prior.ActionKey;
+                }
+                else extra.Signals = [];
+                if (!string.IsNullOrWhiteSpace(extra.ActionKey) && !allowedActions.Contains(extra.ActionKey))
+                    throw new ArgumentException($"Reusable component action '{extra.ActionKey}' is unavailable for this website.");
+            }
+
+            result[key] = next;
+        }
+
+        foreach (var (key, previous) in baseline ?? new Dictionary<string, WebsiteReusableComponentDefinition>())
+            if (!result.ContainsKey(key))
+                result[key] = Clone(previous);
+
         return result;
     }
 
