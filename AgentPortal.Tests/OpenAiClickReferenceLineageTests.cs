@@ -128,6 +128,8 @@ public sealed class OpenAiClickReferenceLineageTests
         Assert.Contains("hasAttribution(queryAttribution) ? queryAttribution", tracking, StringComparison.Ordinal);
         Assert.Contains("legend_attr_first_touch:${storageScope}", tracking, StringComparison.Ordinal);
         Assert.Contains("oppref: attribution.oppref", inquiry, StringComparison.Ordinal);
+        Assert.Contains("obref: cookie('__obref')", inquiry, StringComparison.Ordinal);
+        Assert.Contains("readFirstPartyCookie('__obref')", tracking, StringComparison.Ordinal);
         Assert.Contains("oppref:'oppref'", commerce, StringComparison.Ordinal);
         Assert.Contains("scope:storeScope,sessionId", commerce, StringComparison.Ordinal);
     }
@@ -176,6 +178,22 @@ public sealed class OpenAiClickReferenceLineageTests
             Assert.Contains("utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmContent\")", source, StringComparison.Ordinal);
             Assert.Contains("oppref: lead.Oppref", source, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void CommerceAndPublicTrackingPreserveOpenAiBrowserReferenceWithoutAParallelStore()
+    {
+        var root = FindRoot();
+        var commerce = File.ReadAllText(Path.Combine(root, "Infrastructure", "Commerce", "CommerceSignalService.cs"));
+        var attribution = File.ReadAllText(Path.Combine(root, "Infrastructure", "Commerce", "CommerceSignalAttribution.cs"));
+        var inquiry = File.ReadAllText(Path.Combine(root, "Infrastructure", "Leads", "WebsiteInquiryAuthority.cs"));
+        var mapper = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "UnifiedEventMapper.cs"));
+
+        Assert.Contains("obref = OpenAiBrowserReference.Normalize(context.Obref)", commerce, StringComparison.Ordinal);
+        Assert.Contains("request.Cookies.TryGetValue(\"__obref\"", attribution, StringComparison.Ordinal);
+        Assert.Contains("Obref = OpenAiBrowserReference.Normalize(request.Obref)", inquiry, StringComparison.Ordinal);
+        Assert.Contains("obref = OpenAiBrowserReference.Normalize(ctx.Obref)", mapper, StringComparison.Ordinal);
+        Assert.DoesNotContain("DbSet<OpenAiBrowser", File.ReadAllText(Path.Combine(root, "Infrastructure", "Data", "MasterAppDbContext.cs")), StringComparison.Ordinal);
     }
 
     [Fact]
