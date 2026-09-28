@@ -121,8 +121,10 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("Verify &amp; connect", view, StringComparison.Ordinal);
         Assert.DoesNotContain("AdvertiserApiKey = openAi", controller, StringComparison.Ordinal);
 
-        Assert.Contains(".marketing-setup-modal-dialog", css, StringComparison.Ordinal);
-        Assert.Contains("width: min(1480px, calc(100vw - 48px));", css, StringComparison.Ordinal);
+        Assert.Contains("class=\"modal-content wa-modal-shell\"", view, StringComparison.Ordinal);
+        Assert.Contains(".wa-modal-shell", css, StringComparison.Ordinal);
+        Assert.DoesNotContain(".marketing-setup-modal-dialog", css, StringComparison.Ordinal);
+        Assert.DoesNotContain(".fa-modal .modal-content", css, StringComparison.Ordinal);
         Assert.Contains(".marketing-setup-form-grid", css, StringComparison.Ordinal);
         Assert.Contains("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);", css, StringComparison.Ordinal);
         Assert.Contains(".is-critical", css, StringComparison.Ordinal);
