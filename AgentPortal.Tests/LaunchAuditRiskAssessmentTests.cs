@@ -30,6 +30,7 @@ public sealed class LaunchAuditRiskAssessmentTests
         var sender = new Mock<IProtectEmailSender>(MockBehavior.Strict);
         var controller = new RiskAssessmentController(new ConfigurationBuilder().Build(), sender.Object, db,
             new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance),
+            new WebsiteIntakeRecipientResolver(db, new ConfigurationBuilder().Build()),
             new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance),
             NullLogger<RiskAssessmentController>.Instance);
         var result = await controller.SubmitRiskAssessment(new RiskAssessmentModel {
@@ -54,15 +55,17 @@ public sealed class LaunchAuditRiskAssessmentTests
         sender.SetupSequence(x => x.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false).ReturnsAsync(true);
+        var notificationConfig = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Founder:Upn"] = "founder@example.test"
+            })
+            .Build();
         var controller = new RiskAssessmentController(
-            new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["Contact:RecipientEmail"] = "founder@example.test"
-                })
-                .Build(),
+            notificationConfig,
             sender.Object, db,
             new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance),
+            new WebsiteIntakeRecipientResolver(db, notificationConfig),
             new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance),
             NullLogger<RiskAssessmentController>.Instance);
         var http = new DefaultHttpContext();
