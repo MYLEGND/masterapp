@@ -113,14 +113,16 @@ public static class WebsiteContentSanitizer
             var path = page.Key;
             if (page.Value is null || !path.StartsWith('/') || path.StartsWith("//") || path.Contains('?') || path.Contains('#') || path.Contains("..") || path.Length > 2048) continue;
             var composition = SanitizeComposition(page.Value.Composition, breakpointKeys);
-            var body = composition.Count == 0
-                ? SanitizePageBody(page.Value, breakpointKeys)
-                : new SanitizedPageBody();
+            var canonicalPage = string.Equals(source.CompositionMode, "canonical", StringComparison.Ordinal) ||
+                composition.Count > 0;
+            var body = canonicalPage
+                ? new SanitizedPageBody()
+                : SanitizePageBody(page.Value, breakpointKeys);
             clean.Pages[path] = new WebsitePageDocument
             {
                 Title = ClampText(page.Value.Title),
                 Description = ClampText(page.Value.Description),
-                TemplatePath = composition.Count == 0 ? SanitizePagePath(page.Value.TemplatePath) : null,
+                TemplatePath = canonicalPage ? null : SanitizePagePath(page.Value.TemplatePath),
                 Navigation = SanitizeNavigation(path, page.Value.Navigation),
                 DynamicBinding = SanitizeDynamicBinding(page.Value.DynamicBinding),
                 Composition = composition,
