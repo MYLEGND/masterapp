@@ -48,6 +48,8 @@ public static class CommerceSignalAttribution
         {
             Fbclid = Read("fbclid"),
             Oppref = OpenAiClickReference.Normalize(Read("oppref")),
+            Obref = OpenAiBrowserReference.Normalize(
+                request.Cookies.TryGetValue("__obref", out var browserReference) ? browserReference : null),
             UtmSource = Read("utm_source"),
             UtmMedium = Read("utm_medium"),
             UtmCampaign = Read("utm_campaign"),
