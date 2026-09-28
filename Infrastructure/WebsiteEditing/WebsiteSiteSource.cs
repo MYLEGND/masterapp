@@ -370,7 +370,8 @@ public static class WebsiteSiteSource
         foreach (var (key, candidate) in proposed ?? new Dictionary<string, WebsiteReusableComponentDefinition>())
         {
             var next = Clone(candidate);
-            baseline?.TryGetValue(key, out var previous);
+            WebsiteReusableComponentDefinition? previous = null;
+            if (baseline is not null) baseline.TryGetValue(key, out previous);
 
             foreach (var (id, element) in next.Elements)
             {
