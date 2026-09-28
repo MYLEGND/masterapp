@@ -304,6 +304,8 @@ public class WebsitePlatformController : ControllerBase
                 canDelete = await CanPublishAsync(actor, cancellationToken),
                 canPromote = await CanPublishAsync(actor, cancellationToken),
                 compositionV3 = true,
+                browserAgentWorkspace = true,
+                externalAiApi = false,
                 requiresCompositionMaterialization = !string.Equals(draft.CompositionMode, "canonical", StringComparison.Ordinal)
             },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
@@ -495,16 +497,6 @@ public class WebsitePlatformController : ControllerBase
             store = await StorePayloadAsync(actor.SiteKey, document, scope, request.Ticket, cancellationToken)
         });
     }
-
-    public sealed record WebsiteStudioAiRequest(
-        string Ticket,
-        long ExpectedRevision,
-        string Mode,
-        string Instruction,
-        string PagePath,
-        string? SelectedElementId = null,
-        string? SelectedSectionId = null,
-        string? SelectedText = null);
 
     public sealed record WebsiteSiteSourceRequest(
         string Ticket,
@@ -827,120 +819,6 @@ public class WebsitePlatformController : ControllerBase
             report.WarningCount,
             report.Checks
         });
-    }
-
-    [HttpPost("manage/ai/propose")]
-    public async Task<IActionResult> WebsiteStudioAiProposal(
-        [FromBody] WebsiteStudioAiRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
-        if (actor is null) return Unauthorized();
-        var state = await StateAsync(actor, cancellationToken);
-        if (state.Revision != request.ExpectedRevision)
-            return Conflict(new { error = "revision_conflict", revision = state.Revision });
-
-        var document = Read(state.DraftJson);
-        var page = document.Pages.TryGetValue(request.PagePath, out var pageValue)
-            ? pageValue
-            : null;
-        CommerceBusiness? business = null;
-        WebsiteBusinessFacts? facts = null;
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue)
-        {
-            business = await _db.CommerceBusinesses.AsNoTracking()
-                .SingleAsync(value => value.Id == actor.CommerceBusinessId.Value, cancellationToken);
-            facts = await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken);
-        }
-
-        var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
-        var mediaAssets = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
-            .Where(asset => asset.OwnerKey == actor.OwnerUserId)
-            .OrderByDescending(asset => asset.CreatedUtc)
-            .Take(200)
-            .Select(asset => new Infrastructure.WebsiteEditing.WebsiteStudioAiMediaContext(
-                asset.Id,
-                string.IsNullOrWhiteSpace(asset.SourceUrl) ? asset.ContentType : asset.SourceUrl,
-                asset.ContentType,
-                asset.SizeBytes))
-            .ToListAsync(cancellationToken);
-        var siteSource = string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal)
-            ? WebsiteSiteSource.Serialize(document)
-            : null;
-
-        var context = new Infrastructure.WebsiteEditing.WebsiteStudioAiContext(
-            actor.SiteKey,
-            request.PagePath,
-            request.SelectedElementId,
-            request.SelectedSectionId,
-            request.SelectedText,
-            business?.DisplayName,
-            business?.BusinessType,
-            facts?.Services,
-            facts?.Hours,
-            document.Breakpoints,
-            page?.Title,
-            page?.Description,
-            siteSource,
-            ctaOptions.Select(option => new Infrastructure.WebsiteEditing.WebsiteStudioAiActionContext(
-                option.Key,
-                option.Label,
-                option.DefaultText,
-                option.Group)).ToArray(),
-            mediaAssets);
-
-        try
-        {
-            var provider = HttpContext.RequestServices
-                .GetRequiredService<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService>();
-            var proposed = await provider.ProposeAsync(
-                new Infrastructure.WebsiteEditing.WebsiteStudioAiProviderRequest(
-                    request.Mode,
-                    request.Instruction,
-                    context),
-                cancellationToken);
-            var applied = WebsiteStudioAiProposalPolicy.Apply(
-                document,
-                request.Mode,
-                proposed.Summary,
-                request.PagePath,
-                request.SelectedElementId,
-                request.SelectedSectionId,
-                proposed.Operations,
-                ctaOptions.Select(option => option.Key).ToHashSet(StringComparer.Ordinal),
-                mediaAssets.Select(asset => asset.Id).ToHashSet());
-
-            return Ok(new
-            {
-                source = "ai_proposal_preview",
-                baseRevision = state.Revision,
-                applied.Mode,
-                applied.Summary,
-                applied.Operations,
-                proposedDocument = applied.ProposedDocument,
-                persisted = false,
-                published = false
-            });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = "invalid_ai_proposal", message = ex.Message });
-        }
-        catch (TimeoutException)
-        {
-            return StatusCode(StatusCodes.Status504GatewayTimeout,
-                new { error = "website_studio_ai_timeout", message = "Website Studio AI timed out. No draft changes were saved." });
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "website_studio_ai_not_configured")
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                new { error = ex.Message, message = "Website Studio AI is not configured. No draft changes were saved." });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return StatusCode(StatusCodes.Status502BadGateway,
-                new { error = ex.Message, message = "Website Studio AI could not produce a valid proposal. No draft changes were saved." });
-        }
     }
 
     [HttpGet("manage/profile")]
