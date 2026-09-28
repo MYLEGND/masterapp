@@ -148,6 +148,8 @@
     metaConnectionStatus: analyticsEndpoint('/meta-connection-status'),
     metaDisconnect: analyticsEndpoint('/meta-disconnect'),
     marketingSetup: analyticsEndpoint('/marketing-setup'),
+    calendarConnect: analyticsEndpoint('/calendar-connect'),
+    calendarDisconnect: analyticsEndpoint('/calendar-disconnect'),
     openAiConnect: analyticsEndpoint('/openai-connect'),
     openAiRefresh: analyticsEndpoint('/openai-refresh'),
     openAiDisconnect: analyticsEndpoint('/openai-disconnect'),
@@ -5050,7 +5052,9 @@ function escapeHtml(value) {
     const scopeLabel = document.getElementById('marketing-setup-scope-label');
     if (scopeLabel) scopeLabel.textContent = 'Global reporting · no provider owner';
     setMarketingSetupStatus('Select Founder Personal or an individual owner to manage provider connections.', 'error');
-    marketingSetupModal?.querySelectorAll('input,button[type="submit"],#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect').forEach(el => { el.disabled = true; });
+    marketingSetupModal?.querySelectorAll('input,button[type="submit"],#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect,#marketing-setup-calendar-disconnect').forEach(el => { el.disabled = true; });
+    const calendarConnect = document.getElementById('marketing-setup-calendar-connect');
+    if (calendarConnect) { calendarConnect.removeAttribute('href'); calendarConnect.setAttribute('aria-disabled', 'true'); }
     const connect = document.getElementById('marketing-setup-meta-connect');
     if (connect) { connect.removeAttribute('href'); connect.setAttribute('aria-disabled', 'true'); }
     return false;
@@ -5080,11 +5084,19 @@ function escapeHtml(value) {
     return `${endpoints.metaConnect}?${params.toString()}`;
   }
 
+  function marketingSetupCalendarConnectUrl(profileId) {
+    const params = new URLSearchParams();
+    params.set('returnUrl', window.location.pathname + window.location.search);
+    if (profileId && !isBusinessAnalytics) params.set('agentProfileId', profileId);
+    return `${endpoints.calendarConnect}?${params.toString()}`;
+  }
+
   function renderMarketingSetup(payload) {
     if (!payload) return;
     const status = payload.status || {};
     const marketing = payload.marketing || {};
     const booking = payload.booking || {};
+    const calendarConnection = payload.calendar || {};
     const profileId = payload.agentProfileId || marketingSetupAgentProfileId();
 
     const scopeLabel = document.getElementById('marketing-setup-scope-label');
@@ -5121,6 +5133,32 @@ function escapeHtml(value) {
     if (mailbox) mailbox.value = booking.bookingPageIdOrMailbox || '';
     const calendar = document.getElementById('marketing-setup-calendar');
     if (calendar) calendar.value = booking.calendarEmail || '';
+
+    const calendarAccount = document.getElementById('marketing-setup-calendar-account');
+    if (calendarAccount) {
+      calendarAccount.textContent = calendarConnection.connected
+        ? `Microsoft Calendar connected · ${calendarConnection.accountName || calendarConnection.email || 'Authorized account'}`
+        : 'Microsoft Calendar not connected';
+    }
+    const calendarDetail = document.getElementById('marketing-setup-calendar-auth-detail');
+    if (calendarDetail) {
+      const manualTarget = booking.calendarEmail || booking.bookingPageIdOrMailbox || '';
+      calendarDetail.textContent = calendarConnection.connected
+        ? `${calendarConnection.email || 'Authorized Microsoft account'} · ${calendarConnection.authorizationMethod === 'application' ? 'LEGEND managed Microsoft 365 authorization' : 'Owner authorized with Microsoft'}${manualTarget ? ` · Manual target: ${manualTarget}` : ''}`
+        : 'Connect Microsoft to authorize calendar access. Manual fields below select a specific target but do not authenticate it.';
+    }
+    const calendarConnect = document.getElementById('marketing-setup-calendar-connect');
+    if (calendarConnect) {
+      calendarConnect.href = marketingSetupCalendarConnectUrl(profileId);
+      calendarConnect.removeAttribute('aria-disabled');
+      calendarConnect.textContent = calendarConnection.connected ? 'Reconnect Microsoft Calendar' : 'Connect Microsoft Calendar';
+    }
+    const calendarDisconnect = document.getElementById('marketing-setup-calendar-disconnect');
+    if (calendarDisconnect) {
+      calendarDisconnect.hidden = !calendarConnection.connected;
+      calendarDisconnect.dataset.revision = calendarConnection.revision || '';
+      calendarDisconnect.disabled = !calendarConnection.connected;
+    }
 
     const account = document.getElementById('marketing-setup-meta-account');
     if (account) account.textContent = marketing.available === false ? 'Meta status unavailable' : marketing.metaAdsConnected
@@ -5361,6 +5399,32 @@ function escapeHtml(value) {
 
   marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
   marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
+
+  document.getElementById('marketing-setup-calendar-disconnect')?.addEventListener('click', async event => {
+    if (!requireMarketingOwner()) return;
+    const button = event.currentTarget;
+    const revision = button?.dataset?.revision || '';
+    if (!revision) {
+      setMarketingSetupStatus('Reload Marketing Setup before disconnecting Microsoft Calendar.', 'error');
+      return;
+    }
+
+    button.disabled = true;
+    setMarketingSetupStatus('Disconnecting Microsoft Calendar…');
+    try {
+      const body = isBusinessAnalytics
+        ? { connectionRevision: revision }
+        : { agentProfileId: marketingSetupAgentProfileId() || null, connectionRevision: revision };
+      const payload = await fetchPostJson('calendarDisconnect', endpoints.calendarDisconnect, body);
+      renderMarketingSetup(payload);
+      setMarketingSetupStatus('Microsoft Calendar disconnected. Manual scheduler fields were preserved.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to disconnect Microsoft Calendar.', 'error');
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   document.getElementById('marketing-setup-openai-verify')?.addEventListener('click', async event => {
     if (!requireMarketingOwner()) return;
     const button = event.currentTarget;
