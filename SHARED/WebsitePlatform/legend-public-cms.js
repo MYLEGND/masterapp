@@ -1707,6 +1707,14 @@
 
   function syncSectionOrderFromDom() {
     const page = pageState();
+    if (usesCanonicalComposition()) {
+      const roots=page.composition ||= [];
+      const byId=new Map(roots.map(node=>[node.id,node]));
+      const ordered=pageLayerSections().map(section=>byId.get(section.dataset.cmsCompositionId)).filter(Boolean);
+      const orderedIds=new Set(ordered.map(node=>node.id));
+      page.composition=[...ordered,...roots.filter(node=>!orderedIds.has(node.id))];
+      return;
+    }
     page.sectionOrder ||= {};
     const active = new Set();
     pageLayerSections().forEach((section,index)=>{
@@ -1719,6 +1727,7 @@
   }
 
   function applySectionOrder() {
+    if (usesCanonicalComposition()) return;
     const sections=pageLayerSections();
     const position=new Map(sections.map((section,index)=>[section,index]));
     sections.sort((a,b)=>{
@@ -1865,16 +1874,26 @@
     if (description) description.setAttribute('content', metadata.description ?? originalDescription);
 
     document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
+
+    if (usesCanonicalComposition()) {
+      renderCanonicalCompositionPage();
+      // Platform shell presentation remains global and is not duplicated into page source.
+      Object.entries(documentState.elements || {}).forEach(([id, override]) => {
+        const el = findEditableElement(id);
+        applyElementOverride(el, override);
+      });
+      if (SITE_KEY === 'business' && (managementPayload || renderInput))
+        bindBusiness(managementPayload || renderInput);
+      return;
+    }
+
     pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
     pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
-    // Shared shell overrides are document-global and always apply before the
-    // current page's local element map.
+    // v2 compatibility is consumed only until materialization completes.
     Object.entries(documentState.elements || {}).forEach(([id, override]) => {
       const el = findEditableElement(id);
       applyElementOverride(el, override);
     });
-    // Composite children do not exist until their parent extra is rendered.
-    // Re-apply the one canonical page element map after extras exist.
     Object.entries(pageState().elements).forEach(([id, override]) => {
       const el = findEditableElement(id);
       applyElementOverride(el, override);
@@ -1885,6 +1904,12 @@
   }
 
   function refreshResponsiveOverrides() {
+    if (usesCanonicalComposition()) {
+      walkComposition(pageState().composition, node => applyElementOverride(findEditableElement(node.id), node));
+      refreshScaledElements();
+      updateDirectCanvasUi();
+      return;
+    }
     Object.entries(pageState().elements).forEach(([id, override]) => applyElementOverride(findEditableElement(id), override));
     pageState().extras.forEach(extra => {
       const node = document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`);
@@ -1902,7 +1927,12 @@
     if (!business?.id || !business.displayName) throw new Error('This business website is unavailable.');
     BUSINESS_ID = business.id;
     document.querySelectorAll('[data-business-name]').forEach(el => { el.textContent = business.displayName; });
-    document.querySelectorAll('[data-business-field]').forEach(el => { const value = business[el.dataset.businessField]; el.textContent = value || ''; el.hidden = !value; });
+    document.querySelectorAll('[data-business-field]').forEach(el => {
+      const field=el.dataset.businessField;
+      const facts=payload.facts || {};
+      const value = business[field] ?? (field === 'contactEmail' ? facts.contactEmail : field === 'contactPhone' ? facts.phone : null);
+      el.textContent = value || ''; el.hidden = !value;
+    });
 
   }
 
@@ -2067,9 +2097,9 @@
 
   function ensurePageRecord(route) {
     documentState.pages ||= {};
-    if (!documentState.pages[route]) documentState.pages[route]={elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
+    if (!documentState.pages[route]) documentState.pages[route]={elements:{},sectionOrder:{},extras:[],composition:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
     const page=documentState.pages[route];
-    page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+    page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.composition ||= []; page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
     return page;
   }
 
