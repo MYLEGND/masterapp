@@ -116,6 +116,21 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
+    public void WebsiteAnalyticsMobileCascadeRelease_RemainsScopedToSharedAnalyticsHosts()
+    {
+        var root = Root();
+        var request = Read(root, "Docs", "releases", "direct-release-request.json");
+
+        Assert.Contains("\"masterapp-portal\"", request, StringComparison.Ordinal);
+        Assert.Contains("\"masterapp-client\"", request, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"masterapp-protect\"", request, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"masterapp-parfait\"", request, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"masterapp-website\"", request, StringComparison.Ordinal);
+        Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
+        Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AgentAndBusinessAdapters_DelegateToCanonicalInfrastructureServices()
     {
         var root = Root();
