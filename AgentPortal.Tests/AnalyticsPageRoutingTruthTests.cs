@@ -123,7 +123,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         await db.SaveChangesAsync();
 
         var analytics = new AnalyticsQueryService(db, new ConfigurationBuilder().Build());
-        var service = new BusinessWorkspaceService(db, analytics, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics);
         var range = new TimeRangeRequest
         {
             FromUtc = now.AddHours(-1),
