@@ -271,6 +271,7 @@ public static class WebsiteContentSanitizer
                 MediaUrl = mediaUrl,
                 SystemKey = systemKey,
                 SystemBinding = SanitizeSystemBinding(node.SystemBinding),
+                SyncSourceId = type == "reusable" ? NullIfEmpty(SanitizeId(node.SyncSourceId)) : null,
                 Hidden = node.Hidden,
                 Signals = WebsiteSignalBindingPolicy.Validate(node.Signals),
                 Style = SanitizeStyle(node.Style),
