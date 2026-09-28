@@ -361,12 +361,12 @@ public static class WebsiteSiteSource
         return copy;
     }
 
-    private static SortedDictionary<string, WebsiteReusableComponentDefinition> ProtectReusableComponents(
+    private static Dictionary<string, WebsiteReusableComponentDefinition> ProtectReusableComponents(
         IReadOnlyDictionary<string, WebsiteReusableComponentDefinition>? proposed,
         IReadOnlyDictionary<string, WebsiteReusableComponentDefinition>? baseline,
         IReadOnlySet<string> allowedActions)
     {
-        var result = new SortedDictionary<string, WebsiteReusableComponentDefinition>(StringComparer.Ordinal);
+        var result = new Dictionary<string, WebsiteReusableComponentDefinition>(StringComparer.Ordinal);
         foreach (var (key, candidate) in proposed ?? new Dictionary<string, WebsiteReusableComponentDefinition>())
         {
             var next = Clone(candidate);
