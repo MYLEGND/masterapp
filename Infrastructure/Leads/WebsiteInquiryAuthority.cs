@@ -175,7 +175,9 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
             Oppref = lead.Oppref,
-            Obref = OpenAiBrowserReference.Normalize(request.Obref),
+            Obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(Request)
+                ? OpenAiBrowserReference.Normalize(request.Obref)
+                : null,
             PublishedWebsiteVersionId = scope.PublishedVersion?.Id
         });
         lead.LeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));
@@ -355,7 +357,9 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmContent = Optional(request.UtmContent, 160),
             Fbclid = lead.Fbclid,
             Oppref = lead.Oppref,
-            Obref = OpenAiBrowserReference.Normalize(request.Obref),
+            Obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(Request)
+                ? OpenAiBrowserReference.Normalize(request.Obref)
+                : null,
             Fbp = lead.Fbp,
             Fbc = lead.Fbc,
             MetaCampaignId = lead.MetaCampaignId,
