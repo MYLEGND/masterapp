@@ -170,6 +170,19 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void Sanitizer_PreservesExistingRelativeStaticMediaDuringMaterialization()
+    {
+        var document = CanonicalDocument();
+        var image = document.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.image");
+        image.MediaUrl = "/assets/client-hero.webp";
+
+        var clean = WebsiteContentSanitizer.Sanitize(document);
+        var preserved = clean.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.image");
+
+        Assert.Equal("/assets/client-hero.webp", preserved.MediaUrl);
+    }
+
+    [Fact]
     public void PublishResolution_KeepsActionIdentityAndResolvesDestinationServerSide()
     {
         var document = WebsiteContentSanitizer.Sanitize(CanonicalDocument());
