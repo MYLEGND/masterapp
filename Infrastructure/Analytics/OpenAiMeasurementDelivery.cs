@@ -46,6 +46,9 @@ public sealed class OpenAiConversionsApiService(HttpClient httpClient) : IOpenAi
             return Invalid("conversions_api_key_required");
         if (conversion is null || string.IsNullOrWhiteSpace(conversion.Id) || string.IsNullOrWhiteSpace(conversion.Type))
             return Invalid("conversion_event_invalid");
+        if (string.Equals(conversion.Type, "custom", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(conversion.CustomEventName))
+            return Invalid("custom_event_name_required");
 
         var requestBody = new OpenAiConversionsRequest
         {
@@ -57,6 +60,7 @@ public sealed class OpenAiConversionsApiService(HttpClient httpClient) : IOpenAi
                 {
                     Id = conversion.Id,
                     Type = conversion.Type,
+                    CustomEventName = conversion.CustomEventName,
                     TimestampMs = conversion.TimestampMs,
                     Oppref = conversion.Oppref,
                     SourceUrl = conversion.SourceUrl,
@@ -137,6 +141,7 @@ public sealed class OpenAiConversionsApiService(HttpClient httpClient) : IOpenAi
     {
         [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
         [JsonPropertyName("type")] public string Type { get; set; } = string.Empty;
+        [JsonPropertyName("custom_event_name")] public string? CustomEventName { get; set; }
         [JsonPropertyName("timestamp_ms")] public long TimestampMs { get; set; }
         [JsonPropertyName("oppref")] public string? Oppref { get; set; }
         [JsonPropertyName("source_url")] public string SourceUrl { get; set; } = string.Empty;
@@ -179,7 +184,9 @@ public static class OpenAiMeasurementEventMapper
         var destination = MarketingConversionDestinationCatalog.ResolveOpenAi(CanonicalAdvertisingEventProjection.ResolveEventName(row));
         if (destination is null) return false;
 
-        var providerEvent = destination.EventName;
+        var isCustomEvent = destination.Kind == MarketingConversionEventKind.Custom;
+        var providerEvent = isCustomEvent ? "custom" : destination.EventName;
+        var customEventName = isCustomEvent ? destination.EventName : null;
 
         var sourceUrl = SourceUrl(row);
         if (sourceUrl is null) return false;
@@ -240,8 +247,9 @@ public static class OpenAiMeasurementEventMapper
             TimestampMs: new DateTimeOffset(DateTime.SpecifyKind(row.EventUtc, DateTimeKind.Utc)).ToUnixTimeMilliseconds(),
             SourceUrl: sourceUrl,
             ActionSource: "web",
-            Data: new(destination.PayloadType ?? "customer_action", amount, amount.HasValue ? currency : null, contents),
-            Oppref: row.Oppref ?? ReadString(row.MetadataJson, "oppref"));
+            Data: new(isCustomEvent ? "custom" : destination.PayloadType ?? "customer_action", amount, amount.HasValue ? currency : null, contents),
+            Oppref: row.Oppref ?? ReadString(row.MetadataJson, "oppref"),
+            CustomEventName: customEventName);
         return true;
     }
 
@@ -317,6 +325,7 @@ public sealed class OpenAiConversionDispatcherHostedService(
             var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
             if (owner is null) continue;
             if (!OpenAiMeasurementEventMapper.TryMap(source, out var conversion)) continue;
+            var providerEventIdentity = conversion.CustomEventName ?? conversion.Type;
 
             var connection = await connections.GetAsync(owner, ct);
             if (connection.Owner != owner || !connection.Connected || string.IsNullOrWhiteSpace(connection.AccountId) ||
@@ -328,11 +337,11 @@ public sealed class OpenAiConversionDispatcherHostedService(
                 row.Provider == MarketingDestinationKeys.OpenAi &&
                 row.Channel == "server" && row.CanonicalSource == nameof(AnalyticsEvent) &&
                 (row.AnalyticsEventId == source.Id || row.CanonicalEventId == conversion.Id) &&
-                row.ProviderEventName == conversion.Type, ct);
+                row.ProviderEventName == providerEventIdentity, ct);
 
             // Historical delivery identities are read-only resend fences. They
             // never become active AnalyticsEvent receipts or a second dispatcher.
-            if (delivery is null && await FindHistoricalReceiptAsync(db, owner, source, conversion.Type, ct) is not null)
+            if (delivery is null && await FindHistoricalReceiptAsync(db, owner, source, providerEventIdentity, ct) is not null)
                 continue;
             if (delivery is not null) conversion = conversion with { Id = delivery.CanonicalEventId };
 
@@ -356,7 +365,7 @@ public sealed class OpenAiConversionDispatcherHostedService(
                     ConversionDataSourceId = connection.ConversionDataSourceId,
                     CanonicalEventId = conversion.Id,
                     CanonicalEventName = source.EventType,
-                    ProviderEventName = conversion.Type,
+                    ProviderEventName = providerEventIdentity,
                     PixelId = connection.PixelId!,
                     Status = "pending",
                     CreatedUtc = now,

@@ -77,6 +77,7 @@ public sealed record UnifiedEventContext
     public string? UtmMedium { get; init; }
     public string? UtmCampaign { get; init; }
     public string? UtmId { get; init; }
+    public string? UtmTerm { get; init; }
     public string? UtmContent { get; init; }
     public string? MetaCampaignId { get; init; }
     public string? MetaAdSetId { get; init; }

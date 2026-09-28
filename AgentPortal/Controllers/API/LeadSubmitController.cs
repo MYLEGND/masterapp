@@ -212,6 +212,8 @@ public class LeadSubmitController : ControllerBase
                 UtmMedium = lead.UtmMedium,
                 UtmCampaign = lead.UtmCampaign,
                 UtmId = lead.UtmId,
+                UtmTerm = req.UtmTerm,
+                UtmContent = req.UtmContent,
                 Fbclid = lead.Fbclid,
                 Oppref = lead.Oppref,
                 MetaCampaignId = lead.MetaCampaignId,

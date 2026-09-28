@@ -33,7 +33,8 @@ public sealed record OpenAiConversionEvent(
     string SourceUrl,
     string ActionSource,
     OpenAiConversionData Data,
-    string? Oppref = null);
+    string? Oppref = null,
+    string? CustomEventName = null);
 
 public sealed record OpenAiConversionsApiResult(
     bool Attempted,
