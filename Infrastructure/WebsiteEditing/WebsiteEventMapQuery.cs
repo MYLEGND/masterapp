@@ -133,8 +133,22 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                     Add(page, key, label, action, null, behavior, false);
                 }
             }
+            void Composition(string page, IEnumerable<WebsiteCompositionNode> nodes)
+            {
+                foreach (var node in nodes ?? [])
+                {
+                    Element(page, node.Id, node.Text ?? node.Title, node.ActionKey, node.Signals);
+                    Composition(page, node.Children);
+                }
+            }
+
             foreach (var page in document.Pages)
             {
+                if (string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
+                {
+                    Composition(page.Key, page.Value.Composition);
+                    continue;
+                }
                 foreach (var element in page.Value.Elements) Element(page.Key, element.Key, element.Value.Text, element.Value.ActionKey, element.Value.Signals);
                 foreach (var extra in page.Value.Extras) Element(page.Key, "extra:" + extra.Id, extra.Text ?? extra.Title, extra.ActionKey, extra.Signals);
             }
