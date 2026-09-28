@@ -2103,12 +2103,8 @@
     return page;
   }
 
-  async function navigateToEditorPage(route) {
-    if (route === '__store__') { openStorePreview(); return; }
-    closeStorePreview();
-    route=normalizePageRoute(route); if(!route) return;
-    if (saving) { const status=document.getElementById('legend-cms-status'); if(status) status.textContent='Wait for the current save to finish, then choose a page.'; return; }
-    if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
+  function editorUrlForRoute(route, materialize = false) {
+    route=normalizePageRoute(route); if(!route) return null;
     const templates=templatePageEntries();
     const entry=websitePageEntries(true).find(value=>value.route===route);
     const url=new URL(location.origin);
@@ -2122,7 +2118,84 @@
       url.pathname=prefix + (route==='/'?'/':route);
     }
     url.searchParams.set('legendEdit',editorTicket);
-    location.assign(url.toString());
+    if(materialize) url.searchParams.set('legendMaterialize','1');
+    return url;
+  }
+
+  async function navigateToEditorPage(route) {
+    if (route === '__store__') { openStorePreview(); return; }
+    closeStorePreview();
+    route=normalizePageRoute(route); if(!route) return;
+    if (saving) { const status=document.getElementById('legend-cms-status'); if(status) status.textContent='Wait for the current save to finish, then choose a page.'; return; }
+    if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
+    const url=editorUrlForRoute(route);
+    if(url) location.assign(url.toString());
+  }
+
+  function currentMaterializedPage() {
+    return {
+      route:currentPageRoute(),
+      title:pageState().title ?? originalTitle,
+      description:pageState().description ?? originalDescription,
+      composition:materializeCurrentPageComposition()
+    };
+  }
+
+  async function requestMaterializedPage(route) {
+    if(route===currentPageRoute()) return currentMaterializedPage();
+    const url=editorUrlForRoute(route,true);
+    if(!url) throw new Error('Unable to resolve page '+route+' for Site Source migration.');
+    return await new Promise((resolve,reject)=>{
+      const frame=document.createElement('iframe');
+      frame.hidden=true;
+      frame.setAttribute('aria-hidden','true');
+      frame.src=url.toString();
+      const timeout=setTimeout(()=>finish(new Error('Timed out while materializing '+route+'.')),20000);
+      const onMessage=event=>{
+        if(event.origin!==location.origin || event.source!==frame.contentWindow) return;
+        if(event.data?.type!=='legend-site-materialized-page') return;
+        if(normalizePageRoute(event.data.route)!==route) return;
+        finish(null,event.data);
+      };
+      const finish=(error,value)=>{
+        clearTimeout(timeout); window.removeEventListener('message',onMessage); frame.remove();
+        error ? reject(error) : resolve(value);
+      };
+      window.addEventListener('message',onMessage);
+      document.body.appendChild(frame);
+    });
+  }
+
+  async function materializeCanonicalSite() {
+    if(usesCanonicalComposition()) return true;
+    const status=document.getElementById('legend-cms-status');
+    const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
+    const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
+    const snapshots=[];
+    for(const route of routes){
+      if(status) status.textContent='Preparing Site Source · '+(snapshots.length+1)+'/'+routes.length;
+      snapshots.push(await requestMaterializedPage(route));
+    }
+
+    const next=normalizeDocument(documentState);
+    for(const snapshot of snapshots){
+      const route=normalizePageRoute(snapshot.route); if(!route) throw new Error('Materialized page route was invalid.');
+      const page=next.pages[route] || {navigation:{showInNavigation:true,order:0,isDeleted:false}};
+      page.title=snapshot.title ?? page.title;
+      page.description=snapshot.description ?? page.description;
+      page.composition=Array.isArray(snapshot.composition)?snapshot.composition:[];
+      page.elements={}; page.sectionOrder={}; page.extras=[]; delete page.templatePath;
+      next.pages[route]=page;
+    }
+    next.version=3;
+    next.compositionMode='canonical';
+    documentState=normalizeDocument(next);
+    dirty=true;
+    const saved=await save(false);
+    if(!saved || dirty) throw new Error('Site Source migration could not be saved.');
+    applyDocument(documentState);
+    if(status) status.textContent='Site Source ready · one canonical composition graph';
+    return true;
   }
 
   function renderPageManager() {
@@ -4815,6 +4888,18 @@
       revision = payload.revision;
       namedDrafts = payload.drafts || [];
       applyDocument(payload.document || {});
+
+      if(materializeMode){
+        const snapshot=currentMaterializedPage();
+        window.parent?.postMessage({type:'legend-site-materialized-page',...snapshot},location.origin);
+        document.documentElement.hidden=false;
+        return;
+      }
+
+      if(!usesCanonicalComposition()){
+        await materializeCanonicalSite();
+      }
+
       preservePreviewNavigation();
       signalCatalog = Array.isArray(payload.signalCatalog?.events) && Array.isArray(payload.signalCatalog?.matchingFields)
         ? payload.signalCatalog : null;
@@ -4855,7 +4940,7 @@
 
   document.addEventListener('DOMContentLoaded', async () => {
     injectContentStyles();
-    if (editorMode) await loadEditor();
+    if (editorMode || materializeMode) await loadEditor();
     else {
       try { await loadPublic(); await startPublicRuntime(); }
       catch (error) { unavailable(error); }
