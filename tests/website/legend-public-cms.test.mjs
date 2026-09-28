@@ -298,7 +298,7 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},store=null,denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,aiPayload=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},store=null,denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,aiPayload=null,sourceValidationPayload=null,capabilities=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example'+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -307,7 +307,7 @@ async function domFixture({siteKey='legend',doc={},store=null,denied=false,searc
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/ai/propose')) return {ok:!denied,status:denied?401:200,json:async()=>aiPayload || {source:'ai_proposal_preview',baseRevision:'r1',summary:'No changes',operations:[],proposedDocument:doc,persisted:false,published:false}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/ai/propose')) return {ok:!denied,status:denied?401:200,json:async()=>aiPayload || {source:'ai_proposal_preview',baseRevision:'r1',summary:'No changes',operations:[],proposedDocument:doc,persisted:false,published:false}}; if(parsed.pathname.endsWith('/manage/source/validate')) return {ok:!denied,status:denied?401:200,json:async()=>sourceValidationPayload || {source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:doc,deletedKeys:[],sourceMap:{}}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,capabilities:capabilities || undefined})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -318,6 +318,68 @@ async function domFixture({siteKey='legend',doc={},store=null,denied=false,searc
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
   return {w,calls,animations,click,input,change,editSelected,save,close:()=>w.close()};
 }
+
+test('v3 canonical composition renders natively and canvas/source share the same node',async()=>{
+  const doc={version:3,compositionMode:'canonical',elements:{},extras:[],store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},pages:{'/':{
+    title:'Home',description:'Canonical home',navigation:{label:'Home',showInNavigation:true,order:0,isDeleted:false},elements:{},sectionOrder:{},extras:[],composition:[
+      {id:'home.hero',type:'section',tag:'section',className:'hero',signals:[],style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],children:[
+        {id:'home.hero.title',type:'heading',tag:'h1',text:'Canonical title',signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]},
+        {id:'home.hero.cta',type:'cta',tag:'a',text:'Contact us',actionKey:'legend_contact',href:'/contact',signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]}
+      ]}
+    ]}},breakpoints:[{key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},{key:'tablet',label:'Tablet',minWidth:768,maxWidth:1199,isSystem:true},{key:'desktop',label:'Desktop',minWidth:1200,maxWidth:null,isSystem:true}],theme:{},reusableComponents:{},collections:{}};
+  const f=await domFixture({doc,ctaCatalog:[{key:'legend_contact',group:'Contact',label:'Contact',defaultText:'Contact',href:'/contact',analyticsEventName:'cta_click',behaviorKey:'cta_click'}]});
+  try{
+    const heading=f.w.document.querySelector('main h1');
+    assert.equal(heading.textContent,'Canonical title');
+    assert.equal(heading.dataset.cmsCompositionId,'home.hero.title');
+    assert.equal(f.w.document.querySelector('main a').dataset.websiteActionKey,'legend_contact');
+    f.click('main h1');
+    f.click('[data-open="source"]');
+    assert.equal(f.w.document.querySelector('#legend-cms-source-scope').value,'selection');
+    let parsed=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
+    assert.equal(parsed.id,'home.hero.title');
+    f.input('#legend-cms-width','55');
+    parsed=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
+    assert.equal(parsed.style.widthPercent,55);
+    const saved=await f.save();
+    assert.equal(saved.pages['/'].composition[0].children[0].style.widthPercent,55);
+    assert.deepEqual(saved.pages['/'].elements,{});
+    assert.deepEqual(saved.pages['/'].extras,[]);
+  }finally{f.close();}
+});
+
+test('v3 selected source applies only validated server projection then uses normal save authority',async()=>{
+  const original={version:3,compositionMode:'canonical',elements:{},extras:[],pages:{'/':{title:'Home',description:'',navigation:{label:'Home',showInNavigation:true,order:0,isDeleted:false},elements:{},sectionOrder:{},extras:[],composition:[
+    {id:'hero',type:'section',tag:'section',signals:[],style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],children:[
+      {id:'hero.title',type:'heading',tag:'h1',text:'Before',signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]}
+    ]}
+  }},breakpoints:[],theme:{},reusableComponents:{},collections:{},store:{enabled:false}};
+  const proposed=structuredClone(original); proposed.pages['/'].composition[0].children[0].text='After';
+  const f=await domFixture({doc:original,sourceValidationPayload:{source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:proposed,deletedKeys:[],sourceMap:{}}});
+  try{
+    f.click('main h1'); f.click('[data-open="source"]');
+    const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
+    const selected=JSON.parse(sourceInput.value); selected.text='After';
+    sourceInput.value=JSON.stringify(selected,null,2);
+    sourceInput.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    f.click('#legend-cms-source-apply');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.w.document.querySelector('main h1').textContent,'After');
+    const validation=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/source/validate'));
+    assert.ok(validation);
+    const save=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage') && JSON.parse(call.body).document?.compositionMode==='canonical');
+    assert.ok(save);
+  }finally{f.close();}
+});
+
+test('v3 migration is authorized by the management capability rather than browser inference',()=>{
+  assert.match(source,/payload\.capabilities\?\.compositionV3===true/);
+  assert.match(source,/legendMaterialize/);
+  assert.match(source,/materializeCanonicalSite/);
+  assert.match(source,/page\.elements=\{\}; page\.sectionOrder=\{\}; page\.extras=\[\]; delete page\.templatePath/);
+});
+
 test('public runtime binds autonomous Meta contact tracking to the actual generated inquiry form id',()=>{
   assert.ok(source.includes("formId: inquiryForm?.id || inquiryForm?.dataset.formKey || ''"));
   assert.ok(metaSignalSource.includes('function wireContactInputs()'));
@@ -1449,7 +1511,8 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
-      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 15);
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 5);
+      assert.deepEqual([...f.w.document.querySelectorAll('.legend-cms-tabs [data-open]')].map(button=>button.textContent),['AI Build','Source','Media','Publish','Advanced']);
       assert.ok(f.w.document.querySelector('[data-open="signals"]'));
       assert.ok(f.w.document.querySelector('[data-open="quality"]'));
       assert.ok(f.w.document.querySelector('[data-open="collaboration"]'));
