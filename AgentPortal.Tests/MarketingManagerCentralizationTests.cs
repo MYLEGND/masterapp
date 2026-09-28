@@ -98,6 +98,18 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("grid-template-columns: 1fr;\n        align-items: stretch;", css, StringComparison.Ordinal);
         Assert.Contains(".wa-growth-economics-grid {\n    grid-template-columns: 1fr;\n    overflow: visible;", css, StringComparison.Ordinal);
         Assert.Contains(".wa-growth-economics-card {\n    min-width: 0;", css, StringComparison.Ordinal);
+
+        Assert.Contains("/* Canonical Core Metrics card system. */", css, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            css.Split(".wa-kpi-command-surface .fa-kpi-grid .kpi-card {", StringSplitOptions.None).Length - 1);
+        Assert.Equal(
+            0,
+            css.Split("\n.fa-kpi-grid .kpi-card {", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("grid-template-columns: repeat(5, minmax(190px, 1fr));", css, StringComparison.Ordinal);
+        Assert.Contains("grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));", css, StringComparison.Ordinal);
+        Assert.Contains(".wa-channel-grid {\n    grid-template-columns: 1fr;", css, StringComparison.Ordinal);
+        Assert.Contains(".wa-channel-loading {\n    min-width: 0;", css, StringComparison.Ordinal);
     }
 
     [Fact]
