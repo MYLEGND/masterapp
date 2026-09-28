@@ -17,7 +17,7 @@
     let initialized = false;
 
     // ── DOM refs (resolved once on init) ──────────────────────────────────────
-    let backdrop, modalRoot, panel, btnClose;
+    let modalRoot, panel, btnClose;
     let elTitle, elRange, elLoading, elError, elErrorMsg, elEmpty, elContent;
     let elStatTiles, elChartCanvas, elBreakdown;
 
@@ -100,47 +100,29 @@
 
     // ── Modal open / close ────────────────────────────────────────────────────
     function showModal() {
-        if (!backdrop || !modalRoot || !panel) return;
+        if (!modalRoot || !panel) return;
         closing = false;
-        backdrop.hidden = false;
         modalRoot.hidden = false;
-        backdrop.classList.remove('kpi-closing');
-        panel.classList.remove('kpi-closing');
+        modalRoot.classList.add('is-open');
         document.body.style.overflow = 'hidden';
         isOpen = true;
-        // Focus the close button for keyboard users
         setTimeout(() => btnClose && btnClose.focus(), 60);
     }
 
-    function hideModal(animate = true) {
+    function hideModal() {
         if (!isOpen || closing) return;
         closing = true;
+        modalRoot.classList.remove('is-open');
+        modalRoot.hidden = true;
+        document.body.style.overflow = '';
+        isOpen = false;
+        closing = false;
 
-        if (animate) {
-            backdrop.classList.add('kpi-closing');
-            panel.classList.add('kpi-closing');
-            setTimeout(() => {
-                backdrop.hidden = true;
-                modalRoot.hidden = true;
-                document.body.style.overflow = '';
-                isOpen = false;
-                closing = false;
-            }, 160);
-        } else {
-            backdrop.hidden = true;
-            modalRoot.hidden = true;
-            document.body.style.overflow = '';
-            isOpen = false;
-            closing = false;
-        }
-
-        // Cancel any in-flight fetch
         if (activeFetchController) {
             activeFetchController.abort();
             activeFetchController = null;
         }
 
-        // Destroy chart to release memory
         destroyChart();
     }
 
@@ -507,35 +489,9 @@
 
         let modal = document.getElementById('visitorTimelineModal');
 
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'visitorTimelineModal';
-            modal.className = 'vc-modal-backdrop';
+        if (!modal) return;
 
-            modal.innerHTML = `
-                <div class="vc-modal-panel">
-                    <div class="vc-modal-header">
-                        <div>
-                            <div class="vc-modal-kicker">
-                                Visitor Intelligence
-                            </div>
-                            <h3>Visitor Timeline</h3>
-                        </div>
-
-                        <button type="button" class="vc-modal-close" aria-label="Close visitor timeline modal">
-                            &times;
-                        </button>
-                    </div>
-
-                    <div class="vc-modal-body"></div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-        }
-
-        modal.classList.add('vc-modal-backdrop');
-
+        
         if (!modal.dataset.timelineBound) {
             const closeTimelineModal = () => {
                 modal.classList.remove('is-open');
@@ -543,24 +499,17 @@
                 document.body.style.overflow = '';
             };
 
-            modal.querySelector('.vc-modal-close')
+            modal.querySelector('[data-wa-modal-close]')
                 ?.addEventListener('click', closeTimelineModal);
 
             modal.addEventListener('click', e => {
-                const isBackdropClick = e.target === modal
-                    || (e.target instanceof Element
-                        && e.target.classList.contains('vc-modal-backdrop')
-                        && !e.target.closest('.vc-modal-panel'));
-
-                if (isBackdropClick) {
-                    closeTimelineModal();
-                }
+                if (e.target === modal) closeTimelineModal();
             });
 
             modal.dataset.timelineBound = 'true';
         }
 
-        const body = modal.querySelector('.vc-modal-body');
+        const body = modal.querySelector('[data-vc-modal-body]');
 
         body.innerHTML = `
             <div class="vc-modal-stats">
@@ -651,31 +600,9 @@
     function openVisitorConcentrationModal(rows) {
         let modal = document.getElementById('visitorConcentrationModal');
 
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'visitorConcentrationModal';
-            modal.className = 'vc-modal-backdrop';
-            modal.innerHTML = `
-                <div class="vc-modal-panel" role="dialog" aria-modal="true" aria-labelledby="visitorConcentrationModalTitle">
-                    <div class="vc-modal-header">
-                        <div>
-                            <div class="vc-modal-kicker">Unique Visitor Trust Check</div>
-                            <h3 id="visitorConcentrationModalTitle">Visitor Concentration Breakdown</h3>
-                            <p>Ranked by recurring visits first, then event volume. Use this to see whether traffic is spread across real visitors or inflated by a few repeat users.</p>
-                        </div>
-                        <div class="vc-modal-header-actions">
-                            <button type="button" class="vc-modal-copy" data-default-label="Copy All">Copy All</button>
-                            <button type="button" class="vc-modal-close" aria-label="Close visitor concentration modal">&times;</button>
-                        </div>
-                    </div>
-                    <div class="vc-modal-body" id="visitorConcentrationModalBody"></div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
+        if (!modal) return;
 
-        modal.classList.add('vc-modal-backdrop');
-
+        
         if (!modal.dataset.concentrationBound) {
             const closeConcentrationModal = () => {
                 modal.classList.remove('is-open');
@@ -683,17 +610,10 @@
                 document.body.style.overflow = '';
             };
 
-            modal.querySelector('.vc-modal-close')?.addEventListener('click', closeConcentrationModal);
+            modal.querySelector('[data-wa-modal-close]')?.addEventListener('click', closeConcentrationModal);
 
             modal.addEventListener('click', e => {
-                const isBackdropClick = e.target === modal
-                    || (e.target instanceof Element
-                        && e.target.classList.contains('vc-modal-backdrop')
-                        && !e.target.closest('.vc-modal-panel'));
-
-                if (isBackdropClick) {
-                    closeConcentrationModal();
-                }
+                if (e.target === modal) closeConcentrationModal();
             });
 
             modal.querySelector('.vc-modal-copy')?.addEventListener('click', async event => {
@@ -1137,7 +1057,6 @@
         if (initialized) return;
         initialized = true;
 
-        backdrop    = document.getElementById('kpiDetailBackdrop');
         modalRoot   = document.getElementById('kpiDetailModal');
         btnClose    = document.getElementById('kpiDetailClose');
         elTitle     = document.getElementById('kpiDetailTitle');
@@ -1156,22 +1075,7 @@
             return;
         } // guard: markup not present
 
-        // Build the panel wrapper inside modalRoot (replaces the raw children layout)
-        // The modal HTML in the view has header + body as direct children of #kpiDetailModal.
-        // Wrap them in .kpi-detail-panel for flex layout and animation target.
-        const header = modalRoot.querySelector('.kpi-detail-header');
-        const body   = modalRoot.querySelector('.kpi-detail-body');
-        if (header && body) {
-            const panelEl = document.createElement('div');
-            panelEl.className = 'kpi-detail-panel';
-            panelEl.setAttribute('role', 'document');
-            modalRoot.insertBefore(panelEl, header);
-            panelEl.appendChild(header);
-            panelEl.appendChild(body);
-            panel = panelEl;
-        } else {
-            panel = modalRoot;
-        }
+        panel = modalRoot.querySelector('.wa-modal-shell') || modalRoot;
 
         // KPI card click handlers
         document.addEventListener('click', event => {
@@ -1199,19 +1103,19 @@
 
         // Close button
         if (btnClose) {
-            btnClose.addEventListener('click', () => hideModal(true));
+            btnClose.addEventListener('click', () => hideModal());
         }
 
-        // Backdrop click closes
-        if (backdrop) {
-            backdrop.addEventListener('click', () => hideModal(true));
-        }
+        // Clicking the standalone overlay outside the shared shell closes it.
+        modalRoot.addEventListener('click', event => {
+            if (event.target === modalRoot) hideModal();
+        });
 
         // ESC key closes
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape' && isOpen) {
                 e.preventDefault();
-                hideModal(true);
+                hideModal();
             }
         });
 

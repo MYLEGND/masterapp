@@ -1,13 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to canonically replace split Microsoft calendar configuration with owner-scoped authenticated calendar connections, preserve manual calendar target fields, validate without regressing the proven Founder flow, merge through legend/approved-changes, and deploy only the affected AgentPortal, ClientApp, and Protect applications while preserving successful unrelated targets. This request also explicitly authorizes recovery of the direct-release dispatch after the validated calendar repair merged without publication.",
-  "purpose": "Dispatch the already-validated canonical Microsoft Calendar repair now present on legend/approved-changes. Deploy only AgentPortal, ClientApp, and Protect; Parfait and the static LEGEND website remain excluded.",
-  "requestId": "canonical-calendar-auth-dispatch-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to replace the broken Website Analytics mobile Core Metrics and Growth Economics layout and consolidate every Website Analytics modal onto the one canonical clean shared modal UI, validate the exact replacement, merge through legend/approved-changes, and deploy only affected applications without restarting successful unrelated releases.",
+  "purpose": "Deploy the canonical Website Analytics presentation repair. AgentPortal owns the shared Website Analytics view, stylesheet, and KPI modal runtime; ClientApp consumes those exact linked canonical assets. Protect, Parfait, and the static LEGEND website are unaffected and must not be redeployed.",
+  "requestId": "website-analytics-mobile-modal-ui-20260928",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect"
+    "masterapp-client"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
