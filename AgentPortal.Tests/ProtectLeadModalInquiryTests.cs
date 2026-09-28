@@ -94,6 +94,9 @@ public sealed class ProtectLeadModalInquiryTests
         controller.Request.Scheme = "https";
         controller.Request.Host = new HostString("protect.mylegnd.com");
         controller.Request.Headers["Referer"] = "https://protect.mylegnd.com/a/agent-one/";
+        controller.Request.Headers["User-Agent"] = "canonical-agent";
+        controller.Request.Headers["X-Forwarded-For"] = "203.0.113.20";
+        controller.Request.Headers["Cookie"] = "__oppref=canonical-oppref; __obref=canonical-obref; _fbp=fb-browser; _fbc=fb-click";
 
         var result = await controller.SubmitLead(new TrackingProxyController.LeadSubmitRequest
         {
@@ -113,6 +116,55 @@ public sealed class ProtectLeadModalInquiryTests
         using var json = JsonDocument.Parse(handler.Body!);
         Assert.Equal("agent-one", json.RootElement.GetProperty("AgentSlug").GetString());
         Assert.Equal(profile.Id, json.RootElement.GetProperty("AgentTrackingProfileId").GetGuid());
+        Assert.Equal("canonical-oppref", json.RootElement.GetProperty("Oppref").GetString());
+        Assert.Equal("canonical-obref", json.RootElement.GetProperty("Obref").GetString());
+        Assert.Equal("fb-browser", json.RootElement.GetProperty("Fbp").GetString());
+        Assert.Equal("fb-click", json.RootElement.GetProperty("Fbc").GetString());
+        Assert.Equal("203.0.113.20", json.RootElement.GetProperty("ClientIpAddress").GetString());
+        Assert.Equal("canonical-agent", json.RootElement.GetProperty("ClientUserAgent").GetString());
+    }
+
+    [Fact]
+    public async Task CentralLeadSubmit_PersistsCanonicalProviderMatchingContext()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = SeedAgent(db);
+        var sender = new Mock<IEmailSender>(MockBehavior.Strict);
+        sender.Setup(x => x.TrySendAsync(
+                profile.AgentUpn,
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>()))
+            .ReturnsAsync(true);
+
+        var controller = BuildCentralController(db, sender.Object);
+        var request = Request(profile);
+        request.Oppref = "canonical-oppref";
+        request.Obref = "canonical-obref";
+        request.Fbp = "fb-browser";
+        request.Fbc = "fb-click";
+        request.ClientIpAddress = "203.0.113.20";
+        request.ClientUserAgent = "canonical-agent";
+
+        Assert.IsType<OkObjectResult>(await controller.Submit(request));
+
+        var lead = Assert.Single(db.WebsiteLeads);
+        Assert.Equal("canonical-oppref", lead.Oppref);
+        Assert.Equal("fb-browser", lead.Fbp);
+        Assert.Equal("fb-click", lead.Fbc);
+        Assert.Equal("203.0.113.20", lead.ClientIpAddress);
+        Assert.Equal("canonical-agent", lead.ClientUserAgent);
+
+        var source = Assert.Single(db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted"));
+        Assert.Equal("canonical-oppref", source.Oppref);
+        Assert.Equal("canonical-obref", CanonicalAdvertisingEventProjection.ReadString(source.MetadataJson, "obref"));
+        Assert.Equal("fb-browser", CanonicalAdvertisingEventProjection.ReadString(source.MetadataJson, "fbp"));
+        Assert.Equal("fb-click", CanonicalAdvertisingEventProjection.ReadString(source.MetadataJson, "fbc"));
+        Assert.Equal("203.0.113.20", source.IpAddress);
+        Assert.Equal("canonical-agent", source.UserAgent);
     }
 
     [Fact]
