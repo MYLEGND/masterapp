@@ -85,15 +85,9 @@
     ContactStepAbandon: -8
   });
 
-  const DEFAULT_META_BROWSER_EVENTS = [
-    'LeadFormStart',
-    'DiscoveryComplete',
-    'RecommendationViewed',
-    'ContactStepReached',
-    'HighIntentLeadSignal',
-    'LeadReadySignal',
-    'AbandonedHighIntentLead'
-  ];
+  // Fail closed to the same low-noise browser optimization surface exposed by
+  // the server catalog. Rich behavior still persists through canonical analytics.
+  const DEFAULT_META_BROWSER_EVENTS = ['ViewContent'];
 
   function uuidNoDash() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
