@@ -210,20 +210,33 @@ public sealed class OpenAiClickReferenceLineageTests
         Assert.Contains("ResolveOpenAiBrowserReference(Request)", risk, StringComparison.Ordinal);
         Assert.DoesNotContain("Request.Cookies[\"__obref\"]", risk, StringComparison.Ordinal);
         var tracking = File.ReadAllText(Path.Combine(root, "SHARED", "WebsitePlatform", "tracking.js"));
-        Assert.Contains("navigator.globalPrivacyControl === true ? null : readFirstPartyCookie('__obref')", tracking, StringComparison.Ordinal);
+        Assert.Contains("Obref: measurementAllowed() ? readFirstPartyCookie('__obref') : null", tracking, StringComparison.Ordinal);
     }
 
     [Fact]
     public void OpenAiBrowserReferenceHonorsGlobalPrivacyControlAtCanonicalBuilder()
     {
         var allowed = new Microsoft.AspNetCore.Http.DefaultHttpContext();
-        allowed.Request.Headers.Cookie = "__obref=browser-reference";
-        Assert.Equal("browser-reference", UnifiedEventContextBuilder.Build(allowed).Obref);
+        allowed.Request.Headers.Cookie = "__obref=browser-reference; _fbp=fb-browser; _fbc=fb-click";
+        var allowedContext = UnifiedEventContextBuilder.Build(allowed);
+        Assert.Equal("browser-reference", allowedContext.Obref);
+        Assert.Equal("fb-browser", allowedContext.Fbp);
+        Assert.Equal("fb-click", allowedContext.Fbc);
 
         var blocked = new Microsoft.AspNetCore.Http.DefaultHttpContext();
-        blocked.Request.Headers.Cookie = "__obref=browser-reference";
+        blocked.Request.Headers.Cookie = "__obref=browser-reference; _fbp=fb-browser; _fbc=fb-click";
         blocked.Request.Headers["Sec-GPC"] = "1";
-        Assert.Null(UnifiedEventContextBuilder.Build(blocked).Obref);
+        var blockedContext = UnifiedEventContextBuilder.Build(blocked);
+        Assert.Null(blockedContext.Obref);
+        Assert.Null(blockedContext.Fbp);
+        Assert.Null(blockedContext.Fbc);
+
+        var denied = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        denied.Request.Headers.Cookie = "legend_measurement_consent=denied; __obref=browser-reference; _fbp=fb-browser; _fbc=fb-click";
+        var deniedContext = UnifiedEventContextBuilder.Build(denied);
+        Assert.Null(deniedContext.Obref);
+        Assert.Null(deniedContext.Fbp);
+        Assert.Null(deniedContext.Fbc);
     }
 
     [Fact]
