@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Infrastructure.Leads;
 using Domain.Entities;
 using Infrastructure.Analytics;
 using Infrastructure.Data;
@@ -11,7 +10,7 @@ using Shared.Crm;
 
 namespace Infrastructure.Businesses;
 
-public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, WebsiteIntakeRecipientResolver recipients, IConfiguration? configuration = null)
+public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, IConfiguration? configuration = null)
 {
     public async Task<List<BusinessWorkspaceNavigationItem>> NavigationForBusinessAsync(Guid? businessId, string actor, string? email, CancellationToken ct)
     {
