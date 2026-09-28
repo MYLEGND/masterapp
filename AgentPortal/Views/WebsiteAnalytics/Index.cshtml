@@ -393,33 +393,33 @@
                     <div class="hero-link-kicker">Shared Command Area</div>
                     <div class="hero-link-title-row">
                         <h3 class="hero-link-title">Marketing Links</h3>
-                        <a class="btn" href="@Url.Action("EventMap", "WebsiteAnalytics", new { agentProfileId = Context.Request.Query["agentProfileId"].ToString(), team = Context.Request.Query["team"].ToString() })">Event Map</a>
-                        <button type="button"
-                                class="btn marketing-setup-trigger"
-                                id="marketing-setup-open"
-                                data-bs-toggle="modal"
-                                data-bs-target="#marketingSetupModal"
-                                aria-controls="marketingSetupModal">
-                            Marketing Setup
-                        </button>
-                        <button type="button"
-                                class="btn advertising-command-trigger"
-                                id="advertising-command-open"
-                                data-bs-toggle="modal"
-                                data-bs-target="#advertisingCommandModal"
-                                aria-controls="advertisingCommandModal">
-                            Advertising Command Center
-                        </button>
-
-
-                        <button type="button"
-                                class="btn marketing-manager-trigger"
-                                id="marketing-manager-open"
-                                data-bs-toggle="modal"
-                                data-bs-target="#marketingManagerModal"
-                                aria-controls="marketingManagerModal">
-                            Marketing Manager
-                        </button>
+                        <div class="hero-link-command-actions" role="group" aria-label="Marketing command shortcuts">
+                            <a class="btn event-map-trigger" href="@Url.Action("EventMap", "WebsiteAnalytics", new { agentProfileId = Context.Request.Query["agentProfileId"].ToString(), team = Context.Request.Query["team"].ToString() })">Event Map</a>
+                            <button type="button"
+                                    class="btn marketing-setup-trigger"
+                                    id="marketing-setup-open"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#marketingSetupModal"
+                                    aria-controls="marketingSetupModal">
+                                Marketing Setup
+                            </button>
+                            <button type="button"
+                                    class="btn advertising-command-trigger"
+                                    id="advertising-command-open"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#advertisingCommandModal"
+                                    aria-controls="advertisingCommandModal">
+                                Advertising Command Center
+                            </button>
+                            <button type="button"
+                                    class="btn marketing-manager-trigger"
+                                    id="marketing-manager-open"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#marketingManagerModal"
+                                    aria-controls="marketingManagerModal">
+                                Marketing Manager
+                            </button>
+                        </div>
                      </div>
                     <div class="hero-link-subtitle text-silver">Open the website and jump into behavior review fast. Meta Ads controls now live inside Core Metrics for quicker access.</div>
                 </div>

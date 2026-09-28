@@ -30,6 +30,33 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
+    public void SharedAnalyticsUi_CommandRailAndEventMapUseCanonicalAnalyticsPresentation()
+    {
+        var root = Root();
+        var view = Read(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml");
+        var eventMap = Read(root, "AgentPortal", "Views", "WebsiteAnalytics", "EventMap.cshtml");
+        var css = Read(root, "AgentPortal", "wwwroot", "css", "website-analytics.css");
+
+        Assert.Contains("class=\"hero-link-command-actions\"", view, StringComparison.Ordinal);
+        Assert.Contains("class=\"btn event-map-trigger\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-setup-open\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"advertising-command-open\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"marketing-manager-open\"", view, StringComparison.Ordinal);
+
+        Assert.Contains("href=\"~/css/website-analytics.css\"", eventMap, StringComparison.Ordinal);
+        Assert.Contains("wa-event-map-page", eventMap, StringComparison.Ordinal);
+        Assert.Contains("wa-event-map-table", eventMap, StringComparison.Ordinal);
+        Assert.Contains("Back to Website Analytics", eventMap, StringComparison.Ordinal);
+
+        Assert.Contains(".hero-link-command-actions", css, StringComparison.Ordinal);
+        Assert.Contains(".event-map-trigger", css, StringComparison.Ordinal);
+        Assert.Contains(".wa-event-map-page", css, StringComparison.Ordinal);
+        Assert.Contains(".wa-event-map-table", css, StringComparison.Ordinal);
+        Assert.Contains("color: #b9ffd8;", css, StringComparison.Ordinal);
+        Assert.Contains("color: #8fe7ff;", css, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AgentAndBusinessAdapters_DelegateToCanonicalInfrastructureServices()
     {
         var root = Root();

@@ -1,15 +1,67 @@
 @model IReadOnlyList<Infrastructure.WebsiteEditing.WebsiteEventMapQuery.Entry>
-@{ ViewData["Title"] = "Event Map"; }
-<div class="container-fluid py-4">
-<h1>Event Map</h1>
-<p>Published configuration and delivery evidence from the last 30 days. Automatic outcomes are locked to their authoritative source. “Not observed” is not a delivery failure. Unpublished drafts do not change this map.</p>
-<div class="table-responsive"><table class="table table-striped">
-<thead><tr><th>Owner / site</th><th>Page / element</th><th>Visible label</th><th>Action key / binding</th><th>Behavior / canonical event</th><th>Authority / mode</th><th>Meta / OpenAI mapping</th><th>Published version</th><th>Analytics / Meta / OpenAI status</th></tr></thead>
-<tbody>
-@foreach (var row in Model)
-{
-<tr><td>@row.Owner<br/>@row.Site</td><td>@row.Page<br/>@row.Element</td><td>@row.VisibleLabel</td><td><code>@row.ActionKey</code><br/>@row.Binding</td><td>@row.BehaviorKey<br/><code>@row.CanonicalEvent</code></td><td>@row.Authority<br/>@row.Mode @(row.Locked ? "(locked)" : "")</td><td>@(row.MetaMapping ?? "not mapped")<br/>@(row.OpenAiMapping ?? "not mapped")</td><td>@(row.PublishedVersion?.ToString() ?? "not published")</td><td>@row.AnalyticsStatus<br/>@row.MetaStatus<br/>@row.OpenAiStatus</td></tr>
+@{
+    ViewData["Title"] = "Event Map";
+    var agentProfileId = Context.Request.Query["agentProfileId"].ToString();
+    var team = Context.Request.Query["team"].ToString();
+    var analyticsUrl = Url.Action("Index", "WebsiteAnalytics", new
+    {
+        agentProfileId = string.IsNullOrWhiteSpace(agentProfileId) ? null : agentProfileId,
+        team = string.IsNullOrWhiteSpace(team) ? null : team
+    });
 }
-</tbody></table></div>
-@if (Model.Count == 0) { <p>No website publication is available in this reporting scope.</p> }
+
+<link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
+
+<div class="legend-workspace-page fa-shell wa-event-map-page">
+    <section class="wa-event-map-hero" aria-labelledby="event-map-title">
+        <div>
+            <div class="wa-header-kicker">LEGEND&#8482; &middot; Performance Intelligence</div>
+            <h1 class="wa-event-map-title" id="event-map-title">Event Map</h1>
+            <p class="wa-event-map-subtitle">
+                Published configuration and delivery evidence from the last 30 days. Automatic outcomes are locked to their authoritative source.
+                “Not observed” is not a delivery failure. Unpublished drafts do not change this map.
+            </p>
+        </div>
+        <a class="btn event-map-back-trigger" href="@analyticsUrl">Back to Website Analytics</a>
+    </section>
+
+    <section class="wa-event-map-surface" aria-label="Published event configuration and delivery evidence">
+        <div class="wa-event-map-table-shell">
+            <table class="table wa-event-map-table">
+                <thead>
+                    <tr>
+                        <th>Owner / site</th>
+                        <th>Page / element</th>
+                        <th>Visible label</th>
+                        <th>Action key / binding</th>
+                        <th>Behavior / canonical event</th>
+                        <th>Authority / mode</th>
+                        <th>Meta / OpenAI mapping</th>
+                        <th>Published version</th>
+                        <th>Analytics / Meta / OpenAI status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in Model)
+                {
+                    <tr>
+                        <td><strong>@row.Owner</strong><span>@row.Site</span></td>
+                        <td><strong>@row.Page</strong><span>@row.Element</span></td>
+                        <td>@row.VisibleLabel</td>
+                        <td><code>@row.ActionKey</code><span>@row.Binding</span></td>
+                        <td><strong>@row.BehaviorKey</strong><code>@row.CanonicalEvent</code></td>
+                        <td><strong>@row.Authority</strong><span>@row.Mode @(row.Locked ? "(locked)" : "")</span></td>
+                        <td><strong>@(row.MetaMapping ?? "not mapped")</strong><span>@(row.OpenAiMapping ?? "not mapped")</span></td>
+                        <td>@(row.PublishedVersion?.ToString() ?? "not published")</td>
+                        <td><strong>@row.AnalyticsStatus</strong><span>@row.MetaStatus</span><span>@row.OpenAiStatus</span></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        @if (Model.Count == 0)
+        {
+            <div class="wa-event-map-empty">No website publication is available in this reporting scope.</div>
+        }
+    </section>
 </div>
