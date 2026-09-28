@@ -246,3 +246,47 @@ test('explicit template action retains legacy click instrumentation without a se
   assert.equal(f.events.filter(e=>e.EventType==='quote_cta_click').length,0);
  }finally{f.dom.window.close();}
 });
+
+
+test('canonical measurement consent blocks provider cookies and browser projections while first-party analytics continues', async()=>{
+  const f=fixture();
+  try {
+    const w=f.window, pixels=[], openai=[];
+    Object.defineProperty(w.navigator,'globalPrivacyControl',{value:true,configurable:true});
+    w.document.cookie='__obref=browser-ref; Path=/';
+    w.document.cookie='_fbp=fb-browser; Path=/';
+    w.document.cookie='_fbc=fb-click; Path=/';
+    w.eval(source);
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(w.LegendAnalytics.measurementConsent.isAllowed(),false);
+    assert.equal(f.events.filter(e=>e.EventType==='page_view').length,1);
+    assert.equal(w.document.cookie.includes('__obref='),false);
+    assert.equal(w.document.cookie.includes('_fbp='),false);
+    assert.equal(w.document.cookie.includes('_fbc='),false);
+
+    w.fbq=(...args)=>pixels.push(args);
+    w.oaiq=(...args)=>openai.push(args);
+    w.eval(readFileSync(new URL('../../SHARED/WebsitePlatform/meta-signal-intelligence.js',import.meta.url),'utf8'));
+    w.metaSignalIntelligence.createLandingSession({enabled:true,sendBrowserEvents:true,sendServerEvents:true,persistEvents:true,pixelId:'meta-test',siteKey:'protect',pageKey:'home',browserEventNames:['ViewContent'],browserSignalEventNames:['ViewContent']});
+    w.eval(readFileSync(new URL('../../SHARED/WebsitePlatform/openai-measurement.js',import.meta.url),'utf8'));
+    await w.LegendOpenAiMeasurement.configure({pixelId:'openai-test'});
+    assert.equal(pixels.some(args=>args[0]==='trackSingle'),false);
+    assert.equal(openai.some(args=>args[0]==='measureSingle'),false);
+    assert.equal(openai.some(args=>args[0]==='init'),false);
+  } finally { f.dom.window.close(); }
+});
+
+test('canonical measurement consent choice is shared with every provider adapter', async()=>{
+  const f=fixture();
+  try {
+    const w=f.window;
+    w.eval(source);
+    assert.equal(w.LegendAnalytics.measurementConsent.isAllowed(),true);
+    const denied=w.LegendAnalytics.measurementConsent.set(false,'test');
+    assert.equal(denied.allowed,false);
+    assert.match(w.document.cookie,/legend_measurement_consent=denied/);
+    const granted=w.LegendAnalytics.measurementConsent.set(true,'test');
+    assert.equal(granted.allowed,true);
+    assert.match(w.document.cookie,/legend_measurement_consent=granted/);
+  } finally { f.dom.window.close(); }
+});
