@@ -637,6 +637,8 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         var owner = MarketingOwnerScope.Business(businessId);
         var profileService = ActivatorUtilities.CreateInstance<Infrastructure.WebsiteEditing.BusinessWebsiteProfileService>(HttpContext.RequestServices);
         var profile = await profileService.GetAsync(businessId, cancellationToken);
+        var calendarAuthority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+        var calendarConnection = await calendarAuthority.GetAsync(owner, cancellationToken);
         var setup = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingProviderSetupProjection>()
             .ReadAsync(owner, cancellationToken);
         var evidence = setup.Evidence;
@@ -665,7 +667,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 openAiReady = accountReady,
                 bookingPersonalLive = profile.Settings.BookingEnabled &&
                     (!string.IsNullOrWhiteSpace(profile.Settings.BookingEmbedUrl) || !string.IsNullOrWhiteSpace(profile.Settings.BookingFallbackUrl)),
-                calendarLinked = !string.IsNullOrWhiteSpace(profile.Settings.BookingCalendarEmail)
+                calendarLinked = calendarConnection.Connected
             },
             marketing = new
             {
@@ -721,6 +723,18 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                     recentProviderEvents = openAiHealth.RecentProviderEvents
                 }
             },
+            calendar = new
+            {
+                connected = calendarConnection.Connected,
+                revision = calendarConnection.Revision,
+                accountName = calendarConnection.AccountName,
+                email = calendarConnection.Email,
+                authorizationMethod = calendarConnection.AuthorizationMethod,
+                permissions = calendarConnection.Permissions,
+                connectedUtc = calendarConnection.ConnectedUtc,
+                lastVerifiedUtc = calendarConnection.LastVerifiedUtc,
+                accessTokenExpiresUtc = calendarConnection.AccessTokenExpiresUtc
+            },
             booking = new
             {
                 revision = profile.Settings.ProfileRevision,
@@ -731,6 +745,97 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 calendarEmail = profile.Settings.BookingCalendarEmail
             }
         });
+    }
+
+    public sealed record BusinessCalendarConnectionRevisionRequest(Guid ConnectionRevision);
+
+    [HttpGet("analytics/calendar-connect")]
+    public async Task<IActionResult> CalendarConnect(
+        Guid businessId,
+        [FromQuery] string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var fallback = $"/business/{businessId:D}/analytics";
+        try
+        {
+            var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/business/calendar-callback";
+            var authority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+            var target = Url.IsLocalUrl(returnUrl) ? returnUrl! : fallback;
+            return Redirect(authority.BuildConnectUrl(
+                MarketingOwnerScope.Business(businessId),
+                target,
+                callback));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Redirect($"{fallback}?calendar=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("/business/calendar-callback")]
+    public async Task<IActionResult> CalendarCallback(
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
+        CancellationToken cancellationToken = default)
+    {
+        var fallback = "/";
+        try
+        {
+            var authority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+            var inspected = authority.InspectState(state ?? string.Empty);
+            var businessId = inspected.Owner.CommerceBusinessId
+                ?? throw new InvalidOperationException("Microsoft Calendar OAuth state is not business-scoped.");
+            fallback = $"/business/{businessId:D}/analytics";
+            if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+            var target = Url.IsLocalUrl(inspected.ReturnUrl) ? inspected.ReturnUrl : fallback;
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+                return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}calendar=error&message={Uri.EscapeDataString(message)}");
+            }
+
+            var connected = await authority.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, cancellationToken);
+            if (connected.Owner != inspected.Owner || !connected.Connected)
+                throw new InvalidOperationException("Microsoft Calendar authorization could not be verified for this business.");
+
+            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}calendar=connected");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Redirect($"{fallback}{(fallback.Contains('?') ? '&' : '?')}calendar=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpPost("analytics/calendar-disconnect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CalendarDisconnect(
+        Guid businessId,
+        [FromBody] BusinessCalendarConnectionRevisionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var authority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+        try
+        {
+            await authority.DisconnectAsync(
+                MarketingOwnerScope.Business(businessId),
+                request.ConnectionRevision,
+                cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { message = "Microsoft Calendar connection changed. Reload and try again." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
+        return await MarketingSetup(businessId, cancellationToken);
     }
 
     [HttpPost("analytics/marketing-setup")]
