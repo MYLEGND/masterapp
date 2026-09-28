@@ -90,7 +90,7 @@ namespace Protect_Website.Controllers
                     IsInternal = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request.Host.Host),
                     CreatedUtc = DateTime.UtcNow, Status = "New",
                     MetadataJson = OpenAiAttributionMetadata.WithBrowserReference(
-                        JsonSerializer.Serialize(model), Request.Cookies["__obref"])
+                        JsonSerializer.Serialize(model), UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request))
                 };
                 WebsiteLifeLeadCaptureResult captured = null!;
                 if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, Request.Form["SubmissionId"].FirstOrDefault(), ct, async _ =>
@@ -117,9 +117,7 @@ namespace Protect_Website.Controllers
                     SessionId = lead.SessionId,
                     VisitorId = lead.VisitorId,
                     Oppref = lead.Oppref,
-                    Obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(Request)
-                        ? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"])
-                        : null,
+                    Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request),
                     AgentTrackingProfileId = lead.AgentTrackingProfileId,
                     AgentSlug = lead.AgentSlug,
                     Environment = lead.Environment,
@@ -134,9 +132,7 @@ namespace Protect_Website.Controllers
                     eventName: "website_lead_submitted",
                     leadId: lead.LeadId,
                     sessionId: lead.SessionId,
-                    payload: new { LeadId = lead.LeadId, canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(Request)
-                            ? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"])
-                            : null, CrmCaptured = captured.Captured },
+                    payload: new { LeadId = lead.LeadId, canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request), CrmCaptured = captured.Captured },
                     isBrowserSignal: false,
                     isServerAuthority: true,
                     metaServerAuthorityEligible: true,
