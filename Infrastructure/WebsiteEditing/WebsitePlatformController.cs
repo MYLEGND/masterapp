@@ -1768,7 +1768,22 @@ public class WebsitePlatformController : ControllerBase
             return false;
 
         IEnumerable<WebsiteSignalBinding>? bindings = null;
-        if (elementId.StartsWith("extra:", StringComparison.Ordinal))
+
+        if (string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
+        {
+            WebsiteCompositionNode? Find(IEnumerable<WebsiteCompositionNode> nodes)
+            {
+                foreach (var node in nodes ?? [])
+                {
+                    if (node.Id == elementId) return node;
+                    var child = Find(node.Children);
+                    if (child is not null) return child;
+                }
+                return null;
+            }
+            bindings = Find(page.Composition)?.Signals;
+        }
+        else if (elementId.StartsWith("extra:", StringComparison.Ordinal))
         {
             var id = elementId.Split(':', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
             bindings = page.Extras.FirstOrDefault(extra => extra.Id == id)?.Signals;
