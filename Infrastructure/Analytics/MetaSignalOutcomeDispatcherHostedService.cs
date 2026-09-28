@@ -683,54 +683,13 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             customData["source_analytics_event_id"] = MetaSignalAnalyticsBridgeMetadata.ReadInt64(row.MetadataJson, "sourceAnalyticsEventId");
         }
 
-        if (IsProductionValueEvent(row.EventName) &&
-            TryReadPositiveDecimal(row.MetadataJson, "personalAmount", out var personalAmount))
+        if (CanonicalConversionValueProjection.Resolve(row.MetadataJson) is { } canonicalValue)
         {
-            customData["value"] = decimal.Round(personalAmount, 2);
-            customData["currency"] = "USD";
-        }
-
-        if (string.Equals(row.EventName, "Purchase", StringComparison.OrdinalIgnoreCase) &&
-            TryReadPositiveDecimal(row.MetadataJson, "valueCents", out var valueCents))
-        {
-            customData["value"] = decimal.Round(valueCents / 100m, 2);
-            customData["currency"] = FirstNonBlank(ReadMetadataString(row.MetadataJson, "currency"), "USD");
+            customData["value"] = decimal.Round(canonicalValue.AmountMinorUnits / 100m, 2);
+            customData["currency"] = canonicalValue.Currency;
         }
 
         return customData;
-    }
-
-    private static bool IsProductionValueEvent(string? eventName)
-        => string.Equals(eventName, "ApplicationSubmitted", StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(eventName, "PolicyIssued", StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(eventName, "PolicyPaid", StringComparison.OrdinalIgnoreCase);
-
-    private static bool TryReadPositiveDecimal(string? metadataJson, string propertyName, out decimal value)
-    {
-        value = 0;
-
-        if (string.IsNullOrWhiteSpace(metadataJson))
-            return false;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(metadataJson);
-            if (!doc.RootElement.TryGetProperty(propertyName, out var element))
-                return false;
-
-            if (element.ValueKind == JsonValueKind.Number && element.TryGetDecimal(out value))
-                return value > 0;
-
-            if (element.ValueKind == JsonValueKind.String &&
-                decimal.TryParse(element.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out value))
-                return value > 0;
-        }
-        catch
-        {
-            value = 0;
-        }
-
-        return false;
     }
 
     private static string? ResolveEventSourceUrl(MetaSignalEvent row, WebsiteLead? websiteLead)
