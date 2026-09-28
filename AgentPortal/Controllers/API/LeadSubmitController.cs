@@ -70,6 +70,10 @@ public class LeadSubmitController : ControllerBase
         public string? Fbclid { get; set; }
         public string? Oppref { get; set; }
         public string? Obref { get; set; }
+        public string? Fbp { get; set; }
+        public string? Fbc { get; set; }
+        public string? ClientIpAddress { get; set; }
+        public string? ClientUserAgent { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }
@@ -181,6 +185,10 @@ public class LeadSubmitController : ControllerBase
             MetaAdId = string.IsNullOrWhiteSpace(req.MetaAdId) ? null : req.MetaAdId.Trim(),
             Fbclid = string.IsNullOrWhiteSpace(req.Fbclid) ? null : req.Fbclid.Trim(),
             Oppref = OpenAiClickReference.Normalize(req.Oppref),
+            Fbp = string.IsNullOrWhiteSpace(req.Fbp) ? null : req.Fbp.Trim(),
+            Fbc = string.IsNullOrWhiteSpace(req.Fbc) ? null : req.Fbc.Trim(),
+            ClientIpAddress = string.IsNullOrWhiteSpace(req.ClientIpAddress) ? null : req.ClientIpAddress.Trim(),
+            ClientUserAgent = string.IsNullOrWhiteSpace(req.ClientUserAgent) ? null : req.ClientUserAgent.Trim(),
             SessionId = string.IsNullOrWhiteSpace(req.SessionId) ? null : req.SessionId.Trim(),
             VisitorId = string.IsNullOrWhiteSpace(req.VisitorId) ? null : req.VisitorId.Trim(),
             MarketingEmailConsent = req.MarketingEmailConsent,
@@ -218,6 +226,10 @@ public class LeadSubmitController : ControllerBase
                 Fbclid = lead.Fbclid,
                 Oppref = lead.Oppref,
                 Obref = OpenAiBrowserReference.Normalize(req.Obref),
+                Fbp = lead.Fbp,
+                Fbc = lead.Fbc,
+                UserAgent = lead.ClientUserAgent,
+                IpAddress = lead.ClientIpAddress,
                 MetaCampaignId = lead.MetaCampaignId,
                 MetaAdSetId = lead.MetaAdSetId,
                 MetaAdId = lead.MetaAdId,
