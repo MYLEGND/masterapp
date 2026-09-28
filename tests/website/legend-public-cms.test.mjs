@@ -298,7 +298,7 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},store=null,denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,aiPayload=null,sourceValidationPayload=null,capabilities=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},store=null,denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,sourceValidationPayload=null,capabilities=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example'+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -307,7 +307,7 @@ async function domFixture({siteKey='legend',doc={},store=null,denied=false,searc
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/ai/propose')) return {ok:!denied,status:denied?401:200,json:async()=>aiPayload || {source:'ai_proposal_preview',baseRevision:'r1',summary:'No changes',operations:[],proposedDocument:doc,persisted:false,published:false}}; if(parsed.pathname.endsWith('/manage/source/validate')) return {ok:!denied,status:denied?401:200,json:async()=>sourceValidationPayload || {source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:doc,deletedKeys:[],sourceMap:{}}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,capabilities:capabilities || undefined})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/source/validate')) return {ok:!denied,status:denied?401:200,json:async()=>sourceValidationPayload || {source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:doc,deletedKeys:[],sourceMap:{}}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,capabilities:capabilities || undefined})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -550,84 +550,33 @@ test('Collaboration source remains private management metadata and never joins p
   assert.equal(source.includes('pageState().comments'),false);
 });
 
-test('AI Assist generates a review-only proposal then uses normal save authority after explicit apply', async()=>{
-  const proposed={
-    version:2,
-    breakpoints:[
-      {key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},
-      {key:'tablet',label:'Tablet',minWidth:768,maxWidth:1199,isSystem:true},
-      {key:'desktop',label:'Desktop',minWidth:1200,maxWidth:null,isSystem:true}
-    ],
-    pages:{
-      '/':{
-        title:'Home',
-        navigation:{showInNavigation:true,order:0,isDeleted:false},
-        elements:{'home.h1.template-title.1':{text:'AI proposed headline',style:{}}},
-        sectionOrder:{},
-        extras:[]
-      }
-    },
-    elements:{},sectionOrder:{},extras:[],reusableComponents:{},collections:{},theme:{}
-  };
-  const f=await domFixture({aiPayload:{
-    source:'ai_proposal_preview',
-    baseRevision:'r1',
-    summary:'Improve the selected heading.',
-    operations:[{kind:'set_text',text:'AI proposed headline'}],
-    proposedDocument:proposed,
-    persisted:false,
-    published:false
-  }});
+test('GPT browser workspace exposes the canonical editor without any app-side OpenAI request path', async()=>{
+  const f=await domFixture();
   try{
-    f.click('main h1');
-    f.click('[data-open="ai"]');
-    f.change('#legend-cms-ai-mode','create');
-    f.input('#legend-cms-ai-prompt','Improve this headline.');
-    f.click('#legend-cms-ai-generate');
-    await new Promise(resolve=>setTimeout(resolve,0));
-
-    const aiCall=f.calls.find(call=>new URL(call.url).pathname.endsWith('/manage/ai/propose'));
-    assert.ok(aiCall);
-    const aiRequest=JSON.parse(aiCall.body);
-    assert.equal(aiRequest.ticket,'ticket');
-    assert.equal(aiRequest.expectedRevision,'r1');
-    assert.equal(aiRequest.pagePath,'/');
-    assert.equal(aiRequest.selectedElementId,'home.h1.node.1');
-    assert.equal(aiRequest.selectedText,'Template title');
-    assert.equal(f.calls.some(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage'),false);
-    assert.equal(f.w.document.querySelector('main h1').textContent,'Template title');
-    assert.match(f.w.document.querySelector('#legend-cms-ai-proposal').textContent,/Improve the selected heading/);
-    assert.equal(f.w.document.querySelector('#legend-cms-ai-apply').disabled,false);
-
-    f.click('#legend-cms-ai-apply');
-    assert.equal(f.w.document.querySelector('main h1').textContent,'AI proposed headline');
-    assert.match(f.w.document.querySelector('#legend-cms-ai-status').textContent,/local draft/);
-
-    const saved=await f.save();
-    assert.equal(saved.pages['/'].elements['home.h1.template-title.1'].text,'AI proposed headline');
-    assert.ok(f.calls.some(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage'));
+    f.click('[data-open="gpt"]');
+    const workspace=f.w.document.querySelector('#legend-cms-browser-agent-workspace');
+    assert.ok(workspace);
+    assert.equal(workspace.dataset.agentWorkspace,'browser-only');
+    assert.equal(workspace.dataset.externalAiApi,'false');
+    assert.match(workspace.textContent,/authorized browser session/i);
+    assert.match(workspace.textContent,/No website content is sent to OpenAI by this application/i);
+    assert.ok(f.w.document.querySelector('[data-agent-action="master-source"]'));
+    assert.ok(f.w.document.querySelector('[data-agent-action="media-library"]'));
+    assert.ok(f.w.document.querySelector('[data-agent-action="quality-preflight"]'));
+    assert.ok(f.w.document.querySelector('[data-agent-action="publish-workspace"]'));
+    f.click('#legend-cms-agent-master-source');
+    assert.equal(f.w.document.querySelector('[data-cms-view="source"]').hidden,false);
+    assert.equal(f.w.document.querySelector('#legend-cms-source-scope').value,'site');
+    assert.equal(f.calls.some(call=>new URL(call.url).pathname.includes('/manage/ai/')),false);
   } finally { f.close(); }
 });
 
-test('AI Assist discards proposal without changing the current canvas', async()=>{
-  const proposed={version:2,pages:{'/':{elements:{'home.h1.template-title.1':{text:'Should not apply'}},sectionOrder:{},extras:[],navigation:{showInNavigation:true}}},elements:{},sectionOrder:{},extras:[],theme:{}};
-  const f=await domFixture({aiPayload:{source:'ai_proposal_preview',baseRevision:'r1',summary:'Discard me',operations:[{kind:'set_text',text:'Should not apply'}],proposedDocument:proposed,persisted:false,published:false}});
-  try{
-    f.click('main h1'); f.click('[data-open="ai"]'); f.change('#legend-cms-ai-mode','create'); f.input('#legend-cms-ai-prompt','Draft a change.');
-    f.click('#legend-cms-ai-generate'); await new Promise(resolve=>setTimeout(resolve,0));
-    f.click('#legend-cms-ai-discard');
-    assert.equal(f.w.document.querySelector('main h1').textContent,'Template title');
-    assert.equal(f.w.document.querySelector('#legend-cms-ai-apply').disabled,true);
-    assert.equal(f.calls.some(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage'),false);
-  } finally { f.close(); }
-});
-
-test('AI Assist source keeps provider proposal separate from normal draft persistence',()=>{
-  assert.ok(source.includes("payload.source!=='ai_proposal_preview'"));
-  assert.ok(source.includes("payload.persisted!==false"));
-  assert.ok(source.includes("payload.published!==false"));
-  assert.ok(source.includes("applyDocument(pendingAiProposal.proposedDocument)"));
-  assert.equal(source.includes("/manage/ai/propose/publish"),false);
+test('shared Website Studio contains no app-side OpenAI proposal endpoint',()=>{
+  assert.equal(source.includes('/manage/ai/propose'),false);
+  assert.equal(source.includes('ai_proposal_preview'),false);
+  assert.equal(source.includes('pendingAiProposal'),false);
+  assert.ok(source.includes('externalAiApi'));
+  assert.ok(source.includes('browser-only'));
 });
 
 test('public declarative click motion plays once and is not duplicated by responsive refresh',async()=>{
@@ -1512,7 +1461,7 @@ for (const siteKey of ['legend', 'protect', 'business']) {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
       assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 5);
-      assert.deepEqual([...f.w.document.querySelectorAll('.legend-cms-tabs [data-open]')].map(button=>button.textContent),['AI Build','Source','Media','Publish','Advanced']);
+      assert.deepEqual([...f.w.document.querySelectorAll('.legend-cms-tabs [data-open]')].map(button=>button.textContent),['GPT Workspace','Source','Media','Publish','Advanced']);
       assert.ok(f.w.document.querySelector('[data-open="signals"]'));
       assert.ok(f.w.document.querySelector('[data-open="quality"]'));
       assert.ok(f.w.document.querySelector('[data-open="collaboration"]'));
