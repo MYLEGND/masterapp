@@ -59,7 +59,7 @@
         utmContent: attribution.utmContent || null,
         fbclid: attribution.fbclid || null,
         oppref: attribution.oppref || null,
-        obref: cookie('__obref'),
+        obref: navigator.globalPrivacyControl === true ? null : cookie('__obref'),
         fbp: cookie('_fbp'),
         fbc: cookie('_fbc'),
         metaCampaignId: attribution.metaCampaignId || null,
