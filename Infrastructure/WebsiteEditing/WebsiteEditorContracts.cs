@@ -47,6 +47,12 @@ public sealed class WebsiteContentDocument
     public Dictionary<string, WebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, WebsiteCollectionDefinition> Collections { get; set; } = new(StringComparer.Ordinal);
     public WebsiteThemeOverride Theme { get; set; } = new();
+
+    // "canonical" means every managed page is owned by its v3 Composition graph.
+    // Null/legacy documents are materialized from the effective current runtime once,
+    // then this marker is persisted and the v2 page-local override path is retired.
+    public string? CompositionMode { get; set; }
+
     public DateTime? UpdatedUtc { get; set; }
 }
 
@@ -148,7 +154,7 @@ public sealed class WebsiteThemeOverride
 
 public static class WebsiteStudioContract
 {
-    public const int CurrentDocumentVersion = 2;
+    public const int CurrentDocumentVersion = 3;
 
     public static List<WebsiteBreakpointDefinition> DefaultBreakpoints() =>
     [
@@ -241,12 +247,48 @@ public sealed class WebsitePageDocument
 {
     public string? Title { get; set; }
     public string? Description { get; set; }
+
+    // Legacy template identity is read only during v2 -> v3 materialization. Once a
+    // page has Composition nodes, the composition graph is the complete page authority.
     public string? TemplatePath { get; set; }
     public WebsitePageNavigation Navigation { get; set; } = new();
     public WebsiteDynamicPageBinding? DynamicBinding { get; set; }
+
+    // v3 canonical page composition. Ordered nodes are rendered directly by the shared
+    // website runtime. Stable node IDs are also the source-map IDs used by canvas/source/AI.
+    public List<WebsiteCompositionNode> Composition { get; set; } = new();
+
+    // v2 compatibility input only. Sanitization clears these page-local override stores
+    // once Composition is present so a v3 page never has two editing authorities.
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteExtraComponent> Extras { get; set; } = new();
+}
+
+public sealed class WebsiteCompositionNode
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Type { get; set; } = "text";
+    public string? Tag { get; set; }
+    public string? ClassName { get; set; }
+    public string? Text { get; set; }
+    public string? Title { get; set; }
+    public string? ActionKey { get; set; }
+    public string? Href { get; set; }
+    public string? Target { get; set; }
+    public string? Alt { get; set; }
+    public Guid? MediaAssetId { get; set; }
+    public string? MediaUrl { get; set; }
+    public string? SystemKey { get; set; }
+    public bool? Hidden { get; set; }
+    public List<WebsiteSignalBinding> Signals { get; set; } = new();
+    public WebsiteStyleOverride Style { get; set; } = new();
+    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteLayoutOverride Layout { get; set; } = new();
+    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
+    public List<WebsiteAnimationBinding> Animations { get; set; } = new();
+    public WebsiteDataBinding? DataBinding { get; set; }
+    public List<WebsiteCompositionNode> Children { get; set; } = new();
 }
 
 public sealed class WebsiteNamedDraft
