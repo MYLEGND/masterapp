@@ -157,8 +157,12 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmId = Optional(request.UtmId, 160),
             Fbclid = Optional(request.Fbclid, 120),
             Oppref = OpenAiClickReference.Normalize(request.Oppref),
-            Fbp = Optional(request.Fbp, 512),
-            Fbc = Optional(request.Fbc, 512),
+            Fbp = UnifiedEventContextBuilder.CanUseMarketingIdentifiers(Request)
+                ? Optional(request.Fbp, 512)
+                : null,
+            Fbc = UnifiedEventContextBuilder.CanUseMarketingIdentifiers(Request)
+                ? Optional(request.Fbc, 512)
+                : null,
             MetaCampaignId = Optional(request.MetaCampaignId, 200),
             MetaAdSetId = Optional(request.MetaAdSetId, 200),
             MetaAdId = Optional(request.MetaAdId, 200),
