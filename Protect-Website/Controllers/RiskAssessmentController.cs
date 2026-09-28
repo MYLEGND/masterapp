@@ -88,7 +88,9 @@ namespace Protect_Website.Controllers
                     Oppref = OpenAiClickReference.Normalize(model.Oppref ?? Request.Form["Oppref"].FirstOrDefault()),
                     Host = Request.Host.ToString(), Environment = EnvironmentLabelResolver.Resolve(),
                     IsInternal = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request.Host.Host),
-                    CreatedUtc = DateTime.UtcNow, Status = "New", MetadataJson = JsonSerializer.Serialize(model)
+                    CreatedUtc = DateTime.UtcNow, Status = "New",
+                    MetadataJson = OpenAiAttributionMetadata.WithBrowserReference(
+                        JsonSerializer.Serialize(model), Request.Cookies["__obref"])
                 };
                 WebsiteLifeLeadCaptureResult captured = null!;
                 if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, Request.Form["SubmissionId"].FirstOrDefault(), ct, async _ =>
