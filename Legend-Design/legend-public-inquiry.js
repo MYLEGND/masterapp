@@ -33,6 +33,7 @@
       const fields = new FormData(form);
       const analytics = window.LegendAnalytics;
       const attribution = analytics?.ids?.getAttribution?.() || {};
+      const measurementAllowed = analytics?.measurementConsent?.isAllowed?.() === true;
       const cookie = name => document.cookie.split(';').map(value => value.trim())
         .find(value => value.startsWith(name + '='))?.slice(name.length + 1) || null;
 
@@ -59,9 +60,9 @@
         utmContent: attribution.utmContent || null,
         fbclid: attribution.fbclid || null,
         oppref: attribution.oppref || null,
-        obref: navigator.globalPrivacyControl === true ? null : cookie('__obref'),
-        fbp: cookie('_fbp'),
-        fbc: cookie('_fbc'),
+        obref: measurementAllowed ? cookie('__obref') : null,
+        fbp: measurementAllowed ? cookie('_fbp') : null,
+        fbc: measurementAllowed ? cookie('_fbc') : null,
         metaCampaignId: attribution.metaCampaignId || null,
         metaAdSetId: attribution.metaAdSetId || null,
         metaAdId: attribution.metaAdId || null
