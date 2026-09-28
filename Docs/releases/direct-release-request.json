@@ -1,12 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to resume the failed Website Analytics mobile cascade release from the discover-live gate only, preserve successful validation and deployment work, use the canonical replacement repair already merged, and deploy only AgentPortal and ClientApp.",
-  "purpose": "Publish the validated Website Analytics mobile cascade cleanup from an exact validated approved head. No product CSS override is added. Protect, Parfait, Website, Cloudflare routing, analytics calculations, ads authority, CRM, and booking remain untouched.",
-  "requestId": "website-analytics-mobile-cascade-validated-head-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the validated canonical advertising optimization parity repair after isolated green validation, preserve successful work, and publish only the affected AgentPortal, Protect, Parfait, and LEGEND Website targets. ClientApp and Cloudflare routing are explicitly excluded.",
+  "purpose": "Publish the canonical low-noise Meta/OpenAI optimization repair already merged into legend/approved-changes. Keep rich first-party analytics internal, share only the low-noise browser page-view signal across Meta and OpenAI, preserve high-value server outcome delivery, and use the shared provider-neutral conversion destination catalog for Meta CAPI translation.",
+  "requestId": "canonical-ad-optimization-parity-20260928",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
-    "masterapp-client"
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
