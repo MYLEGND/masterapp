@@ -24,7 +24,6 @@ public sealed record CommerceSignalContext(
     string? ClientIpAddress = null,
     string? Fbclid = null,
     string? Oppref = null,
-    string? Obref = null,
     string? Fbc = null,
     string? Fbp = null,
     DateTime? EventUtc = null,
@@ -40,7 +39,8 @@ public sealed record CommerceSignalContext(
     string? UtmContent = null,
     string? MetaCampaignId = null,
     string? MetaAdSetId = null,
-    string? MetaAdId = null);
+    string? MetaAdId = null,
+    string? Obref = null);
 
 public sealed record CommerceSignalCustomer(
     string? FirstName,
