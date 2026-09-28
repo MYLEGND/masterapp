@@ -49,6 +49,11 @@ public sealed class LaunchAuditCompletionTests
         var replay = await competitor.WebsiteLeads.SingleAsync();
         Assert.False(await WebsiteLeadSubmission.TryClaimNotificationAsync(competitor, replay));
         await WebsiteLeadSubmission.CompleteNotificationAsync(db, lead, false);
+        Assert.NotNull(lead.NotificationAttemptUtc);
+        Assert.False(await WebsiteLeadSubmission.TryClaimNotificationAsync(competitor, replay));
+
+        lead.NotificationAttemptUtc = DateTime.UtcNow - WebsiteLeadSubmission.NotificationRetryDelay - TimeSpan.FromMinutes(1);
+        await db.SaveChangesAsync();
         Assert.True(await WebsiteLeadSubmission.TryClaimNotificationAsync(competitor, replay));
         await WebsiteLeadSubmission.CompleteNotificationAsync(competitor, replay, true);
         Assert.False(await WebsiteLeadSubmission.TryClaimNotificationAsync(db, lead));
