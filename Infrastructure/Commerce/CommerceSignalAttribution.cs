@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Shared.Analytics;
+using Infrastructure.Analytics;
 
 namespace Infrastructure.Commerce;
 
