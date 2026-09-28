@@ -44,7 +44,6 @@
   let managementPayload = null;
   let storeContext = null;
   let storePreviewActive = false;
-  let pendingAiProposal = null;
   let collaborationReplyTo = null;
   let collectionData = new Map();
   let dynamicCollectionItem = renderInput?.dynamicItem || null;
@@ -1274,100 +1273,30 @@
     animationRuntime.set(el, { signature, cleanup:() => cleanups.forEach(cleanup => cleanup()) });
   }
 
-  function aiOperationLabel(operation) {
-    const kind=String(operation?.kind || '').replaceAll('_',' ');
-    if (operation?.kind==='suggest_image') return `${kind}: ${operation.imagePrompt || 'image direction'}`;
-    if (operation?.kind==='set_text') return `${kind}: ${(operation.text || '').slice(0,120)}`;
-    if (operation?.breakpointKey) return `${kind} · ${operation.breakpointKey}`;
-    return kind || 'website change';
+  function refreshBrowserAgentWorkspace() {
+    const status=document.getElementById('legend-cms-browser-agent-status');
+    if(!status) return;
+    const selectedId=selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null;
+    const actionCount=Array.isArray(ctaCatalog)?ctaCatalog.filter(option=>option?.managed!==false).length:0;
+    status.textContent=[
+      'Browser-managed workspace',
+      'site='+SITE_KEY,
+      'page='+currentPageRoute(),
+      'revision='+(revision ?? 'unsaved'),
+      'selected='+(selectedId || 'none'),
+      'canonicalActions='+actionCount,
+      'externalAiApi=false'
+    ].join(' · ');
   }
 
-  function renderAiProposal() {
-    const host=document.getElementById('legend-cms-ai-proposal');
-    const status=document.getElementById('legend-cms-ai-status');
-    const apply=document.getElementById('legend-cms-ai-apply');
-    const discard=document.getElementById('legend-cms-ai-discard');
-    if(!host?.replaceChildren) return;
-    host.replaceChildren();
-    if(!pendingAiProposal){
-      if(status) status.textContent='No proposal generated.';
-      if(apply) apply.disabled=true;
-      if(discard) discard.disabled=true;
-      return;
+  function openBrowserAgentSource(scope='site') {
+    const sourceScope=document.getElementById('legend-cms-source-scope');
+    if(sourceScope){
+      sourceScope.value=scope==='selection' && sourceSelectedNodeId() ? 'selection' : 'site';
+      sourceEditorDirty=false;
     }
-    if(status) status.textContent=`Proposal ready · base revision ${pendingAiProposal.baseRevision}. Review before applying.`;
-    const summary=document.createElement('p'); summary.className='legend-cms-ai-summary'; summary.textContent=pendingAiProposal.summary || 'Website Studio AI proposal'; host.appendChild(summary);
-    for(const operation of pendingAiProposal.operations || []){
-      const row=document.createElement('div'); row.className='legend-cms-ai-operation'; row.textContent=aiOperationLabel(operation); host.appendChild(row);
-    }
-    if(!(pendingAiProposal.operations || []).length){
-      const empty=document.createElement('p'); empty.textContent='The model proposed no document changes.'; host.appendChild(empty);
-    }
-    if(apply) apply.disabled=pendingAiProposal.baseRevision!==revision || !pendingAiProposal.proposedDocument;
-    if(discard) discard.disabled=false;
-  }
-
-  async function requestAiProposal() {
-    const status=document.getElementById('legend-cms-ai-status');
-    const prompt=document.getElementById('legend-cms-ai-prompt')?.value?.trim() || '';
-    const mode=document.getElementById('legend-cms-ai-mode')?.value || 'responsive';
-    if(!prompt){ if(status) status.textContent='Enter what you want the assistant to improve or create.'; return; }
-    if((mode==='responsive' || mode==='selection') && (!selected || selected.dataset.cmsSignalOnly)){
-      if(status) status.textContent=mode==='selection'
-        ? 'Select the section or component you want AI to edit.'
-        : 'Select the element or section you want AI to make responsive.';
-      return;
-    }
-    if(dirty){
-      const saved=await save(false);
-      if(!saved || dirty){ if(status) status.textContent='Save the current draft before generating an AI proposal.'; return; }
-    }
-    if(status) status.textContent='Generating a structured proposal…';
-    pendingAiProposal=null;
-    try{
-      const selectedText=selected && !selected.dataset.cmsSection ? inlineTextValue(selected).slice(0,4000) : null;
-      const response=await fetch(`${API_BASE}/api/website-content/manage/ai/propose`,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          ticket:editorTicket,
-          expectedRevision:revision,
-          mode,
-          instruction:prompt,
-          pagePath:currentPageRoute(),
-          selectedElementId:selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null,
-          selectedSectionId:selectedSection?.dataset?.cmsCompositionId || selectedSection?.dataset?.cmsSection || null,
-          selectedText
-        })
-      });
-      const payload=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(payload.message || payload.error || `AI proposal failed (${response.status})`);
-      if(payload.source!=='ai_proposal_preview' || payload.persisted!==false || payload.published!==false || !payload.proposedDocument)
-        throw new Error('AI proposal response was invalid.');
-      pendingAiProposal=payload;
-      renderAiProposal();
-    }catch(error){
-      pendingAiProposal=null;
-      if(status) status.textContent=error?.message || 'Unable to generate an AI proposal.';
-      renderAiProposal();
-    }
-  }
-
-  function applyAiProposal() {
-    const status=document.getElementById('legend-cms-ai-status');
-    if(!pendingAiProposal?.proposedDocument) return;
-    if(pendingAiProposal.baseRevision!==revision){
-      if(status) status.textContent='This proposal is stale because the saved draft revision changed. Generate it again.';
-      return;
-    }
-    checkpoint();
-    setSelected(null);
-    applyDocument(pendingAiProposal.proposedDocument);
-    pendingAiProposal=null;
-    markDirty();
-    renderAiProposal();
-    showPanel('ai');
-    if(status) status.textContent='Proposal applied to the local draft. Review the canvas, then save or publish normally.';
+    showPanel('source');
+    document.getElementById('legend-cms-site-source')?.focus();
   }
 
   function renderMotionControls() {
@@ -2859,6 +2788,7 @@
       if(scope && el?.dataset?.cmsCompositionId) scope.value='selection';
       refreshSiteSourceEditor();
     }
+    if (activeEditorPanel === 'gpt') refreshBrowserAgentWorkspace();
     if (openContent) showPanel('content');
     refreshLayers();
     updateDirectCanvasUi();
@@ -3689,7 +3619,7 @@
     }
     if (name === 'components') renderReusableComponents();
     if (name === 'data') renderDataControls();
-    if (name === 'ai') renderAiProposal();
+    if (name === 'gpt') refreshBrowserAgentWorkspace();
     if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
     if (name === 'signals') renderSignalControls();
@@ -4610,7 +4540,7 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="ai">AI Build</button><button type="button" data-open="source">Source</button><button type="button" data-open="media">Media</button><button type="button" data-open="publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
@@ -4638,9 +4568,12 @@
     motion.innerHTML='<h2>Motion & interactions</h2><p>Declarative visual motion only. These effects never create analytics, leads, bookings, purchases, or other business outcomes.</p><small id="legend-cms-motion-status">Select an element to configure motion.</small><div id="legend-cms-motion-controls"></div>';
     tools.appendChild(motion);
 
-    const ai = document.createElement('section'); ai.dataset.cmsView='ai'; ai.hidden=true;
-    ai.innerHTML='<h2>AI Build</h2><p>Describe the outcome. AI receives the canonical Site Source, current business facts, scoped media library, and only the CTA actions already authorized for this website. It returns typed draft operations—never provider events or backend wiring.</p><label class="legend-cms-group">Mode<select id="legend-cms-ai-mode"><option value="build">Build / expand website</option><option value="transform">Transform entire website</option><option value="selection">Edit selected section / component</option><option value="fix">Fix quality & responsive issues</option><option value="responsive">Responsive selected content</option></select></label><label class="legend-cms-group">Instruction<textarea id="legend-cms-ai-prompt" rows="7" maxlength="6000" placeholder="Example: Build a premium six-page website from the business profile, use the strongest uploaded images, make Free Quote the primary CTA, and optimize desktop/mobile while preserving every canonical action."></textarea></label><button id="legend-cms-ai-generate" type="button">Generate website proposal</button><small id="legend-cms-ai-status" role="status">No proposal generated.</small><div id="legend-cms-ai-proposal"></div><div class="legend-cms-row"><button id="legend-cms-ai-apply" type="button" disabled>Apply proposal to draft</button><button id="legend-cms-ai-discard" type="button" disabled>Discard</button></div>'
-    tools.appendChild(ai);
+    const gpt = document.createElement('section'); gpt.dataset.cmsView='gpt'; gpt.hidden=true;
+    gpt.id='legend-cms-browser-agent-workspace';
+    gpt.dataset.agentWorkspace='browser-only';
+    gpt.dataset.externalAiApi='false';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><ul><li>Source, canvas, media, pages, draft, validation, and publish all modify the same WebsiteContentDocument v3.</li><li>Preset CTA action keys, inquiry authority, commerce scope, analytics, Meta, and OpenAI conversion wiring remain backend-owned.</li><li>GPT may restyle, rewrite, reposition, add pages/sections/content, choose only available preset actions, and use media owned by this website.</li><li>Publishing remains an explicit browser action through the normal immutable publish authority.</li></ul></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    tools.appendChild(gpt);
 
     const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
     quality.innerHTML = '<h2>Quality inspector</h2><p>Saved draft checks and live canvas checks are different evidence sources. The server remains authoritative for saved state and publication.</p><h3>Saved draft checks (server)</h3><small id="legend-cms-quality-saved-meta">Open Quality to inspect the persisted draft.</small><div id="legend-cms-quality-saved" class="legend-cms-quality-list"></div><h3>Live page checks (rendered canvas)</h3><small id="legend-cms-quality-live-meta">Open Quality to inspect the rendered canvas.</small><div id="legend-cms-quality-live" class="legend-cms-quality-list"></div><button id="legend-cms-quality-refresh" type="button">Run checks again</button>';
@@ -4668,6 +4601,11 @@
     const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
+    document.getElementById('legend-cms-agent-master-source')?.addEventListener('click',()=>openBrowserAgentSource('site'));
+    document.getElementById('legend-cms-agent-selection-source')?.addEventListener('click',()=>openBrowserAgentSource('selection'));
+    document.getElementById('legend-cms-agent-media')?.addEventListener('click',()=>showPanel('media'));
+    document.getElementById('legend-cms-agent-quality')?.addEventListener('click',()=>{showPanel('quality');void refreshQualityInspector();});
+    document.getElementById('legend-cms-agent-publish')?.addEventListener('click',()=>showPanel('publish'));
 
     const sourceTextarea=document.getElementById('legend-cms-site-source');
     sourceTextarea?.addEventListener('input',()=>{
@@ -4728,9 +4666,6 @@
     });
     document.getElementById('legend-cms-collaboration-add')?.addEventListener('click',()=>void createCollaborationComment(false));
     document.getElementById('legend-cms-collaboration-page')?.addEventListener('click',()=>void createCollaborationComment(true));
-    document.getElementById('legend-cms-ai-generate')?.addEventListener('click',()=>void requestAiProposal());
-    document.getElementById('legend-cms-ai-apply')?.addEventListener('click',applyAiProposal);
-    document.getElementById('legend-cms-ai-discard')?.addEventListener('click',()=>{ pendingAiProposal=null; renderAiProposal(); });
     document.getElementById('legend-cms-component-save')?.addEventListener('click',()=>{
       const status=document.getElementById('legend-cms-component-status');
       const name=document.getElementById('legend-cms-component-name')?.value?.trim();
@@ -4839,7 +4774,7 @@
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
     document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
     installDirectCanvasControls(preview);
-    showPanel('ai');
+    showPanel('gpt');
   }
 
   function injectContentStyles() { const style = document.createElement('style'); style.textContent = `
@@ -4931,7 +4866,7 @@
       .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
-      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
