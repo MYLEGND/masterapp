@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to replace the broken Website Analytics mobile Core Metrics and Growth Economics layout and consolidate every Website Analytics modal onto the one canonical clean shared modal UI, validate the exact replacement, merge through legend/approved-changes, and deploy only affected applications without restarting successful unrelated releases.",
-  "purpose": "Deploy the canonical Website Analytics presentation repair. AgentPortal owns the shared Website Analytics view, stylesheet, and KPI modal runtime; ClientApp consumes those exact linked canonical assets. Protect, Parfait, and the static LEGEND website are unaffected and must not be redeployed.",
-  "requestId": "website-analytics-mobile-modal-ui-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to correct the remaining Website Analytics mobile visual defect after the first UI release, remove the surviving stacked KPI/card CSS generations rather than overriding them, replace the Channel Outcomes desktop min-width/overflow model canonically, validate the direct replacement, merge through legend/approved-changes, and deploy only the affected shared analytics hosts.",
+  "purpose": "Dispatch the already-validated canonical Website Analytics mobile cascade cleanup now merged into legend/approved-changes. Deploy only AgentPortal and ClientApp. Protect, Parfait, the static LEGEND website, Cloudflare routing, analytics calculations, ads authority, CRM, and booking behavior remain untouched.",
+  "requestId": "website-analytics-mobile-cascade-dispatch-20260928",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
