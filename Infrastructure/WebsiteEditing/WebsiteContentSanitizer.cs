@@ -250,7 +250,7 @@ public static class WebsiteContentSanitizer
             if (type == "form" && systemKey is null) continue;
 
             var mediaUrl = type is "image" or "video"
-                ? SanitizeUrl(node.MediaUrl, allowDataImage: type == "image")
+                ? SanitizeCompositionMediaUrl(node.MediaUrl, type)
                 : null;
 
             var clean = new WebsiteCompositionNode
@@ -631,6 +631,30 @@ public static class WebsiteContentSanitizer
     }
     private static string? SanitizeTarget(string? value) => value is "_blank" or "_self" ? value : null;
     private static string? SanitizeFont(string? value) => value is "inherit" or "system-ui" or "serif" or "sans-serif" or "monospace" or "Georgia" or "Arial" ? value : null;
+    private static string? SanitizeCompositionMediaUrl(string? value, string type)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var url = value.Trim();
+        if (url.Length > 2048 || url.Any(char.IsControl) || url.Contains('\\') ||
+            url.Contains("legendEdit=", StringComparison.OrdinalIgnoreCase) ||
+            url.Contains("ticket=", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        // Existing first-party/static template assets must survive the one-time
+        // v2 -> v3 materialization exactly. New/changed user media is separately
+        // required to use an owner-scoped WebsiteMediaAsset ID by Site Source.
+        if (url.StartsWith('/') && !url.StartsWith("//")) return url;
+
+        if (type == "image")
+        {
+            var inline = SanitizeImage(url);
+            if (inline is not null) return inline;
+        }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return null;
+        return uri.Scheme == Uri.UriSchemeHttps ? url : null;
+    }
+
     public static string? SanitizeUrl(string? value, bool media = false)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
