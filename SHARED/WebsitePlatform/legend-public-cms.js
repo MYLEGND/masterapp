@@ -1312,8 +1312,10 @@
     const prompt=document.getElementById('legend-cms-ai-prompt')?.value?.trim() || '';
     const mode=document.getElementById('legend-cms-ai-mode')?.value || 'responsive';
     if(!prompt){ if(status) status.textContent='Enter what you want the assistant to improve or create.'; return; }
-    if(mode==='responsive' && (!selected || selected.dataset.cmsSignalOnly)){
-      if(status) status.textContent='Select the element or section you want AI to make responsive.';
+    if((mode==='responsive' || mode==='selection') && (!selected || selected.dataset.cmsSignalOnly)){
+      if(status) status.textContent=mode==='selection'
+        ? 'Select the section or component you want AI to edit.'
+        : 'Select the element or section you want AI to make responsive.';
       return;
     }
     if(dirty){
@@ -1333,8 +1335,8 @@
           mode,
           instruction:prompt,
           pagePath:currentPageRoute(),
-          selectedElementId:selected?.dataset?.cmsId || null,
-          selectedSectionId:selectedSection?.dataset?.cmsSection || null,
+          selectedElementId:selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null,
+          selectedSectionId:selectedSection?.dataset?.cmsCompositionId || selectedSection?.dataset?.cmsSection || null,
           selectedText
         })
       });
@@ -4615,7 +4617,7 @@
     tools.appendChild(motion);
 
     const ai = document.createElement('section'); ai.dataset.cmsView='ai'; ai.hidden=true;
-    ai.innerHTML='<h2>AI creation assistant</h2><p>AI proposes typed changes only. Nothing is saved or published until you apply the proposal and use the normal draft/publish controls.</p><label class="legend-cms-group">Mode<select id="legend-cms-ai-mode"><option value="responsive">Responsive improvement</option><option value="create">Content / section creation</option></select></label><label class="legend-cms-group">Instruction<textarea id="legend-cms-ai-prompt" rows="5" maxlength="2000" placeholder="Example: make this section cleaner on mobile without changing the wording"></textarea></label><button id="legend-cms-ai-generate" type="button">Generate proposal</button><small id="legend-cms-ai-status" role="status">No proposal generated.</small><div id="legend-cms-ai-proposal"></div><div class="legend-cms-row"><button id="legend-cms-ai-apply" type="button" disabled>Apply proposal to draft</button><button id="legend-cms-ai-discard" type="button" disabled>Discard</button></div>';
+    ai.innerHTML='<h2>AI Build</h2><p>Describe the outcome. AI receives the canonical Site Source, current business facts, scoped media library, and only the CTA actions already authorized for this website. It returns typed draft operations—never provider events or backend wiring.</p><label class="legend-cms-group">Mode<select id="legend-cms-ai-mode"><option value="build">Build / expand website</option><option value="transform">Transform entire website</option><option value="selection">Edit selected section / component</option><option value="fix">Fix quality & responsive issues</option><option value="responsive">Responsive selected content</option></select></label><label class="legend-cms-group">Instruction<textarea id="legend-cms-ai-prompt" rows="7" maxlength="6000" placeholder="Example: Build a premium six-page website from the business profile, use the strongest uploaded images, make Free Quote the primary CTA, and optimize desktop/mobile while preserving every canonical action."></textarea></label><button id="legend-cms-ai-generate" type="button">Generate website proposal</button><small id="legend-cms-ai-status" role="status">No proposal generated.</small><div id="legend-cms-ai-proposal"></div><div class="legend-cms-row"><button id="legend-cms-ai-apply" type="button" disabled>Apply proposal to draft</button><button id="legend-cms-ai-discard" type="button" disabled>Discard</button></div>'
     tools.appendChild(ai);
 
     const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
