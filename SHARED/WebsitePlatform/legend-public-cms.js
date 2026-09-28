@@ -3058,6 +3058,7 @@
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const immutableShell = isSharedShellElement(selected);
+      const protectedSemantic = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || selected.tagName === 'FORM';
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
@@ -3068,9 +3069,17 @@
         : ['A','BUTTON'].includes(selected.tagName) ? 'button'
         : ['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName) ? 'block'
         : 'element';
-      removeButton.textContent = immutableShell ? 'Global shell · cannot delete' : `Delete ${kind}`;
-      removeButton.disabled = immutableShell;
-      removeButton.title = immutableShell ? 'The website banner and footer are global shell authorities shared by every page and cannot be deleted.' : '';
+      removeButton.textContent = immutableShell
+        ? 'Global shell · cannot delete'
+        : protectedSemantic
+          ? 'Protected wiring · cannot delete'
+          : `Delete ${kind}`;
+      removeButton.disabled = immutableShell || protectedSemantic;
+      removeButton.title = immutableShell
+        ? 'The website banner and footer are global shell authorities shared by every page and cannot be deleted.'
+        : protectedSemantic
+          ? 'This component owns canonical platform behavior. Rename, restyle, or reposition it without changing/removing its backend identity.'
+          : '';
     }
     const sectionSelected = !!selected.dataset.cmsSection;
     if (scale) scale.value = String(editStyle?.fontScale ?? 1);
@@ -3101,7 +3110,11 @@
     const layoutAlign = document.getElementById('legend-cms-layout-align'); if (layoutAlign) layoutAlign.value = editLayout?.alignItems || '';
     const layoutJustify = document.getElementById('legend-cms-layout-justify'); if (layoutJustify) layoutJustify.value = editLayout?.justifyContent || '';
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
-    if (hidden) hidden.checked = ov.hidden === true || selected.hidden;
+    if (hidden) {
+      hidden.checked = ov.hidden === true || selected.hidden;
+      hidden.disabled = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || selected.tagName === 'FORM';
+    }
+    if (targetInput) targetInput.disabled = !!ov.actionKey;
   }
 
   function updateSelectedFromControls(event) {
@@ -3245,6 +3258,13 @@
 
   function removeSelected() {
     if (!selected) return;
+    if (usesCanonicalComposition() && selected.dataset.cmsCompositionId) {
+      const current=compositionNode(selected.dataset.cmsCompositionId);
+      if (current && (current.actionKey || current.systemKey || current.systemBinding || current.type === 'form')) {
+        alert('This component has protected platform wiring. Rename, restyle, or reposition it without deleting its canonical behavior.');
+        return;
+      }
+    }
     checkpoint();
     if (usesCanonicalComposition() && selected.dataset.cmsCompositionId) {
       const id=selected.dataset.cmsCompositionId;
@@ -4392,9 +4412,13 @@
     const selectedOption = byKey || byHref || null;
     const hasCustomHref = currentHref && currentHref !== '#';
     select.value = selectedOption?.choiceKey || (hasCustomHref ? 'custom' : '');
-    if (custom) custom.hidden = select.value !== 'custom';
+    const lockedManaged = !!key && !!byKey;
+    select.disabled = lockedManaged;
+    if (custom) custom.hidden = lockedManaged || select.value !== 'custom';
     if (wiring) {
-      wiring.textContent = selectedOption?.managed
+      wiring.textContent = lockedManaged
+        ? `Protected wiring: ${selectedOption.defaultText || selectedOption.label || key}. The visible label, style, and position remain editable; the canonical action identity cannot change.`
+        : selectedOption?.managed
         ? `Automatic wiring: Analytics ${selectedOption.analyticsEventName || 'cta_click'}. Every phrase in this group uses the same destination and event contract.`
         : selectedOption
           ? 'Navigation only. This links to an existing page or section and does not create a second CTA wiring contract.'
@@ -4712,6 +4736,7 @@
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
       const ov = selectedOverride(); if (!ov) return;
+      if (ov.actionKey) { syncEditorControls(); return; }
       checkpoint();
       const option = availableCtaOptions().find(candidate => candidate.choiceKey === event.target.value);
       if (!option) {
@@ -5055,6 +5080,8 @@
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected || isSharedShellElement(selected)) return;
+      const current=selectedOverride(false);
+      if (current && (current.actionKey || current.systemKey || current.systemBinding || selected.tagName === 'FORM')) return;
       const serviceCard = businessServiceCardFor(selected);
       if (serviceCard) {
         if (serviceCard.dataset.cmsExtraId) { setSelected(serviceCard); removeSelected(); return; }
