@@ -844,6 +844,21 @@ public class WebsitePlatformController : ControllerBase
             facts = await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken);
         }
 
+        var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
+        var mediaAssets = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
+            .Where(asset => asset.OwnerKey == actor.OwnerUserId)
+            .OrderByDescending(asset => asset.CreatedUtc)
+            .Take(200)
+            .Select(asset => new Infrastructure.WebsiteEditing.WebsiteStudioAiMediaContext(
+                asset.Id,
+                string.IsNullOrWhiteSpace(asset.SourceUrl) ? asset.ContentType : asset.SourceUrl,
+                asset.ContentType,
+                asset.SizeBytes))
+            .ToListAsync(cancellationToken);
+        var siteSource = string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal)
+            ? WebsiteSiteSource.Serialize(document)
+            : null;
+
         var context = new Infrastructure.WebsiteEditing.WebsiteStudioAiContext(
             actor.SiteKey,
             request.PagePath,
@@ -856,7 +871,14 @@ public class WebsitePlatformController : ControllerBase
             facts?.Hours,
             document.Breakpoints,
             page?.Title,
-            page?.Description);
+            page?.Description,
+            siteSource,
+            ctaOptions.Select(option => new Infrastructure.WebsiteEditing.WebsiteStudioAiActionContext(
+                option.Key,
+                option.Label,
+                option.DefaultText,
+                option.Group)).ToArray(),
+            mediaAssets);
 
         try
         {
@@ -875,7 +897,9 @@ public class WebsitePlatformController : ControllerBase
                 request.PagePath,
                 request.SelectedElementId,
                 request.SelectedSectionId,
-                proposed.Operations);
+                proposed.Operations,
+                ctaOptions.Select(option => option.Key).ToHashSet(StringComparer.Ordinal),
+                mediaAssets.Select(asset => asset.Id).ToHashSet());
 
             return Ok(new
             {
