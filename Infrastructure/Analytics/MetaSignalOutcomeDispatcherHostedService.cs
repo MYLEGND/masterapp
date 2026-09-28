@@ -293,10 +293,11 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             }
 
             var sourceId = CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "sourceAnalyticsEventId");
+            AnalyticsEvent? source = null;
             MarketingOwnerScope? owner;
             if (sourceId.HasValue)
             {
-                var source = await db.AnalyticsEvents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sourceId.Value, cancellationToken);
+                source = await db.AnalyticsEvents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sourceId.Value, cancellationToken);
                 owner = source is null || source.AgentTrackingProfileId != row.AgentTrackingProfileId ||
                     source.CommerceBusinessId != row.CommerceBusinessId || !CanonicalAdvertisingEventProjection.CanProjectServer(source)
                     ? null : await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, cancellationToken);
@@ -315,6 +316,29 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 await db.SaveChangesAsync(cancellationToken);
                 continue;
             }
+
+            // New bridge rows never choose their external Meta event name independently.
+            // The same provider-neutral conversion catalog used by OpenAI owns translation
+            // for both destinations. Historical queue rows without a canonical source retain
+            // their recorded event name as a read/dispatch compatibility adapter only.
+            var providerEventName = row.EventName;
+            if (source is not null)
+            {
+                var canonicalEventName = CanonicalAdvertisingEventProjection.ResolveEventName(source);
+                var destination = MarketingConversionDestinationCatalog.ResolveMeta(canonicalEventName);
+                if (destination is null)
+                {
+                    row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                    {
+                        Attempted = false, Sent = false, Status = "skipped_destination_mapping_missing",
+                        Note = "canonical_meta_destination_mapping_missing"
+                    });
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+                providerEventName = destination.EventName;
+            }
+
             var pixelContext = await metaPixelResolutionService.ResolveForOwnerAsync(owner, cancellationToken);
 
             var capiRequest = new MetaConversionsApiEventRequest
@@ -323,7 +347,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 CommerceBusinessId = row.CommerceBusinessId,
                 AgentTrackingProfileId = row.AgentTrackingProfileId,
                 CorrelationId = Guid.NewGuid(),
-                EventName = row.EventName,
+                EventName = providerEventName,
                 EventId = MetaSignalSingleTruthPolicy.ReadBoolean(row.MetadataJson, "canonicalSourceIdentity") == true
                     ? row.EventId
                     : isBridgeOwned
