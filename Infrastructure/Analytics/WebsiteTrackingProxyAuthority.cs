@@ -358,8 +358,10 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]);
         req.Fbp = FirstNonBlank(req.Fbp, Request.Cookies["_fbp"]);
         req.Fbc = FirstNonBlank(req.Fbc, Request.Cookies["_fbc"]);
-        req.ClientIpAddress = FirstMeaningful(req.ClientIpAddress, ResolveClientIp());
-        req.ClientUserAgent = FirstMeaningful(req.ClientUserAgent, Request.Headers.UserAgent.ToString());
+        // Network identity is observed at this trusted proxy boundary. Never let a
+        // public payload override the connection evidence used for provider matching.
+        req.ClientIpAddress = ResolveClientIp();
+        req.ClientUserAgent = FirstMeaningful(Request.Headers.UserAgent.ToString());
         req.SourcePath = FirstNonBlank(ResolveLeadSourcePathFromReferrer(), req.SourcePath);
 
         if (string.IsNullOrWhiteSpace(req.Environment))
