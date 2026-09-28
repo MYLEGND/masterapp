@@ -213,8 +213,12 @@ public class WebsiteAnalyticsInitialQualityModeTests
         var health = new Mock<Infrastructure.Analytics.IOpenAiMeasurementHealthService>();
         health.Setup(service => service.GetAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(
             new Shared.Analytics.OpenAiMeasurementHealthSnapshot(owner, false, false, false, null, 0, 0, 0, 0, null, false, 0, "not_connected"));
+        var calendar = new Mock<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+        calendar.Setup(service => service.GetAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(
+            new Infrastructure.Bookings.MicrosoftCalendarConnectionSnapshot(
+                owner, false, false, Guid.Empty, null, null, null, null, [], null, null, null, null));
         controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(store).AddSingleton(pixels.Object)
-            .AddSingleton(openAi.Object).AddSingleton(health.Object)
+            .AddSingleton(openAi.Object).AddSingleton(health.Object).AddSingleton(calendar.Object)
             .AddSingleton<Infrastructure.Analytics.MarketingProviderSetupProjection>()
             .AddSingleton(Mock.Of<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>())
             .AddSingleton(new Infrastructure.Analytics.MarketingMeasurementEvidenceService(db, new ConfigurationBuilder().Build(), store, openAi.Object)).BuildServiceProvider();
