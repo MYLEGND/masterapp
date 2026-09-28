@@ -194,6 +194,9 @@ public sealed class OpenAiClickReferenceLineageTests
         Assert.Contains("Obref = OpenAiBrowserReference.Normalize(request.Obref)", inquiry, StringComparison.Ordinal);
         Assert.Contains("obref = OpenAiBrowserReference.Normalize(ctx.Obref)", mapper, StringComparison.Ordinal);
         Assert.DoesNotContain("DbSet<OpenAiBrowser", File.ReadAllText(Path.Combine(root, "Infrastructure", "Data", "MasterAppDbContext.cs")), StringComparison.Ordinal);
+        var risk = File.ReadAllText(Path.Combine(root, "Protect-Website", "Controllers", "RiskAssessmentController.cs"));
+        Assert.Contains("Obref = OpenAiBrowserReference.Normalize(Request.Cookies[\"__obref\"])", risk, StringComparison.Ordinal);
+        Assert.Contains("obref = OpenAiBrowserReference.Normalize(Request.Cookies[\"__obref\"])", risk, StringComparison.Ordinal);
     }
 
     [Fact]
