@@ -132,6 +132,42 @@ public sealed class CanonicalWebsiteBehaviorTests
     }
 
     [Fact]
+    public void AdvertisingOptimizationParityKeepsRichBehaviorInternalAndSharesOnlyRevenueRelevantDelivery()
+    {
+        Assert.Equal(new[] { "ViewContent" }, MetaSignalEventCatalog.BrowserPixelEventNames.OrderBy(x => x).ToArray());
+
+        foreach (var behaviorName in new[]
+                 {
+                     "LeadFormStart", "DiscoveryComplete", "RecommendationViewed", "ContactStepReached",
+                     "HighIntentLeadSignal", "LeadReadySignal", "AbandonedHighIntentLead"
+                 })
+        {
+            Assert.True(MetaSignalEventCatalog.TryGet(behaviorName, out var definition));
+            Assert.False(definition.AllowBrowserPixel);
+            Assert.False(definition.AllowServerForward);
+        }
+
+        foreach (var destination in MarketingConversionDestinationCatalog.Definitions)
+        {
+            Assert.NotNull(destination.Meta);
+            Assert.NotNull(destination.OpenAi);
+            Assert.Contains(destination.Meta.EventName, MetaSignalEventCatalog.ServerForwardEventNames);
+        }
+
+        var policyPaid = MarketingConversionDestinationCatalog.ResolveMeta("PolicyPaid");
+        Assert.NotNull(policyPaid);
+        Assert.Equal("Purchase", policyPaid!.EventName);
+
+        var root = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE")!;
+        var runtime = File.ReadAllText(Path.Combine(root, "SHARED/WebsitePlatform/meta-signal-intelligence.js"));
+        Assert.Contains("DEFAULT_META_BROWSER_EVENTS = ['ViewContent']", runtime, StringComparison.Ordinal);
+
+        var dispatcher = File.ReadAllText(Path.Combine(root, "Infrastructure/Analytics/MetaSignalOutcomeDispatcherHostedService.cs"));
+        Assert.Contains("MarketingConversionDestinationCatalog.ResolveMeta(canonicalEventName)", dispatcher, StringComparison.Ordinal);
+        Assert.Contains("EventName = providerEventName", dispatcher, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProviderCatalogsCannotOwnWebsiteBehaviorOrInterpretAnotherProvidersTruth()
     {
         var root = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE")!;
