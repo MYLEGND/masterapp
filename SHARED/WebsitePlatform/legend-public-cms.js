@@ -984,6 +984,16 @@
       };
     }
 
+    if (extra?.type === 'reusable' && extra.syncSourceId) {
+      return {
+        id, type:'reusable', tag:'div', className:cleanCompositionClassName(el),
+        syncSourceId:extra.syncSourceId, signals:[],
+        style:structuredClone(extra.style || {}), breakpointStyles:structuredClone(extra.breakpointStyles || {}),
+        layout:structuredClone(extra.layout || {}), breakpointLayouts:structuredClone(extra.breakpointLayouts || {}),
+        animations:structuredClone(extra.animations || []), dataBinding:structuredClone(extra.dataBinding || null), children:[]
+      };
+    }
+
     let type = 'text';
     if (tag === 'section') type='section';
     else if (['div','article','header','footer','ul','ol'].includes(tag)) type='container';
@@ -1074,7 +1084,17 @@
   function buildCompositionNode(node) {
     if (!node?.id) return null;
     let el;
-    if (node.type === 'form') {
+    if (node.type === 'reusable') {
+      const definition = reusableDefinition(node);
+      el = document.createElement(definition?.kind === 'section' ? 'section' : 'div');
+      el.className = 'cms-extra cms-reusable-instance';
+      el.dataset.cmsExtraId = node.id;
+      el.dataset.cmsId = node.id;
+      el.dataset.cmsCompositionId = node.id;
+      el.dataset.cmsEditable = 'true';
+      if (node.hidden === true) el.hidden = true;
+      renderReusableInstance(el, node);
+    } else if (node.type === 'form') {
       el = buildExtraNode({id:node.id,type:'form',title:node.title,text:node.text,style:node.style||{},signals:node.signals||[]}, false);
     } else if (node.type === 'embed') {
       el = buildExtraNode({id:node.id,type:'code',text:node.text||defaultCodeBlock,style:node.style||{},signals:node.signals||[]}, false);
