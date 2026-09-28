@@ -5140,7 +5140,7 @@
         return;
       }
 
-      if(!usesCanonicalComposition()){
+      if(!usesCanonicalComposition() && payload.capabilities?.compositionV3===true){
         await materializeCanonicalSite();
       }
 
