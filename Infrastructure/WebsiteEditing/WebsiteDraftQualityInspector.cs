@@ -35,7 +35,10 @@ public static class WebsiteDraftQualityInspector
                 checks.Add(new("navigation_label_missing", "warning", "Visible navigation pages need a navigation label.", path));
             if (page.DynamicBinding is not null && !(document.Collections?.ContainsKey(page.DynamicBinding.CollectionId) ?? false))
                 checks.Add(new("dynamic_collection_missing", "error", "This dynamic page points to a collection that is not available.", path));
-            InspectElements(page.Elements, page.Extras, checks, path);
+            if (string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
+                InspectComposition(page.Composition, checks, path);
+            else
+                InspectElements(page.Elements, page.Extras, checks, path);
         }
         InspectElements(document.Elements, document.Extras, checks, null);
 
@@ -83,8 +86,23 @@ public static class WebsiteDraftQualityInspector
         foreach (var (path, page) in document.Pages ?? new Dictionary<string, WebsitePageDocument>())
         {
             if (page.Navigation?.IsDeleted == true) continue;
-            foreach (var (id, value) in page.Elements) Check(value.DataBinding, path, id);
-            foreach (var extra in page.Extras) Check(extra.DataBinding, path, "extra:" + extra.Id);
+            if (string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
+            {
+                void Composition(IEnumerable<WebsiteCompositionNode> nodes)
+                {
+                    foreach (var node in nodes ?? [])
+                    {
+                        Check(node.DataBinding, path, node.Id);
+                        Composition(node.Children);
+                    }
+                }
+                Composition(page.Composition);
+            }
+            else
+            {
+                foreach (var (id, value) in page.Elements) Check(value.DataBinding, path, id);
+                foreach (var extra in page.Extras) Check(extra.DataBinding, path, "extra:" + extra.Id);
+            }
 
             if (page.DynamicBinding is null) continue;
             if (!collections.TryGetValue(page.DynamicBinding.CollectionId, out var dynamicCollection))
@@ -96,6 +114,44 @@ public static class WebsiteDraftQualityInspector
             if (string.IsNullOrWhiteSpace(page.DynamicBinding.RoutePattern))
                 checks.Add(new("dynamic_route_pattern_missing", "error", "Dynamic pages need a route pattern such as /products/{item}.", path));
         }
+    }
+
+    private static void InspectComposition(
+        IEnumerable<WebsiteCompositionNode>? nodes,
+        List<WebsiteQualityCheck> checks,
+        string pagePath)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void Visit(IEnumerable<WebsiteCompositionNode>? values)
+        {
+            foreach (var node in values ?? [])
+            {
+                if (!seen.Add(node.Id))
+                    checks.Add(new("duplicate_node_id", "error", "Two website components share the same stable identity.", pagePath, node.Id));
+
+                if (node.Hidden != true)
+                {
+                    if (node.Type == "image" && string.IsNullOrWhiteSpace(node.Alt))
+                        checks.Add(new("image_alt_missing", "warning", "Add alternative text for this image.", pagePath, node.Id));
+
+                    if (node.Type is "cta" or "link" &&
+                        string.IsNullOrWhiteSpace(node.ActionKey) &&
+                        (string.IsNullOrWhiteSpace(node.Href) || node.Href == "#"))
+                        checks.Add(new("link_destination_missing", node.Type == "cta" ? "error" : "warning",
+                            node.Type == "cta" ? "CTAs need a canonical action or working destination." : "Choose a working destination for this link.",
+                            pagePath, node.Id));
+
+                    if (node.Type == "form" &&
+                        !string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
+                        checks.Add(new("form_authority_invalid", "error", "Website forms must use the canonical inquiry authority.", pagePath, node.Id));
+                }
+
+                Visit(node.Children);
+            }
+        }
+
+        Visit(nodes);
     }
 
     private static void InspectElements(
