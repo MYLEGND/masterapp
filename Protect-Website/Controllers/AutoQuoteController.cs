@@ -29,15 +29,15 @@ namespace Protect_Website.Controllers
         private readonly string clientSecret;
 
         private readonly string senderEmail;
-        private readonly string recipientEmail;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly MasterAppDbContext _db;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
         private readonly ILogger<AutoQuoteController> _logger;
         private readonly IProtectEmailSender _emailSender;
 
-        public AutoQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+        public AutoQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
             MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IProtectEmailSender emailSender, ILogger<AutoQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"] ?? throw new ArgumentNullException("AzureAd:TenantId");
@@ -45,8 +45,8 @@ namespace Protect_Website.Controllers
             clientSecret = configuration["AzureAd:ClientSecret"] ?? throw new ArgumentNullException("AzureAd:ClientSecret");
 
             senderEmail = configuration["Contact:SenderEmail"] ?? throw new ArgumentNullException("Contact:SenderEmail");
-            recipientEmail = configuration["Contact:RecipientEmail"] ?? throw new ArgumentNullException("Contact:RecipientEmail");
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _db = db;
             _metaPixelResolution = metaPixelResolution;
             _websiteLeadCapture = websiteLeadCapture;
@@ -585,7 +585,7 @@ await TryWriteLeadEventAsync(
             var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
                 HttpContext,
                 _resolver,
-                recipientEmail,
+                _intakeRecipients,
                 ResolveExplicitAgentSlugFromRequest(),
                 HttpContext?.RequestAborted ?? CancellationToken.None);
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
