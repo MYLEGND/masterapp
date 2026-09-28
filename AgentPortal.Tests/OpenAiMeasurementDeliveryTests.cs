@@ -298,11 +298,38 @@ public sealed class OpenAiMeasurementDeliveryTests
         Assert.Equal(expectedDataType, mapped.Data.Type);
         Assert.Equal("https://shop.example.com/checkout", mapped.SourceUrl);
 
-        if (expectedDataType == "contents")
+        Assert.Equal(8900, mapped.Data.Amount);
+        Assert.Equal("USD", mapped.Data.Currency);
+    }
+
+    [Fact]
+    public void CanonicalValueProjectionFeedsMetaAndOpenAiFromTheSameOutcomeValue()
+    {
+        var value = CanonicalConversionValueProjection.Resolve(
+            "{\"personalAmount\":1200.50,\"currency\":\"usd\"}");
+
+        Assert.NotNull(value);
+        Assert.Equal(120050, value!.AmountMinorUnits);
+        Assert.Equal("USD", value.Currency);
+
+        var row = new AnalyticsEvent
         {
-            Assert.Equal(8900, mapped.Data.Amount);
-            Assert.Equal("USD", mapped.Data.Currency);
-        }
+            EventId = Guid.NewGuid(),
+            EventType = "PolicyIssued",
+            EventUtc = DateTime.UtcNow,
+            Host = "protect.mylegnd.com",
+            MetadataJson = "{\"valueCents\":120050,\"currency\":\"USD\"}"
+        };
+        Assert.True(OpenAiMeasurementEventMapper.TryMap(row, out var mapped));
+        Assert.Equal(120050, mapped.Data.Amount);
+        Assert.Equal("USD", mapped.Data.Currency);
+
+        var root = FindRoot();
+        var meta = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MetaSignalOutcomeDispatcherHostedService.cs"));
+        var openAi = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "OpenAiMeasurementDelivery.cs"));
+        Assert.Contains("CanonicalConversionValueProjection.Resolve", meta, StringComparison.Ordinal);
+        Assert.Contains("CanonicalConversionValueProjection.Resolve", openAi, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryReadPositiveDecimal", meta, StringComparison.Ordinal);
     }
 
     [Fact]
