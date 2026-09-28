@@ -3161,7 +3161,8 @@
     const isCommerceControl = !!selected.dataset.legendStoreNav;
     const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A' || isCommerceControl;
     if (selected.tagName === 'A' && !isCommerceControl) syncCtaControls(ov, values.href);
-    const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
+    const videoGroup = document.getElementById('legend-cms-video-group');
+    if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO' || !!selected.dataset.cmsCompositionId;
     const layoutMode = document.getElementById('legend-cms-layout-mode'); if (layoutMode) layoutMode.value = editLayout?.mode || 'free';
     const layoutDirection = document.getElementById('legend-cms-layout-direction'); if (layoutDirection) layoutDirection.value = editLayout?.direction || 'column';
     const layoutGap = document.getElementById('legend-cms-layout-gap'); if (layoutGap) layoutGap.value = editLayout?.gapPx ?? '';
@@ -3568,7 +3569,12 @@
       shellElements,
       globalExtras:(documentState.extras || []).map(sourceProjectionOverride),
       pages,
-      reusableComponents:structuredClone(documentState.reusableComponents || {}),
+      reusableComponents:Object.fromEntries(Object.entries(documentState.reusableComponents || {}).map(([id,component])=>{
+        const copy=structuredClone(component || {});
+        for(const element of Object.values(copy.elements || {})) delete element.signals;
+        for(const extra of copy.extras || []) delete extra.signals;
+        return [id,copy];
+      })),
       collections:structuredClone(documentState.collections || {})
     };
   }
@@ -4811,7 +4817,24 @@
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
     ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyElementOverride(selected, ov); markDirty(); }));
-    document.getElementById('legend-cms-video-file').addEventListener('change', async event => { const video = selected; if (video?.tagName !== 'VIDEO') return; const url = await uploadMedia(event.target.files?.[0]); if (!url || selected !== video) return; checkpoint(); const ov = selectedOverride(); ov.videoUrl = url; applyElementOverride(video, ov); syncEditorControls(); markDirty(); });
+    document.getElementById('legend-cms-video-file').addEventListener('change', async event => {
+      const video = selected;
+      if (video?.tagName !== 'VIDEO') return;
+      const url = await uploadMedia(event.target.files?.[0]);
+      if (!url || selected !== video) return;
+      checkpoint();
+      const ov = selectedOverride();
+      if (video.dataset.cmsCompositionId) {
+        ov.mediaAssetId = compositionMediaAssetId(url);
+        ov.mediaUrl = url;
+        delete ov.videoUrl;
+      } else {
+        ov.videoUrl = url;
+      }
+      applyElementOverride(video, ov);
+      syncEditorControls();
+      markDirty();
+    });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
     document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
