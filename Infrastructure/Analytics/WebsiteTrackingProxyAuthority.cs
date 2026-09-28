@@ -208,6 +208,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
             Oppref = OpenAiClickReference.Normalize(req.Oppref),
+            Obref = OpenAiBrowserReference.Normalize(req.Obref)
+                ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]),
             MetaCampaignId = Clean(req.MetaCampaignId),
             MetaAdSetId = Clean(req.MetaAdSetId),
             MetaAdId = Clean(req.MetaAdId),
@@ -304,6 +306,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
             Oppref = OpenAiClickReference.Normalize(req.Oppref),
+            Obref = OpenAiBrowserReference.Normalize(req.Obref)
+                ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]),
             MetaCampaignId = Clean(req.MetaCampaignId),
             MetaAdSetId = Clean(req.MetaAdSetId),
             MetaAdId = Clean(req.MetaAdId),
@@ -348,6 +352,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
     private void EnsureLeadContextFallback(LeadSubmitRequest req)
     {
         req.Host = FirstNonBlank(req.Host, Request.Host.Value);
+        req.Obref = OpenAiBrowserReference.Normalize(req.Obref)
+            ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]);
         req.SourcePath = FirstNonBlank(ResolveLeadSourcePathFromReferrer(), req.SourcePath);
 
         if (string.IsNullOrWhiteSpace(req.Environment))
@@ -744,6 +750,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         public string? UtmContent { get; set; }
         public string? Fbclid { get; set; }
         public string? Oppref { get; set; }
+        public string? Obref { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
         public string? AgentSlug { get; set; }
         public string? Environment { get; set; }
@@ -812,6 +819,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
         public string? Oppref { get; set; }
+        public string? Obref { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }
