@@ -279,7 +279,7 @@ public sealed class WebsiteInquiryIsolationTests
                 VisitorId = "protect-visitor"
             },
             CancellationToken.None));
-        Assert.Contains(""accepted":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"accepted\":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
         Assert.Empty(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
 
         var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
@@ -356,7 +356,7 @@ public sealed class WebsiteInquiryIsolationTests
                 VisitorId = "parfait-visitor"
             },
             CancellationToken.None));
-        Assert.Contains(""accepted":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"accepted\":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
         Assert.Empty(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
 
         var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
