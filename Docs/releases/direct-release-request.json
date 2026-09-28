@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the already validated and merged canonical marketing hardening release from legend/approved-changes. Release-control follow-up only; no product logic changes. Deploy only masterapp-portal, masterapp-client, masterapp-protect, masterapp-parfait, and masterapp-website. Cloudflare routing remains excluded. Direct-release dispatch trigger recorded after lifecycle auto-merge; product code and target scope are unchanged.",
-  "purpose": "Release-control-only dispatch for merged PR #273. Deploy the validated canonical marketing hardening: shared inquiry intake across LEGEND/business/Protect/Parfait, scoped primary-account-email notifications, durable notification retry recovery, and canonical Meta/OpenAI measurement consent. No product logic changes in this release-control PR.",
-  "requestId": "canonical-marketing-hardening-release-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the already validated and merged canonical marketing hardening release from legend/approved-changes through a merged release-control PR. Product code and target scope are unchanged.",
+  "purpose": "Final release-control dispatch for merged marketing hardening product PR #273. Deploy the validated canonical marketing hardening: shared inquiry intake across LEGEND/business/Protect/Parfait, scoped primary-account-email notifications, durable notification retry recovery, and canonical Meta/OpenAI measurement consent. No product logic changes in this release-control PR.",
+  "requestId": "canonical-marketing-hardening-release-final-20260928",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
