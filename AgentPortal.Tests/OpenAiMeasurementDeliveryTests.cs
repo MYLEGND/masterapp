@@ -51,6 +51,82 @@ public sealed class OpenAiMeasurementDeliveryTests
     }
 
     [Fact]
+    public async Task ConversionsApi_SerializesCanonicalUserMatchingWithoutRawIdentifiers()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK, "{\"received\":1}");
+        using var client = new HttpClient(handler);
+        var service = new OpenAiConversionsApiService(client);
+        var user = new OpenAiConversionUser(
+            Obref: "browser-ref-123",
+            EmailsSha256: ["b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514"],
+            PhoneNumbersSha256: ["758fbf68945f21c416814c539ab578876c8d98fb69e6da692def92cd52417fe0"],
+            ExternalIdsSha256: ["93be0d83f7a2d56e79d48c5da382f218ce96adb31cdcb242ce4cfa1f2fcf0685"],
+            Regions: ["wa"],
+            PostalCodes: ["98264"],
+            Cities: ["lynden"],
+            Countries: ["US"],
+            IpAddress: "203.0.113.10",
+            UserAgent: "Mozilla/5.0");
+
+        var conversion = new OpenAiConversionEvent(
+            "same-canonical-event",
+            OpenAiMeasurementEventNames.LeadCreated,
+            1773892800000,
+            "https://example.com/quote",
+            "web",
+            new("customer_action"),
+            "oppref-1",
+            User: user);
+
+        Assert.True((await service.SendAsync("pixel-123", "key", conversion)).Sent);
+
+        using var body = JsonDocument.Parse(handler.Body!);
+        var evt = body.RootElement.GetProperty("events")[0];
+        Assert.Equal("same-canonical-event", evt.GetProperty("id").GetString());
+        var serializedUser = evt.GetProperty("user");
+        Assert.Equal("browser-ref-123", serializedUser.GetProperty("obref").GetString());
+        Assert.Equal(user.EmailsSha256![0], serializedUser.GetProperty("emails_sha256")[0].GetString());
+        Assert.Equal(user.PhoneNumbersSha256![0], serializedUser.GetProperty("phone_numbers_sha256")[0].GetString());
+        Assert.Equal("203.0.113.10", serializedUser.GetProperty("ip_address").GetString());
+        Assert.DoesNotContain("user@example.com", handler.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("+1 (415) 555-2671", handler.Body!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OpenAiUserMapper_FollowsDocumentedIdentifierNormalization()
+    {
+        Assert.Equal("user@example.com", OpenAiConversionUserMapper.NormalizeEmail(" USER@example.com "));
+        Assert.Equal("14155552671", OpenAiConversionUserMapper.NormalizePhone("+1 (415) 555-2671"));
+        Assert.Equal("Customer-ABC", OpenAiConversionUserMapper.NormalizeExternalId(" Customer-ABC "));
+        Assert.Equal("maryjane", OpenAiConversionUserMapper.NormalizeName("Mary Jane"));
+        Assert.Equal("oconnor", OpenAiConversionUserMapper.NormalizeName("O'Connor"));
+        Assert.Equal("josé", OpenAiConversionUserMapper.NormalizeName("José"));
+
+        Assert.Equal("b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514",
+            OpenAiConversionUserMapper.Hash("user@example.com"));
+        Assert.Equal("758fbf68945f21c416814c539ab578876c8d98fb69e6da692def92cd52417fe0",
+            OpenAiConversionUserMapper.Hash("14155552671"));
+        Assert.Equal("93be0d83f7a2d56e79d48c5da382f218ce96adb31cdcb242ce4cfa1f2fcf0685",
+            OpenAiConversionUserMapper.Hash("Customer-ABC"));
+        Assert.Null(OpenAiConversionUserMapper.NormalizePhone("555-CALL-NOW"));
+    }
+
+    [Fact]
+    public void ServerDestinationsShareOneCanonicalRawIdentityAuthority()
+    {
+        var root = FindRoot();
+        var openAi = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "OpenAiMeasurementDelivery.cs"));
+        var meta = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MetaSignalOutcomeDispatcherHostedService.cs"));
+
+        Assert.Contains("CanonicalMarketingIdentityResolver.ResolveAsync", openAi, StringComparison.Ordinal);
+        Assert.Contains("CanonicalMarketingIdentityResolver.ResolveAsync", meta, StringComparison.Ordinal);
+        Assert.Contains("Historical queue adapter only", meta, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResolveCrmContactAsync(db, row", meta[
+            meta.IndexOf("if (canonicalIdentity is not null)", StringComparison.Ordinal)..
+            meta.IndexOf("var hasBridgeAttribution", StringComparison.Ordinal)], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ConversionsApi_SerializesOpenAiCustomEventContract()
     {
         var handler = new RecordingHandler(HttpStatusCode.OK, "{\"received\":1}");
