@@ -923,6 +923,214 @@
     frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source);
   }
 
+  function compositionMediaAssetId(value) {
+    if (!value) return null;
+    try {
+      const url = new URL(value, API_BASE);
+      const match = url.pathname.match(/^\/api\/website-content\/media\/([a-f0-9-]{36})$/i);
+      return match ? match[1] : null;
+    } catch { return null; }
+  }
+
+  function legacyOverrideForElement(el) {
+    if (!el) return null;
+    if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
+      return pageState().extras.find(extra => extra.id === el.dataset.cmsExtraId) || null;
+    return pageState().elements?.[el.dataset.cmsId] || null;
+  }
+
+  function cleanCompositionClassName(el) {
+    return [...(el?.classList || [])]
+      .filter(name => name && !['legend-cms-inline-editing','legend-cms-selected','legend-cms-snap-x','legend-cms-snap-y'].includes(name))
+      .join(' ') || null;
+  }
+
+  function materializeCompositionNode(el, fallbackId = null) {
+    if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    const tag = el.tagName.toLowerCase();
+    if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
+
+    const id = el.dataset.cmsId || fallbackId || pageKey + '.' + safeId(tag) + '.node';
+    const override = legacyOverrideForElement(el) || {};
+    const actionKey = override.actionKey || el.dataset.websiteActionKey || null;
+    const extra = el.dataset.cmsExtraId ? pageState().extras.find(value => value.id === el.dataset.cmsExtraId) : null;
+
+    if (tag === 'form' && el.matches('[data-website-inquiry]')) {
+      return {
+        id, type:'form', tag:'form', className:cleanCompositionClassName(el),
+        title:el.querySelector('legend')?.textContent || extra?.title || 'Send an inquiry',
+        text:el.querySelector('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
+        systemKey:'canonical_inquiry', signals:structuredClone(override.signals || extra?.signals || []),
+        style:structuredClone(override.style || extra?.style || {}),
+        breakpointStyles:structuredClone(override.breakpointStyles || extra?.breakpointStyles || {}),
+        layout:structuredClone(override.layout || extra?.layout || {}),
+        breakpointLayouts:structuredClone(override.breakpointLayouts || extra?.breakpointLayouts || {}),
+        animations:structuredClone(override.animations || extra?.animations || []),
+        dataBinding:structuredClone(override.dataBinding || extra?.dataBinding || null),
+        children:[]
+      };
+    }
+
+    if (extra?.type === 'code' && el.classList.contains('cms-extra-code')) {
+      return {
+        id, type:'embed', tag:'div', className:cleanCompositionClassName(el),
+        text:extra.text || defaultCodeBlock, signals:structuredClone(extra.signals || []),
+        style:structuredClone(extra.style || {}), breakpointStyles:structuredClone(extra.breakpointStyles || {}),
+        layout:structuredClone(extra.layout || {}), breakpointLayouts:structuredClone(extra.breakpointLayouts || {}),
+        animations:structuredClone(extra.animations || []), dataBinding:structuredClone(extra.dataBinding || null), children:[]
+      };
+    }
+
+    let type = 'text';
+    if (tag === 'section') type='section';
+    else if (['div','article','header','footer','ul','ol'].includes(tag)) type='container';
+    else if (/^h[1-6]$/.test(tag)) type='heading';
+    else if (tag === 'a' || tag === 'button') type=actionKey ? 'cta' : 'link';
+    else if (tag === 'img') type='image';
+    else if (tag === 'video') type='video';
+
+    const node = {
+      id, type, tag, className:cleanCompositionClassName(el),
+      actionKey:actionKey || null,
+      href:(tag === 'a' ? el.getAttribute('href') : override.href) || null,
+      target:(tag === 'a' ? el.getAttribute('target') : override.target) || null,
+      alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || override.alt || null) : null,
+      hidden:el.hidden === true ? true : (override.hidden === false ? false : null),
+      signals:structuredClone(override.signals || []),
+      style:structuredClone(override.style || {}),
+      breakpointStyles:structuredClone(override.breakpointStyles || {}),
+      layout:structuredClone(override.layout || {}),
+      breakpointLayouts:structuredClone(override.breakpointLayouts || {}),
+      animations:structuredClone(override.animations || []),
+      dataBinding:structuredClone(override.dataBinding || null),
+      children:[]
+    };
+
+    if (el.hasAttribute('data-business-name')) node.systemBinding='business_name';
+    else if (el.hasAttribute('data-business-field'))
+      node.systemBinding='business_field:' + el.getAttribute('data-business-field');
+
+    if (type === 'image' || type === 'video') {
+      const raw = type === 'image'
+        ? (override.imageDataUrl || el.getAttribute('src') || '')
+        : (override.videoUrl || el.getAttribute('src') || '');
+      node.mediaAssetId = compositionMediaAssetId(raw);
+      node.mediaUrl = raw || null;
+    }
+
+    const childElements = [...el.children].filter(child =>
+      child instanceof HTMLElement &&
+      !['svg','i','script','style','noscript'].includes(child.tagName.toLowerCase()) &&
+      !child.closest('.legend-cms-editor'));
+
+    if (['section','container','cta','link'].includes(type) && childElements.length) {
+      let childIndex = 0;
+      for (const child of childElements) {
+        const childNode = materializeCompositionNode(child, id + '.child.' + (++childIndex));
+        if (childNode) node.children.push(childNode);
+      }
+      const directText = [...el.childNodes]
+        .filter(child => child.nodeType === 3 && String(child.textContent || '').trim())
+        .map(child => String(child.textContent || '').replace(/\r/g,''))
+        .join(' ')
+        .trim();
+      if (directText) node.children.unshift({
+        id:id + '.text',type:'text',tag:'span',text:directText,className:null,
+        signals:[],style:{},breakpointStyles:{},layout:{},breakpointLayouts:{},animations:[],children:[]
+      });
+    } else if (!['image','video','section','container'].includes(type)) {
+      node.text = inlineTextValue(el);
+    }
+
+    return node;
+  }
+
+  function materializeCurrentPageComposition() {
+    const main = document.querySelector('main');
+    if (!main) return [];
+    const nodes = [];
+    let index = 0;
+    for (const child of [...main.children]) {
+      const node = materializeCompositionNode(child, pageKey + '.root.' + (++index));
+      if (node) nodes.push(node);
+    }
+    return nodes;
+  }
+
+  function safeCompositionTag(node) {
+    const type=String(node?.type || 'text');
+    const tag=String(node?.tag || '').toLowerCase();
+    const allowed={
+      section:['section'],container:['div','article','header','footer','ul','ol'],
+      heading:['h1','h2','h3','h4','h5','h6'],text:['p','span','small','strong','li','label','blockquote'],
+      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],embed:['div'],spacer:['div'],reusable:['div']
+    }[type] || ['div'];
+    return allowed.includes(tag) ? tag : allowed[0];
+  }
+
+  function buildCompositionNode(node) {
+    if (!node?.id) return null;
+    let el;
+    if (node.type === 'form') {
+      el = buildExtraNode({id:node.id,type:'form',title:node.title,text:node.text,style:node.style||{},signals:node.signals||[]}, false);
+    } else if (node.type === 'embed') {
+      el = buildExtraNode({id:node.id,type:'code',text:node.text||defaultCodeBlock,style:node.style||{},signals:node.signals||[]}, false);
+    } else {
+      el = document.createElement(safeCompositionTag(node));
+      if (node.className) el.className = node.className;
+      if (node.type === 'image') {
+        const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
+        if (source) el.src = mediaUrl(source);
+        el.alt = node.alt || '';
+      } else if (node.type === 'video') {
+        const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
+        if (source) el.src = mediaUrl(source);
+        el.controls = true; el.preload = 'metadata';
+      } else if (node.type === 'cta' || node.type === 'link') {
+        if (node.actionKey) el.dataset.websiteActionKey = node.actionKey;
+        if (el.tagName === 'A' && node.href && safeUrl(node.href)) el.setAttribute('href',node.href);
+        if (el.tagName === 'A') el.target = node.target === '_blank' ? '_blank' : '_self';
+      }
+
+      if (node.systemBinding === 'business_name') el.setAttribute('data-business-name','');
+      else if (String(node.systemBinding || '').startsWith('business_field:'))
+        el.setAttribute('data-business-field',String(node.systemBinding).slice('business_field:'.length));
+
+      const children = Array.isArray(node.children) ? node.children : [];
+      if (children.length) {
+        for (const child of children) {
+          const childElement = buildCompositionNode(child);
+          if (childElement) el.appendChild(childElement);
+        }
+      } else if (node.text != null && !['IMG','VIDEO','FORM'].includes(el.tagName)) {
+        setContentText(el,String(node.text),true);
+      }
+    }
+
+    if (!el) return null;
+    if (node.className) {
+      const existing=[...el.classList];
+      el.className=[...new Set([...existing,...String(node.className).split(/\s+/).filter(Boolean)])].join(' ');
+    }
+    el.dataset.cmsCompositionId=node.id;
+    el.dataset.cmsId=node.id;
+    el.dataset.cmsEditable='true';
+    if (node.type === 'section') el.dataset.cmsSection=node.id;
+    rememberOriginal(el);
+    applyElementOverride(el,node);
+    return el;
+  }
+
+  function renderCanonicalCompositionPage() {
+    const main=document.querySelector('main');
+    if(!main) return;
+    main.replaceChildren();
+    for(const node of pageState().composition || []){
+      const element=buildCompositionNode(node);
+      if(element) main.appendChild(element);
+    }
+  }
+
   function mediaUrl(value) {
     if (!editorMode || !value) return value;
     try { const url = new URL(value, API_BASE); const authority = new URL(API_BASE); if (url.origin === authority.origin && /^\/api\/website-content\/media\/[a-f0-9-]+$/i.test(url.pathname)) { url.searchParams.set('ticket', editorTicket); return url.toString(); } } catch {}
