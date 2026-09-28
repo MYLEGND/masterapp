@@ -122,10 +122,7 @@ public static class UnifiedEventContextBuilder
 
             Fbclid = fbclid,
             Oppref = OpenAiClickReference.Normalize(oppref),
-            Obref = CanUseOpenAiBrowserReference(request)
-                ? OpenAiBrowserReference.Normalize(obref)
-                    ?? OpenAiBrowserReference.Normalize(MetaLeadTrackingWorkflow.ResolveCookieValue(request, "__obref"))
-                : null,
+            Obref = ResolveOpenAiBrowserReference(request, obref),
             Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbc"),
             Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbp"),
 
@@ -145,6 +142,13 @@ public static class UnifiedEventContextBuilder
             MetaServerAuthorityEligible = resolvedMetaServerAuthorityEligible,
             Metadata = metadata
         };
+    }
+
+    public static string? ResolveOpenAiBrowserReference(HttpRequest? request, string? explicitValue = null)
+    {
+        if (!CanUseOpenAiBrowserReference(request)) return null;
+        return OpenAiBrowserReference.Normalize(explicitValue)
+            ?? OpenAiBrowserReference.Normalize(MetaLeadTrackingWorkflow.ResolveCookieValue(request, "__obref"));
     }
 
     public static bool CanUseOpenAiBrowserReference(HttpRequest? request)
