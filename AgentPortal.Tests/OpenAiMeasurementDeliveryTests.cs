@@ -128,6 +128,94 @@ public sealed class OpenAiMeasurementDeliveryTests
     }
 
     [Fact]
+    public async Task CanonicalIdentityResolver_UnifiesWebsiteLeadCrmAndBrowserMatchingForBothProviders()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var businessId = Guid.NewGuid();
+        var websiteLeadId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        db.WebsiteLeads.Add(new WebsiteLead
+        {
+            LeadId = websiteLeadId,
+            CommerceBusinessId = businessId,
+            FirstName = "Jamie",
+            LastName = "Smith",
+            Email = "Jamie@Example.com",
+            Phone = "+1 (360) 555-0100",
+            ClientIpAddress = "203.0.113.44",
+            ClientUserAgent = "canonical-browser",
+            Fbp = "fb-browser",
+            Fbc = "fb-click",
+            MetadataJson = "{\"Obref\":\"browser-ref-shared\"}",
+            CreatedUtc = now
+        });
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "workstation-1",
+            AgentUserId = "business-owner",
+            CommerceBusinessId = businessId,
+            FirstName = "Jamie",
+            LastName = "Smith",
+            Email = "Jamie@Example.com",
+            Phone = "+1 (360) 555-0100",
+            City = "Lynden",
+            State = "WA",
+            ZipCode = "98264",
+            Gender = "female",
+            DOB = new DateTime(1990, 1, 2),
+            CreatedUtc = now,
+            UpdatedUtc = now
+        });
+        db.WebsiteLeadIntakeLinks.Add(new WebsiteLeadIntakeLink
+        {
+            Id = Guid.NewGuid(),
+            WebsiteLeadRowId = 1,
+            WebsiteLeadPublicId = websiteLeadId,
+            WorkstationLeadId = "workstation-1",
+            AgentUserId = "business-owner",
+            CommerceBusinessId = businessId,
+            Bucket = "Life",
+            SubmittedUtc = now,
+            CapturedUtc = now,
+            Oppref = "oppref-source"
+        });
+        await db.SaveChangesAsync();
+
+        var source = new AnalyticsEvent
+        {
+            EventId = Guid.NewGuid(),
+            EventType = "QualifiedLead",
+            CommerceBusinessId = businessId,
+            EventUtc = now,
+            MetadataJson = "{\"leadId\":\"workstation-1\"}"
+        };
+
+        var identity = await CanonicalMarketingIdentityResolver.ResolveAsync(db, source);
+
+        Assert.Same(source, identity.Source);
+        Assert.Equal(websiteLeadId, identity.WebsiteLeadId);
+        Assert.Equal("workstation-1", identity.WorkstationLeadId);
+        Assert.Equal("Jamie@Example.com", identity.Email);
+        Assert.Equal("+1 (360) 555-0100", identity.Phone);
+        Assert.Equal("Lynden", identity.City);
+        Assert.Equal("WA", identity.State);
+        Assert.Equal("98264", identity.PostalCode);
+        Assert.Equal("browser-ref-shared", identity.Obref);
+        Assert.Equal("203.0.113.44", identity.ClientIpAddress);
+        Assert.Equal("canonical-browser", identity.ClientUserAgent);
+        Assert.Contains(websiteLeadId.ToString("N"), identity.ExternalIds);
+        Assert.Contains("workstation-1", identity.ExternalIds);
+
+        var user = Assert.IsType<OpenAiConversionUser>(OpenAiConversionUserMapper.Map(identity));
+        Assert.Equal("browser-ref-shared", user.Obref);
+        Assert.Equal(OpenAiConversionUserMapper.Hash("jamie@example.com"), Assert.Single(user.EmailsSha256!));
+        Assert.Equal(OpenAiConversionUserMapper.Hash("13605550100"), Assert.Single(user.PhoneNumbersSha256!));
+        Assert.Equal("wa", Assert.Single(user.Regions!));
+        Assert.Equal("98264", Assert.Single(user.PostalCodes!));
+    }
+
+    [Fact]
     public async Task ConversionsApi_SerializesOpenAiCustomEventContract()
     {
         var handler = new RecordingHandler(HttpStatusCode.OK, "{\"received\":1}");
