@@ -82,8 +82,9 @@ public static class WebsiteLeadNotificationAuthority
 
 
 /// <summary>
-/// Retries failed agent/founder WebsiteLead notifications from the canonical persisted lead row.
-/// Business inquiries are excluded because BusinessInquiryNotificationService owns their queue.
+/// Retries failed WebsiteLead notifications from the canonical persisted lead row.
+/// Published business inquiries that have a CommerceWebsiteInquiry remain owned by
+/// BusinessInquiryNotificationService; business-owned app inquiries use this same lead lease.
 /// </summary>
 public sealed class WebsiteLeadNotificationRecoveryWorker(
     IServiceScopeFactory scopes,
@@ -104,7 +105,6 @@ public sealed class WebsiteLeadNotificationRecoveryWorker(
 
                 var ids = await db.WebsiteLeads.AsNoTracking()
                     .Where(x =>
-                        x.CommerceBusinessId == null &&
                         x.NotificationSentUtc == null &&
                         x.Status == "NotificationFailed" &&
                         x.NotificationAttemptUtc != null &&
@@ -118,12 +118,19 @@ public sealed class WebsiteLeadNotificationRecoveryWorker(
                 foreach (var id in ids)
                 {
                     var lead = await db.WebsiteLeads.SingleOrDefaultAsync(x => x.Id == id, stoppingToken);
-                    if (lead is null || lead.NotificationSentUtc.HasValue || lead.CommerceBusinessId.HasValue)
+                    if (lead is null || lead.NotificationSentUtc.HasValue)
                         continue;
 
-                    var owner = lead.AgentTrackingProfileId is { } agentId && agentId != Guid.Empty
-                        ? MarketingOwnerScope.Agent(agentId)
-                        : MarketingOwnerScope.Founder;
+                    if (lead.CommerceBusinessId is { } businessId &&
+                        await db.Set<CommerceWebsiteInquiry>().AsNoTracking()
+                            .AnyAsync(x => x.WebsiteLeadId == lead.LeadId, stoppingToken))
+                        continue;
+
+                    var owner = lead.CommerceBusinessId is { } scopedBusinessId && scopedBusinessId != Guid.Empty
+                        ? MarketingOwnerScope.Business(scopedBusinessId)
+                        : lead.AgentTrackingProfileId is { } agentId && agentId != Guid.Empty
+                            ? MarketingOwnerScope.Agent(agentId)
+                            : MarketingOwnerScope.Founder;
                     var recipient = await recipients.ResolveAsync(owner, stoppingToken);
                     if (string.IsNullOrWhiteSpace(recipient))
                     {
