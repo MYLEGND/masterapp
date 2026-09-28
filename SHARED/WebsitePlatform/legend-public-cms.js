@@ -2161,6 +2161,7 @@
 
   function initializeMetaPixel(pixelId) {
     if (!pixelId || typeof window === 'undefined') return;
+    if (window.LegendAnalytics?.measurementConsent?.isAllowed?.() !== true) return;
     if (typeof window.fbq !== 'function') {
       const fbq = function() { fbq.callMethod ? fbq.callMethod.apply(fbq, arguments) : fbq.queue.push(arguments); };
       if (!window._fbq) window._fbq = fbq;
