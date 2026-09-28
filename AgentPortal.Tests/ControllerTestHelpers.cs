@@ -347,12 +347,6 @@ internal static class ControllerTestHelpers
     {
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
 
-        var client = new HttpClient(handler, disposeHandler: false);
-        var httpClientFactory = new Mock<IHttpClientFactory>();
-        httpClientFactory
-            .Setup(x => x.CreateClient(It.IsAny<string>()))
-            .Returns(client);
-
         var timeResolver = new Mock<IAgentTimeZoneResolver>();
         timeResolver
             .Setup(resolver => resolver.Resolve(It.IsAny<HttpContext>()))
@@ -377,7 +371,6 @@ internal static class ControllerTestHelpers
         return new CalendarController(
             NullLogger<CalendarController>.Instance,
             db,
-            httpClientFactory.Object,
             timeResolver.Object,
             calendarConnections.Object)
         {
