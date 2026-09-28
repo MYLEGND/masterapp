@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Infrastructure.WebsiteEditing;
 using Xunit;
 
@@ -131,6 +132,60 @@ public sealed class WebsiteSiteSourceV3Tests
             "\"systemKey\": \"custom_submit\"",
             StringComparison.Ordinal);
         Assert.Throws<ArgumentException>(() => WebsiteSiteSource.Parse(fakeForm, source, BusinessActions()));
+    }
+
+    [Fact]
+    public void SiteSource_CannotRetargetOrRemoveExistingCanonicalAction()
+    {
+        var source = CanonicalDocument();
+        var serialized = WebsiteSiteSource.Serialize(source);
+
+        var retargeted = serialized.Replace(
+            "\"actionKey\": \"business_quote\"",
+            "\"actionKey\": \"business_contact\"",
+            StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => WebsiteSiteSource.Parse(retargeted, source, BusinessActions()));
+
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(serialized)!;
+        var hero = model.Pages.Single(page => page.Path == "/").Composition.Single(node => node.Id == "home.hero");
+        hero.Children.RemoveAll(node => node.Id == "home.hero.quote");
+        var removed = JsonSerializer.Serialize(model, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+
+        Assert.Throws<ArgumentException>(() => WebsiteSiteSource.Parse(removed, source, BusinessActions()));
+    }
+
+    [Fact]
+    public void CanonicalEmptyPage_DoesNotResurrectLegacyTemplateOverrides()
+    {
+        var document = CanonicalDocument();
+        document.Pages["/empty"] = new WebsitePageDocument
+        {
+            Title = "Empty",
+            TemplatePath = "/about",
+            Navigation = new WebsitePageNavigation { Label = "Empty", Order = 20 },
+            Elements = new(StringComparer.Ordinal)
+            {
+                ["legacy"] = new WebsiteElementOverride { Text = "Must not return" }
+            },
+            Extras =
+            [
+                new WebsiteExtraComponent
+                {
+                    Id = "legacy-extra",
+                    SectionId = "legacy",
+                    Type = "text",
+                    Text = "Must not return"
+                }
+            ],
+            Composition = []
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(document);
+
+        Assert.Null(clean.Pages["/empty"].TemplatePath);
+        Assert.Empty(clean.Pages["/empty"].Elements);
+        Assert.Empty(clean.Pages["/empty"].Extras);
+        Assert.Empty(clean.Pages["/empty"].Composition);
     }
 
     [Fact]
