@@ -620,4 +620,32 @@ public sealed class BusinessWorkspaceTests
         Assert.NotNull(row.NotificationSentUtc);
         sender.Verify(x => x.TrySendAsync(business.OwnerEmail, It.IsAny<string>(), It.IsAny<string>(), null, row.Email, false, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task AgentInquiryRecipientUsesCurrentPrimaryAccountEmail()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var tracking = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "agent-primary",
+            AgentUpn = "legacy@example.org",
+            Slug = "agent-primary",
+            Status = "active"
+        };
+        db.AgentTrackingProfiles.Add(tracking);
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = tracking.AgentUserId,
+            AgentUpn = "Primary@Example.org",
+            NormalizedEmail = "primary@example.org",
+            IsActive = true,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var resolver = new WebsiteIntakeRecipientResolver(db, new ConfigurationBuilder().Build());
+        Assert.Equal("primary@example.org", await resolver.ResolveAsync(MarketingOwnerScope.Agent(tracking.Id)));
+    }
+
 }
