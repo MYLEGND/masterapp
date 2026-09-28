@@ -110,6 +110,9 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));", css, StringComparison.Ordinal);
         Assert.Contains(".wa-channel-grid {\n    grid-template-columns: 1fr;", css, StringComparison.Ordinal);
         Assert.Contains(".wa-channel-loading {\n    min-width: 0;", css, StringComparison.Ordinal);
+        Assert.DoesNotContain(".wa-channel-card {\n  min-width: 190px;", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("min-height: 176px;", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("min-height: 150px;", css, StringComparison.Ordinal);
     }
 
     [Fact]
