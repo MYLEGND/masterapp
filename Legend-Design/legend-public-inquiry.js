@@ -43,7 +43,8 @@
       const fields = new FormData(form);
       const analytics = window.LegendAnalytics;
       const attribution = analytics?.ids?.getAttribution?.() || {};
-      const measurementAllowed = analytics?.measurementConsent?.isAllowed?.() === true;
+      const measurementConsent = analytics?.measurementConsent?.get?.() || null;
+      const measurementAllowed = measurementConsent?.allowed === true;
       const cookie = name => document.cookie.split(';').map(value => value.trim())
         .find(value => value.startsWith(name + '='))?.slice(name.length + 1) || null;
 
@@ -75,7 +76,8 @@
         fbc: measurementAllowed ? cookie('_fbc') : null,
         metaCampaignId: attribution.metaCampaignId || null,
         metaAdSetId: attribution.metaAdSetId || null,
-        metaAdId: attribution.metaAdId || null
+        metaAdId: attribution.metaAdId || null,
+        measurementConsent: measurementConsent?.state || null
       };
 
       const fingerprint = JSON.stringify(values);
