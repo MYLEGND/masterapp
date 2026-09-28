@@ -40,6 +40,8 @@ public static class WebsiteContentSanitizer
     private const int MaxTextLength = 12000;
     private const int MaxCodeLength = 100000;
     private const int MaxImageDataUrlLength = 3500000;
+    private const int MaxCompositionNodesPerPage = 1200;
+    private const int MaxCompositionDepth = 16;
     public static WebsiteContentDocument Sanitize(WebsiteContentDocument source)
     {
         var breakpoints = SanitizeBreakpoints(source.Breakpoints);
@@ -55,7 +57,10 @@ public static class WebsiteContentSanitizer
                 CartIcon = SanitizeCartIcon(source.Store?.CartIcon),
                 CartIconSizePx = Math.Clamp(source.Store?.CartIconSizePx ?? 28, 16, 96)
             },
-            Breakpoints = breakpoints
+            Breakpoints = breakpoints,
+            CompositionMode = string.Equals(source.CompositionMode, "canonical", StringComparison.OrdinalIgnoreCase)
+                ? "canonical"
+                : null
         };
 
         foreach (var pair in (source.Elements ?? new()).Take(MaxElements))
@@ -107,14 +112,18 @@ public static class WebsiteContentSanitizer
         {
             var path = page.Key;
             if (page.Value is null || !path.StartsWith('/') || path.StartsWith("//") || path.Contains('?') || path.Contains('#') || path.Contains("..") || path.Length > 2048) continue;
-            var body = SanitizePageBody(page.Value, breakpointKeys);
+            var composition = SanitizeComposition(page.Value.Composition, breakpointKeys);
+            var body = composition.Count == 0
+                ? SanitizePageBody(page.Value, breakpointKeys)
+                : new SanitizedPageBody();
             clean.Pages[path] = new WebsitePageDocument
             {
                 Title = ClampText(page.Value.Title),
                 Description = ClampText(page.Value.Description),
-                TemplatePath = SanitizePagePath(page.Value.TemplatePath),
+                TemplatePath = composition.Count == 0 ? SanitizePagePath(page.Value.TemplatePath) : null,
                 Navigation = SanitizeNavigation(path, page.Value.Navigation),
                 DynamicBinding = SanitizeDynamicBinding(page.Value.DynamicBinding),
+                Composition = composition,
                 Elements = body.Elements,
                 SectionOrder = body.SectionOrder,
                 Extras = body.Extras
@@ -207,6 +216,104 @@ public static class WebsiteContentSanitizer
             });
         }
         return clean;
+    }
+
+    private static List<WebsiteCompositionNode> SanitizeComposition(
+        IEnumerable<WebsiteCompositionNode>? source,
+        HashSet<string> breakpointKeys)
+    {
+        var remaining = MaxCompositionNodesPerPage;
+        return SanitizeCompositionChildren(source, breakpointKeys, 0, ref remaining);
+    }
+
+    private static List<WebsiteCompositionNode> SanitizeCompositionChildren(
+        IEnumerable<WebsiteCompositionNode>? source,
+        HashSet<string> breakpointKeys,
+        int depth,
+        ref int remaining)
+    {
+        var result = new List<WebsiteCompositionNode>();
+        if (depth > MaxCompositionDepth || remaining <= 0) return result;
+
+        foreach (var node in source ?? [])
+        {
+            if (node is null || remaining-- <= 0) break;
+            var id = SanitizeId(node.Id);
+            var type = (node.Type ?? string.Empty).Trim().ToLowerInvariant();
+            if (id.Length == 0 || type is not ("section" or "container" or "heading" or "text" or "cta" or "link" or "image" or "video" or "form" or "embed" or "spacer" or "reusable"))
+                continue;
+
+            var tag = SanitizeCompositionTag(node.Tag, type);
+            var systemKey = type == "form"
+                ? (string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal) ? "canonical_inquiry" : null)
+                : null;
+            if (type == "form" && systemKey is null) continue;
+
+            var mediaUrl = type is "image" or "video"
+                ? SanitizeUrl(node.MediaUrl, allowDataImage: type == "image")
+                : null;
+
+            var clean = new WebsiteCompositionNode
+            {
+                Id = id,
+                Type = type,
+                Tag = tag,
+                ClassName = SanitizeClassName(node.ClassName),
+                Text = type == "embed" ? ClampCodeText(node.Text) : ClampContentText(node.Text),
+                Title = ClampContentText(node.Title),
+                ActionKey = type is "cta" or "link" ? SanitizeActionKey(node.ActionKey) : null,
+                Href = type is "cta" or "link" ? SanitizeUrl(node.Href) : null,
+                Target = type is "cta" or "link" ? SanitizeTarget(node.Target) : null,
+                Alt = type is "image" or "video" ? ClampText(node.Alt) : null,
+                MediaAssetId = type is "image" or "video" ? node.MediaAssetId : null,
+                MediaUrl = mediaUrl,
+                SystemKey = systemKey,
+                Hidden = node.Hidden,
+                Signals = WebsiteSignalBindingPolicy.Validate(node.Signals),
+                Style = SanitizeStyle(node.Style),
+                BreakpointStyles = SanitizeStyleMap(node.BreakpointStyles, breakpointKeys),
+                Layout = SanitizeLayout(node.Layout),
+                BreakpointLayouts = SanitizeLayoutMap(node.BreakpointLayouts, breakpointKeys),
+                Animations = SanitizeAnimations(node.Animations),
+                DataBinding = SanitizeDataBinding(node.DataBinding)
+            };
+            clean.Children = SanitizeCompositionChildren(node.Children, breakpointKeys, depth + 1, ref remaining);
+            result.Add(clean);
+        }
+        return result;
+    }
+
+    private static string? SanitizeCompositionTag(string? value, string type)
+    {
+        var tag = (value ?? string.Empty).Trim().ToLowerInvariant();
+        var allowed = type switch
+        {
+            "section" => new[] { "section" },
+            "container" => new[] { "div", "article", "header", "footer", "ul", "ol" },
+            "heading" => new[] { "h1", "h2", "h3", "h4", "h5", "h6" },
+            "text" => new[] { "p", "span", "small", "strong", "li", "label", "blockquote" },
+            "cta" or "link" => new[] { "a", "button" },
+            "image" => new[] { "img" },
+            "video" => new[] { "video" },
+            "form" => new[] { "form" },
+            "embed" or "spacer" or "reusable" => new[] { "div" },
+            _ => Array.Empty<string>()
+        };
+        return allowed.Contains(tag, StringComparer.Ordinal) ? tag : allowed.FirstOrDefault();
+    }
+
+    private static string? SanitizeClassName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var tokens = value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Take(24)
+            .Select(token => new string(token.Take(80)
+                .Where(character => char.IsLetterOrDigit(character) || character is '-' or '_')
+                .ToArray()))
+            .Where(token => token.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return tokens.Length == 0 ? null : string.Join(' ', tokens);
     }
 
     private static List<WebsiteBreakpointDefinition> SanitizeBreakpoints(IEnumerable<WebsiteBreakpointDefinition>? source)
