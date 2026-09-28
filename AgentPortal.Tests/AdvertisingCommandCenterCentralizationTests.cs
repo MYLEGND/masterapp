@@ -28,7 +28,9 @@ public sealed class AdvertisingCommandCenterCentralizationTests
         Assert.Contains("advertisingReject: analyticsEndpoint('/advertising/reject')", js, StringComparison.Ordinal);
         Assert.DoesNotContain("api.ads.openai.com", js, StringComparison.OrdinalIgnoreCase);
 
-        Assert.Contains(".advertising-command-modal", css, StringComparison.Ordinal);
+        Assert.Contains("id=\"advertisingCommandModal\"", view, StringComparison.Ordinal);
+        Assert.Contains("modal-content wa-modal-shell", view, StringComparison.Ordinal);
+        Assert.DoesNotContain(".advertising-command-modal", css, StringComparison.Ordinal);
         Assert.Contains(".advertising-command-grid", css, StringComparison.Ordinal);
         Assert.Contains(".advertising-command-ledger", css, StringComparison.Ordinal);
     }
