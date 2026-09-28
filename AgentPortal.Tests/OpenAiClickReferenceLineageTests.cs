@@ -179,7 +179,7 @@ public sealed class OpenAiClickReferenceLineageTests
             Assert.Contains("utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmTerm\")", source, StringComparison.Ordinal);
             Assert.Contains("utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmContent\")", source, StringComparison.Ordinal);
             Assert.Contains("oppref: lead.Oppref", source, StringComparison.Ordinal);
-            Assert.Contains("OpenAiBrowserReference.Normalize(Request.Cookies[\"__obref\"])", source, StringComparison.Ordinal);
+            Assert.Contains("OpenAiBrowserReference.Normalize(HttpContext?.Request.Cookies[\"__obref\"])", source, StringComparison.Ordinal);
         }
     }
 
