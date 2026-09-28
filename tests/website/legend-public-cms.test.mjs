@@ -8,6 +8,7 @@ const publicCss = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-publ
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
 const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
 const publicInquiryFormSource = readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.mjs', import.meta.url), 'utf8');
+const publicInquiryFormCss = readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.css', import.meta.url), 'utf8');
 const protectContactSource = readFileSync(new URL('../../Protect-Website/Views/Contact/Index.cshtml', import.meta.url), 'utf8');
 const parfaitContactSource = readFileSync(new URL('../../ParfaitApp/Views/Contact/Index.cshtml', import.meta.url), 'utf8');
 const metaSignalSource = readFileSync(new URL('../../SHARED/WebsitePlatform/meta-signal-intelligence.js', import.meta.url), 'utf8');
@@ -624,15 +625,15 @@ test('canonical public stylesheet preserves authored spaces, tabs and line break
 });
 
 test('shared business inquiry uses Protect contact identity and two-column rows',()=>{
-  assert.ok(businessBuildSource.includes('id="website_inquiry"'));
-  for (const field of ['FirstName','LastName','Phone','Email']) assert.ok(businessBuildSource.includes(`name="${field}"`));
+  assert.ok(publicInquiryFormSource.includes('id="website_inquiry"'));
+  for (const field of ['FirstName','LastName','Phone','Email']) assert.ok(publicInquiryFormSource.includes(`name="${field}"`));
   assert.ok(publicInquirySource.includes("fields.get('FirstName')"));
   assert.ok(publicInquirySource.includes("fields.get('LastName')"));
   assert.ok(publicInquirySource.includes("fields.get('Phone')"));
   assert.ok(publicInquirySource.includes("fields.get('Email')"));
   assert.ok(source.includes("requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []"));
-  assert.ok(publicCss.includes('.public-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'));
-  assert.match(publicCss, /@media\(max-width:650px\)[\s\S]*?\.public-form-grid\{grid-template-columns:1fr;gap:14px\}/);
+  assert.ok(publicInquiryFormCss.includes('.public-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'));
+  assert.match(publicInquiryFormCss, /@media\(max-width:650px\)[\s\S]*?\.public-form-grid\{grid-template-columns:1fr;gap:14px\}/);
   assert.match(publicCss, /@container legend-public-preview \(max-width:650px\)[\s\S]*?\.public-form-grid\{grid-template-columns:1fr;gap:14px\}/);
 });
 
@@ -655,7 +656,7 @@ test('Founder and business websites use one shared inquiry runtime with no hard-
   assert.equal(editorContractsSource.includes('legend_email'),false);
   assert.ok(publicInquirySource.includes("new URLSearchParams(location.search).has('legendEdit')"));
   assert.ok(publicInquirySource.includes("document.querySelectorAll('[data-website-inquiry]:not([data-preview])')"));
-  assert.ok(publicInquirySource.includes("new URL('/api/website-inquiries/public', apiBase)"));
+  assert.ok(publicInquirySource.includes("new URL('/api/website-inquiries/public', resolveApiBase())"));
   assert.ok(publicInquirySource.includes("form._trackSubmitAttempt?.(true, 0)"));
   assert.ok(publicInquirySource.includes("window.legendFormTracking?.markSubmitted?.("));
   assert.equal(publicInquirySource.includes("EventType: 'lead_form_submit_success'"),false);
