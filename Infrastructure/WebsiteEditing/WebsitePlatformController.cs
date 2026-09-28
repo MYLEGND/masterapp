@@ -1008,6 +1008,12 @@ public class WebsitePlatformController : ControllerBase
                 continue;
             }
 
+            // A v3 composition page is an atomic page authority. Re-introducing
+            // v2 elements/extras here would recreate the retired parallel source.
+            if (incomingPage.Composition.Count > 0 ||
+                string.Equals(incoming.CompositionMode, "canonical", StringComparison.Ordinal))
+                continue;
+
             foreach (var (id, storedElement) in storedPage.Elements)
                 if (!incomingPage.Elements.ContainsKey(id) && !deleted.Contains(PageElementKey(path, id)))
                     incomingPage.Elements[id] = storedElement;
