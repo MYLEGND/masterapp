@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using AgentPortal.Security;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -202,7 +201,7 @@ public class LeadSubmitController : ControllerBase
             Status = "New",
             AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,
             AgentSlug = resolved.Found ? resolved.CanonicalSlug : null,
-            MetadataJson = BuildCanonicalLeadMetadata(req.MetadataJson, req.Obref)
+            MetadataJson = OpenAiAttributionMetadata.WithBrowserReference(req.MetadataJson, req.Obref)
         };
 
         if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, req.SubmissionId, HttpContext.RequestAborted, async ct =>
@@ -411,28 +410,6 @@ Notes: {lead.Notes}";
             recipient,
             emailSent = true
         });
-    }
-
-    private static string? BuildCanonicalLeadMetadata(string? existingJson, string? obref)
-    {
-        var browserReference = OpenAiBrowserReference.Normalize(obref);
-        if (browserReference is null)
-            return string.IsNullOrWhiteSpace(existingJson) ? null : existingJson.Trim();
-
-        JsonObject root;
-        try
-        {
-            root = string.IsNullOrWhiteSpace(existingJson)
-                ? new JsonObject()
-                : JsonNode.Parse(existingJson)?.AsObject() ?? new JsonObject();
-        }
-        catch (JsonException)
-        {
-            root = new JsonObject { ["legacyMetadataRaw"] = existingJson };
-        }
-
-        root["Obref"] = browserReference;
-        return root.ToJsonString();
     }
 
     private string builderEnvironment() =>
