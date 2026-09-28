@@ -49,11 +49,13 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("Back to Website Analytics", eventMap, StringComparison.Ordinal);
 
         Assert.Contains(".hero-link-command-actions", css, StringComparison.Ordinal);
+        Assert.Contains("grid-template-columns: max-content minmax(0, 1fr);", css, StringComparison.Ordinal);
+        Assert.Contains("overflow: visible;", css, StringComparison.Ordinal);
         Assert.Contains(".event-map-trigger", css, StringComparison.Ordinal);
-        Assert.Contains(".wa-event-map-page", css, StringComparison.Ordinal);
+        Assert.Contains(".legend-workspace-page.wa-event-map-page", css, StringComparison.Ordinal);
         Assert.Contains(".wa-event-map-table", css, StringComparison.Ordinal);
-        Assert.Contains("color: #b9ffd8;", css, StringComparison.Ordinal);
-        Assert.Contains("color: #8fe7ff;", css, StringComparison.Ordinal);
+        Assert.Contains("color: #8dffc5;", css, StringComparison.Ordinal);
+        Assert.Contains("color: #6ee7ff;", css, StringComparison.Ordinal);
     }
 
     [Fact]

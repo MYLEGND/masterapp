@@ -7953,36 +7953,36 @@ body {
 
 /* Centralized Website Analytics marketing setup authority. */
 .hero-link-title-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
-  flex-wrap: nowrap;
+  width: 100%;
   min-width: 0;
 }
 
 .hero-link-title-row .hero-link-title {
   margin-bottom: 0;
-  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .hero-link-command-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: .65rem;
-  flex: 0 1 auto;
+  width: 100%;
   min-width: 0;
-  overflow-x: auto;
-  padding: .2rem .15rem .3rem;
-  scrollbar-width: thin;
+  overflow: visible;
+  padding: .2rem 0 .3rem;
 }
 
 .hero-link-command-actions .btn {
   flex: 0 0 auto;
   white-space: nowrap;
   border-radius: 999px;
-  padding: .52rem .95rem;
+  padding: .52rem .9rem;
+  font-size: .78rem;
   font-weight: 900;
 }
 
@@ -8002,13 +8002,14 @@ body {
   box-shadow: 0 14px 30px rgba(99,102,241,.34), 0 0 0 .2rem rgba(129,140,248,.14);
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 900px) {
   .hero-link-title-row {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     align-items: stretch;
   }
 
   .hero-link-command-actions {
+    flex-wrap: wrap;
     justify-content: flex-start;
     width: 100%;
   }
@@ -8927,21 +8928,24 @@ body {
   gap: 8px;
   margin-bottom: 12px;
 }
-.wa-channel-card-head strong {
-  font-size: .9rem;
+.fa-shell .wa-channel-card-head strong {
+  font-size: .94rem;
   font-weight: 950;
-  color: #ffe59a;
-  text-shadow: 0 0 14px rgba(255,213,92,.2);
+  color: #ffe36e;
+  -webkit-text-fill-color: #ffe36e;
+  text-shadow: 0 0 18px rgba(255,217,92,.34);
 }
-.wa-channel-confidence {
+.fa-shell .wa-channel-confidence {
   padding: 3px 7px;
-  border: 1px solid rgba(103,232,249,.3);
+  border: 1px solid rgba(103,232,249,.5);
   border-radius: 999px;
-  color: #a5f3fc;
-  background: rgba(14,165,233,.08);
+  color: #93f4ff;
+  -webkit-text-fill-color: #93f4ff;
+  background: rgba(14,165,233,.14);
   font-size: .61rem;
-  font-weight: 850;
+  font-weight: 900;
   text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(103,232,249,.28);
 }
 .wa-channel-metrics {
   display: grid;
@@ -8955,25 +8959,29 @@ body {
 .wa-channel-metrics strong {
   display: block;
 }
-.wa-channel-metrics span {
-  color: #8fe7ff;
-  font-size: .66rem;
-  font-weight: 800;
+.fa-shell .wa-channel-metrics span {
+  color: #6ee7ff;
+  -webkit-text-fill-color: #6ee7ff;
+  font-size: .67rem;
+  font-weight: 900;
+  text-shadow: 0 0 10px rgba(56,189,248,.2);
 }
-.wa-channel-metrics strong {
+.fa-shell .wa-channel-metrics strong {
   margin-top: 2px;
-  color: #b9ffd8;
-  font-size: .88rem;
+  color: #8dffc5;
+  -webkit-text-fill-color: #8dffc5;
+  font-size: .92rem;
   font-weight: 950;
-  text-shadow: 0 0 12px rgba(52,211,153,.12);
+  text-shadow: 0 0 16px rgba(52,211,153,.28);
   overflow-wrap: anywhere;
 }
-.wa-channel-basis,
-.wa-channel-note,
-.wa-channel-loading {
-  color: #c9e8ff;
-  font-size: .72rem;
-  font-weight: 650;
+.fa-shell .wa-channel-basis,
+.fa-shell .wa-channel-note,
+.fa-shell .wa-channel-loading {
+  color: #d8f4ff;
+  -webkit-text-fill-color: #d8f4ff;
+  font-size: .73rem;
+  font-weight: 750;
   line-height: 1.45;
 }
 .wa-channel-basis {
@@ -9051,17 +9059,20 @@ body {
 .wa-growth-economics-summary strong {
   display: block;
 }
-.wa-growth-economics-summary span {
-  color: #8fe7ff;
-  font-size: .67rem;
-  font-weight: 850;
+.fa-shell .wa-growth-economics-summary span {
+  color: #6ee7ff;
+  -webkit-text-fill-color: #6ee7ff;
+  font-size: .68rem;
+  font-weight: 900;
+  text-shadow: 0 0 10px rgba(56,189,248,.2);
 }
-.wa-growth-economics-summary strong {
+.fa-shell .wa-growth-economics-summary strong {
   margin-top: 3px;
-  color: #ffe59a;
-  font-size: .96rem;
+  color: #ffe36e;
+  -webkit-text-fill-color: #ffe36e;
+  font-size: 1rem;
   font-weight: 950;
-  text-shadow: 0 0 14px rgba(255,213,92,.16);
+  text-shadow: 0 0 18px rgba(255,217,92,.32);
 }
 .wa-growth-economics-grid {
   display: grid;
@@ -9082,17 +9093,20 @@ body {
 .wa-growth-economics-metrics strong {
   display: block;
 }
-.wa-growth-economics-metrics span {
-  color: #8fe7ff;
-  font-size: .64rem;
-  font-weight: 800;
+.fa-shell .wa-growth-economics-metrics span {
+  color: #6ee7ff;
+  -webkit-text-fill-color: #6ee7ff;
+  font-size: .65rem;
+  font-weight: 900;
+  text-shadow: 0 0 10px rgba(56,189,248,.2);
 }
-.wa-growth-economics-metrics strong {
+.fa-shell .wa-growth-economics-metrics strong {
   margin-top: 2px;
-  color: #b9ffd8;
-  font-size: .84rem;
+  color: #8dffc5;
+  -webkit-text-fill-color: #8dffc5;
+  font-size: .88rem;
   font-weight: 950;
-  text-shadow: 0 0 12px rgba(52,211,153,.12);
+  text-shadow: 0 0 16px rgba(52,211,153,.28);
   overflow-wrap: anywhere;
 }
 .marketing-setup-readiness,
@@ -9194,7 +9208,7 @@ body {
 
 
 /* ── Canonical Website Analytics Event Map ───────────────────────────── */
-.wa-event-map-page {
+.legend-workspace-page.wa-event-map-page {
   min-height: 100vh;
   padding: 1.5rem;
   background:
