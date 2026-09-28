@@ -100,7 +100,7 @@ public sealed class WebsiteLeadNotificationRecoveryWorker(
                 var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
                 var recipients = scope.ServiceProvider.GetRequiredService<WebsiteIntakeRecipientResolver>();
                 var sender = scope.ServiceProvider.GetRequiredService<IWebsiteInquiryEmailSender>();
-                var retryCutoff = DateTime.UtcNow.AddMinutes(-15);
+                var retryCutoff = WebsiteLeadSubmission.NotificationRetryCutoff(DateTime.UtcNow);
 
                 var ids = await db.WebsiteLeads.AsNoTracking()
                     .Where(x =>
