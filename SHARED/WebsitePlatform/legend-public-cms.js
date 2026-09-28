@@ -3133,6 +3133,19 @@
 
   function moveSelectedSection(delta) {
     if (!selectedSection || selectedSection.matches('.site-header,.site-footer')) return;
+    if (usesCanonicalComposition() && selectedSection.dataset.cmsCompositionId) {
+      const roots=pageState().composition || [];
+      const id=selectedSection.dataset.cmsCompositionId;
+      const index=roots.findIndex(node=>node.id===id);
+      const target=index+delta;
+      if(index<0 || target<0 || target>=roots.length) return;
+      checkpoint();
+      const [node]=roots.splice(index,1); roots.splice(target,0,node);
+      renderCanonicalCompositionPage();
+      setSelected(document.querySelector('[data-cms-id="'+CSS.escape(id)+'"]'));
+      markDirty(); refreshLayers();
+      return;
+    }
     const sections=pageLayerSections();
     const index=sections.indexOf(selectedSection);
     const target=index+delta;
@@ -3154,6 +3167,18 @@
     }
     readImage(file, dataUrl => {
       checkpoint();
+      if (usesCanonicalComposition()) {
+        const parentId=selectedSection?.dataset?.cmsCompositionId;
+        const parent=parentId ? compositionNode(parentId) : null;
+        if(!parent){ alert('Select a section before adding an image.'); return; }
+        const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
+        const node={id,type:'image',tag:'img',className:'cms-extra-image',mediaAssetId:compositionMediaAssetId(dataUrl),mediaUrl:dataUrl,alt:'',signals:[],style:{widthPercent:70,paddingTop:16,paddingBottom:16},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]};
+        parent.children ||= []; parent.children.push(node);
+        renderCanonicalCompositionPage();
+        setSelected(document.querySelector('[data-cms-id="'+CSS.escape(id)+'"]'));
+        markDirty();
+        return;
+      }
       const extra = {
         id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
         sectionId: selectedSection.dataset.cmsSection,
@@ -3171,6 +3196,14 @@
   function removeSelected() {
     if (!selected) return;
     checkpoint();
+    if (usesCanonicalComposition() && selected.dataset.cmsCompositionId) {
+      const id=selected.dataset.cmsCompositionId;
+      if (!removeCompositionNode(id)) return;
+      renderCanonicalCompositionPage();
+      setSelected(null);
+      markDirty();
+      return;
+    }
     if (selected.dataset.cmsSignalOnly) { markDeleted(pageElementDeletionKey(selected.dataset.cmsId)); delete pageState().elements[selected.dataset.cmsId]; markDirty(); renderSignalControls(); return; }
     if (selected.dataset.cmsExtraId) {
       const removedId = selected.dataset.cmsExtraId;
@@ -4131,7 +4164,9 @@
   function openCodeEditor() {
     const block = selected;
     const extra = block?.dataset?.cmsExtraId ? pageState().extras.find(x => x.id === block.dataset.cmsExtraId) : null;
-    if (!block || extra?.type !== 'code') return;
+    const composition = block?.dataset?.cmsCompositionId ? compositionNode(block.dataset.cmsCompositionId) : null;
+    const sourceNode = composition?.type === 'embed' ? composition : extra?.type === 'code' ? extra : null;
+    if (!block || !sourceNode) return;
     clearTimeout(autoSaveTimer);
     const dialog = document.createElement('dialog');
     dialog.className = 'legend-cms-editor legend-cms-code-dialog';
@@ -4141,7 +4176,7 @@
     textarea.className = 'legend-cms-code-source';
     textarea.setAttribute('aria-label', 'Code block source');
     textarea.spellcheck = false;
-    textarea.value = extra.text || defaultCodeBlock;
+    textarea.value = sourceNode.text || defaultCodeBlock;
     const status = document.createElement('p'); status.setAttribute('role','status');
     const actions = document.createElement('div'); actions.className = 'legend-cms-code-actions';
     const saveButton = document.createElement('button'); saveButton.type = 'button'; saveButton.textContent = 'Save & preview';
@@ -4149,8 +4184,8 @@
     saveButton.addEventListener('click', () => {
       if (textarea.value.length > 100000) { status.textContent = 'Code blocks can contain up to 100,000 characters.'; return; }
       checkpoint();
-      extra.text = textarea.value;
-      renderCodePreview(block, extra);
+      sourceNode.text = textarea.value;
+      renderCodePreview(block, sourceNode);
       markDirty();
       dialog.close();
       updateDirectCanvasUi();
@@ -4164,7 +4199,52 @@
     textarea.focus();
   }
 
+  function addCompositionBlock(type) {
+    const sectionEl = selectedSection || document.querySelector('[data-cms-section]');
+    if (!sectionEl && type !== 'section') return;
+    if (type === 'form' && document.querySelector('form[data-website-inquiry]')) {
+      alert('This page already has its canonical inquiry form. Select it to restyle or reposition it.');
+      return;
+    }
+
+    checkpoint();
+    const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
+    const map={button:'cta',code:'embed'};
+    const nodeType=map[type] || type;
+    const tags={section:'section',text:'p',cta:'a',video:'video',form:'form',embed:'div'}; 
+    const node={
+      id,type:nodeType,tag:tags[nodeType] || 'div',className:null,
+      text:nodeType==='cta'?'Button':nodeType==='text'?'Your text':nodeType==='form'?'Send inquiry':nodeType==='embed'?defaultCodeBlock:'',
+      title:nodeType==='form'?'Send an inquiry':null,
+      actionKey:null,href:null,target:nodeType==='cta'?'_self':null,
+      systemKey:nodeType==='form'?'canonical_inquiry':null,
+      signals:[],style:nodeType==='embed'?{widthPercent:100,heightPx:320}:nodeType==='form'?{widthPercent:100}:{},
+      breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+    };
+
+    if(nodeType==='section'){
+      const roots=pageState().composition ||= [];
+      const selectedId=sectionEl?.dataset?.cmsCompositionId;
+      const index=selectedId ? roots.findIndex(value=>value.id===selectedId) : -1;
+      if(index>=0) roots.splice(index+1,0,node); else roots.push(node);
+    } else {
+      const parentId=sectionEl?.dataset?.cmsCompositionId;
+      const parent=parentId ? compositionNode(parentId) : (pageState().composition || []).find(value=>value.type==='section');
+      if(!parent){ alert('Select a section before adding content.'); return; }
+      parent.children ||= [];
+      parent.children.push(node);
+    }
+
+    renderCanonicalCompositionPage();
+    const created=document.querySelector('[data-cms-id="'+CSS.escape(id)+'"]');
+    setSelected(created,{openContent:nodeType==='cta'});
+    markDirty();
+    if(nodeType==='cta') document.getElementById('legend-cms-action')?.focus();
+    if(nodeType==='embed') openCodeEditor();
+  }
+
   function addBlock(type) {
+    if (usesCanonicalComposition()) { addCompositionBlock(type); return; }
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
     if (type === 'form' && document.querySelector('form[data-website-inquiry]')) {
@@ -4614,7 +4694,12 @@
         checkpoint();
         const ov = selectedOverride();
         if (!ov) return;
-        ov.imageDataUrl = dataUrl;
+        if (selected.dataset.cmsCompositionId) {
+          ov.mediaAssetId = compositionMediaAssetId(dataUrl);
+          ov.mediaUrl = dataUrl;
+        } else {
+          ov.imageDataUrl = dataUrl;
+        }
         selected.src = mediaUrl(dataUrl);
         markDirty();
       });
