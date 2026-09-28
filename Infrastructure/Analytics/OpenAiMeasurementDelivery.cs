@@ -227,14 +227,9 @@ public static class OpenAiMeasurementEventMapper
         if (sourceUrl is null) return false;
 
         var contentEvent = string.Equals(destination.PayloadType, "contents", StringComparison.OrdinalIgnoreCase);
-
-        long? amount = null;
-        var currency = ReadString(row.MetadataJson, "currency");
-        if (contentEvent && TryReadLong(row.MetadataJson, "valueCents", out var cents) && cents >= 0)
-        {
-            amount = cents;
-            currency = string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim().ToUpperInvariant();
-        }
+        var canonicalValue = CanonicalConversionValueProjection.Resolve(row.MetadataJson);
+        long? amount = canonicalValue?.AmountMinorUnits;
+        var currency = canonicalValue?.Currency;
 
         IReadOnlyList<OpenAiConversionContent>? contents = null;
         if (contentEvent)
@@ -306,12 +301,6 @@ public static class OpenAiMeasurementEventMapper
     }
 
     internal static string? ReadString(string? json, string property) => CanonicalAdvertisingEventProjection.ReadString(json, property);
-    private static bool TryReadLong(string? json, string property, out long value)
-    {
-        var number = CanonicalAdvertisingEventProjection.ReadInt64(json, property);
-        value = number ?? 0;
-        return number.HasValue;
-    }
     private static bool TryReadInt(string? json, string property, out int value)
     {
         var number = CanonicalAdvertisingEventProjection.ReadInt64(json, property);
