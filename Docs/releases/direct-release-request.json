@@ -8,5 +8,5 @@
     "masterapp-portal"
   ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": true
+  "preserveLiveTargets": false
 }
