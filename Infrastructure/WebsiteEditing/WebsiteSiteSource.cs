@@ -388,10 +388,19 @@ public static class WebsiteSiteSource
                     node.ActionKey = previous.Node.ActionKey;
                 else if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
                     node.Signals = [];
+
+                if (node.Type is "image" or "video" &&
+                    !node.MediaAssetId.HasValue &&
+                    !string.Equals(node.MediaUrl, previous.Node.MediaUrl, StringComparison.Ordinal))
+                    throw new ArgumentException($"Media component '{node.Id}' must use an asset from this website's media library.");
             }
             else
             {
                 node.Signals = [];
+                if (node.Type is "image" or "video" &&
+                    !node.MediaAssetId.HasValue &&
+                    !string.IsNullOrWhiteSpace(node.MediaUrl))
+                    throw new ArgumentException($"New media component '{node.Id}' must use an asset from this website's media library.");
             }
 
             if (!string.IsNullOrWhiteSpace(node.ActionKey) && !allowedActions.Contains(node.ActionKey))
