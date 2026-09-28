@@ -19,9 +19,8 @@ public interface IMarketingManagerService
 }
 
 public sealed class MarketingManagerService(
-    IAnalyticsQueryService analytics,
     IAdvertisingCommandCenterService advertising,
-    IUnifiedMarketingPerformanceService performance) : IMarketingManagerService
+    WebsiteAnalyticsAiDataBuilder context) : IMarketingManagerService
 {
     public async Task<MarketingManagerPlan> PlanAsync(
         MarketingOwnerScope owner,
@@ -38,21 +37,20 @@ public sealed class MarketingManagerService(
         var goal = Clean(request.Goal, 1000);
         var targetIncrement = request.TargetIncrement is > 0 ? request.TargetIncrement.Value : ParseTargetIncrement(goal);
 
-        var summaryTask = analytics.GetSummaryAsync(range, analyticsScope, TrafficType.All);
-        var funnelTask = analytics.GetQuoteFunnelAsync(range, analyticsScope, TrafficType.All);
-        var trafficTask = analytics.GetTrafficAsync(range, analyticsScope, TrafficType.All);
-        var healthTask = analytics.GetMarketingHealthAsync(range, analyticsScope, TrafficType.All);
-        var performanceTask = performance.GetAsync(owner, analyticsScope, range, ct);
-        var advertisingTask = advertising.GetAsync(owner, ct);
-
-        await Task.WhenAll(summaryTask, funnelTask, trafficTask, healthTask, performanceTask, advertisingTask);
-
-        var summary = await summaryTask;
-        var funnel = await funnelTask;
-        var traffic = await trafficTask;
-        var health = await healthTask;
-        var channel = await performanceTask;
-        var command = await advertisingTask;
+        var safeContext = await context.BuildAsync(range, analyticsScope, range.Label, owner.OwnerType,
+            "All Traffic", TrafficType.All, ct, owner);
+        var summary = new SummaryKpiDto { VerifiedLeads = safeContext.VerifiedLeads, Sessions = safeContext.Sessions,
+            SessionConversionRate = safeContext.SessionConversionRate, TopSource = safeContext.TopSource, TopCampaign = safeContext.TopCampaign };
+        var funnel = new QuoteFunnelDto { QuoteStarts = safeContext.QuoteStarts, QuoteFormSubmits = safeContext.QuoteFormSubmits };
+        var health = new MarketingHealthDto { ClientTrackingErrors = safeContext.MarketingHealth?.ClientTrackingErrors ?? 0,
+            UnknownAttributedLeads = safeContext.MarketingHealth?.UnknownAttributedLeads ?? 0 };
+        var gpt = safeContext.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.ChatGptAds);
+        var channel = new UnifiedChannelPerformanceSnapshot(owner, range.FromUtc, range.ToUtc, safeContext.GeneratedUtc,
+            [], new CanonicalOutcomeTotals(gpt?.Leads ?? 0, gpt?.QualifiedLeads ?? 0, gpt?.Appointments ?? 0, gpt?.Customers ?? 0, gpt?.Revenue ?? 0),
+            safeContext.Channels.Select(x => new ChannelPerformanceRow(x.Channel, x.Spend, x.Impressions, x.Clicks,
+                x.Leads, x.QualifiedLeads, x.Appointments, x.Customers, x.Revenue, x.Roas, x.AttributionConfidence,
+                "Canonical outcomes; provider receipt does not assign campaign credit")).ToList(), safeContext.ChannelCoverageNotes);
+        var command = await advertising.GetAsync(owner, ct);
 
         var evidence = new List<MarketingManagerEvidence>
         {
@@ -80,6 +78,12 @@ public sealed class MarketingManagerService(
             channel,
             command,
             request.MonthlyBudget);
+
+        if (safeContext.Warnings.Count > 0 || safeContext.ChannelCoverageNotes.Count > 0)
+            recommendations = new[] { new MarketingManagerRecommendation(0, "data_quality",
+                "Resolve the reported coverage limitations before changing paid budgets.",
+                "One or more analytics or provider modules reported limited data.",
+                "Avoids treating missing metrics as observed zero.", false) }.Concat(recommendations).ToList();
 
         var pending = command.Proposals.Count(x => string.Equals(x.State, AdvertisingActionStates.Proposed, StringComparison.Ordinal));
         var approved = command.Proposals.Count(x => string.Equals(x.State, AdvertisingActionStates.Approved, StringComparison.Ordinal));
@@ -109,7 +113,7 @@ public sealed class MarketingManagerService(
                 pending,
                 approved),
             channel,
-            guardrails);
+            guardrails, safeContext);
     }
 
     public Task<AdvertisingActionProposalSnapshot> ProposeChatGptPromotionAsync(

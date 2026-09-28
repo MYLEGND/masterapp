@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read live source identities and refuse to release a candidate missing live history."""
 import argparse
+import importlib.util
 import concurrent.futures
 import json
 import os
@@ -61,7 +62,7 @@ def observe(target):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path)
-    parser.add_argument('--automatic', action='store_true', help='Conservatively release every existing web target')
+    parser.add_argument('--automatic', action='store_true', help='Compatibility flag; committed target scope remains authoritative')
     args = parser.parse_args()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     if os.environ.get('GITHUB_ACTIONS') == 'true':
@@ -71,21 +72,33 @@ def main():
     release_mode = request['releaseMode']
     if release_mode not in {'approved-only', 'validate-only'}:
         raise ValueError('releaseMode must be approved-only or validate-only')
+    if release_mode == 'approved-only' and 'targets' not in request:
+        raise ValueError('An approved release requires an explicit target list')
+    if os.environ.get('GITHUB_ACTIONS') == 'true' and release_mode == 'approved-only':
+        spec = importlib.util.spec_from_file_location('release_lifecycle', Path(__file__).with_name('release-lifecycle.py'))
+        lifecycle = importlib.util.module_from_spec(spec); spec.loader.exec_module(lifecycle)
+        if not lifecycle.direct_only_request(head):
+            raise ValueError('This exact revision has no changed approved release request; no deployment authorized')
+        api = lifecycle.GitHub()
+        pulls = api.pages('commits/' + head + '/pulls')
+        pr = next((p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == head and p['base']['ref'] == lifecycle.APPROVED), None)
+        if pr is None:
+            raise ValueError('Exact release must identify its merged approved PR')
+        pending = lifecycle.candidate_validation(api, pr)
+        if pending:
+            raise ValueError(pending)
     website_routing = request.get('cloudflareWebsiteRouting', False)
     if not isinstance(website_routing, bool):
         raise ValueError('cloudflareWebsiteRouting must be a boolean when supplied')
     preserve_live_targets = request.get('preserveLiveTargets', False)
     if not isinstance(preserve_live_targets, bool):
         raise ValueError('preserveLiveTargets must be a boolean when supplied')
-    if args.automatic:
-        website_routing = False
-        preserve_live_targets = False
     preserve_live_revision = ''
     if preserve_live_targets:
         if release_mode != 'approved-only' or not website_routing:
             raise ValueError('preserveLiveTargets is only valid for an approved Cloudflare routing recovery')
         preserve_live_revision = validate_revision(request.get('preserveLiveRevision'))
-    targets = TARGETS if args.automatic else selected_targets(request)
+    targets = selected_targets(request)
     if website_routing:
         routing_apps = {row[0] for row in targets}
         if not {'protect', 'parfait'}.issubset(routing_apps):

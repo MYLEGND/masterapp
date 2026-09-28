@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
-using AgentPortal.Models.Analytics;
+using Shared.Analytics;
 using Microsoft.Extensions.Logging;
 
-namespace AgentPortal.Services.Analytics;
+namespace Infrastructure.Analytics;
 
 /// <summary>
 /// Whitelist-based redactor for the AI analytics payload.
@@ -40,6 +40,48 @@ public static class WebsiteAnalyticsAiRedactor
         // Return a new object built from only the whitelisted scalar fields.
         var safe = new AiSafeAnalyticsPayload
         {
+            SchemaVersion = "marketing-context.v1",
+            GeneratedUtc = payload.GeneratedUtc,
+            FromUtc = payload.FromUtc,
+            ToUtc = payload.ToUtc,
+            QualityMode = Enum.TryParse<TrafficQualityMode>(payload.QualityMode, out var quality) ? quality.ToString() : "Unknown",
+            Channels = (payload.Channels ?? []).Where(x => AllowedChannels.Contains(x.Channel)).Select(x => x with {
+                AttributionConfidence = AllowedConfidence.Contains(x.AttributionConfidence) ? x.AttributionConfidence : "unverified"
+            }).ToList(),
+            ChatGptCampaigns = RedactCampaigns(payload.ChatGptCampaigns, logger),
+            ChannelCoverageNotes = (payload.ChannelCoverageNotes ?? []).Select(x =>
+                x.StartsWith("ChatGPT Ads delivery covers completed account-local hours:", StringComparison.Ordinal) && !LooksPii(x)
+                ? x : "Provider coverage or attribution is limited; do not treat missing delivery metrics as zero.").Distinct().ToList(),
+            Devices = RedactDevices(payload.Devices),
+            Browsers = RedactDevices(payload.Browsers),
+            OperatingSystems = RedactDevices(payload.OperatingSystems),
+            Viewports = RedactDevices(payload.Viewports),
+            Languages = RedactDevices(payload.Languages),
+            PagesBeforeLead = RedactLabelCounts(payload.PagesBeforeLead, "PageKey", logger),
+            CommonDropOffPages = RedactLabelCounts(payload.CommonDropOffPages, "PageKey", logger),
+            // Only published business offerings from the owner-authorized source inventory.
+            // Never use CRM display names, messages, customer profiles or raw event metadata here.
+            PublishedSources = (payload.PublishedSources ?? []).Take(600).Select(x => new PromotionSourceOption(
+                x.SourceKind is "website_page" or "service" or "product" ? x.SourceKind : "unknown",
+                Alias(x.SourceId), PublicText(x.Label), SafePath(x.PagePath), PublicText(x.Detail),
+                x.SiteKey is "legend" or "protect" or "business" ? x.SiteKey : null)).ToList(),
+            MarketingHealth = payload.MarketingHealth is null ? null : new MarketingHealthAiPayload {
+                MetaHealthStatus = new[] { "Healthy", "Watch", "Critical", "Unavailable", "Unverified" }.Contains(payload.MarketingHealth.MetaHealthStatus) ? payload.MarketingHealth.MetaHealthStatus : "Unverified",
+                ClientTrackingErrors = payload.MarketingHealth.ClientTrackingErrors,
+                ClientTrackingErrorSessions = payload.MarketingHealth.ClientTrackingErrorSessions,
+                InferredFormStarts = payload.MarketingHealth.InferredFormStarts,
+                MissingStartEventSessions = payload.MarketingHealth.MissingStartEventSessions,
+                LeadPersistedEvents = payload.MarketingHealth.LeadPersistedEvents,
+                WorkstationCaptureAttempts = payload.MarketingHealth.WorkstationCaptureAttempts,
+                WorkstationCaptureSuccesses = payload.MarketingHealth.WorkstationCaptureSuccesses,
+                WorkstationCaptureFailures = payload.MarketingHealth.WorkstationCaptureFailures,
+                WorkstationNoOwnerFailures = payload.MarketingHealth.WorkstationNoOwnerFailures,
+                UnknownAttributedLeads = payload.MarketingHealth.UnknownAttributedLeads,
+                InternalTrafficSessions = payload.MarketingHealth.InternalTrafficSessions,
+                TestTrafficSessions = payload.MarketingHealth.TestTrafficSessions,
+                BotSuspiciousSessions = payload.MarketingHealth.BotSuspiciousSessions,
+                Warnings = payload.MarketingHealth.Warnings.Count == 0 ? [] : ["Tracking quality warnings are present; validate before scaling."]
+            },
             // ── Allowed context labels ─────────────────────────────────────────
             RangeLabel = CleanLabel(payload.RangeLabel, logger, "RangeLabel"),
             ScopeLabel = CleanLabel(payload.ScopeLabel, logger, "ScopeLabel"),
@@ -93,12 +135,39 @@ public static class WebsiteAnalyticsAiRedactor
         return safe;
     }
 
+    private static readonly HashSet<string> AllowedChannels = new(StringComparer.Ordinal) {
+        "chatgpt_ads", "meta_ads", "organic", "direct", "referral", "unknown"
+    };
+    private static readonly HashSet<string> AllowedConfidence = new(StringComparer.Ordinal) {
+        "reference_observed", "not_observed", "canonical", "unverified", "observed", "source_observed"
+    };
+    private static readonly HashSet<string> SafeCategories = new(StringComparer.OrdinalIgnoreCase) {
+        "organic", "direct", "referral", "unknown", "facebook", "instagram", "openai", "chatgpt", "google", "bing",
+        "desktop", "mobile", "tablet", "Chrome", "Safari", "Firefox", "Edge", "Other",
+        "Lead", "Purchase", "QualifiedLead", "AppointmentBooked", "Low", "Medium", "High"
+    };
+    public static string Alias(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        if (Regex.IsMatch(value, "^resource_[a-f0-9]{16}$")) return value;
+        return "resource_" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value.Trim())))[..16].ToLowerInvariant();
+    }
+    private static string PublicText(string? value) => string.IsNullOrWhiteSpace(value) ? "" :
+        LooksPii(value) ? "[redacted]" : value.Length > 500 ? value[..500] : value;
+    private static string? SafePath(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var path = value.Split('?', '#')[0];
+        return path.StartsWith('/') && !path.StartsWith("//") && !LooksPii(Uri.UnescapeDataString(path)) ? path : null;
+    }
+    private static List<AiDeviceRow> RedactDevices(List<AiDeviceRow>? rows) => (rows ?? [])
+        .Select(x => x with { Label = SafeCategories.Contains(x.Label) ? x.Label : Alias(x.Label) }).ToList();
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private static string CleanLabel(string? value, ILogger? logger, string fieldName)
     {
         if (string.IsNullOrWhiteSpace(value)) return "";
 
+        if (value == "[redacted]" || Regex.IsMatch(value, "^resource_[a-f0-9]{16}$")) return value;
         if (LooksPii(value))
         {
             logger?.LogWarning(
@@ -107,7 +176,18 @@ public static class WebsiteAnalyticsAiRedactor
             return "[redacted]";
         }
 
-        return value.Trim();
+        // Free-form campaign, page, source and field labels can contain customer names or
+        // URL tokens. Stable opaque aliases preserve joins without relying on a name regex.
+        if (fieldName == "ScopeLabel") return value is "founder" or "agent" or "business" ? value : "authorized_owner";
+        if (fieldName == "RangeLabel") return "Selected UTC window";
+        if (fieldName == "TrafficFilter") return value is "All" or "All Traffic" or "Paid" or "NonPaid" or "Unknown" ? value : "Selected traffic";
+        if (fieldName == "Warnings") {
+            var area = new[] { "Summary", "Traffic", "CTA", "Dwell", "Conversions", "Devices", "Journey", "PagePerf", "QuoteFunnel", "Engagement", "Exit", "Source", "Abandon", "MarketingHealth", "MetaAds", "MetaSignal", "PublishedWebsite", "ChannelPerformance" }
+                .FirstOrDefault(x => value.StartsWith(x, StringComparison.Ordinal));
+            return (area ?? "Analytics") + ": data quality or availability warning; affected values are not verified zero.";
+        }
+        if (SafeCategories.Contains(value)) return value;
+        return Alias(value);
     }
 
     private static List<LabelCount> RedactLabelCounts(

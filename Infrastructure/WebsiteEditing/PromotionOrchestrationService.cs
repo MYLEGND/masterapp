@@ -51,9 +51,19 @@ public sealed class PromotionOrchestrationService(
                 x.Key,
                 Clean(x.Value.Title, 300) ?? (x.Key == "/" ? "Home" : x.Key.Trim('/')),
                 PagePath: x.Key,
-                Detail: Clean(x.Value.Description, 500)))
+                Detail: Clean(x.Value.Description, 500), SiteKey: published.State.SiteKey))
             .ToList();
 
+        if (owner == MarketingOwnerScope.Founder)
+        {
+            var protect = await PublishedStateAsync(owner, ct, WebsiteEditorSiteKeys.Protect);
+            var protectDocument = ReadDocument(protect.Version.DocumentJson);
+            options.AddRange(protectDocument.Pages.Where(x => !x.Value.Navigation.IsDeleted)
+                .OrderBy(x => x.Key, StringComparer.Ordinal)
+                .Select(x => new PromotionSourceOption(PromotionSourceKinds.WebsitePage,
+                    "protect:" + x.Key, Clean(x.Value.Title, 300) ?? x.Key, x.Key,
+                    Clean(x.Value.Description, 500), WebsiteEditorSiteKeys.Protect)));
+        }
         if (owner.CommerceBusinessId is not Guid businessId)
             return options;
 
@@ -303,13 +313,16 @@ public sealed class PromotionOrchestrationService(
         PromotionProposalRequest request,
         CancellationToken ct)
     {
-        var published = await PublishedStateAsync(owner, ct);
+        var protect = request.SourceId?.StartsWith("protect:", StringComparison.Ordinal) == true;
+        if (protect && owner != MarketingOwnerScope.Founder)
+            throw new InvalidOperationException("Only the Founder owner can select the Founder Protect site.");
+        var published = await PublishedStateAsync(owner, ct, protect ? WebsiteEditorSiteKeys.Protect : null);
         var document = ReadDocument(published.Version.DocumentJson);
-        var path = NormalizePagePath(request.PagePath);
+        var path = NormalizePagePath(protect ? request.SourceId!["protect:".Length..] : request.PagePath);
         if (!document.Pages.TryGetValue(path, out var page) || page.Navigation.IsDeleted)
             throw new InvalidOperationException("Only an existing published website page can be promoted.");
 
-        var baseUrl = await PublicBaseAsync(owner, ct);
+        var baseUrl = protect ? (configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') : await PublicBaseAsync(owner, ct);
         var title = Clean(page.Title, 300) ?? (path == "/" ? "Home" : path.Trim('/'));
         var description = Clean(page.Description, 4000);
         string? businessName = null;
@@ -323,7 +336,7 @@ public sealed class PromotionOrchestrationService(
 
         return new(
             PromotionSourceKinds.WebsitePage,
-            path,
+            protect ? "protect:" + path : path,
             title,
             description,
             baseUrl + (path == "/" ? string.Empty : path),
@@ -476,7 +489,7 @@ public sealed class PromotionOrchestrationService(
 
     private async Task<(WebsiteContentState State, WebsiteContentVersion Version)> PublishedStateAsync(
         MarketingOwnerScope owner,
-        CancellationToken ct)
+        CancellationToken ct, string? selectedSite = null)
     {
         string ownerKey;
         string siteKey;
@@ -500,6 +513,16 @@ public sealed class PromotionOrchestrationService(
             siteKey = WebsiteEditorSiteKeys.Legend;
         }
 
+        if (selectedSite is not null)
+        {
+            if (owner != MarketingOwnerScope.Founder || selectedSite != WebsiteEditorSiteKeys.Protect)
+                throw new InvalidOperationException("Invalid published-site selection for this marketing owner.");
+            var founder = await new AgentTrackingResolver(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<AgentTrackingResolver>.Instance)
+                .ResolveByUpnAsync(configuration["Founder:Upn"] ?? string.Empty, ct);
+            if (!founder.Found || founder.Profile is null) throw new InvalidOperationException("The permanent Founder website owner is unavailable.");
+            ownerKey = (founder.Profile.AgentUserId ?? string.Empty).Trim().ToLowerInvariant();
+            siteKey = WebsiteEditorSiteKeys.Protect;
+        }
         var state = await db.Set<WebsiteContentState>().AsNoTracking()
             .SingleOrDefaultAsync(x => x.OwnerKey == ownerKey && x.SiteKey == siteKey, ct)
             ?? throw new InvalidOperationException("The website has no canonical content state.");

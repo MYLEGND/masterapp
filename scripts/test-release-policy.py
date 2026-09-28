@@ -43,6 +43,21 @@ class ReleaseScopeSelection(unittest.TestCase):
                 'targets': ['masterapp-client', 'masterapp-parfait']
             })
 
+    def test_automatic_dispatch_does_not_expand_explicit_scope(self):
+        request={'releaseMode':'approved-only','targets':['masterapp-portal','masterapp-client','masterapp-protect']}
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'outputs'
+            with patch('sys.argv',['baseline','--automatic','--output',str(output)]), \
+                 patch.object(self.baseline,'read_request',return_value=request), \
+                 patch.object(self.baseline,'observe',side_effect=lambda target:dict(app=target[0],revision='a'*40)), \
+                 patch.object(self.baseline.subprocess,'check_output',return_value='b'*40), \
+                 patch.object(self.baseline.subprocess,'run'),patch.dict(os.environ,{'GITHUB_ACTIONS':'false'}):
+                self.baseline.main()
+            text=output.read_text()
+            self.assertIn('masterapp-protect',text)
+            self.assertNotIn('masterapp-parfait',text)
+            self.assertNotIn('masterapp-website',text)
+
     def test_complete_inventory_can_include_cloudflare_routing_in_one_release(self):
         request = {
             'releaseMode': 'approved-only',

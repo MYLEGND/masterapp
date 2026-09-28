@@ -6,6 +6,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_run:
     workflows:
+      - MasterApp platform architecture validation
+      - Step 5 isolated conversion mapping validation
+      - Step 6 isolated ChatGPT Ads execution validation
+      - Steps 7-8 governed advertising and Promote This validation
       - LEGEND approved direct release
       - Validate, merge, and deploy AgentPortal to production
     types: [completed]
@@ -55,12 +59,12 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: python3 scripts/release-lifecycle.py integrate --pr "$PR_NUMBER"
       - name: Resume ready changes and corrections on retained branches
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request')
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/release-lifecycle.py pending-updates
       - name: Refresh after automatically integrated corrections
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request')
         run: git fetch --no-tags --prune origin
       - name: Reconcile successful releases through existing production gates
         if: github.event_name != 'pull_request_target'

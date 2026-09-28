@@ -45,7 +45,8 @@ public sealed record MarketingManagerPlan(
     IReadOnlyList<MarketingManagerRecommendation> Recommendations,
     AdvertisingCommandCenterSummary Advertising,
     UnifiedChannelPerformanceSnapshot ChannelPerformance,
-    IReadOnlyList<string> Guardrails);
+    IReadOnlyList<string> Guardrails,
+    AiSafeAnalyticsPayload AnalyticsContext);
 
 public sealed record AdvertisingCommandCenterSummary(
     bool ChatGptAdsConnected,
