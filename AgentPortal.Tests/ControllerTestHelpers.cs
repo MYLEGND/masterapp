@@ -346,15 +346,6 @@ internal static class ControllerTestHelpers
         string accessToken = "test-access-token")
     {
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
-        var tokenAcquisition = new Mock<ITokenAcquisition>();
-        tokenAcquisition
-            .Setup(x => x.GetAccessTokenForUserAsync(
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<ClaimsPrincipal>(),
-                It.IsAny<TokenAcquisitionOptions>()))
-            .ReturnsAsync(accessToken);
 
         var client = new HttpClient(handler, disposeHandler: false);
         var httpClientFactory = new Mock<IHttpClientFactory>();
@@ -367,13 +358,28 @@ internal static class ControllerTestHelpers
             .Setup(resolver => resolver.Resolve(It.IsAny<HttpContext>()))
             .Returns(TimeZoneInfo.Utc);
 
+        var calendarConnections = new Mock<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+        calendarConnections
+            .Setup(x => x.CreateGraphClientAsync(
+                It.IsAny<Shared.Analytics.MarketingOwnerScope>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(appGraph);
+        calendarConnections
+            .Setup(x => x.GetAsync(
+                It.IsAny<Shared.Analytics.MarketingOwnerScope>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Shared.Analytics.MarketingOwnerScope owner, CancellationToken _) =>
+                new Infrastructure.Bookings.MicrosoftCalendarConnectionSnapshot(
+                    owner, true, true, Guid.NewGuid(), "Test Calendar", "test-user",
+                    "agent@example.com", Infrastructure.Bookings.MicrosoftCalendarConnectionAuthority.DelegatedAuthorization,
+                    new[] { "Calendars.ReadWrite" }, DateTime.UtcNow, null, DateTime.UtcNow, DateTime.UtcNow.AddHours(1)));
+
         return new CalendarController(
-            tokenAcquisition.Object,
             NullLogger<CalendarController>.Instance,
             db,
             httpClientFactory.Object,
             timeResolver.Object,
-            appGraph)
+            calendarConnections.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };
