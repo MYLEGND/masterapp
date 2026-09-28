@@ -130,7 +130,7 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
         Assert.Contains("canonical-marketing-hardening-release-20260928", request, StringComparison.Ordinal);
-        Assert.Contains("Protect and Parfait", request, StringComparison.Ordinal);
+        Assert.Contains("LEGEND/business/Protect/Parfait", request, StringComparison.Ordinal);
     }
 
     [Fact]
