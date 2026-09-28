@@ -49,6 +49,106 @@
     window.location.hostname === '127.0.0.1' ||
     new URLSearchParams(window.location.search).has('trackingDebug');
 
+  const MEASUREMENT_CONSENT_COOKIE = 'legend_measurement_consent';
+
+  function readCookie(name) {
+    try {
+      const prefix = name + '=';
+      const value = document.cookie.split(';').map(part => part.trim())
+        .find(part => part.startsWith(prefix));
+      return value ? decodeURIComponent(value.slice(prefix.length)).trim() || null : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeCookie(name, value, maxAgeSeconds) {
+    try {
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax${secure}`;
+    } catch {
+      // Consent persistence must never break first-party analytics.
+    }
+  }
+
+  function clearCookie(name) {
+    try {
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax${secure}`;
+    } catch {
+      // Ignore storage restrictions.
+    }
+  }
+
+  function configuredConsent(value) {
+    if (value === true || value === 'granted') return true;
+    if (value === false || value === 'denied') return false;
+    return null;
+  }
+
+  function resolveMeasurementConsent() {
+    if (navigator.globalPrivacyControl === true) {
+      return { allowed: false, state: 'denied', source: 'gpc' };
+    }
+
+    const configured = configuredConsent(ANALYTICS_CONFIG.measurementConsent);
+    if (configured !== null) {
+      return { allowed: configured, state: configured ? 'granted' : 'denied', source: 'runtime_config' };
+    }
+
+    const stored = readCookie(MEASUREMENT_CONSENT_COOKIE);
+    if (stored === 'granted') return { allowed: true, state: 'granted', source: 'stored_choice' };
+    if (stored === 'denied') return { allowed: false, state: 'denied', source: 'stored_choice' };
+
+    if (ANALYTICS_CONFIG.requireExplicitMeasurementConsent === true) {
+      return { allowed: false, state: 'unknown', source: 'explicit_required' };
+    }
+
+    // Current US launch policy remains measurement-enabled unless a privacy
+    // signal or explicit first-party choice says otherwise. Providers consume
+    // this one authority instead of inventing their own consent defaults.
+    return { allowed: true, state: 'granted', source: 'default_policy' };
+  }
+
+  let measurementConsent = resolveMeasurementConsent();
+
+  function clearProviderMeasurementCookies() {
+    clearCookie('__obref');
+    clearCookie('_fbp');
+    clearCookie('_fbc');
+  }
+
+  function measurementAllowed() {
+    return measurementConsent.allowed === true && navigator.globalPrivacyControl !== true;
+  }
+
+  function setMeasurementConsent(value, source = 'user') {
+    if (navigator.globalPrivacyControl === true) {
+      measurementConsent = { allowed: false, state: 'denied', source: 'gpc' };
+    } else if (value === true) {
+      measurementConsent = { allowed: true, state: 'granted', source };
+      writeCookie(MEASUREMENT_CONSENT_COOKIE, 'granted', 365 * 24 * 60 * 60);
+    } else if (value === false) {
+      measurementConsent = { allowed: false, state: 'denied', source };
+      writeCookie(MEASUREMENT_CONSENT_COOKIE, 'denied', 365 * 24 * 60 * 60);
+    } else {
+      measurementConsent = { allowed: false, state: 'unknown', source };
+      clearCookie(MEASUREMENT_CONSENT_COOKIE);
+    }
+
+    if (!measurementAllowed()) clearProviderMeasurementCookies();
+    try {
+      window.dispatchEvent(new CustomEvent('legend:measurement-consent-changed', {
+        detail: { ...measurementConsent }
+      }));
+    } catch {
+      // Optional provider listeners cannot break canonical analytics.
+    }
+    return { ...measurementConsent };
+  }
+
+  if (!measurementAllowed()) clearProviderMeasurementCookies();
+
   // Resolved public ownership is emitted by the server, independently of providers.
   // Missing scope gets an isolated document session and never inherits stored campaigns.
   const ATTRIBUTION_SCOPE = typeof ANALYTICS_CONFIG.attributionScope === 'string'
@@ -679,7 +779,7 @@
       UtmContent: attribution.utmContent || null,
       Fbclid: attribution.fbclid || null,
       Oppref: attribution.oppref || null,
-      Obref: navigator.globalPrivacyControl === true ? null : readFirstPartyCookie('__obref'),
+      Obref: measurementAllowed() ? readFirstPartyCookie('__obref') : null,
       MetaCampaignId: attribution.metaCampaignId || null,
       MetaAdSetId: attribution.metaAdSetId || null,
       MetaAdId: attribution.metaAdId || null,
@@ -2106,6 +2206,11 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       return () => canonicalBindings.delete(binding.id);
     },
     signalAliases: Object.freeze({ ...(ANALYTICS_CONFIG.signalAliases || {}) }),
+    measurementConsent: Object.freeze({
+      get() { return { ...measurementConsent }; },
+      isAllowed: measurementAllowed,
+      set(value, source = 'user') { return setMeasurementConsent(value, source); }
+    }),
     track(payload) {
       return window.legendTrack(payload);
     },
