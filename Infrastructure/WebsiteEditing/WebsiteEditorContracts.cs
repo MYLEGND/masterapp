@@ -489,6 +489,34 @@ public static class WebsiteCallToActionCatalog
             return null;
         }
 
+        string? ResolveComposition(WebsiteCompositionNode node)
+        {
+            if (!string.IsNullOrWhiteSpace(node.ActionKey))
+            {
+                if (!byKey.TryGetValue(node.ActionKey, out var option))
+                    return "A configured button action is no longer available. Reopen the editor and choose an active action.";
+                node.Href = option.Href;
+                node.Target = option.OpenInNewTab ? "_blank" : "_self";
+            }
+
+            if (node.Type == "cta" &&
+                string.IsNullOrWhiteSpace(node.ActionKey) &&
+                (string.IsNullOrWhiteSpace(node.Href) || node.Href == "#" ||
+                 WebsiteContentSanitizer.SanitizeUrl(node.Href) is null))
+                return "Every CTA needs a canonical action or working custom destination before publishing.";
+
+            if (node.Type == "form" &&
+                !string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
+                return "Website forms must use the canonical inquiry authority.";
+
+            foreach (var child in node.Children)
+            {
+                var childError = ResolveComposition(child);
+                if (childError is not null) return childError;
+            }
+            return null;
+        }
+
         foreach (var element in document.Elements.Values)
         {
             var error = ResolveElement(element);
@@ -509,6 +537,11 @@ public static class WebsiteCallToActionCatalog
             foreach (var extra in page.Extras)
             {
                 var error = ResolveExtra(extra);
+                if (error is not null) return error;
+            }
+            foreach (var node in page.Composition)
+            {
+                var error = ResolveComposition(node);
                 if (error is not null) return error;
             }
         }
