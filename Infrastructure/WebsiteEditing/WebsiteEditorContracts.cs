@@ -281,6 +281,7 @@ public sealed class WebsiteCompositionNode
     public string? MediaUrl { get; set; }
     public string? SystemKey { get; set; }
     public string? SystemBinding { get; set; }
+    public string? SyncSourceId { get; set; }
     public bool? Hidden { get; set; }
     public List<WebsiteSignalBinding> Signals { get; set; } = new();
     public WebsiteStyleOverride Style { get; set; } = new();
