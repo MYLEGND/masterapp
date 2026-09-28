@@ -40,7 +40,7 @@ public sealed record WebsiteStudioAiAppliedProposal(
 /// </summary>
 public static class WebsiteStudioAiProposalPolicy
 {
-    private const int MaxOperations = 20;
+    private const int MaxOperations = 120;
     private const int MaxPromptText = 12000;
 
     public static WebsiteStudioAiAppliedProposal Apply(
@@ -72,7 +72,9 @@ public static class WebsiteStudioAiProposalPolicy
             ?? throw new ArgumentException("Website AI requires a valid current page route.");
         var cleanSource = WebsiteContentSanitizer.Sanitize(source);
         var document = Clone(cleanSource);
-        var operationList = (operations ?? []).Where(operation => operation is not null).Take(MaxOperations).ToList();
+        var operationList = (operations ?? []).Where(operation => operation is not null).Take(MaxOperations + 1).ToList();
+        if (operationList.Count > MaxOperations)
+            throw new ArgumentException($"Website AI may propose at most {MaxOperations} typed operations at once.");
 
         if (string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
             return ApplyComposition(document, mode, summary, route, selectedElementId, selectedSectionId, operationList,
@@ -255,8 +257,10 @@ public static class WebsiteStudioAiProposalPolicy
                     break;
 
                 case "enable_store":
-                    if (mode is "responsive" or "selection") throw new ArgumentException("This AI mode cannot change store availability.");
-                    document.Store.Enabled = operation.Enabled == true;
+                    // Creating/removing the durable commerce scope belongs to the existing
+                    // WebsiteCommerceScopeService endpoint, not to an AI document proposal.
+                    if (operation.Enabled != document.Store.Enabled)
+                        throw new ArgumentException("Website AI cannot create or remove the canonical store scope. Use the existing Store authority.");
                     break;
 
                 case "suggest_image":
@@ -467,8 +471,10 @@ public static class WebsiteStudioAiProposalPolicy
             var index = nodes.FindIndex(node => node.Id == id);
             if (index >= 0)
             {
-                if (nodes[index].Type == "form" || !string.IsNullOrWhiteSpace(nodes[index].SystemKey))
-                    throw new ArgumentException("Website AI cannot delete a protected system component.");
+                if (nodes[index].Type == "form" ||
+                    !string.IsNullOrWhiteSpace(nodes[index].SystemKey) ||
+                    !string.IsNullOrWhiteSpace(nodes[index].ActionKey))
+                    throw new ArgumentException("Website AI cannot delete a protected system or canonical-action component.");
                 nodes.RemoveAt(index);
                 return true;
             }
