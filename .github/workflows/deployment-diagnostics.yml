@@ -36,7 +36,7 @@ jobs:
           plans=set()
           for app in ('portal','client','protect','parfait','website'):
               name='masterapp-'+app
-              info=az('webapp','show','-g','masterapp-rg','-n',name,'--query','{state:state,availability:availabilityState,modified:lastModifiedTimeUtc,plan:appServicePlanId}')
+              info=az('webapp','show','-g','masterapp-rg','-n',name,'--query','{state:state,availability:availabilityState,modified:lastModifiedTimeUtc,plan:serverFarmId}')
               print(json.dumps({'app':app,'state':info}))
               if info.get('plan'): plans.add(info['plan'])
               status=az('webapp','log','deployment','list','-g','masterapp-rg','-n',name,'--query','[:3].{id:id,status:status,active:active,received:received_time,start:start_time,end:end_time}')
@@ -57,7 +57,11 @@ jobs:
           import importlib.util, json
           spec=importlib.util.spec_from_file_location('routing','scripts/cloudflare-routing-authority.py')
           authority=importlib.util.module_from_spec(spec);spec.loader.exec_module(authority)
-          token=authority.required_env('CLOUDFLARE_API_TOKEN');zone=authority.required_env('CLOUDFLARE_ZONE_ID');account=authority.required_env('CLOUDFLARE_ACCOUNT_ID')
+          token=authority.required_env('CLOUDFLARE_API_TOKEN')
+          # Match the release lane's read-only canonical zone discovery; no new secret is needed.
+          zones=authority.api_request('GET',f'{authority.API}/zones?name=mylegnd.com',token)['result']
+          if len(zones)!=1: raise authority.CloudflareError('Expected exactly one canonical mylegnd.com zone')
+          zone=zones[0]['id'];account=zones[0]['account']['id']
           routes=authority.api_request('GET',f'{authority.API}/zones/{zone}/workers/routes',token)['result']
           print(json.dumps({'routes':[{'pattern':r.get('pattern'),'script':r.get('script')} for r in routes]}))
           for host in ('mylegnd.com','www.mylegnd.com','protect.mylegnd.com'):
@@ -67,6 +71,7 @@ jobs:
           print(json.dumps({'routerDeployments':data.get('result',{}).get('deployments',[])}))
           PYCF
       - name: Observe public runtime and storefront responses
+        if: always()
         shell: bash
         run: |
           python3 - <<'PYHTTP'
