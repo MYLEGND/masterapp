@@ -133,7 +133,7 @@ test('late provider projections share one accepted page event and unique signals
     w.fbq=(...args)=>pixels.push(args);
     w.oaiq=(...args)=>openai.push(args);
     w.eval(readFileSync(new URL('../../SHARED/WebsitePlatform/meta-signal-intelligence.js',import.meta.url),'utf8'));
-    const session=w.metaSignalIntelligence.createLandingSession({enabled:true,sendBrowserEvents:true,sendServerEvents:true,persistEvents:true,pixelId:'meta-test',siteKey:'protect',pageKey:'home',browserEventNames:['ViewContent','LeadFormStart'],browserSignalEventNames:['ViewContent','LeadFormStart','PhoneFieldCompleted']});
+    const session=w.metaSignalIntelligence.createLandingSession({enabled:true,sendBrowserEvents:true,sendServerEvents:true,persistEvents:true,pixelId:'meta-test',siteKey:'protect',pageKey:'home',browserEventNames:['ViewContent'],browserSignalEventNames:['ViewContent','LeadFormStart','PhoneFieldCompleted']});
     w.eval(readFileSync(new URL('../../SHARED/WebsitePlatform/openai-measurement.js',import.meta.url),'utf8'));
     void w.LegendOpenAiMeasurement.configure({pixelId:'openai-test'});
     const page=f.events.find(e=>e.EventType==='page_view');
@@ -151,6 +151,8 @@ test('late provider projections share one accepted page event and unique signals
     await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.events.filter(e=>e.EventType==='form_start').length,1);
     assert.equal(f.events.filter(e=>e.EventType==='LeadFormStart').length,0);
+    assert.equal(pixels.filter(args=>args[2]==='LeadFormStart').length,0);
+    assert.equal(openai.filter(args=>args[0]==='measureSingle').length,1);
     let replayed=0;
     w.LegendAnalytics.subscribe('test',()=>{replayed++;});
     const prior=replayed;
