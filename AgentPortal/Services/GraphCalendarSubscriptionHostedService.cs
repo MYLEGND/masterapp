@@ -1,10 +1,11 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Azure.Core;
-using Azure.Identity;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
+using Infrastructure.Bookings;
+using Shared.Analytics;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Services;
@@ -60,26 +61,60 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
                 return;
             }
 
-            var accessToken = await TryGetAccessTokenAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(accessToken))
-            {
-                _logger.LogWarning("Graph calendar subscription sync skipped because app-only Graph token could not be acquired.");
-                return;
-            }
+            var calendarConnections = scope.ServiceProvider.GetRequiredService<IMicrosoftCalendarConnectionAuthority>();
 
             var agents = await db.AgentProfiles
                 .AsNoTracking()
-                .Where(x => x.BookingEnabled == true &&
-                            (!string.IsNullOrWhiteSpace(x.CalendarUserId) ||
-                             !string.IsNullOrWhiteSpace(x.CalendarEmail) ||
-                             !string.IsNullOrWhiteSpace(x.BookingPageIdOrMailbox)))
+                .Where(x => x.BookingEnabled == true)
                 .ToListAsync(cancellationToken);
 
             foreach (var agent in agents)
             {
-                foreach (var calendarIdentity in ResolveCalendarIdentities(agent))
+                var normalizedUpn = string.IsNullOrWhiteSpace(agent.AgentUpn)
+                    ? null
+                    : agent.AgentUpn.Trim().ToUpperInvariant();
+                var tracking = await db.AgentTrackingProfiles.AsNoTracking()
+                    .Where(x =>
+                        (!string.IsNullOrWhiteSpace(agent.AgentUserId) && x.AgentUserId == agent.AgentUserId) ||
+                        (normalizedUpn != null && x.AgentUpn.ToUpper() == normalizedUpn))
+                    .OrderByDescending(x => x.UpdatedUtc)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (tracking is null) continue;
+
+                var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+                    db,
+                    _configuration,
+                    tracking,
+                    cancellationToken);
+                if (owner is null) continue;
+
+                var connection = await calendarConnections.GetAsync(owner, cancellationToken);
+                if (!connection.Connected) continue;
+
+                string accessToken;
+                try
                 {
-                    await EnsureSubscriptionForAgentAsync(db, accessToken, publicBaseUrl, agent, calendarIdentity, cancellationToken);
+                    accessToken = await calendarConnections.GetAccessTokenAsync(owner, cancellationToken);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _logger.LogWarning(ex, "Calendar subscription skipped for owner {OwnerKey}; reconnect is required.", owner.Key);
+                    continue;
+                }
+
+                var identities = ResolveCalendarIdentities(agent)
+                    .Concat(string.IsNullOrWhiteSpace(connection.Email) ? [] : new[] { connection.Email! })
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                foreach (var calendarIdentity in identities)
+                {
+                    await EnsureSubscriptionForAgentAsync(
+                        db,
+                        accessToken,
+                        publicBaseUrl,
+                        agent,
+                        calendarIdentity,
+                        cancellationToken);
                 }
             }
 
@@ -89,8 +124,7 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
                     on settings.CommerceBusinessId equals business.Id
                 where settings.BookingEnabled &&
                       business.IsActive &&
-                      business.Status == "Active" &&
-                      (settings.BookingCalendarEmail != null || settings.BookingMailboxId != null)
+                      business.Status == "Active"
                 select new
                 {
                     BusinessId = business.Id,
@@ -100,7 +134,27 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
 
             foreach (var business in businessBookings)
             {
-                foreach (var calendarIdentity in new[] { business.BookingCalendarEmail, business.BookingMailboxId }
+                var owner = MarketingOwnerScope.Business(business.BusinessId);
+                var connection = await calendarConnections.GetAsync(owner, cancellationToken);
+                if (!connection.Connected) continue;
+
+                string accessToken;
+                try
+                {
+                    accessToken = await calendarConnections.GetAccessTokenAsync(owner, cancellationToken);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _logger.LogWarning(ex, "Business calendar subscription skipped for {BusinessId}; reconnect is required.", business.BusinessId);
+                    continue;
+                }
+
+                foreach (var calendarIdentity in new[]
+                    {
+                        business.BookingCalendarEmail,
+                        business.BookingMailboxId,
+                        connection.Email
+                    }
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Select(value => value!.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase))
@@ -110,7 +164,7 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
                         accessToken,
                         publicBaseUrl,
                         business.BusinessId,
-                        business.BookingCalendarEmail,
+                        business.BookingCalendarEmail ?? connection.Email,
                         business.BookingMailboxId,
                         calendarIdentity,
                         cancellationToken);
@@ -438,34 +492,6 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
         {
             row.LastError = ex.Message;
             return row;
-        }
-    }
-
-    private async Task<string?> TryGetAccessTokenAsync(CancellationToken cancellationToken)
-    {
-        var tenantId = _configuration["AzureAd:TenantId"];
-        var clientId = _configuration["AzureAd:ClientId"];
-        var clientSecret = _configuration["AzureAd:ClientSecret"];
-
-        if (string.IsNullOrWhiteSpace(tenantId) ||
-            string.IsNullOrWhiteSpace(clientId) ||
-            string.IsNullOrWhiteSpace(clientSecret))
-        {
-            return null;
-        }
-
-        try
-        {
-            var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-            var token = await credential.GetTokenAsync(
-                new TokenRequestContext(new[] { "https://graph.microsoft.com/.default" }),
-                cancellationToken);
-            return token.Token;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to acquire Graph app token for subscription sync.");
-            return null;
         }
     }
 

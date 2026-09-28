@@ -1,12 +1,11 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using AgentPortal.Models;
-using Azure.Core;
-using Azure.Identity;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
 using Infrastructure.Analytics;
+using Infrastructure.Bookings;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
@@ -30,6 +29,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
     private readonly ILogger<GraphCalendarWebhookController> _logger;
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IMicrosoftCalendarConnectionAuthority _calendarConnections;
     private readonly MetaSignalCrmOutcomeService _outcomes;
 
     public GraphCalendarWebhookController(
@@ -37,12 +37,14 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         ILogger<GraphCalendarWebhookController> logger,
         IConfiguration configuration,
         IHttpClientFactory httpClientFactory,
+        IMicrosoftCalendarConnectionAuthority calendarConnections,
         MetaSignalCrmOutcomeService outcomes)
     {
         _db = db;
         _logger = logger;
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
+        _calendarConnections = calendarConnections;
         _outcomes = outcomes;
     }
 
@@ -591,9 +593,27 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             return null;
         }
 
-        var accessToken = await TryGetAccessTokenAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(accessToken))
+        var owner = await ResolveCalendarOwnerAsync(subscription, cancellationToken);
+        if (owner is null)
         {
+            _logger.LogWarning(
+                "Graph webhook event fetch skipped because subscription owner could not be resolved. subscription={SubscriptionId}",
+                subscription.GraphSubscriptionId);
+            return null;
+        }
+
+        string accessToken;
+        try
+        {
+            accessToken = await _calendarConnections.GetAccessTokenAsync(owner, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Graph webhook event fetch requires a connected Microsoft calendar. owner={OwnerKey} subscription={SubscriptionId}",
+                owner.Key,
+                subscription.GraphSubscriptionId);
             return null;
         }
 
@@ -626,32 +646,30 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         }
     }
 
-    private async Task<string?> TryGetAccessTokenAsync(CancellationToken cancellationToken)
+    private async Task<MarketingOwnerScope?> ResolveCalendarOwnerAsync(
+        GraphCalendarSubscription subscription,
+        CancellationToken cancellationToken)
     {
-        var tenantId = _configuration["AzureAd:TenantId"];
-        var clientId = _configuration["AzureAd:ClientId"];
-        var clientSecret = _configuration["AzureAd:ClientSecret"];
+        if (subscription.CommerceBusinessId is Guid businessId && businessId != Guid.Empty)
+            return MarketingOwnerScope.Business(businessId);
 
-        if (string.IsNullOrWhiteSpace(tenantId) ||
-            string.IsNullOrWhiteSpace(clientId) ||
-            string.IsNullOrWhiteSpace(clientSecret))
-        {
+        if (string.IsNullOrWhiteSpace(subscription.AgentUserId))
             return null;
-        }
 
-        try
-        {
-            var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-            var token = await credential.GetTokenAsync(
-                new TokenRequestContext(new[] { "https://graph.microsoft.com/.default" }),
-                cancellationToken);
-            return token.Token;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to acquire Graph application token for calendar webhook sync.");
+        var agentUserId = subscription.AgentUserId.Trim();
+        var tracking = await _db.AgentTrackingProfiles.AsNoTracking()
+            .Where(x => x.AgentUserId == agentUserId)
+            .OrderByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (tracking is null)
             return null;
-        }
+
+        return await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+            _db,
+            _configuration,
+            tracking,
+            cancellationToken);
     }
 
     private static string? ExtractEventId(string? resource)

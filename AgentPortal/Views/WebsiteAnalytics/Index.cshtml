@@ -188,7 +188,17 @@
                                 <h6>Personal scheduler</h6>
                             </div>
                         </div>
-                        <p class="marketing-setup-help">Use your own Bookings setup only when you want a personal scheduler in public quote handoff flows.</p>
+                        <p class="marketing-setup-help">Connect Microsoft first so LEGEND can use the owner's authorized calendar. The fields below stay available when you need to target a specific Bookings page, mailbox, shared calendar, or fallback scheduler.</p>
+                        <div class="marketing-setup-provider-card" id="marketing-setup-calendar-connection">
+                            <div>
+                                <strong id="marketing-setup-calendar-account">Microsoft Calendar not connected</strong>
+                                <div class="marketing-setup-help" id="marketing-setup-calendar-auth-detail">Connect the calendar account that owns this workspace.</div>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <a class="btn btn-outline-light btn-sm" id="marketing-setup-calendar-connect" href="#">Connect Microsoft Calendar</a>
+                                <button type="button" class="btn btn-outline-danger btn-sm" id="marketing-setup-calendar-disconnect" hidden>Disconnect</button>
+                            </div>
+                        </div>
                         <label class="marketing-setup-toggle">
                             <input id="marketing-setup-booking-enabled" type="checkbox" />
                             <span>Use my personal scheduler on public quote handoff flows</span>

@@ -184,6 +184,8 @@ namespace AgentPortal.Controllers;
 
         var profile = await ResolveMarketingSetupAgentProfileAsync(tracking, createIfMissing: false, cancellationToken);
         var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
+        var calendarAuthority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+        var calendarConnection = await calendarAuthority.GetAsync(owner, cancellationToken);
         var marketing = await GetMarketingSettingsAsync(tracking, owner, cancellationToken);
         var setup = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingProviderSetupProjection>()
             .ReadAsync(owner, cancellationToken);
@@ -216,7 +218,7 @@ namespace AgentPortal.Controllers;
                 metaCustomPixel = !string.IsNullOrWhiteSpace(marketing.PixelId),
                 openAiReady = openAiAccountReady,
                 bookingPersonalLive = bookingLive,
-                calendarLinked = !string.IsNullOrWhiteSpace(profile?.CalendarEmail)
+                calendarLinked = calendarConnection.Connected
             },
             marketing = new
             {
@@ -273,6 +275,18 @@ namespace AgentPortal.Controllers;
                     recentProviderEvents = openAiHealth.RecentProviderEvents
                 }
             },
+            calendar = new
+            {
+                connected = calendarConnection.Connected,
+                revision = calendarConnection.Revision,
+                accountName = calendarConnection.AccountName,
+                email = calendarConnection.Email,
+                authorizationMethod = calendarConnection.AuthorizationMethod,
+                permissions = calendarConnection.Permissions,
+                connectedUtc = calendarConnection.ConnectedUtc,
+                lastVerifiedUtc = calendarConnection.LastVerifiedUtc,
+                accessTokenExpiresUtc = calendarConnection.AccessTokenExpiresUtc
+            },
             booking = new
             {
                 enabled = profile?.BookingEnabled == true,
@@ -282,6 +296,90 @@ namespace AgentPortal.Controllers;
                 calendarEmail = profile?.CalendarEmail
             }
         });
+    }
+
+    public sealed record CalendarConnectionRevisionRequest(Guid? AgentProfileId, Guid ConnectionRevision);
+
+    [HttpGet("calendar-connect")]
+    public async Task<IActionResult> CalendarConnect(
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        var tracking = await ResolveMarketingSetupTrackingAsync(agentProfileId, cancellationToken);
+        if (tracking is null) return Forbid();
+        var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
+        var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/website-analytics/calendar-callback";
+        var target = Url.IsLocalUrl(returnUrl) ? returnUrl! : "/WebsiteAnalytics/Index";
+        try
+        {
+            var authority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+            return Redirect(authority.BuildConnectUrl(owner, target, callback));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Redirect($"{target}?calendar=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("calendar-callback")]
+    public async Task<IActionResult> CalendarCallback(
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
+        CancellationToken cancellationToken = default)
+    {
+        var target = "/WebsiteAnalytics/Index";
+        try
+        {
+            var authority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+            var inspected = authority.InspectState(state ?? string.Empty);
+            target = Url.IsLocalUrl(inspected.ReturnUrl) ? inspected.ReturnUrl : target;
+            if (!await IsAuthorizedCalendarOwnerAsync(inspected.Owner, cancellationToken)) return Forbid();
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+                return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}calendar=error&message={Uri.EscapeDataString(message)}");
+            }
+
+            var connected = await authority.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, cancellationToken);
+            if (connected.Owner != inspected.Owner || !connected.Connected)
+                throw new InvalidOperationException("Microsoft Calendar authorization could not be verified for this owner.");
+
+            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}calendar=connected");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}calendar=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpPost("calendar-disconnect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CalendarDisconnect(
+        [FromBody] CalendarConnectionRevisionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var tracking = await ResolveMarketingSetupTrackingAsync(request.AgentProfileId, cancellationToken);
+        if (tracking is null) return Forbid();
+        var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
+        var authority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+        try
+        {
+            await authority.DisconnectAsync(owner, request.ConnectionRevision, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { message = "Microsoft Calendar connection changed. Reload and try again." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
+        return await MarketingSetup(tracking.Id, cancellationToken);
     }
 
     [HttpPost("marketing-setup")]
@@ -1702,6 +1800,16 @@ namespace AgentPortal.Controllers;
         if (User.Identity?.IsAuthenticated != true || owner.CommerceBusinessId.HasValue) return false;
         var resolved = await ResolveAdvertisingOwnerAsync(owner.AgentTrackingProfileId, HttpContext.RequestAborted);
         return resolved == owner;
+    }
+
+    private async Task<bool> IsAuthorizedCalendarOwnerAsync(
+        Shared.Analytics.MarketingOwnerScope owner,
+        CancellationToken cancellationToken)
+    {
+        if (User.Identity?.IsAuthenticated != true || owner.CommerceBusinessId.HasValue) return false;
+        var tracking = await ResolveMarketingSetupTrackingAsync(owner.AgentTrackingProfileId, cancellationToken);
+        if (tracking is null) return false;
+        return await ResolveMarketingOwnerAsync(tracking, cancellationToken) == owner;
     }
 
     private Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false) =>
