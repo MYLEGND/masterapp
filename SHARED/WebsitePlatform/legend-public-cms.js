@@ -4584,6 +4584,29 @@
     const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
+    panel.querySelectorAll('[data-advanced-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.advancedOpen)));
+
+    const sourceTextarea=document.getElementById('legend-cms-site-source');
+    sourceTextarea?.addEventListener('input',()=>{
+      sourceEditorDirty=true;
+      const status=document.getElementById('legend-cms-source-status');
+      if(status) status.textContent='Unsaved source changes · canvas remains on the last valid graph.';
+    });
+    document.getElementById('legend-cms-source-scope')?.addEventListener('change',()=>{
+      sourceEditorDirty=false;
+      refreshSiteSourceEditor(true);
+    });
+    document.getElementById('legend-cms-source-apply')?.addEventListener('click',()=>void applySiteSource());
+    document.getElementById('legend-cms-source-reload')?.addEventListener('click',()=>{
+      sourceEditorDirty=false;
+      refreshSiteSourceEditor(true);
+    });
+    document.getElementById('legend-cms-publish-save-draft')?.addEventListener('click',chooseDraft);
+    document.getElementById('legend-cms-publish-now')?.addEventListener('click',()=>void save(true));
+    document.getElementById('legend-cms-publish-quality')?.addEventListener('click',()=>{
+      showPanel('quality');
+      void refreshQualityInspector();
+    });
     syncBreakpointControls();
     document.getElementById('legend-cms-data-source')?.addEventListener('change',renderDataControls);
     document.getElementById('legend-cms-dynamic-source')?.addEventListener('change',renderDataControls);
@@ -4716,7 +4739,7 @@
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
     document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
     installDirectCanvasControls(preview);
-    showPanel('content');
+    showPanel('ai');
   }
 
   function injectContentStyles() { const style = document.createElement('style'); style.textContent = `
@@ -4808,6 +4831,7 @@
       .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
+      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
