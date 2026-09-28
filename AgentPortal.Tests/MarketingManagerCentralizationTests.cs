@@ -25,7 +25,8 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("buildMarketingManagerPlan()", js, StringComparison.Ordinal);
         Assert.Contains("Open governed ad workflow", js, StringComparison.Ordinal);
 
-        Assert.Contains(".marketing-manager-modal", css, StringComparison.Ordinal);
+        Assert.Contains("modal-content wa-modal-shell", view, StringComparison.Ordinal);
+        Assert.DoesNotContain(".marketing-manager-modal", css, StringComparison.Ordinal);
         Assert.Contains(".wa-channel-grid", css, StringComparison.Ordinal);
     }
 
@@ -56,6 +57,47 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains(".wa-event-map-table", css, StringComparison.Ordinal);
         Assert.Contains("color: #8dffc5;", css, StringComparison.Ordinal);
         Assert.Contains("color: #6ee7ff;", css, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SharedAnalyticsUi_UsesOneCleanModalAuthority_AndMobileCardsDoNotOverflow()
+    {
+        var root = Root();
+        var view = Read(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml");
+        var incident = Read(root, "AgentPortal", "Views", "WebsiteAnalytics", "_AnalyticsIncidentModal.cshtml");
+        var css = Read(root, "AgentPortal", "wwwroot", "css", "website-analytics.css");
+        var kpiJs = Read(root, "AgentPortal", "wwwroot", "js", "website-analytics-kpi-modal.js");
+
+        Assert.True(view.Split("modal-content wa-modal-shell", StringSplitOptions.None).Length - 1 >= 21);
+        Assert.Equal(3, view.Split("class=\"wa-standalone-modal\"", StringSplitOptions.None).Length - 1);
+        Assert.Contains("modal-content wa-modal-shell", incident, StringComparison.Ordinal);
+
+        foreach (var legacy in new[]
+        {
+            ".fa-modal .modal-content",
+            ".marketing-setup-modal-dialog",
+            ".advertising-command-modal",
+            ".marketing-manager-modal",
+            ".meta-signal-shell",
+            ".meta-signal-health-shell",
+            ".wa-device-modal-shell",
+            ".vc-modal-panel",
+            ".vc-modal-backdrop",
+            ".kpi-detail-panel",
+            ".kpi-detail-backdrop"
+        })
+            Assert.DoesNotContain(legacy, css, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("vc-modal-panel", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("kpiDetailBackdrop", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("vc-modal-panel", kpiJs, StringComparison.Ordinal);
+        Assert.DoesNotContain("kpiDetailBackdrop", kpiJs, StringComparison.Ordinal);
+
+        Assert.Contains("/* Canonical Website Analytics modal system.", css, StringComparison.Ordinal);
+        Assert.Contains(".wa-standalone-modal", css, StringComparison.Ordinal);
+        Assert.Contains("grid-template-columns: 1fr;\n        align-items: stretch;", css, StringComparison.Ordinal);
+        Assert.Contains(".wa-growth-economics-grid {\n    grid-template-columns: 1fr;\n    overflow: visible;", css, StringComparison.Ordinal);
+        Assert.Contains(".wa-growth-economics-card {\n    min-width: 0;", css, StringComparison.Ordinal);
     }
 
     [Fact]
