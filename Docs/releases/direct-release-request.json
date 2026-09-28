@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to resume the failed Website Analytics mobile cascade release from the discover-live gate only, preserve all successful product validation and rollback work, use the already-merged canonical replacement repair without adding CSS overrides, and deploy only the affected shared analytics hosts.",
-  "purpose": "Resume publication of the validated Website Analytics mobile cascade cleanup from the failed release-control gate. Deploy only AgentPortal and ClientApp. Protect, Parfait, the static LEGEND website, Cloudflare routing, analytics calculations, ads authority, CRM, and booking behavior remain untouched.",
-  "requestId": "website-analytics-mobile-cascade-resume-exact-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to resume the failed Website Analytics mobile cascade release from the discover-live gate only, preserve successful validation and deployment work, use the canonical replacement repair already merged, and deploy only AgentPortal and ClientApp.",
+  "purpose": "Publish the validated Website Analytics mobile cascade cleanup from an exact validated approved head. No product CSS override is added. Protect, Parfait, Website, Cloudflare routing, analytics calculations, ads authority, CRM, and booking remain untouched.",
+  "requestId": "website-analytics-mobile-cascade-validated-head-20260928",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
