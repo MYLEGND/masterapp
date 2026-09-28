@@ -585,7 +585,7 @@ public sealed class BusinessWorkspaceTests
     }
 
     [Fact]
-    public async Task RecipientRevocationNeverFallsBackToFounderOrAnotherBusiness()
+    public async Task BusinessInquiryRecipientAlwaysUsesCurrentBusinessProfileEmail()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var business = new CommerceBusiness { Key = "business", OwnerEmail = "owner@example.org" };
@@ -594,9 +594,11 @@ public sealed class BusinessWorkspaceTests
         var settings = new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id, WorkspacePreferencesJson = new BusinessWorkspacePreferences { NotificationMemberId = member.Id }.Write() };
         db.AddRange(business, profile, member, settings); await db.SaveChangesAsync();
         var resolver = new WebsiteIntakeRecipientResolver(db, new ConfigurationBuilder().AddInMemoryCollection(new[] { new System.Collections.Generic.KeyValuePair<string,string?>("Contact:RecipientEmail", "founder@example.org") }).Build());
-        Assert.Equal(profile.Email, await resolver.ResolveAsync(MarketingOwnerScope.Business(business.Id)));
-        member.Status = "Inactive"; await db.SaveChangesAsync();
-        Assert.Null(await resolver.ResolveAsync(MarketingOwnerScope.Business(business.Id)));
+        Assert.Equal(business.OwnerEmail, await resolver.ResolveAsync(MarketingOwnerScope.Business(business.Id)));
+        member.Status = "Inactive";
+        business.OwnerEmail = "new-primary@example.org";
+        await db.SaveChangesAsync();
+        Assert.Equal("new-primary@example.org", await resolver.ResolveAsync(MarketingOwnerScope.Business(business.Id)));
         Assert.Null(await resolver.ResolveAsync(MarketingOwnerScope.Business(Guid.NewGuid())));
     }
 
