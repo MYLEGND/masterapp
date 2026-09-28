@@ -3676,7 +3676,11 @@
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
     if (name === 'layers') refreshLayers();
     if (name === 'media') void refreshMediaLibrary();
-    if (name === 'source') refreshSiteSourceEditor();
+    if (name === 'source') {
+      const scope=document.getElementById('legend-cms-source-scope');
+      if(scope && sourceSelectedNodeId()) scope.value='selection';
+      refreshSiteSourceEditor();
+    }
     if (name === 'components') renderReusableComponents();
     if (name === 'data') renderDataControls();
     if (name === 'ai') renderAiProposal();
@@ -4619,7 +4623,7 @@
     tools.appendChild(publishView);
 
     const advanced=document.createElement('section'); advanced.dataset.cmsView='advanced'; advanced.hidden=true;
-    advanced.innerHTML='<h2>Advanced controls</h2><p>Precision tools remain available without crowding the everyday workflow.</p><div class="legend-cms-menu"><button data-advanced-open="content">Selected content</button><button data-advanced-open="add">Add blocks</button><button data-advanced-open="appearance">Design</button><button data-advanced-open="layout">Responsive</button><button data-advanced-open="layers">Layers</button><button data-advanced-open="components">Components</button><button data-advanced-open="data">Dynamic data</button><button data-advanced-open="motion">Motion</button><button data-advanced-open="signals">Analytics</button><button data-advanced-open="quality">Quality</button><button data-advanced-open="collaboration">Collaborate</button><button data-advanced-open="theme">Site theme</button><button data-advanced-open="page">Pages & SEO</button></div>';
+    advanced.innerHTML='<h2>Advanced controls</h2><p>Precision tools remain available without crowding the everyday workflow.</p><div class="legend-cms-menu"><button data-open="content">Selected content</button><button data-open="add">Add blocks</button><button data-open="appearance">Design</button><button data-open="layout">Responsive</button><button data-open="layers">Layers</button><button data-open="components">Components</button><button data-open="data">Dynamic data</button><button data-open="motion">Motion</button><button data-open="signals">Analytics</button><button data-open="quality">Quality</button><button data-open="collaboration">Collaborate</button><button data-open="theme">Site theme</button><button data-open="page">Pages & SEO</button></div>';
     tools.appendChild(advanced);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
     signals.innerHTML = '<h2>Analytics & Meta</h2><p>Standard page engagement, managed buttons, and the canonical inquiry form are wired automatically from the shared Protect Website analytics and Meta authorities. Select content to review that wiring. Advanced custom mappings are only for non-standard interactions.</p><div id="legend-cms-signal-controls"></div>';
@@ -4658,7 +4662,6 @@
     const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
-    panel.querySelectorAll('[data-advanced-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.advancedOpen)));
 
     const sourceTextarea=document.getElementById('legend-cms-site-source');
     sourceTextarea?.addEventListener('input',()=>{
