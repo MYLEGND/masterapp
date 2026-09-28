@@ -36,7 +36,7 @@ public static class WebsiteDraftQualityInspector
             if (page.DynamicBinding is not null && !(document.Collections?.ContainsKey(page.DynamicBinding.CollectionId) ?? false))
                 checks.Add(new("dynamic_collection_missing", "error", "This dynamic page points to a collection that is not available.", path));
             if (string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
-                InspectComposition(page.Composition, checks, path);
+                InspectComposition(page.Composition, checks, path, reusableSyncIds);
             else
                 InspectElements(page.Elements, page.Extras, checks, path);
         }
@@ -119,7 +119,8 @@ public static class WebsiteDraftQualityInspector
     private static void InspectComposition(
         IEnumerable<WebsiteCompositionNode>? nodes,
         List<WebsiteQualityCheck> checks,
-        string pagePath)
+        string pagePath,
+        IReadOnlySet<string> reusableSyncIds)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
@@ -148,7 +149,7 @@ public static class WebsiteDraftQualityInspector
 
                     if (node.Type == "reusable" &&
                         (string.IsNullOrWhiteSpace(node.SyncSourceId) ||
-                         !(document.ReusableComponents?.ContainsKey(node.SyncSourceId) ?? false)))
+                         !reusableSyncIds.Contains(node.SyncSourceId)))
                         checks.Add(new("reusable_component_missing", "error", "Reusable component instances must reference an existing synchronized definition.", pagePath, node.Id));
                 }
 
