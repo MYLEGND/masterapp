@@ -195,6 +195,7 @@ public static class MarketingServiceRegistration
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, OpenAiMarketingDestination>());
         services.TryAddScoped<IMarketingDestinationRegistry, MarketingDestinationRegistry>();
         services.AddScoped<IOpenAiAdsAccountConnectionAuthority, OpenAiAdsAccountConnectionAuthority>();
+        services.AddScoped<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority, Infrastructure.Bookings.MicrosoftCalendarConnectionAuthority>();
         services.AddHttpClient<IOpenAiAdsDirectConnectionService, OpenAiAdsDirectConnectionService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
