@@ -33,6 +33,7 @@ public static class UnifiedEventContextBuilder
         string? metaAdId = null,
         string? fbclid = null,
         string? oppref = null,
+        string? obref = null,
         string? agentSlug = null,
         Guid? agentTrackingProfileId = null,
         bool? isInternal = null,
@@ -121,6 +122,8 @@ public static class UnifiedEventContextBuilder
 
             Fbclid = fbclid,
             Oppref = OpenAiClickReference.Normalize(oppref),
+            Obref = OpenAiBrowserReference.Normalize(obref)
+                ?? OpenAiBrowserReference.Normalize(MetaLeadTrackingWorkflow.ResolveCookieValue(request, "__obref")),
             Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbc"),
             Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbp"),
 
