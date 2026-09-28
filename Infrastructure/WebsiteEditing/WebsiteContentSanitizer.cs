@@ -268,6 +268,7 @@ public static class WebsiteContentSanitizer
                 MediaAssetId = type is "image" or "video" ? node.MediaAssetId : null,
                 MediaUrl = mediaUrl,
                 SystemKey = systemKey,
+                SystemBinding = SanitizeSystemBinding(node.SystemBinding),
                 Hidden = node.Hidden,
                 Signals = WebsiteSignalBindingPolicy.Validate(node.Signals),
                 Style = SanitizeStyle(node.Style),
@@ -281,6 +282,18 @@ public static class WebsiteContentSanitizer
             result.Add(clean);
         }
         return result;
+    }
+
+    private static string? SanitizeSystemBinding(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var key = value.Trim();
+        if (key == "business_name") return key;
+        if (!key.StartsWith("business_field:", StringComparison.Ordinal)) return null;
+        var field = key["business_field:".Length..];
+        return field is "displayName" or "legalName" or "businessType" or "contactEmail" or "contactPhone"
+            ? key
+            : null;
     }
 
     private static string? SanitizeCompositionTag(string? value, string type)
