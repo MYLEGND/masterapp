@@ -121,7 +121,6 @@ public static class UnifiedEventMapper
             UtmMedium = ctx.UtmMedium,
             UtmCampaign = ctx.UtmCampaign,
             UtmId = ctx.UtmId,
-            UtmTerm = ctx.UtmTerm,
             UtmContent = ctx.UtmContent,
 
             FbclidPresent = !string.IsNullOrEmpty(ctx.Fbclid),
