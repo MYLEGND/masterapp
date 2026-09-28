@@ -1,11 +1,7 @@
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using AgentPortal.Filters;
 using AgentPortal.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Identity.Client;
-using Microsoft.Identity.Web;
 using Infrastructure.Data;
 using AgentPortal.Models;
 using AgentPortal.Helpers;
@@ -42,32 +38,27 @@ public class CalendarController : Controller
         LeadAppointmentStatus.Completed
     };
 
-    private readonly ITokenAcquisition _tokenAcquisition;
     private readonly ILogger<CalendarController> _logger;
     private readonly MasterAppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAgentTimeZoneResolver _agentTimeZoneResolver;
-    private readonly GraphServiceClient _appGraph;
+    private readonly Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority _calendarConnections;
 
-    // Scopes must match what you consent to in /calendar/connect
-    private static readonly string[] CalendarScopes = new[] { "offline_access", "Calendars.ReadWrite" };
-    private static readonly string[] CalendarAvailabilityScopes = new[] { "offline_access", "Calendars.ReadWrite", "MailboxSettings.Read" };
     private static readonly TimeSpan DefaultWorkdayStart = new(7, 0, 0);
     private static readonly TimeSpan DefaultWorkdayEnd = new(19, 0, 0);
 
-    public CalendarController(ITokenAcquisition tokenAcquisition,
+    public CalendarController(
         ILogger<CalendarController> logger,
         MasterAppDbContext db,
         IHttpClientFactory httpClientFactory,
         IAgentTimeZoneResolver agentTimeZoneResolver,
-        GraphServiceClient appGraph)
+        Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority calendarConnections)
     {
-        _tokenAcquisition = tokenAcquisition;
         _logger = logger;
         _db = db;
         _httpClientFactory = httpClientFactory;
         _agentTimeZoneResolver = agentTimeZoneResolver;
-        _appGraph = appGraph;
+        _calendarConnections = calendarConnections;
     }
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
@@ -1006,6 +997,62 @@ public class CalendarController : Controller
             clientProfile?.Phone ?? leadProfile?.Phone);
     }
 
+    private async Task<Shared.Analytics.MarketingOwnerScope> ResolveCalendarOwnerAsync(
+        Guid? scopedBusinessId,
+        string? scopedBookingAgentUserId,
+        CancellationToken cancellationToken)
+    {
+        if (scopedBusinessId is Guid businessId && businessId != Guid.Empty)
+            return Shared.Analytics.MarketingOwnerScope.Business(businessId);
+
+        var businessClaim = User.FindFirstValue("legend_business_id");
+        if (Guid.TryParse(businessClaim, out var claimedBusinessId) && claimedBusinessId != Guid.Empty)
+            return Shared.Analytics.MarketingOwnerScope.Business(claimedBusinessId);
+
+        if (FounderGuard.IsFounder(User))
+            return Shared.Analytics.MarketingOwnerScope.Founder;
+
+        var agentUserId = CleanOptional(scopedBookingAgentUserId) ?? GetAgentOidOrThrow();
+        var normalized = Norm(agentUserId);
+        var upn = CleanOptional(
+            User.FindFirstValue("preferred_username") ??
+            User.FindFirstValue(ClaimTypes.Upn) ??
+            User.Identity?.Name);
+
+        var tracking = await _db.AgentTrackingProfiles.AsNoTracking()
+            .Where(x =>
+                (x.AgentUserId ?? string.Empty).Trim().ToLower() == normalized ||
+                (upn != null && (x.AgentUpn ?? string.Empty).Trim().ToLower() == upn.ToLower()))
+            .OrderByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidOperationException("The calendar owner could not be resolved.");
+
+        return Shared.Analytics.MarketingOwnerScope.Agent(tracking.Id);
+    }
+
+    private async Task<string?> ResolveBookingBusinessIdAsync(
+        Guid? scopedBusinessId,
+        AgentProfile? agentProfile,
+        Shared.Analytics.MarketingOwnerScope owner,
+        CancellationToken cancellationToken)
+    {
+        string? manualTarget = null;
+        if (scopedBusinessId is Guid businessId && businessId != Guid.Empty)
+        {
+            manualTarget = await _db.CommerceBusinessStorefrontSettings.AsNoTracking()
+                .Where(x => x.CommerceBusinessId == businessId)
+                .Select(x => x.BookingMailboxId)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+
+        manualTarget = CleanOptional(manualTarget) ?? CleanOptional(agentProfile?.BookingPageIdOrMailbox);
+        if (!string.IsNullOrWhiteSpace(manualTarget))
+            return manualTarget.Trim().TrimEnd('/');
+
+        var connection = await _calendarConnections.GetAsync(owner, cancellationToken);
+        return CleanOptional(connection.Email)?.TrimEnd('/');
+    }
+
     private static DateTime? UtcDate(DateTime? value)
         => value.HasValue
             ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
@@ -1026,64 +1073,78 @@ public class CalendarController : Controller
     }
 
     // GET /calendar/connect
-    // Triggers incremental consent for delegated calendar scopes.
+    // Compatibility route retained for CRM callers; the owner-scoped connection
+    // authority now owns OAuth, persistence, verification, refresh, and status.
     [HttpGet("connect")]
-    public IActionResult Connect()
-    {
-        var props = new AuthenticationProperties
-        {
-            RedirectUri = Url.Action("Connected", "Calendar") ?? "/calendar/connected"
-        };
-
-        // Force consent prompt during testing
-        props.Items["prompt"] = "consent";
-
-        // Correct incremental consent for Microsoft.Identity.Web
-        props.Items["scope"] = string.Join(" ", CalendarAvailabilityScopes);
-        return Challenge(props, OpenIdConnectDefaults.AuthenticationScheme);
-    }
-
-    // GET /calendar/connected
-    // Redirect back to CRM instead of blank text page.
-    [HttpGet("connected")]
-    public IActionResult Connected()
-    {
-        TempData["Created"] = "✅ Calendar connected for this agent.";
-        return RedirectToAction("Index", "Clients");
-    }
-
-    // GET /calendar/status
-    // This is what your Index.cshtml calls to set the button state.
-    [HttpGet("status")]
-    public async Task<IActionResult> Status()
+    public async Task<IActionResult> Connect(CancellationToken cancellationToken = default)
     {
         try
         {
-            // If we can acquire an access token for these scopes, we're "connected"
-            var token = await _tokenAcquisition.GetAccessTokenForUserAsync(CalendarScopes);
+            var owner = await ResolveCalendarOwnerAsync(null, null, cancellationToken);
+            var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/calendar/connected";
+            var returnUrl = Url.Action("Index", "Clients") ?? "/Clients";
+            return Redirect(_calendarConnections.BuildConnectUrl(owner, returnUrl, callback));
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+            return RedirectToAction("Index", "Clients");
+        }
+    }
 
-            // Optional: show the signed-in user
-            var email =
-                User.FindFirstValue("preferred_username") ??
-                User.FindFirstValue(ClaimTypes.Upn) ??
-                User.Identity?.Name ??
-                "";
+    [HttpGet("connected")]
+    public async Task<IActionResult> Connected(
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var inspected = _calendarConnections.InspectState(state ?? string.Empty);
+            var currentOwner = await ResolveCalendarOwnerAsync(null, null, cancellationToken);
+            if (inspected.Owner != currentOwner) return Forbid();
 
-            return Json(new { connected = !string.IsNullOrWhiteSpace(token), email });
+            if (!string.IsNullOrWhiteSpace(error))
+                throw new InvalidOperationException(
+                    string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription);
+
+            var connection = await _calendarConnections.CompleteCallbackAsync(
+                code ?? string.Empty,
+                state ?? string.Empty,
+                cancellationToken);
+            if (!connection.Connected || connection.Owner != currentOwner)
+                throw new InvalidOperationException("Microsoft Calendar authorization was not verified.");
+
+            TempData["Created"] = "Calendar connected.";
         }
-        catch (MicrosoftIdentityWebChallengeUserException ex)
+        catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Calendar status requires user interaction/consent.");
-            return Json(new { connected = false, needsConsent = true });
+            TempData["Error"] = ex.Message;
         }
-        catch (MsalUiRequiredException ex)
+
+        return RedirectToAction("Index", "Clients");
+    }
+
+    [HttpGet("status")]
+    public async Task<IActionResult> Status(CancellationToken cancellationToken = default)
+    {
+        try
         {
-            _logger.LogWarning(ex, "Calendar status token not available (user_null).");
-            return Json(new { connected = false, needsConsent = true });
+            var owner = await ResolveCalendarOwnerAsync(null, null, cancellationToken);
+            var connection = await _calendarConnections.GetAsync(owner, cancellationToken);
+            return Json(new
+            {
+                connected = connection.Connected,
+                email = connection.Email,
+                authorizationMethod = connection.AuthorizationMethod,
+                lastVerifiedUtc = connection.LastVerifiedUtc
+            });
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Calendar status check failed (not consented or token unavailable).");
+            _logger.LogWarning(ex, "Calendar status owner resolution failed.");
             return Json(new { connected = false });
         }
     }
