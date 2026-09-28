@@ -116,7 +116,7 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
-    public void CanonicalAdOptimizationRelease_RemainsScopedToActualRuntimeConsumers()
+    public void CanonicalOpenAiMatchingParityRelease_RemainsScopedToActualRuntimeConsumers()
     {
         var root = Root();
         var request = Read(root, "Docs", "releases", "direct-release-request.json");
@@ -129,7 +129,7 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
-        Assert.Contains("canonical-ad-optimization-parity-20260928", request, StringComparison.Ordinal);
+        Assert.Contains("canonical-openai-matching-parity-20260928", request, StringComparison.Ordinal);
     }
 
     [Fact]
