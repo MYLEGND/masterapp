@@ -280,6 +280,7 @@ public sealed class WebsiteCompositionNode
     public Guid? MediaAssetId { get; set; }
     public string? MediaUrl { get; set; }
     public string? SystemKey { get; set; }
+    public string? SystemBinding { get; set; }
     public bool? Hidden { get; set; }
     public List<WebsiteSignalBinding> Signals { get; set; } = new();
     public WebsiteStyleOverride Style { get; set; } = new();
