@@ -360,7 +360,7 @@ public sealed class OpenAiConversionDispatcherHostedService(
             if (!CanonicalAdvertisingEventProjection.CanProjectServer(source)) continue;
             var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
             if (owner is null) continue;
-            var identity = await CanonicalMarketingIdentityResolver.ResolveAsync(db, source, cancellationToken: ct);
+            var identity = await CanonicalMarketingIdentityResolver.ResolveAsync(db, source, ct: ct);
             var user = OpenAiConversionUserMapper.Map(identity);
             if (!OpenAiMeasurementEventMapper.TryMap(source, user, out var conversion)) continue;
             var providerEventIdentity = conversion.CustomEventName ?? conversion.Type;
