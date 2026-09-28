@@ -261,6 +261,7 @@
       MetaAdSetId: attribution.metaAdSetId || query.get('meta_adset_id'),
       MetaAdId: attribution.metaAdId || query.get('meta_ad_id'),
       Fbclid: attribution.fbclid || query.get('fbclid'),
+      Oppref: attribution.oppref || query.get('oppref'),
       Host: location.host,
       AgentTrackingProfileId: AGENT_ID,
       AgentSlug: AGENT_SLUG
