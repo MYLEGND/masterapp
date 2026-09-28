@@ -68,7 +68,8 @@ public class WebsiteInquiryAuthority : ControllerBase
         string? Fbc = null,
         string? MetaCampaignId = null,
         string? MetaAdSetId = null,
-        string? MetaAdId = null);
+        string? MetaAdId = null,
+        string? MeasurementConsent = null);
 
     [HttpPost("public")]
     [RequestSizeLimit(32768)]
@@ -163,10 +164,10 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmId = Optional(request.UtmId, 160),
             Fbclid = Optional(request.Fbclid, 120),
             Oppref = OpenAiClickReference.Normalize(request.Oppref),
-            Fbp = UnifiedEventContextBuilder.CanUseMarketingIdentifiers(Request)
+            Fbp = CanUseSubmittedMarketingIdentifiers(request)
                 ? Optional(request.Fbp, 512)
                 : null,
-            Fbc = UnifiedEventContextBuilder.CanUseMarketingIdentifiers(Request)
+            Fbc = CanUseSubmittedMarketingIdentifiers(request)
                 ? Optional(request.Fbc, 512)
                 : null,
             MetaCampaignId = Optional(request.MetaCampaignId, 200),
@@ -185,7 +186,9 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
             Oppref = lead.Oppref,
-            Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, request.Obref),
+            Obref = CanUseSubmittedMarketingIdentifiers(request)
+                ? UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, request.Obref)
+                : null,
             PublishedWebsiteVersionId = scope.PublishedVersion?.Id
         });
         lead.LeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));
@@ -379,7 +382,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmContent = Optional(request.UtmContent, 160),
             Fbclid = lead.Fbclid,
             Oppref = lead.Oppref,
-            Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, request.Obref),
+            Obref = CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "Obref"),
             Fbp = lead.Fbp,
             Fbc = lead.Fbc,
             MetaCampaignId = lead.MetaCampaignId,
@@ -521,6 +524,16 @@ public class WebsiteInquiryAuthority : ControllerBase
     }
 
     private sealed record InquiryDescriptor(string ProductType, string OfferKey, string Subject);
+
+    private bool CanUseSubmittedMarketingIdentifiers(PublicRequest request)
+    {
+        if (!UnifiedEventContextBuilder.CanUseMarketingIdentifiers(Request))
+            return false;
+
+        var consent = request.MeasurementConsent?.Trim();
+        return !string.Equals(consent, "denied", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(consent, "unknown", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string? Optional(string? value, int max)
     {
