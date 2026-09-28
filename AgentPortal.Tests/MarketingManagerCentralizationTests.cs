@@ -116,20 +116,20 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
-    public void WebsiteAnalyticsMobileCascadeRelease_RemainsScopedToSharedAnalyticsHosts()
+    public void CanonicalAdOptimizationRelease_RemainsScopedToActualRuntimeConsumers()
     {
         var root = Root();
         var request = Read(root, "Docs", "releases", "direct-release-request.json");
 
         Assert.Contains("\"masterapp-portal\"", request, StringComparison.Ordinal);
-        Assert.Contains("\"masterapp-client\"", request, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"masterapp-protect\"", request, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"masterapp-parfait\"", request, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"masterapp-website\"", request, StringComparison.Ordinal);
+        Assert.Contains("\"masterapp-protect\"", request, StringComparison.Ordinal);
+        Assert.Contains("\"masterapp-parfait\"", request, StringComparison.Ordinal);
+        Assert.Contains("\"masterapp-website\"", request, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"masterapp-client\"", request, StringComparison.Ordinal);
         Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
-        Assert.Contains("website-analytics-mobile-cascade-validated-head-20260928", request, StringComparison.Ordinal);
+        Assert.Contains("canonical-ad-optimization-parity-20260928", request, StringComparison.Ordinal);
     }
 
     [Fact]
