@@ -222,6 +222,11 @@ public static class WebsiteSiteSource
                 !string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
                 throw new ArgumentException("Website forms must use the canonical inquiry authority.");
 
+            if (node.Type == "reusable" &&
+                (string.IsNullOrWhiteSpace(node.SyncSourceId) ||
+                 !document.ReusableComponents.ContainsKey(node.SyncSourceId)))
+                throw new ArgumentException($"Reusable component '{node.Id}' must reference an existing synchronized component definition.");
+
             if (node.Type is "cta" or "link" &&
                 string.IsNullOrWhiteSpace(node.ActionKey) &&
                 string.IsNullOrWhiteSpace(WebsiteContentSanitizer.SanitizeUrl(node.Href)))
