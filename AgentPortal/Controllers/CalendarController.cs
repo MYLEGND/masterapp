@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using AgentPortal.Filters;
 using AgentPortal.Services;
+using AgentPortal.Security;
 using Microsoft.AspNetCore.Mvc;
 using Infrastructure.Data;
 using AgentPortal.Models;
@@ -8,7 +9,6 @@ using AgentPortal.Helpers;
 using Domain.Entities;
 using Domain.Enums;
 using System.Security.Claims;
-using System.Net.Http.Headers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
@@ -40,7 +40,6 @@ public class CalendarController : Controller
 
     private readonly ILogger<CalendarController> _logger;
     private readonly MasterAppDbContext _db;
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAgentTimeZoneResolver _agentTimeZoneResolver;
     private readonly Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority _calendarConnections;
 
@@ -50,13 +49,11 @@ public class CalendarController : Controller
     public CalendarController(
         ILogger<CalendarController> logger,
         MasterAppDbContext db,
-        IHttpClientFactory httpClientFactory,
         IAgentTimeZoneResolver agentTimeZoneResolver,
         Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority calendarConnections)
     {
         _logger = logger;
         _db = db;
-        _httpClientFactory = httpClientFactory;
         _agentTimeZoneResolver = agentTimeZoneResolver;
         _calendarConnections = calendarConnections;
     }
