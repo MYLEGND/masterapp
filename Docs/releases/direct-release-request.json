@@ -1,7 +1,7 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to isolate, validate, merge, and deploy the canonical marketing hardening repair while preserving all unrelated approved-branch behavior and deploying only affected applications.",
-  "purpose": "Publish the canonical marketing hardening repair: durable WebsiteLead notification retry state, one scoped primary-account-email authority for website lead and inquiry notifications, retirement of the competing business recipient setting, and one shared browser/server measurement-consent authority consumed by Meta and OpenAI matching and browser delivery.",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to isolate, validate, merge, and deploy the canonical marketing hardening repair while preserving all unrelated approved-branch behavior and deploying only affected applications. This authorization includes replacing the active Protect and Parfait hard-coded contact-email surfaces with the same canonical first-name, last-name, phone, email, message inquiry intake used by LEGEND and scoped business websites.",
+  "purpose": "Publish the canonical marketing hardening repair: durable WebsiteLead notification retry state; one scoped primary-account-email authority for website lead and inquiry notifications; retirement of the competing business recipient setting; one shared browser/server measurement-consent authority consumed by Meta and OpenAI; and one shared public inquiry form/runtime feeding WebsiteInquiryAuthority -> WebsiteLead -> CRM -> canonical analytics -> scoped primary-email notification for LEGEND, business websites, Protect, and Parfait. No parallel intake controller, CRM writer, analytics writer, notification sender, provider pipeline, or Cloudflare routing change is introduced.",
   "requestId": "canonical-marketing-hardening-20260928",
   "releaseMode": "approved-only",
   "targets": [
