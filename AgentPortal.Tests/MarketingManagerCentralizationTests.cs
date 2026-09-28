@@ -128,6 +128,8 @@ public sealed class MarketingManagerCentralizationTests
         Assert.DoesNotContain("\"masterapp-website\"", request, StringComparison.Ordinal);
         Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
+        Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
+        Assert.Contains("website-analytics-mobile-cascade-validated-head-20260928", request, StringComparison.Ordinal);
     }
 
     [Fact]
