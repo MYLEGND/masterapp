@@ -28,7 +28,7 @@ public static class MarketingConversionDestinationCatalog
         new(
             "QualifiedLead",
             new("QualifiedLead", MarketingConversionEventKind.Custom, false),
-            new("QualifiedLead", MarketingConversionEventKind.Custom, false, "customer_action")),
+            new("qualifiedlead", MarketingConversionEventKind.Custom, false, "custom")),
         new(
             "AppointmentBooked",
             new("AppointmentBooked", MarketingConversionEventKind.Custom, false),
@@ -36,15 +36,15 @@ public static class MarketingConversionDestinationCatalog
         new(
             "AppointmentCompleted",
             new("AppointmentCompleted", MarketingConversionEventKind.Custom, false),
-            new("AppointmentCompleted", MarketingConversionEventKind.Custom, false, "customer_action")),
+            new("appointmentcompleted", MarketingConversionEventKind.Custom, false, "custom")),
         new(
             "ApplicationSubmitted",
             new("ApplicationSubmitted", MarketingConversionEventKind.Custom, false),
-            new("ApplicationSubmitted", MarketingConversionEventKind.Custom, false, "customer_action")),
+            new("applicationsubmitted", MarketingConversionEventKind.Custom, false, "custom")),
         new(
             "PolicyIssued",
             new("PolicyIssued", MarketingConversionEventKind.Custom, false),
-            new("PolicyIssued", MarketingConversionEventKind.Custom, false, "customer_action")),
+            new("policyissued", MarketingConversionEventKind.Custom, false, "custom")),
         new(
             "PolicyPaid",
             new("Purchase", MarketingConversionEventKind.Standard, true),

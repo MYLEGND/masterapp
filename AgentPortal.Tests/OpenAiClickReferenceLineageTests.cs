@@ -133,6 +133,52 @@ public sealed class OpenAiClickReferenceLineageTests
     }
 
     [Fact]
+    public void UnifiedServerContextPreservesCampaignAndOpenAiClickLineage()
+    {
+        var context = UnifiedEventContextBuilder.Build(
+            httpContext: null,
+            eventName: "Lead",
+            eventUtc: DateTime.UtcNow,
+            utmSource: "chatgpt",
+            utmMedium: "paid",
+            utmCampaign: "legend_general_life",
+            utmId: "campaign-1",
+            utmTerm: "ad-group-1",
+            utmContent: "ad-1",
+            oppref: "opp-click-1",
+            host: "protect.mylegnd.com",
+            isServerAuthority: true);
+
+        var row = UnifiedEventMapper.ToAnalytics(context);
+
+        Assert.Equal("campaign-1", row.UtmId);
+        Assert.Equal("ad-group-1", row.UtmTerm);
+        Assert.Equal("ad-1", row.UtmContent);
+        Assert.Equal("opp-click-1", row.Oppref);
+    }
+
+    [Fact]
+    public void ProtectQuoteServerOutcomesCarryPersistedOpprefAndDynamicUtmLineage()
+    {
+        var root = FindRoot();
+        foreach (var relative in new[]
+        {
+            Path.Combine("Protect-Website", "Controllers", "LifeQuoteController.cs"),
+            Path.Combine("Protect-Website", "Controllers", "HomeQuoteController.cs"),
+            Path.Combine("Protect-Website", "Controllers", "AutoQuoteController.cs"),
+            Path.Combine("Protect-Website", "Controllers", "CommercialQuoteController.cs"),
+            Path.Combine("Protect-Website", "Controllers", "DisabilityQuoteController.cs"),
+            Path.Combine("Protect-Website", "Controllers", "DentalVisionHearingQuoteController.cs")
+        })
+        {
+            var source = File.ReadAllText(Path.Combine(root, relative));
+            Assert.Contains("utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmTerm\")", source, StringComparison.Ordinal);
+            Assert.Contains("utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmContent\")", source, StringComparison.Ordinal);
+            Assert.Contains("oppref: lead.Oppref", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void OpenAiServerMapperReadsOpprefFromCanonicalServerMetadata()
     {
         var row = new AnalyticsEvent

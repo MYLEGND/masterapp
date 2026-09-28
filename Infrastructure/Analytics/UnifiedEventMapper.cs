@@ -38,6 +38,7 @@ public static class UnifiedEventMapper
             UtmMedium = ctx.UtmMedium,
             UtmCampaign = ctx.UtmCampaign,
             UtmId = ctx.UtmId,
+            UtmTerm = ctx.UtmTerm,
             UtmContent = ctx.UtmContent,
             MetaCampaignId = ctx.MetaCampaignId,
             MetaAdSetId = ctx.MetaAdSetId,

@@ -50,6 +50,33 @@ public sealed class OpenAiMeasurementDeliveryTests
         Assert.Equal("customer_action", evt.GetProperty("data").GetProperty("type").GetString());
     }
 
+    [Fact]
+    public async Task ConversionsApi_SerializesOpenAiCustomEventContract()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK, "{\"received\":1}");
+        using var client = new HttpClient(handler);
+        var service = new OpenAiConversionsApiService(client);
+        var conversion = new OpenAiConversionEvent(
+            "qualified-lead-event",
+            "custom",
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            "https://example.com/quote",
+            "web",
+            new("custom"),
+            "opp-custom",
+            "qualifiedlead");
+
+        var result = await service.SendAsync("pixel", "key", conversion);
+
+        Assert.True(result.Sent);
+        using var body = JsonDocument.Parse(handler.Body!);
+        var evt = body.RootElement.GetProperty("events")[0];
+        Assert.Equal("custom", evt.GetProperty("type").GetString());
+        Assert.Equal("qualifiedlead", evt.GetProperty("custom_event_name").GetString());
+        Assert.Equal("custom", evt.GetProperty("data").GetProperty("type").GetString());
+        Assert.Equal("opp-custom", evt.GetProperty("oppref").GetString());
+    }
+
     [Theory]
     [InlineData(408, true)]
     [InlineData(429, true)]
@@ -74,19 +101,20 @@ public sealed class OpenAiMeasurementDeliveryTests
     }
 
     [Theory]
-    [InlineData("Lead", "lead_created", "customer_action")]
-    [InlineData("QualifiedLead", "QualifiedLead", "customer_action")]
-    [InlineData("AppointmentBooked", "appointment_scheduled", "customer_action")]
-    [InlineData("AppointmentCompleted", "AppointmentCompleted", "customer_action")]
-    [InlineData("ApplicationSubmitted", "ApplicationSubmitted", "customer_action")]
-    [InlineData("PolicyIssued", "PolicyIssued", "customer_action")]
-    [InlineData("PolicyPaid", "order_created", "contents")]
-    [InlineData("AddToCart", "items_added", "contents")]
-    [InlineData("InitiateCheckout", "checkout_started", "contents")]
-    [InlineData("Purchase", "order_created", "contents")]
+    [InlineData("Lead", "lead_created", null, "customer_action")]
+    [InlineData("QualifiedLead", "custom", "qualifiedlead", "custom")]
+    [InlineData("AppointmentBooked", "appointment_scheduled", null, "customer_action")]
+    [InlineData("AppointmentCompleted", "custom", "appointmentcompleted", "custom")]
+    [InlineData("ApplicationSubmitted", "custom", "applicationsubmitted", "custom")]
+    [InlineData("PolicyIssued", "custom", "policyissued", "custom")]
+    [InlineData("PolicyPaid", "order_created", null, "contents")]
+    [InlineData("AddToCart", "items_added", null, "contents")]
+    [InlineData("InitiateCheckout", "checkout_started", null, "contents")]
+    [InlineData("Purchase", "order_created", null, "contents")]
     public void Mapper_ProjectsCanonicalServerEventsThroughDestinationCatalog(
         string canonical,
         string expectedProviderEvent,
+        string? expectedCustomEventName,
         string expectedDataType)
     {
         var row = new AnalyticsEvent
@@ -101,6 +129,7 @@ public sealed class OpenAiMeasurementDeliveryTests
         Assert.True(OpenAiMeasurementEventMapper.TryMap(row, out var mapped));
         Assert.Equal(row.EventId.ToString("N"), mapped.Id);
         Assert.Equal(expectedProviderEvent, mapped.Type);
+        Assert.Equal(expectedCustomEventName, mapped.CustomEventName);
         Assert.Equal(expectedDataType, mapped.Data.Type);
         Assert.Equal("https://shop.example.com/checkout", mapped.SourceUrl);
 
@@ -132,11 +161,11 @@ public sealed class OpenAiMeasurementDeliveryTests
 
     [Theory]
     [InlineData("Lead", "lead_created", MarketingConversionEventKind.Standard, true)]
-    [InlineData("QualifiedLead", "QualifiedLead", MarketingConversionEventKind.Custom, false)]
+    [InlineData("QualifiedLead", "qualifiedlead", MarketingConversionEventKind.Custom, false)]
     [InlineData("AppointmentBooked", "appointment_scheduled", MarketingConversionEventKind.Standard, true)]
-    [InlineData("AppointmentCompleted", "AppointmentCompleted", MarketingConversionEventKind.Custom, false)]
-    [InlineData("ApplicationSubmitted", "ApplicationSubmitted", MarketingConversionEventKind.Custom, false)]
-    [InlineData("PolicyIssued", "PolicyIssued", MarketingConversionEventKind.Custom, false)]
+    [InlineData("AppointmentCompleted", "appointmentcompleted", MarketingConversionEventKind.Custom, false)]
+    [InlineData("ApplicationSubmitted", "applicationsubmitted", MarketingConversionEventKind.Custom, false)]
+    [InlineData("PolicyIssued", "policyissued", MarketingConversionEventKind.Custom, false)]
     [InlineData("PolicyPaid", "order_created", MarketingConversionEventKind.Standard, true)]
     [InlineData("AddToCart", "items_added", MarketingConversionEventKind.Standard, true)]
     [InlineData("InitiateCheckout", "checkout_started", MarketingConversionEventKind.Standard, true)]

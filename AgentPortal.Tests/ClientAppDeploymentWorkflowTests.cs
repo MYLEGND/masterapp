@@ -131,6 +131,26 @@ public sealed class ClientAppDeploymentWorkflowTests
         Assert.Contains("/api/v1/mobile/social/posts/media/stage' -ExpectedStatus '401'", workflow, StringComparison.Ordinal);
     }
     [Fact]
+    public void DirectReleasePortalAndProtectRemainIndependentlyTargetGated()
+    {
+        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "all-intentional-direct-release-20260918.yml"));
+
+        var portalStart = workflow.IndexOf("      - name: Direct deploy AgentPortal", StringComparison.Ordinal);
+        var clientStart = workflow.IndexOf("      - name: Direct deploy ClientApp", portalStart, StringComparison.Ordinal);
+        var protectStart = workflow.IndexOf("      - name: Direct deploy Protect immutable ZIP", clientStart, StringComparison.Ordinal);
+        var parfaitStart = workflow.IndexOf("      - name: Direct deploy Parfait", protectStart, StringComparison.Ordinal);
+
+        Assert.True(portalStart >= 0 && clientStart > portalStart && protectStart > clientStart && parfaitStart > protectStart);
+
+        var portal = workflow[portalStart..clientStart];
+        var protect = workflow[protectStart..parfaitStart];
+        Assert.Contains("contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal')", portal, StringComparison.Ordinal);
+        Assert.Contains("contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect')", protect, StringComparison.Ordinal);
+        Assert.DoesNotContain("masterapp-client", portal, StringComparison.Ordinal);
+        Assert.DoesNotContain("masterapp-parfait", protect, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProtectDirectReleaseUsesOneImmutableZipTransportAndNoDirectoryDeploy()
     {
         var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "all-intentional-direct-release-20260918.yml"));
