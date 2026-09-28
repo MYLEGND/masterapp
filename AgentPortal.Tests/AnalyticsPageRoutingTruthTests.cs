@@ -274,8 +274,8 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("WebsiteLeadNotificationAuthority.DeliverAsync(", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("WebsiteIntakeRecipientResolver", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("x.CommerceBusinessId == null", notificationAuthority, StringComparison.Ordinal);
-        Assert.Contains("lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : null", submission, StringComparison.Ordinal);
-        Assert.Contains("DateTime.UtcNow.AddMinutes(-15)", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : DateTime.UtcNow", submission, StringComparison.Ordinal);
+        Assert.Contains("WebsiteLeadSubmission.NotificationRetryCutoff", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", program, StringComparison.Ordinal);
     }
 
