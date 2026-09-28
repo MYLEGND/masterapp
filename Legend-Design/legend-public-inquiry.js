@@ -13,7 +13,17 @@
     }
   } catch {}
 
-  const endpoint = new URL('/api/website-inquiries/public', apiBase).toString();
+  function resolveApiBase() {
+    if (configuredBase) return apiBase;
+    const analyticsEndpoint = window.LEGEND_ANALYTICS_CONFIG?.endpoint;
+    try {
+      if (typeof analyticsEndpoint === 'string' && analyticsEndpoint.trim()) {
+        const candidate = new URL(analyticsEndpoint, location.origin);
+        if (candidate.protocol === 'https:' || candidate.origin === location.origin) return candidate.origin;
+      }
+    } catch {}
+    return location.origin;
+  }
 
   document.querySelectorAll('[data-website-inquiry]:not([data-preview])').forEach(form => {
     let submissionId = null;
@@ -77,6 +87,7 @@
       button.disabled = true;
       status.textContent = 'Sending your inquiry…';
       try {
+        const endpoint = new URL('/api/website-inquiries/public', resolveApiBase()).toString();
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
