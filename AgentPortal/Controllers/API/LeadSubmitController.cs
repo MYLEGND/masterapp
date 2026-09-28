@@ -69,6 +69,7 @@ public class LeadSubmitController : ControllerBase
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
         public string? Oppref { get; set; }
+        public string? Obref { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }
@@ -216,6 +217,7 @@ public class LeadSubmitController : ControllerBase
                 UtmContent = req.UtmContent,
                 Fbclid = lead.Fbclid,
                 Oppref = lead.Oppref,
+                Obref = OpenAiBrowserReference.Normalize(req.Obref),
                 MetaCampaignId = lead.MetaCampaignId,
                 MetaAdSetId = lead.MetaAdSetId,
                 MetaAdId = lead.MetaAdId,
@@ -237,6 +239,7 @@ public class LeadSubmitController : ControllerBase
                 {
                     LeadId = lead.LeadId,
                     canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                    obref = OpenAiBrowserReference.Normalize(req.Obref),
                     CorrelationId = correlationId
                 },
                 isBrowserSignal: false,
