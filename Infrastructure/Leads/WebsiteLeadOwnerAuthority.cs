@@ -1,6 +1,7 @@
 using Domain.Entities;
 using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Http;
+using Shared.Analytics;
 
 namespace Infrastructure.Leads;
 
