@@ -1,13 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-27 to repair canonical OpenAI conversion attribution and custom-event delivery, correct the Website Analytics marketing UI, merge through legend/approved-changes, and directly deploy only the affected applications without restarting successful unrelated targets.",
-  "purpose": "Deploy the canonical OpenAI attribution/custom-event repair and Website Analytics presentation correction. Runtime impact is limited to AgentPortal and Protect; ClientApp, Parfait and the static LEGEND website are not release targets.",
-  "requestId": "openai-attribution-analytics-ui-repair-20260927",
+  "authorization": "Explicit Founder authorization on 2026-09-27 to correct the Website Analytics command rail visibility regression after the canonical OpenAI attribution/custom-event release, merge through legend/approved-changes, and directly deploy only the affected application without restarting successful unrelated targets.",
+  "purpose": "Deploy only the Website Analytics presentation correction on AgentPortal. The canonical OpenAI attribution/custom-event backend repair and Protect deployment already completed successfully and must not be redeployed by this follow-up.",
+  "requestId": "analytics-command-rail-visibility-20260927",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-protect"
+    "masterapp-portal"
   ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": true
 }
