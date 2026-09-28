@@ -352,8 +352,14 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
     private void EnsureLeadContextFallback(LeadSubmitRequest req)
     {
         req.Host = FirstNonBlank(req.Host, Request.Host.Value);
+        req.Oppref = OpenAiClickReference.Normalize(req.Oppref)
+            ?? OpenAiClickReference.Normalize(Request.Cookies["__oppref"]);
         req.Obref = OpenAiBrowserReference.Normalize(req.Obref)
             ?? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]);
+        req.Fbp = FirstNonBlank(req.Fbp, Request.Cookies["_fbp"]);
+        req.Fbc = FirstNonBlank(req.Fbc, Request.Cookies["_fbc"]);
+        req.ClientIpAddress = FirstMeaningful(req.ClientIpAddress, ResolveClientIp());
+        req.ClientUserAgent = FirstMeaningful(req.ClientUserAgent, Request.Headers.UserAgent.ToString());
         req.SourcePath = FirstNonBlank(ResolveLeadSourcePathFromReferrer(), req.SourcePath);
 
         if (string.IsNullOrWhiteSpace(req.Environment))
@@ -820,6 +826,10 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         public string? Fbclid { get; set; }
         public string? Oppref { get; set; }
         public string? Obref { get; set; }
+        public string? Fbp { get; set; }
+        public string? Fbc { get; set; }
+        public string? ClientIpAddress { get; set; }
+        public string? ClientUserAgent { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }
