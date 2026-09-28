@@ -252,6 +252,8 @@ public class LeadSubmitController : ControllerBase
                     LeadId = lead.LeadId,
                     canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
                     obref = OpenAiBrowserReference.Normalize(req.Obref),
+                    fbp = lead.Fbp,
+                    fbc = lead.Fbc,
                     CorrelationId = correlationId
                 },
                 isBrowserSignal: false,
