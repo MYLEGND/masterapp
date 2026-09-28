@@ -7,9 +7,16 @@ public sealed class WebsiteSiteSourceDocument
 {
     public string Schema { get; set; } = WebsiteSiteSource.Schema;
     public int Version { get; set; } = WebsiteStudioContract.CurrentDocumentVersion;
+    public string? FaviconImageDataUrl { get; set; }
     public WebsiteStoreSettings Store { get; set; } = new();
     public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteStudioContract.DefaultBreakpoints();
     public WebsiteThemeOverride Theme { get; set; } = new();
+
+    // Shared header/footer presentation stays document-global, but is visible in
+    // Master Source so canvas and source never become competing authorities.
+    public SortedDictionary<string, WebsiteElementOverride> ShellElements { get; set; } = new(StringComparer.Ordinal);
+    public List<WebsiteExtraComponent> GlobalExtras { get; set; } = new();
+
     public List<WebsiteSiteSourcePage> Pages { get; set; } = new();
     public SortedDictionary<string, WebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
     public SortedDictionary<string, WebsiteCollectionDefinition> Collections { get; set; } = new(StringComparer.Ordinal);
@@ -100,12 +107,12 @@ public static class WebsiteSiteSource
         {
             Version = WebsiteStudioContract.CurrentDocumentVersion,
             CompositionMode = "canonical",
-            FaviconImageDataUrl = current.FaviconImageDataUrl,
+            FaviconImageDataUrl = source.FaviconImageDataUrl ?? current.FaviconImageDataUrl,
             Store = source.Store ?? new WebsiteStoreSettings(),
             Breakpoints = source.Breakpoints ?? WebsiteStudioContract.DefaultBreakpoints(),
             Theme = source.Theme ?? new WebsiteThemeOverride(),
-            Elements = Clone(current.Elements),
-            Extras = Clone(current.Extras),
+            Elements = ProtectShellElements(source.ShellElements, current.Elements, allowedActions),
+            Extras = ProtectGlobalExtras(source.GlobalExtras, current.Extras, allowedActions),
             SectionOrder = Clone(current.SectionOrder),
             ReusableComponents = new(
                 (source.ReusableComponents ?? new(StringComparer.Ordinal))
@@ -230,9 +237,15 @@ public static class WebsiteSiteSource
     {
         var source = new WebsiteSiteSourceDocument
         {
+            FaviconImageDataUrl = document.FaviconImageDataUrl,
             Store = Clone(document.Store),
             Breakpoints = Clone(document.Breakpoints),
             Theme = Clone(document.Theme),
+            ShellElements = new(
+                document.Elements.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                    .ToDictionary(pair => pair.Key, pair => ProjectElement(pair.Value), StringComparer.Ordinal),
+                StringComparer.Ordinal),
+            GlobalExtras = document.Extras.Select(ProjectExtra).ToList(),
             ReusableComponents = new(
                 document.ReusableComponents
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal)
@@ -260,6 +273,69 @@ public static class WebsiteSiteSource
             });
         }
         return source;
+    }
+
+    private static WebsiteElementOverride ProjectElement(WebsiteElementOverride value)
+    {
+        var copy = Clone(value);
+        copy.Signals = [];
+        return copy;
+    }
+
+    private static WebsiteExtraComponent ProjectExtra(WebsiteExtraComponent value)
+    {
+        var copy = Clone(value);
+        copy.Signals = [];
+        return copy;
+    }
+
+    private static Dictionary<string, WebsiteElementOverride> ProtectShellElements(
+        IReadOnlyDictionary<string, WebsiteElementOverride>? proposed,
+        IReadOnlyDictionary<string, WebsiteElementOverride>? baseline,
+        IReadOnlySet<string> allowedActions)
+    {
+        var result = new Dictionary<string, WebsiteElementOverride>(StringComparer.Ordinal);
+        foreach (var (id, previous) in baseline ?? new Dictionary<string, WebsiteElementOverride>())
+        {
+            var next = proposed is not null && proposed.TryGetValue(id, out var candidate)
+                ? Clone(candidate)
+                : Clone(previous);
+            next.Signals = Clone(previous.Signals);
+            if (!string.IsNullOrWhiteSpace(next.ActionKey) && !allowedActions.Contains(next.ActionKey))
+                throw new ArgumentException($"Shared website action '{next.ActionKey}' is not available for this website.");
+            if (!string.IsNullOrWhiteSpace(previous.ActionKey) && string.IsNullOrWhiteSpace(next.ActionKey))
+                next.ActionKey = previous.ActionKey;
+            result[id] = next;
+        }
+        return result;
+    }
+
+    private static List<WebsiteExtraComponent> ProtectGlobalExtras(
+        IEnumerable<WebsiteExtraComponent>? proposed,
+        IEnumerable<WebsiteExtraComponent>? baseline,
+        IReadOnlySet<string> allowedActions)
+    {
+        var previousById = (baseline ?? []).ToDictionary(value => value.Id, StringComparer.Ordinal);
+        var result = new List<WebsiteExtraComponent>();
+        foreach (var candidate in proposed ?? [])
+        {
+            var next = Clone(candidate);
+            if (previousById.TryGetValue(next.Id, out var previous))
+            {
+                next.Signals = Clone(previous.Signals);
+                if (!string.IsNullOrWhiteSpace(previous.ActionKey) && string.IsNullOrWhiteSpace(next.ActionKey))
+                    next.ActionKey = previous.ActionKey;
+            }
+            else next.Signals = [];
+
+            if (!string.IsNullOrWhiteSpace(next.ActionKey) && !allowedActions.Contains(next.ActionKey))
+                throw new ArgumentException($"Global website action '{next.ActionKey}' is not available for this website.");
+            result.Add(next);
+        }
+        foreach (var previous in previousById.Values)
+            if (!result.Any(value => value.Id == previous.Id))
+                result.Add(Clone(previous));
+        return result;
     }
 
     private static WebsiteCompositionNode ProjectNode(WebsiteCompositionNode source)
@@ -297,9 +373,21 @@ public static class WebsiteSiteSource
                         throw new ArgumentException($"Protected component '{node.Id}' cannot change its system authority.");
                 }
 
+                if (!string.IsNullOrWhiteSpace(previous.Node.SystemBinding))
+                {
+                    if (!string.Equals(previous.Node.SystemBinding, node.SystemBinding, StringComparison.Ordinal))
+                        throw new ArgumentException($"Protected component '{node.Id}' cannot change its system data authority.");
+                }
+                else if (!string.IsNullOrWhiteSpace(node.SystemBinding))
+                {
+                    throw new ArgumentException($"Free-content component '{node.Id}' cannot invent a system data authority.");
+                }
+
                 if (!string.IsNullOrWhiteSpace(previous.Node.ActionKey) &&
                     string.IsNullOrWhiteSpace(node.ActionKey))
                     node.ActionKey = previous.Node.ActionKey;
+                else if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
+                    node.Signals = [];
             }
             else
             {
