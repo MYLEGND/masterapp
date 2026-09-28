@@ -48,10 +48,7 @@ public static class CommerceSignalAttribution
         {
             Fbclid = Read("fbclid"),
             Oppref = OpenAiClickReference.Normalize(Read("oppref")),
-            Obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(request)
-                ? OpenAiBrowserReference.Normalize(
-                    request.Cookies.TryGetValue("__obref", out var browserReference) ? browserReference : null)
-                : null,
+            Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(request),
             UtmSource = Read("utm_source"),
             UtmMedium = Read("utm_medium"),
             UtmCampaign = Read("utm_campaign"),
