@@ -167,7 +167,7 @@ public static class WebsiteSiteSource
                 !string.IsNullOrWhiteSpace(entry.Node.SystemKey) ||
                 !string.IsNullOrWhiteSpace(entry.Node.SystemBinding);
             if (protectedSemantic && !proposedNodeIds.Contains(entry.Node.Id))
-                throw new ArgumentException($"Protected component '{entry.Node.Id}' cannot be removed through Site Source. Use an explicit visual management action.");
+                throw new ArgumentException($"Protected component '{entry.Node.Id}' cannot be removed because its canonical behavior is platform-owned.");
         }
 
         output = WebsiteContentSanitizer.Sanitize(output);
@@ -318,8 +318,13 @@ public static class WebsiteSiteSource
             next.Signals = Clone(previous.Signals);
             if (!string.IsNullOrWhiteSpace(next.ActionKey) && !allowedActions.Contains(next.ActionKey))
                 throw new ArgumentException($"Shared website action '{next.ActionKey}' is not available for this website.");
-            if (!string.IsNullOrWhiteSpace(previous.ActionKey) && string.IsNullOrWhiteSpace(next.ActionKey))
-                next.ActionKey = previous.ActionKey;
+            if (!string.IsNullOrWhiteSpace(previous.ActionKey))
+            {
+                if (string.IsNullOrWhiteSpace(next.ActionKey))
+                    next.ActionKey = previous.ActionKey;
+                else if (!string.Equals(previous.ActionKey, next.ActionKey, StringComparison.Ordinal))
+                    throw new ArgumentException($"Shared website action '{id}' cannot change its canonical action identity.");
+            }
             result[id] = next;
         }
         return result;
@@ -338,8 +343,13 @@ public static class WebsiteSiteSource
             if (previousById.TryGetValue(next.Id, out var previous))
             {
                 next.Signals = Clone(previous.Signals);
-                if (!string.IsNullOrWhiteSpace(previous.ActionKey) && string.IsNullOrWhiteSpace(next.ActionKey))
-                    next.ActionKey = previous.ActionKey;
+                if (!string.IsNullOrWhiteSpace(previous.ActionKey))
+                {
+                    if (string.IsNullOrWhiteSpace(next.ActionKey))
+                        next.ActionKey = previous.ActionKey;
+                    else if (!string.Equals(previous.ActionKey, next.ActionKey, StringComparison.Ordinal))
+                        throw new ArgumentException($"Global website component '{next.Id}' cannot change its canonical action identity.");
+                }
             }
             else next.Signals = [];
 
@@ -378,8 +388,13 @@ public static class WebsiteSiteSource
                 if (previous?.Elements.TryGetValue(id, out var prior) == true)
                 {
                     element.Signals = Clone(prior.Signals);
-                    if (!string.IsNullOrWhiteSpace(prior.ActionKey) && string.IsNullOrWhiteSpace(element.ActionKey))
-                        element.ActionKey = prior.ActionKey;
+                    if (!string.IsNullOrWhiteSpace(prior.ActionKey))
+                    {
+                        if (string.IsNullOrWhiteSpace(element.ActionKey))
+                            element.ActionKey = prior.ActionKey;
+                        else if (!string.Equals(prior.ActionKey, element.ActionKey, StringComparison.Ordinal))
+                            throw new ArgumentException($"Reusable component element '{id}' cannot change its canonical action identity.");
+                    }
                 }
                 else element.Signals = [];
 
@@ -393,8 +408,13 @@ public static class WebsiteSiteSource
                 if (previousExtras.TryGetValue(extra.Id, out var prior))
                 {
                     extra.Signals = Clone(prior.Signals);
-                    if (!string.IsNullOrWhiteSpace(prior.ActionKey) && string.IsNullOrWhiteSpace(extra.ActionKey))
-                        extra.ActionKey = prior.ActionKey;
+                    if (!string.IsNullOrWhiteSpace(prior.ActionKey))
+                    {
+                        if (string.IsNullOrWhiteSpace(extra.ActionKey))
+                            extra.ActionKey = prior.ActionKey;
+                        else if (!string.Equals(prior.ActionKey, extra.ActionKey, StringComparison.Ordinal))
+                            throw new ArgumentException($"Reusable component block '{extra.Id}' cannot change its canonical action identity.");
+                    }
                 }
                 else extra.Signals = [];
                 if (!string.IsNullOrWhiteSpace(extra.ActionKey) && !allowedActions.Contains(extra.ActionKey))
@@ -456,11 +476,13 @@ public static class WebsiteSiteSource
                     throw new ArgumentException($"Free-content component '{node.Id}' cannot invent a system data authority.");
                 }
 
-                if (!string.IsNullOrWhiteSpace(previous.Node.ActionKey) &&
-                    string.IsNullOrWhiteSpace(node.ActionKey))
-                    node.ActionKey = previous.Node.ActionKey;
-                else if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
-                    node.Signals = [];
+                if (!string.IsNullOrWhiteSpace(previous.Node.ActionKey))
+                {
+                    if (string.IsNullOrWhiteSpace(node.ActionKey))
+                        node.ActionKey = previous.Node.ActionKey;
+                    else if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
+                        throw new ArgumentException($"Protected component '{node.Id}' cannot change its canonical action identity.");
+                }
 
                 if (node.Type is "image" or "video" &&
                     !node.MediaAssetId.HasValue &&
