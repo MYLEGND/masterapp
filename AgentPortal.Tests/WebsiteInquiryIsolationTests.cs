@@ -366,7 +366,7 @@ public sealed class WebsiteInquiryIsolationTests
         {
             var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
             {
-                new System.Collections.Generic.KeyValuePair<string, string?>("Contact:RecipientEmail", "founder@example.org")
+                new System.Collections.Generic.KeyValuePair<string, string?>("Founder:Upn", "founder@example.org")
             }).Build();
             var domains = new WebsiteDomainService(Db, Mock.Of<IHttpClientFactory>(), config);
             var scopes = new PublicWebsiteRuntimeScopeResolver(Db, domains, config);
