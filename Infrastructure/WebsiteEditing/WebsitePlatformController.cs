@@ -301,6 +301,103 @@ public class WebsitePlatformController : ControllerBase
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
     }
 
+    [HttpGet("manage/source")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> SiteSource(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        if (!string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
+            return Ok(new
+            {
+                source = "legend_site_source",
+                revision = state.Revision,
+                requiresMaterialization = true,
+                schema = WebsiteSiteSource.Schema
+            });
+
+        try
+        {
+            var sourceText = WebsiteSiteSource.Serialize(document);
+            return Ok(new
+            {
+                source = "legend_site_source",
+                revision = state.Revision,
+                requiresMaterialization = false,
+                schema = WebsiteSiteSource.Schema,
+                text = sourceText,
+                sourceMap = WebsiteSiteSource.BuildSourceMap(sourceText)
+            });
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { error = "website_site_source_unavailable", message = ex.Message });
+        }
+    }
+
+    [HttpPost("manage/source/validate")]
+    [RequestSizeLimit(2_500_000)]
+    public async Task<IActionResult> ValidateSiteSource(
+        [FromBody] WebsiteSiteSourceRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+
+        var baseline = Read(state.DraftJson);
+        if (!string.Equals(baseline.CompositionMode, "canonical", StringComparison.Ordinal))
+            return Conflict(new
+            {
+                error = "website_site_source_materialization_required",
+                message = "Materialize the current website into the canonical v3 composition graph before editing Site Source."
+            });
+
+        CommerceBusiness? business = null;
+        WebsiteBusinessFacts? facts = null;
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue)
+        {
+            business = await _db.CommerceBusinesses.AsNoTracking()
+                .SingleAsync(value => value.Id == actor.CommerceBusinessId.Value, cancellationToken);
+            facts = await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken);
+        }
+
+        try
+        {
+            var options = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
+            var parsed = WebsiteSiteSource.Parse(request.Source, baseline, options);
+            await ValidateCompositionMediaOwnershipAsync(actor, parsed.Document, cancellationToken);
+            var normalized = WebsiteSiteSource.Serialize(parsed.Document);
+            return Ok(new
+            {
+                source = "legend_site_source_validation",
+                baseRevision = state.Revision,
+                persisted = false,
+                published = false,
+                text = normalized,
+                proposedDocument = parsed.Document,
+                deletedKeys = parsed.DeletedKeys,
+                sourceMap = parsed.SourceMap
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_site_source_invalid", message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message, message = "LEGEND Site Source could not be validated. No draft changes were saved." });
+        }
+    }
+
     public sealed record StoreActionRequest(
         string Ticket,
         long ExpectedRevision,
@@ -399,6 +496,11 @@ public class WebsitePlatformController : ControllerBase
         string? SelectedElementId = null,
         string? SelectedSectionId = null,
         string? SelectedText = null);
+
+    public sealed record WebsiteSiteSourceRequest(
+        string Ticket,
+        long ExpectedRevision,
+        string Source);
 
     public sealed record WebsiteSignalTestRequest(
         string Ticket,
@@ -1047,6 +1149,18 @@ public class WebsitePlatformController : ControllerBase
             facts = await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         }
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
+        if (string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
+        {
+            try
+            {
+                WebsiteSiteSource.ValidateCanonical(document, ctaOptions);
+                await ValidateCompositionMediaOwnershipAsync(actor, document, cancellationToken);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = "website_preflight_failed", message = ex.Message });
+            }
+        }
         var ctaError = WebsiteCallToActionCatalog.PrepareForPublish(document, ctaOptions);
         if (ctaError is not null) return BadRequest(new { error = "button_destination_required", message = ctaError });
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
@@ -1371,6 +1485,48 @@ public class WebsitePlatformController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { document = Read(state.DraftJson), revision = state.Revision, report = result.Report });
     }
+    private async Task ValidateCompositionMediaOwnershipAsync(
+        WebsiteEditorTicket actor,
+        WebsiteContentDocument document,
+        CancellationToken cancellationToken)
+    {
+        var ids = new HashSet<Guid>();
+        void Visit(IEnumerable<WebsiteCompositionNode> nodes)
+        {
+            foreach (var node in nodes ?? [])
+            {
+                if (node.MediaAssetId.HasValue && node.MediaAssetId.Value != Guid.Empty)
+                    ids.Add(node.MediaAssetId.Value);
+
+                if (!node.MediaAssetId.HasValue &&
+                    !string.IsNullOrWhiteSpace(node.MediaUrl) &&
+                    Uri.TryCreate(node.MediaUrl, UriKind.RelativeOrAbsolute, out var mediaUri))
+                {
+                    var path = mediaUri.IsAbsoluteUri ? mediaUri.AbsolutePath : node.MediaUrl.Split('?', '#')[0];
+                    const string marker = "/api/website-content/media/";
+                    var index = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                    if (index >= 0 && Guid.TryParse(path[(index + marker.Length)..].Trim('/'), out var parsed))
+                        ids.Add(parsed);
+                }
+
+                Visit(node.Children);
+            }
+        }
+
+        foreach (var page in document.Pages.Values)
+            Visit(page.Composition);
+
+        if (ids.Count == 0) return;
+
+        var owned = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
+            .Where(asset => asset.OwnerKey == actor.OwnerUserId && ids.Contains(asset.Id))
+            .Select(asset => asset.Id)
+            .ToListAsync(cancellationToken);
+
+        if (owned.Count != ids.Count)
+            throw new ArgumentException("Website source references media that is unavailable to this website owner.");
+    }
+
     private string WebsiteContentApiBaseUrl() => (_configuration["WebsiteContentApiBaseUrl"] ?? "https://masterapp-protect.azurewebsites.net").TrimEnd('/');
     private string MediaBaseUrl() => WebsiteContentApiBaseUrl();
     private WebsiteDomainService DomainService() => HttpContext.RequestServices.GetRequiredService<WebsiteDomainService>();
