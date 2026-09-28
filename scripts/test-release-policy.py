@@ -36,6 +36,15 @@ class ReleaseScopeSelection(unittest.TestCase):
             [row[0] for row in selected],
             ['portal', 'protect', 'website'])
 
+    def test_canonical_ad_optimization_scope_is_reviewed_and_supported(self):
+        selected = self.baseline.selected_targets({
+            'releaseMode': 'approved-only',
+            'targets': ['masterapp-portal', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website']
+        })
+        self.assertEqual(
+            [row[0] for row in selected],
+            ['portal', 'protect', 'parfait', 'website'])
+
     def test_unreviewed_scope_still_fails_closed(self):
         with self.assertRaises(ValueError):
             self.baseline.selected_targets({
