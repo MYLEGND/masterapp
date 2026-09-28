@@ -117,7 +117,9 @@ namespace Protect_Website.Controllers
                     SessionId = lead.SessionId,
                     VisitorId = lead.VisitorId,
                     Oppref = lead.Oppref,
-                    Obref = OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]),
+                    Obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(Request)
+                        ? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"])
+                        : null,
                     AgentTrackingProfileId = lead.AgentTrackingProfileId,
                     AgentSlug = lead.AgentSlug,
                     Environment = lead.Environment,
@@ -132,7 +134,9 @@ namespace Protect_Website.Controllers
                     eventName: "website_lead_submitted",
                     leadId: lead.LeadId,
                     sessionId: lead.SessionId,
-                    payload: new { LeadId = lead.LeadId, canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), obref = OpenAiBrowserReference.Normalize(Request.Cookies["__obref"]), CrmCaptured = captured.Captured },
+                    payload: new { LeadId = lead.LeadId, canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), obref = UnifiedEventContextBuilder.CanUseOpenAiBrowserReference(Request)
+                            ? OpenAiBrowserReference.Normalize(Request.Cookies["__obref"])
+                            : null, CrmCaptured = captured.Captured },
                     isBrowserSignal: false,
                     isServerAuthority: true,
                     metaServerAuthorityEligible: true,
