@@ -735,16 +735,11 @@
   }
 
   function forEachDocumentOverride(action) {
-    Object.values(documentState.elements || {}).forEach(action);
-    (documentState.extras || []).forEach(action);
-    Object.values(documentState.pages || {}).forEach(page => {
-      Object.values(page?.elements || {}).forEach(action);
-      (page?.extras || []).forEach(action);
-    });
-    Object.values(documentState.reusableComponents || {}).forEach(component => {
-      Object.values(component?.elements || {}).forEach(action);
-      (component?.extras || []).forEach(action);
-    });
+    const visit=nodes=>walkComposition(nodes,node=>action(node));
+    visit(documentState.shell?.header || []);
+    visit(documentState.shell?.footer || []);
+    Object.values(documentState.pages || {}).forEach(page=>visit(page?.composition || []));
+    Object.values(documentState.reusableComponents || {}).forEach(component=>visit(component?.composition || []));
   }
 
   function syncBreakpointControls() {
@@ -2114,7 +2109,7 @@
     store.textContent=effectiveStoreLabel();
     store.dataset.legendStoreNav='store';
     store.dataset.cmsId=`${pageKey}.commerce.store-nav`;
-    store.dataset.cmsEditable='true';
+    store.dataset.cmsLocked='true';
     store.dataset.websiteAnalyticsEvent='cta_click';
     store.dataset.websiteBindingId='commerce_store_nav';
     store.dataset.cta='commerce_store';
@@ -2124,7 +2119,7 @@
     cart.href=storeContext.cartUrl;
     cart.dataset.legendStoreNav='cart';
     cart.dataset.cmsId=`${pageKey}.commerce.cart-nav`;
-    cart.dataset.cmsEditable='true';
+    cart.dataset.cmsLocked='true';
     cart.dataset.websiteAnalyticsEvent='cta_click';
     cart.dataset.websiteBindingId='commerce_cart_nav';
     cart.dataset.cta='commerce_cart';
@@ -2141,8 +2136,6 @@
 
     cluster.append(store,cart);
     nav.appendChild(cluster);
-    applyElementOverride(store, pageState().elements[store.dataset.cmsId]);
-    applyElementOverride(cart, pageState().elements[cart.dataset.cmsId]);
     updateStoreCartCount();
   }
 
@@ -2180,22 +2173,28 @@
     return entries;
   }
 
+  function legacyPageForRoute(route) {
+    if(!legacyMigration?.pages) return null;
+    return legacyMigration.pages[route] || (route==='/' ? legacyMigration.pages.home : null) || null;
+  }
+
   function websitePageEntries(includeDeleted = true) {
     const entries=templatePageEntries();
-    for (const [rawPath,page] of Object.entries(documentState.pages || {})) {
+    for(const [rawPath,page] of Object.entries(documentState.pages || {})){
       const route=normalizePageRoute(rawPath);
-      if (!route || !page || typeof page!=='object') continue;
+      if(!route || !page || typeof page!=='object') continue;
       const previous=entries.get(route);
       const navigation=page.navigation || {};
+      const legacy=legacyPageForRoute(route);
       entries.set(route,{
         route,
         label:navigation.label || page.title || previous?.label || route,
-        template:previous?.template === true || !!page.templatePath,
-        templatePath:normalizePageRoute(page.templatePath) || (previous?.template ? route : null),
-        deleted:navigation.isDeleted === true,
-        showInNavigation:navigation.showInNavigation !== false,
+        template:previous?.template===true,
+        legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
+        deleted:navigation.isDeleted===true,
+        showInNavigation:navigation.showInNavigation!==false,
         parentPath:normalizePageRoute(navigation.parentPath),
-        order:Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0
+        order:Number.isFinite(Number(navigation.order))?Number(navigation.order):0
       });
     }
     return [...entries.values()]
@@ -2205,9 +2204,18 @@
 
   function ensurePageRecord(route) {
     documentState.pages ||= {};
-    if (!documentState.pages[route]) documentState.pages[route]={elements:{},sectionOrder:{},extras:[],composition:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
+    if(!documentState.pages[route]){
+      documentState.pages[route]={
+        title:null,
+        description:null,
+        navigation:{showInNavigation:true,order:0,isDeleted:false},
+        dynamicBinding:null,
+        composition:[]
+      };
+    }
     const page=documentState.pages[route];
-    page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.composition ||= []; page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+    page.composition ||= [];
+    page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
     return page;
   }
 
@@ -2217,7 +2225,7 @@
     const entry=websitePageEntries(true).find(value=>value.route===route);
     const url=new URL(location.origin);
     if (SITE_KEY==='business') {
-      const nativeTemplate=templates.has(route) && (!entry?.templatePath || entry.templatePath===route);
+      const nativeTemplate=templates.has(route) && (!legacyMigration || !entry?.legacyTemplatePath || entry.legacyTemplatePath===route);
       url.pathname='/business-preview/' + (nativeTemplate ? route.replace(/^\//,'') : '');
       url.searchParams.set('businessId',BUSINESS_ID);
       if (!nativeTemplate) url.searchParams.set('cmsPage',route);
@@ -2992,14 +3000,6 @@
   function businessServiceCardFor(el) {
     if (SITE_KEY !== 'business') return null;
     return el?.closest?.('.card-grid > article.card') || null;
-  }
-
-  function ensureOverride(id) {
-    if (!pageState().elements[id]) {
-      pageState().elements[id] = { style: {} };
-    }
-    if (!pageState().elements[id].style) pageState().elements[id].style = {};
-    return pageState().elements[id];
   }
 
   function markDirty() {
