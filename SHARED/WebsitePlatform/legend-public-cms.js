@@ -214,6 +214,23 @@
     return value.split(' ').map(word=>word ? word[0].toUpperCase()+word.slice(1) : '').join(' ').slice(0,120);
   }
 
+  function isRetiredTemplateDecorationNode(node) {
+    if (!node || typeof node !== 'object') return false;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    const hasMeaning=
+      String(node.text || '').trim() ||
+      String(node.title || '').trim() ||
+      node.actionKey || node.href || node.alt ||
+      node.mediaAssetId || node.mediaUrl ||
+      node.systemKey || node.systemBinding || node.syncSourceId ||
+      node.dataBinding ||
+      (Array.isArray(node.signals) && node.signals.length) ||
+      (Array.isArray(node.children) && node.children.length);
+    if(hasMeaning) return false;
+    if(classes.includes('icon') || classes.includes('halo') || classes.includes('hero-mark')) return true;
+    return node.type==='text' && String(node.tag || '').toLowerCase()==='span' && classes.length===0;
+  }
+
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
     return input
@@ -234,7 +251,10 @@
       })
       // Menu toggles are reconstructed runtime chrome. They were accidentally
       // persisted by early v3 materialization and have no website destination.
-      .filter(node => !isRuntimeShellChromeNode(node));
+      .filter(node => !isRuntimeShellChromeNode(node))
+      // Repair early v3 drafts that persisted presentation-only template wrappers
+      // after their SVG/pseudo-element contents were deliberately excluded.
+      .filter(node => !isRetiredTemplateDecorationNode(node));
   }
 
   function normalizeHeaderComposition(input) {
