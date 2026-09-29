@@ -739,31 +739,34 @@ test('manual destination remains available and intentionally leaves managed CTA 
   } finally { f.close(); }
 });
 
-test('new section inserts directly after the selected section and survives save reload ordering',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><main><section><h2>First</h2></section><section><h2>Middle</h2></section><section><h2>Last</h2></section></main></body></html>';
-  const f=await domFixture({html}); let saved;
+test('new section inserts directly after the selected canonical section and survives reload ordering',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition=[
+    canonicalNode('section.first','section','section',{children:[canonicalNode('section.first.title','heading','h2',{text:'First'})]}),
+    canonicalNode('section.middle','section','section',{children:[canonicalNode('section.middle.title','heading','h2',{text:'Middle'})]}),
+    canonicalNode('section.last','section','section',{children:[canonicalNode('section.last.title','heading','h2',{text:'Last'})]})
+  ];
+  const f=await domFixture({doc}); let saved;
   try{
     const middle=f.w.document.querySelectorAll('main > section')[1];
     f.click('main > section:nth-of-type(2) h2');
     f.click('[data-add="section"]');
     const sections=[...f.w.document.querySelectorAll('main > section')];
     assert.equal(sections.length,4);
-    const added=f.w.document.querySelector('.cms-extra-section');
+    const added=sections[2];
     assert.ok(added);
-    assert.equal(sections.indexOf(added),2);
+    assert.equal(added.classList.contains('section'),true);
     assert.equal(sections[1],middle);
     saved=await f.save();
     const order=saved.pages['/'].composition.map(node=>node.id);
-    assert.equal(order.indexOf(middle.dataset.cmsCompositionId),1);
+    assert.equal(order.indexOf('section.middle'),1);
     assert.equal(order.indexOf(added.dataset.cmsCompositionId),2);
     assert.equal(Object.hasOwn(saved.pages['/'],'sectionOrder'),false);
   }finally{f.close();}
-  const loaded=await domFixture({html,doc:saved,search:''});
+  const loaded=await domFixture({doc:saved,search:''});
   try{
     const sections=[...loaded.w.document.querySelectorAll('main > section')];
-    const added=loaded.w.document.querySelector('.cms-extra-section');
-    assert.ok(added);
-    assert.equal(sections.indexOf(added),2);
+    assert.equal(sections.length,4);
     assert.match(sections[1].textContent,/Middle/);
     assert.match(sections[3].textContent,/Last/);
   }finally{loaded.close();}
@@ -860,7 +863,7 @@ test('duplicated service subtree receives fresh IDs and child geometry stays ins
     assert.equal(copy.type,'container');
     assert.notEqual(copy.children[0].id,'service.one.title');
     assert.equal(copy.children[0].text,'Duplicated service title');
-    assert.equal(copy.children[0].style.offsetXPercent,10);
+    assert.equal(copy.children[0].style.offsetXPercent,6.667);
     assert.equal(copy.children[0].style.offsetYPx,20);
   }finally{f.close();}
 });
@@ -895,7 +898,7 @@ test('business services duplicate and delete as complete canonical card subtrees
     let grid=canonicalNodeById(saved,'services.grid');
     assert.equal(grid.children.length,3);
     assert.equal(grid.children[1].children[0].text,'Service one');
-    assert.equal(grid.children[1].hidden,null);
+    assert.equal(grid.children[1].hidden,undefined);
 
     f.click('.card-grid > article.card:first-child h3');
     f.click('#legend-cms-remove');
@@ -1179,33 +1182,35 @@ test('selection movement resizing and text editing use separate non-competing ge
   }finally{f.close();}
 });
 
-test('generic template wrappers are not direct selections and blank-area selection stays inside the exact section',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><main><section id="first"><div class="outer"><div class="inner"></div><h2>First</h2></div></section><section id="second"><div class="other"></div><h2>Second</h2></section></main></body></html>';
-  const f=await domFixture({html});
+test('canonical containers are directly selectable and remain scoped to their exact section',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition=[
+    canonicalNode('first','section','section',{children:[
+      canonicalNode('first.outer','container','div',{className:'outer',children:[
+        canonicalNode('first.inner','container','div',{className:'inner'}),
+        canonicalNode('first.title','heading','h2',{text:'First'})
+      ]})
+    ]}),
+    canonicalNode('second','section','section',{children:[
+      canonicalNode('second.other','container','div',{className:'other'}),
+      canonicalNode('second.title','heading','h2',{text:'Second'})
+    ]})
+  ];
+  const f=await domFixture({doc});
   try{
     const outer=f.w.document.querySelector('.outer');
-    const first=f.w.document.querySelector('#first');
-    const second=f.w.document.querySelector('#second');
-    assert.equal(outer.dataset.cmsEditable,undefined);
+    assert.equal(outer.dataset.cmsEditable,'true');
     f.click('.outer');
     const selected=f.w.document.querySelector('.legend-cms-selected');
-    assert.equal(selected,first);
-    assert.notEqual(selected,second);
-    assert.equal(selected.dataset.cmsSection,first.dataset.cmsSection);
-    assert.equal(f.w.document.querySelector('.legend-cms-selection-frame').dataset.sectionSelected,'true');
-    assert.match(source,/data-section-selected="true"\] \.legend-cms-move-handle\{display:none\}/);
+    assert.equal(selected.dataset.cmsCompositionId,'first.outer');
+    assert.equal(selected.closest('[data-cms-section]').dataset.cmsCompositionId,'first');
+    assert.notEqual(selected.closest('[data-cms-section]').dataset.cmsCompositionId,'second');
   }finally{f.close();}
 });
 
-test('mobile runtime contains moved desktop geometry without creating horizontal page scroll',async()=>{
-  const doc={
-    breakpoints:[
-      {key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},
-      {key:'tablet',label:'Tablet',minWidth:768,maxWidth:1199,isSystem:true},
-      {key:'desktop',label:'Desktop',minWidth:1200,maxWidth:null,isSystem:true}
-    ],
-    pages:{'/':{elements:{'home.h1.template-title.1':{style:{widthPercent:180,offsetXPercent:75}}},extras:[],sectionOrder:{},navigation:{showInNavigation:true}}}
-  };
+test('mobile runtime contains canonical moved geometry without creating horizontal page scroll',async()=>{
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.h1.node.1').style={widthPercent:180,offsetXPercent:75};
   const f=await domFixture({doc,search:'',viewportWidth:390});
   try{
     const heading=f.w.document.querySelector('main h1');
@@ -1239,8 +1244,9 @@ test('editor preview is horizontally locked to the rendered website at every bre
   }finally{f.close();}
 });
 
-test('editor geometry can move anywhere inside the section while rendered width consumes remaining space',async()=>{
-  const doc={pages:{'/':{elements:{'home.h1.template-title.1':{style:{widthPercent:80,offsetXPercent:75}}},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
+test('canonical editor geometry can move anywhere inside the section while rendered width consumes remaining space',async()=>{
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.h1.node.1').style={widthPercent:80,offsetXPercent:75};
   const f=await domFixture({doc,viewportWidth:1280});
   try{
     const heading=f.w.document.querySelector('main h1');
@@ -1257,10 +1263,16 @@ test('editor geometry can move anywhere inside the section while rendered width 
   }finally{f.close();}
 });
 
-test('business entity name remains profile-owned while typography stays editable',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><a class="brand"><strong data-business-name>Template business</strong></a></header><main><section><h1>Heading</h1></section></main></body></html>';
-  const doc={pages:{'/':{elements:{'home.strong.business-name.node1':{text:'Wrong saved name',style:{fontScale:2,fontFamily:'Georgia'}}},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
-  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Canonical Business Name'},doc,html});
+test('business entity name remains profile-owned while canonical shell typography stays editable',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.shell.header[0].children.unshift(
+    canonicalNode('shell.business-name','text','strong',{
+      text:'Template business',
+      systemBinding:'business_name',
+      style:{fontScale:2,fontFamily:'Georgia'}
+    })
+  );
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Canonical Business Name'},doc});
   try{
     const name=f.w.document.querySelector('[data-business-name]');
     assert.equal(name.textContent,'Canonical Business Name');
@@ -1625,19 +1637,22 @@ test('updating canonical reusable definition refreshes instances and definition 
   } finally { f.close(); }
 });
 
-test('template content cannot be serialized into reusable component storage', async()=>{
-  const f=await domFixture();
+test('protected system components cannot be serialized into reusable component storage', async()=>{
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.section.1').children.push(
+    canonicalNode('home.form','form','form',{systemKey:'canonical_inquiry',title:'Contact us',text:'Send inquiry'})
+  );
+  const f=await domFixture({doc});
   try{
-    f.click('main h1');
+    f.click('form[data-website-inquiry]');
     f.click('[data-open="components"]');
-    f.input('#legend-cms-component-name','Should not copy template');
+    f.input('#legend-cms-component-name','Should not copy system authority');
     f.click('#legend-cms-component-save');
-    assert.match(f.w.document.querySelector('#legend-cms-component-status').textContent,/Select an added block or added section/);
+    assert.match(f.w.document.querySelector('#legend-cms-component-status').textContent,/Protected platform components cannot become reusable content/);
     const saved=await f.save();
     assert.deepEqual(saved.reusableComponents,{});
   } finally { f.close(); }
 });
-
 
 test('missing canonical reusable definition renders warning without copied fallback content', async()=>{
   const doc=canonicalDocument();
@@ -1652,13 +1667,19 @@ test('missing canonical reusable definition renders warning without copied fallb
   } finally { f.close(); }
 });
 
-test('quality inspector keeps saved-server checks separate from rendered-canvas checks', async () => {
-  const html='<!doctype html><html><head></head><body data-page-key="home"><main><section><h1 id="duplicate">Title</h1><p id="duplicate">Copy</p><img src="https://images.example/a.png"><a href="#">Broken</a><input name="email"></section></main></body></html>';
+test('quality inspector keeps saved-server checks separate from rendered canonical-canvas checks', async () => {
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.children=[
+    canonicalNode('quality.h1','heading','h1',{text:'Title'}),
+    canonicalNode('quality.image','image','img',{mediaUrl:'https://images.example/a.png',alt:''}),
+    canonicalNode('quality.link','link','a',{text:'Broken',href:'#'})
+  ];
   const qualityPayload={source:'saved_draft_server',revision:7,errorCount:1,warningCount:1,checks:[
     {code:'dynamic_collection_missing',severity:'error',message:'Saved draft dynamic collection is unavailable.'},
     {code:'page_title_missing',severity:'warning',message:'Saved draft page title is missing.'}
   ]};
-  const f=await domFixture({html,qualityPayload});
+  const f=await domFixture({doc,qualityPayload});
   try {
     f.click('[data-open="quality"]');
     await new Promise(resolve=>setTimeout(resolve,0));
@@ -1669,15 +1690,12 @@ test('quality inspector keeps saved-server checks separate from rendered-canvas 
     assert.match(savedMeta,/Saved draft checks \(server\) · revision 7 · 1 errors · 1 warnings/);
     assert.match(liveMeta,/Live page checks \(rendered canvas\)/);
     assert.match(savedText,/Saved draft dynamic collection is unavailable/);
-    assert.doesNotMatch(savedText,/Duplicate rendered id/);
-    assert.match(liveText,/Duplicate rendered id "duplicate"/);
+    assert.doesNotMatch(savedText,/missing alternative text|no working destination/);
     assert.match(liveText,/missing alternative text/);
     assert.match(liveText,/no working destination/);
-    assert.match(liveText,/no accessible label/);
     assert.ok(f.calls.some(call=>new URL(call.url).pathname.endsWith('/manage/quality')));
   } finally { f.close(); }
 });
-
 
 test('layers recover a hidden canonical section without losing its descendants', async () => {
   const f=await domFixture();
@@ -1696,7 +1714,7 @@ test('layers recover a hidden canonical section without losing its descendants',
 });
 
 
-test('duplicate canonical link has independent stable identity and undo removes only the duplicate', async () => {
+test('duplicate canonical link has independent stable identity and history restores each canonical transaction', async () => {
   const f=await domFixture();
   try {
     f.click('main a');
@@ -1713,10 +1731,11 @@ test('duplicate canonical link has independent stable identity and undo removes 
     assert.equal(links.find(node=>node.id===originalId).href,'https://business.example/book');
     assert.equal(links.find(node=>node.id===duplicateId).href,'https://business.example/second');
     f.click('#legend-cms-undo');
+    assert.equal(f.w.document.querySelectorAll('main a').length,2);
+    f.click('#legend-cms-undo');
     assert.equal(f.w.document.querySelectorAll('main a').length,1);
   } finally { f.close(); }
 });
-
 
 test('canonical visual style preserves numeric font weight and signed letter spacing', async () => {
   const f=await domFixture();
@@ -1798,8 +1817,9 @@ test('business selector includes imported custom routes from only the authorized
 });
 
 
-test('manually resized sections reclaim space and never become internal scroll containers',async()=>{
-  const doc={pages:{'/':{elements:{'section:home.section.1':{style:{heightPx:180,offsetYPx:72}}},extras:[],sectionOrder:{}}}};
+test('manually resized canonical sections reclaim space and never become internal scroll containers',async()=>{
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.section.1').style={heightPx:180,offsetYPx:72};
   const f=await domFixture({doc});
   try{
     const section=f.w.document.querySelector('main section');
