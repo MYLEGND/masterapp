@@ -152,10 +152,17 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse(fakeAction, source, BusinessActions()));
 
-        var fakeForm = serialized.Replace(
-            "\"systemKey\": \"canonical_inquiry\"",
-            "\"systemKey\": \"custom_submit\"",
-            StringComparison.Ordinal);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var hero = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
+        var form = hero.Children.Single(node => node.Id == "home.hero.form");
+        Assert.Null(form.SystemKey);
+        form.SystemKey = "custom_submit";
+        var fakeForm = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
         Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse(fakeForm, source, BusinessActions()));
     }
