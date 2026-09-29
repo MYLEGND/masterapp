@@ -6,7 +6,6 @@ using Protect_Website.Models;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
-using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
