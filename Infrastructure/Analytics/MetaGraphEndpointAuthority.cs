@@ -196,7 +196,7 @@ public static class MetaGraphEndpointAuthority
         if (matches.Count == 0)
             return false;
 
-        var candidate = NormalizeVersion(matches[^1].Groups[1].Value);
+        var candidate = NormalizeVersion(matches[matches.Count - 1].Groups[1].Value);
         if (candidate is null)
             return false;
 
