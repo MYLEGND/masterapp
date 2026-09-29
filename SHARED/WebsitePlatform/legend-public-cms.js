@@ -2245,7 +2245,8 @@
       route:currentPageRoute(),
       title:pageState().title ?? originalTitle,
       description:pageState().description ?? originalDescription,
-      composition:materializeCurrentPageComposition()
+      composition:materializeCurrentPageComposition(),
+      shell:materializeCurrentShell()
     };
   }
 
@@ -2274,35 +2275,102 @@
     });
   }
 
+  function materializeLegacyReusableDefinitions() {
+    const result={};
+    const definitions=legacyMigration?.reusableComponents || {};
+
+    const convert=(extra,componentId)=>{
+      const type=extra?.type==='section'?'section'
+        : extra?.type==='button'?(extra.actionKey?'cta':'link')
+        : extra?.type==='image'?'image'
+        : extra?.type==='video'?'video'
+        : extra?.type==='code'?'embed'
+        : extra?.type==='reusable'?'reusable'
+        : 'text';
+      return {
+        id:componentId+'.'+String(extra.id || crypto.randomUUID()).replace(/[^a-zA-Z0-9_.:-]/g,'-'),
+        type,
+        tag:type==='section'?'section':type==='cta'||type==='link'?'a':type==='image'?'img':type==='video'?'video':'div',
+        text:extra.text ?? null,
+        title:extra.title ?? null,
+        actionKey:extra.actionKey ?? null,
+        href:extra.href ?? null,
+        target:extra.target ?? null,
+        alt:extra.alt ?? null,
+        mediaAssetId:compositionMediaAssetId(extra.imageDataUrl || extra.videoUrl),
+        mediaUrl:(extra.imageDataUrl || extra.videoUrl) ?? null,
+        syncSourceId:extra.syncSourceId ?? null,
+        signals:[],
+        style:structuredClone(extra.style || {}),
+        breakpointStyles:structuredClone(extra.breakpointStyles || {}),
+        layout:structuredClone(extra.layout || {}),
+        breakpointLayouts:structuredClone(extra.breakpointLayouts || {}),
+        animations:structuredClone(extra.animations || []),
+        dataBinding:structuredClone(extra.dataBinding || null),
+        children:[]
+      };
+    };
+
+    for(const [componentId,definition] of Object.entries(definitions)){
+      const extras=Array.isArray(definition?.extras)?definition.extras:[];
+      const nodes=new Map(extras.map(extra=>[extra.id,convert(extra,componentId)]));
+      const roots=[];
+      for(const extra of extras){
+        const node=nodes.get(extra.id); if(!node) continue;
+        const sectionId=String(extra.sectionId || '');
+        const parentId=sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
+        const parent=parentId ? nodes.get(parentId) : null;
+        if(parent) parent.children.push(node);
+        else roots.push(node);
+      }
+      result[componentId]={
+        id:componentId,
+        name:definition?.name || componentId,
+        kind:definition?.kind==='block'?'block':'section',
+        composition:roots
+      };
+    }
+    return result;
+  }
+
   async function materializeCanonicalSite() {
-    if(usesCanonicalComposition()) return true;
+    if(!legacyMigration) return true;
     const status=document.getElementById('legend-cms-status');
     const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
     const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
     const snapshots=[];
+
     for(const route of routes){
-      if(status) status.textContent='Preparing Site Source · '+(snapshots.length+1)+'/'+routes.length;
+      if(status) status.textContent='Preparing canonical Site Source · '+(snapshots.length+1)+'/'+routes.length;
       snapshots.push(await requestMaterializedPage(route));
     }
 
     const next=normalizeDocument(documentState);
+    const firstShell=snapshots.find(snapshot=>snapshot?.shell)?.shell;
+    next.shell={
+      header:normalizeCompositionNodes(firstShell?.header),
+      footer:normalizeCompositionNodes(firstShell?.footer)
+    };
+    next.reusableComponents=materializeLegacyReusableDefinitions();
+
     for(const snapshot of snapshots){
-      const route=normalizePageRoute(snapshot.route); if(!route) throw new Error('Materialized page route was invalid.');
-      const page=next.pages[route] || {navigation:{showInNavigation:true,order:0,isDeleted:false}};
+      const route=normalizePageRoute(snapshot.route);
+      if(!route) throw new Error('Materialized page route was invalid.');
+      const page=next.pages[route] || {navigation:{showInNavigation:true,order:0,isDeleted:false},composition:[]};
       page.title=snapshot.title ?? page.title;
       page.description=snapshot.description ?? page.description;
-      page.composition=Array.isArray(snapshot.composition)?snapshot.composition:[];
-      page.elements={}; page.sectionOrder={}; page.extras=[]; delete page.templatePath;
+      page.composition=normalizeCompositionNodes(snapshot.composition);
       next.pages[route]=page;
     }
+
     next.version=3;
-    next.compositionMode='canonical';
+    legacyMigration=null;
     documentState=normalizeDocument(next);
     dirty=true;
     const saved=await save(false);
-    if(!saved || dirty) throw new Error('Site Source migration could not be saved.');
+    if(!saved || dirty) throw new Error('Canonical Site Source migration could not be saved.');
     applyDocument(documentState);
-    if(status) status.textContent='Site Source ready · one canonical composition graph';
+    if(status) status.textContent='Site Source ready · legacy override authority deleted';
     return true;
   }
 
@@ -2900,6 +2968,7 @@
       if (!response.ok) { if (SITE_KEY === 'business') throw new Error('This business website is unavailable.'); return; }
       const payload = await response.json();
       storeContext = payload.store || null;
+      legacyMigration = payload.legacyMigration || null;
       if (payload.businessName) {
         document.querySelectorAll('[data-business-name]').forEach(element => {
           element.textContent = payload.businessName;
@@ -5293,6 +5362,7 @@
       bindBusiness(payload);
       managementPayload = payload;
       storeContext = payload.store || null;
+      legacyMigration = payload.legacyMigration || null;
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
       if (customPage) {
         const pages = normalizeDocument(payload.document).pages;
@@ -5311,7 +5381,7 @@
         return;
       }
 
-      if(!usesCanonicalComposition() && payload.capabilities?.compositionV3===true){
+      if(legacyMigration && payload.capabilities?.compositionV3===true){
         await materializeCanonicalSite();
       }
 
@@ -5340,6 +5410,7 @@
   if (renderInput) {
     bindBusiness(renderInput);
     storeContext = renderInput.store || null;
+    legacyMigration = renderInput.legacyMigration || null;
     prepareDom();
     injectContentStyles();
     applyDocument(renderInput.document || {});
