@@ -2332,7 +2332,7 @@
       const legacy=legacyPageForRoute(route);
       entries.set(route,{
         route,
-        label:navigation.label || page.title || previous?.label || route,
+        label:SITE_KEY==='business' ? (navigation.label || page.title || previous?.label || route) : (page.title || navigation.label || previous?.label || route),
         nativeRoute:previous?.nativeRoute===true,
         legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
         deleted:navigation.isDeleted===true,
