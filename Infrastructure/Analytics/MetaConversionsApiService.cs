@@ -282,13 +282,12 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
         try
         {
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, endpoint)
-            {
-                Content = new FormUrlEncodedContent(formFields)
-            };
-
-            using var response = await _httpClient.SendAsync(requestMessage, cancellationToken);
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var response = await MetaGraphEndpointAuthority.PostFormAsync(
+                _httpClient,
+                endpoint,
+                formFields,
+                cancellationToken);
+            var responseBody = response.Body;
 
             if (response.IsSuccessStatusCode)
             {

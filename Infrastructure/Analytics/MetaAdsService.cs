@@ -490,13 +490,13 @@ public sealed class MetaAdsService : IMetaAdsService
 
         while (!string.IsNullOrWhiteSpace(nextUrl))
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, nextUrl);
-            using var res = await client.SendAsync(req, ct);
-            var json = await res.Content.ReadAsStringAsync(ct);
+            var res = await MetaGraphEndpointAuthority.GetAsync(client, nextUrl, ct);
+            var json = res.Body;
             if (!res.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Meta campaigns fetch failed. status={Status} body={Body}", (int)res.StatusCode, TrimForLog(json));
-                throw new InvalidOperationException("Unable to load campaigns from Meta Ads API.");
+                throw new InvalidOperationException(
+                    MetaGraphEndpointAuthority.SafeErrorMessage(json, "Unable to load campaigns from Meta Ads API."));
             }
 
             using var doc = JsonDocument.Parse(json);
@@ -548,13 +548,13 @@ public sealed class MetaAdsService : IMetaAdsService
 
         while (!string.IsNullOrWhiteSpace(nextUrl))
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, nextUrl);
-            using var res = await client.SendAsync(req, ct);
-            var json = await res.Content.ReadAsStringAsync(ct);
+            var res = await MetaGraphEndpointAuthority.GetAsync(client, nextUrl, ct);
+            var json = res.Body;
             if (!res.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Meta insights fetch failed. status={Status} body={Body}", (int)res.StatusCode, TrimForLog(json));
-                throw new InvalidOperationException("Unable to load campaign insights from Meta Ads API.");
+                throw new InvalidOperationException(
+                    MetaGraphEndpointAuthority.SafeErrorMessage(json, "Unable to load campaign insights from Meta Ads API."));
             }
 
             using var doc = JsonDocument.Parse(json);
@@ -626,9 +626,8 @@ public sealed class MetaAdsService : IMetaAdsService
         {
             var fields = "name,timezone_name,timezone_offset_hours_utc";
             var url = $"{MetaGraphEndpointAuthority.Graph($"act_{accountId}")}?fields={Uri.EscapeDataString(fields)}&access_token={Uri.EscapeDataString(token)}";
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            using var res = await client.SendAsync(req, ct);
-            var json = await res.Content.ReadAsStringAsync(ct);
+            var res = await MetaGraphEndpointAuthority.GetAsync(client, url, ct);
+            var json = res.Body;
             if (!res.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Meta account metadata fetch failed. status={Status} body={Body}", (int)res.StatusCode, TrimForLog(json));
