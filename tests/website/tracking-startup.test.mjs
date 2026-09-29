@@ -5,6 +5,8 @@ import { JSDOM } from 'jsdom';
 const source = readFileSync(new URL('../../SHARED/WebsitePlatform/tracking.js', import.meta.url), 'utf8');
 const cmsSource = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-cms.js', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../../Protect-Website/Views/Shared/_Layout.cshtml', import.meta.url), 'utf8');
+const metaSource = readFileSync(new URL('../../SHARED/WebsitePlatform/meta-signal-intelligence.js', import.meta.url), 'utf8');
+const openAiSource = readFileSync(new URL('../../SHARED/WebsitePlatform/openai-measurement.js', import.meta.url), 'utf8');
 test('linked storefront CMS preserves the owning tracker and starts no second provider runtime', async () => {
   const f = fixture();
   try {
@@ -40,6 +42,48 @@ function fixture() {
   window.fetch = async (url, options) => { events.push(JSON.parse(options.body)); return {ok:true,status:200}; };
   return {dom, window, events};
 }
+
+test('Website Studio is a zero-production-signal environment across analytics and provider runtimes',async()=>{
+  const dom=new JSDOM('<body data-page-key="home"><form data-form-key="inquiry"><input name="FirstName"><button type="submit">Send</button></form></body>',{
+    url:'https://protect.example.test/a/agent/contact?legendEdit=ticket',
+    runScripts:'outside-only',
+    pretendToBeVisual:true
+  });
+  const w=dom.window;
+  const requests=[];
+  const pixels=[];
+  const openai=[];
+  try{
+    w.LEGEND_ANALYTICS_CONFIG={allowedBrowserEvents:['page_view','form_start','cta_click'],criticalBrowserEvents:[]};
+    w.fetch=async(...args)=>{requests.push(args);return {ok:true,status:200};};
+    w.fbq=(...args)=>pixels.push(args);
+    w.oaiq=(...args)=>openai.push(args);
+
+    w.eval(source);
+    w.eval(metaSource);
+    w.eval(openAiSource);
+
+    assert.equal(w.__legendTrackingInitialized,undefined);
+    assert.equal(w.__legendTrackingSuppressedForWebsiteStudio,true);
+    assert.equal(w.__legendMetaSignalSuppressedForWebsiteStudio,true);
+    assert.equal(w.__legendOpenAiMeasurementSuppressedForWebsiteStudio,true);
+    assert.equal(w.LegendAnalytics,undefined);
+    assert.equal(w.metaSignalIntelligence,undefined);
+    assert.equal(w.LegendOpenAiMeasurement,undefined);
+    assert.equal(requests.length,0);
+    assert.equal(pixels.length,0);
+    assert.equal(openai.length,0);
+  }finally{dom.window.close();}
+});
+
+test('Protect layout never bootstraps production measurement or lead runtime in Website Studio mode',()=>{
+  assert.match(layout,/websiteStudioMode\s*=\s*[\s\S]*ContainsKey\("legendEdit"\)[\s\S]*ContainsKey\("legendMaterialize"\)/);
+  assert.match(layout,/window\.LEGEND_WEBSITE_STUDIO_MODE\s*=/);
+  assert.match(layout,/@if \(!websiteStudioMode\)[\s\S]*src="~\/js\/tracking\.js"/);
+  assert.match(layout,/@if \(!websiteStudioMode\)[\s\S]*src="~\/js\/lead-modal\.js"/);
+  assert.match(layout,/@if \(!websiteStudioMode\)[\s\S]*_PageHealth\.cshtml/);
+});
+
 test('failed tracker installation rolls back listeners and retries with one page view and form start', async () => {
   const f = fixture();
   try {
