@@ -148,6 +148,8 @@
     visit(doc?.shell?.footer);
     Object.values(doc?.pages || {}).forEach(page => visit(page?.composition));
     Object.values(doc?.reusableComponents || {}).forEach(component => visit(component?.composition));
+    constrainCompositionGeometry(doc?.store?.storeNavigation);
+    constrainCompositionGeometry(doc?.store?.cartNavigation);
     return doc;
   }
 
@@ -163,6 +165,17 @@
       animations: Array.isArray(node.animations) ? node.animations : [],
       signals: Array.isArray(node.signals) ? node.signals : []
     }));
+  }
+
+  function normalizeControlPresentation(input) {
+    const value=input && typeof input==='object' ? input : {};
+    return {
+      style:value.style && typeof value.style==='object' ? {...value.style} : {},
+      breakpointStyles:value.breakpointStyles && typeof value.breakpointStyles==='object' ? structuredClone(value.breakpointStyles) : {},
+      layout:value.layout && typeof value.layout==='object' ? {...value.layout} : {mode:'free',direction:'column'},
+      breakpointLayouts:value.breakpointLayouts && typeof value.breakpointLayouts==='object' ? structuredClone(value.breakpointLayouts) : {},
+      animations:Array.isArray(value.animations) ? structuredClone(value.animations) : []
+    };
   }
 
   function normalizeDocument(input) {
@@ -211,7 +224,9 @@
         cartIcon:['cart','bag','basket'].includes(String(input?.store?.cartIcon||'').toLowerCase())
           ? String(input.store.cartIcon).toLowerCase() : 'cart',
         cartIconSizePx:Number.isFinite(Number(input?.store?.cartIconSizePx))
-          ? Math.max(16,Math.min(96,Number(input.store.cartIconSizePx))) : 28
+          ? Math.max(16,Math.min(96,Number(input.store.cartIconSizePx))) : 28,
+        storeNavigation:normalizeControlPresentation(input?.store?.storeNavigation),
+        cartNavigation:normalizeControlPresentation(input?.store?.cartNavigation)
       },
       pages
     };
@@ -534,7 +549,7 @@
     if (type === 'INPUT' && selected.type === 'tel') triggers.push('field_completed');
     if (selected.dataset.cmsSection) triggers.push('scroll_threshold');
     const candidates = signalCatalog.events.filter(option => !option.requiresServerOutcome && option.triggers.some(trigger => triggers.includes(trigger)));
-    const models = selectedCompositionNode();
+    const models = selectedWebsiteModel();
     const bindings = models?.signals || [];
     paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
     if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
@@ -731,12 +746,14 @@
     return model.breakpointLayouts?.[editorBreakpointKey] || {};
   }
 
-  function forEachCompositionNode(action) {
+  function forEachWebsiteModel(action) {
     const visit=nodes=>walkComposition(nodes,node=>action(node));
     visit(documentState.shell?.header || []);
     visit(documentState.shell?.footer || []);
     Object.values(documentState.pages || {}).forEach(page=>visit(page?.composition || []));
     Object.values(documentState.reusableComponents || {}).forEach(component=>visit(component?.composition || []));
+    action(documentState.store?.storeNavigation);
+    action(documentState.store?.cartNavigation);
   }
 
   function syncBreakpointControls() {
@@ -838,6 +855,20 @@
       node.children ||= [];
     }
     return node;
+  }
+
+  function storeControlPresentationForElement(el, create = true) {
+    if (!el || legacyMigration) return null;
+    const key=el.dataset?.legendStoreNav;
+    if (key!=='store' && key!=='cart') return null;
+    documentState.store ||= {};
+    const field=key==='store' ? 'storeNavigation' : 'cartNavigation';
+    if(create) documentState.store[field] ||= normalizeControlPresentation(null);
+    return documentState.store[field] || null;
+  }
+
+  function editableWebsiteModelForElement(el, create = true) {
+    return storeControlPresentationForElement(el, create) || compositionNodeForElement(el, create);
   }
 
   function editableCompositionNodeForElement(el, create = true) {
@@ -1576,11 +1607,11 @@
       onceLabel.append(once,document.createTextNode(' Play once per page session')); row.appendChild(onceLabel);
       const actions=document.createElement('div'); actions.className='legend-cms-row';
       const preview=document.createElement('button'); preview.type='button'; preview.textContent='Preview effect'; preview.addEventListener('click',()=>playAnimation(selected,binding));
-      const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remove'; remove.addEventListener('click',()=>{ const ov=selectedCompositionNode(); mutate(()=>ov.animations=(ov.animations||[]).filter(item=>item.id!==binding.id)); });
+      const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remove'; remove.addEventListener('click',()=>{ const ov=selectedWebsiteModel(); mutate(()=>ov.animations=(ov.animations||[]).filter(item=>item.id!==binding.id)); });
       actions.append(preview,remove); row.appendChild(actions); host.appendChild(row);
     }
     const add=document.createElement('button'); add.type='button'; add.textContent='Add motion interaction'; add.disabled=bindings.length>=8;
-    add.addEventListener('click',()=>{ const ov=selectedCompositionNode(); checkpoint(); ov.animations ||= []; ov.animations.push({id:crypto.randomUUID().replaceAll('-',''),trigger:'view',effect:'fade',durationMs:400,delayMs:0,distancePx:24,easing:'ease',once:true}); markDirty(); renderMotionControls(); });
+    add.addEventListener('click',()=>{ const ov=selectedWebsiteModel(); checkpoint(); ov.animations ||= []; ov.animations.push({id:crypto.randomUUID().replaceAll('-',''),trigger:'view',effect:'fade',durationMs:400,delayMs:0,distancePx:24,easing:'ease',once:true}); markDirty(); renderMotionControls(); });
     host.appendChild(add);
   }
   function findEditableElement(id) {
@@ -2091,6 +2122,10 @@
     }else{
       for(const root of allCanonicalRootSets())
         walkComposition(root.nodes,node=>applyCompositionNode(findEditableElement(node.id),node));
+      const store=document.querySelector('[data-legend-store-nav="store"]');
+      const cart=document.querySelector('[data-legend-store-nav="cart"]');
+      if(store) applyCompositionNode(store,documentState.store?.storeNavigation || {});
+      if(cart) applyCompositionNode(cart,documentState.store?.cartNavigation || {});
       refreshReusableInstances();
     }
     refreshScaledElements();
@@ -2210,6 +2245,8 @@
 
     cluster.append(store,cart);
     nav.appendChild(cluster);
+    applyCompositionNode(store,documentState.store?.storeNavigation || {});
+    applyCompositionNode(cart,documentState.store?.cartNavigation || {});
     updateStoreCartCount();
   }
 
@@ -3118,10 +3155,11 @@
     updateDirectCanvasUi();
   }
 
-  function selectedCompositionNode(create = true) {
-    const model = compositionNodeForElement(selected, create);
-    if (create && model && selected?.dataset.websiteActionKey && !Object.hasOwn(model, 'actionKey'))
-      model.actionKey = selected.dataset.websiteActionKey;
+  function selectedWebsiteModel(create = true) {
+    const model = editableWebsiteModelForElement(selected, create);
+    const composition=selected?.dataset?.cmsCompositionId ? compositionNodeForElement(selected,create) : null;
+    if (create && composition && selected?.dataset.websiteActionKey && !Object.hasOwn(composition, 'actionKey'))
+      composition.actionKey = selected.dataset.websiteActionKey;
     return model;
   }
 
@@ -3201,7 +3239,7 @@
       const selectedRect = selected.getBoundingClientRect();
       const sectionRect = section.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
-      const model = selectedCompositionNode();
+      const model = selectedWebsiteModel();
       if (!model) return false;
       const gestureStyle = editingStyle(model, true);
       checkpoint();
@@ -3241,7 +3279,7 @@
       if (!gesture || selected !== gesture.target) return;
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
-      const model = selectedCompositionNode();
+      const model = selectedWebsiteModel();
       if (!model) return;
       const style = gesture.style;
       const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
@@ -3359,7 +3397,7 @@
     if (imageGroup) imageGroup.hidden = !isImage;
     if (codeGroup) codeGroup.hidden = !isCode;
 
-    const ov = selectedCompositionNode(false) || {};
+    const ov = selectedWebsiteModel(false) || {};
     const editStyle = editingStyle(ov, false);
     const editLayout = editingLayout(ov, false);
     const computed = getComputedStyle(selected);
@@ -3470,7 +3508,7 @@
     }
     control.setCustomValidity('');
     checkpoint();
-    const ov = selectedCompositionNode();
+    const ov = selectedWebsiteModel();
     if (!ov) return;
     if (control.id === 'legend-cms-hidden') {
       ov.hidden = control.checked;
@@ -3729,7 +3767,7 @@
     if(notice) notice.hidden=SITE_KEY==='business';
     if(SITE_KEY!=='business') return;
     const sources=approvedDataSources();
-    const model=selectedCompositionNode?.() || null;
+    const model=selectedWebsiteModel?.() || null;
     const binding=model?.dataBinding || null;
     const boundSource=sourceForCollection(binding?.collectionId);
     const sourceSelect=document.getElementById('legend-cms-data-source');
@@ -4116,7 +4154,7 @@
     if(!isImage && !isVideo) return;
 
     if(selected && ((isImage && selected instanceof HTMLImageElement) || (isVideo && selected.tagName==='VIDEO'))){
-      const node=selectedCompositionNode();
+      const node=selectedWebsiteModel();
       if(!node) return;
       checkpoint();
       node.mediaAssetId=asset.id || compositionMediaAssetId(asset.url);
@@ -4267,7 +4305,7 @@
       row.append(drag,select);
       if(section.hidden){
         const restore=document.createElement('button');restore.type='button';restore.textContent='Show'; restore.setAttribute('aria-label',`Show ${label}`);
-        restore.addEventListener('click',()=>{setSelected(section);checkpoint();const value=selectedCompositionNode();if(!value)return;value.hidden=false;section.hidden=false;markDirty();syncEditorControls();showPanel('layers');});
+        restore.addEventListener('click',()=>{setSelected(section);checkpoint();const value=selectedWebsiteModel();if(!value)return;value.hidden=false;section.hidden=false;markDirty();syncEditorControls();showPanel('layers');});
         row.appendChild(restore);
       }
       row.addEventListener('dragstart',event=>{
@@ -4841,11 +4879,11 @@
       if(!source || !source.fields?.includes(field)) return;
       if(target==='image' && !(selected instanceof HTMLImageElement)){ alert('Image data can only bind to an image.'); return; }
       if(target==='href' && selected.tagName!=='A'){ alert('Link destinations can only bind to a link.'); return; }
-      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[field]); const model=selectedCompositionNode(); if(!collection || !model) return;
+      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[field]); const model=selectedWebsiteModel(); if(!collection || !model) return;
       model.dataBinding={collectionId:collection.id,field,target}; applyCompositionNode(selected,model); markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-data-clear')?.addEventListener('click',()=>{
-      const model=selectedCompositionNode(); if(!model?.dataBinding) return; checkpoint(); delete model.dataBinding; applyCompositionNode(selected,model); markDirty(); renderDataControls();
+      const model=selectedWebsiteModel(); if(!model?.dataBinding) return; checkpoint(); delete model.dataBinding; applyCompositionNode(selected,model); markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-dynamic-apply')?.addEventListener('click',()=>{
       if(SITE_KEY!=='business') return;
@@ -4893,7 +4931,7 @@
     document.getElementById('legend-cms-breakpoint-remove')?.addEventListener('click', () => {
       const current=(documentState.breakpoints||[]).find(value=>value.key===editorBreakpointKey); if (!current || current.isSystem) return;
       checkpoint(); const key=current.key; documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
-      forEachCompositionNode(model=>{ if(model?.breakpointStyles) delete model.breakpointStyles[key]; if(model?.breakpointLayouts) delete model.breakpointLayouts[key]; });
+      forEachWebsiteModel(model=>{ if(model?.breakpointStyles) delete model.breakpointStyles[key]; if(model?.breakpointLayouts) delete model.breakpointLayouts[key]; });
       editorBreakpointKey='base'; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
     });
     const layoutHandlers={
@@ -4907,12 +4945,12 @@
       'legend-cms-layout-wrap':['wrap',value=>value||null]
     };
     Object.entries(layoutHandlers).forEach(([id,[field,convert]])=>document.getElementById(id)?.addEventListener('input',event=>{
-      if(!selected) return; checkpoint(); const model=selectedCompositionNode(); if(!model) return; const layout=editingLayout(model,true); const value=convert(event.target.value); if(value==null) delete layout[field]; else layout[field]=value; applyCompositionNode(selected,model); updateDirectCanvasUi(); markDirty();
+      if(!selected) return; checkpoint(); const model=selectedWebsiteModel(); if(!model) return; const layout=editingLayout(model,true); const value=convert(event.target.value); if(value==null) delete layout[field]; else layout[field]=value; applyCompositionNode(selected,model); updateDirectCanvasUi(); markDirty();
     }));
     installStudioControls(panel);
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
-      const ov = selectedCompositionNode(); if (!ov) return;
+      const ov = selectedWebsiteModel(); if (!ov) return;
       if (ov.actionKey) { syncEditorControls(); return; }
       checkpoint();
       const option = availableCtaOptions().find(candidate => candidate.choiceKey === event.target.value);
@@ -4942,25 +4980,25 @@
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-image-upload').click());
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
-    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedCompositionNode(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
+    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedWebsiteModel(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
       if (!selected) return;
       if (!/^#[a-f0-9]{6}$/i.test(input.value)) { input.setCustomValidity('Enter a six-digit hex color, such as #000000.'); input.reportValidity(); return; }
-      input.setCustomValidity(''); checkpoint(); const ov = selectedCompositionNode(); ov.style ||= {}; ov.style[input.dataset.colorHex] = input.value.toLowerCase();
+      input.setCustomValidity(''); checkpoint(); const ov = selectedWebsiteModel(); ov.style ||= {}; ov.style[input.dataset.colorHex] = input.value.toLowerCase();
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
     panel.querySelectorAll('[data-color-reset]').forEach(button => button.addEventListener('click', () => {
-      if (!selected) return; checkpoint(); const ov = selectedCompositionNode(); if (ov.style) delete ov.style[button.dataset.colorReset];
+      if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); if (ov.style) delete ov.style[button.dataset.colorReset];
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
-    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedCompositionNode(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyCompositionNode(selected, ov); markDirty(); }));
+    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedWebsiteModel(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyCompositionNode(selected, ov); markDirty(); }));
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => {
       const video = selected;
       if (video?.tagName !== 'VIDEO') return;
       const url = await uploadMedia(event.target.files?.[0]);
       if (!url || selected !== video) return;
       checkpoint();
-      const ov = selectedCompositionNode();
+      const ov = selectedWebsiteModel();
       if (video.dataset.cmsCompositionId) {
         ov.mediaAssetId = compositionMediaAssetId(url);
         ov.mediaUrl = url;
@@ -4972,7 +5010,7 @@
       syncEditorControls();
       markDirty();
     });
-    document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedCompositionNode(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyCompositionNode(selected, ov); markDirty(); });
+    document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyCompositionNode(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
     document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
     installDirectCanvasControls(preview);
@@ -5204,7 +5242,7 @@
       readImage(file, dataUrl => {
         if (selected !== imageTarget) return;
         checkpoint();
-        const ov = selectedCompositionNode();
+        const ov = selectedWebsiteModel();
         if (!ov) return;
         if (selected.dataset.cmsCompositionId) {
           ov.mediaAssetId = compositionMediaAssetId(dataUrl);
@@ -5258,7 +5296,7 @@
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected || isSharedShellElement(selected)) return;
-      const current=selectedCompositionNode(false);
+      const current=selectedWebsiteModel(false);
       if (current && (current.actionKey || current.systemKey || current.systemBinding || selected.tagName === 'FORM')) return;
       const serviceCard=businessServiceCardFor(selected);
       if(serviceCard?.dataset?.cmsCompositionId) setSelected(serviceCard);
