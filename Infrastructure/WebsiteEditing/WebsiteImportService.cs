@@ -14,7 +14,7 @@ public sealed record WebsiteImportResult(WebsiteContentDocument Document, Websit
 
 /// <summary>
 /// Bounded public content import/export for the canonical v3 composition graph.
-/// Pre-v3 override documents are read-only migration inputs and are never written here.
+/// Pre-v3 mutation documents are read-only migration inputs and are never written here.
 /// </summary>
 public sealed class WebsiteImportService(WebsiteMediaService media)
 {
