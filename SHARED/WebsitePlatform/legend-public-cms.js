@@ -1090,6 +1090,17 @@
     return nodes;
   }
 
+  function materializeCurrentShell() {
+    const header=document.querySelector('.site-header');
+    const footer=document.querySelector('.site-footer');
+    const headerNode=header ? materializeCompositionNode(header,'shell.header') : null;
+    const footerNode=footer ? materializeCompositionNode(footer,'shell.footer') : null;
+    return {
+      header:headerNode ? [headerNode] : [],
+      footer:footerNode ? [footerNode] : []
+    };
+  }
+
   function safeCompositionTag(node) {
     const type=String(node?.type || 'text');
     const tag=String(node?.tag || '').toLowerCase();
@@ -1158,7 +1169,7 @@
     el.dataset.cmsCompositionId=node.id;
     el.dataset.cmsId=node.id;
     el.dataset.cmsEditable='true';
-    if (node.type === 'section') el.dataset.cmsSection=node.id;
+    if (node.type === 'section' || node.tag === 'header' || node.tag === 'footer') el.dataset.cmsSection=node.id;
     rememberOriginal(el);
     applyElementOverride(el,node);
     return el;
@@ -1172,6 +1183,26 @@
       const element=buildCompositionNode(node);
       if(element) main.appendChild(element);
     }
+  }
+
+  function renderCanonicalShell() {
+    const renderRoot=(selector,nodes,requiredClass)=>{
+      const existing=document.querySelector(selector);
+      const rendered=(nodes || []).map(buildCompositionNode).filter(Boolean);
+      if(rendered.length===0){
+        existing?.remove();
+        return;
+      }
+      rendered[0].classList.add(requiredClass);
+      if(existing) existing.replaceWith(...rendered);
+      else {
+        const main=document.querySelector('main');
+        if(requiredClass==='site-header') main?.before(...rendered);
+        else main?.after(...rendered);
+      }
+    };
+    renderRoot('.site-header',documentState.shell?.header || [],'site-header');
+    renderRoot('.site-footer',documentState.shell?.footer || [],'site-footer');
   }
 
   function mediaUrl(value) {
