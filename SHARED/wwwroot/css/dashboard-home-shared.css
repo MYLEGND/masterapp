@@ -179,8 +179,9 @@ html[data-legend-modal-region] body .modal .modal-body {
      * One close/collapse glyph everywhere: the same boxed arrow language used
      * by the approved Website Studio control, without changing button behavior.
      */
-    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel]
-    :is(.btn-close, [aria-label^="Close" i], [class$="-close"], [class*="-close "]) {
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), [data-legend-mobile-sheet])
+    :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "]) {
         position: relative;
         display: inline-grid !important;
         flex: 0 0 var(--legend-mobile-control-height);
@@ -201,8 +202,9 @@ html[data-legend-modal-region] body .modal .modal-body {
         box-shadow: 0 8px 24px #0005 !important;
     }
 
-    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel]
-    :is(.btn-close, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::before {
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), [data-legend-mobile-sheet])
+    :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::before {
         content: "";
         width: 16px;
         height: 16px;
@@ -210,8 +212,9 @@ html[data-legend-modal-region] body .modal .modal-body {
         border-radius: 1px;
     }
 
-    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel]
-    :is(.btn-close, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::after {
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), [data-legend-mobile-sheet])
+    :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::after {
         content: "";
         position: absolute;
         left: 10px;
@@ -224,11 +227,33 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] >
-    :is([class$="-head"], [class*="-head "], header) {
+    :is([class$="-head"], [class*="-head "], header),
+    html[data-legend-modal-region] body.legend-app .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)) >
+    :is(.modal-head, [class$="-head"], [class*="-head "], header),
+    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet] >
+    :is(.dhead, [class$="-head"], [class*="-head "], header) {
         min-height: 0;
         padding: 7px 10px !important;
         border-bottom-color: #344766 !important;
         background: var(--legend-mobile-surface) !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet] > .dbody {
+        gap: var(--legend-mobile-gap) !important;
+        padding: 9px 10px 10px !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet] .dtitle {
+        font-size: 1rem !important;
+        line-height: 1.08 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet] :is(button, .btn, a.btn) {
+        min-height: var(--legend-mobile-control-height) !important;
+        padding: 6px 9px !important;
+        border-radius: 8px !important;
+        font-size: .75rem !important;
+        line-height: 1.1 !important;
     }
 
     /*
