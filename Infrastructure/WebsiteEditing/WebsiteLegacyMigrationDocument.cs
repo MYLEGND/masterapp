@@ -17,7 +17,7 @@ internal sealed class LegacyWebsiteContentDocument
     public List<LegacyWebsiteExtraComponent> Extras { get; set; } = new();
     public Dictionary<string, LegacyWebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, WebsiteCollectionDefinition> Collections { get; set; } = new(StringComparer.Ordinal);
-    public WebsiteThemeOverride Theme { get; set; } = new();
+    public WebsiteDesignTheme Theme { get; set; } = new();
     public DateTime? UpdatedUtc { get; set; }
 }
 
@@ -56,10 +56,10 @@ internal sealed class LegacyWebsiteElementOverride
     public string? Alt { get; set; }
     public string? VideoUrl { get; set; }
     public LegacyWebsitePlacement? Placement { get; set; }
-    public WebsiteStyleOverride Style { get; set; } = new();
-    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
-    public WebsiteLayoutOverride Layout { get; set; } = new();
-    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteVisualStyle Style { get; set; } = new();
+    public Dictionary<string, WebsiteVisualStyle> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteCompositionLayout Layout { get; set; } = new();
+    public Dictionary<string, WebsiteCompositionLayout> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteAnimationBinding> Animations { get; set; } = new();
     public string? SyncSourceId { get; set; }
     public WebsiteDataBinding? DataBinding { get; set; }
@@ -91,10 +91,10 @@ internal sealed class LegacyWebsiteExtraComponent
     public string? Title { get; set; }
     public string? Text { get; set; }
     public string? ImageDataUrl { get; set; }
-    public WebsiteStyleOverride Style { get; set; } = new();
-    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
-    public WebsiteLayoutOverride Layout { get; set; } = new();
-    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteVisualStyle Style { get; set; } = new();
+    public Dictionary<string, WebsiteVisualStyle> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteCompositionLayout Layout { get; set; } = new();
+    public Dictionary<string, WebsiteCompositionLayout> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteAnimationBinding> Animations { get; set; } = new();
     public string? SyncSourceId { get; set; }
     public WebsiteDataBinding? DataBinding { get; set; }
