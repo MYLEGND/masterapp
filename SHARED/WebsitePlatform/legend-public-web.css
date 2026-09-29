@@ -2,6 +2,18 @@
    Shared by www.mylegnd.com and protect.mylegnd.com.
    Brand-specific palettes are variables; layout, rhythm, components and responsive behavior live here. */
 html{min-height:100%}
+:root[data-legend-site="business"]{
+  --web-navy:#162033;
+  --web-navy-deep:#0c1322;
+  --web-navy-royal:#263653;
+  --web-gold:#c8a86b;
+  --web-gold-strong:#eed39a;
+  --web-ink:#131b2a;
+  --web-muted:#657083;
+  --web-surface:#f6f7f9;
+  --web-border:rgba(22,32,51,.12);
+  --web-shadow:0 24px 64px rgba(12,19,34,.12);
+}
 body{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip}
 .site-header{flex:0 0 auto}
 main,.public-main,.layout-content{flex:1 0 auto;min-height:0}
@@ -57,7 +69,9 @@ h3{font-size:22px;letter-spacing:-.018em}
   background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;
   filter:drop-shadow(0 28px 44px rgba(0,0,0,.30))
 }
-.hero-mark .halo{position:absolute;width:min(420px,78vw);aspect-ratio:1;border:1px solid color-mix(in srgb,var(--gold) 38%,transparent);border-radius:50%;box-shadow:0 0 0 46px color-mix(in srgb,var(--gold) 4%,transparent),0 0 0 92px color-mix(in srgb,var(--gold) 2.4%,transparent)}
+.hero-mark::before{content:"";position:absolute;width:min(420px,78vw);aspect-ratio:1;border:1px solid color-mix(in srgb,var(--gold) 38%,transparent);border-radius:50%;box-shadow:0 0 0 46px color-mix(in srgb,var(--gold) 4%,transparent),0 0 0 92px color-mix(in srgb,var(--gold) 2.4%,transparent)}
+.hero--single{grid-template-columns:minmax(0,1fr);min-height:auto}
+.hero--single .hero-copy{max-width:960px}
 .hero-mark>span{position:absolute;bottom:4px;color:rgba(255,255,255,.55);font-size:10px;letter-spacing:.15em;text-transform:uppercase}
 .actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
 .btn{display:inline-flex;align-items:center;justify-content:center;min-height:50px;padding:12px 21px;border-radius:999px;font-weight:800;letter-spacing:.015em;border:1px solid transparent;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
@@ -79,6 +93,14 @@ h3{font-size:22px;letter-spacing:-.018em}
 .card .icon,.contact-card .icon{width:48px;height:48px;display:grid;place-items:center;border-radius:14px;background:color-mix(in srgb,var(--gold) 15%,transparent);color:color-mix(in srgb,var(--gold) 88%,var(--navy) 12%);margin-bottom:24px}
 .icon svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .card p:last-child{color:var(--muted)}
+.legend-business-starter .hero{min-height:auto;padding-block:clamp(72px,8vw,112px)}
+.legend-business-starter .hero-copy{max-width:940px}
+.legend-business-starter .hero h1{max-width:15ch}
+.legend-business-starter .card-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));max-width:1080px}
+.legend-business-starter .card{padding:clamp(26px,3vw,36px);border-color:color-mix(in srgb,var(--web-navy) 14%,transparent);box-shadow:0 18px 46px rgba(12,19,34,.08)}
+.legend-business-starter .section.dark{background:linear-gradient(135deg,var(--web-navy-deep),var(--web-navy));}
+.legend-business-starter .section-head{max-width:840px}
+.card .feature-marker,.split .feature-marker{margin-bottom:12px;color:var(--gold);font-size:10px;letter-spacing:.17em}
 [data-cms-preserve-whitespace="true"]{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere}
 .statement,.pullquote{max-width:1000px;border-left:3px solid var(--gold);padding:24px 30px;background:var(--surface);font-size:clamp(19px,2.25vw,25px)}
 .pullquote{background:rgba(255,255,255,.05);color:#fff}
