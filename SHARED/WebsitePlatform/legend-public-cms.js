@@ -2218,7 +2218,7 @@
     store.textContent=effectiveStoreLabel();
     store.dataset.legendStoreNav='store';
     store.dataset.cmsId=`${pageKey}.commerce.store-nav`;
-    store.dataset.cmsLocked='true';
+    if(editorMode) store.dataset.cmsEditable='true';
     store.dataset.websiteAnalyticsEvent='cta_click';
     store.dataset.websiteBindingId='commerce_store_nav';
     store.dataset.cta='commerce_store';
@@ -2228,7 +2228,7 @@
     cart.href=storeContext.cartUrl;
     cart.dataset.legendStoreNav='cart';
     cart.dataset.cmsId=`${pageKey}.commerce.cart-nav`;
-    cart.dataset.cmsLocked='true';
+    if(editorMode) cart.dataset.cmsEditable='true';
     cart.dataset.websiteAnalyticsEvent='cta_click';
     cart.dataset.websiteBindingId='commerce_cart_nav';
     cart.dataset.cta='commerce_cart';
