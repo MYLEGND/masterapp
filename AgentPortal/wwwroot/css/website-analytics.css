@@ -5139,22 +5139,6 @@ body {
 }
 
 @media (max-width: 767.98px) {
-    .wa-modal-dialog,
-    .wa-modal-dialog.wa-modal-dialog-compact {
-        width: calc(100vw - .75rem);
-        max-width: calc(100vw - .75rem);
-        margin: .375rem auto;
-    }
-
-    .wa-modal-shell {
-        max-height: calc(100dvh - .75rem);
-        border-radius: 16px;
-    }
-
-    .wa-modal-header {
-        padding: .82rem .85rem .75rem;
-    }
-
     .wa-modal-header-main {
         gap: .6rem;
     }
@@ -5164,22 +5148,17 @@ body {
         justify-content: flex-start;
     }
 
-    .wa-modal-shell .modal-title {
-        font-size: 1.24rem;
-    }
-
     .wa-modal-subtitle {
         font-size: .78rem;
     }
 
     .wa-modal-body {
-        padding: .72rem .75rem .8rem;
-        gap: .65rem;
+        gap: .5rem;
     }
 
     .wa-modal-section {
-        padding: .72rem;
-        border-radius: 12px;
+        padding: .55rem;
+        border-radius: 10px;
     }
 
     .wa-modal-toolbar {
@@ -5205,22 +5184,6 @@ body {
         flex: 1 1 100%;
     }
 
-    .wa-modal-footer {
-        padding: .7rem .75rem .78rem;
-    }
-
-    .wa-standalone-modal {
-        padding: .375rem;
-    }
-
-    .wa-standalone-modal > .wa-modal-dialog {
-        width: 100%;
-        max-width: 100%;
-    }
-
-    .wa-standalone-modal .wa-modal-shell {
-        max-height: calc(100dvh - .75rem);
-    }
 }
 
 .wa-kpi-band-health {
@@ -6251,26 +6214,9 @@ body {
         min-width: 980px;
     }
 
-    .wa-modal-dialog,
-    .wa-modal-dialog.wa-modal-dialog-compact {
-        max-width: calc(100vw - 1rem);
-        margin: .5rem auto;
-    }
-
-    .wa-modal-header,
-    .wa-modal-body,
-    .wa-modal-footer {
-        padding-left: .95rem;
-        padding-right: .95rem;
-    }
-
-    .wa-modal-shell .modal-title {
-        font-size: 1.4rem;
-    }
-
     .wa-modal-section {
-        padding: .9rem;
-        border-radius: 16px;
+        padding: .55rem;
+        border-radius: 10px;
     }
 
     .wa-modal-toolbar {
