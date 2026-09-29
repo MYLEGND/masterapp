@@ -268,10 +268,15 @@ test('v3 canonical composition renders natively and canvas/source share the same
     assert.equal(heading.dataset.cmsCompositionId,'home.hero.title');
     assert.equal(f.w.document.querySelector('main a').dataset.websiteActionKey,'legend_contact');
     f.click('main h1');
+    assert.equal(f.w.document.querySelector('[data-cms-view="content"]').hidden,false);
+    assert.equal(f.w.document.querySelector('[data-open="content"]').getAttribute('aria-pressed'),'true');
+    f.editSelected('Canonical canvas edit');
     f.click('[data-open="source"]');
     assert.equal(f.w.document.querySelector('#legend-cms-source-scope').value,'selection');
+    assert.equal(f.w.document.querySelector('#legend-cms-site-source').readOnly,false);
     let parsed=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
     assert.equal(parsed.id,'home.hero.title');
+    assert.equal(parsed.text,'Canonical canvas edit');
     f.input('#legend-cms-width','55');
     parsed=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
     assert.equal(parsed.style.widthPercent,55);
@@ -280,6 +285,39 @@ test('v3 canonical composition renders natively and canvas/source share the same
     assert.equal(Object.hasOwn(saved.pages['/'],'elements'),false);
     assert.equal(Object.hasOwn(saved.pages['/'],'extras'),false);
     assert.equal(Object.hasOwn(saved.pages['/'],'sectionOrder'),false);
+  }finally{f.close();}
+});
+
+test('Master Source is read only while Selected Source is editable and semantically color guided',async()=>{
+  const doc=canonicalDocument();
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={fontFamily:'Georgia',widthPercent:64,color:'#123456'};
+  const f=await domFixture({doc});
+  try{
+    f.click('[data-open="source"]');
+    const scope=f.w.document.querySelector('#legend-cms-source-scope');
+    const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
+    const apply=f.w.document.querySelector('#legend-cms-source-apply');
+    assert.equal(scope.value,'site');
+    assert.equal(sourceInput.readOnly,true);
+    assert.equal(apply.hidden,true);
+    assert.match(f.w.document.querySelector('#legend-cms-source-status').textContent,/read only/i);
+    f.click('#legend-cms-source-apply');
+    assert.equal(f.calls.some(call=>call.url.endsWith('/manage/source/validate')),false);
+
+    f.click('main h1');
+    f.click('[data-open="source"]');
+    assert.equal(scope.value,'selection');
+    assert.equal(sourceInput.readOnly,false);
+    assert.equal(apply.hidden,false);
+    const tones=[...f.w.document.querySelectorAll('#legend-cms-source-highlight [data-tone]')].map(node=>node.dataset.tone);
+    for(const tone of ['content','style','color','size']) assert.ok(tones.includes(tone),tone);
+    for(const tone of ['content','style','color','size','layout','media','behavior','protected'])
+      assert.ok(f.w.document.querySelector(`.legend-cms-source-key [data-tone="${tone}"]`));
+    assert.match(source,/\.legend-cms-source-content\{color:#78e2a7\}/);
+    assert.match(source,/\.legend-cms-source-style\{color:#7fb5ff\}/);
+    assert.match(source,/\.legend-cms-source-color\{color:#ff8fa8\}/);
+    assert.match(source,/\.legend-cms-source-size\{color:#ffb86b\}/);
   }finally{f.close();}
 });
 
@@ -303,6 +341,7 @@ test('v3 selected source applies only validated server projection then uses norm
     assert.equal(f.w.document.querySelector('main h1').textContent,'After');
     const validation=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/source/validate'));
     assert.ok(validation);
+    assert.equal(JSON.parse(validation.body).selectedNodeId,'hero.title');
     const save=f.calls.find(call=>{
       if(call.method!=='POST' || !call.url.endsWith('/manage')) return false;
       const persisted=JSON.parse(call.body).document;
