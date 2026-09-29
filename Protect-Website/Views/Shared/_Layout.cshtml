@@ -231,81 +231,6 @@
     </div>
 </footer>
 
-<!-- Lead Capture Modal -->
-<div id="leadModal" class="lead-modal" aria-hidden="true">
-    <div class="lead-card" role="dialog" aria-modal="true" aria-labelledby="leadTitle" aria-describedby="leadSubtitle" tabindex="-1">
-        <button type="button" class="lead-close" id="leadClose" aria-label="Close lead capture dialog">&times;</button>
-        <h3 id="leadTitle">Tell us what you’re looking for—we’ll walk you through your options clearly.</h3>
-        <p class="sub" id="leadSubtitle">We’ll reply with clear next steps. No pressure.</p>
-        <form id="leadForm" novalidate>
-            <div class="lead-grid">
-                <div>
-                    <label>First name <span class="lead-required">*</span></label>
-                    <input type="text" name="FirstName" required />
-                </div>
-                <div>
-                    <label>Last name</label>
-                    <input type="text" name="LastName" />
-                </div>
-                <div>
-                    <label>Email <span class="lead-required">*</span></label>
-                    <input type="email" name="Email" required />
-                </div>
-                <div>
-                    <label>Phone</label>
-                    <input type="tel" name="Phone" />
-                </div>
-                <div>
-                    <label>Preferred contact</label>
-                    <select name="PreferredContactMethod">
-                        <option value="">No preference</option>
-                        <option value="email">Email</option>
-                        <option value="phone">Phone</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Interest <span class="lead-required">*</span></label>
-                    <select name="InterestType" required id="leadInterest">
-                        <option value="">Choose one</option>
-                        <option value="assessment">Risk Assessment</option>
-                        <option value="quote_auto">Quote - Auto</option>
-                        <option value="quote_home">Quote - Home</option>
-                        <option value="quote_commercial">Quote - Commercial</option>
-                        <option value="quote_life">Quote - Life</option>
-                        <option value="quote_disability">Quote - Disability</option>
-                        <option value="quote_dvh">Quote - Dental, Vision & Hearing</option>
-                        <option value="general">General Question</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="mt-3">
-                <label>Notes</label>
-                <textarea name="Notes" placeholder="Share goals or questions (optional)"></textarea>
-            </div>
-
-            <div class="lead-consents">
-                <div class="lead-consent">
-                    <input id="leadAuthorization" type="checkbox" name="MarketingEmailConsent" value="true" required />
-                    <label for="leadAuthorization">
-                        <span class="lead-required">*</span>
-                        I authorize LEGEND to contact me regarding this request and agree to the
-                        <a href="@termsUrl" target="_blank" rel="noopener">Terms</a> and
-                        <a href="@privacyUrl" target="_blank" rel="noopener">Privacy Policy</a>.
-                    </label>
-                </div>
-            </div>
-
-            <div class="lead-actions">
-                <button type="submit" class="lead-btn primary" id="leadSubmit">Send</button>
-                <button type="button" class="lead-btn secondary" id="leadDismiss">Maybe later</button>
-            </div>
-            <div class="lead-error" id="leadError"></div>
-            <div class="lead-success" id="leadSuccess">Thanks — we’ve received it. We’ll reply with clear next steps.</div>
-        </form>
-    </div>
-</div>
-
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -346,10 +271,6 @@
                 if (window.__legendTrackingInitialized) window.LegendOpenAiMeasurement?.configure?.({ pixelId: @Html.Raw(JsonSerializer.Serialize(openAiPixelId)) });
             </script>
         }
-    }
-    @if (!websiteStudioMode)
-    {
-        <script src="~/js/lead-modal.js" asp-append-version="true"></script>
     }
     <script>
         // Preserve agent slug across internal navigation
