@@ -10,7 +10,7 @@ public sealed class WebsiteSiteSourceDocument
     public string? FaviconImageDataUrl { get; set; }
     public WebsiteStoreSettings Store { get; set; } = new();
     public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteStudioContract.DefaultBreakpoints();
-    public WebsiteThemeOverride Theme { get; set; } = new();
+    public WebsiteDesignTheme Theme { get; set; } = new();
 
     public WebsiteSharedShellDocument Shell { get; set; } = new();
     public List<WebsiteSiteSourcePage> Pages { get; set; } = new();
@@ -108,7 +108,7 @@ public static class WebsiteSiteSource
             FaviconImageDataUrl = source.FaviconImageDataUrl ?? current.FaviconImageDataUrl,
             Store = source.Store ?? new WebsiteStoreSettings(),
             Breakpoints = source.Breakpoints ?? WebsiteStudioContract.DefaultBreakpoints(),
-            Theme = source.Theme ?? new WebsiteThemeOverride(),
+            Theme = source.Theme ?? new WebsiteDesignTheme(),
             Shell = Clone(source.Shell ?? new WebsiteSharedShellDocument()),
             Collections = new(
                 (source.Collections ?? new(StringComparer.Ordinal))
