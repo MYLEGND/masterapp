@@ -136,6 +136,28 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   return {w,calls,animations,alerts,click,input,change,editSelected,save,close:()=>w.close()};
 }
 
+test('canonical startup fills navigation and image accessibility defaults and prevents routine width overflow',async()=>{
+  const doc=canonicalDocument();
+  delete doc.pages['/'].navigation.label;
+  const image=canonicalNodeByType(doc,'image');
+  delete image.alt;
+  image.mediaUrl='/assets/hero-photo.png';
+
+  const f=await domFixture({
+    doc,
+    html:'<!doctype html><html><head></head><body data-page-key="home"><main><section><h1>Home</h1><img src="/assets/hero-photo.png"><p>averylongunbrokencontenttokenaverylongunbrokencontenttokenaverylongunbrokencontenttoken</p></section></main></body></html>'
+  });
+  try{
+    assert.equal(f.w.document.querySelector('main img')?.getAttribute('alt'),'Hero Photo');
+    const saved=await f.save();
+    assert.equal(saved.pages['/'].navigation.label,'Home');
+    assert.equal(canonicalNodeByType(saved,'image')?.alt,'Hero Photo');
+    assert.match(source,/main \*\{min-width:0;box-sizing:border-box\}/);
+    assert.match(source,/overflow-wrap:anywhere;word-break:normal;white-space:normal/);
+    assert.match(source,/\[data-cms-editable="true"\]\{min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere\}/);
+  }finally{f.close();}
+});
+
 test('materialization never invents publishable links from unmanaged runtime buttons or empty anchors',()=>{
   assert.match(source,/const unmanagedInteractiveControl\s*=\s*[\s\S]*tag === 'button' && !actionKey[\s\S]*tag === 'a' && !actionKey && !rawHref/);
   assert.match(source,/const presentationOnlyControl = runtimePresentationControl \|\| unmanagedInteractiveControl/);
