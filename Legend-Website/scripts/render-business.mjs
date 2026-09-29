@@ -12,6 +12,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const cms=await readFile(resolve(root,'dist/legend-public-cms.js'),'utf8');
   const result={};
   const documents=input.document.pages||{};
+  const canonicalV3=Number(input.document?.version)===3;
   const projections=new Map((Array.isArray(input.collections)?input.collections:[])
     .filter(value=>value?.id).map(value=>[value.id,value]));
   const normalizeRoute=route=>(String(route||'').replace(/\/$/,'')||'/');
@@ -134,7 +135,9 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     window.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'business',apiBase:'https://website.invalid',businessId:input.business.id};
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
     window.LEGEND_PUBLIC_CMS_RENDER_INPUT={
-      document:currentDocument,business:input.business,collections:input.collections||[],
+      document:currentDocument,
+      legacyMigration:canonicalV3?null:currentDocument,
+      business:input.business,collections:input.collections||[],
       store:storeContext,dynamicItem,pageKey:renderPageKey,pageCatalog,server:true
     };
     vm.runInNewContext(cms,sandbox,{timeout:3000,filename:'legend-public-cms.js'});
@@ -176,7 +179,9 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
           : collection)
       : (input.collections||[]);
     renderInput.textContent=JSON.stringify({
-      document:currentDocument,business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
+      document:currentDocument,
+      legacyMigration:canonicalV3?null:currentDocument,
+      business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
       pageKey:renderPageKey,pageCatalog,server:false,
       runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal,openAiMeasurementAsset:publicRuntimeAssets.openAiMeasurement}
     }).replace(/</g,'\\u003c');
