@@ -54,6 +54,23 @@ public sealed class PlatformProviderHealthHardeningTests
     }
 
     [Fact]
+    public void MetaStatusEndpoints_UseLiveProviderHealthInsteadOfCredentialPresence()
+    {
+        var controller = Read("AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
+        var business = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+
+        Assert.Contains("[HttpGet(\"meta-connection-status\")]", controller, StringComparison.Ordinal);
+        Assert.Contains("IPlatformConnectionHealthAuthority", controller, StringComparison.Ordinal);
+        Assert.Contains("runtime.Meta.ProviderVerified", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingConnections.GetAdsAsync(owner", controller, StringComparison.Ordinal);
+
+        Assert.Contains("[HttpGet(\"analytics/meta-connection-status\")]", business, StringComparison.Ordinal);
+        Assert.Contains("IPlatformConnectionHealthAuthority", business, StringComparison.Ordinal);
+        Assert.Contains("var connected = runtime.Meta.ProviderVerified;", business, StringComparison.Ordinal);
+        Assert.DoesNotContain("!string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext)", business, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProviderCanary_IsAggregateOnlyAndDoesNotExposeCredentialOrAccountData()
     {
         var health = Read("AgentPortal", "Health", "ProviderRuntimeHealthCheck.cs");
