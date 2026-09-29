@@ -143,6 +143,7 @@ public static class WebsiteSiteSource
                 Description = page.Description,
                 Navigation = page.Navigation ?? new WebsitePageNavigation(),
                 DynamicBinding = page.DynamicBinding ?? currentPage?.DynamicBinding,
+                SystemTemplateKey = currentPage?.SystemTemplateKey,
                 Composition = Clone(page.Composition ?? [])
             };
 
@@ -199,6 +200,11 @@ public static class WebsiteSiteSource
     {
         if (document.LegacyMigration is not null || document.Version != WebsiteStudioContract.CurrentDocumentVersion)
             throw new ArgumentException("Website v3 composition is not canonical.");
+
+        foreach (var page in document.Pages.Values)
+            if (page.SystemTemplateKey is not null &&
+                !WebsiteSystemTemplateAuthority.IsKnownTemplateKey(page.SystemTemplateKey))
+                throw new ArgumentException("Website runtime template binding is invalid.");
 
         var validActions = ctaCatalog.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
         var ids = new HashSet<string>(StringComparer.Ordinal);
