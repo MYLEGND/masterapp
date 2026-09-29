@@ -545,6 +545,58 @@ jobs:
           PY
           curl -fsS -u "$deploy_user:$deploy_pass" -H "Content-Type: application/json" --data @"$scratch/cleanup.json" "$scm/api/command" >/dev/null || true
           exit "$command_status"
+      - name: Correlate Meta failure history and live API version setting
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_json="$(az webapp config appsettings list -g masterapp-rg -n masterapp-portal --only-show-errors --query "[?name=='MetaAds__ApiVersion' || name=='MetaAds:ApiVersion'].{name:name,value:value}" -o json)"
+          python3 - <<'PYVER' <<<"$version_json"
+          import json,sys
+          try:
+              rows=json.load(sys.stdin)
+          except Exception:
+              rows=[]
+          print(json.dumps({"stage":"meta_api_version_setting","rows":rows}))
+          PYVER
+
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          if timeout 75s az webapp log download -g masterapp-rg -n masterapp-portal --log-file "$scratch/portal-logs.zip" --only-show-errors >/dev/null 2>&1; then
+            python3 - "$scratch/portal-logs.zip" <<'PYHIST'
+          import json,re,sys,zipfile,xml.etree.ElementTree as ET
+          path=sys.argv[1]
+          patterns=("Meta campaigns fetch failed","Meta insights fetch failed","Meta account metadata fetch failed")
+          rows=[]
+          try:
+              with zipfile.ZipFile(path) as z:
+                  names=[n for n in z.namelist() if n.lower().endswith("eventlog.xml")]
+                  for name in names:
+                      data=z.read(name)
+                      try:
+                          root=ET.fromstring(data)
+                      except Exception:
+                          continue
+                      for event in root.findall(".//{*}Event"):
+                          created=event.find(".//{*}TimeCreated")
+                          when=(created.attrib.get("SystemTime") if created is not None else None)
+                          text=" ".join(t.strip() for t in event.itertext() if t and t.strip())
+                          if not any(p in text for p in patterns):
+                              continue
+                          m=re.search(r'(Meta (?:campaigns|insights|account metadata) fetch failed\..*)',text)
+                          msg=(m.group(1) if m else text)[-3000:]
+                          msg=re.sub(r'(?i)(access[_-]?token[=:" ]+)[^&\s",}]+',r'\1[REDACTED]',msg)
+                          msg=re.sub(r'(?i)(client_secret[=:" ]+)[^&\s",}]+',r'\1[REDACTED]',msg)
+                          rows.append({"time":when,"message":msg})
+          except Exception as exc:
+              print(json.dumps({"stage":"meta_error_history","success":False,"error":type(exc).__name__}))
+              raise SystemExit(0)
+          rows.sort(key=lambda x:x.get("time") or "")
+          print(json.dumps({"stage":"meta_error_history","count":len(rows),"rows":rows[-80:]}))
+          PYHIST
+          else
+            echo '{"stage":"meta_error_history","success":false,"error":"download_unavailable"}'
+          fi
       - name: Observe current app state and recent capacity without mutations
         shell: bash
         run: |
