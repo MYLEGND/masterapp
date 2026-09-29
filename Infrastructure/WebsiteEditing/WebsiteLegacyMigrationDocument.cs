@@ -12,7 +12,7 @@ internal sealed class LegacyWebsiteContentDocument
     public WebsiteStoreSettings Store { get; set; } = new();
     public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteStudioContract.DefaultBreakpoints();
     public Dictionary<string, LegacyWebsitePageDocument> Pages { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, LegacyWebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, LegacyWebsiteElementRecord> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<LegacyWebsiteExtraComponent> Extras { get; set; } = new();
     public Dictionary<string, LegacyWebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
@@ -28,7 +28,7 @@ internal sealed class LegacyWebsitePageDocument
     public string? TemplatePath { get; set; }
     public WebsitePageNavigation Navigation { get; set; } = new();
     public WebsiteDynamicPageBinding? DynamicBinding { get; set; }
-    public Dictionary<string, LegacyWebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, LegacyWebsiteElementRecord> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<LegacyWebsiteExtraComponent> Extras { get; set; } = new();
 }
@@ -38,13 +38,13 @@ internal sealed class LegacyWebsiteReusableComponentDefinition
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "section";
-    public Dictionary<string, LegacyWebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, LegacyWebsiteElementRecord> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<LegacyWebsiteExtraComponent> Extras { get; set; } = new();
 }
 
 
-internal sealed class LegacyWebsiteElementOverride
+internal sealed class LegacyWebsiteElementRecord
 {
     public List<WebsiteSignalBinding> Signals { get; set; } = new();
     public string? Text { get; set; }
