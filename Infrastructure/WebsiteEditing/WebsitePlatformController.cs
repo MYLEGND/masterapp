@@ -881,7 +881,9 @@ public class WebsitePlatformController : ControllerBase
             if (drafts.Any(d => d.Id != draft?.Id && string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
                 return Conflict(new { message = "That name already exists. Select the existing draft to update it, or choose another name." });
             if (draft is null) { draft = new WebsiteNamedDraft(); drafts.Add(draft); }
-            draft.Name = name; draft.Document = document; draft.UpdatedUtc = DateTime.UtcNow;
+            draft.Name = name;
+            draft.DocumentJson = JsonSerializer.Serialize(document, JsonOptions);
+            draft.UpdatedUtc = DateTime.UtcNow;
             state.NamedDraftsJson = JsonSerializer.Serialize(drafts, JsonOptions);
         }
         state.ScheduledPublishUtc = null;
@@ -896,8 +898,58 @@ public class WebsitePlatformController : ControllerBase
         return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
     }
 
-    private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state) =>
-        string.IsNullOrWhiteSpace(state.NamedDraftsJson) ? new() : JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions) ?? new();
+    private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state)
+    {
+        if (string.IsNullOrWhiteSpace(state.NamedDraftsJson)) return [];
+
+        try
+        {
+            using var parsed = JsonDocument.Parse(state.NamedDraftsJson);
+            if (parsed.RootElement.ValueKind != JsonValueKind.Array) return [];
+            var result = new List<WebsiteNamedDraft>();
+
+            foreach (var item in parsed.RootElement.EnumerateArray().Take(20))
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                Guid id = Guid.NewGuid();
+                string name = "Website draft";
+                var updatedUtc = DateTime.UtcNow;
+                string? documentJson = null;
+
+                foreach (var property in item.EnumerateObject())
+                {
+                    if (property.Name.Equals("id", StringComparison.OrdinalIgnoreCase) &&
+                        Guid.TryParse(property.Value.ToString(), out var parsedId))
+                        id = parsedId;
+                    else if (property.Name.Equals("name", StringComparison.OrdinalIgnoreCase))
+                        name = property.Value.GetString() ?? name;
+                    else if (property.Name.Equals("updatedUtc", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value.TryGetDateTime(out var parsedUtc))
+                        updatedUtc = parsedUtc;
+                    else if (property.Name.Equals("documentJson", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value.ValueKind == JsonValueKind.String)
+                        documentJson = property.Value.GetString();
+                    else if (property.Name.Equals("document", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value.ValueKind == JsonValueKind.Object)
+                        documentJson = property.Value.GetRawText();
+                }
+
+                if (string.IsNullOrWhiteSpace(documentJson)) continue;
+                result.Add(new WebsiteNamedDraft
+                {
+                    Id = id,
+                    Name = name.Trim().Length is > 0 and <= 100 ? name.Trim() : "Website draft",
+                    DocumentJson = documentJson,
+                    UpdatedUtc = updatedUtc
+                });
+            }
+            return result;
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
 
     public sealed record DraftRequest(string Ticket, long ExpectedRevision, Guid DraftId);
 
@@ -919,7 +971,7 @@ public class WebsitePlatformController : ControllerBase
         if (delete) drafts.Remove(draft);
         else
         {
-            state.DraftJson = JsonSerializer.Serialize(draft.Document, JsonOptions);
+            state.DraftJson = draft.DocumentJson;
             state.ScheduledPublishUtc = null; state.ScheduledRevision = null;
             state.ScheduledActorJson = null; state.ScheduleError = null;
         }
