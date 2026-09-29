@@ -4444,7 +4444,9 @@
 
     document.getElementById('legend-cms-duplicate').addEventListener('click',()=>{
       if(!selected || selected.dataset.cmsSignalOnly || !selected.dataset.cmsCompositionId) return;
-      const entry=compositionEntry(selected.dataset.cmsCompositionId);
+      const serviceCard=businessServiceCardFor(selected);
+      const selectedId=serviceCard?.dataset?.cmsCompositionId || selected.dataset.cmsCompositionId;
+      const entry=compositionEntry(selectedId);
       if(!entry?.node) return;
       if(entry.node.type==='form' || entry.node.systemKey){
         alert('Protected system components cannot be duplicated. Duplicate the surrounding content instead.');
