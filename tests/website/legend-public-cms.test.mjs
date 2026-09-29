@@ -1790,8 +1790,18 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   finally {f.close();}
  });
 }
-test('page selector updates immediately from edited page metadata instead of keeping template labels',async()=>{
- const f=await domFixture({siteKey:'legend',pages:[{path:'/',label:'Hard coded home'},{path:'/about',label:'Hard coded about'}],doc:{pages:{'/':{title:'Live Home',elements:{},extras:[],navigation:{showInNavigation:true}},'/about':{title:'Live About',elements:{},extras:[],navigation:{showInNavigation:true}}}}});
+test('page selector updates immediately from canonical page metadata instead of supplied catalog labels',async()=>{
+ const doc=canonicalDocument();
+ doc.pages['/'].title='Live Home';
+ doc.pages['/about']={
+   title:'Live About',description:'About',
+   navigation:{label:null,showInNavigation:true,order:10,isDeleted:false},
+   dynamicBinding:null,
+   composition:[canonicalNode('about.section','section','section',{children:[
+     canonicalNode('about.title','heading','h1',{text:'About'})
+   ]})]
+ };
+ const f=await domFixture({siteKey:'legend',pages:[{path:'/',label:'Hard coded home'},{path:'/about',label:'Hard coded about'}],doc});
  try{
    let home=[...f.w.document.querySelector('#legend-cms-page-select').options].find(o=>o.value==='/');
    assert.equal(home.textContent,'Live Home');
@@ -1801,8 +1811,11 @@ test('page selector updates immediately from edited page metadata instead of kee
  }finally{f.close();}
 });
 
-test('business navigation-label edits immediately repaint the shared page selector',async()=>{
- const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Template Home'}],doc:{pages:{'/':{title:'Home title',elements:{},extras:[],navigation:{label:'Home',showInNavigation:true}}}}});
+test('business canonical navigation-label edits immediately repaint the shared page selector',async()=>{
+ const doc=canonicalBusinessNavigation(canonicalDocument());
+ doc.pages['/'].title='Home title';
+ doc.pages['/'].navigation={label:'Home',showInNavigation:true,order:0,isDeleted:false};
+ const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Template Home'}],doc});
  try{
    f.click('[data-open="page"]');
    f.input('#legend-cms-page-nav-label','Start Here');
@@ -1811,11 +1824,19 @@ test('business navigation-label edits immediately repaint the shared page select
  }finally{f.close();}
 });
 
-test('business selector includes imported custom routes from only the authorized draft',async()=>{
- const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Home'}],doc:{pages:{'/special-offer':{title:'Special offer',elements:{},extras:[]}}}});
+test('business selector includes canonical custom routes from only the authorized draft',async()=>{
+ const doc=canonicalBusinessNavigation(canonicalDocument());
+ doc.pages['/special-offer']={
+   title:'Special offer',description:'Special offer',
+   navigation:{label:'Special offer',showInNavigation:true,order:10,isDeleted:false},
+   dynamicBinding:null,
+   composition:[canonicalNode('special.section','section','section',{children:[
+     canonicalNode('special.title','heading','h1',{text:'Special offer'})
+   ]})]
+ };
+ const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Home'}],doc});
  try {assert.ok([...f.w.document.querySelector('#legend-cms-page-select').options].some(o=>o.value==='/special-offer'&&o.textContent==='Special offer'));}finally{f.close();}
 });
-
 
 test('manually resized canonical sections reclaim space and never become internal scroll containers',async()=>{
   const doc=canonicalDocument();
@@ -1830,18 +1851,27 @@ test('manually resized canonical sections reclaim space and never become interna
   }finally{f.close();}
 });
 
-test('published business hydration keeps the full custom-domain page catalog on every route',async()=>{
+test('published business v3 hydration keeps the full custom-domain page catalog on every route',async()=>{
   const pageCatalog=[
     {route:'/',label:'Home',template:true,showInNavigation:true,order:0},
     {route:'/about',label:'About',template:true,showInNavigation:true,order:10},
     {route:'/services',label:'Services',template:true,showInNavigation:true,order:20},
     {route:'/contact',label:'Contact',template:true,showInNavigation:true,order:30}
   ];
-  const html='<!doctype html><html><body data-page-key="about"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>About</h1></section></main><footer class="site-footer"></footer><script id="legend-cms-published-document" type="application/json"></script></body></html>';
+  const document=canonicalBusinessNavigation(canonicalDocument());
+  document.pages['/about']={
+    title:'About',description:'About',
+    navigation:{label:'About',showInNavigation:true,order:10,isDeleted:false},
+    dynamicBinding:null,
+    composition:[canonicalNode('about.section','section','section',{children:[
+      canonicalNode('about.title','heading','h1',{text:'About'})
+    ]})]
+  };
+  const html='<!doctype html><html><body data-page-key="about"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main></main><footer class="site-footer"></footer><script id="legend-cms-published-document" type="application/json"></script></body></html>';
   const dom=new JSDOM(html,{url:'https://camo.example/about',runScripts:'outside-only'});
   const {window:w}=dom;
   w.document.getElementById('legend-cms-published-document').textContent=JSON.stringify({
-    document:{pages:{'/about':{title:'About',navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}}}},
+    document,
     business:{id:'business-id',displayName:'CAMO'},
     pageCatalog,
     pageKey:'about',
@@ -1860,15 +1890,13 @@ test('published business hydration keeps the full custom-domain page catalog on 
   }finally{w.close();}
 });
 
-test('business editor navigation tabs do not follow links and drag order writes canonical page order',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
+test('business editor canonical navigation tabs do not follow links and drag order writes canonical page order',async()=>{
   const pages=[{path:'/',label:'Home'},{path:'/about',label:'About'},{path:'/services',label:'Services'}];
-  const doc={pages:{
-    '/':{navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
-    '/about':{navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}},
-    '/services':{navigation:{label:'Services',showInNavigation:true,order:20},elements:{},extras:[],sectionOrder:{}}
-  }};
-  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'CAMO'},pages,doc,html});
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.pages['/'].navigation={label:'Home',showInNavigation:true,order:0,isDeleted:false};
+  doc.pages['/about']={title:'About',description:'',navigation:{label:'About',showInNavigation:true,order:10,isDeleted:false},dynamicBinding:null,composition:[]};
+  doc.pages['/services']={title:'Services',description:'',navigation:{label:'Services',showInNavigation:true,order:20,isDeleted:false},dynamicBinding:null,composition:[]};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'CAMO'},pages,doc});
   try{
     const nav=f.w.document.querySelector('#primary-nav');
     const links=[...nav.querySelectorAll('[data-legend-page-nav="true"]')];
@@ -1903,13 +1931,13 @@ test('text scaling stays unbounded while manually resized sections remain non-sc
   assert.match(source,/el\.style\.minHeight = '0';[\s\S]*el\.style\.height = `\$\{style\.heightPx\}px`;[\s\S]*el\.style\.overflow = 'visible';/);
 });
 
-test('business header navigation renders once from the canonical page catalog and discards stale DOM links',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav><a href="/">Stale Home</a><a href="/about">Stale About</a><a href="/">Duplicate Home</a><a href="/services">Stale Services</a></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
-  const doc={pages:{
-    '/':{title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
-    '/team':{title:'Team',navigation:{label:'Our Team',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}},
-    '/hidden':{title:'Hidden',navigation:{label:'Hidden',showInNavigation:false,order:20},elements:{},extras:[],sectionOrder:{}}
-  }};
+test('business header navigation renders once from the canonical v3 page catalog and discards stale DOM links',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav><a href="/">Stale Home</a><a href="/about">Stale About</a><a href="/">Duplicate Home</a><a href="/services">Stale Services</a></nav></header><main></main><footer class="site-footer"></footer></body></html>';
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.pages['/'].title='Home';
+  doc.pages['/'].navigation={label:'Home',showInNavigation:true,order:0,isDeleted:false};
+  doc.pages['/team']={title:'Team',description:'',navigation:{label:'Our Team',showInNavigation:true,order:10,isDeleted:false},dynamicBinding:null,composition:[]};
+  doc.pages['/hidden']={title:'Hidden',description:'',navigation:{label:'Hidden',showInNavigation:false,order:20,isDeleted:false},dynamicBinding:null,composition:[]};
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages:[{path:'/',label:'Home'},{path:'/team',label:'Team'}],doc,html,search:''});
   try{
     const links=[...f.w.document.querySelectorAll('#primary-nav>a')];
@@ -1919,13 +1947,12 @@ test('business header navigation renders once from the canonical page catalog an
   }finally{f.close();}
 });
 
-test('business page list directly manages navigation label visibility and deletion from one page record',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
-  const doc={pages:{
-    '/':{title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},extras:[],sectionOrder:{}},
-    '/about':{title:'About',navigation:{label:'About',showInNavigation:true,order:10},elements:{},extras:[],sectionOrder:{}}
-  }};
-  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}],doc,html});
+test('business page list directly manages canonical navigation label visibility and deletion from one page record',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.pages['/'].title='Home';
+  doc.pages['/'].navigation={label:'Home',showInNavigation:true,order:0,isDeleted:false};
+  doc.pages['/about']={title:'About',description:'',navigation:{label:'About',showInNavigation:true,order:10,isDeleted:false},dynamicBinding:null,composition:[]};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}],doc});
   try{
     const rows=[...f.w.document.querySelectorAll('#legend-cms-page-list .legend-cms-page-row')];
     assert.equal(rows.length,2);
@@ -1944,8 +1971,6 @@ test('business page list directly manages navigation label visibility and deleti
     assert.equal([...f.w.document.querySelectorAll('#primary-nav>[data-legend-page-nav="true"]')].some(x=>x.dataset.legendPageRoute==='/about'),false);
   }finally{f.close();}
 });
-
-
 
 test('canonical sections duplicate directly in composition while shared shell remains immutable',async()=>{
   const doc=canonicalDocument({title:'Hero title'});
@@ -2015,11 +2040,11 @@ test('header and footer edits persist in canonical shared shell composition acro
   }finally{f.close();}
 });
 
-test('cart icon launches larger and stores adjustable size through canonical store settings',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><nav id="primary-nav" class="nav" data-public-nav></nav></header><main><section><h1>Home</h1></section></main><footer class="site-footer"></footer></body></html>';
-  const doc={store:{enabled:true,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},pages:{'/':{elements:{},extras:[],sectionOrder:{},navigation:{showInNavigation:true,order:0}}}};
+test('cart icon launches larger and stores adjustable size through canonical v3 store settings',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.store={enabled:true,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28,storeNavigation:{style:{}},cartNavigation:{style:{}}};
   const store={enabled:true,label:'Store',cartIcon:'cart',cartIconSizePx:28,businessKey:'fixture',storefrontUrl:'/store',cartUrl:'/store/cart',managerUrl:'/commerce/manage/products?ticket=ticket'};
-  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Business'},doc,store,html});
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Business'},doc,store});
   try{
     const svg=f.w.document.querySelector('.legend-store-cart-icon');
     assert.equal(svg.getAttribute('width'),'28');
@@ -2032,16 +2057,19 @@ test('cart icon launches larger and stores adjustable size through canonical sto
   }finally{f.close();}
 });
 
-test('site palette does not retain the template blue gradient stop',async()=>{
- const f=await domFixture({doc:{theme:{navy:'#000000',navyDeep:'#000000'}}});
+test('site palette does not retain the prior default blue gradient stop',async()=>{
+ const doc=canonicalDocument();
+ doc.theme={navy:'#000000',navyDeep:'#000000'};
+ const f=await domFixture({doc});
  try {assert.equal(f.w.document.documentElement.style.getPropertyValue('--web-navy-royal'),'#000000');}finally{f.close();}
 });
 
-
-test('scoped favicon is projected from the canonical website document without leaking editor tickets',async()=>{
+test('scoped favicon is projected from the canonical v3 website document without leaking editor tickets',async()=>{
   const media='https://site.example/api/website-content/media/11111111-1111-1111-1111-111111111111';
-  const html='<!doctype html><html><head><link rel="icon" href="/favicon.svg" type="image/svg+xml"></head><body data-page-key="home"><main><section><h1>Title</h1></section></main></body></html>';
-  const f=await domFixture({doc:{faviconImageDataUrl:media},html});
+  const doc=canonicalDocument();
+  doc.faviconImageDataUrl=media;
+  const html='<!doctype html><html><head><link rel="icon" href="/favicon.svg" type="image/svg+xml"></head><body data-page-key="home"><main></main></body></html>';
+  const f=await domFixture({doc,html});
   try {
     const link=f.w.document.querySelector('link[rel~="icon"]');
     assert.equal(new URL(link.href).pathname,'/api/website-content/media/11111111-1111-1111-1111-111111111111');
