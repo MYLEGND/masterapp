@@ -14,19 +14,21 @@ public interface IOpenAiAdsOnboardingService
 
 public sealed class OpenAiAdsOnboardingService(
     MasterAppDbContext db,
-    IOpenAiAdsAccountConnectionAuthority connections,
-    IOpenAiMeasurementHealthService measurementHealth,
+    IPlatformConnectionHealthAuthority runtimeHealth,
     IOpenAiAdsExecutionService ads,
     IBusinessPublicUrlResolver businessUrls,
     IConfiguration configuration) : IOpenAiAdsOnboardingService
 {
     public async Task<OpenAiAdsOnboardingSnapshot> GetAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
-        var connection = await connections.GetAsync(owner, ct);
-        var health = await measurementHealth.GetAsync(owner, ct);
+        var runtime = await runtimeHealth.ReadAsync(owner, ct);
+        var provider = runtime.OpenAi;
+        var connection = provider.Connection;
+        var health = provider.Delivery;
+        var providerVerified = provider.ProviderVerified;
 
         var conversionMapped = false;
-        if (connection.Connected && connection.HasManagementCredential)
+        if (providerVerified && connection.HasManagementCredential)
         {
             try
             {
@@ -49,18 +51,28 @@ public sealed class OpenAiAdsOnboardingService(
         var websiteVerified = await WebsiteVerifiedAsync(owner, ct);
         var steps = new List<OpenAiAdsReadinessStep>
         {
-            Step("connection", "ChatGPT Ads connected", connection.Connected,
-                connection.Connected ? "connected" : "not_connected",
-                connection.Connected ? "A scoped advertiser connection is stored." : "Connect the scoped ChatGPT Ads advertiser account."),
-            Step("account", "Advertiser account exists", !string.IsNullOrWhiteSpace(connection.AccountId),
-                !string.IsNullOrWhiteSpace(connection.AccountId) ? "verified" : "missing",
-                !string.IsNullOrWhiteSpace(connection.AccountId) ? connection.AccountName ?? connection.AccountId! : "No provider advertiser account has been verified."),
-            Step("authorization", "LEGEND authorized", connection.HasManagementCredential,
-                connection.HasManagementCredential ? "authorized" : "not_authorized",
-                connection.HasManagementCredential ? $"Authorization method: {connection.AuthorizationMethod ?? "provider credential"}." : "A management-capable advertiser credential is required."),
-            Step("account_selected", "Account selected", !string.IsNullOrWhiteSpace(connection.AccountId),
-                !string.IsNullOrWhiteSpace(connection.AccountId) ? "selected" : "not_selected",
-                !string.IsNullOrWhiteSpace(connection.AccountId) ? "The verified scoped account is the canonical selected account." : "Select and verify the advertiser account."),
+            Step("connection", "ChatGPT Ads connected", providerVerified,
+                providerVerified ? "verified" : connection.Connected ? provider.Status : "not_connected",
+                providerVerified
+                    ? "The scoped advertiser connection was verified live against the provider."
+                    : connection.Connected
+                        ? provider.Error ?? "The stored advertiser connection could not be verified live."
+                        : "Connect the scoped ChatGPT Ads advertiser account."),
+            Step("account", "Advertiser account exists", providerVerified && provider.Account is not null,
+                providerVerified && provider.Account is not null ? "verified" : "missing_or_unverified",
+                providerVerified && provider.Account is not null
+                    ? provider.Account.AccountName ?? provider.Account.AccountId
+                    : "No live provider advertiser account has been verified."),
+            Step("authorization", "LEGEND authorized", providerVerified && connection.HasManagementCredential,
+                providerVerified && connection.HasManagementCredential ? "authorized" : "not_authorized",
+                providerVerified && connection.HasManagementCredential
+                    ? $"Authorization method: {connection.AuthorizationMethod ?? "provider credential"}."
+                    : "A live management-capable advertiser authorization is required."),
+            Step("account_selected", "Account selected", providerVerified && !string.IsNullOrWhiteSpace(connection.AccountId),
+                providerVerified && !string.IsNullOrWhiteSpace(connection.AccountId) ? "selected" : "not_selected",
+                providerVerified && !string.IsNullOrWhiteSpace(connection.AccountId)
+                    ? "The live-verified scoped account is the canonical selected account."
+                    : "Select and verify the advertiser account."),
             Step("pixel", "OpenAI Pixel configured", connection.PixelConfigured,
                 connection.PixelConfigured ? "configured" : "not_configured",
                 connection.PixelConfigured ? "The canonical provider Pixel is bound to this scope." : "Configure the OpenAI Pixel."),
@@ -76,11 +88,13 @@ public sealed class OpenAiAdsOnboardingService(
         };
 
         var complete = steps.Count(x => x.Complete);
-        var ready = complete == steps.Count &&
+        var ready = providerVerified &&
+                    complete == steps.Count &&
                     connection.AccountApproved &&
                     (health.Status is "configured_no_delivery_evidence" or "provider_accepted");
         var overall = ready ? "ready_to_advertise"
-            : connection.Connected ? "setup_incomplete"
+            : providerVerified ? "setup_incomplete"
+            : connection.Connected ? "provider_unverified"
             : "not_connected";
 
         return new(owner, overall, ready, complete, steps.Count, connection, health, steps);
