@@ -1609,6 +1609,10 @@ test('business entity name remains profile-owned while canonical shell typograph
     assert.match(source,/entityBound = el\.hasAttribute\?\.\('data-business-name'\)/);
     assert.match(publicCss,/\.brand-wordmark strong\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
     assert.match(publicCss,/\.brand\{[^}]*min-width:0[^}]*max-width:min\(58vw,38rem\)/);
+    assert.match(businessBuildSource,/brand-wordmark business-brand-banner/);
+    assert.match(publicCss,/\.business-brand-banner\{[\s\S]*border:1px solid color-mix\(in srgb,var\(--gold\) 42%,transparent\)[\s\S]*background:linear-gradient\(110deg/);
+    assert.match(publicCss,/\.business-brand-banner strong\{[\s\S]*font-family:var\(--font\)[\s\S]*font-weight:900[\s\S]*letter-spacing:-\.035em/);
+    assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.business-brand-banner\{max-width:calc\(100vw - 92px\)/);
   }finally{f.close();}
 });
 
