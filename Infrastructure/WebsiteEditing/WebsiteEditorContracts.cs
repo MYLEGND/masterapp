@@ -290,7 +290,7 @@ public sealed class WebsiteNamedDraft
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
-    public WebsiteContentDocument Document { get; set; } = new();
+    public string DocumentJson { get; set; } = "{}";
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
 
