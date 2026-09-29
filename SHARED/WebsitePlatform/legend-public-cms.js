@@ -3454,7 +3454,7 @@
     if (scale) scale.disabled = isImage || isCode;
     if (width) width.disabled = sectionSelected;
     if (offsetX) offsetX.disabled = sectionSelected;
-    const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
+    const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
     document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(editStyle?.[key] || computed[key]) : editStyle?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
     document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(editStyle?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
@@ -3462,7 +3462,7 @@
     const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A' || isCommerceControl;
     if (selected.tagName === 'A' && !isCommerceControl) syncCtaControls(ov, values.href);
     const videoGroup = document.getElementById('legend-cms-video-group');
-    if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO' || !!selected.dataset.cmsCompositionId;
+    if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
     const layoutMode = document.getElementById('legend-cms-layout-mode'); if (layoutMode) layoutMode.value = editLayout?.mode || 'free';
     const layoutDirection = document.getElementById('legend-cms-layout-direction'); if (layoutDirection) layoutDirection.value = editLayout?.direction || 'column';
     const layoutGap = document.getElementById('legend-cms-layout-gap'); if (layoutGap) layoutGap.value = editLayout?.gapPx ?? '';
@@ -3543,16 +3543,21 @@
     try {
       const body = new FormData(); body.append('ticket', editorTicket); body.append('file', file);
       const response = await fetch(`${API_BASE}/api/website-content/manage/media`, { method: 'POST', body });
-      const result = await response.json();
-      if (!response.ok || !result.url) throw new Error(result.message || result.error || 'Upload failed.');
+      const asset = await response.json();
+      if (!response.ok || !asset?.id || !asset?.url || !asset?.contentType)
+        throw new Error(asset?.message || asset?.error || 'Upload failed.');
       if (status) status.textContent = 'Media uploaded; save your draft to retain placement';
-      return result.url;
+      return asset;
     } catch (error) { if (status) status.textContent = error.message; return null; }
   }
-  async function readImage(file, callback) {
-    if (!file) return;
-    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) { alert('Use a JPEG, PNG, or WebP image.'); return; }
-    const url = await uploadMedia(file); if (url) callback(url);
+
+  async function uploadImageAsset(file) {
+    if (!file) return null;
+    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
+      alert('Use a JPEG, PNG, or WebP image.');
+      return null;
+    }
+    return await uploadMedia(file);
   }
 
   function moveSelectedSection(delta) {
@@ -3575,29 +3580,29 @@
     refreshLayers();
   }
 
-  function addImage(file) {
+  async function addImage(file) {
     if(!selectedSection){
       alert('Select content inside the section where you want the new image.');
       return;
     }
-    readImage(file,dataUrl=>{
-      const parentId=selectedSection?.dataset?.cmsCompositionId;
-      const parent=parentId ? compositionNode(parentId) : null;
-      if(!parent){alert('Select a canonical section before adding an image.');return;}
-      checkpoint();
-      const id=freshStableId();
-      const node={
-        id,type:'image',tag:'img',className:'legend-cms-image',
-        mediaAssetId:compositionMediaAssetId(dataUrl),mediaUrl:dataUrl,alt:'',
-        signals:[],style:{widthPercent:70,paddingTop:16,paddingBottom:16},
-        breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
-      };
-      parent.children ||= [];
-      parent.children.push(node);
-      renderCanonicalCompositionPage();
-      setSelected(findEditableElement(id));
-      markDirty();
-    });
+    const asset=await uploadImageAsset(file);
+    if(!asset) return;
+    const parentId=selectedSection?.dataset?.cmsCompositionId;
+    const parent=parentId ? compositionNode(parentId) : null;
+    if(!parent){alert('Select a canonical section before adding an image.');return;}
+    checkpoint();
+    const id=freshStableId();
+    const node={
+      id,type:'image',tag:'img',className:'legend-cms-image',
+      mediaAssetId:asset.id,alt:'',
+      signals:[],style:{widthPercent:70,paddingTop:16,paddingBottom:16},
+      breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+    };
+    parent.children ||= [];
+    parent.children.push(node);
+    renderCanonicalCompositionPage();
+    setSelected(findEditableElement(id));
+    markDirty();
   }
 
   function removeSelected() {
@@ -3697,7 +3702,7 @@
     if (undoStack.length > 80) undoStack.shift();
     redoStack.length = 0;
   }
-  function restoreHistory(from, to) {
+  function restoreCanonicalV3History(from, to) {
     if (!from.length) return;
     to.push(historySnapshot());
     baselineNodes.forEach(({ el, parent, next }) => { if (el.dataset.cmsSignalOnly) return; if (parent) parent.insertBefore(el, next?.parentElement === parent ? next : null); const original = rememberOriginal(el); el.hidden = original.hidden; if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) { setContentText(el, original.text); } if (original.href != null) el.setAttribute('href',original.href); if (original.src != null) el.setAttribute('src',original.src); applyStyle(el, null); });
@@ -4157,8 +4162,8 @@
       const node=selectedWebsiteModel();
       if(!node) return;
       checkpoint();
-      node.mediaAssetId=asset.id || compositionMediaAssetId(asset.url);
-      node.mediaUrl=asset.url;
+      node.mediaAssetId=asset.id;
+      delete node.mediaUrl;
       if(isImage) node.alt ||= asset.name || '';
       applyCompositionNode(selected,node);
       syncEditorControls();
@@ -4176,8 +4181,7 @@
     const node={
       id,type:isImage?'image':'video',tag:isImage?'img':'video',
       className:isImage?'legend-cms-image':null,
-      mediaAssetId:asset.id || compositionMediaAssetId(asset.url),
-      mediaUrl:asset.url,
+      mediaAssetId:asset.id,
       alt:isImage?(asset.name||''):null,
       signals:[],style:{widthPercent:isImage?70:100},breakpointStyles:{},
       layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
@@ -4522,8 +4526,8 @@
       if (event.target.closest?.('input,textarea,select,[contenteditable="true"]')) return;
       if (key === 'z' || key === 'y') {
         event.preventDefault();
-        if (key === 'y' || event.shiftKey) restoreHistory(redoStack, undoStack);
-        else restoreHistory(undoStack, redoStack);
+        if (key === 'y' || event.shiftKey) restoreCanonicalV3History(redoStack, undoStack);
+        else restoreCanonicalV3History(undoStack, redoStack);
       }
     });
     refreshHistoryControls();
@@ -4837,7 +4841,7 @@
     if (content) content.appendChild(selectedActions);
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
-    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-video-file">Replace video from this website's media library</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     document.getElementById('legend-cms-agent-master-source')?.addEventListener('click',()=>openBrowserAgentSource('site'));
@@ -4916,7 +4920,7 @@
     document.getElementById('legend-cms-media-refresh')?.addEventListener('click',()=>void refreshMediaLibrary());
     document.getElementById('legend-cms-media-search')?.addEventListener('input',()=>void refreshMediaLibrary());
     document.getElementById('legend-cms-media-kind')?.addEventListener('change',()=>void refreshMediaLibrary());
-    document.getElementById('legend-cms-media-upload')?.addEventListener('change',async event=>{ const file=event.target.files?.[0]; if(!file) return; const url=await uploadMedia(file); event.target.value=''; if(url) await refreshMediaLibrary(); });
+    document.getElementById('legend-cms-media-upload')?.addEventListener('change',async event=>{ const file=event.target.files?.[0]; if(!file) return; const asset=await uploadMedia(file); event.target.value=''; if(asset) await refreshMediaLibrary(); });
     document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void refreshQualityInspector());
     document.getElementById('legend-cms-breakpoint')?.addEventListener('change', event => { editorBreakpointKey=event.target.value; applyBreakpointPreview(); syncBreakpointControls(); });
     document.getElementById('legend-cms-breakpoint-add')?.addEventListener('click', () => {
@@ -4991,28 +4995,25 @@
       if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); if (ov.style) delete ov.style[button.dataset.colorReset];
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
-    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedWebsiteModel(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyCompositionNode(selected, ov); markDirty(); }));
+    ['href','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key === 'href' && !safeUrl(value)) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedWebsiteModel(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyCompositionNode(selected, ov); markDirty(); }));
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => {
       const video = selected;
-      if (video?.tagName !== 'VIDEO') return;
-      const url = await uploadMedia(event.target.files?.[0]);
-      if (!url || selected !== video) return;
+      if (video?.tagName !== 'VIDEO' || !video.dataset.cmsCompositionId) return;
+      const asset = await uploadMedia(event.target.files?.[0]);
+      event.target.value='';
+      if (!asset || selected !== video || !String(asset.contentType).startsWith('video/')) return;
       checkpoint();
-      const ov = selectedWebsiteModel();
-      if (video.dataset.cmsCompositionId) {
-        ov.mediaAssetId = compositionMediaAssetId(url);
-        ov.mediaUrl = url;
-        delete ov.videoUrl;
-      } else {
-        ov.videoUrl = url;
-      }
-      applyCompositionNode(video, ov);
+      const node = selectedWebsiteModel();
+      if(!node) return;
+      node.mediaAssetId = asset.id;
+      delete node.mediaUrl;
+      applyCompositionNode(video, node);
       syncEditorControls();
       markDirty();
     });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyCompositionNode(selected, ov); markDirty(); });
-    document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
-    document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
+    document.getElementById('legend-cms-undo').addEventListener('click', () => restoreCanonicalV3History(undoStack, redoStack));
+    document.getElementById('legend-cms-redo').addEventListener('click', () => restoreCanonicalV3History(redoStack, undoStack));
     installDirectCanvasControls(preview);
     showPanel('gpt');
   }
@@ -5235,35 +5236,31 @@
     ['legend-cms-scale','legend-cms-width','legend-cms-height','legend-cms-padding-top','legend-cms-padding-bottom','legend-cms-offset-x','legend-cms-offset-y','legend-cms-align','legend-cms-hidden']
       .forEach(id => document.getElementById(id)?.addEventListener('input', updateSelectedFromControls));
 
-    document.getElementById('legend-cms-image')?.addEventListener('change', e => {
+    document.getElementById('legend-cms-image')?.addEventListener('change', async e => {
       const file = e.target.files?.[0];
-      if (!selected || !(selected instanceof HTMLImageElement)) return;
       const imageTarget = selected;
-      readImage(file, dataUrl => {
-        if (selected !== imageTarget) return;
-        checkpoint();
-        const ov = selectedWebsiteModel();
-        if (!ov) return;
-        if (selected.dataset.cmsCompositionId) {
-          ov.mediaAssetId = compositionMediaAssetId(dataUrl);
-          ov.mediaUrl = dataUrl;
-        } else {
-          ov.imageDataUrl = dataUrl;
-        }
-        selected.src = mediaUrl(dataUrl);
-        markDirty();
-      });
+      if (!imageTarget?.dataset?.cmsCompositionId || !(imageTarget instanceof HTMLImageElement)) return;
+      const asset=await uploadImageAsset(file);
+      e.target.value='';
+      if(!asset || selected!==imageTarget) return;
+      checkpoint();
+      const node=selectedWebsiteModel();
+      if(!node) return;
+      node.mediaAssetId=asset.id;
+      delete node.mediaUrl;
+      imageTarget.src=mediaUrl(asset.url);
+      markDirty();
     });
 
-    document.getElementById('legend-cms-favicon')?.addEventListener('change', e => {
-      const file = e.target.files?.[0];
-      readImage(file, dataUrl => {
-        checkpoint();
-        documentState.faviconImageDataUrl = dataUrl;
-        applyFavicon(dataUrl);
-        syncFaviconControls();
-        markDirty();
-      });
+    document.getElementById('legend-cms-favicon')?.addEventListener('change', async e => {
+      const asset=await uploadImageAsset(e.target.files?.[0]);
+      e.target.value='';
+      if(!asset) return;
+      checkpoint();
+      documentState.faviconImageDataUrl=asset.url;
+      applyFavicon(asset.url);
+      syncFaviconControls();
+      markDirty();
     });
     document.getElementById('legend-cms-favicon-remove')?.addEventListener('click', () => {
       if (!documentState.faviconImageDataUrl) return;
@@ -5291,7 +5288,7 @@
 
     document.getElementById('legend-cms-save')?.addEventListener('click', chooseDraft);
     document.getElementById('legend-cms-publish')?.addEventListener('click', () => save(true));
-    document.getElementById('legend-cms-image-upload')?.addEventListener('change', e => addImage(e.target.files?.[0]));
+    document.getElementById('legend-cms-image-upload')?.addEventListener('change', async e => { await addImage(e.target.files?.[0]); e.target.value=''; });
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
