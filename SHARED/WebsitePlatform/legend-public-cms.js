@@ -71,6 +71,7 @@
   let activeEditorPanel = 'content';
   let dirty = false;
   let sourceEditorDirty = false;
+  let templateRepairPending = false;
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
@@ -252,6 +253,7 @@
           ? {...value.navigation}
           : {showInNavigation:true,order:0,isDeleted:false},
         dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
+        systemTemplateKey: typeof value.systemTemplateKey === 'string' ? value.systemTemplateKey : null,
         composition: normalizeCompositionNodes(value.composition)
       };
     }
@@ -345,6 +347,31 @@
     page.composition ||= [];
     page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
     return page;
+  }
+
+  function pageUsesSystemTemplate(page = pageState()) {
+    return SITE_KEY === 'protect' &&
+      typeof page?.systemTemplateKey === 'string' &&
+      page.systemTemplateKey.startsWith('protect_template:');
+  }
+
+  function containsProtectedRuntimeForm(nodes) {
+    let found=false;
+    walkComposition(nodes,node=>{
+      if(String(node?.systemKey || '').startsWith('protect_runtime_form:')) {
+        found=true;
+        return false;
+      }
+    });
+    return found;
+  }
+
+  function applyTemplateBackedCompositionPage() {
+    const page=pageState();
+    walkComposition(page.composition || [],node=>{
+      const el=findEditableElement(node.id);
+      if(el) applyCompositionNode(el,node);
+    });
   }
 
   function usesCanonicalComposition() {
@@ -451,6 +478,23 @@
       document.querySelector('.site-footer')
     ].filter(Boolean);
 
+    // Stable system-form identities are assigned before generic DOM IDs.
+    document.querySelectorAll('[data-legend-public-inquiry-form]').forEach((mount,index)=>{
+      mount.dataset.cmsId = index ? 'form.canonical_inquiry.' + (index + 1) : 'form.canonical_inquiry';
+      mount.dataset.cmsEditable = 'true';
+      mount.dataset.cmsSystemForm = 'canonical_inquiry';
+      rememberOriginal(mount);
+    });
+    if (SITE_KEY === 'protect') {
+      document.querySelectorAll('form[data-form-key]:not([data-website-inquiry])').forEach((form,index)=>{
+        const formKey=safeId(form.dataset.formKey || form.id || ('runtime-' + (index + 1))) || ('runtime-' + (index + 1));
+        form.dataset.cmsId='runtime.form.'+formKey;
+        form.dataset.cmsEditable='true';
+        form.dataset.cmsSystemForm='protect_runtime_form:'+formKey;
+        rememberOriginal(form);
+      });
+    }
+
     const sections = [...document.querySelectorAll(sectionCandidates), ...document.querySelectorAll('.site-header,.site-footer')];
     sections.forEach((section, index) => {
       if (!section.dataset.cmsSection) {
@@ -463,7 +507,7 @@
 
     let counter = 0, addedCounter = 0;
     roots.forEach(root => {
-      root.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article,header,footer').forEach(el => {
+      root.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article,header,footer,form,fieldset').forEach(el => {
         if (!canEditElement(el)) return;
         if (!['IMG','VIDEO','A','DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) && el.children.length > 0) return;
         if (!el.dataset.cmsId) {
@@ -1211,20 +1255,45 @@
     const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
     const extra = el.dataset.cmsExtraId ? legacyMigrationExtraById(el.dataset.cmsExtraId) : null;
 
-    if (tag === 'form' && el.matches('[data-website-inquiry]')) {
+    if (el.matches?.('[data-legend-public-inquiry-form]') ||
+        (tag === 'form' && el.matches('[data-website-inquiry]'))) {
       return {
         id, type:'form', tag:'form', className:cleanCompositionClassName(el),
-        title:el.querySelector('legend')?.textContent || extra?.title || 'Send an inquiry',
-        text:el.querySelector('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
+        title:el.querySelector?.('legend')?.textContent || extra?.title || 'Send an inquiry',
+        text:el.querySelector?.('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
         systemKey:'canonical_inquiry', signals:cloneCanonicalValue(model.signals || extra?.signals || []),
         style:cloneCanonicalValue(model.style || extra?.style || {}),
         breakpointStyles:cloneCanonicalValue(model.breakpointStyles || extra?.breakpointStyles || {}),
         layout:cloneCanonicalValue(model.layout || extra?.layout || {}),
         breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || extra?.breakpointLayouts || {}),
         animations:cloneCanonicalValue(model.animations || extra?.animations || []),
-        dataBinding:cloneCanonicalValue(model.dataBinding || extra?.dataBinding || null),
+        dataBinding:null,
         children:[]
       };
+    }
+
+    if (tag === 'form' && SITE_KEY === 'protect' && el.dataset.formKey) {
+      const formKey=safeId(el.dataset.formKey || el.id || id) || 'runtime';
+      const runtimeNode={
+        id, type:'container', tag:'div', className:cleanCompositionClassName(el),
+        systemKey:'protect_runtime_form:'+formKey,
+        signals:[],
+        style:cloneCanonicalValue(model.style || {}),
+        breakpointStyles:cloneCanonicalValue(model.breakpointStyles || {}),
+        layout:cloneCanonicalValue(model.layout || {}),
+        breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(model.animations || []),
+        dataBinding:null,
+        children:[]
+      };
+      let childIndex=0;
+      for(const child of [...el.children].filter(child =>
+        child instanceof HTMLElement &&
+        !['input','select','textarea','script','style','noscript'].includes(child.tagName.toLowerCase()))) {
+        const childNode=materializeCompositionNode(child,id+'.child.'+(++childIndex));
+        if(childNode) runtimeNode.children.push(childNode);
+      }
+      return runtimeNode;
     }
 
     if (extra?.type === 'code' && el.classList.contains('legend-legacy-migration-code')) {
@@ -1249,7 +1318,7 @@
 
     let type = 'text';
     if (tag === 'section') type='section';
-    else if (['div','article','header','footer','nav','ul','ol'].includes(tag)) type='container';
+    else if (['div','article','header','footer','nav','ul','ol','fieldset'].includes(tag)) type='container';
     else if (/^h[1-6]$/.test(tag)) type='heading';
     else if (tag === 'a' || tag === 'button') type=actionKey ? 'cta' : 'link';
     else if (tag === 'img') type='image';
@@ -2243,7 +2312,21 @@
     }else{
       document.querySelectorAll('.legend-legacy-migration-node').forEach(node=>{scaledElements.delete(node);node.remove();});
       renderCanonicalShell();
-      renderCanonicalCompositionPage();
+      const page=pageState();
+      if(pageUsesSystemTemplate(page)){
+        const liveRuntime=document.querySelector('form[data-form-key]:not([data-website-inquiry])');
+        if(liveRuntime && !containsProtectedRuntimeForm(page.composition)){
+          // Repair early v3 drafts that flattened an executable form into generic
+          // content. Re-materialize presentation from the still-mounted server
+          // template, while the form execution stays outside WebsiteContentDocument.
+          page.composition=materializeCurrentPageComposition();
+          templateRepairPending=true;
+          dirty=true;
+        }
+        applyTemplateBackedCompositionPage();
+      }else{
+        renderCanonicalCompositionPage();
+      }
     }
 
     if(SITE_KEY==='business' && (managementPayload || renderInput))
@@ -2513,6 +2596,7 @@
       route:currentPageRoute(),
       title:pageState().title ?? originalTitle,
       description:pageState().description ?? originalDescription,
+      systemTemplateKey:pageState().systemTemplateKey || null,
       composition:materializeCurrentPageComposition(),
       shell:materializeCurrentShell()
     };
@@ -2631,6 +2715,7 @@
         ? snapshot.title.slice(0,-previewSuffix.length) : snapshot.title;
       page.title=snapshotTitle ?? page.title;
       page.description=snapshot.description ?? page.description;
+      page.systemTemplateKey=snapshot.systemTemplateKey ?? page.systemTemplateKey ?? null;
       page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
       if(SITE_KEY==='business' && !page.navigation.label && routeEntry?.label) page.navigation.label=routeEntry.label;
       page.composition=normalizeCompositionNodes(snapshot.composition);
@@ -5497,6 +5582,12 @@
 
       if(legacyMigration && payload.capabilities?.compositionV3===true){
         await materializeCanonicalSite();
+      }
+
+      if(!materializeMode && templateRepairPending && !legacyMigration){
+        const repaired=await save(false);
+        if(!repaired) throw new Error('Protected form presentation could not be repaired safely. Publishing remains blocked.');
+        templateRepairPending=false;
       }
 
       preservePreviewNavigation();
