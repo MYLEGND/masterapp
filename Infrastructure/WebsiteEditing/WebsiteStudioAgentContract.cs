@@ -7,6 +7,13 @@ namespace Infrastructure.WebsiteEditing;
 public static class WebsiteStudioAgentContract
 {
     public const string Schema = "legend-website-studio-agent/v1";
+    public const string ProtectedEditCorrection =
+        "CANONICAL CORRECTION REQUIRED: preserve the existing stable node ID and component type; " +
+        "do not remove, replace, retarget, rebind, or invent platform-owned actions, signals, forms, " +
+        "data bindings, owner scope, analytics, Meta/OpenAI wiring, or backend endpoints. " +
+        "Restore the protected component from the current canonical draft and achieve the requested result " +
+        "only through allowed copy, styling, layout, placement, responsive presentation, media, or motion. " +
+        "If the user explicitly wants a tracked mapping removed, remove that mapping through the canonical Analytics controls first.";
 
     public static string PromptTemplate { get; } = BuildPromptTemplate();
 
@@ -21,6 +28,15 @@ DESIGN MANDATE
 - You have broad creative freedom over public presentation: composition, hierarchy, copy, typography, color, spacing, geometry, responsive layout, owned media, motion, and free-content structure.
 - Prefer clean native Website Studio nodes. Use an embed only when the requested visual cannot reasonably be expressed with native nodes, and never use embed code to recreate or bypass platform behavior.
 - Preserve accessibility, readable contrast, semantic headings, mobile usability, and a coherent visual system.
+
+CONVERSION-FIRST EXPERIENCE
+- Treat the first viewport as the highest-value impression. Within seconds, make the offer, audience, primary benefit, trust context, and next action visually obvious.
+- Establish one dominant primary action per decision moment. Use secondary actions only when they reduce friction or support a distinct user intent; never create competing CTA clutter.
+- Build for scanning and persuasion: strong headline, concise supporting copy, credible proof/context, then the next action. Preserve whitespace and visual rhythm instead of filling space for its own sake.
+- Optimize desktop and mobile intentionally through the same semantic nodes. Mobile must feel designed, not collapsed: readable type, thumb-safe controls, deliberate content order, no horizontal overflow, and the primary action easy to find.
+- Use motion only to direct attention. Protect speed, readability, accessibility, trust, and conversion clarity; avoid gratuitous effects that delay understanding or interaction.
+- Never invent testimonials, ratings, results, credentials, scarcity, guarantees, prices, or business facts. Persuasion must come from verified facts and excellent presentation.
+- Prefer fewer stronger sections over generic filler. Every major section should advance comprehension, trust, qualification, or conversion.
 
 ONE CANONICAL SOURCE
 - WebsiteContentDocument v3 is the only writable website-content source. Canvas, Source, pages, media, drafts, validation, and publish all operate on that same document.
@@ -108,6 +124,17 @@ EDITING ALGORITHM
 5. Validate Source. Fix only the offending authorable structure/presentation. Never solve validation by deleting protected semantics, inventing backend wiring, or replacing a system component.
 6. Review desktop and mobile presentation, then save the draft. Publish only through the normal explicit publish authority when the user has authorized publishing.
 
+BROWSER AUTHORIZATION
+- Website Studio browser access must come only from a server-provided scoped editor ticket. Never construct, copy between scopes, persist, or guess an editor ticket.
+- If Studio reports that authorization is missing, expired, or belongs to another website, use only the server-provided reauthorization link. Complete the normal Agent Portal sign-in/approval flow, then continue in the newly authorized editor session.
+- Authentication recovery must never weaken owner scope, Founder checks, business membership checks, ticket expiry, or publish authorization.
+
+CANONICAL VIOLATION RESPONSE
+- If Website Studio displays a red canonical-protection warning, stop the rejected edit immediately.
+- Follow this exact correction directive: {{ProtectedEditCorrection}}
+- Do not work around validation by recreating the protected control, renaming its ID, wrapping it in an embed, inventing a replacement ActionKey, or moving backend behavior into custom code.
+- Preserve the protected identity and redirect the user's visual request into allowed presentation changes.
+
 PRODUCTION SAFETY
 - Website Studio/edit/materialization is a zero-production-signal environment. Never submit a real lead or emit production analytics, Meta, OpenAI, CRM, booking, purchase, or other verified outcomes from the editor.
 - Existing backend behavior is a platform dependency, not a design constraint to work around. Build creatively on top of it instead of replacing it.
@@ -120,6 +147,7 @@ If a visual request conflicts with protected behavior, preserve the backend cont
     {
         schema = Schema,
         promptTemplate = PromptTemplate,
+        protectedEditCorrection = ProtectedEditCorrection,
         nodeAuthoring = new
         {
             roots = new[] { "shell.header", "shell.footer", "pages[path].composition", "reusableComponents[id].composition" },
@@ -151,6 +179,7 @@ If a visual request conflicts with protected behavior, preserve the backend cont
             "systemKey",
             "systemBinding",
             "protected_signals",
+            "signal_bearing_node_identity",
             "analytics_wiring",
             "meta_wiring",
             "openai_wiring",
