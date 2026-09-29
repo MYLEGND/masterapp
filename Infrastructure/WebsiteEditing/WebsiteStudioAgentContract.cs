@@ -41,6 +41,14 @@ FORMS AND LEAD INTAKE
 - You may restyle the form and rewrite visible labels/copy where the editor permits it.
 - You may not redirect submissions, alter lead ownership, invent a second form intake endpoint, or change analytics/advertising outcome wiring.
 
+PROTECTED PRODUCT / RISK FORMS
+- Protect quote, risk-assessment, recommendation/results, and scheduling flows are server-template-backed system experiences.
+- Keep the server-rendered runtime form mounted. Never decompose it into generic blocks, replace it with custom HTML, or recreate its execution model.
+- You may change only allowed public presentation: visible copy/labels, typography, color, spacing, geometry, responsive layout, media, and other styling exposed by Website Studio.
+- Do not add, remove, rename, or reorder backend form fields; alter required/validation rules; modify hidden attribution or anti-forgery inputs; change step state; change submit endpoints; bypass result/recommendation logic; or alter scheduling handoff.
+- Protected form SystemTemplateKey, SystemKey, endpoint, state, validation, lead persistence, owner scope, attribution, analytics, Meta/OpenAI conversions, CRM outcomes, and booking behavior remain server-owned.
+- Website Studio/edit/materialization mode is preview-only for production outcomes: never submit a real lead or emit production analytics/provider conversion signals from the editor.
+
 CTA RULES
 - Existing preset CTA behavior is locked. You may rename visible CTA text and restyle/reposition it.
 - Do not replace or edit the ActionKey of a protected CTA.
@@ -94,6 +102,12 @@ If a requested visual change conflicts with a protected backend contract, keep t
             "commerce_scope",
             "form_endpoint",
             "form_field_semantics",
+            "system_template_key",
+            "form_step_model",
+            "form_validation",
+            "hidden_attribution_fields",
+            "result_flow",
+            "booking_handoff",
             "lead_routing",
             "publish_authority"
         }
