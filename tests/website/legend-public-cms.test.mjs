@@ -79,6 +79,16 @@ function canonicalDocument({
   };
 }
 
+function canonicalBusinessNavigation(doc=canonicalDocument()) {
+  doc.shell={
+    header:[canonicalNode('shell.header','container','header',{className:'site-header',children:[
+      canonicalNode('shell.primary-nav','container','nav',{className:'nav',systemKey:'primary_navigation',children:[]})
+    ]})],
+    footer:[canonicalNode('shell.footer','container','footer',{className:'site-footer',children:[]})]
+  };
+  return doc;
+}
+
 function visitCanonicalNodes(nodes,visitor) {
   for(const node of nodes || []) {
     visitor(node);
