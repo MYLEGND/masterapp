@@ -10,6 +10,7 @@ async function fixture({ caps = {}, failPublish = false, scope = 'business' } = 
   const { window } = dom, calls = [];
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   window.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new window.Event('close')); };
+  window.confirm = () => true;
   window.URL.createObjectURL = () => 'blob:export'; window.URL.revokeObjectURL = () => {};
   window.HTMLAnchorElement.prototype.click = function () {};
   const state = { revision: 7, publishedRevision: 6, document: { version: 1, elements: {} }, capabilities: { canPublish: true, canImport: true, canManageDomains: true, canSchedule: true, ...caps }, history: [{ versionId: 'version-a', revision: 6, createdUtc: '2026-09-01T10:00:00Z' }], readiness: { checks: [] } };
@@ -38,9 +39,7 @@ test('profile session authorizes scope; publish requires confirmation and carrie
   assert.equal(f.calls[0].options.credentials, 'same-origin');
   assert.equal(f.calls[1].url.searchParams.get('ticket'), 'signed-scope-a');
   assert.equal(f.calls[1].options.credentials, 'omit');
-  await f.click('Publish draft');
-  assert.equal(f.calls.filter(x => x.path.endsWith('/publish')).length, 0);
-  await f.click('Publish draft');
+  await f.click('Publish');
   assert.deepEqual(f.calls.find(x => x.path.endsWith('/publish')).body, { ticket: 'signed-scope-a', expectedRevision: 7 });
   assert.match(f.document.querySelector('[role=status]').textContent, /published/); f.dom.window.close();
 });
@@ -50,17 +49,17 @@ test('editor permissions hide owner-only operations while keeping draft editor',
   const editorLink = [...f.document.querySelectorAll('a')].find(a => new URL(a.href, f.window.location.href).pathname === '/profile/edit');
   assert.ok(editorLink);
   assert.equal(new URL(editorLink.href, f.window.location.href).searchParams.get('legendEdit'), 'signed-scope-a');
-  for (const text of ['Publish draft', 'Domains', 'Schedule publication', 'Import content']) assert.equal([...f.document.querySelectorAll('button')].some(n => n.textContent.startsWith(text)), false);
-  await f.click('Version history'); assert.equal([...f.document.querySelectorAll('button')].some(n => n.textContent === 'Restore'), false); f.dom.window.close();
+  for (const text of ['Publish', 'Domains', 'Schedule', 'Import']) assert.equal([...f.document.querySelectorAll('button')].some(n => n.textContent.trim() === text), false);
+  await f.click('History'); assert.equal([...f.document.querySelectorAll('button')].some(n => n.textContent === 'Restore'), false); f.dom.window.close();
 });
 
 test('revision conflict retains workspace and displays server error without false success', async () => {
-  const f = await fixture({ failPublish: true }); await f.click('Publish draft'); await f.click('Publish draft');
+  const f = await fixture({ failPublish: true }); await f.click('Publish');
   assert.equal(f.document.querySelector('[role=status]').textContent, 'Draft changed elsewhere'); assert.ok(f.document.querySelector('dialog').open); f.dom.window.close();
 });
 
 test('authorized import accepts own export draft and displays actionable migration report', async () => {
-  const f = await fixture(); await f.click('Import content');
+  const f = await fixture(); await f.click('Import');
   const file = f.document.querySelector('input[type=file]');
   Object.defineProperty(file, 'files', { value: [{ size: 20, text: async () => JSON.stringify({ draft: { version: 1, elements: { a: { text: 'Owned content' } } } }) }] });
   await f.click('Import draft'); assert.equal(f.calls.some(c => c.path.endsWith('/import')), false);
@@ -100,7 +99,7 @@ test('connect domain returns one registrar-ready routing record on the first req
 });
 
 test('schedule sends ISO time and current draft revision', async () => {
-  const f = await fixture(); await f.click('Schedule publication');
+  const f = await fixture(); await f.click('Schedule');
   f.document.querySelector('input[type=datetime-local]').value = '2099-01-02T12:30'; await f.click('Schedule draft');
   const body = f.calls.find(c => c.path.endsWith('/schedule')).body; assert.equal(body.expectedRevision, 7); assert.match(body.publishUtc, /^2099-01-02T/); f.dom.window.close();
 });
@@ -129,7 +128,7 @@ test('agent scope reuses the already-authorized management session for direct ed
 test('agent scope excludes business domains and inbox; empty readiness is explicit', async () => {
   const f = await fixture({ scope: 'agent' });
   assert.equal([...f.document.querySelectorAll('button')].some(n => /^(Domains|Inquiries)/.test(n.textContent)), false);
-  await f.click('Launch readiness'); assert.match(f.document.body.textContent, /No readiness checks are available/); f.dom.window.close();
+  await f.click('Readiness'); assert.match(f.document.body.textContent, /No readiness checks are available/); f.dom.window.close();
 });
 
 
@@ -145,21 +144,47 @@ test('business details edits public facts through canonical API without ownershi
 
 test('usage displays measured storage and counts without inferred pricing', async () => {
   const f = await fixture(); f.state.usage = { mediaBytes: 1048576, mediaCount: 2, publishedVersions: 3, importedPages: 4 };
-  await f.click('Website usage'); assert.match(f.document.body.textContent, /1.00 MB/); assert.match(f.document.body.textContent, /Published versions/); f.dom.window.close();
+  await f.click('Usage'); assert.match(f.document.body.textContent, /1.00 MB/); assert.match(f.document.body.textContent, /Published versions/); f.dom.window.close();
 });
 
 
 test('named business draft opens the editor with the same authorized scope', async () => {
   const f = await fixture();
   f.state.drafts = [{ id: 'draft-a', name: 'Variant A', updatedUtc: '2026-09-23T10:00:00Z' }];
-  await f.click('Saved drafts');
-  await f.click('Load for editing');
-  await f.click('Load draft');
-  const link = [...f.document.querySelectorAll('a')].find(a => a.textContent === 'Edit this draft');
-  assert.ok(link);
-  assert.equal(new URL(link.href).searchParams.get('legendEdit'), 'signed-scope-a');
+  await f.click('Drafts');
+  await f.click('Edit');
   const load = f.calls.find(call => call.path.endsWith('/drafts/load'));
   assert.equal(load.body.draftId, 'draft-a');
   assert.equal(load.body.ticket, 'signed-scope-a');
+  assert.match(source,/location\.href=editorHref\(\)/);
+  assert.doesNotMatch(source,/section\('Draft loaded'\)/);
+  assert.doesNotMatch(source,/Edit this draft/);
+  f.dom.window.close();
+});
+
+
+test('workspace overview is compact icon navigation without repetitive action subtitles', async () => {
+  const f = await fixture();
+  for (const label of ['Drafts','Publish','Schedule','History','Readiness','Usage','Export','Promote This'])
+    assert.ok([...f.document.querySelectorAll('.wm-tile')].some(node => node.textContent.trim() === label), label);
+  assert.equal(f.document.querySelectorAll('.wm-tile small').length, 0);
+  assert.ok(f.document.querySelectorAll('.wm-tile .wm-icon svg').length >= 8);
+  assert.doesNotMatch(source,/Choose, edit, or delete named website variations/);
+  assert.doesNotMatch(source,/Review and make your saved draft live/);
+  f.dom.window.close();
+});
+
+test('draft workspace is one scrollable list with edit and delete actions in the same view', async () => {
+  const f = await fixture();
+  f.state.drafts = [
+    { id:'draft-a', name:'Variant A', updatedUtc:'2026-09-23T10:00:00Z' },
+    { id:'draft-b', name:'Variant B', updatedUtc:'2026-09-24T10:00:00Z' }
+  ];
+  await f.click('Drafts');
+  assert.equal(f.document.querySelectorAll('.wm-draft-list .wm-list-row').length,2);
+  assert.equal(f.document.querySelectorAll('.wm-draft-list .wm-list-actions').length,2);
+  assert.equal([...f.document.querySelectorAll('.wm-draft-list button')].filter(node=>node.textContent==='Edit').length,2);
+  assert.equal([...f.document.querySelectorAll('.wm-draft-list button')].filter(node=>node.textContent==='Delete').length,2);
+  assert.equal([...f.document.querySelectorAll('button')].some(node=>node.textContent==='Load draft'),false);
   f.dom.window.close();
 });
