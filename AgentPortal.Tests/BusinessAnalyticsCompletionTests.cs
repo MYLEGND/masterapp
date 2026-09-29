@@ -96,8 +96,7 @@ public sealed class BusinessAnalyticsCompletionTests
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["MetaAds:AppId"] = "123",
-            ["MetaAds:ApiVersion"] = "v21.0"
+            ["MetaAds:AppId"] = "123"
         }).Build();
         var provider = new EphemeralDataProtectionProvider();
         var oauth = new MarketingMetaAdsOAuthService(
