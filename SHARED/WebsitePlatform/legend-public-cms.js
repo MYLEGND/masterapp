@@ -38,7 +38,8 @@
     { key: 'tablet', label: 'Tablet', minWidth: 768, maxWidth: 1199, isSystem: true },
     { key: 'desktop', label: 'Desktop', minWidth: 1200, maxWidth: null, isSystem: true }
   ];
-  let documentState = { version: 3, compositionMode: null, faviconImageDataUrl: null, breakpoints: defaultBreakpoints(), elements: {}, sectionOrder: {}, extras: [], reusableComponents: {}, collections: {}, theme: {}, pages: {} };
+  let documentState = { version: 3, faviconImageDataUrl: null, breakpoints: defaultBreakpoints(), shell:{header:[],footer:[]}, reusableComponents:{}, collections:{}, theme:{}, store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28}, pages:{} };
+  let legacyMigration = null;
   let signalCatalog = null;
   let ctaCatalog = [];
   let managementPayload = null;
@@ -62,8 +63,6 @@
   let autoSaveTimer = null;
   const pendingDeletedKeys = new Set();
 
-  function pageElementDeletionKey(id) { return `page:${currentPageRoute()}|element:${id}`; }
-  function pageExtraDeletionKey(id) { return `page:${currentPageRoute()}|extra:${id}`; }
   function markDeleted(key) { if (key) pendingDeletedKeys.add(key); }
   const originals = new WeakMap();
   const scaledElements = new Map();
@@ -144,63 +143,78 @@
   }
 
   function constrainDocumentGeometry(doc) {
-    Object.values(doc.elements || {}).forEach(constrainOverrideGeometry);
-    (doc.extras || []).forEach(constrainOverrideGeometry);
-    const visitComposition = nodes => (nodes || []).forEach(node => {
+    const visit = nodes => (nodes || []).forEach(node => {
       constrainOverrideGeometry(node);
-      visitComposition(node?.children);
+      visit(node?.children);
     });
-    Object.values(doc.pages || {}).forEach(page => {
-      Object.values(page?.elements || {}).forEach(constrainOverrideGeometry);
-      (page?.extras || []).forEach(constrainOverrideGeometry);
-      visitComposition(page?.composition);
-    });
-    Object.values(doc.reusableComponents || {}).forEach(component => {
-      Object.values(component?.elements || {}).forEach(constrainOverrideGeometry);
-      (component?.extras || []).forEach(constrainOverrideGeometry);
-    });
+    visit(doc?.shell?.header);
+    visit(doc?.shell?.footer);
+    Object.values(doc?.pages || {}).forEach(page => visit(page?.composition));
+    Object.values(doc?.reusableComponents || {}).forEach(component => visit(component?.composition));
     return doc;
+  }
+
+  function normalizeCompositionNodes(input) {
+    if (!Array.isArray(input)) return [];
+    return input.filter(node => node && typeof node === 'object').map(node => ({
+      ...node,
+      children: normalizeCompositionNodes(node.children),
+      style: node.style && typeof node.style === 'object' ? node.style : {},
+      breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
+      layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
+      breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
+      animations: Array.isArray(node.animations) ? node.animations : [],
+      signals: Array.isArray(node.signals) ? node.signals : []
+    }));
   }
 
   function normalizeDocument(input) {
     const pages = {};
-    const sourcePages = input?.pages && typeof input.pages === 'object' ? input.pages : {};
-    // Read legacy template keys, but only write canonical route keys. Canonical
-    // content wins a collision; unrelated legacy content is retained.
-    for (const [key, value] of Object.entries(sourcePages).sort(([a], [b]) => Number(a.startsWith('/')) - Number(b.startsWith('/')))) {
+    for (const [key,value] of Object.entries(input?.pages && typeof input.pages === 'object' ? input.pages : {})) {
       if (!value || typeof value !== 'object') continue;
-      const route = key.startsWith('/') ? key : key === 'home' ? '/' : `/${key}`;
-      const previous = pages[route];
-      pages[route] = previous ? {
-        ...previous, ...value,
-        elements: { ...previous.elements, ...value.elements },
-        sectionOrder: { ...previous.sectionOrder, ...value.sectionOrder },
-        extras: [...new Map([...(previous.extras || []), ...(value.extras || [])].map(extra => [extra.id, extra])).values()],
-        composition: Array.isArray(value.composition) ? value.composition : (previous.composition || [])
-      } : value;
+      const route = normalizePageRoute(key);
+      if (!route) continue;
+      pages[route] = {
+        title: typeof value.title === 'string' ? value.title : null,
+        description: typeof value.description === 'string' ? value.description : null,
+        navigation: value.navigation && typeof value.navigation === 'object'
+          ? {...value.navigation}
+          : {showInNavigation:true,order:0,isDeleted:false},
+        dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
+        composition: normalizeCompositionNodes(value.composition)
+      };
     }
+
+    const reusableComponents={};
+    for(const [id,value] of Object.entries(input?.reusableComponents && typeof input.reusableComponents === 'object' ? input.reusableComponents : {})){
+      if(!value || typeof value!=='object') continue;
+      reusableComponents[id]={
+        id,
+        name:typeof value.name==='string'?value.name:id,
+        kind:value.kind==='block'?'block':'section',
+        composition:normalizeCompositionNodes(value.composition)
+      };
+    }
+
     const normalized = {
-      version: 3,
-      compositionMode: input?.compositionMode === 'canonical' ? 'canonical' : null,
-      faviconImageDataUrl: typeof input?.faviconImageDataUrl === 'string' ? input.faviconImageDataUrl : null,
-      breakpoints: normalizeBreakpoints(input?.breakpoints),
-      elements: input?.elements && typeof input.elements === 'object' ? input.elements : {},
-      sectionOrder: input?.sectionOrder && typeof input.sectionOrder === 'object' ? input.sectionOrder : {},
-      extras: Array.isArray(input?.extras) ? input.extras : [],
-      reusableComponents: input?.reusableComponents && typeof input.reusableComponents === 'object' ? input.reusableComponents : {},
-      collections: input?.collections && typeof input.collections === 'object' ? input.collections : {},
-      theme: input?.theme && typeof input.theme === 'object' ? input.theme : {},
-      store: {
-        enabled: input?.store?.enabled === true,
-        navigationLabel: typeof input?.store?.navigationLabel === 'string' && input.store.navigationLabel.trim()
-          ? input.store.navigationLabel.trim().slice(0, 40)
-          : 'Store',
-        cartIcon: ['cart','bag','basket'].includes(String(input?.store?.cartIcon || '').toLowerCase())
-          ? String(input.store.cartIcon).toLowerCase()
-          : 'cart',
-        cartIconSizePx: Number.isFinite(Number(input?.store?.cartIconSizePx))
-          ? Math.max(16, Math.min(96, Number(input.store.cartIconSizePx)))
-          : 28
+      version:3,
+      faviconImageDataUrl:typeof input?.faviconImageDataUrl==='string'?input.faviconImageDataUrl:null,
+      breakpoints:normalizeBreakpoints(input?.breakpoints),
+      shell:{
+        header:normalizeCompositionNodes(input?.shell?.header),
+        footer:normalizeCompositionNodes(input?.shell?.footer)
+      },
+      reusableComponents,
+      collections:input?.collections && typeof input.collections==='object' ? structuredClone(input.collections) : {},
+      theme:input?.theme && typeof input.theme==='object' ? {...input.theme} : {},
+      store:{
+        enabled:input?.store?.enabled===true,
+        navigationLabel:typeof input?.store?.navigationLabel==='string' && input.store.navigationLabel.trim()
+          ? input.store.navigationLabel.trim().slice(0,40) : 'Store',
+        cartIcon:['cart','bag','basket'].includes(String(input?.store?.cartIcon||'').toLowerCase())
+          ? String(input.store.cartIcon).toLowerCase() : 'cart',
+        cartIconSizePx:Number.isFinite(Number(input?.store?.cartIconSizePx))
+          ? Math.max(16,Math.min(96,Number(input.store.cartIconSizePx))) : 28
       },
       pages
     };
@@ -223,28 +237,24 @@
 
   function pageState() {
     documentState.pages ||= {};
-    const routeKey = currentPageRoute();
-    if (!documentState.pages[routeKey]) {
-      const belongs = id => id.startsWith(`${pageKey}.`) || id.startsWith(`section:${pageKey}.`);
-      const elements = Object.fromEntries(Object.entries(documentState.elements).filter(([id]) => belongs(id)));
-      const sectionOrder = Object.fromEntries(Object.entries(documentState.sectionOrder).filter(([id]) => belongs(id)));
-      const extras = documentState.extras.filter(extra => belongs(extra.sectionId || ''));
-      documentState.pages[routeKey] = { elements, sectionOrder, extras, navigation: { showInNavigation: true, order: 0, isDeleted: false } };
-      Object.keys(elements).forEach(id => delete documentState.elements[id]);
-      Object.keys(sectionOrder).forEach(id => delete documentState.sectionOrder[id]);
-      documentState.extras = documentState.extras.filter(extra => !extras.includes(extra));
+    const route=currentPageRoute();
+    if(!documentState.pages[route]){
+      documentState.pages[route]={
+        title:null,
+        description:null,
+        navigation:{showInNavigation:true,order:0,isDeleted:false},
+        dynamicBinding:null,
+        composition:[]
+      };
     }
-    const page = documentState.pages[routeKey];
-    page.elements ||= {};
-    page.sectionOrder ||= {};
-    page.extras ||= [];
+    const page=documentState.pages[route];
     page.composition ||= [];
-    page.navigation ||= { showInNavigation: true, order: 0, isDeleted: false };
+    page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
     return page;
   }
 
   function usesCanonicalComposition() {
-    return documentState?.compositionMode === 'canonical';
+    return legacyMigration == null;
   }
 
   function walkComposition(nodes, visit, parent = null) {
@@ -256,13 +266,27 @@
     return true;
   }
 
+  function allCanonicalRootSets() {
+    const roots=[
+      {scope:'page',nodes:pageState().composition},
+      {scope:'shell.header',nodes:documentState.shell?.header || []},
+      {scope:'shell.footer',nodes:documentState.shell?.footer || []}
+    ];
+    for(const [id,component] of Object.entries(documentState.reusableComponents || {}))
+      roots.push({scope:'component:'+id,nodes:component?.composition || []});
+    return roots;
+  }
+
   function compositionEntry(id) {
-    let found = null;
-    walkComposition(pageState().composition, (node, parent) => {
-      if (node.id !== id) return;
-      found = { node, parent };
-      return false;
-    });
+    let found=null;
+    for(const root of allCanonicalRootSets()){
+      walkComposition(root.nodes,(node,parent)=>{
+        if(node.id!==id) return;
+        found={node,parent,root};
+        return false;
+      });
+      if(found) break;
+    }
     return found;
   }
 
@@ -270,22 +294,20 @@
     return compositionEntry(id)?.node || null;
   }
 
-  function compositionChildren(parent) {
-    return parent ? (parent.children ||= []) : (pageState().composition ||= []);
+  function compositionChildren(parent, root = null) {
+    if(parent) return parent.children ||= [];
+    return root?.nodes || pageState().composition;
   }
 
   function removeCompositionNode(id) {
-    let removed = null;
-    const removeFrom = nodes => {
-      if (!Array.isArray(nodes)) return false;
-      const index = nodes.findIndex(node => node?.id === id);
-      if (index >= 0) {
-        [removed] = nodes.splice(index, 1);
-        return true;
-      }
-      return nodes.some(node => removeFrom(node?.children));
+    let removed=null;
+    const removeFrom=nodes=>{
+      if(!Array.isArray(nodes)) return false;
+      const index=nodes.findIndex(node=>node?.id===id);
+      if(index>=0){ [removed]=nodes.splice(index,1); return true; }
+      return nodes.some(node=>removeFrom(node?.children));
     };
-    removeFrom(pageState().composition);
+    for(const root of allCanonicalRootSets()) if(removeFrom(root.nodes)) break;
     return removed;
   }
 
@@ -299,15 +321,6 @@
 
   function isSharedShellElement(el) {
     return !!el?.closest?.('.site-header,.site-footer');
-  }
-
-  function globalShellOverride(id, create = true) {
-    if (!id) return null;
-    documentState.elements ||= {};
-    if (!documentState.elements[id] && create) documentState.elements[id] = { style: {} };
-    const value = documentState.elements[id] || null;
-    if (value && create) value.style ||= {};
-    return value;
   }
 
   function canEditElement(el) {
