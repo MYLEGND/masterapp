@@ -495,7 +495,7 @@ public static class WebsiteContentSanitizer
         var allowed = type switch
         {
             "section" => new[] { "section" },
-            "container" => new[] { "div", "article", "header", "footer", "nav", "ul", "ol" },
+            "container" => new[] { "div", "article", "header", "footer", "nav", "ul", "ol", "fieldset" },
             "heading" => new[] { "h1", "h2", "h3", "h4", "h5", "h6" },
             "text" => new[] { "p", "span", "small", "strong", "li", "label", "blockquote" },
             "cta" or "link" => new[] { "a", "button" },
