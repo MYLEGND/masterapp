@@ -9,7 +9,7 @@ for(const route of routes){const f=resolve(root,'dist',route,'index.html');await
   const f=resolve(root,'dist',businessPreviewRoute,'index.html');
   await access(f);
   const s=await readFile(f,'utf8');
-  for(const required of ['site-header','site-footer','siteKey:"business"','businessId','data-business-name','noindex,nofollow'])
+  for(const required of ['site-header','site-footer','siteKey:"business"','businessId','data-business-name','business-brand-banner','noindex,nofollow'])
     if(!s.includes(required))throw new Error(`${f} missing ${required}`);
 }
 for(const excluded of ['store','team']){try{await access(resolve(root,'dist',excluded,'index.html'));throw new Error(`Excluded route generated: ${excluded}`)}catch(e){if(e.code!=='ENOENT')throw e;}}

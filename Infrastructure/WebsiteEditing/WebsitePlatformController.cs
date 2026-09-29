@@ -390,6 +390,7 @@ public class WebsitePlatformController : ControllerBase
         {
             var options = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
             var parsed = WebsiteSiteSource.Parse(request.Source, baseline, options);
+            WebsiteSiteSource.EnsureSelectedNodeOnly(baseline, parsed.Document, request.SelectedNodeId);
             await ValidateCompositionMediaOwnershipAsync(actor, parsed.Document, cancellationToken);
             var normalized = WebsiteSiteSource.Serialize(parsed.Document);
             return Ok(new
@@ -521,7 +522,8 @@ public class WebsitePlatformController : ControllerBase
     public sealed record WebsiteSiteSourceRequest(
         string Ticket,
         long ExpectedRevision,
-        string Source);
+        string Source,
+        string? SelectedNodeId = null);
 
     public sealed record WebsiteSignalTestRequest(
         string Ticket,

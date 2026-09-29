@@ -56,7 +56,7 @@ function shell(page,body,options={}){
   const businessMode=siteKey==='business';
   const robots=options.noIndex?'<meta name="robots" content="noindex,nofollow">':'';
   const navigation=options.navigation || nav(page.path);
-  const brand=businessMode?'<span class="brand-wordmark"><strong data-business-name data-business-field="displayName">YOUR BUSINESS</strong></span>':'<span class="brand-wordmark"><strong>LEGEND®</strong></span>';
+  const brand=businessMode?'<span class="brand-wordmark business-brand-banner"><strong data-business-name data-business-field="displayName">YOUR BUSINESS</strong></span>':'<span class="brand-wordmark"><strong>LEGEND®</strong></span>';
   const footerLead=businessMode
     ? '<p class="eyebrow" data-business-name data-business-field="displayName">YOUR BUSINESS</p><p>Professional information, services, and contact details managed through the LEGEND website platform.</p>'
     : `<p class="eyebrow">LEGEND®</p><p>${shared.footerDescription}</p><a class="email" data-website-action-key="legend_contact" href="/contact">Contact LEGEND®</a>`;

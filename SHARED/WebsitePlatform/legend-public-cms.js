@@ -231,6 +231,36 @@
     return node.type==='text' && String(node.tag || '').toLowerCase()==='span' && classes.length===0;
   }
 
+  function canonicalizePassiveLinkNode(node) {
+    if (!node || isRuntimeShellChromeNode(node) || node.type!=='link' || node.actionKey || node.dataBinding?.target==='href') return node;
+    const href=String(node.href || '').trim();
+    if (href && href!=='#') return node;
+    // A destination-less anchor is presentation, not navigation. Converting it
+    // here repairs already-persisted early-v3 placeholder links instead of
+    // teaching readiness checks to ignore dead interactions.
+    node.type='text';
+    node.tag='span';
+    node.actionKey=null;
+    node.href=null;
+    node.target=null;
+    node.signals=[];
+    return node;
+  }
+
+  function canonicalizePlatformBrandGeometry(node) {
+    if (!node || typeof node!=='object') return node;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    if (!classes.includes('brand') && !classes.includes('brand-wordmark')) return node;
+    const clear=style=>{
+      if (!style || typeof style!=='object') return;
+      delete style.widthPercent;
+      delete style.offsetXPercent;
+    };
+    clear(node.style);
+    Object.values(node.breakpointStyles || {}).forEach(clear);
+    return node;
+  }
+
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
     return input
@@ -247,6 +277,8 @@
           signals: Array.isArray(node.signals) ? node.signals : []
         };
         if(normalized.type==='image') normalized.alt=defaultImageAlt(normalized);
+        canonicalizePassiveLinkNode(normalized);
+        canonicalizePlatformBrandGeometry(normalized);
         return normalized;
       })
       // Menu toggles are reconstructed runtime chrome. They were accidentally
@@ -1150,7 +1182,7 @@
     });
   }
 
-  const defaultCodeBlock = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{--ink:#131b2a;--muted:#657083;--surface:#f6f7f9;--line:#d9dee7;--accent:#b8955a}*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);font:500 16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:clamp(18px,5vw,36px)}main{max-width:760px;margin:auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(24px,6vw,48px);box-shadow:0 18px 50px #0c132214}small{display:block;color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px}h2{margin:0 0 12px;font-size:clamp(28px,7vw,46px);line-height:1.05;letter-spacing:-.035em}p{margin:0;color:var(--muted);overflow-wrap:anywhere}</style></head><body><main><small>Custom content</small><h2>Build something distinctive.</h2><p>Edit this sandboxed block with responsive, accessible presentation that belongs to this website.</p></main></body></html>';
+  const defaultCodeBlock = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{--navy:#102b62;--navy-deep:#081a3a;--gold:#d4ad45;--gold-strong:#f0cf78;--ink:#101a35;--muted:#5b6680;--surface:#f7f8fb;--line:rgba(16,43,98,.14)}*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#fff,var(--surface));color:var(--ink);font:500 16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:clamp(14px,4vw,28px)}main{position:relative;overflow:hidden;max-width:760px;margin:auto;background:#fff;border:1px solid var(--line);border-radius:18px;padding:clamp(22px,5vw,38px);box-shadow:0 14px 38px rgba(8,26,58,.09)}main:before{content:"";position:absolute;inset:0 auto auto 0;width:100%;height:2px;background:linear-gradient(90deg,var(--gold),transparent 78%)}small{display:block;color:var(--gold);font-size:10px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px}h2{margin:0 0 10px;color:var(--navy-deep);font-size:clamp(27px,6vw,42px);line-height:1.06;letter-spacing:-.035em;overflow-wrap:break-word}p{margin:0;color:var(--muted);overflow-wrap:break-word}</style></head><body><main><small>Custom content</small><h2>Build something distinctive.</h2><p>Edit this sandboxed block with responsive, accessible presentation that belongs to this website.</p></main></body></html>';
 
   function renderCodePreview(el, extra) {
     const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
@@ -1416,9 +1448,10 @@
     const runtimePresentationControl = !!runtimeFormAncestor && runtimeFormAncestor !== el &&
       (tag === 'a' || tag === 'button');
     const rawHref = tag === 'a' ? el.getAttribute('href') : model.href;
+    const dynamicHref = model.dataBinding?.target === 'href' || extra?.dataBinding?.target === 'href';
     const unmanagedInteractiveControl =
       (tag === 'button' && !actionKey) ||
-      (tag === 'a' && !actionKey && !rawHref);
+      (tag === 'a' && !actionKey && !dynamicHref && (!rawHref || rawHref === '#'));
     const presentationOnlyControl = runtimePresentationControl || unmanagedInteractiveControl;
 
     let type = 'text';
@@ -1454,9 +1487,15 @@
 
     if (tag === 'nav' && (el.id === 'primary-nav' || el.hasAttribute('data-public-nav')))
       node.systemKey='primary_navigation';
-    if (el.hasAttribute('data-business-name')) node.systemBinding='business_name';
-    else if (el.hasAttribute('data-business-field'))
-      node.systemBinding='business_field:' + el.getAttribute('data-business-field');
+    const boundName = el.hasAttribute('data-business-name')
+      ? el
+      : ((type==='text' || type==='heading') ? el.querySelector?.('[data-business-name]') : null);
+    const boundField = el.hasAttribute('data-business-field')
+      ? el
+      : ((type==='text' || type==='heading') ? el.querySelector?.('[data-business-field]') : null);
+    if (boundName) node.systemBinding='business_name';
+    else if (boundField)
+      node.systemBinding='business_field:' + boundField.getAttribute('data-business-field');
 
     if (type === 'image' || type === 'video') {
       const raw = type === 'image'
@@ -2987,9 +3026,6 @@
     action.addEventListener('click',()=>void updateStore(!enabled));
     if (!enabled) {
       host.appendChild(action);
-      const help=document.createElement('small');
-      help.textContent='Adds one scoped Store page, Store/Shop navigation, cart, product catalog and centralized checkout. Products remain preserved if the Store page is later removed.';
-      host.appendChild(help);
       return;
     }
 
@@ -4312,6 +4348,53 @@
     return selected?.dataset?.cmsCompositionId || null;
   }
 
+  function sourceToneForLine(line) {
+    const key=/^\s*"([^"]+)"\s*:/.exec(String(line || ''))?.[1] || '';
+    if (['text','title','alt','href','description','label'].includes(key)) return 'content';
+    if (['color','backgroundColor'].includes(key)) return 'color';
+    if (['widthPercent','heightPx','fontSize','fontScale','lineHeight','letterSpacing','paddingTop','paddingBottom','paddingLeft','paddingRight','offsetXPercent','offsetYPx','borderRadius','objectPosition'].includes(key)) return 'size';
+    if (['style','breakpointStyles','fontFamily','fontWeight','textAlign','objectFit'].includes(key)) return 'style';
+    if (['layout','breakpointLayouts','mode','direction','gapPx','columns','minItemWidthPx','alignItems','justifyContent','wrap'].includes(key)) return 'layout';
+    if (['mediaAssetId','mediaUrl','faviconImageDataUrl'].includes(key)) return 'media';
+    if (['animations','trigger','effect','durationMs','delayMs','distancePx','easing','once','hidden','target'].includes(key)) return 'behavior';
+    if (['id','type','tag','className','actionKey','systemKey','systemBinding','signals','dataBinding','syncSourceId'].includes(key)) return 'protected';
+    return 'default';
+  }
+
+  function renderSourceHighlight() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const highlight=document.getElementById('legend-cms-source-highlight');
+    if(!textarea || !highlight?.replaceChildren) return;
+    highlight.replaceChildren();
+    const lines=String(textarea.value || '').replace(/\r/g,'').split('\n');
+    lines.forEach((line,index)=>{
+      const span=document.createElement('span');
+      const tone=sourceToneForLine(line);
+      span.className='legend-cms-source-'+tone;
+      span.dataset.tone=tone;
+      span.textContent=line || ' ';
+      highlight.appendChild(span);
+      if(index<lines.length-1) highlight.appendChild(document.createTextNode('\n'));
+    });
+    highlight.scrollTop=textarea.scrollTop;
+    highlight.scrollLeft=textarea.scrollLeft;
+  }
+
+  function syncSourceEditingMode() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const apply=document.getElementById('legend-cms-source-apply');
+    const reload=document.getElementById('legend-cms-source-reload');
+    if(!textarea || !scope) return false;
+    const editable=scope.value==='selection' && !!sourceSelectedNodeId();
+    textarea.readOnly=!editable;
+    textarea.setAttribute('aria-readonly',String(!editable));
+    textarea.dataset.sourceMode=editable?'selection':'master';
+    if(apply){ apply.disabled=!editable; apply.hidden=!editable; }
+    if(reload) reload.textContent=editable?'Discard selected source edits':'Refresh Master Source';
+    return editable;
+  }
+
   function refreshSiteSourceEditor(force=false) {
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
@@ -4334,8 +4417,12 @@
       }
     }
     sourceEditorDirty=false;
+    const editable=syncSourceEditingMode();
+    renderSourceHighlight();
     const status=document.getElementById('legend-cms-source-status');
-    if(status) status.textContent='Source is synchronized with the current draft.';
+    if(status) status.textContent=editable
+      ? 'Selected Source is synchronized with the selected canonical node.'
+      : 'Master Source is synchronized and read only.';
     if(force) clearCanonicalProtectionViolation();
   }
 
@@ -4343,7 +4430,14 @@
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
     const status=document.getElementById('legend-cms-source-status');
+    const selectedNodeId=sourceSelectedNodeId();
     if(!textarea) return;
+    if(scope?.value!=='selection' || !selectedNodeId || textarea.readOnly){
+      if(status) status.textContent='Master Source is read only. Select a canvas component to edit Selected Source.';
+      syncSourceEditingMode();
+      renderSourceHighlight();
+      return;
+    }
     let sourceText=textarea.value;
     try{
       if(scope?.value==='selection'){
@@ -4382,7 +4476,7 @@
     try{
       const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText,selectedNodeId})
       });
       const payload=await response.json().catch(()=>({}));
       if(!response.ok) {
@@ -4688,7 +4782,9 @@
 
     document.querySelectorAll('main [data-cms-editable="true"]').forEach(node => {
       if (node.hidden) return;
-      if (Number(node.scrollWidth) > Number(node.clientWidth) + 1)
+      const overflowX=getComputedStyle(node).overflowX;
+      const visiblyClipped=overflowX==='hidden' || overflowX==='clip';
+      if (!visiblyClipped && Number(node.scrollWidth) > Number(node.clientWidth) + 1)
         checks.push({ code:'live_horizontal_overflow', severity:'warning', message:'Rendered content overflows its visible width.', elementId:node.dataset.cmsId || null });
     });
     return checks;
@@ -5252,7 +5348,7 @@
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
-    sourceView.innerHTML='<h2>LEGEND Site Source</h2><p>One deterministic source view of the same v3 graph used by the canvas and browser-operated GPT. Canonical actions and system forms are validated server-side and provider/event wiring is not editable here.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Entire site</option><option value="selection">Selected component / section</option></select></label><small id="legend-cms-source-location">Master Source · entire website</small><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false"></textarea><small id="legend-cms-source-status" role="status">Source is synchronized with the current draft.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply validated source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Reload from canvas</button></div>';
+    sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only inspection of the entire canonical v3 graph. Only Selected Source is editable. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
     tools.appendChild(sourceView);
 
     const publishView=document.createElement('section'); publishView.dataset.cmsView='publish'; publishView.hidden=true;
@@ -5273,7 +5369,7 @@
     gpt.id='legend-cms-browser-agent-workspace';
     gpt.dataset.agentWorkspace='browser-only';
     gpt.dataset.externalAiApi='false';
-    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Inspect Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Edit selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed as <code>data-cms-id</code>. Master Source is inspection-only. Make source-code changes only through Selected Source, then validate and save through the canonical authority.</p>';
     const agentScript=gpt.querySelector('#legend-cms-agent-contract-script');
     if(agentScript) agentScript.textContent=managementPayload?.agentContract?.promptTemplate || 'Canonical GPT operating contract unavailable; do not modify this website until the server contract is loaded.';
     tools.appendChild(gpt);
@@ -5312,9 +5408,19 @@
 
     const sourceTextarea=document.getElementById('legend-cms-site-source');
     sourceTextarea?.addEventListener('input',()=>{
+      if(sourceTextarea.readOnly){
+        sourceEditorDirty=false;
+        refreshSiteSourceEditor(true);
+        return;
+      }
       sourceEditorDirty=true;
+      renderSourceHighlight();
       const status=document.getElementById('legend-cms-source-status');
-      if(status) status.textContent='Unsaved source changes · canvas remains on the last valid graph.';
+      if(status) status.textContent='Selected Source has unapplied changes · canvas remains on the last validated canonical node.';
+    });
+    sourceTextarea?.addEventListener('scroll',()=>{
+      const highlight=document.getElementById('legend-cms-source-highlight');
+      if(highlight){highlight.scrollTop=sourceTextarea.scrollTop;highlight.scrollLeft=sourceTextarea.scrollLeft;}
     });
     document.getElementById('legend-cms-source-scope')?.addEventListener('change',()=>{
       sourceEditorDirty=false;
@@ -5525,8 +5631,9 @@
       .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-move-handle,
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-edge-handle{display:none!important;pointer-events:none!important}
-      .legend-cms-store-controls{display:grid;gap:8px;padding:9px;border:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 60%,transparent);border-radius:10px;background:color-mix(in srgb,var(--web-navy,#081a3a) 88%,transparent);color:var(--web-surface,#fff)}
-      .legend-cms-store-settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px}.legend-cms-store-settings label{display:grid;gap:5px;margin:0;font-size:11px;font-weight:800;color:var(--web-gold,#d4ad45)}.legend-cms-store-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.legend-cms-store-actions button{min-height:34px!important;padding:7px 9px!important;border-color:color-mix(in srgb,var(--web-gold,#d4ad45) 62%,transparent)!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 84%,var(--web-gold,#d4ad45) 16%)!important;color:var(--web-surface,#fff)!important}.legend-cms-store-controls input,.legend-cms-store-controls select{min-height:34px!important;padding:6px 8px!important;border-color:color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent)!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 90%,transparent)!important;color:var(--web-surface,#fff)!important}
+      .legend-cms-store-controls{display:grid;gap:6px;margin:4px 0 8px;padding:0;border:0;background:transparent;color:var(--web-surface,#fff)}
+      #legend-cms-store-toggle{justify-self:start;width:auto;min-height:32px!important;padding:6px 11px!important;border:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 58%,transparent)!important;border-radius:8px!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 86%,var(--web-gold,#d4ad45) 14%)!important;color:var(--web-surface,#fff)!important;font-weight:800}
+      .legend-cms-store-settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;padding:7px;border:1px solid #344766;border-radius:9px;background:#0d213e}.legend-cms-store-settings label{display:grid;gap:4px;margin:0;font-size:10px;font-weight:800;color:#cbd7e8}.legend-cms-store-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}.legend-cms-store-actions button{min-height:32px!important;padding:6px 8px!important;border-color:#50617e!important;background:#142c50!important;color:#fff!important}.legend-cms-store-controls input,.legend-cms-store-controls select{min-height:32px!important;padding:5px 7px!important;border-color:#50617e!important;background:#142c50!important;color:#fff!important}
       .legend-cms-store-preview{position:absolute!important;inset:0!important;z-index:2147482400!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;background:var(--web-surface,#fff)!important;color:var(--web-ink,#101a35)!important;pointer-events:auto!important}
       .legend-cms-store-preview[hidden]{display:none!important}.legend-cms-store-preview-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 50%,transparent);background:var(--web-surface,#fff)}.legend-cms-store-preview-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
       .legend-cms-store-manager{position:fixed!important;inset:0!important;z-index:2147483640!important;display:grid!important;place-items:center!important;padding:2vmin!important;background:#0009!important;pointer-events:auto!important}.legend-cms-store-manager[hidden]{display:none!important}.legend-cms-store-manager-shell{width:min(98vw,1600px);height:96dvh;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border-radius:16px;background:var(--web-surface,#fff);box-shadow:0 24px 70px #0008}.legend-cms-store-manager-top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent);color:var(--web-ink,#101a35)}.legend-cms-store-manager-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
@@ -5552,7 +5659,9 @@
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
-      .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;min-height:40px;padding:8px 12px;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;font:700 14px/1.2 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px #0005}
+      .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;display:grid;place-items:center;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;cursor:pointer;box-shadow:0 8px 24px #0005}
+      .legend-cms-panel-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .legend-cms-sheet-handle{display:none}
       .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;overflow-wrap:anywhere}
       .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
       .legend-cms-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -5569,7 +5678,10 @@
       .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}.legend-cms-protection-warning{white-space:pre-wrap;margin:10px 0;padding:12px 14px;border:1px solid #ff6b6b;border-left:5px solid #ff4d4d;border-radius:10px;background:#35191c;color:#ff8f8f!important;font-weight:800;line-height:1.45;overflow-wrap:anywhere}
-      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}
+      .legend-cms-source-key{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.legend-cms-source-key span{padding:4px 7px;border:1px solid currentColor;border-radius:999px;background:#07162b;font:800 9px/1.2 Inter,system-ui,sans-serif;letter-spacing:.025em}.legend-cms-source-key [data-tone="content"],.legend-cms-source-content{color:#78e2a7}.legend-cms-source-key [data-tone="style"],.legend-cms-source-style{color:#7fb5ff}.legend-cms-source-key [data-tone="color"],.legend-cms-source-color{color:#ff8fa8}.legend-cms-source-key [data-tone="size"],.legend-cms-source-size{color:#ffb86b}.legend-cms-source-key [data-tone="layout"],.legend-cms-source-layout{color:#6fdce8}.legend-cms-source-key [data-tone="media"],.legend-cms-source-media{color:#c4a7ff}.legend-cms-source-key [data-tone="behavior"],.legend-cms-source-behavior{color:#d9a6ff}.legend-cms-source-key [data-tone="protected"],.legend-cms-source-protected{color:#f0cf78}.legend-cms-source-default{color:#dce6f4}
+      .legend-cms-source-editor{position:relative;width:100%;min-height:52vh;border:1px solid #3f5271;border-radius:10px;background:#07162b;overflow:hidden}.legend-cms-source-highlight,.legend-cms-site-source{width:100%;min-height:52vh;margin:0;padding:14px;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-source-highlight{position:absolute;inset:0;pointer-events:none;background:#07162b}.legend-cms-source-highlight span{display:inline}.legend-cms-site-source{position:relative;z-index:1;resize:vertical;border:0!important;border-radius:0!important;background:transparent!important;color:transparent!important;-webkit-text-fill-color:transparent;caret-color:#fff}.legend-cms-site-source::selection{background:#ffffff2e}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:-2px}.legend-cms-site-source[readonly]{cursor:default;caret-color:transparent}.legend-cms-source-editor:has(.legend-cms-site-source[readonly]){border-color:#344766}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])){border-color:#d4ad45}
+      [data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .legend-cms-image,.legend-legacy-migration-image{display:block;margin-left:auto;margin-right:auto;height:auto}
@@ -5579,17 +5691,29 @@
         .legend-cms-preview{width:100%;max-width:100%;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;padding-top:0}
         .legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}
         .legend-cms-panel{
+          --legend-cms-sheet-compact:min(46dvh,430px);
+          --legend-cms-sheet-expanded:min(88dvh,calc(100dvh - 12px));
           top:0;right:0;bottom:auto;width:100%;max-width:100%;min-width:0;
-          height:auto;max-height:min(46dvh,430px);overflow-y:auto;overflow-x:hidden;
+          height:var(--legend-cms-sheet-height,var(--legend-cms-sheet-compact));max-height:none;
+          overflow-y:auto;overflow-x:hidden;
           overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
           border:0;border-bottom:1px solid #d4ad45;border-radius:0 0 14px 14px;
           padding:max(6px,env(safe-area-inset-top)) 10px 10px;
           box-shadow:0 14px 32px #0007;
+          transition:height .2s ease;
         }
+        body.legend-cms-panel-expanded .legend-cms-panel{--legend-cms-sheet-height:var(--legend-cms-sheet-expanded)}
+        body.legend-cms-sheet-dragging .legend-cms-panel{transition:none}
         .legend-cms-panel>*{min-width:0;max-width:100%}
+        .legend-cms-sheet-handle{
+          position:sticky;top:0;z-index:8;display:grid;place-items:center;
+          width:72px;min-height:22px;margin:0 auto 2px;padding:5px 0;border:0!important;
+          background:transparent!important;color:#aab8cf!important;touch-action:none;cursor:ns-resize
+        }
+        .legend-cms-sheet-handle::before{content:"";display:block;width:38px;height:4px;border-radius:999px;background:currentColor}
         .legend-cms-panel-toggle{
           top:max(6px,env(safe-area-inset-top));right:8px;
-          min-height:34px;padding:6px 9px;font-size:12px;max-width:calc(100vw - 16px)
+          width:34px;height:34px;min-width:34px;min-height:34px;padding:0;max-width:none
         }
         .legend-cms-panel h2{font-size:16px;margin:0 74px 2px 0}
         .legend-cms-panel>small{margin:0 74px 6px 0;font-size:11px}
@@ -5652,9 +5776,10 @@
     panel.className = 'legend-cms-editor legend-cms-panel';
     panel.setAttribute('aria-labelledby', 'legend-cms-heading');
     panel.innerHTML = `
+      <button id="legend-cms-sheet-handle" class="legend-cms-sheet-handle" type="button" aria-label="Expand Website Studio controls"></button>
       <h2 id="legend-cms-heading">Website studio</h2>
       <small id="legend-cms-selected-label">Select content on the page</small>
-      <div id="legend-cms-inline-help" class="legend-cms-inline-help" hidden><span>Single click selects. Use the gold Move control to position. Resize only from the selected border edges or corners. Double-click text, or choose Edit text, to type.</span><button id="legend-cms-edit-text" type="button">Edit text</button></div>
+      <div id="legend-cms-inline-help" class="legend-cms-inline-help" hidden><span>Single click selects and opens Content. Use the gold Move control to position. Resize only from the selected border edges or corners. Double-click text, or choose Edit text, to type.</span><button id="legend-cms-edit-text" type="button">Edit text</button></div>
       <div id="legend-cms-code-group" class="legend-cms-group" hidden>
         <button id="legend-cms-edit-code" type="button">Edit code in modal</button>
         <small>Custom HTML, CSS, and browser JavaScript are previewed inside a sandboxed block. Resize the block directly on the page.</small>
@@ -5691,18 +5816,80 @@
     panelToggle.type = 'button';
     panelToggle.id = 'legend-cms-panel-toggle';
     panelToggle.className = 'legend-cms-editor legend-cms-panel-toggle';
-    panelToggle.textContent = 'Full-page canvas';
     panelToggle.setAttribute('aria-controls', 'legend-cms-heading');
-    panelToggle.setAttribute('aria-expanded', 'true');
-    panelToggle.addEventListener('click', () => {
-      const hidden = document.body.classList.toggle('legend-cms-panel-hidden');
-      panelToggle.textContent = hidden ? 'Open controls' : 'Full-page canvas';
-      panelToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+
+    const panelToggleIcon = hidden => hidden
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5h14v14H5Z"/><path d="M9 12h6"/><path d="m12 9 3 3-3 3"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5h14v14H5Z"/><path d="M9 12h6"/><path d="m12 15-3-3 3-3"/></svg>';
+    const syncPanelToggle = () => {
+      const hidden=document.body.classList.contains('legend-cms-panel-hidden');
+      panelToggle.innerHTML=panelToggleIcon(hidden);
+      panelToggle.setAttribute('aria-label',hidden ? 'Open Website Studio controls' : 'Hide Website Studio controls');
+      panelToggle.setAttribute('title',hidden ? 'Open controls' : 'Hide controls');
+      panelToggle.setAttribute('aria-expanded',hidden ? 'false' : 'true');
+    };
+    const refreshPanelCanvas = () => {
       const refresh = () => { refreshScaledElements(); updateDirectCanvasUi(); };
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refresh);
       else refresh();
+    };
+    panelToggle.addEventListener('click', () => {
+      document.body.classList.toggle('legend-cms-panel-hidden');
+      if(document.body.classList.contains('legend-cms-panel-hidden'))
+        document.body.classList.remove('legend-cms-panel-expanded');
+      syncPanelToggle();
+      refreshPanelCanvas();
     });
+    syncPanelToggle();
     document.body.appendChild(panelToggle);
+
+    const sheetHandle=panel.querySelector('#legend-cms-sheet-handle');
+    const mobileSheet=()=>window.matchMedia?.('(max-width: 800px)').matches === true;
+    const syncSheetHandle=()=>{
+      if(!sheetHandle) return;
+      const expanded=document.body.classList.contains('legend-cms-panel-expanded');
+      sheetHandle.setAttribute('aria-label',expanded ? 'Collapse Website Studio controls' : 'Expand Website Studio controls');
+      sheetHandle.setAttribute('aria-expanded',expanded ? 'true' : 'false');
+    };
+    const setSheetExpanded=expanded=>{
+      document.body.classList.toggle('legend-cms-panel-expanded',!!expanded);
+      panel.style.removeProperty('--legend-cms-sheet-height');
+      syncSheetHandle();
+      refreshPanelCanvas();
+    };
+    let sheetDrag=null;
+    sheetHandle?.addEventListener('click',()=>{ if(mobileSheet()) setSheetExpanded(!document.body.classList.contains('legend-cms-panel-expanded')); });
+    sheetHandle?.addEventListener('pointerdown',event=>{
+      if(!mobileSheet() || event.button!==0) return;
+      sheetDrag={startY:event.clientY,startHeight:panel.getBoundingClientRect().height};
+      document.body.classList.add('legend-cms-sheet-dragging');
+      sheetHandle.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    });
+    sheetHandle?.addEventListener('pointermove',event=>{
+      if(!sheetDrag) return;
+      const viewport=Math.max(320,Number(window.innerHeight)||document.documentElement.clientHeight||800);
+      const compact=Math.min(viewport*.46,430);
+      const expanded=Math.min(viewport*.88,viewport-12);
+      const height=Math.max(compact,Math.min(expanded,sheetDrag.startHeight+(event.clientY-sheetDrag.startY)));
+      panel.style.setProperty('--legend-cms-sheet-height',height+'px');
+      event.preventDefault();
+    });
+    const finishSheetDrag=event=>{
+      if(!sheetDrag) return;
+      const viewport=Math.max(320,Number(window.innerHeight)||document.documentElement.clientHeight||800);
+      const compact=Math.min(viewport*.46,430);
+      const expanded=Math.min(viewport*.88,viewport-12);
+      const height=panel.getBoundingClientRect().height;
+      const expand=height>(compact+expanded)/2;
+      sheetDrag=null;
+      document.body.classList.remove('legend-cms-sheet-dragging');
+      sheetHandle?.releasePointerCapture?.(event.pointerId);
+      setSheetExpanded(expand);
+    };
+    sheetHandle?.addEventListener('pointerup',finishSheetDrag);
+    sheetHandle?.addEventListener('pointercancel',finishSheetDrag);
+    syncSheetHandle();
     window.addEventListener('beforeunload', event => {
       if (!dirty) return;
       event.preventDefault();
@@ -5730,7 +5917,7 @@
       const target = editorSelectionTarget(event.target);
       if (!target || target.closest('.legend-cms-editor')) return;
       const alreadySelected = target === selected;
-      if (!alreadySelected) setSelected(target);
+      if (!alreadySelected) setSelected(target,{openContent:true});
       else if (inlineEditNode !== target && event.detail === 1) showPanel('content');
       if (target.tagName === 'A' || target.tagName === 'BUTTON') event.preventDefault();
       event.stopPropagation();

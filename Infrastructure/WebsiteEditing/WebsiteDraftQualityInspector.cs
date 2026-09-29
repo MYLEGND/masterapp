@@ -123,6 +123,7 @@ public static class WebsiteDraftQualityInspector
 
                     if (node.Type is "cta" or "link" &&
                         string.IsNullOrWhiteSpace(node.ActionKey) &&
+                        !(node.DataBinding is not null && string.Equals(node.DataBinding.Target, "href", StringComparison.Ordinal)) &&
                         (string.IsNullOrWhiteSpace(node.Href) || node.Href == "#"))
                         checks.Add(new("link_destination_missing", node.Type == "cta" ? "error" : "warning",
                             node.Type == "cta" ? "CTAs need a canonical action or working destination." : "Choose a working destination for this link.",

@@ -472,6 +472,8 @@ public static class WebsiteContentSanitizer
                 DataBinding = SanitizeDataBinding(node.DataBinding)
             };
             clean.Children = SanitizeCompositionChildren(node.Children, breakpointKeys, depth + 1, ref remaining);
+            CanonicalizePassiveLink(clean);
+            CanonicalizePlatformBrandGeometry(clean);
             if (IsRetiredTemplateDecoration(clean))
                 continue;
             result.Add(clean);
@@ -519,6 +521,48 @@ public static class WebsiteContentSanitizer
         }
 
         return "Website image";
+    }
+
+    private static void CanonicalizePassiveLink(WebsiteCompositionNode node)
+    {
+        if (!string.Equals(node.Type, "link", StringComparison.Ordinal) ||
+            !string.IsNullOrWhiteSpace(node.ActionKey) ||
+            (node.DataBinding is not null && string.Equals(node.DataBinding.Target, "href", StringComparison.Ordinal)))
+            return;
+
+        var href = node.Href?.Trim();
+        if (!string.IsNullOrWhiteSpace(href) && href != "#")
+            return;
+
+        // A persisted anchor with no destination is not a website link. Early
+        // materialization retained template/runtime placeholder anchors as links,
+        // which created readiness drift. Canonical v3 stores these as presentation
+        // text so startup state cannot contain dead interactive controls.
+        node.Type = "text";
+        node.Tag = "span";
+        node.ActionKey = null;
+        node.Href = null;
+        node.Target = null;
+        node.Signals = [];
+    }
+
+    private static void CanonicalizePlatformBrandGeometry(WebsiteCompositionNode node)
+    {
+        var classes = (node.ClassName ?? string.Empty)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.Ordinal);
+        if (!classes.Contains("brand") && !classes.Contains("brand-wordmark"))
+            return;
+
+        ClearHorizontalGeometry(node.Style);
+        foreach (var style in node.BreakpointStyles.Values)
+            ClearHorizontalGeometry(style);
+    }
+
+    private static void ClearHorizontalGeometry(WebsiteVisualStyle style)
+    {
+        style.WidthPercent = null;
+        style.OffsetXPercent = null;
     }
 
     private static bool IsRetiredTemplateDecoration(WebsiteCompositionNode node)

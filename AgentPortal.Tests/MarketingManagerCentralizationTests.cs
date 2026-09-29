@@ -116,7 +116,7 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
-    public void CanonicalPlatformWorkerWorkspaceRelease_CoversOnlyActuallyAffectedApps()
+    public void MobileStudioReadinessRelease_CoversOnlyActuallyAffectedApps()
     {
         var root = Root();
         var request = Read(root, "Docs", "releases", "direct-release-request.json");
@@ -126,18 +126,19 @@ public sealed class MarketingManagerCentralizationTests
             "masterapp-portal",
             "masterapp-client",
             "masterapp-protect",
-            "masterapp-parfait",
             "masterapp-website"
         })
             Assert.Contains($"\"{target}\"", request, StringComparison.Ordinal);
 
+        Assert.DoesNotContain("\"masterapp-parfait\"", request, StringComparison.Ordinal);
         Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
-        Assert.Contains("canonical-platform-worker-workspace-cleanup-20260929", request, StringComparison.Ordinal);
-        Assert.Contains("f9198d47a1a987567913be5041d6bd887998ae67", request, StringComparison.Ordinal);
-        Assert.Contains("shared Infrastructure", request, StringComparison.Ordinal);
-        Assert.Contains("AgentPortal control-plane", request, StringComparison.Ordinal);
+        Assert.Contains("mobile-studio-readiness-canonical-20260929", request, StringComparison.Ordinal);
+        Assert.Contains("cba58037256c3c64a1cbd1bc8606734b7c1934a2", request, StringComparison.Ordinal);
+        Assert.Contains("draggable compact/expanded top-sheet", request, StringComparison.Ordinal);
+        Assert.Contains("Business default palette", request, StringComparison.Ordinal);
+        Assert.Contains("canonical premium business-name banner", request, StringComparison.Ordinal);
     }
 
     [Fact]
