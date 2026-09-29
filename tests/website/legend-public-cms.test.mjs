@@ -1384,7 +1384,7 @@ test('editor preview is horizontally locked to the rendered website at every bre
     const preview=f.w.document.querySelector('.legend-cms-preview');
     assert.ok(preview);
     assert.equal(f.w.getComputedStyle(preview).overflowX,'clip');
-    assert.equal(f.w.getComputedStyle(preview).maxWidth,'100%');
+    assert.equal(f.w.getComputedStyle(preview).maxWidth,'none');
     preview.scrollLeft=140;
     preview.dispatchEvent(new f.w.Event('scroll'));
     assert.equal(preview.scrollLeft,0);
