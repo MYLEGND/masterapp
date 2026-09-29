@@ -36,6 +36,14 @@ public sealed class WebsiteSiteSourceV3Tests
                 [
                     new WebsiteCompositionNode
                     {
+                        Id = "shell.primary-nav",
+                        Type = "container",
+                        Tag = "nav",
+                        ClassName = "nav",
+                        SystemKey = "primary_navigation"
+                    },
+                    new WebsiteCompositionNode
+                    {
                         Id = "shell.contact",
                         Type = "cta",
                         Tag = "a",
@@ -116,13 +124,18 @@ public sealed class WebsiteSiteSourceV3Tests
         var parsed = WebsiteSiteSource.Parse(serialized, source, actions);
         var quote = parsed.Document.Pages["/"].Composition[0].Children
             .Single(node => node.Id == "home.hero.quote");
-        var shell = Assert.Single(parsed.Document.Shell.Header);
+        var navigation = parsed.Document.Shell.Header
+            .Single(node => node.Id == "shell.primary-nav");
+        var shellContact = parsed.Document.Shell.Header
+            .Single(node => node.Id == "shell.contact");
 
         Assert.Equal("business_quote", quote.ActionKey);
         Assert.Single(quote.Signals);
         Assert.Equal("cta_click", quote.Signals[0].EventName);
-        Assert.Equal("business_contact", shell.ActionKey);
-        Assert.Single(shell.Signals);
+        Assert.Equal("primary_navigation", navigation.SystemKey);
+        Assert.Equal("nav", navigation.Tag);
+        Assert.Equal("business_contact", shellContact.ActionKey);
+        Assert.Single(shellContact.Signals);
         Assert.Equal(serialized, WebsiteSiteSource.Serialize(parsed.Document));
     }
 
@@ -171,6 +184,60 @@ public sealed class WebsiteSiteSourceV3Tests
 
         Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse(removed, source, BusinessActions()));
+    }
+
+    [Fact]
+    public void CanonicalV3Serialization_ContainsNoRetiredOverrideAuthorities()
+    {
+        var documentJson = JsonSerializer.Serialize(
+            CanonicalDocument(),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var sourceJson = WebsiteSiteSource.Serialize(CanonicalDocument());
+
+        foreach (var retired in new[] { "\"elements\"", "\"extras\"", "\"sectionOrder\"", "\"templatePath\"", "\"legacyMigration\"" })
+        {
+            Assert.DoesNotContain(retired, documentJson, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(retired, sourceJson, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void SiteSource_CannotMoveRemoveOrInventPrimaryNavigationAuthority()
+    {
+        var baseline = CanonicalDocument();
+        var source = WebsiteSiteSource.Serialize(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source)!;
+
+        var navigation = model.Shell.Header.Single(node => node.Id == "shell.primary-nav");
+        model.Shell.Header.Remove(navigation);
+        model.Pages.Single(page => page.Path == "/").Composition.Add(navigation);
+        var moved = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(moved, baseline, BusinessActions()));
+
+        model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source)!;
+        model.Shell.Header.RemoveAll(node => node.Id == "shell.primary-nav");
+        var removed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(removed, baseline, BusinessActions()));
+
+        model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source)!;
+        model.Pages.Single(page => page.Path == "/").Composition.Add(new WebsiteCompositionNode
+        {
+            Id = "invented-nav",
+            Type = "container",
+            Tag = "nav",
+            SystemKey = "primary_navigation"
+        });
+        var invented = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(invented, baseline, BusinessActions()));
     }
 
     [Fact]
