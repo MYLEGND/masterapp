@@ -1,129 +1,11 @@
 /*
-   ClientApp mobile layout foundation.
-   This is the single responsive source for the shared ClientApp shell and
-   reusable page families. It intentionally contains only mobile rules, so
-   desktop and larger-screen layouts retain their current composition.
+   ClientApp mobile feature layout only.
+   Canonical mobile shell, navigation, modal chrome, spacing, cards, controls
+   and dashboard density are owned by the shared LEGEND app CSS. Keep this file
+   limited to ClientApp-only content structures that must collapse on phones.
 */
 
 @media (max-width: 767.98px) {
-    :root {
-        --client-mobile-gutter: var(--app-gutter);
-        --client-mobile-section-gap: 1rem;
-        --client-mobile-card-radius: var(--web-radius-md);
-    }
-
-    .client-portal :is(
-        .dashboard-command-center-panel,
-        .dashboard-analytics-panel,
-        .dashboard-page-shell .category-container,
-        .dashboard-surface-panel,
-        .client-create-panel,
-        .client-create-section-shell) {
-        min-width: 0;
-        border-radius: var(--client-mobile-card-radius);
-    }
-
-    /* Dashboard family — turn every wide command strip into a clean vertical flow. */
-    .client-portal .dashboard-command-center-top,
-    .client-portal .home-command-page .home-hero-top,
-    .client-portal .membership-billing-hero,
-    .client-portal .membership-billing-layout {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .client-portal .dashboard-command-center-panel,
-    .client-portal .dashboard-analytics-panel,
-    .client-portal .dashboard-page-shell .category-container {
-        margin-bottom: var(--client-mobile-section-gap);
-        padding: 0.9rem;
-    }
-
-    .client-portal .home-command-page .home-hero-panel {
-        padding: 0.9rem;
-    }
-
-    .client-portal .dashboard-hero-title,
-    .client-portal .home-command-page .dashboard-hero-title {
-        font-size: clamp(1.72rem, 8vw, 2.15rem);
-        line-height: 1;
-        letter-spacing: -0.045em;
-    }
-
-    .client-portal .dashboard-hero-copy,
-    .client-portal .dashboard-section-head,
-    .client-portal .category-head,
-    .client-portal .client-create-header,
-    .client-portal .client-edit-section-head {
-        min-width: 0;
-    }
-
-    .client-portal .home-hero-summary {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.45rem;
-    }
-
-    .client-portal .home-hero-summary .dashboard-stat-card {
-        min-height: 76px;
-        padding: 0.58rem;
-    }
-
-    .client-portal .home-hero-summary .dashboard-stat-label {
-        font-size: 0.6rem;
-        letter-spacing: 0.06em;
-    }
-
-    .client-portal .home-hero-stat-title {
-        font-size: 0.78rem;
-        line-height: 1.12;
-        letter-spacing: -0.02em;
-    }
-
-    .client-portal .home-hero-summary .dashboard-stat-card:last-child {
-        grid-column: 1 / -1;
-    }
-
-    .client-portal .dashboard-page-shell .centered-tools,
-    .client-portal .home-command-page .home-tools-grid,
-    .client-portal .client-dashboard-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.65rem;
-    }
-
-    .client-portal .dashboard-page-shell .dashboard-tool {
-        min-height: 112px;
-        height: 112px;
-        padding: 0.65rem 0.5rem;
-        border-radius: 15px;
-    }
-
-    .client-portal .dashboard-page-shell .dashboard-tool img {
-        width: 76px;
-        min-width: 76px;
-        height: 48px;
-        min-height: 48px;
-        padding: 0.32rem 0.48rem;
-    }
-
-    .client-portal .dashboard-page-shell .dashboard-tool .tool-name {
-        font-size: 0.76rem;
-        line-height: 1.15;
-    }
-
-    .client-portal .dashboard-page-shell .category-head,
-    .client-portal .preview-head,
-    .client-portal .membership-billing-panel-head {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 0.65rem;
-    }
-
-    .client-portal .category-summary-pill {
-        max-width: 100%;
-        min-width: 0;
-        white-space: normal;
-    }
-
-    /* Forms and profile editing — no side-by-side fields on a phone. */
     .client-portal .client-create-grid,
     .client-portal .client-create-record-types,
     .client-portal .client-profile-upload-row,
@@ -155,25 +37,6 @@
         justify-self: start;
     }
 
-    /* Resource and training pages share the same compact, readable rhythm. */
-    .client-portal .resources-page,
-    .client-portal .training-page {
-        padding: var(--client-mobile-gutter);
-        border-radius: var(--client-mobile-card-radius);
-    }
-
-    .client-portal .resources-page-hero,
-    .client-portal .priority-card,
-    .client-portal .resources-controls-card,
-    .client-portal .resources-preview-shell,
-    .client-portal .info-card,
-    .client-portal .training-hero,
-    .client-portal .training-controls-card,
-    .client-portal .training-preview-shell,
-    .client-portal .training-empty-state {
-        border-radius: var(--client-mobile-card-radius);
-    }
-
     .client-portal .preview-actions {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -192,14 +55,13 @@
     }
 
     .client-portal .training-preview-frame {
-        padding: 0.75rem;
+        padding: 0.62rem;
     }
 
     .client-portal .training-frame {
         height: min(560px, 72dvh);
     }
 
-    /* Snapshot and finance retain their components but collapse their wider grids. */
     .client-portal .snapshot-layout,
     .client-portal .snapshot-hero,
     .client-portal .snapshot-two-col,
@@ -216,15 +78,6 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .client-portal .snapshot-page {
-        padding: var(--client-mobile-gutter);
-        border-radius: var(--client-mobile-card-radius);
-    }
-
-    .client-portal .finance-shell {
-        padding-inline: var(--client-mobile-gutter);
-    }
-
     .client-portal .finance-toolbar-shell,
     .client-portal .finance-main,
     .client-portal #budget-embed {
@@ -239,12 +92,5 @@
     .client-portal .table-responsive,
     .client-portal .table {
         max-width: 100%;
-    }
-}
-
-@media (max-width: 389.98px) {
-    .client-portal .dashboard-page-shell .dashboard-tool {
-        min-height: 106px;
-        height: 106px;
     }
 }
