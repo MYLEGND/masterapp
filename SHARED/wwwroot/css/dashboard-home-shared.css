@@ -83,6 +83,12 @@ html[data-legend-modal-region] body .modal .modal-body {
         justify-content: center;
     }
 
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) {
+        align-items: flex-start !important;
+        justify-content: center !important;
+        padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end) !important;
+    }
+
     html[data-legend-modal-region] body.legend-app .modal > .modal-dialog[data-legend-modal-panel] {
         width: 100% !important;
         max-width: 100% !important;
@@ -150,12 +156,60 @@ html[data-legend-modal-region] body .modal .modal-body {
         font-size: 16px;
     }
 
-    html[data-legend-modal-region] body.legend-app .modal :is(.btn-close, [aria-label^="Close"], [aria-label^="close"]) {
-        width: var(--legend-mobile-control-height);
-        min-width: var(--legend-mobile-control-height);
-        height: var(--legend-mobile-control-height);
-        min-height: var(--legend-mobile-control-height);
-        padding: 0;
+    /*
+     * One close/collapse glyph everywhere: the same boxed arrow language used
+     * by the approved Website Studio control, without changing button behavior.
+     */
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel]
+    :is(.btn-close, [aria-label^="Close" i], [class$="-close"], [class*="-close "]) {
+        position: relative;
+        display: inline-grid !important;
+        flex: 0 0 var(--legend-mobile-control-height);
+        place-items: center;
+        width: var(--legend-mobile-control-height) !important;
+        min-width: var(--legend-mobile-control-height) !important;
+        height: var(--legend-mobile-control-height) !important;
+        min-height: var(--legend-mobile-control-height) !important;
+        padding: 0 !important;
+        border: 1px solid var(--legend-mobile-gold) !important;
+        border-radius: 999px !important;
+        background: color-mix(in srgb, var(--legend-mobile-surface) 95%, transparent) !important;
+        background-image: none !important;
+        color: transparent !important;
+        font-size: 0 !important;
+        line-height: 0 !important;
+        opacity: 1 !important;
+        box-shadow: 0 8px 24px #0005 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel]
+    :is(.btn-close, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::before {
+        content: "";
+        width: 16px;
+        height: 16px;
+        border: 1.5px solid var(--legend-mobile-text);
+        border-radius: 1px;
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel]
+    :is(.btn-close, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::after {
+        content: "";
+        position: absolute;
+        left: 10px;
+        top: 13px;
+        width: 8px;
+        height: 8px;
+        border: solid var(--legend-mobile-text);
+        border-width: 0 0 1.5px 1.5px;
+        transform: rotate(45deg);
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] >
+    :is([class$="-head"], [class*="-head "], header) {
+        min-height: 0;
+        padding: 7px 10px !important;
+        border-bottom-color: #344766 !important;
+        background: var(--legend-mobile-surface) !important;
     }
 
     /*
@@ -3878,7 +3932,8 @@ textarea.client-create-notes {
 }
 
 @media (max-width: 720px) {
-    .dashboard-hero-title {
+    .dashboard-hero-title,
+    .home-command-page .dashboard-hero-title {
         font-size: 1.45rem;
         line-height: 1;
     }
