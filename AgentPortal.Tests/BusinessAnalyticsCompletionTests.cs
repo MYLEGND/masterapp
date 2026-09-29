@@ -164,7 +164,7 @@ public sealed class BusinessAnalyticsCompletionTests
             MarketingOwnerScope.Founder,
             "/WebsiteAnalytics/Index",
             "https://portal.example.com/analytics/meta-callback");
-        Assert.StartsWith("https://www.facebook.com/dialog/oauth?", connectUrl, StringComparison.Ordinal);
+        Assert.True(connectUrl.StartsWith("https://www.facebook.com/dialog/oauth?", StringComparison.Ordinal));
         Assert.DoesNotContain("v-retired", connectUrl, StringComparison.Ordinal);
 
         var root = RepoRoot();
