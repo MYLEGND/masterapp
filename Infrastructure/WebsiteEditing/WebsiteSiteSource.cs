@@ -12,11 +12,7 @@ public sealed class WebsiteSiteSourceDocument
     public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteStudioContract.DefaultBreakpoints();
     public WebsiteThemeOverride Theme { get; set; } = new();
 
-    // Shared header/footer presentation stays document-global, but is visible in
-    // Master Source so canvas and source never become competing authorities.
-    public SortedDictionary<string, WebsiteElementOverride> ShellElements { get; set; } = new(StringComparer.Ordinal);
-    public List<WebsiteExtraComponent> GlobalExtras { get; set; } = new();
-
+    public WebsiteSharedShellDocument Shell { get; set; } = new();
     public List<WebsiteSiteSourcePage> Pages { get; set; } = new();
     public SortedDictionary<string, WebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
     public SortedDictionary<string, WebsiteCollectionDefinition> Collections { get; set; } = new(StringComparer.Ordinal);
@@ -60,10 +56,9 @@ public static class WebsiteSiteSource
 
     public static string Serialize(WebsiteContentDocument document)
     {
+        if (document.LegacyMigration is not null)
+            throw new InvalidOperationException("website_site_source_requires_materialized_v3");
         var canonical = WebsiteContentSanitizer.Sanitize(document);
-        if (!string.Equals(canonical.CompositionMode, "canonical", StringComparison.Ordinal))
-            throw new InvalidOperationException("website_site_source_requires_v3_composition");
-
         var source = Project(canonical);
         return JsonSerializer.Serialize(source, SourceOptions) + "\n";
     }
@@ -109,18 +104,11 @@ public static class WebsiteSiteSource
         var output = new WebsiteContentDocument
         {
             Version = WebsiteStudioContract.CurrentDocumentVersion,
-            CompositionMode = "canonical",
             FaviconImageDataUrl = source.FaviconImageDataUrl ?? current.FaviconImageDataUrl,
             Store = source.Store ?? new WebsiteStoreSettings(),
             Breakpoints = source.Breakpoints ?? WebsiteStudioContract.DefaultBreakpoints(),
             Theme = source.Theme ?? new WebsiteThemeOverride(),
-            Elements = ProtectShellElements(source.ShellElements, current.Elements, allowedActions),
-            Extras = ProtectGlobalExtras(source.GlobalExtras, current.Extras, allowedActions),
-            SectionOrder = Clone(current.SectionOrder),
-            ReusableComponents = ProtectReusableComponents(
-                source.ReusableComponents,
-                current.ReusableComponents,
-                allowedActions),
+            Shell = Clone(source.Shell ?? new WebsiteSharedShellDocument()),
             Collections = new(
                 (source.Collections ?? new(StringComparer.Ordinal))
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal)
@@ -131,6 +119,16 @@ public static class WebsiteSiteSource
         var deleted = new List<string>();
         var pagePaths = new HashSet<string>(StringComparer.Ordinal);
         var nodeIds = new HashSet<string>(StringComparer.Ordinal);
+
+        ProtectSemantics(output.Shell.Header, "@shell/header", protectedNodes, allowedActions, nodeIds);
+        ProtectSemantics(output.Shell.Footer, "@shell/footer", protectedNodes, allowedActions, nodeIds);
+
+        output.ReusableComponents = ProtectReusableComponents(
+            source.ReusableComponents,
+            current.ReusableComponents,
+            protectedNodes,
+            allowedActions,
+            nodeIds);
 
         foreach (var page in sourcePages)
         {
@@ -204,7 +202,7 @@ public static class WebsiteSiteSource
         WebsiteContentDocument document,
         IReadOnlyList<WebsiteCallToActionOption> ctaCatalog)
     {
-        if (!string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
+        if (document.LegacyMigration is not null || document.Version != WebsiteStudioContract.CurrentDocumentVersion)
             throw new ArgumentException("Website v3 composition is not canonical.");
 
         var validActions = ctaCatalog.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
@@ -261,11 +259,11 @@ public static class WebsiteSiteSource
             Store = Clone(document.Store),
             Breakpoints = Clone(document.Breakpoints),
             Theme = Clone(document.Theme),
-            ShellElements = new(
-                document.Elements.OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                    .ToDictionary(pair => pair.Key, pair => ProjectElement(pair.Value), StringComparer.Ordinal),
-                StringComparer.Ordinal),
-            GlobalExtras = document.Extras.Select(ProjectExtra).ToList(),
+            Shell = new WebsiteSharedShellDocument
+            {
+                Header = document.Shell.Header.Select(ProjectNode).ToList(),
+                Footer = document.Shell.Footer.Select(ProjectNode).ToList()
+            },
             ReusableComponents = new(
                 document.ReusableComponents
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal)
@@ -295,143 +293,38 @@ public static class WebsiteSiteSource
         return source;
     }
 
-    private static WebsiteElementOverride ProjectElement(WebsiteElementOverride value)
-    {
-        var copy = Clone(value);
-        copy.Signals = [];
-        return copy;
-    }
-
-    private static WebsiteExtraComponent ProjectExtra(WebsiteExtraComponent value)
-    {
-        var copy = Clone(value);
-        copy.Signals = [];
-        return copy;
-    }
-
-    private static Dictionary<string, WebsiteElementOverride> ProtectShellElements(
-        IReadOnlyDictionary<string, WebsiteElementOverride>? proposed,
-        IReadOnlyDictionary<string, WebsiteElementOverride>? baseline,
-        IReadOnlySet<string> allowedActions)
-    {
-        var result = new Dictionary<string, WebsiteElementOverride>(StringComparer.Ordinal);
-        foreach (var (id, previous) in baseline ?? new Dictionary<string, WebsiteElementOverride>())
-        {
-            var next = proposed is not null && proposed.TryGetValue(id, out var candidate)
-                ? Clone(candidate)
-                : Clone(previous);
-            next.Signals = Clone(previous.Signals);
-            if (!string.IsNullOrWhiteSpace(next.ActionKey) && !allowedActions.Contains(next.ActionKey))
-                throw new ArgumentException($"Shared website action '{next.ActionKey}' is not available for this website.");
-            if (!string.IsNullOrWhiteSpace(previous.ActionKey))
-            {
-                if (string.IsNullOrWhiteSpace(next.ActionKey))
-                    next.ActionKey = previous.ActionKey;
-                else if (!string.Equals(previous.ActionKey, next.ActionKey, StringComparison.Ordinal))
-                    throw new ArgumentException($"Shared website action '{id}' cannot change its canonical action identity.");
-            }
-            result[id] = next;
-        }
-        return result;
-    }
-
-    private static List<WebsiteExtraComponent> ProtectGlobalExtras(
-        IEnumerable<WebsiteExtraComponent>? proposed,
-        IEnumerable<WebsiteExtraComponent>? baseline,
-        IReadOnlySet<string> allowedActions)
-    {
-        var previousById = (baseline ?? []).ToDictionary(value => value.Id, StringComparer.Ordinal);
-        var result = new List<WebsiteExtraComponent>();
-        foreach (var candidate in proposed ?? [])
-        {
-            var next = Clone(candidate);
-            if (previousById.TryGetValue(next.Id, out var previous))
-            {
-                next.Signals = Clone(previous.Signals);
-                if (!string.IsNullOrWhiteSpace(previous.ActionKey))
-                {
-                    if (string.IsNullOrWhiteSpace(next.ActionKey))
-                        next.ActionKey = previous.ActionKey;
-                    else if (!string.Equals(previous.ActionKey, next.ActionKey, StringComparison.Ordinal))
-                        throw new ArgumentException($"Global website component '{next.Id}' cannot change its canonical action identity.");
-                }
-            }
-            else next.Signals = [];
-
-            if (!string.IsNullOrWhiteSpace(next.ActionKey) && !allowedActions.Contains(next.ActionKey))
-                throw new ArgumentException($"Global website action '{next.ActionKey}' is not available for this website.");
-            result.Add(next);
-        }
-        foreach (var previous in previousById.Values)
-            if (!result.Any(value => value.Id == previous.Id))
-                result.Add(Clone(previous));
-        return result;
-    }
-
     private static WebsiteReusableComponentDefinition ProjectReusable(WebsiteReusableComponentDefinition value)
     {
         var copy = Clone(value);
-        foreach (var element in copy.Elements.Values) element.Signals = [];
-        foreach (var extra in copy.Extras) extra.Signals = [];
+        copy.Composition = value.Composition.Select(ProjectNode).ToList();
         return copy;
     }
 
     private static Dictionary<string, WebsiteReusableComponentDefinition> ProtectReusableComponents(
         IReadOnlyDictionary<string, WebsiteReusableComponentDefinition>? proposed,
         IReadOnlyDictionary<string, WebsiteReusableComponentDefinition>? baseline,
-        IReadOnlySet<string> allowedActions)
+        IReadOnlyDictionary<string, (string PagePath, WebsiteCompositionNode Node)> protectedNodes,
+        IReadOnlySet<string> allowedActions,
+        HashSet<string> allIds)
     {
         var result = new Dictionary<string, WebsiteReusableComponentDefinition>(StringComparer.Ordinal);
         foreach (var (key, candidate) in proposed ?? new Dictionary<string, WebsiteReusableComponentDefinition>())
         {
+            var id = (key ?? string.Empty).Trim();
+            if (id.Length == 0) continue;
             var next = Clone(candidate);
-            WebsiteReusableComponentDefinition? previous = null;
-            if (baseline is not null) baseline.TryGetValue(key, out previous);
-
-            foreach (var (id, element) in next.Elements)
-            {
-                if (previous?.Elements.TryGetValue(id, out var prior) == true)
-                {
-                    element.Signals = Clone(prior.Signals);
-                    if (!string.IsNullOrWhiteSpace(prior.ActionKey))
-                    {
-                        if (string.IsNullOrWhiteSpace(element.ActionKey))
-                            element.ActionKey = prior.ActionKey;
-                        else if (!string.Equals(prior.ActionKey, element.ActionKey, StringComparison.Ordinal))
-                            throw new ArgumentException($"Reusable component element '{id}' cannot change its canonical action identity.");
-                    }
-                }
-                else element.Signals = [];
-
-                if (!string.IsNullOrWhiteSpace(element.ActionKey) && !allowedActions.Contains(element.ActionKey))
-                    throw new ArgumentException($"Reusable component action '{element.ActionKey}' is unavailable for this website.");
-            }
-
-            var previousExtras = (previous?.Extras ?? []).ToDictionary(value => value.Id, StringComparer.Ordinal);
-            foreach (var extra in next.Extras)
-            {
-                if (previousExtras.TryGetValue(extra.Id, out var prior))
-                {
-                    extra.Signals = Clone(prior.Signals);
-                    if (!string.IsNullOrWhiteSpace(prior.ActionKey))
-                    {
-                        if (string.IsNullOrWhiteSpace(extra.ActionKey))
-                            extra.ActionKey = prior.ActionKey;
-                        else if (!string.Equals(prior.ActionKey, extra.ActionKey, StringComparison.Ordinal))
-                            throw new ArgumentException($"Reusable component block '{extra.Id}' cannot change its canonical action identity.");
-                    }
-                }
-                else extra.Signals = [];
-                if (!string.IsNullOrWhiteSpace(extra.ActionKey) && !allowedActions.Contains(extra.ActionKey))
-                    throw new ArgumentException($"Reusable component action '{extra.ActionKey}' is unavailable for this website.");
-            }
-
-            result[key] = next;
+            next.Id = id;
+            ProtectSemantics(next.Composition, "@component/" + id, protectedNodes, allowedActions, allIds);
+            result[id] = next;
         }
 
         foreach (var (key, previous) in baseline ?? new Dictionary<string, WebsiteReusableComponentDefinition>())
-            if (!result.ContainsKey(key))
-                result[key] = Clone(previous);
+        {
+            if (result.ContainsKey(key)) continue;
+            var copy = Clone(previous);
+            ProtectSemantics(copy.Composition, "@component/" + key, protectedNodes, allowedActions, allIds);
+            result[key] = copy;
+        }
 
         return result;
     }
@@ -519,8 +412,15 @@ public static class WebsiteSiteSource
 
     private static IEnumerable<(string PagePath, WebsiteCompositionNode Node)> Flatten(WebsiteContentDocument document)
     {
+        foreach (var node in Flatten("@shell/header", document.Shell?.Header ?? []))
+            yield return node;
+        foreach (var node in Flatten("@shell/footer", document.Shell?.Footer ?? []))
+            yield return node;
         foreach (var (path, page) in document.Pages)
             foreach (var node in Flatten(path, page.Composition))
+                yield return node;
+        foreach (var (id, component) in document.ReusableComponents)
+            foreach (var node in Flatten("@component/" + id, component.Composition))
                 yield return node;
     }
 
