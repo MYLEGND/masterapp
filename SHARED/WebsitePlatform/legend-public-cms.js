@@ -5590,7 +5590,9 @@
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
-      .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;min-height:40px;padding:8px 12px;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;font:700 14px/1.2 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px #0005}
+      .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;display:grid;place-items:center;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;cursor:pointer;box-shadow:0 8px 24px #0005}
+      .legend-cms-panel-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .legend-cms-sheet-handle{display:none}
       .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;overflow-wrap:anywhere}
       .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
       .legend-cms-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -5617,17 +5619,29 @@
         .legend-cms-preview{width:100%;max-width:100%;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;padding-top:0}
         .legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}
         .legend-cms-panel{
+          --legend-cms-sheet-compact:min(46dvh,430px);
+          --legend-cms-sheet-expanded:min(88dvh,calc(100dvh - 12px));
           top:0;right:0;bottom:auto;width:100%;max-width:100%;min-width:0;
-          height:auto;max-height:min(46dvh,430px);overflow-y:auto;overflow-x:hidden;
+          height:var(--legend-cms-sheet-height,var(--legend-cms-sheet-compact));max-height:none;
+          overflow-y:auto;overflow-x:hidden;
           overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
           border:0;border-bottom:1px solid #d4ad45;border-radius:0 0 14px 14px;
           padding:max(6px,env(safe-area-inset-top)) 10px 10px;
           box-shadow:0 14px 32px #0007;
+          transition:height .2s ease;
         }
+        body.legend-cms-panel-expanded .legend-cms-panel{--legend-cms-sheet-height:var(--legend-cms-sheet-expanded)}
+        body.legend-cms-sheet-dragging .legend-cms-panel{transition:none}
         .legend-cms-panel>*{min-width:0;max-width:100%}
+        .legend-cms-sheet-handle{
+          position:sticky;top:0;z-index:8;display:grid;place-items:center;
+          width:72px;min-height:22px;margin:0 auto 2px;padding:5px 0;border:0!important;
+          background:transparent!important;color:#aab8cf!important;touch-action:none;cursor:ns-resize
+        }
+        .legend-cms-sheet-handle::before{content:"";display:block;width:38px;height:4px;border-radius:999px;background:currentColor}
         .legend-cms-panel-toggle{
           top:max(6px,env(safe-area-inset-top));right:8px;
-          min-height:34px;padding:6px 9px;font-size:12px;max-width:calc(100vw - 16px)
+          width:34px;height:34px;min-width:34px;min-height:34px;padding:0;max-width:none
         }
         .legend-cms-panel h2{font-size:16px;margin:0 74px 2px 0}
         .legend-cms-panel>small{margin:0 74px 6px 0;font-size:11px}
@@ -5690,6 +5704,7 @@
     panel.className = 'legend-cms-editor legend-cms-panel';
     panel.setAttribute('aria-labelledby', 'legend-cms-heading');
     panel.innerHTML = `
+      <button id="legend-cms-sheet-handle" class="legend-cms-sheet-handle" type="button" aria-label="Expand Website Studio controls"></button>
       <h2 id="legend-cms-heading">Website studio</h2>
       <small id="legend-cms-selected-label">Select content on the page</small>
       <div id="legend-cms-inline-help" class="legend-cms-inline-help" hidden><span>Single click selects. Use the gold Move control to position. Resize only from the selected border edges or corners. Double-click text, or choose Edit text, to type.</span><button id="legend-cms-edit-text" type="button">Edit text</button></div>
@@ -5729,18 +5744,80 @@
     panelToggle.type = 'button';
     panelToggle.id = 'legend-cms-panel-toggle';
     panelToggle.className = 'legend-cms-editor legend-cms-panel-toggle';
-    panelToggle.textContent = 'Full-page canvas';
     panelToggle.setAttribute('aria-controls', 'legend-cms-heading');
-    panelToggle.setAttribute('aria-expanded', 'true');
-    panelToggle.addEventListener('click', () => {
-      const hidden = document.body.classList.toggle('legend-cms-panel-hidden');
-      panelToggle.textContent = hidden ? 'Open controls' : 'Full-page canvas';
-      panelToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+
+    const panelToggleIcon = hidden => hidden
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5h14v14H5Z"/><path d="M9 12h6"/><path d="m12 9 3 3-3 3"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5h14v14H5Z"/><path d="M9 12h6"/><path d="m12 15-3-3 3-3"/></svg>';
+    const syncPanelToggle = () => {
+      const hidden=document.body.classList.contains('legend-cms-panel-hidden');
+      panelToggle.innerHTML=panelToggleIcon(hidden);
+      panelToggle.setAttribute('aria-label',hidden ? 'Open Website Studio controls' : 'Hide Website Studio controls');
+      panelToggle.setAttribute('title',hidden ? 'Open controls' : 'Hide controls');
+      panelToggle.setAttribute('aria-expanded',hidden ? 'false' : 'true');
+    };
+    const refreshPanelCanvas = () => {
       const refresh = () => { refreshScaledElements(); updateDirectCanvasUi(); };
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refresh);
       else refresh();
+    };
+    panelToggle.addEventListener('click', () => {
+      document.body.classList.toggle('legend-cms-panel-hidden');
+      if(document.body.classList.contains('legend-cms-panel-hidden'))
+        document.body.classList.remove('legend-cms-panel-expanded');
+      syncPanelToggle();
+      refreshPanelCanvas();
     });
+    syncPanelToggle();
     document.body.appendChild(panelToggle);
+
+    const sheetHandle=panel.querySelector('#legend-cms-sheet-handle');
+    const mobileSheet=()=>window.matchMedia?.('(max-width: 800px)').matches === true;
+    const syncSheetHandle=()=>{
+      if(!sheetHandle) return;
+      const expanded=document.body.classList.contains('legend-cms-panel-expanded');
+      sheetHandle.setAttribute('aria-label',expanded ? 'Collapse Website Studio controls' : 'Expand Website Studio controls');
+      sheetHandle.setAttribute('aria-expanded',expanded ? 'true' : 'false');
+    };
+    const setSheetExpanded=expanded=>{
+      document.body.classList.toggle('legend-cms-panel-expanded',!!expanded);
+      panel.style.removeProperty('--legend-cms-sheet-height');
+      syncSheetHandle();
+      refreshPanelCanvas();
+    };
+    let sheetDrag=null;
+    sheetHandle?.addEventListener('click',()=>{ if(mobileSheet()) setSheetExpanded(!document.body.classList.contains('legend-cms-panel-expanded')); });
+    sheetHandle?.addEventListener('pointerdown',event=>{
+      if(!mobileSheet() || event.button!==0) return;
+      sheetDrag={startY:event.clientY,startHeight:panel.getBoundingClientRect().height};
+      document.body.classList.add('legend-cms-sheet-dragging');
+      sheetHandle.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    });
+    sheetHandle?.addEventListener('pointermove',event=>{
+      if(!sheetDrag) return;
+      const viewport=Math.max(320,Number(window.innerHeight)||document.documentElement.clientHeight||800);
+      const compact=Math.min(viewport*.46,430);
+      const expanded=Math.min(viewport*.88,viewport-12);
+      const height=Math.max(compact,Math.min(expanded,sheetDrag.startHeight+(event.clientY-sheetDrag.startY)));
+      panel.style.setProperty('--legend-cms-sheet-height',height+'px');
+      event.preventDefault();
+    });
+    const finishSheetDrag=event=>{
+      if(!sheetDrag) return;
+      const viewport=Math.max(320,Number(window.innerHeight)||document.documentElement.clientHeight||800);
+      const compact=Math.min(viewport*.46,430);
+      const expanded=Math.min(viewport*.88,viewport-12);
+      const height=panel.getBoundingClientRect().height;
+      const expand=height>(compact+expanded)/2;
+      sheetDrag=null;
+      document.body.classList.remove('legend-cms-sheet-dragging');
+      sheetHandle?.releasePointerCapture?.(event.pointerId);
+      setSheetExpanded(expand);
+    };
+    sheetHandle?.addEventListener('pointerup',finishSheetDrag);
+    sheetHandle?.addEventListener('pointercancel',finishSheetDrag);
+    syncSheetHandle();
     window.addEventListener('beforeunload', event => {
       if (!dirty) return;
       event.preventDefault();
