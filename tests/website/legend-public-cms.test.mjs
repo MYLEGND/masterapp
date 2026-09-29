@@ -399,6 +399,15 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
   assert.equal(source.includes('legacyMigration.sectionOrder ='),false);
   assert.equal(source.includes('function createExtra('),false);
   assert.ok(source.includes('function createLegacyExtra('));
+  assert.equal(source.includes('ov.imageDataUrl'),false);
+  assert.equal(source.includes('ov.videoUrl'),false);
+  assert.equal(source.includes('legend-cms-videoUrl'),false);
+  assert.equal(source.includes('function readImage('),false);
+  assert.equal(source.includes('function restoreHistory('),false);
+  assert.ok(source.includes('function restoreCanonicalV3History('));
+  assert.equal(source.includes('node.mediaUrl=asset.url'),false);
+  assert.equal(source.includes('mediaUrl:asset.url'),false);
+  assert.ok(source.includes('node.mediaAssetId=asset.id'));
   assert.match(source,/async function save\([\s\S]*?if \(legacyMigration\)[\s\S]*?return false;/);
   assert.match(source,/function buildEditor\(\) \{[\s\S]*?if \(legacyMigration\)[\s\S]*?throw new Error/);
   assert.match(source,/READ-ONLY PRE-V3 COMPATIBILITY BOUNDARY/);
