@@ -52,6 +52,26 @@ public static class WebsiteContentSanitizer
         return ProjectLegacyForOneWayMigration(SanitizeLegacy(legacy));
     }
 
+    internal static WebsiteContentDocument DeserializeCanonicalUntrusted(
+        string json,
+        System.Text.Json.JsonSerializerOptions options)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(json)
+            ?? throw new ArgumentException("Canonical website document is empty.");
+        if (ContainsLegacyAuthority(root))
+            throw new ArgumentException("Legacy website override fields are not valid in a v3 document.");
+
+        var version = 0;
+        if (root is System.Text.Json.Nodes.JsonObject rootObject &&
+            rootObject.TryGetPropertyValue("version", out var versionNode))
+            int.TryParse(versionNode?.ToString(), out version);
+        if (version != WebsiteStudioContract.CurrentDocumentVersion)
+            throw new ArgumentException("Portable website documents must use the canonical v3 schema.");
+
+        return System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(root.ToJsonString(), options)
+            ?? throw new ArgumentException("Canonical website document is invalid.");
+    }
+
     private static bool ContainsLegacyAuthority(System.Text.Json.Nodes.JsonNode? root)
     {
         if (root is not System.Text.Json.Nodes.JsonObject obj) return false;
