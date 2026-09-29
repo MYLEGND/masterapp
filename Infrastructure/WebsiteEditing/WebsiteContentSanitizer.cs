@@ -472,6 +472,8 @@ public static class WebsiteContentSanitizer
                 DataBinding = SanitizeDataBinding(node.DataBinding)
             };
             clean.Children = SanitizeCompositionChildren(node.Children, breakpointKeys, depth + 1, ref remaining);
+            if (IsRetiredTemplateDecoration(clean))
+                continue;
             result.Add(clean);
         }
         return result;
@@ -517,6 +519,43 @@ public static class WebsiteContentSanitizer
         }
 
         return "Website image";
+    }
+
+    private static bool IsRetiredTemplateDecoration(WebsiteCompositionNode node)
+    {
+        var classes = (node.ClassName ?? string.Empty)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var hasMeaning =
+            !string.IsNullOrWhiteSpace(node.Text) ||
+            !string.IsNullOrWhiteSpace(node.Title) ||
+            !string.IsNullOrWhiteSpace(node.ActionKey) ||
+            !string.IsNullOrWhiteSpace(node.Href) ||
+            !string.IsNullOrWhiteSpace(node.Alt) ||
+            node.MediaAssetId.HasValue ||
+            !string.IsNullOrWhiteSpace(node.MediaUrl) ||
+            !string.IsNullOrWhiteSpace(node.SystemKey) ||
+            !string.IsNullOrWhiteSpace(node.SystemBinding) ||
+            !string.IsNullOrWhiteSpace(node.SyncSourceId) ||
+            node.DataBinding is not null ||
+            (node.Signals?.Count ?? 0) > 0 ||
+            (node.Children?.Count ?? 0) > 0;
+
+        if (hasMeaning) return false;
+
+        // These were presentation-only wrappers in the old static templates.
+        // Early v3 materialization stripped their SVG/pseudo-element content but
+        // persisted the empty wrapper, creating colored blank icon/halo boxes and
+        // empty hero columns. Delete only semantically empty known artifacts.
+        if (classes.Contains("icon") || classes.Contains("halo") || classes.Contains("hero-mark"))
+            return true;
+
+        // An unclassed empty text span has no visual/content authority and was
+        // produced by the same old hero wrapper path.
+        return node.Type == "text" &&
+               string.Equals(node.Tag, "span", StringComparison.Ordinal) &&
+               classes.Count == 0;
     }
 
     private static string? SanitizeSystemBinding(string? value)
