@@ -179,20 +179,59 @@
       !node.actionKey && !node.systemKey && !node.systemBinding && !node.href;
   }
 
+  function wordsFromResourceName(value) {
+    if (typeof value !== 'string' || !value.trim() || value.startsWith('data:')) return '';
+    let path=value.trim();
+    try {
+      const url=new URL(path,location.origin);
+      path=url.pathname;
+    } catch { /* Keep a relative/static path as-is. */ }
+    let name=path.split('/').filter(Boolean).pop() || '';
+    try { name=decodeURIComponent(name); } catch { }
+    name=name.replace(/\.[a-z0-9]{1,8}$/i,'').replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
+    if(!name) return '';
+    return name.split(' ').map(word=>word ? word[0].toUpperCase()+word.slice(1) : '').join(' ').slice(0,160);
+  }
+
+  function defaultImageAlt(node) {
+    if (!node || typeof node !== 'object') return 'Website image';
+    // Explicit empty alt means decorative. Preserve that author decision.
+    if (node.alt != null) return String(node.alt).trim();
+    for (const candidate of [node.title,node.text]) {
+      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim().slice(0,160);
+    }
+    return wordsFromResourceName(node.mediaUrl) || 'Website image';
+  }
+
+  function defaultNavigationLabel(route,title) {
+    if(typeof title==='string' && title.trim()) return title.trim().slice(0,120);
+    if(route==='/') return 'Home';
+    const segment=String(route||'/').split('/').filter(Boolean).pop() || 'Page';
+    let value=segment;
+    try { value=decodeURIComponent(value); } catch { }
+    value=value.replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
+    if(!value) return 'Page';
+    return value.split(' ').map(word=>word ? word[0].toUpperCase()+word.slice(1) : '').join(' ').slice(0,120);
+  }
+
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
     return input
       .filter(node => node && typeof node === 'object')
-      .map(node => ({
-        ...node,
-        children: normalizeCompositionNodes(node.children),
-        style: node.style && typeof node.style === 'object' ? node.style : {},
-        breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
-        layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
-        breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
-        animations: Array.isArray(node.animations) ? node.animations : [],
-        signals: Array.isArray(node.signals) ? node.signals : []
-      }))
+      .map(node => {
+        const normalized={
+          ...node,
+          children: normalizeCompositionNodes(node.children),
+          style: node.style && typeof node.style === 'object' ? node.style : {},
+          breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
+          layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
+          breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
+          animations: Array.isArray(node.animations) ? node.animations : [],
+          signals: Array.isArray(node.signals) ? node.signals : []
+        };
+        if(normalized.type==='image') normalized.alt=defaultImageAlt(normalized);
+        return normalized;
+      })
       // Menu toggles are reconstructed runtime chrome. They were accidentally
       // persisted by early v3 materialization and have no website destination.
       .filter(node => !isRuntimeShellChromeNode(node));
@@ -253,12 +292,19 @@
       // route identity independent of agent URL scope, so collapse those rows
       // into the one canonical page key and never serialize the prefixed copy.
       if (pages[route] && rawRoute !== route) continue;
+      const title=cleanBusinessPreviewTitle(value.title);
+      const navigation=value.navigation && typeof value.navigation === 'object'
+        ? {...value.navigation}
+        : {showInNavigation:true,order:0,isDeleted:false};
+      navigation.showInNavigation=navigation.showInNavigation!==false;
+      navigation.isDeleted=navigation.isDeleted===true;
+      navigation.order=Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0;
+      if(navigation.showInNavigation && !navigation.isDeleted && !String(navigation.label||'').trim())
+        navigation.label=defaultNavigationLabel(route,title);
       pages[route] = {
-        title: cleanBusinessPreviewTitle(value.title),
+        title,
         description: typeof value.description === 'string' ? value.description : null,
-        navigation: value.navigation && typeof value.navigation === 'object'
-          ? {...value.navigation}
-          : {showInNavigation:true,order:0,isDeleted:false},
+        navigation,
         dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
         systemTemplateKey: typeof value.systemTemplateKey === 'string' ? value.systemTemplateKey : null,
         composition: normalizeCompositionNodes(value.composition)
@@ -345,7 +391,7 @@
       documentState.pages[route]={
         title:null,
         description:null,
-        navigation:{showInNavigation:true,order:0,isDeleted:false},
+        navigation:{label:defaultNavigationLabel(route,null),showInNavigation:true,order:0,isDeleted:false},
         dynamicBinding:null,
         composition:[]
       };
@@ -484,6 +530,18 @@
       document.querySelector('.nav'),
       document.querySelector('.site-footer')
     ].filter(Boolean);
+
+    // Missing alt is corrected at the shared presentation boundary before the
+    // DOM can be materialized into canonical v3. Explicit alt="" remains a
+    // valid decorative-image decision.
+    document.querySelectorAll('main img').forEach(image=>{
+      if(image.hasAttribute('alt')) return;
+      image.setAttribute('alt',defaultImageAlt({
+        type:'image',
+        title:image.getAttribute('aria-label') || image.getAttribute('title'),
+        mediaUrl:image.getAttribute('src')
+      }));
+    });
 
     // Stable system-form identities are assigned before generic DOM IDs.
     document.querySelectorAll('[data-legend-public-inquiry-form]').forEach((mount,index)=>{
@@ -2747,7 +2805,8 @@
       page.description=snapshot.description ?? page.description;
       page.systemTemplateKey=snapshot.systemTemplateKey ?? page.systemTemplateKey ?? null;
       page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
-      if(SITE_KEY==='business' && !page.navigation.label && routeEntry?.label) page.navigation.label=routeEntry.label;
+      if(!String(page.navigation.label||'').trim())
+        page.navigation.label=routeEntry?.label || defaultNavigationLabel(route,page.title);
       page.composition=normalizeCompositionNodes(snapshot.composition);
       next.pages[route]=page;
     }
@@ -4582,7 +4641,7 @@
       checks.push({ code:'live_duplicate_id', severity:'error', message:`Duplicate rendered id "${id}" appears ${count} times.` });
 
     document.querySelectorAll('main img:not([hidden])').forEach(image => {
-      if (!image.getAttribute('alt')?.trim())
+      if (!image.hasAttribute('alt'))
         checks.push({ code:'live_image_alt_missing', severity:'warning', message:'A rendered image is missing alternative text.', elementId:image.dataset.cmsId || image.id || null });
     });
 
@@ -5397,7 +5456,10 @@
       html,body{max-width:100%}
       body{overflow-x:clip}
       main,main>*{min-width:0;max-width:100%;box-sizing:border-box}
+      main *{min-width:0;box-sizing:border-box}
+      main :is(h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span){max-width:100%;overflow-wrap:anywhere;word-break:normal;white-space:normal}
       main img,main video,main iframe,main form{max-width:100%}
+      [data-cms-editable="true"]{min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}
       [data-cms-id][hidden]{display:none}
       .cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0;max-width:100%}
       .cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}
