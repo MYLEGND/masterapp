@@ -24,7 +24,6 @@ using Moq;
 using Protect_Website.Controllers;
 using Protect_Website.Models;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.Communication;
 using ProtectWebsite.Services.Meta;
 using Infrastructure.Analytics;
 using ProtectWebsite.Services.Tracking;
@@ -441,7 +440,7 @@ public class LifeQuoteControllerPublicBookingTests
         IPublicBookingResolver? publicBookingResolver = null,
         IPublicBookingConfirmationService? publicBookingConfirmationService = null,
         IPublicBookingContextProtector? publicBookingContextProtector = null,
-        IProtectEmailSender? emailSender = null)
+        IWebsiteInquiryEmailSender? emailSender = null)
     {
         var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
 
@@ -480,9 +479,9 @@ public class LifeQuoteControllerPublicBookingTests
             .Build();
     }
 
-    private static IProtectEmailSender BuildSuccessfulEmailSender()
+    private static IWebsiteInquiryEmailSender BuildSuccessfulEmailSender()
     {
-        var sender = new Mock<IProtectEmailSender>();
+        var sender = new Mock<IWebsiteInquiryEmailSender>();
         sender
             .Setup(service => service.TrySendAsync(
                 It.IsAny<string>(),
