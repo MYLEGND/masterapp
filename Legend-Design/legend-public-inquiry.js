@@ -25,7 +25,9 @@
     return location.origin;
   }
 
-  document.querySelectorAll('[data-website-inquiry]:not([data-preview])').forEach(form => {
+  function bindInquiryForm(form) {
+    if (!form || form.dataset.legendInquiryBound === 'true') return;
+    form.dataset.legendInquiryBound = 'true';
     let submissionId = null;
     let pendingPayload = null;
 
@@ -119,5 +121,12 @@
         button.disabled = false;
       }
     });
-  });
+  }
+
+  function bindInquiryForms() {
+    document.querySelectorAll('[data-website-inquiry]:not([data-preview])').forEach(bindInquiryForm);
+  }
+
+  bindInquiryForms();
+  window.addEventListener('legend:website-content-rendered', bindInquiryForms);
 })();
