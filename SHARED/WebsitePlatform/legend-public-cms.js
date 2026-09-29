@@ -232,7 +232,7 @@
   }
 
   function canonicalizePassiveLinkNode(node) {
-    if (!node || node.type!=='link' || node.actionKey || node.dataBinding?.target==='href') return node;
+    if (!node || isRuntimeShellChromeNode(node) || node.type!=='link' || node.actionKey || node.dataBinding?.target==='href') return node;
     const href=String(node.href || '').trim();
     if (href && href!=='#') return node;
     // A destination-less anchor is presentation, not navigation. Converting it
