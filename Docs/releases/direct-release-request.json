@@ -1,13 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy the isolated Website Studio GPT authoring-contract and mobile editor repair after exact-head validation. Deploy only Protect, the static LEGEND website, and Parfait because those are the runtime hosts affected by the shared Website Studio surface.",
-  "purpose": "Publish a stricter single-source Website Studio authoring contract for GPT with explicit canonical graph structure, stable node-ID rules, responsive authoring rules, protected-form boundaries, CTA/catalog rules, valid source examples, and a deterministic edit/validate/save workflow. Centralize node type/tag grammar so sanitizer and GPT read the same authority. Repair mobile Website Studio controls and GPT contract rendering without introducing editor-specific public-site layout overrides. No ClientApp, AgentPortal runtime, CRM, payments, authentication, analytics delivery, Meta/OpenAI event semantics, lead routing, commerce behavior, or unrelated application logic is changed.",
-  "requestId": "website-studio-gpt-authoring-mobile-20260929",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy the validated Website Studio browser-authorization, canonical protection-warning, and signal-integrity hardening after merge. Deploy only Protect and the static LEGEND website unless repository validation proves an additional runtime is actually affected.",
+  "purpose": "Publish canonical Website Studio hardening that preserves signal-bearing node identity, prevents presentation duplication or reusable conversion from copying/dropping hidden mappings, returns one server-owned red correction directive when GPT/Source crosses a protected boundary, gives GPT a conversion-first desktop/mobile design mandate, and recovers expired Founder/Agent edit sessions only through the existing authenticated Agent Portal ticket-minting authority. Analytics writers, event catalogs, CRM, lead routing, Meta/OpenAI delivery, payments, commerce, ClientApp, Parfait behavior, and unrelated application logic remain unchanged.",
+  "requestId": "website-studio-browser-auth-signal-integrity-20260929",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
-    "masterapp-website",
-    "masterapp-parfait"
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
