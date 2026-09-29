@@ -71,6 +71,21 @@ public sealed class PlatformProviderHealthHardeningTests
     }
 
     [Fact]
+    public void CalendarStatusSurfaces_UseLiveProviderHealth()
+    {
+        var calendar = Read("AgentPortal", "Controllers", "CalendarController.cs");
+        var internalBooking = Read("AgentPortal", "Controllers", "InternalBusinessBookingController.cs");
+
+        Assert.Contains("IPlatformConnectionHealthAuthority", calendar, StringComparison.Ordinal);
+        Assert.Contains("connected = runtime.Calendar.ProviderVerified", calendar, StringComparison.Ordinal);
+        Assert.Contains("storedConnected = connection.Connected", calendar, StringComparison.Ordinal);
+        Assert.Contains("IPlatformConnectionHealthAuthority providerHealth", internalBooking, StringComparison.Ordinal);
+        Assert.Contains("connected = runtime.Calendar.ProviderVerified", internalBooking, StringComparison.Ordinal);
+        Assert.Contains("storedConnected = connection.Connected", internalBooking, StringComparison.Ordinal);
+        Assert.Contains("canonical_provider_health", internalBooking, StringComparison.Ordinal);
+        Assert.DoesNotContain("calendarConnections.GetAsync", internalBooking, StringComparison.Ordinal);
+    }
+    [Fact]
     public void ProviderCanary_IsAggregateOnlyAndDoesNotExposeCredentialOrAccountData()
     {
         var health = Read("AgentPortal", "Health", "ProviderRuntimeHealthCheck.cs");
