@@ -14,7 +14,6 @@ using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 using Microsoft.AspNetCore.WebUtilities;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.Communication;
 
 using Shared.Analytics;
 namespace Protect_Website.Controllers
@@ -45,10 +44,10 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
         private readonly IPublicBookingContextProtector _publicBookingContextProtector;
         private readonly ILogger<DisabilityQuoteController> _logger;
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
         public DisabilityQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
-            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<DisabilityQuoteController> logger)
+            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IWebsiteInquiryEmailSender emailSender, ILogger<DisabilityQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
