@@ -21,7 +21,7 @@ public sealed class InternalBusinessBookingController(
     MasterAppDbContext db,
     BusinessBookingTicketProtector tickets,
     CalendarController calendar,
-    Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority calendarConnections) : ControllerBase
+    Infrastructure.Analytics.IPlatformConnectionHealthAuthority providerHealth) : ControllerBase
 {
     private const string TicketHeader = "X-Legend-Business-Booking-Ticket";
 
@@ -30,15 +30,20 @@ public sealed class InternalBusinessBookingController(
     {
         var access = await AuthorizeAsync(ct);
         if (access.Error is not null) return access.Error;
-        var connection = await calendarConnections.GetAsync(
+        var runtime = await providerHealth.ReadAsync(
             Shared.Analytics.MarketingOwnerScope.Business(access.Ticket!.CommerceBusinessId),
             ct);
+        var connection = runtime.Calendar.Connection;
         return Ok(new
         {
-            connected = connection.Connected,
+            connected = runtime.Calendar.ProviderVerified,
+            storedConnected = connection.Connected,
             email = connection.Email,
             authorizationMethod = connection.AuthorizationMethod,
-            configurationSource = "business_calendar_connection"
+            providerStatus = runtime.Calendar.Status,
+            providerCheckedUtc = runtime.Calendar.CheckedUtc,
+            providerHttpStatus = runtime.Calendar.HttpStatusCode,
+            configurationSource = "canonical_provider_health"
         });
     }
 
