@@ -368,6 +368,8 @@ test('GPT workspace consumes the canonical server contract and contract locks ba
     assert.match(agentContractSource,/WebsiteContentDocument v3 is the only writable website-content source/);
     assert.match(agentContractSource,/Do not replace or edit the ActionKey of a protected CTA/);
     assert.match(agentContractSource,/FirstName, LastName, Phone, Email, Message/);
+    assert.match(agentContractSource,/Keep the server-rendered runtime form mounted/);
+    assert.match(agentContractSource,/Website Studio\/edit\/materialization mode is preview-only/);
     assert.match(agentContractSource,/Meta\/OpenAI conversion wiring/);
   }finally{f.close();}
 });
