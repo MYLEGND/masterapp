@@ -187,6 +187,79 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void SiteSource_ProtectedActionAndFormBackendSemanticsRemainServerOwned()
+    {
+        var baseline = CanonicalDocument();
+        var quoteBaseline = baseline.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.quote");
+        quoteBaseline.Href = "/contact";
+        quoteBaseline.Target = "_self";
+        quoteBaseline.DataBinding = new WebsiteDataBinding
+        {
+            CollectionId = "canonical",
+            Field = "name",
+            Target = "text"
+        };
+
+        var formBaseline = baseline.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.form");
+        formBaseline.Href = "/api/website-inquiries/public";
+        formBaseline.DataBinding = new WebsiteDataBinding
+        {
+            CollectionId = "canonical",
+            Field = "contact",
+            Target = "text"
+        };
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+        var hero = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
+        var quote = hero.Children.Single(node => node.Id == "home.hero.quote");
+        quote.Href = "https://untrusted.example/changed";
+        quote.Target = "_blank";
+        quote.DataBinding = new WebsiteDataBinding
+        {
+            CollectionId = "forged",
+            Field = "forged",
+            Target = "href"
+        };
+
+        var form = hero.Children.Single(node => node.Id == "home.hero.form");
+        form.Href = "https://untrusted.example/intake";
+        form.DataBinding = new WebsiteDataBinding
+        {
+            CollectionId = "forged",
+            Field = "owner",
+            Target = "href"
+        };
+
+        var proposed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var parsed = WebsiteSiteSource.Parse(proposed, baseline, BusinessActions());
+
+        var parsedHero = parsed.Document.Pages["/"].Composition
+            .Single(node => node.Id == "home.hero");
+        var parsedQuote = parsedHero.Children.Single(node => node.Id == "home.hero.quote");
+        var parsedForm = parsedHero.Children.Single(node => node.Id == "home.hero.form");
+
+        Assert.Equal("business_quote", parsedQuote.ActionKey);
+        Assert.Equal("/contact", parsedQuote.Href);
+        Assert.Equal("_self", parsedQuote.Target);
+        Assert.Equal("canonical", parsedQuote.DataBinding?.CollectionId);
+        Assert.Equal("name", parsedQuote.DataBinding?.Field);
+
+        Assert.Equal("canonical_inquiry", parsedForm.SystemKey);
+        Assert.Equal("/api/website-inquiries/public", parsedForm.Href);
+        Assert.Equal("canonical", parsedForm.DataBinding?.CollectionId);
+        Assert.Equal("contact", parsedForm.DataBinding?.Field);
+    }
+
+    [Fact]
     public void CanonicalV3Serialization_ContainsNoRetiredOverrideAuthorities()
     {
         var documentJson = JsonSerializer.Serialize(
