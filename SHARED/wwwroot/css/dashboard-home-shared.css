@@ -89,6 +89,44 @@ html[data-legend-modal-region] body .modal .modal-body {
         padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end) !important;
     }
 
+    /*
+     * Legacy fixed drawers that are themselves the dialog surface consume the
+     * same top-sheet geometry on phones. Desktop presentation remains feature-owned.
+     */
+    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] {
+        top: var(--legend-modal-area-start) !important;
+        right: 8px !important;
+        bottom: auto !important;
+        left: 8px !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        min-height: 0 !important;
+        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        border: 1px solid var(--legend-mobile-gold) !important;
+        border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius) !important;
+        background: var(--legend-mobile-surface) !important;
+        box-shadow: 0 14px 32px #0007 !important;
+        transform: translate3d(0, -130%, 0) !important;
+        transform-origin: top center;
+        transition: transform .24s cubic-bezier(.22,.78,.22,1) !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface].open {
+        transform: translate3d(0, 0, 0) !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] .ai-drawer-header,
+    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] .ai-drawer-footer {
+        padding: 7px 10px !important;
+        border-color: #344766 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] .ai-drawer-body {
+        padding: 9px 10px 10px !important;
+    }
+
     html[data-legend-modal-region] body.legend-app .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)) {
         top: var(--legend-modal-area-start) !important;
         right: 8px !important;
@@ -180,7 +218,7 @@ html[data-legend-modal-region] body .modal .modal-body {
      * by the approved Website Studio control, without changing button behavior.
      */
     html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), [data-legend-mobile-sheet])
+    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet])
     :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "]) {
         position: relative;
         display: inline-grid !important;
@@ -203,7 +241,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), [data-legend-mobile-sheet])
+    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet])
     :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::before {
         content: "";
         width: 16px;
@@ -213,7 +251,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), [data-legend-mobile-sheet])
+    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet])
     :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::after {
         content: "";
         position: absolute;
