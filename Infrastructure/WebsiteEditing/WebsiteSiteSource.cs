@@ -247,10 +247,10 @@ public static class WebsiteSiteSource
                 if (!validActions.Contains(node.ActionKey))
                     throw new ArgumentException($"Website CTA '{node.Id}' has an invalid action.");
             }
+        }
+
         if (primaryNavigationCount > 1)
             throw new ArgumentException("Website v3 may contain only one primary navigation authority.");
-    }
-
     }
 
     private static string InferSiteKey(string actionKey) =>
