@@ -405,6 +405,8 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
   assert.equal(source.includes('function readImage('),false);
   assert.equal(source.includes('function restoreHistory('),false);
   assert.ok(source.includes('function restoreCanonicalV3History('));
+  assert.ok(source.includes('function cloneCanonicalValue('));
+  assert.equal((source.match(/structuredClone\(/g) || []).length,1);
   assert.equal(source.includes('function applyPlacement('),false);
   assert.ok(source.includes('function applyLegacyPlacement('));
   assert.ok(source.includes('function legacyRecordAsCanonicalModel('));
