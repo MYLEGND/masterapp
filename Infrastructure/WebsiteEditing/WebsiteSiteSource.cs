@@ -222,6 +222,13 @@ public static class WebsiteSiteSource
                 !string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
                 throw new ArgumentException("Website forms must use the canonical inquiry authority.");
 
+            if (WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(node.SystemKey))
+            {
+                if (!document.Pages.TryGetValue(pagePath, out var runtimePage) ||
+                    !WebsiteSystemTemplateAuthority.IsKnownTemplateKey(runtimePage.SystemTemplateKey))
+                    throw new ArgumentException("Protected runtime forms are allowed only on server-bound Protect template pages.");
+            }
+
             if (string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal))
             {
                 primaryNavigationCount++;
@@ -347,6 +354,10 @@ public static class WebsiteSiteSource
     {
         var copy = Clone(source);
         copy.Signals = [];
+        // System/runtime/data authority is not an authoring surface. Parse restores
+        // it by stable node ID from the current canonical baseline.
+        copy.SystemKey = null;
+        copy.SystemBinding = null;
         copy.Children = source.Children.Select(ProjectNode).ToList();
         return copy;
     }
@@ -374,13 +385,17 @@ public static class WebsiteSiteSource
 
                 if (!string.IsNullOrWhiteSpace(previous.Node.SystemKey))
                 {
-                    if (!string.Equals(previous.Node.SystemKey, node.SystemKey, StringComparison.Ordinal))
+                    if (string.IsNullOrWhiteSpace(node.SystemKey))
+                        node.SystemKey = previous.Node.SystemKey;
+                    else if (!string.Equals(previous.Node.SystemKey, node.SystemKey, StringComparison.Ordinal))
                         throw new ArgumentException($"Protected component '{node.Id}' cannot change its system authority.");
                 }
 
                 if (!string.IsNullOrWhiteSpace(previous.Node.SystemBinding))
                 {
-                    if (!string.Equals(previous.Node.SystemBinding, node.SystemBinding, StringComparison.Ordinal))
+                    if (string.IsNullOrWhiteSpace(node.SystemBinding))
+                        node.SystemBinding = previous.Node.SystemBinding;
+                    else if (!string.Equals(previous.Node.SystemBinding, node.SystemBinding, StringComparison.Ordinal))
                         throw new ArgumentException($"Protected component '{node.Id}' cannot change its system data authority.");
                 }
                 else if (!string.IsNullOrWhiteSpace(node.SystemBinding))
