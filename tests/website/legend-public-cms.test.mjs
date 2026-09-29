@@ -319,6 +319,8 @@ test('business header navigation projects one canonical page catalog without pre
     const labels=[...navs[0].querySelectorAll('[data-legend-page-nav="true"]')].map(node=>node.textContent);
     assert.deepEqual(labels,['Home','About']);
     assert.equal(labels.some(label=>label.includes('Business website preview')),false);
+    const saved=await f.save();
+    assert.equal(saved.pages['/about'].title,'About');
   }finally{f.close();}
 });
 
