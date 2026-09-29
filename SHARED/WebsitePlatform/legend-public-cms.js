@@ -1130,7 +1130,7 @@
     });
   }
 
-  const defaultCodeBlock = '<div style="font:600 18px/1.5 system-ui;padding:24px">Edit this code block to build custom content.</div>';
+  const defaultCodeBlock = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{--ink:#131b2a;--muted:#657083;--surface:#f6f7f9;--line:#d9dee7;--accent:#b8955a}*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);font:500 16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:clamp(18px,5vw,36px)}main{max-width:760px;margin:auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(24px,6vw,48px);box-shadow:0 18px 50px #0c132214}small{display:block;color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px}h2{margin:0 0 12px;font-size:clamp(28px,7vw,46px);line-height:1.05;letter-spacing:-.035em}p{margin:0;color:var(--muted);overflow-wrap:anywhere}</style></head><body><main><small>Custom content</small><h2>Build something distinctive.</h2><p>Edit this sandboxed block with responsive, accessible presentation that belongs to this website.</p></main></body></html>';
 
   function renderCodePreview(el, extra) {
     const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
