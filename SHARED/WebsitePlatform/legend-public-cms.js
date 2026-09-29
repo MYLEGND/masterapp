@@ -962,6 +962,110 @@
       legacyMigration.elements?.[el.dataset.cmsId] || null;
   }
 
+  function legacyReusableDefinition(instance) {
+    return instance?.type==='reusable' && instance.syncSourceId
+      ? legacyMigration?.reusableComponents?.[instance.syncSourceId] || null
+      : null;
+  }
+
+  function renderLegacyReusableInstance(wrapper,instance) {
+    if(!wrapper || !instance) return;
+    wrapper.replaceChildren();
+    const definition=legacyReusableDefinition(instance);
+    if(!definition) return;
+    const values=Array.isArray(definition.extras)?definition.extras:[];
+    const root=values.find(value=>value.sectionId==='component.root') || values[0] || null;
+    const sectionMap=new Map([['component.root',wrapper]]);
+    if(definition.kind==='section' && root?.type==='section'){
+      sectionMap.set('extra:'+root.id,wrapper);
+      applyStyle(wrapper,{...effectiveStyle(root),...effectiveStyle(instance)});
+      applyLayout(wrapper,{...effectiveLayout(root),...effectiveLayout(instance)});
+    }else{
+      applyStyle(wrapper,effectiveStyle(instance));
+      applyLayout(wrapper,effectiveLayout(instance));
+    }
+    for(const item of values.filter(value=>value.type==='section' && value!==root)){
+      const parent=sectionMap.get(item.sectionId)||wrapper;
+      const node=buildExtraNode(item,false,instance.id);
+      node.classList.add('legend-cms-reusable-child');
+      parent.appendChild(node);
+      sectionMap.set('extra:'+item.id,node);
+      applyStyle(node,effectiveStyle(item));
+      applyLayout(node,effectiveLayout(item));
+    }
+    for(const item of values.filter(value=>value.type!=='section')){
+      if(definition.kind==='block' && root && item!==root) continue;
+      const parent=sectionMap.get(item.sectionId)||wrapper;
+      const node=buildExtraNode(item,false,instance.id);
+      node.classList.add('legend-cms-reusable-child');
+      parent.appendChild(node);
+      applyElementOverride(node,item);
+    }
+  }
+
+  function createLegacyExtra(extra) {
+    const section=extra.type==='section'
+      ? document.querySelector('main')
+      : document.querySelector('[data-cms-section="'+CSS.escape(extra.sectionId)+'"]');
+    if(!section) return null;
+    if(extra.type==='reusable'){
+      const definition=legacyReusableDefinition(extra);
+      const el=document.createElement(definition?.kind==='section'?'section':'div');
+      el.className='cms-extra cms-reusable-instance';
+      el.dataset.cmsExtraId=extra.id;
+      el.dataset.cmsId='extra:'+extra.id;
+      if(extra.hidden===true) el.hidden=true;
+      section.appendChild(el);
+      renderLegacyReusableInstance(el,extra);
+      return el;
+    }
+    const el=buildExtraNode(extra,true);
+    section.appendChild(el);
+    applyElementOverride(el,extra);
+    return el;
+  }
+
+  function applyLegacySectionOrder() {
+    const order=legacyPageState().sectionOrder || {};
+    const sections=pageLayerSections();
+    const original=new Map(sections.map((section,index)=>[section,index]));
+    sections.sort((left,right)=>{
+      const a=order[left.dataset.cmsSection];
+      const b=order[right.dataset.cmsSection];
+      return (Number.isFinite(Number(a))?Number(a):original.get(left))-
+        (Number.isFinite(Number(b))?Number(b):original.get(right));
+    });
+    const groups=new Map();
+    for(const section of sections){
+      const parent=section.parentElement;
+      if(!parent) continue;
+      if(!groups.has(parent)) groups.set(parent,[]);
+      groups.get(parent).push(section);
+    }
+    groups.forEach(group=>group.forEach(section=>section.parentElement.appendChild(section)));
+  }
+
+  function applyLegacyDocument() {
+    if(!legacyMigration) return;
+    const page=legacyPageState();
+    document.querySelectorAll('.cms-extra').forEach(node=>node.remove());
+
+    const extras=[...(legacyMigration.extras || []),...(page.extras || [])];
+    extras.filter(extra=>extra.type==='section').forEach(createLegacyExtra);
+    extras.filter(extra=>extra.type!=='section').forEach(createLegacyExtra);
+
+    for(const [id,override] of Object.entries(legacyMigration.elements || {}))
+      applyElementOverride(findEditableElement(id),override);
+    for(const [id,override] of Object.entries(page.elements || {}))
+      applyElementOverride(findEditableElement(id),override);
+
+    applyLegacySectionOrder();
+    for(const [id,override] of Object.entries(page.elements || {}))
+      applyPlacement(findEditableElement(id),override.placement);
+    for(const extra of extras)
+      applyPlacement(document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]'),extra.placement);
+  }
+
   function cleanCompositionClassName(el) {
     return [...(el?.classList || [])]
       .filter(name => name && !['legend-cms-inline-editing','legend-cms-selected','legend-cms-snap-x','legend-cms-snap-y'].includes(name))
@@ -1880,59 +1984,46 @@
   }
 
   function applyDocument(doc) {
-    documentState = normalizeDocument(doc);
+    documentState=normalizeDocument(doc);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
-    applyBusinessPageNavigation();
-    applyStoreNavigation();
-    const metadata = pageState();
-    document.title = metadata.title ?? originalTitle;
-    const description = document.querySelector('meta[name="description"]');
-    if (description) description.setAttribute('content', metadata.description ?? originalDescription);
 
-    document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
+    const metadata=pageState();
+    document.title=metadata.title ?? originalTitle;
+    const description=document.querySelector('meta[name="description"]');
+    if(description) description.setAttribute('content',metadata.description ?? originalDescription);
 
-    if (usesCanonicalComposition()) {
+    if(legacyMigration){
+      applyLegacyDocument();
+    }else{
+      document.querySelectorAll('.cms-extra').forEach(node=>{scaledElements.delete(node);node.remove();});
+      renderCanonicalShell();
       renderCanonicalCompositionPage();
-      // Platform shell presentation remains global and is not duplicated into page source.
-      Object.entries(documentState.elements || {}).forEach(([id, override]) => {
-        const el = findEditableElement(id);
-        applyElementOverride(el, override);
-      });
-      if (SITE_KEY === 'business' && (managementPayload || renderInput))
-        bindBusiness(managementPayload || renderInput);
-      return;
     }
 
-    pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
-    pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
-    // v2 compatibility is consumed only until materialization completes.
-    Object.entries(documentState.elements || {}).forEach(([id, override]) => {
-      const el = findEditableElement(id);
-      applyElementOverride(el, override);
-    });
-    Object.entries(pageState().elements).forEach(([id, override]) => {
-      const el = findEditableElement(id);
-      applyElementOverride(el, override);
-    });
-    applySectionOrder();
-    Object.entries(pageState().elements).forEach(([id, ov]) => applyPlacement(findEditableElement(id), ov.placement));
-    pageState().extras.forEach(extra => applyPlacement(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra.placement));
+    if(SITE_KEY==='business' && (managementPayload || renderInput))
+      bindBusiness(managementPayload || renderInput);
+    applyBusinessPageNavigation();
+    applyStoreNavigation();
   }
 
   function refreshResponsiveOverrides() {
-    if (usesCanonicalComposition()) {
-      walkComposition(pageState().composition, node => applyElementOverride(findEditableElement(node.id), node));
-      refreshScaledElements();
-      updateDirectCanvasUi();
-      return;
+    if(legacyMigration){
+      const page=legacyPageState();
+      for(const [id,override] of Object.entries(legacyMigration.elements || {}))
+        applyElementOverride(findEditableElement(id),override);
+      for(const [id,override] of Object.entries(page.elements || {}))
+        applyElementOverride(findEditableElement(id),override);
+      for(const extra of [...(legacyMigration.extras || []),...(page.extras || [])]){
+        const node=document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]');
+        if(extra.type==='reusable') renderLegacyReusableInstance(node,extra);
+        else applyElementOverride(node,extra);
+      }
+    }else{
+      for(const root of allCanonicalRootSets())
+        walkComposition(root.nodes,node=>applyElementOverride(findEditableElement(node.id),node));
+      refreshReusableInstances();
     }
-    Object.entries(pageState().elements).forEach(([id, override]) => applyElementOverride(findEditableElement(id), override));
-    pageState().extras.forEach(extra => {
-      const node = document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`);
-      if (extra.type === 'reusable') renderReusableInstance(node, extra);
-      else applyElementOverride(node, extra);
-    });
     refreshScaledElements();
     updateDirectCanvasUi();
   }
