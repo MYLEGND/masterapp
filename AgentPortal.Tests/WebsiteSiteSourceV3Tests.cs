@@ -268,6 +268,63 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void ProtectSystemTemplateAuthority_UsesCanonicalRouteIdentityForFounderAgentAndPaidVariants()
+    {
+        Assert.Equal(
+            "protect_template:life_wizard",
+            WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Protect, "/Quote/Life"));
+        Assert.Equal(
+            "protect_template:life_wizard",
+            WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Protect, "/a/legend/Quote/Life/landing"));
+        Assert.Equal(
+            "protect_template:risk_assessment",
+            WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Protect, "/a/agent-one/RiskAssessment"));
+        Assert.Equal(
+            "protect_template:dvh_quote",
+            WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Protect, "/Quote/Dental-Vision-Hearing/landing"));
+        Assert.Null(WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Legend, "/Quote/Life"));
+        Assert.Null(WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Business, "/Quote/Life"));
+    }
+
+    [Fact]
+    public void SiteSource_HidesRuntimeSystemAuthorityButRoundTripsPresentationByStableNodeId()
+    {
+        var baseline = CanonicalDocument();
+        baseline.Pages["/"].SystemTemplateKey = "protect_template:life_wizard";
+        baseline.Pages["/"].Composition[0].Children.Add(new WebsiteCompositionNode
+        {
+            Id = "runtime.form.quote-life",
+            Type = "container",
+            Tag = "div",
+            SystemKey = "protect_runtime_form:quote_life",
+            Href = "/Quote/Life",
+            DataBinding = new WebsiteDataBinding
+            {
+                CollectionId = "protected",
+                Field = "runtime",
+                Target = "text"
+            },
+            Text = "Visible runtime presentation"
+        });
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        Assert.DoesNotContain("protect_runtime_form:", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("protect_template:", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(""collectionId": "protected"", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(""href": "/Quote/Life"", serialized, StringComparison.Ordinal);
+
+        var parsed = WebsiteSiteSource.Parse(serialized, baseline, BusinessActions());
+        var runtime = parsed.Document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "runtime.form.quote-life");
+
+        Assert.Equal("protect_template:life_wizard", parsed.Document.Pages["/"].SystemTemplateKey);
+        Assert.Equal("protect_runtime_form:quote_life", runtime.SystemKey);
+        Assert.Equal("/Quote/Life", runtime.Href);
+        Assert.Equal("protected", runtime.DataBinding?.CollectionId);
+        Assert.Equal("Visible runtime presentation", runtime.Text);
+    }
+
+    [Fact]
     public void CanonicalV3Serialization_ContainsNoRetiredOverrideAuthorities()
     {
         var documentJson = JsonSerializer.Serialize(
