@@ -1,15 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the validated Website Studio v3 canonical replacement after merge to legend/approved-changes. Deploy only the applications affected by the v3 diff. Preserve the already merged Meta Ads campaign-fetch repair and do not modify Cloudflare routing.",
-  "purpose": "Publish merged PR #275 Website Studio v3: canonical WebsiteContentDocument v3 composition/source authority, browser-operated GPT workspace, one-way legacy materialization, protected CTA/signal/inquiry wiring, v3 business publication renderer, and removal of the app-side OpenAI Website Studio proposal path. Existing canonical analytics, Meta/OpenAI downstream measurement, CRM outcome, commerce, owner-scope, publishing and rollback authorities remain intact.",
-  "requestId": "website-studio-v3-canonical-release-20260928",
+  "authorization": "Explicit Founder authorization to deploy the validated Website Studio editor-entry hotfix merged as PR #286. Deploy only the application shells that package the changed shared website-management launcher: AgentPortal and ClientApp. Do not redeploy Protect, Parfait, the static LEGEND website, or Cloudflare routing.",
+  "purpose": "Publish PR #286 editor-entry authority repair. Agent and Founder website management now reuse the already-authorized canonical website session ticket and open the exact scoped live site with legendEdit, eliminating the redundant second ticket/redirect path that could leave Protect or LEGEND in public browse mode. Business editor behavior is preserved.",
+  "requestId": "website-editor-entry-authority-hotfix-20260928",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
+    "masterapp-client"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
