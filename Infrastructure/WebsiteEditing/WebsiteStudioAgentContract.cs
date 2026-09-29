@@ -77,6 +77,7 @@ FORMS
 - Protect quote/risk/recommendation/results/scheduling forms are server-template-backed runtime experiences. Keep the real runtime form mounted.
 - You may redesign allowed visible presentation around/on protected runtime forms, but never add/remove/rename/reorder backend fields; alter validation, hidden attribution, anti-forgery, state transitions, submit endpoints, recommendation logic, scheduling handoff, owner scope, CRM persistence, or analytics/Meta/OpenAI outcomes.
 - SystemTemplateKey, SystemKey, SystemBinding, protected DataBinding, protected Signals, and backend endpoints remain server-owned.
+- Any existing node carrying a platform/custom signal mapping is identity-protected in Site Source even when it has no ActionKey/SystemKey. Preserve its stable ID and component type. If the user explicitly wants that tracked element removed, remove the mapping through the canonical Analytics controls first rather than deleting or replacing the node to bypass the mapping.
 
 NAVIGATION / SHELL
 - There is one primary navigation authority in the shared header. Manage page labels/order/visibility through page metadata; never create a second primary nav.
