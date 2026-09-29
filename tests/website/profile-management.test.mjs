@@ -114,6 +114,18 @@ test('business inbox shows canonical split name phone and email as text and upda
   assert.deepEqual(f.calls.find(c => c.path.endsWith('/manage/status')).body, { ticket: 'signed-scope-a', inquiryId: 'inquiry-a', status: 'Contacted' }); f.dom.window.close();
 });
 
+test('agent scope reuses the already-authorized management session for direct editor entry', async () => {
+  const f = await fixture({ scope: 'agent' });
+  const link = [...f.document.querySelectorAll('a')].find(a => a.textContent === 'Open editor');
+  assert.ok(link);
+  const url = new URL(link.href);
+  assert.equal(url.origin, 'https://business.test');
+  assert.equal(url.pathname, '/');
+  assert.equal(url.searchParams.get('legendEdit'), 'signed-scope-a');
+  assert.equal(f.calls.filter(call => call.path === '/profile/edit').length, 0);
+  f.dom.window.close();
+});
+
 test('agent scope excludes business domains and inbox; empty readiness is explicit', async () => {
   const f = await fixture({ scope: 'agent' });
   assert.equal([...f.document.querySelectorAll('button')].some(n => /^(Domains|Inquiries)/.test(n.textContent)), false);
