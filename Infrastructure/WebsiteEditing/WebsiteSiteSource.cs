@@ -434,7 +434,8 @@ public static class WebsiteSiteSource
                     node.Target = previous.Node.Target;
                 }
 
-                if (!string.IsNullOrWhiteSpace(previous.Node.SystemKey) ||
+                if (!string.IsNullOrWhiteSpace(previous.Node.ActionKey) ||
+                    !string.IsNullOrWhiteSpace(previous.Node.SystemKey) ||
                     !string.IsNullOrWhiteSpace(previous.Node.SystemBinding) ||
                     string.Equals(previous.Node.Type, "form", StringComparison.Ordinal))
                 {
