@@ -969,15 +969,15 @@
   // READ-ONLY PRE-V3 COMPATIBILITY BOUNDARY.
   // Used only to render/migrate persisted historical JSON and old immutable versions.
   // These helpers never mutate documentState and are never reachable from writable editor controls.
-  function legacyPageState() {
+  function legacyMigrationPageState() {
     const pages=legacyMigration?.pages && typeof legacyMigration.pages==='object' ? legacyMigration.pages : {};
     const route=currentPageRoute();
     return pages[route] || pages[pageKey] || (route==='/' ? pages.home : null) ||
       {elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
   }
 
-  function legacyExtraById(id) {
-    const page=legacyPageState();
+  function legacyMigrationExtraById(id) {
+    const page=legacyMigrationPageState();
     return (page.extras || []).find(extra=>extra?.id===id) ||
       (legacyMigration?.extras || []).find(extra=>extra?.id===id) || null;
   }
@@ -985,14 +985,14 @@
   function legacyMigrationRecordForElement(el) {
     if (!el || !legacyMigration) return null;
     if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
-      return legacyExtraById(el.dataset.cmsExtraId);
+      return legacyMigrationExtraById(el.dataset.cmsExtraId);
     if (isSharedShellElement(el))
       return legacyMigration.elements?.[el.dataset.cmsId] || null;
-    return legacyPageState().elements?.[el.dataset.cmsId] ||
+    return legacyMigrationPageState().elements?.[el.dataset.cmsId] ||
       legacyMigration.elements?.[el.dataset.cmsId] || null;
   }
 
-  function legacyReusableDefinition(instance) {
+  function legacyMigrationReusableDefinition(instance) {
     return instance?.type==='reusable' && instance.syncSourceId
       ? legacyMigration?.reusableComponents?.[instance.syncSourceId] || null
       : null;
@@ -1009,14 +1009,14 @@
     return model;
   }
 
-  function applyLegacyRecord(el, record) {
+  function applyLegacyMigrationRecord(el, record) {
     applyCompositionNode(el, legacyRecordAsCanonicalModel(record));
   }
 
-  function renderLegacyReusableInstance(wrapper,instance) {
+  function renderLegacyMigrationReusableInstance(wrapper,instance) {
     if(!wrapper || !instance) return;
     wrapper.replaceChildren();
-    const definition=legacyReusableDefinition(instance);
+    const definition=legacyMigrationReusableDefinition(instance);
     if(!definition) return;
     const values=Array.isArray(definition.extras)?definition.extras:[];
     const root=values.find(value=>value.sectionId==='component.root') || values[0] || null;
@@ -1044,34 +1044,34 @@
       const node=buildLegacyExtraNode(item,false,instance.id);
       node.classList.add('legend-cms-reusable-child');
       parent.appendChild(node);
-      applyLegacyRecord(node,item);
+      applyLegacyMigrationRecord(node,item);
     }
   }
 
-  function createLegacyExtra(extra) {
+  function createLegacyMigrationExtra(extra) {
     const section=extra.type==='section'
       ? document.querySelector('main')
       : document.querySelector('[data-cms-section="'+CSS.escape(extra.sectionId)+'"]');
     if(!section) return null;
     if(extra.type==='reusable'){
-      const definition=legacyReusableDefinition(extra);
+      const definition=legacyMigrationReusableDefinition(extra);
       const el=document.createElement(definition?.kind==='section'?'section':'div');
       el.className='cms-extra cms-reusable-instance';
       el.dataset.cmsExtraId=extra.id;
       el.dataset.cmsId='extra:'+extra.id;
       if(extra.hidden===true) el.hidden=true;
       section.appendChild(el);
-      renderLegacyReusableInstance(el,extra);
+      renderLegacyMigrationReusableInstance(el,extra);
       return el;
     }
     const el=buildLegacyExtraNode(extra,true);
     section.appendChild(el);
-    applyLegacyRecord(el,extra);
+    applyLegacyMigrationRecord(el,extra);
     return el;
   }
 
-  function applyLegacySectionOrder() {
-    const order=legacyPageState().sectionOrder || {};
+  function applyLegacyMigrationSectionOrder() {
+    const order=legacyMigrationPageState().sectionOrder || {};
     const sections=pageLayerSections();
     const original=new Map(sections.map((section,index)=>[section,index]));
     sections.sort((left,right)=>{
@@ -1090,25 +1090,25 @@
     groups.forEach(group=>group.forEach(section=>section.parentElement.appendChild(section)));
   }
 
-  function applyLegacyDocument() {
+  function applyLegacyMigrationPreview() {
     if(!legacyMigration) return;
-    const page=legacyPageState();
+    const page=legacyMigrationPageState();
     document.querySelectorAll('.cms-extra').forEach(node=>node.remove());
 
     const extras=[...(legacyMigration.extras || []),...(page.extras || [])];
-    extras.filter(extra=>extra.type==='section').forEach(createLegacyExtra);
-    extras.filter(extra=>extra.type!=='section').forEach(createLegacyExtra);
+    extras.filter(extra=>extra.type==='section').forEach(createLegacyMigrationExtra);
+    extras.filter(extra=>extra.type!=='section').forEach(createLegacyMigrationExtra);
 
     for(const [id,legacyRecord] of Object.entries(legacyMigration.elements || {}))
-      applyLegacyRecord(findEditableElement(id),legacyRecord);
+      applyLegacyMigrationRecord(findEditableElement(id),legacyRecord);
     for(const [id,legacyRecord] of Object.entries(page.elements || {}))
-      applyLegacyRecord(findEditableElement(id),legacyRecord);
+      applyLegacyMigrationRecord(findEditableElement(id),legacyRecord);
 
-    applyLegacySectionOrder();
+    applyLegacyMigrationSectionOrder();
     for(const [id,legacyRecord] of Object.entries(page.elements || {}))
-      applyLegacyPlacement(findEditableElement(id),legacyRecord.placement);
+      applyLegacyMigrationPlacement(findEditableElement(id),legacyRecord.placement);
     for(const extra of extras)
-      applyLegacyPlacement(document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]'),extra.placement);
+      applyLegacyMigrationPlacement(document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]'),extra.placement);
   }
 
   function cleanCompositionClassName(el) {
@@ -1125,7 +1125,7 @@
     const id = el.dataset.cmsId || fallbackId || pageKey + '.' + safeId(tag) + '.node';
     const model = legacyMigrationRecordForElement(el) || {};
     const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
-    const extra = el.dataset.cmsExtraId ? legacyExtraById(el.dataset.cmsExtraId) : null;
+    const extra = el.dataset.cmsExtraId ? legacyMigrationExtraById(el.dataset.cmsExtraId) : null;
 
     if (tag === 'form' && el.matches('[data-website-inquiry]')) {
       return {
@@ -2115,7 +2115,7 @@
     if(description) description.setAttribute('content',metadata.description ?? originalDescription);
 
     if(legacyMigration){
-      applyLegacyDocument();
+      applyLegacyMigrationPreview();
     }else{
       document.querySelectorAll('.cms-extra').forEach(node=>{scaledElements.delete(node);node.remove();});
       renderCanonicalShell();
@@ -2130,15 +2130,15 @@
 
   function refreshResponsiveComposition() {
     if(legacyMigration){
-      const page=legacyPageState();
+      const page=legacyMigrationPageState();
       for(const [id,model] of Object.entries(legacyMigration.elements || {}))
-        applyLegacyRecord(findEditableElement(id),model);
+        applyLegacyMigrationRecord(findEditableElement(id),model);
       for(const [id,model] of Object.entries(page.elements || {}))
-        applyLegacyRecord(findEditableElement(id),model);
+        applyLegacyMigrationRecord(findEditableElement(id),model);
       for(const extra of [...(legacyMigration.extras || []),...(page.extras || [])]){
         const node=document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]');
-        if(extra.type==='reusable') renderLegacyReusableInstance(node,extra);
-        else applyLegacyRecord(node,extra);
+        if(extra.type==='reusable') renderLegacyMigrationReusableInstance(node,extra);
+        else applyLegacyMigrationRecord(node,extra);
       }
     }else{
       for(const root of allCanonicalRootSets())
@@ -2906,7 +2906,7 @@
         candidates.push({ id:node.id, model:node, node:findEditableElement(node.id) });
       });
     } else {
-      const legacyPage=legacyPageState();
+      const legacyPage=legacyMigrationPageState();
       candidates.push(
         ...Object.entries(legacyPage.elements || {}).map(([id, model]) => ({ id, model, node:findEditableElement(id) })),
         ...(legacyPage.extras || []).map(extra => ({
@@ -3714,7 +3714,6 @@
     document.body.appendChild(dialog); dialog.showModal(); name.focus();
   }
   const undoStack = [], redoStack = [];
-  const baselineNodes = new Map();
   function historySnapshot() {
     return JSON.stringify(documentState);
   }
@@ -3723,11 +3722,13 @@
     if (undoStack.length > 80) undoStack.shift();
     redoStack.length = 0;
   }
+  // CANONICAL V3 HISTORY RESTORE.
+  // This restores only the WebsiteContentDocument v3 graph. It intentionally
+  // does not reconstruct template DOM, v2 elements/extras, or any override side-store.
   function restoreCanonicalV3History(from, to) {
     if (!from.length) return;
     to.push(historySnapshot());
-    baselineNodes.forEach(({ el, parent, next }) => { if (el.dataset.cmsSignalOnly) return; if (parent) parent.insertBefore(el, next?.parentElement === parent ? next : null); const original = rememberOriginal(el); el.hidden = original.hidden; if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) { setContentText(el, original.text); } if (original.href != null) el.setAttribute('href',original.href); if (original.src != null) el.setAttribute('src',original.src); applyStyle(el, null); });
-    const snapshot = JSON.parse(from.pop());
+    const snapshot = normalizeDocument(JSON.parse(from.pop()));
     applyDocument(snapshot);
     setSelected(null);
     markDirty();
@@ -3737,7 +3738,7 @@
     if (!media && (value.startsWith('#') || (value.startsWith('/') && !value.startsWith('//')))) return true;
     try { const url = new URL(value); return media ? url.protocol === 'https:' : ['https:','mailto:','tel:'].includes(url.protocol); } catch { return false; }
   }
-  function applyLegacyPlacement(el, placement) {
+  function applyLegacyMigrationPlacement(el, placement) {
     if (!el || !placement || el.dataset.cmsSection) return;
     const section = document.querySelector(`[data-cms-section="${CSS.escape(placement.sectionId || '')}"]`);
     if (!section || el.contains?.(section)) return;
@@ -4798,7 +4799,6 @@
     addCompositionBlock(type);
   }
   function enhanceEditor(panel, preview) {
-    document.querySelectorAll('[data-cms-id]').forEach(el => baselineNodes.set(el.dataset.cmsId, { el, parent: el.parentElement, next: el.nextSibling }));
     const content = document.createElement('div'); content.dataset.cmsView = 'content';
     Array.from(panel.children).filter(el => !el.classList.contains('legend-cms-bar')).forEach(el => content.appendChild(el));
     panel.appendChild(content);
