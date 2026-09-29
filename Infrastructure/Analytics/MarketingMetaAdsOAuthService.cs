@@ -151,7 +151,7 @@ public sealed class MarketingMetaAdsOAuthService(
         HttpClient client, string appId, string appSecret, string shortToken,
         CancellationToken ct)
     {
-        var url = $"https://graph.facebook.com/{version}/oauth/access_token" +
+        var url = MetaGraphEndpointAuthority.Graph("oauth/access_token") +
                   "?grant_type=fb_exchange_token" +
                   $"&client_id={Uri.EscapeDataString(appId)}" +
                   $"&client_secret={Uri.EscapeDataString(appSecret)}" +
