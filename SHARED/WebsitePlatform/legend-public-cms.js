@@ -74,6 +74,12 @@
     return originals.get(el);
   }
 
+  function cloneCanonicalValue(value) {
+    if (value == null || typeof value !== 'object') return value;
+    if (typeof globalThis.structuredClone === 'function') return globalThis.structuredClone(value);
+    return JSON.parse(JSON.stringify(value));
+  }
+
   function positiveNumber(value) { return typeof value === 'number' && Number.isFinite(value) && value > 0; }
   function spacingNumber(value) { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
 
@@ -171,10 +177,10 @@
     const value=input && typeof input==='object' ? input : {};
     return {
       style:value.style && typeof value.style==='object' ? {...value.style} : {},
-      breakpointStyles:value.breakpointStyles && typeof value.breakpointStyles==='object' ? structuredClone(value.breakpointStyles) : {},
+      breakpointStyles:value.breakpointStyles && typeof value.breakpointStyles==='object' ? cloneCanonicalValue(value.breakpointStyles) : {},
       layout:value.layout && typeof value.layout==='object' ? {...value.layout} : {mode:'free',direction:'column'},
-      breakpointLayouts:value.breakpointLayouts && typeof value.breakpointLayouts==='object' ? structuredClone(value.breakpointLayouts) : {},
-      animations:Array.isArray(value.animations) ? structuredClone(value.animations) : []
+      breakpointLayouts:value.breakpointLayouts && typeof value.breakpointLayouts==='object' ? cloneCanonicalValue(value.breakpointLayouts) : {},
+      animations:Array.isArray(value.animations) ? cloneCanonicalValue(value.animations) : []
     };
   }
 
@@ -215,7 +221,7 @@
         footer:normalizeCompositionNodes(input?.shell?.footer)
       },
       reusableComponents,
-      collections:input?.collections && typeof input.collections==='object' ? structuredClone(input.collections) : {},
+      collections:input?.collections && typeof input.collections==='object' ? cloneCanonicalValue(input.collections) : {},
       theme:input?.theme && typeof input.theme==='object' ? {...input.theme} : {},
       store:{
         enabled:input?.store?.enabled===true,
@@ -993,7 +999,7 @@
   }
 
   function legacyRecordAsCanonicalModel(record) {
-    const model=structuredClone(record || {});
+    const model=cloneCanonicalValue(record || {});
     if(!model.mediaUrl) model.mediaUrl=model.imageDataUrl || model.videoUrl || null;
     delete model.imageDataUrl;
     delete model.videoUrl;
@@ -1126,13 +1132,13 @@
         id, type:'form', tag:'form', className:cleanCompositionClassName(el),
         title:el.querySelector('legend')?.textContent || extra?.title || 'Send an inquiry',
         text:el.querySelector('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
-        systemKey:'canonical_inquiry', signals:structuredClone(model.signals || extra?.signals || []),
-        style:structuredClone(model.style || extra?.style || {}),
-        breakpointStyles:structuredClone(model.breakpointStyles || extra?.breakpointStyles || {}),
-        layout:structuredClone(model.layout || extra?.layout || {}),
-        breakpointLayouts:structuredClone(model.breakpointLayouts || extra?.breakpointLayouts || {}),
-        animations:structuredClone(model.animations || extra?.animations || []),
-        dataBinding:structuredClone(model.dataBinding || extra?.dataBinding || null),
+        systemKey:'canonical_inquiry', signals:cloneCanonicalValue(model.signals || extra?.signals || []),
+        style:cloneCanonicalValue(model.style || extra?.style || {}),
+        breakpointStyles:cloneCanonicalValue(model.breakpointStyles || extra?.breakpointStyles || {}),
+        layout:cloneCanonicalValue(model.layout || extra?.layout || {}),
+        breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || extra?.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(model.animations || extra?.animations || []),
+        dataBinding:cloneCanonicalValue(model.dataBinding || extra?.dataBinding || null),
         children:[]
       };
     }
@@ -1140,10 +1146,10 @@
     if (extra?.type === 'code' && el.classList.contains('cms-extra-code')) {
       return {
         id, type:'embed', tag:'div', className:cleanCompositionClassName(el),
-        text:extra.text || defaultCodeBlock, signals:structuredClone(extra.signals || []),
-        style:structuredClone(extra.style || {}), breakpointStyles:structuredClone(extra.breakpointStyles || {}),
-        layout:structuredClone(extra.layout || {}), breakpointLayouts:structuredClone(extra.breakpointLayouts || {}),
-        animations:structuredClone(extra.animations || []), dataBinding:structuredClone(extra.dataBinding || null), children:[]
+        text:extra.text || defaultCodeBlock, signals:cloneCanonicalValue(extra.signals || []),
+        style:cloneCanonicalValue(extra.style || {}), breakpointStyles:cloneCanonicalValue(extra.breakpointStyles || {}),
+        layout:cloneCanonicalValue(extra.layout || {}), breakpointLayouts:cloneCanonicalValue(extra.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(extra.animations || []), dataBinding:cloneCanonicalValue(extra.dataBinding || null), children:[]
       };
     }
 
@@ -1151,9 +1157,9 @@
       return {
         id, type:'reusable', tag:'div', className:cleanCompositionClassName(el),
         syncSourceId:extra.syncSourceId, signals:[],
-        style:structuredClone(extra.style || {}), breakpointStyles:structuredClone(extra.breakpointStyles || {}),
-        layout:structuredClone(extra.layout || {}), breakpointLayouts:structuredClone(extra.breakpointLayouts || {}),
-        animations:structuredClone(extra.animations || []), dataBinding:structuredClone(extra.dataBinding || null), children:[]
+        style:cloneCanonicalValue(extra.style || {}), breakpointStyles:cloneCanonicalValue(extra.breakpointStyles || {}),
+        layout:cloneCanonicalValue(extra.layout || {}), breakpointLayouts:cloneCanonicalValue(extra.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(extra.animations || []), dataBinding:cloneCanonicalValue(extra.dataBinding || null), children:[]
       };
     }
 
@@ -1172,13 +1178,13 @@
       target:(tag === 'a' ? el.getAttribute('target') : model.target) || null,
       alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || model.alt || null) : null,
       hidden:el.hidden === true ? true : (model.hidden === false ? false : null),
-      signals:structuredClone(model.signals || []),
-      style:structuredClone(model.style || {}),
-      breakpointStyles:structuredClone(model.breakpointStyles || {}),
-      layout:structuredClone(model.layout || {}),
-      breakpointLayouts:structuredClone(model.breakpointLayouts || {}),
-      animations:structuredClone(model.animations || []),
-      dataBinding:structuredClone(model.dataBinding || null),
+      signals:cloneCanonicalValue(model.signals || []),
+      style:cloneCanonicalValue(model.style || {}),
+      breakpointStyles:cloneCanonicalValue(model.breakpointStyles || {}),
+      layout:cloneCanonicalValue(model.layout || {}),
+      breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || {}),
+      animations:cloneCanonicalValue(model.animations || []),
+      dataBinding:cloneCanonicalValue(model.dataBinding || null),
       children:[]
     };
 
@@ -1773,7 +1779,7 @@
   }
 
   function reusableDefinitionClone(node, instanceId) {
-    const copy=structuredClone(node);
+    const copy=cloneCanonicalValue(node);
     const originalId=copy.id;
     copy.id=instanceId+'.'+originalId;
     copy.signals=[];
@@ -1830,7 +1836,7 @@
   }
 
   function cloneReusableDefinitionNode(node, componentId, path='root') {
-    const copy=structuredClone(node);
+    const copy=cloneCanonicalValue(node);
     copy.id=componentId+'.'+path;
     copy.signals=[];
     copy.syncSourceId=null;
@@ -2435,12 +2441,12 @@
         mediaUrl:(extra.imageDataUrl || extra.videoUrl) ?? null,
         syncSourceId:extra.syncSourceId ?? null,
         signals:[],
-        style:structuredClone(extra.style || {}),
-        breakpointStyles:structuredClone(extra.breakpointStyles || {}),
-        layout:structuredClone(extra.layout || {}),
-        breakpointLayouts:structuredClone(extra.breakpointLayouts || {}),
-        animations:structuredClone(extra.animations || []),
-        dataBinding:structuredClone(extra.dataBinding || null),
+        style:cloneCanonicalValue(extra.style || {}),
+        breakpointStyles:cloneCanonicalValue(extra.breakpointStyles || {}),
+        layout:cloneCanonicalValue(extra.layout || {}),
+        breakpointLayouts:cloneCanonicalValue(extra.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(extra.animations || []),
+        dataBinding:cloneCanonicalValue(extra.dataBinding || null),
         children:[]
       };
     };
@@ -3821,7 +3827,7 @@
     if(dynamicStatus) dynamicStatus.textContent=dynamic ? `Dynamic route ${dynamic.routePattern || ''} from ${dynamicSource?.label || dynamic.collectionId}.` : 'This page is static.';
   }
   function sourceProjectionNode(node) {
-    const copy=structuredClone(node || {});
+    const copy=cloneCanonicalValue(node || {});
     delete copy.signals;
     copy.children=(node?.children || []).map(sourceProjectionNode);
     return copy;
@@ -3834,8 +3840,8 @@
         path,
         title:page?.title ?? null,
         description:page?.description ?? null,
-        navigation:structuredClone(page?.navigation || {showInNavigation:true,order:0,isDeleted:false}),
-        dynamicBinding:structuredClone(page?.dynamicBinding || null),
+        navigation:cloneCanonicalValue(page?.navigation || {showInNavigation:true,order:0,isDeleted:false}),
+        dynamicBinding:cloneCanonicalValue(page?.dynamicBinding || null),
         composition:(page?.composition || []).map(sourceProjectionNode)
       }));
 
@@ -3843,9 +3849,9 @@
       schema:'legend-site-source/v1',
       version:3,
       faviconImageDataUrl:documentState.faviconImageDataUrl || null,
-      store:structuredClone(documentState.store || {}),
-      breakpoints:structuredClone(documentState.breakpoints || []),
-      theme:structuredClone(documentState.theme || {}),
+      store:cloneCanonicalValue(documentState.store || {}),
+      breakpoints:cloneCanonicalValue(documentState.breakpoints || []),
+      theme:cloneCanonicalValue(documentState.theme || {}),
       shell:{
         header:(documentState.shell?.header || []).map(sourceProjectionNode),
         footer:(documentState.shell?.footer || []).map(sourceProjectionNode)
@@ -3862,7 +3868,7 @@
           }
         ])
       ),
-      collections:structuredClone(documentState.collections || {})
+      collections:cloneCanonicalValue(documentState.collections || {})
     };
   }
 
@@ -4389,7 +4395,7 @@
   }
 
   function cloneCanonicalNodeFresh(node,{offsetY=0}={}) {
-    const copy=structuredClone(node);
+    const copy=cloneCanonicalValue(node);
     const rewrite=current=>{
       current.id=freshStableId();
       current.signals=(current.signals || []).map(binding=>({...binding,id:freshStableId()}));
@@ -4457,7 +4463,7 @@
         return;
       }
       checkpoint();
-      const source=structuredClone(pageState());
+      const source=cloneCanonicalValue(pageState());
       source.composition=(source.composition || []).map(node=>cloneCanonicalNodeFresh(node));
       source.navigation={
         ...(source.navigation || {}),
