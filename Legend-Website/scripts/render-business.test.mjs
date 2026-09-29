@@ -19,6 +19,74 @@ test('publication compiler process consumes stdin and returns compiled pages',()
   assert.deepEqual(Object.keys(result.pages),['/','/about','/contact','/services']);
 });
 
+test('canonical v3 business publication renders only the composition graph and keeps platform semantics',async()=>{
+  const baseNode=(id,type,tag,extra={})=>({
+    id,type,tag,signals:[],style:{},breakpointStyles:{},
+    layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[],...extra
+  });
+  const canonical={
+    version:3,
+    faviconImageDataUrl:null,
+    breakpoints:[],
+    theme:{},
+    store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},
+    collections:{},
+    reusableComponents:{},
+    shell:{
+      header:[baseNode('shell.header','container','header',{className:'site-header',children:[
+        baseNode('shell.brand','container','div',{className:'brand',children:[
+          baseNode('shell.brand.name','text','strong',{text:'Placeholder',systemBinding:'business_name'})
+        ]}),
+        baseNode('shell.nav','container','nav',{className:'nav',systemKey:'primary_navigation'})
+      ]})],
+      footer:[baseNode('shell.footer','container','footer',{className:'site-footer',children:[
+        baseNode('shell.footer.name','text','strong',{text:'Placeholder',systemBinding:'business_name'})
+      ]})]
+    },
+    pages:{
+      '/':{
+        title:'Home',description:'Canonical home',
+        navigation:{label:'Start',showInNavigation:true,order:10,isDeleted:false},
+        dynamicBinding:null,
+        composition:[
+          baseNode('home.hero','section','section',{className:'hero',children:[
+            baseNode('home.title','heading','h1',{text:'Canonical v3 headline'}),
+            baseNode('home.cta','cta','a',{text:'Contact us',actionKey:'business_contact',href:'/contact',target:'_self'})
+          ]})
+        ]
+      },
+      '/contact':{
+        title:'Contact',description:'Contact us',
+        navigation:{label:'Contact',showInNavigation:true,order:20,isDeleted:false},
+        dynamicBinding:null,
+        composition:[
+          baseNode('contact.section','section','section',{className:'section',children:[
+            baseNode('contact.form','form','form',{text:'Send inquiry',title:'Contact us',systemKey:'canonical_inquiry'})
+          ]})
+        ]
+      }
+    }
+  };
+
+  const result=await compileBusiness({business,document:canonical});
+  assert.ok(result.pages['/']);
+  assert.ok(result.pages['/contact']);
+  const home=parseHTML(result.pages['/'].html).document;
+  assert.equal(home.querySelector('.brand strong').textContent,business.displayName);
+  assert.equal(home.querySelector('h1').textContent,'Canonical v3 headline');
+  assert.deepEqual([...home.querySelectorAll('.nav a')].map(link=>link.textContent),['Start','Contact']);
+  const cta=home.querySelector('[data-website-action-key="business_contact"]');
+  assert.ok(cta);
+  assert.equal(cta.getAttribute('href'),'/contact');
+  const contact=parseHTML(result.pages['/contact'].html).document;
+  assert.ok(contact.querySelector('form[data-website-inquiry]'));
+  const embedded=JSON.parse(home.querySelector('#legend-cms-published-document').textContent);
+  assert.equal(embedded.document.version,3);
+  assert.equal(embedded.legacyMigration,null);
+  assert.deepEqual(embedded.document.pages['/'].composition.map(node=>node.id),['home.hero']);
+});
+
+
 
 test('all normal business pages use canonical components, actual scoped name and public navigation without LEGEND facts',async()=>{
   const result=await compileBusiness({business,document:document()});
