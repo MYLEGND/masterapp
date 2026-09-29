@@ -170,16 +170,29 @@ test('v3 selected source applies only validated server projection then uses norm
     assert.equal(f.w.document.querySelector('main h1').textContent,'After');
     const validation=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/source/validate'));
     assert.ok(validation);
-    const save=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage') && JSON.parse(call.body).document?.compositionMode==='canonical');
+    const save=f.calls.find(call=>{
+      if(call.method!=='POST' || !call.url.endsWith('/manage')) return false;
+      const persisted=JSON.parse(call.body).document;
+      return persisted?.version===3 &&
+        Array.isArray(persisted?.pages?.['/']?.composition) &&
+        !Object.hasOwn(persisted.pages['/'],'elements') &&
+        !Object.hasOwn(persisted.pages['/'],'extras') &&
+        !Object.hasOwn(persisted.pages['/'],'sectionOrder');
+    });
     assert.ok(save);
   }finally{f.close();}
 });
 
-test('v3 migration is authorized by the management capability rather than browser inference',()=>{
+test('pre-v3 migration is an explicit read-only one-way materialization boundary',()=>{
   assert.match(source,/payload\.capabilities\?\.compositionV3===true/);
   assert.match(source,/legendMaterialize/);
   assert.match(source,/materializeCanonicalSite/);
-  assert.match(source,/page\.elements=\{\}; page\.sectionOrder=\{\}; page\.extras=\[\]; delete page\.templatePath/);
+  assert.match(source,/if\(!legacyMigration\) return true;/);
+  assert.match(source,/next\.version=3;/);
+  assert.match(source,/legacyMigration=null;/);
+  assert.equal(source.includes('page.elements={}'),false);
+  assert.equal(source.includes('page.extras=[]'),false);
+  assert.equal(source.includes('page.sectionOrder={}'),false);
 });
 
 test('public runtime binds autonomous Meta contact tracking to the actual generated inquiry form id',()=>{
@@ -203,25 +216,14 @@ test('published visual signal executor has no browser path for confirmed server 
   assert.ok(source.includes("source: 'website_signal_binding'"));
 });
 
-test('responsive V2 runtime inherits base style and switches breakpoint style and layout on resize',async()=>{
-  const doc={
-    breakpoints:[
-      {key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},
-      {key:'tablet',label:'Tablet',minWidth:768,maxWidth:1199,isSystem:true},
-      {key:'desktop',label:'Desktop',minWidth:1200,maxWidth:null,isSystem:true}
-    ],
-    elements:{
-      'home.h1.template-title.1':{
-        text:'Responsive heading',
-        style:{widthPercent:80},
-        breakpointStyles:{mobile:{widthPercent:100,fontScale:0.75},desktop:{widthPercent:60}}
-      },
-      'section:home.section.1':{
-        layout:{mode:'grid',columns:3,gapPx:24},
-        breakpointLayouts:{mobile:{mode:'stack',direction:'column',gapPx:12}}
-      }
-    }
-  };
+test('canonical v3 runtime inherits base style and switches breakpoint style and layout on resize',async()=>{
+  const doc=canonicalDocument({title:'Responsive heading'});
+  const headingModel=canonicalNodeById(doc,'home.h1.node.1');
+  headingModel.style={widthPercent:80};
+  headingModel.breakpointStyles={mobile:{widthPercent:100,fontScale:0.75},desktop:{widthPercent:60}};
+  const sectionModel=canonicalNodeById(doc,'home.section.1');
+  sectionModel.layout={mode:'grid',columns:3,gapPx:24};
+  sectionModel.breakpointLayouts={mobile:{mode:'stack',direction:'column',gapPx:12}};
   const f=await domFixture({doc,search:'',viewportWidth:500});
   try {
     const heading=f.w.document.querySelector('main h1');
@@ -283,7 +285,8 @@ test('signal editor private test saves draft first but sends no production signa
 
 test('signal editor delivery health renders existing authoritative evidence without credential material',async()=>{
   const bindingId='11111111111111111111111111111111';
-  const doc={pages:{'/':{elements:{'home.h1.template-title.1':{signals:[{id:bindingId,trigger:'viewed',eventName:'ViewContent',deliveryMode:'analytics',oncePerSession:true,matchingFields:[]}]}},sectionOrder:{},extras:[],navigation:{showInNavigation:true}}}};
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.h1.node.1').signals=[{id:bindingId,trigger:'viewed',eventName:'ViewContent',deliveryMode:'analytics',oncePerSession:true,matchingFields:[]}];
   const catalog={events:[{name:'ViewContent',category:'page',metaEligible:true,requiresServerOutcome:false,triggers:['viewed']}],matchingFields:[],runtimeEnabled:true};
   const f=await domFixture({
     doc,signalCatalog:catalog,
@@ -403,7 +406,8 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
 
 test('public declarative click motion plays once and is not duplicated by responsive refresh',async()=>{
   const id='11111111111111111111111111111111';
-  const doc={elements:{'home.h1.template-title.1':{animations:[{id,trigger:'click',effect:'slide-up',durationMs:500,delayMs:25,distancePx:30,easing:'ease-out',once:true}]}}};
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.h1.node.1').animations=[{id,trigger:'click',effect:'slide-up',durationMs:500,delayMs:25,distancePx:30,easing:'ease-out',once:true}];
   const f=await domFixture({doc,search:''});
   try{
     const heading=f.w.document.querySelector('main h1');
@@ -436,9 +440,9 @@ test('Studio motion panel writes typed motion and preview does not create analyt
     assert.equal(f.animations.length,1);
     assert.equal(f.calls.some(call=>new URL(call.url).pathname.includes('/tracking/')),false);
     const saved=await f.save();
-    const override=Object.values(saved.pages['/'].elements).find(value=>Array.isArray(value.animations)&&value.animations.length);
-    assert.ok(override);
-    const motion=override.animations[0];
+    const model=canonicalNodeById(saved,'home.h1.node.1');
+    assert.ok(model);
+    const motion=model.animations[0];
     assert.equal(motion.trigger,'hover');
     assert.equal(motion.effect,'scale');
     assert.equal(motion.durationMs,650);
