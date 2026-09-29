@@ -408,7 +408,7 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
   assert.equal(source.includes('legacyMigration.extras ='),false);
   assert.equal(source.includes('legacyMigration.sectionOrder ='),false);
   assert.equal(source.includes('function createExtra('),false);
-  assert.ok(source.includes('function createLegacyExtra('));
+  assert.equal(source.includes('function createLegacyExtra('),false);
   assert.equal(source.includes('ov.imageDataUrl'),false);
   assert.equal(source.includes('ov.videoUrl'),false);
   assert.equal(source.includes('legend-cms-videoUrl'),false);
@@ -418,7 +418,7 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
   assert.ok(source.includes('function cloneCanonicalValue('));
   assert.equal((source.match(/structuredClone\(/g) || []).length,1);
   assert.equal(source.includes('function applyPlacement('),false);
-  assert.ok(source.includes('function applyLegacyPlacement('));
+  assert.equal(source.includes('function applyLegacyPlacement('),false);
   assert.ok(source.includes('function legacyRecordAsCanonicalModel('));
   const canonicalApply=source.slice(
     source.indexOf('function applyCompositionNode('),
@@ -756,7 +756,7 @@ test('new section inserts directly after the selected canonical section and surv
     const added=sections[2];
     assert.ok(added);
     assert.equal(added.classList.contains('section'),true);
-    assert.equal(sections[1],middle);
+    assert.equal(sections[1].dataset.cmsCompositionId,middle.dataset.cmsCompositionId);
     saved=await f.save();
     const order=saved.pages['/'].composition.map(node=>node.id);
     assert.equal(order.indexOf('section.middle'),1);
