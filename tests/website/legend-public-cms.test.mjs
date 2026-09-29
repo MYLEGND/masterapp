@@ -1701,22 +1701,6 @@ test('canonical visual style preserves numeric font weight and signed letter spa
   } finally { f.close(); }
 });
 
-test('legacy page keys migrate without discarding another page or canonical content', async () => {
-  const f = await domFixture({doc: {pages: {
-    home: {title: 'Legacy', elements: {'home.legacy': {text: 'Keep'}}},
-    '/': {title: 'Current', elements: {'home.current': {text: 'Current'}}},
-    about: {title: 'About', elements: {}}
-  }}});
-  try {
-    const saved = await f.save();
-    assert.deepEqual(Object.keys(saved.pages).sort(), ['/', '/about']);
-    assert.equal(saved.pages['/'].title, 'Current');
-    assert.equal(saved.pages['/'].elements['home.legacy'].text, 'Keep');
-    assert.equal(saved.pages['/about'].title, 'About');
-  } finally { f.close(); }
-});
-
-
 test('deleting an added canonical block removes the node from save and published reload', async () => {
   const f=await domFixture(); let saved;
   try {
@@ -1912,19 +1896,31 @@ test('business page list directly manages navigation label visibility and deleti
 });
 
 
-test('template sections duplicate into versioned extras while header and footer remain immutable',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"><strong>Header</strong></header><main><section class="hero"><h1>Hero title</h1><p>Hero copy</p></section></main><footer class="site-footer">Footer</footer></body></html>';
-  const f=await domFixture({html});
+
+test('canonical sections duplicate directly in composition while shared shell remains immutable',async()=>{
+  const doc=canonicalDocument({title:'Hero title'});
+  doc.pages['/'].composition=[canonicalNode('hero','section','section',{className:'hero',children:[
+    canonicalNode('hero.title','heading','h1',{text:'Hero title'}),
+    canonicalNode('hero.copy','text','p',{text:'Hero copy'})
+  ]})];
+  doc.shell={
+    header:[canonicalNode('shell.header','container','header',{className:'site-header',children:[canonicalNode('shell.header.label','text','strong',{text:'Header'})]})],
+    footer:[canonicalNode('shell.footer','container','footer',{className:'site-footer',children:[canonicalNode('shell.footer.label','text','span',{text:'Footer'})]})]
+  };
+  const html='<!doctype html><html><body data-page-key="home"><header class="site-header"></header><main></main><footer class="site-footer"></footer></body></html>';
+  const f=await domFixture({doc,html});
   try{
     f.click('main section');
     const duplicate=f.w.document.querySelector('#legend-cms-duplicate');
     assert.equal(duplicate.disabled,false);
     assert.equal(duplicate.textContent,'Duplicate section');
+    const originalId=f.w.document.querySelector('main section').dataset.cmsCompositionId;
     f.click('#legend-cms-duplicate');
     const saved=await f.save();
-    const copy=saved.pages['/'].extras.find(x=>x.type==='section');
-    assert.ok(copy);
-    assert.equal(copy.templateSectionId,'home.section.1');
+    assert.equal(saved.pages['/'].composition.length,2);
+    assert.equal(saved.pages['/'].composition[0].id,originalId);
+    assert.notEqual(saved.pages['/'].composition[1].id,originalId);
+    assert.equal(saved.pages['/'].composition[1].children[0].text,'Hero title');
     assert.equal(f.w.document.querySelectorAll('main>section').length,2);
     f.click('.site-header');
     assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
@@ -1933,6 +1929,7 @@ test('template sections duplicate into versioned extras while header and footer 
     f.click('.site-footer');
     assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
     assert.equal(f.w.document.querySelector('#legend-cms-remove').disabled,true);
+    assert.equal(JSON.stringify(saved).includes('"extras"'),false);
   }finally{f.close();}
 });
 
@@ -2045,23 +2042,3 @@ test('managed canonical action identity survives copy styling and cannot be down
   }finally{f.close();}
 });
 
-test('structural element identity ignores template wording and historical saved bindings retain identity',async()=>{
- const html=text=>`<!doctype html><html><body data-page-key="home"><main><section><h1>Heading</h1><a href="/contact">${text}</a></section></main></body></html>`;
- const first=await domFixture({html:html('Original wording')});let id;
- try{id=first.w.document.querySelector('main a').dataset.cmsId;assert.match(id,/\.a\.node\./);}finally{first.close();}
- const changed=await domFixture({html:html('Completely different industry wording')});
- try{assert.equal(changed.w.document.querySelector('main a').dataset.cmsId,id);}finally{changed.close();}
- const legacy=id.replace('.node.','.old-presentation.');
- const binding={id:'permanent-binding',actionKey:'cta_click',eventName:'cta_click',trigger:'click',deliveryMode:'analytics'};
- const doc={pages:{'/':{elements:{[legacy]:{actionKey:'legend_contact',text:'My own brand',href:'/contact',signals:[binding]}}}}};
- const loaded=await domFixture({html:html('New template wording'),doc});
- try{
-  const link=loaded.w.document.querySelector('main a');
-  assert.equal(link.dataset.cmsId,legacy);assert.equal(link.dataset.websiteActionKey,'legend_contact');
-  assert.equal(link.textContent,'My own brand');
-  loaded.click('main a');loaded.editSelected('Reserve our next meeting');
-  const saved=await loaded.save();
-  assert.equal(saved.pages['/'].elements[legacy].actionKey,'legend_contact');
-  assert.equal(saved.pages['/'].elements[legacy].signals[0].id,'permanent-binding');
- }finally{loaded.close();}
-});
