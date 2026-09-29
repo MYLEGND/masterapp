@@ -184,11 +184,11 @@ namespace AgentPortal.Controllers;
 
         var profile = await ResolveMarketingSetupAgentProfileAsync(tracking, createIfMissing: false, cancellationToken);
         var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
-        var calendarAuthority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
-        var calendarConnection = await calendarAuthority.GetAsync(owner, cancellationToken);
         var marketing = await GetMarketingSettingsAsync(tracking, owner, cancellationToken);
         var setup = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingProviderSetupProjection>()
             .ReadAsync(owner, cancellationToken);
+        var runtime = setup.RuntimeHealth;
+        var calendarConnection = runtime.Calendar.Connection;
         var adsConnected = setup.Meta.Connected;
         var secureCapi = setup.Meta.CapiConfigured;
         var evidence = setup.Evidence;
@@ -199,7 +199,9 @@ namespace AgentPortal.Controllers;
         var openAiProvider = setup.Account;
         var openAiMeasurement = setup.Capability;
         var openAiProviderError = setup.OpenAiError;
+        var openAiProviderVerified = runtime.OpenAi.ProviderVerified;
         var openAiAccountReady =
+            openAiProviderVerified &&
             string.Equals(openAiProvider?.Status, "active", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(openAiProvider?.ReviewStatus, Shared.Analytics.OpenAiAdsReviewStatuses.Approved, StringComparison.Ordinal) &&
             openAiConnection.PixelConfigured &&
@@ -218,7 +220,7 @@ namespace AgentPortal.Controllers;
                 metaCustomPixel = !string.IsNullOrWhiteSpace(marketing.PixelId),
                 openAiReady = openAiAccountReady,
                 bookingPersonalLive = bookingLive,
-                calendarLinked = calendarConnection.Connected
+                calendarLinked = runtime.Calendar.ProviderVerified
             },
             marketing = new
             {
@@ -237,13 +239,14 @@ namespace AgentPortal.Controllers;
             {
                 revision = openAiConnection.Revision,
                 exists = openAiConnection.Exists,
-                connected = openAiConnection.Connected,
+                connected = openAiProviderVerified,
+                storedConnected = openAiConnection.Connected,
                 accountId = openAiConnection.AccountId,
                 accountName = openAiConnection.AccountName,
                 role = openAiConnection.Role,
                 permissions = openAiConnection.Permissions,
                 authorizationMethod = openAiConnection.AuthorizationMethod,
-                connectionMethod = openAiConnection.Connected ? "Advertiser API key verified" : null,
+                connectionMethod = openAiProviderVerified ? "Advertiser API key verified" : null,
                 providerRole = openAiConnection.Role,
                 accountStatus = openAiProvider?.Status,
                 accountUrl = openAiProvider?.AccountUrl,
@@ -252,7 +255,9 @@ namespace AgentPortal.Controllers;
                 currencyCode = openAiProvider?.CurrencyCode,
                 reviewStatus = openAiProvider?.ReviewStatus ?? openAiConnection.ReviewStatus,
                 reviewReason = openAiProvider?.ReviewReason,
-                providerStatusFresh = openAiProvider is not null,
+                providerStatusFresh = openAiProviderVerified,
+                providerStatus = runtime.OpenAi.Status,
+                providerCheckedUtc = runtime.OpenAi.CheckedUtc,
                 providerStatusError = openAiProviderError,
                 measurementCapabilityStatus = openAiMeasurement?.Status,
                 measurementCapabilityHttpStatus = openAiMeasurement?.HttpStatusCode,
@@ -277,7 +282,8 @@ namespace AgentPortal.Controllers;
             },
             calendar = new
             {
-                connected = calendarConnection.Connected,
+                connected = runtime.Calendar.ProviderVerified,
+                storedConnected = calendarConnection.Connected,
                 revision = calendarConnection.Revision,
                 accountName = calendarConnection.AccountName,
                 email = calendarConnection.Email,
@@ -285,7 +291,20 @@ namespace AgentPortal.Controllers;
                 permissions = calendarConnection.Permissions,
                 connectedUtc = calendarConnection.ConnectedUtc,
                 lastVerifiedUtc = calendarConnection.LastVerifiedUtc,
-                accessTokenExpiresUtc = calendarConnection.AccessTokenExpiresUtc
+                accessTokenExpiresUtc = calendarConnection.AccessTokenExpiresUtc,
+                providerStatus = runtime.Calendar.Status,
+                providerCheckedUtc = runtime.Calendar.CheckedUtc,
+                providerHttpStatus = runtime.Calendar.HttpStatusCode,
+                providerError = runtime.Calendar.Error
+            },
+            signals = new
+            {
+                operational = runtime.Signals.Operational,
+                status = runtime.Signals.Status,
+                runtime.Signals.FailedDeliveries,
+                runtime.Signals.RetryableDeliveries,
+                runtime.Signals.PendingDeliveries,
+                runtime.Signals.CheckedUtc
             },
             booking = new
             {
