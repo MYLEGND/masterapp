@@ -1,7 +1,6 @@
 using Infrastructure.Diagnostics;
 using Shared.Diagnostics;
 using Infrastructure.DailyScripture;
-using ProtectWebsite.Services.Communication;
 using Azure.Identity;
 using Infrastructure.Data;
 using Infrastructure.Leads;
@@ -108,31 +107,16 @@ else
         opts.UseSqlite(connString));
 }
 
-builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
-builder.Services.AddScoped<IWebsiteInquiryEmailSender>(services => services.GetRequiredService<IProtectEmailSender>());
-builder.Services.AddScoped<BusinessInquiryNotificationService>();
-builder.Services.AddHostedService<BusinessInquiryNotificationWorker>();
-builder.Services.AddHostedService<WebsiteLeadNotificationRecoveryWorker>();
+Infrastructure.Leads.WebsiteLeadServiceRegistration.AddWebsiteLeadNotificationTransport(builder.Services);
 
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptureService>();
-builder.Services.AddScoped<Infrastructure.Analytics.IMetaSendAuthority, Infrastructure.Analytics.MetaSendAuthority>();
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
 builder.Services.AddScoped<IPublicBookingCalendarMatcher, MicrosoftGraphPublicBookingCalendarMatcher>();
 builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
 builder.Services.AddScoped<IPublicBookingConfirmationService, PublicBookingConfirmationService>();
 builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
-builder.Services.AddSingleton<MetaCapiCredentialProtector>();
-builder.Services.Configure<Infrastructure.Analytics.MetaOptions>(builder.Configuration.GetSection("Meta"));
-builder.Services.Configure<Infrastructure.Analytics.MetaSignalIntelligenceOptions>(builder.Configuration.GetSection("MetaSignalIntelligence"));
-builder.Services.AddHttpClient<Infrastructure.Analytics.IMetaConversionsApiService, Infrastructure.Analytics.MetaConversionsApiService>(client =>
-{
-    client.Timeout = TimeSpan.FromSeconds(10);
-});
-builder.Services.AddHostedService<Infrastructure.Analytics.MetaSignalAnalyticsBridge>();
-builder.Services.AddHostedService<Infrastructure.Analytics.MetaSignalOutcomeDispatcherHostedService>();
-builder.Services.AddHostedService<Infrastructure.Analytics.OpenAiConversionDispatcherHostedService>();
 
 // Data Protection — platform authority. Shares the "AgentPortal" application
 // name and (in dev) the AgentPortal key directory so protected agent-scoped Meta
