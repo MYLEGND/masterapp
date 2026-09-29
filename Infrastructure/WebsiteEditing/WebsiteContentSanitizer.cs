@@ -517,17 +517,17 @@ public static class WebsiteContentSanitizer
         return result;
     }
 
-    private static Dictionary<string, WebsiteStyleOverride> SanitizeStyleMap(IDictionary<string, WebsiteStyleOverride>? source, HashSet<string> breakpointKeys)
+    private static Dictionary<string, WebsiteVisualStyle> SanitizeStyleMap(IDictionary<string, WebsiteVisualStyle>? source, HashSet<string> breakpointKeys)
     {
-        var clean = new Dictionary<string, WebsiteStyleOverride>(StringComparer.Ordinal);
-        foreach (var pair in (source ?? new Dictionary<string, WebsiteStyleOverride>()).Take(12))
+        var clean = new Dictionary<string, WebsiteVisualStyle>(StringComparer.Ordinal);
+        foreach (var pair in (source ?? new Dictionary<string, WebsiteVisualStyle>()).Take(12))
             if (breakpointKeys.Contains(pair.Key) && pair.Value is not null) clean[pair.Key] = SanitizeStyle(pair.Value);
         return clean;
     }
 
-    private static WebsiteLayoutOverride SanitizeLayout(WebsiteLayoutOverride? source)
+    private static WebsiteCompositionLayout SanitizeLayout(WebsiteCompositionLayout? source)
     {
-        source ??= new WebsiteLayoutOverride();
+        source ??= new WebsiteCompositionLayout();
         var mode = (source.Mode ?? "free").Trim().ToLowerInvariant();
         if (mode is not ("free" or "stack" or "grid" or "flex")) mode = "free";
         var direction = (source.Direction ?? "column").Trim().ToLowerInvariant();
@@ -538,7 +538,7 @@ public static class WebsiteContentSanitizer
         if (justify is not ("start" or "center" or "end" or "space-between" or "space-around" or "space-evenly")) justify = string.Empty;
         var wrap = (source.Wrap ?? "").Trim().ToLowerInvariant();
         if (wrap is not ("nowrap" or "wrap")) wrap = string.Empty;
-        return new WebsiteLayoutOverride
+        return new WebsiteCompositionLayout
         {
             Mode = mode, Direction = direction,
             GapPx = source.GapPx is >= 0 and <= 240 ? source.GapPx : null,
@@ -548,10 +548,10 @@ public static class WebsiteContentSanitizer
         };
     }
 
-    private static Dictionary<string, WebsiteLayoutOverride> SanitizeLayoutMap(IDictionary<string, WebsiteLayoutOverride>? source, HashSet<string> breakpointKeys)
+    private static Dictionary<string, WebsiteCompositionLayout> SanitizeLayoutMap(IDictionary<string, WebsiteCompositionLayout>? source, HashSet<string> breakpointKeys)
     {
-        var clean = new Dictionary<string, WebsiteLayoutOverride>(StringComparer.Ordinal);
-        foreach (var pair in (source ?? new Dictionary<string, WebsiteLayoutOverride>()).Take(12))
+        var clean = new Dictionary<string, WebsiteCompositionLayout>(StringComparer.Ordinal);
+        foreach (var pair in (source ?? new Dictionary<string, WebsiteCompositionLayout>()).Take(12))
             if (breakpointKeys.Contains(pair.Key) && pair.Value is not null) clean[pair.Key] = SanitizeLayout(pair.Value);
         return clean;
     }
@@ -709,10 +709,10 @@ public static class WebsiteContentSanitizer
     }
 
     private static string? NullIfEmpty(string value) => value.Length == 0 ? null : value;
-    private static WebsiteThemeOverride SanitizeTheme(WebsiteThemeOverride? source)
+    private static WebsiteDesignTheme SanitizeTheme(WebsiteDesignTheme? source)
     {
-        source ??= new WebsiteThemeOverride();
-        return new WebsiteThemeOverride
+        source ??= new WebsiteDesignTheme();
+        return new WebsiteDesignTheme
         {
             Navy = SanitizeHex(source.Navy),
             NavyDeep = SanitizeHex(source.NavyDeep),
@@ -738,16 +738,16 @@ public static class WebsiteContentSanitizer
         return candidate.ToLowerInvariant();
     }
 
-    private static WebsiteStyleOverride SanitizeStyle(WebsiteStyleOverride? source)
+    private static WebsiteVisualStyle SanitizeStyle(WebsiteVisualStyle? source)
     {
-        source ??= new WebsiteStyleOverride();
+        source ??= new WebsiteVisualStyle();
         var align = (source.TextAlign ?? string.Empty).Trim().ToLowerInvariant();
         if (align is not ("left" or "center" or "right" or "start" or "end" or "justify")) align = string.Empty;
         var objectPosition = (source.ObjectPosition ?? string.Empty).Trim().ToLowerInvariant();
         if (objectPosition is not ("left" or "center" or "right" or "top" or "bottom"))
             objectPosition = string.Empty;
 
-        return new WebsiteStyleOverride
+        return new WebsiteVisualStyle
         {
             TextAlign = align.Length == 0 ? null : align,
             FontScale = source.FontScale > 0 ? source.FontScale : null,
