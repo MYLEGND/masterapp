@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-cms.js', import.meta.url), 'utf8');
 const publicCss = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-web.css', import.meta.url), 'utf8');
+const foundationCss = readFileSync(new URL('../../Legend-Design/legend-web-foundation.css', import.meta.url), 'utf8');
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
 const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
 const publicInquiryFormSource = readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.mjs', import.meta.url), 'utf8');
@@ -441,6 +442,19 @@ test('business header navigation projects one canonical page catalog without pre
     const saved=await f.save();
     assert.equal(saved.pages['/about'].title,'About');
   }finally{f.close();}
+});
+
+test('public startup styling has one responsive authority and one palette authority',()=>{
+  assert.equal((publicCss.match(/@media\(max-width:980px\)/g)||[]).length,1);
+  assert.equal((publicCss.match(/@media\(max-width:650px\)/g)||[]).length,1);
+  assert.doesNotMatch(publicCss,/:root\[data-legend-site="business"\]/);
+  assert.match(foundationCss,/:root\[data-legend-site="business"\]\{/);
+  assert.match(publicCss,/\.card::before\{[^}]*background:linear-gradient\(90deg,var\(--gold\)/);
+  assert.match(publicCss,/\.card \.icon:empty,\.contact-card \.icon:empty\{display:none\}/);
+  assert.match(publicCss,/\.section\{padding:clamp\(64px,7\.5vw,104px\)/);
+  assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.section\{padding-top:52px;padding-bottom:52px\}/);
+  assert.doesNotMatch(source,/--accent:#b8955a/);
+  assert.match(source,/const defaultCodeBlock = '[\s\S]*--navy-deep:#081a3a;--gold:#d4ad45/);
 });
 
 test('Website Studio canvas keeps public viewport typography and mobile controls stay inside the viewport',()=>{
