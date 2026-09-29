@@ -134,7 +134,6 @@ h3{font-size:22px;letter-spacing:-.018em}
 }
 .legend-public--protect .legal-page-wrap,.legend-public--protect .contact-clarity{width:100%!important;max-width:none!important;margin:0!important;padding:clamp(72px,8vw,112px) var(--page-pad)!important}
 .legend-public--protect .legal-card{max-width:1050px;margin:20px auto 0!important}
-.legend-public--protect .lead-card{border-radius:var(--radius-lg)!important}
 @media(max-width:980px){
   .hero{grid-template-columns:1fr;min-height:auto}.hero-mark{min-height:310px}.hero-mark img{max-height:300px}
   .card-grid{grid-template-columns:repeat(2,1fr)}.steps,.standard-grid{grid-template-columns:1fr 1fr}
