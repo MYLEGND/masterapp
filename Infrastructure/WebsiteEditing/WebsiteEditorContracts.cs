@@ -50,7 +50,7 @@ public sealed class WebsiteContentDocument
     public Dictionary<string, WebsitePageDocument> Pages { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, WebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, WebsiteCollectionDefinition> Collections { get; set; } = new(StringComparer.Ordinal);
-    public WebsiteThemeOverride Theme { get; set; } = new();
+    public WebsiteDesignTheme Theme { get; set; } = new();
     public DateTime? UpdatedUtc { get; set; }
 
     // Read-only migration envelope. Never serialized into v3, never accepted by
@@ -68,7 +68,7 @@ public sealed class WebsiteSharedShellDocument
     public List<WebsiteCompositionNode> Footer { get; set; } = new();
 }
 
-public sealed class WebsiteStyleOverride
+public sealed class WebsiteVisualStyle
 {
     public string? TextAlign { get; set; }
     public decimal? FontScale { get; set; }
@@ -92,7 +92,7 @@ public sealed class WebsiteStyleOverride
     public decimal? OffsetYPx { get; set; }
 }
 
-public sealed class WebsiteThemeOverride
+public sealed class WebsiteDesignTheme
 {
     public string? Navy { get; set; }
     public string? NavyDeep { get; set; }
@@ -128,7 +128,7 @@ public sealed class WebsiteBreakpointDefinition
     public bool IsSystem { get; set; }
 }
 
-public sealed class WebsiteLayoutOverride
+public sealed class WebsiteCompositionLayout
 {
     public string Mode { get; set; } = "free";
     public string Direction { get; set; } = "column";
@@ -235,10 +235,10 @@ public sealed class WebsiteCompositionNode
     public string? SyncSourceId { get; set; }
     public bool? Hidden { get; set; }
     public List<WebsiteSignalBinding> Signals { get; set; } = new();
-    public WebsiteStyleOverride Style { get; set; } = new();
-    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
-    public WebsiteLayoutOverride Layout { get; set; } = new();
-    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteVisualStyle Style { get; set; } = new();
+    public Dictionary<string, WebsiteVisualStyle> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteCompositionLayout Layout { get; set; } = new();
+    public Dictionary<string, WebsiteCompositionLayout> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteAnimationBinding> Animations { get; set; } = new();
     public WebsiteDataBinding? DataBinding { get; set; }
     public List<WebsiteCompositionNode> Children { get; set; } = new();
