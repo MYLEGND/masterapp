@@ -782,13 +782,6 @@
     top: var(--legend-modal-safe-center, 50%) !important;
 }
 
-@media (max-width: 700px){
-    #drawer.drawer[data-workstation-drawer="1"]{
-        top: 50% !important;
-        max-height: 100dvh !important;
-    }
-}
-
 /* Section cards */
 #uwDialog .uw-section {
     background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02)) !important;
