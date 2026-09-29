@@ -4348,6 +4348,53 @@
     return selected?.dataset?.cmsCompositionId || null;
   }
 
+  function sourceToneForLine(line) {
+    const key=/^\s*"([^"]+)"\s*:/.exec(String(line || ''))?.[1] || '';
+    if (['text','title','alt','href','description','label'].includes(key)) return 'content';
+    if (['color','backgroundColor'].includes(key)) return 'color';
+    if (['widthPercent','heightPx','fontSize','fontScale','lineHeight','letterSpacing','paddingTop','paddingBottom','paddingLeft','paddingRight','offsetXPercent','offsetYPx','borderRadius','objectPosition'].includes(key)) return 'size';
+    if (['style','breakpointStyles','fontFamily','fontWeight','textAlign','objectFit'].includes(key)) return 'style';
+    if (['layout','breakpointLayouts','mode','direction','gapPx','columns','minItemWidthPx','alignItems','justifyContent','wrap'].includes(key)) return 'layout';
+    if (['mediaAssetId','mediaUrl','faviconImageDataUrl'].includes(key)) return 'media';
+    if (['animations','trigger','effect','durationMs','delayMs','distancePx','easing','once','hidden','target'].includes(key)) return 'behavior';
+    if (['id','type','tag','className','actionKey','systemKey','systemBinding','signals','dataBinding','syncSourceId'].includes(key)) return 'protected';
+    return 'default';
+  }
+
+  function renderSourceHighlight() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const highlight=document.getElementById('legend-cms-source-highlight');
+    if(!textarea || !highlight?.replaceChildren) return;
+    highlight.replaceChildren();
+    const lines=String(textarea.value || '').replace(/\r/g,'').split('\n');
+    lines.forEach((line,index)=>{
+      const span=document.createElement('span');
+      const tone=sourceToneForLine(line);
+      span.className='legend-cms-source-'+tone;
+      span.dataset.tone=tone;
+      span.textContent=line || ' ';
+      highlight.appendChild(span);
+      if(index<lines.length-1) highlight.appendChild(document.createTextNode('\n'));
+    });
+    highlight.scrollTop=textarea.scrollTop;
+    highlight.scrollLeft=textarea.scrollLeft;
+  }
+
+  function syncSourceEditingMode() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const apply=document.getElementById('legend-cms-source-apply');
+    const reload=document.getElementById('legend-cms-source-reload');
+    if(!textarea || !scope) return false;
+    const editable=scope.value==='selection' && !!sourceSelectedNodeId();
+    textarea.readOnly=!editable;
+    textarea.setAttribute('aria-readonly',String(!editable));
+    textarea.dataset.sourceMode=editable?'selection':'master';
+    if(apply){ apply.disabled=!editable; apply.hidden=!editable; }
+    if(reload) reload.textContent=editable?'Discard selected source edits':'Refresh Master Source';
+    return editable;
+  }
+
   function refreshSiteSourceEditor(force=false) {
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
@@ -4370,8 +4417,12 @@
       }
     }
     sourceEditorDirty=false;
+    const editable=syncSourceEditingMode();
+    renderSourceHighlight();
     const status=document.getElementById('legend-cms-source-status');
-    if(status) status.textContent='Source is synchronized with the current draft.';
+    if(status) status.textContent=editable
+      ? 'Selected Source is synchronized with the selected canonical node.'
+      : 'Master Source is synchronized and read only.';
     if(force) clearCanonicalProtectionViolation();
   }
 
@@ -4379,7 +4430,14 @@
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
     const status=document.getElementById('legend-cms-source-status');
+    const selectedNodeId=sourceSelectedNodeId();
     if(!textarea) return;
+    if(scope?.value!=='selection' || !selectedNodeId || textarea.readOnly){
+      if(status) status.textContent='Master Source is read only. Select a canvas component to edit Selected Source.';
+      syncSourceEditingMode();
+      renderSourceHighlight();
+      return;
+    }
     let sourceText=textarea.value;
     try{
       if(scope?.value==='selection'){
@@ -4418,7 +4476,7 @@
     try{
       const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText,selectedNodeId})
       });
       const payload=await response.json().catch(()=>({}));
       if(!response.ok) {
@@ -5290,7 +5348,7 @@
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
-    sourceView.innerHTML='<h2>LEGEND Site Source</h2><p>One deterministic source view of the same v3 graph used by the canvas and browser-operated GPT. Canonical actions and system forms are validated server-side and provider/event wiring is not editable here.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Entire site</option><option value="selection">Selected component / section</option></select></label><small id="legend-cms-source-location">Master Source · entire website</small><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false"></textarea><small id="legend-cms-source-status" role="status">Source is synchronized with the current draft.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply validated source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Reload from canvas</button></div>';
+    sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only inspection of the entire canonical v3 graph. Only Selected Source is editable. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
     tools.appendChild(sourceView);
 
     const publishView=document.createElement('section'); publishView.dataset.cmsView='publish'; publishView.hidden=true;
@@ -5311,7 +5369,7 @@
     gpt.id='legend-cms-browser-agent-workspace';
     gpt.dataset.agentWorkspace='browser-only';
     gpt.dataset.externalAiApi='false';
-    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Inspect Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Edit selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed as <code>data-cms-id</code>. Master Source is inspection-only. Make source-code changes only through Selected Source, then validate and save through the canonical authority.</p>';
     const agentScript=gpt.querySelector('#legend-cms-agent-contract-script');
     if(agentScript) agentScript.textContent=managementPayload?.agentContract?.promptTemplate || 'Canonical GPT operating contract unavailable; do not modify this website until the server contract is loaded.';
     tools.appendChild(gpt);
@@ -5350,9 +5408,19 @@
 
     const sourceTextarea=document.getElementById('legend-cms-site-source');
     sourceTextarea?.addEventListener('input',()=>{
+      if(sourceTextarea.readOnly){
+        sourceEditorDirty=false;
+        refreshSiteSourceEditor(true);
+        return;
+      }
       sourceEditorDirty=true;
+      renderSourceHighlight();
       const status=document.getElementById('legend-cms-source-status');
-      if(status) status.textContent='Unsaved source changes · canvas remains on the last valid graph.';
+      if(status) status.textContent='Selected Source has unapplied changes · canvas remains on the last validated canonical node.';
+    });
+    sourceTextarea?.addEventListener('scroll',()=>{
+      const highlight=document.getElementById('legend-cms-source-highlight');
+      if(highlight){highlight.scrollTop=sourceTextarea.scrollTop;highlight.scrollLeft=sourceTextarea.scrollLeft;}
     });
     document.getElementById('legend-cms-source-scope')?.addEventListener('change',()=>{
       sourceEditorDirty=false;
@@ -5610,7 +5678,10 @@
       .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}.legend-cms-protection-warning{white-space:pre-wrap;margin:10px 0;padding:12px 14px;border:1px solid #ff6b6b;border-left:5px solid #ff4d4d;border-radius:10px;background:#35191c;color:#ff8f8f!important;font-weight:800;line-height:1.45;overflow-wrap:anywhere}
-      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}
+      .legend-cms-source-key{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.legend-cms-source-key span{padding:4px 7px;border:1px solid currentColor;border-radius:999px;background:#07162b;font:800 9px/1.2 Inter,system-ui,sans-serif;letter-spacing:.025em}.legend-cms-source-key [data-tone="content"],.legend-cms-source-content{color:#78e2a7}.legend-cms-source-key [data-tone="style"],.legend-cms-source-style{color:#7fb5ff}.legend-cms-source-key [data-tone="color"],.legend-cms-source-color{color:#ff8fa8}.legend-cms-source-key [data-tone="size"],.legend-cms-source-size{color:#ffb86b}.legend-cms-source-key [data-tone="layout"],.legend-cms-source-layout{color:#6fdce8}.legend-cms-source-key [data-tone="media"],.legend-cms-source-media{color:#c4a7ff}.legend-cms-source-key [data-tone="behavior"],.legend-cms-source-behavior{color:#d9a6ff}.legend-cms-source-key [data-tone="protected"],.legend-cms-source-protected{color:#f0cf78}.legend-cms-source-default{color:#dce6f4}
+      .legend-cms-source-editor{position:relative;width:100%;min-height:52vh;border:1px solid #3f5271;border-radius:10px;background:#07162b;overflow:hidden}.legend-cms-source-highlight,.legend-cms-site-source{width:100%;min-height:52vh;margin:0;padding:14px;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-source-highlight{position:absolute;inset:0;pointer-events:none;background:#07162b}.legend-cms-source-highlight span{display:inline}.legend-cms-site-source{position:relative;z-index:1;resize:vertical;border:0!important;border-radius:0!important;background:transparent!important;color:transparent!important;-webkit-text-fill-color:transparent;caret-color:#fff}.legend-cms-site-source::selection{background:#ffffff2e}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:-2px}.legend-cms-site-source[readonly]{cursor:default;caret-color:transparent}.legend-cms-source-editor:has(.legend-cms-site-source[readonly]){border-color:#344766}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])){border-color:#d4ad45}
+      [data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .legend-cms-image,.legend-legacy-migration-image{display:block;margin-left:auto;margin-right:auto;height:auto}
@@ -5708,7 +5779,7 @@
       <button id="legend-cms-sheet-handle" class="legend-cms-sheet-handle" type="button" aria-label="Expand Website Studio controls"></button>
       <h2 id="legend-cms-heading">Website studio</h2>
       <small id="legend-cms-selected-label">Select content on the page</small>
-      <div id="legend-cms-inline-help" class="legend-cms-inline-help" hidden><span>Single click selects. Use the gold Move control to position. Resize only from the selected border edges or corners. Double-click text, or choose Edit text, to type.</span><button id="legend-cms-edit-text" type="button">Edit text</button></div>
+      <div id="legend-cms-inline-help" class="legend-cms-inline-help" hidden><span>Single click selects and opens Content. Use the gold Move control to position. Resize only from the selected border edges or corners. Double-click text, or choose Edit text, to type.</span><button id="legend-cms-edit-text" type="button">Edit text</button></div>
       <div id="legend-cms-code-group" class="legend-cms-group" hidden>
         <button id="legend-cms-edit-code" type="button">Edit code in modal</button>
         <small>Custom HTML, CSS, and browser JavaScript are previewed inside a sandboxed block. Resize the block directly on the page.</small>
@@ -5846,7 +5917,7 @@
       const target = editorSelectionTarget(event.target);
       if (!target || target.closest('.legend-cms-editor')) return;
       const alreadySelected = target === selected;
-      if (!alreadySelected) setSelected(target);
+      if (!alreadySelected) setSelected(target,{openContent:true});
       else if (inlineEditNode !== target && event.detail === 1) showPanel('content');
       if (target.tagName === 'A' || target.tagName === 'BUTTON') event.preventDefault();
       event.stopPropagation();
