@@ -1130,13 +1130,20 @@ public class CalendarController : Controller
         try
         {
             var owner = await ResolveCalendarOwnerAsync(null, null, cancellationToken);
-            var connection = await _calendarConnections.GetAsync(owner, cancellationToken);
+            var runtime = await HttpContext.RequestServices
+                .GetRequiredService<Infrastructure.Analytics.IPlatformConnectionHealthAuthority>()
+                .ReadAsync(owner, cancellationToken);
+            var connection = runtime.Calendar.Connection;
             return Json(new
             {
-                connected = connection.Connected,
+                connected = runtime.Calendar.ProviderVerified,
+                storedConnected = connection.Connected,
                 email = connection.Email,
                 authorizationMethod = connection.AuthorizationMethod,
-                lastVerifiedUtc = connection.LastVerifiedUtc
+                lastVerifiedUtc = connection.LastVerifiedUtc,
+                providerStatus = runtime.Calendar.Status,
+                providerCheckedUtc = runtime.Calendar.CheckedUtc,
+                providerHttpStatus = runtime.Calendar.HttpStatusCode
             });
         }
         catch (InvalidOperationException ex)
