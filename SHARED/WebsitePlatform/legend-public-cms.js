@@ -332,7 +332,7 @@
 
   function isDirectCanvasSelectable(el) {
     if (!(el instanceof HTMLElement)) return false;
-    if (el.dataset.cmsSection || el.dataset.cmsExtraId) return true;
+    if (el.dataset.cmsSection) return true;
     return !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName);
   }
 
@@ -867,8 +867,7 @@
     const model = editableCompositionNodeForElement(el, false);
     if (model) {
       const value = inlineTextValue(el);
-      if (el.dataset.cmsExtraField === 'title') model.title = value;
-      else model.text = value;
+      model.text = value;
       setContentText(el, value, true);
     }
     el.removeAttribute?.('contenteditable');
@@ -898,8 +897,7 @@
       const model = editableCompositionNodeForElement(el);
       if (!model) return;
       const value = inlineTextValue(el);
-      if (el.dataset.cmsExtraField === 'title') model.title = value;
-      else model.text = value;
+      model.text = value;
       el.dataset.cmsPreserveWhitespace = 'true';
       markDirty();
       updateDirectCanvasUi();
@@ -3939,7 +3937,7 @@
 
   function collaborationSelectedElementId() {
     if (!selected) return null;
-    return selected.dataset.cmsExtraId ? `extra:${selected.dataset.cmsExtraId}` : selected.dataset.cmsId || null;
+    return selected.dataset.cmsCompositionId || selected.dataset.cmsId || null;
   }
 
   function collaborationAuthorLabel(comment) {
@@ -4139,7 +4137,7 @@
     const id=freshStableId();
     const node={
       id,type:isImage?'image':'video',tag:isImage?'img':'video',
-      className:isImage?'cms-extra-image':null,
+      className:isImage?'legend-cms-image':null,
       mediaAssetId:asset.id || compositionMediaAssetId(asset.url),
       mediaUrl:asset.url,
       alt:isImage?(asset.name||''):null,
@@ -4931,7 +4929,7 @@
       applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
     });
     panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
-    document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-extra-image').click());
+    document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-image-upload').click());
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
     panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedCompositionNode(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
@@ -5150,7 +5148,7 @@
     bar.innerHTML = `
       <button id="legend-cms-save">Save draft</button><button class="primary" id="legend-cms-publish">Publish</button>
       <span id="legend-cms-status" role="status" aria-live="polite">Draft editor</span>
-      <input id="legend-cms-extra-image" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <input id="legend-cms-image-upload" type="file" accept="image/jpeg,image/png,image/webp" hidden>
       <button id="legend-cms-up">Section ↑</button>
       <button id="legend-cms-down">Section ↓</button>
       <button id="legend-cms-reset">Reset selected</button><button id="legend-cms-remove">Delete selected</button>
@@ -5245,7 +5243,7 @@
 
     document.getElementById('legend-cms-save')?.addEventListener('click', chooseDraft);
     document.getElementById('legend-cms-publish')?.addEventListener('click', () => save(true));
-    document.getElementById('legend-cms-extra-image')?.addEventListener('change', e => addImage(e.target.files?.[0]));
+    document.getElementById('legend-cms-image-upload')?.addEventListener('change', e => addImage(e.target.files?.[0]));
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
