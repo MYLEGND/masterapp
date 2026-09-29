@@ -297,7 +297,7 @@ public class WebsitePlatformController : ControllerBase
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history, signalCatalog = SignalCatalogPayload(), capabilities = new {
+            history, signalCatalog = SignalCatalogPayload(), agentContract = WebsiteStudioAgentContract.Payload, capabilities = new {
                 canPublish = await CanPublishAsync(actor, cancellationToken),
                 canManageDomains = await CanPublishAsync(actor, cancellationToken),
                 canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business,
