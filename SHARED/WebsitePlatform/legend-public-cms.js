@@ -1251,6 +1251,11 @@
     if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
 
     const id = el.dataset.cmsId || fallbackId || pageKey + '.' + safeId(tag) + '.node';
+    if (!el.dataset.cmsId) {
+      el.dataset.cmsId=id;
+      el.dataset.cmsEditable='true';
+      rememberOriginal(el);
+    }
     const model = legacyMigrationRecordForElement(el) || {};
     const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
     const extra = el.dataset.cmsExtraId ? legacyMigrationExtraById(el.dataset.cmsExtraId) : null;
@@ -1409,7 +1414,7 @@
     const type=String(node?.type || 'text');
     const tag=String(node?.tag || '').toLowerCase();
     const allowed={
-      section:['section'],container:['div','article','header','footer','nav','ul','ol'],
+      section:['section'],container:['div','article','header','footer','nav','ul','ol','fieldset'],
       heading:['h1','h2','h3','h4','h5','h6'],text:['p','span','small','strong','li','label','blockquote'],
       cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],embed:['div'],spacer:['div'],reusable:['div']
     }[type] || ['div'];
@@ -2333,6 +2338,11 @@
       bindBusiness(managementPayload || renderInput);
     applyBusinessPageNavigation();
     applyStoreNavigation();
+    try {
+      window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
+        detail:{siteKey:SITE_KEY,page:currentPageRoute(),editor:editorMode,materialize:materializeMode}
+      }));
+    } catch {}
   }
 
   function refreshResponsiveComposition() {
