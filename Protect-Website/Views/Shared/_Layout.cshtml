@@ -517,6 +517,7 @@
     window.LEGEND_PUBLIC_CMS_CONTEXT = {
         siteKey: "protect",
         apiBase: "",
+        editorAuthorizationUrl: @Html.Raw(JsonSerializer.Serialize($"{agentPortalBaseUrl}/Account/EditProtectWebsite")),
         agentSlug: @Html.Raw(JsonSerializer.Serialize(trackingSlug ?? string.Empty)),
         pagePrefix: @Html.Raw(JsonSerializer.Serialize(legalBasePath)),
         pages: @Html.Raw(JsonSerializer.Serialize(ProtectWebsite.Services.WebsiteEditorPageCatalog.Discover(EditorActions, EditorViews).Select(page => new { path = page.Path, label = page.Label })))
