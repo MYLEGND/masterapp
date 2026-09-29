@@ -18,7 +18,7 @@ public sealed class MetaGraphEndpointAuthorityTests
             var handler = new RecordingHandler((request, attempt) =>
                 attempt == 1
                     ? Error2635("v25.0")
-                    : Json(HttpStatusCode.OK, "{"data":[{"id":"1"}]}"));
+                    : Json(HttpStatusCode.OK, """{"data":[{"id":"1"}]}"""));
             using var client = new HttpClient(handler);
 
             var result = await MetaGraphEndpointAuthority.GetAsync(
@@ -55,7 +55,7 @@ public sealed class MetaGraphEndpointAuthorityTests
             var handler = new RecordingHandler((_, attempt) =>
                 attempt == 1
                     ? Error2635("v26.0")
-                    : Json(HttpStatusCode.OK, "{"data":[]}"));
+                    : Json(HttpStatusCode.OK, """{"data":[]}"""));
             using var client = new HttpClient(handler);
 
             var result = await MetaGraphEndpointAuthority.GetAsync(
@@ -81,7 +81,7 @@ public sealed class MetaGraphEndpointAuthorityTests
         {
             var handler = new RecordingHandler((_, _) =>
                 Json(HttpStatusCode.BadRequest,
-                    "{"error":{"message":"Invalid OAuth access token.","type":"OAuthException","code":190,"error_subcode":463}}"));
+                    """{"error":{"message":"Invalid OAuth access token.","type":"OAuthException","code":190,"error_subcode":463}}"""));
             using var client = new HttpClient(handler);
 
             var result = await MetaGraphEndpointAuthority.GetAsync(
@@ -109,7 +109,7 @@ public sealed class MetaGraphEndpointAuthorityTests
             var handler = new RecordingHandler((_, attempt) =>
                 attempt == 1
                     ? Error2635("v25.0")
-                    : Json(HttpStatusCode.OK, "{"events_received":1}"),
+                    : Json(HttpStatusCode.OK, """{"events_received":1}"""),
                 captureBody: true);
             using var client = new HttpClient(handler);
 
@@ -119,7 +119,7 @@ public sealed class MetaGraphEndpointAuthorityTests
                 new Dictionary<string, string>
                 {
                     ["access_token"] = "secret-token",
-                    ["data"] = "[{"event_name":"Lead"}]"
+                    ["data"] = """[{"event_name":"Lead"}]"""
                 });
 
             Assert.True(result.IsSuccessStatusCode);
@@ -142,7 +142,7 @@ public sealed class MetaGraphEndpointAuthorityTests
         MetaGraphEndpointAuthority.SetNegotiatedVersionForTests("v25.0");
         try
         {
-            var handler = new RecordingHandler((_, _) => Json(HttpStatusCode.OK, "{"data":[]}"));
+            var handler = new RecordingHandler((_, _) => Json(HttpStatusCode.OK, """{"data":[]}"""));
             using var client = new HttpClient(handler);
 
             var result = await MetaGraphEndpointAuthority.GetAsync(
@@ -161,7 +161,7 @@ public sealed class MetaGraphEndpointAuthorityTests
     private static HttpResponseMessage Error2635(string version) =>
         Json(
             HttpStatusCode.BadRequest,
-            $"{{"error":{{"message":"(#2635) You are calling a deprecated version of the Ads API. Please upgrade to the latest version: {version}.","type":"OAuthException","code":2635}}}}");
+            $"""{"error":{"message":"(#2635) You are calling a deprecated version of the Ads API. Please upgrade to the latest version: {{version}}.","type":"OAuthException","code":2635}}""");
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
         new(status)
