@@ -3283,34 +3283,11 @@ textarea.client-create-notes {
 }
 
 @media (max-width: 720px) {
-    .dashboard-detail-modal .modal-dialog {
-        width: calc(100vw - 1rem);
-        max-width: calc(100vw - 1rem);
-        margin: 0.5rem auto;
-    }
-
-    .dashboard-detail-modal .modal-content {
-        max-height: calc(100dvh - 1rem);
-        border-radius: 18px;
-    }
-
-    .dashboard-detail-modal .modal-header,
-    .dashboard-detail-modal .modal-body {
-        padding: 0.78rem;
-    }
-
     .dashboard-detail-modal .modal-header {
         position: sticky;
         top: 0;
         z-index: 2;
         gap: 0.65rem;
-    }
-
-    .dashboard-modal-close {
-        inline-size: 44px;
-        block-size: 44px;
-        border-width: 2px;
-        font-size: 1.8rem;
     }
 
     .dashboard-detail-modal .modal-body {
@@ -4219,22 +4196,6 @@ textarea.client-create-notes {
         min-height: 34px;
         padding-inline: 0.2rem;
         font-size: 0.64rem;
-    }
-
-    .legend-connect-composition-modal .modal-dialog {
-        width: calc(100vw - 0.5rem);
-        margin: 0.25rem auto;
-    }
-
-    .legend-connect-composition-modal .modal-content {
-        max-height: calc(100dvh - 0.5rem);
-        border-radius: 18px;
-    }
-
-    .legend-connect-composition-modal .modal-header,
-    .legend-connect-composition-modal .modal-body,
-    .legend-connect-composition-modal .modal-footer {
-        padding: 0.76rem;
     }
 
     .legend-connect-composition-modal .modal-footer {
@@ -6850,10 +6811,6 @@ header .legend-global-nav .container-fluid {
 }
 
 @media (max-width: 900px) {
-    .messaging-command-center-window {
-        height: min(900px, calc(100dvh - 1.25rem));
-    }
-
     .messaging-command-center-grid {
         grid-template-columns: 1fr;
         grid-template-rows: minmax(180px, 0.42fr) minmax(0, 1fr);
@@ -6892,26 +6849,20 @@ header .legend-global-nav .container-fluid {
 }
 
 @media (max-width: 600px) {
-    .messaging-command-center-modal {
-        padding: 0;
-    }
-
-    .messaging-command-center-window {
-        width: 100%;
-        height: 100dvh;
-        min-height: 0;
-        border: 0;
-        border-radius: 0;
-    }
-
     .messaging-command-center-header,
     .messaging-command-center-thread {
-        padding-right: 0.85rem;
-        padding-left: 0.85rem;
+        padding-right: 0.62rem;
+        padding-left: 0.62rem;
+    }
+
+    .messaging-command-center-header {
+        gap: 0.55rem;
+        padding-top: 0.55rem;
+        padding-bottom: 0.55rem;
     }
 
     .messaging-command-center-header h2 {
-        font-size: 1.3rem;
+        font-size: 1rem;
     }
 
 
@@ -6924,13 +6875,13 @@ header .legend-global-nav .container-fluid {
     }
 
     .messaging-command-center-sidebar {
-        padding: 0.72rem 0.85rem;
+        padding: 0.52rem 0.62rem;
     }
 
     .messaging-command-center-search-results {
-        top: 4.28rem;
-        right: 0.85rem;
-        left: 0.85rem;
+        top: 3.9rem;
+        right: 0.62rem;
+        left: 0.62rem;
     }
 
     .messaging-thread-header {
