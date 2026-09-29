@@ -161,7 +161,8 @@ public sealed class MetaGraphEndpointAuthorityTests
     private static HttpResponseMessage Error2635(string version) =>
         Json(
             HttpStatusCode.BadRequest,
-            $"""{"error":{"message":"(#2635) You are calling a deprecated version of the Ads API. Please upgrade to the latest version: {{version}}.","type":"OAuthException","code":2635}}""");
+            """{"error":{"message":"(#2635) You are calling a deprecated version of the Ads API. Please upgrade to the latest version: VERSION.","type":"OAuthException","code":2635}}"""
+                .Replace("VERSION", version, StringComparison.Ordinal));
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
         new(status)
