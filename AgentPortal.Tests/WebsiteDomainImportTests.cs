@@ -406,20 +406,47 @@ public sealed class WebsiteDomainImportTests
     }
 
     [Fact]
-    public async Task FreshExportImportsThemeAndOrder()
+    public async Task FreshExportImportsThemeAndCanonicalCompositionOrder()
     {
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"theme\":{\"gold\":\"#123456\"},\"sectionOrder\":{\"section\":2}}"));
-        var result = await new WebsiteImportService(null!).PrepareExportAsync(stream, false, new(), true, "owner", "https://example.com");
+        var document = new WebsiteContentDocument
+        {
+            Theme = new WebsiteDesignTheme { Gold = "#123456" },
+            Pages = new()
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Title = "Home",
+                    Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true },
+                    Composition =
+                    [
+                        new WebsiteCompositionNode { Id = "section-first", Type = "section", Tag = "section" },
+                        new WebsiteCompositionNode { Id = "section-second", Type = "section", Tag = "section" }
+                    ]
+                }
+            }
+        };
+        var json = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await new WebsiteImportService(null!).PrepareExportAsync(
+            stream, false, new(), true, "owner", "https://example.com");
+
         Assert.Equal("#123456", result.Document.Theme.Gold);
-        Assert.Equal(2, result.Document.SectionOrder["section"]);
+        Assert.Equal("section-first", result.Document.Pages["/"].Composition[0].Id);
+        Assert.Equal("section-second", result.Document.Pages["/"].Composition[1].Id);
     }
 
     [Fact]
-    public async Task LegacyExportWrapperCanBeImported()
+    public async Task LegacyExportWrapperIsRejectedUntilMaterializedToCanonicalV3()
     {
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"format\":\"legend-website-v1\",\"draft\":{\"pages\":{\"/contact\":{\"title\":\"Contact\"}}}}"));
-        var result = await new WebsiteImportService(null!).PrepareExportAsync(stream, false, new(), true, "owner", "https://example.com");
-        Assert.Equal("Contact", result.Document.Pages["/contact"].Title);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(
+            "{\"format\":\"legend-website-v1\",\"draft\":{\"pages\":{\"/contact\":{\"title\":\"Contact\"}}}}"));
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            new WebsiteImportService(null!).PrepareExportAsync(
+                stream, false, new(), true, "owner", "https://example.com"));
+
+        Assert.Contains("canonical v3", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class SequenceHttpMessageHandler : HttpMessageHandler
