@@ -153,8 +153,39 @@ test('canonical startup fills navigation and image accessibility defaults and pr
     assert.equal(saved.pages['/'].navigation.label,'Home');
     assert.equal(canonicalNodeByType(saved,'image')?.alt,'Hero Photo');
     assert.match(source,/main \*\{min-width:0;box-sizing:border-box\}/);
-    assert.match(source,/overflow-wrap:anywhere;word-break:normal;white-space:normal/);
+    assert.match(publicCss,/h1,h2,h3,p\{overflow-wrap:break-word;word-break:normal\}/);
+    assert.match(publicCss,/h1,h2,h3\{[^}]*min-inline-size:min\(8ch,100%\)/);
     assert.match(source,/\[data-cms-editable="true"\]\{min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere\}/);
+  }finally{f.close();}
+});
+
+test('canonical startup repairs dead placeholder links while preserving dynamic href bindings and brand geometry',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument({href:'#'}));
+  const dead=canonicalNodeById(doc,'home.a.node.1');
+  dead.href='#';
+  doc.pages['/'].composition[0].children.push(
+    canonicalNode('home.dynamic-link','link','a',{text:'Dynamic destination',href:null,dataBinding:{collectionId:'items',field:'url',target:'href'}})
+  );
+  doc.shell.header[0].children.unshift(
+    canonicalNode('shell.brand','container','div',{className:'brand-wordmark',style:{widthPercent:4,offsetXPercent:91},breakpointStyles:{mobile:{widthPercent:3,offsetXPercent:95}},children:[
+      canonicalNode('shell.brand.copy','text','span',{text:'Canonical Business'})
+    ]})
+  );
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Canonical Business'},doc});
+  try{
+    const saved=await f.save();
+    const repaired=canonicalNodeById(saved,'home.a.node.1');
+    assert.equal(repaired.type,'text');
+    assert.equal(repaired.tag,'span');
+    assert.equal(repaired.href ?? null,null);
+    const dynamic=canonicalNodeById(saved,'home.dynamic-link');
+    assert.equal(dynamic.type,'link');
+    assert.equal(dynamic.dataBinding.target,'href');
+    const brand=saved.shell.header[0].children.find(node=>node.id==='shell.brand');
+    assert.equal(brand.style.widthPercent,undefined);
+    assert.equal(brand.style.offsetXPercent,undefined);
+    assert.equal(brand.breakpointStyles.mobile.widthPercent,undefined);
+    assert.equal(brand.breakpointStyles.mobile.offsetXPercent,undefined);
   }finally{f.close();}
 });
 
@@ -180,8 +211,8 @@ test('existing v3 startup artifacts are deleted only when semantically empty',as
   }finally{f.close();}
 });
 
-test('materialization never invents publishable links from unmanaged runtime buttons or empty anchors',()=>{
-  assert.match(source,/const unmanagedInteractiveControl\s*=\s*[\s\S]*tag === 'button' && !actionKey[\s\S]*tag === 'a' && !actionKey && !rawHref/);
+test('materialization never invents publishable links from unmanaged runtime buttons or placeholder anchors',()=>{
+  assert.match(source,/const unmanagedInteractiveControl\s*=\s*[\s\S]*tag === 'button' && !actionKey[\s\S]*tag === 'a' && !actionKey && !dynamicHref && \(!rawHref \|\| rawHref === '#'\)/);
   assert.match(source,/const presentationOnlyControl = runtimePresentationControl \|\| unmanagedInteractiveControl/);
   assert.match(source,/const projectedTag = presentationOnlyControl \? 'span' : tag/);
   assert.match(source,/actionKey:presentationOnlyControl \? null : \(actionKey \|\| null\)/);
@@ -1558,6 +1589,21 @@ test('business entity name remains profile-owned while canonical shell typograph
     assert.equal(f.w.document.querySelector('#legend-cms-scale').disabled,false);
     assert.equal(f.w.document.querySelector('#legend-cms-link-group').hidden,true);
     assert.match(source,/entityBound = el\.hasAttribute\?\.\('data-business-name'\)/);
+    assert.match(publicCss,/\.brand-wordmark strong\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
+    assert.match(publicCss,/\.brand\{[^}]*min-width:0[^}]*max-width:min\(58vw,38rem\)/);
+  }finally{f.close();}
+});
+
+test('disabled store control is a single compact Add Store action with no redundant explanation',async()=>{
+  const f=await domFixture();
+  try{
+    const host=f.w.document.querySelector('#legend-cms-store-controls');
+    assert.ok(host);
+    assert.equal(host.querySelectorAll('button').length,1);
+    assert.equal(host.querySelector('#legend-cms-store-toggle')?.textContent,'Add Store');
+    assert.equal(host.querySelector('small'),null);
+    assert.doesNotMatch(source,/Adds one scoped Store page/);
+    assert.match(source,/#legend-cms-store-toggle\{[^}]*justify-self:start/);
   }finally{f.close();}
 });
 
@@ -1968,8 +2014,9 @@ test('quality inspector keeps saved-server checks separate from rendered canonic
     assert.match(liveMeta,/Live page checks \(rendered canvas\)/);
     assert.match(savedText,/Saved draft dynamic collection is unavailable/);
     assert.doesNotMatch(savedText,/missing alternative text|no working destination/);
-    assert.doesNotMatch(liveText,/missing alternative text/);
-    assert.match(liveText,/no working destination/);
+    assert.doesNotMatch(liveText,/missing alternative text|no working destination/);
+    assert.equal(f.w.document.querySelector('main a'),null);
+    assert.equal(f.w.document.querySelector('main span')?.textContent,'Broken');
     const renderedImage=f.w.document.querySelector('main img');
     assert.ok(renderedImage?.hasAttribute('alt'));
     assert.equal(renderedImage.getAttribute('alt'),'');
@@ -2475,10 +2522,16 @@ test('GPT contract is conversion-first on desktop and mobile and obeys the canon
 });
 
 
-test('mobile Website Studio is a compact top sheet that preserves visible canvas below it',()=>{
-  assert.match(source,/@media\(max-width:800px\)[\s\S]*\.legend-cms-panel\{[\s\S]*height:auto;max-height:min\(46dvh,430px\)/);
+test('mobile Website Studio is a draggable compact-to-expanded top sheet with an icon-only hide control',()=>{
+  assert.match(source,/@media\(max-width:800px\)[\s\S]*--legend-cms-sheet-compact:min\(46dvh,430px\)[\s\S]*--legend-cms-sheet-expanded:min\(88dvh,calc\(100dvh - 12px\)\)/);
+  assert.match(source,/body\.legend-cms-panel-expanded \.legend-cms-panel\{--legend-cms-sheet-height:var\(--legend-cms-sheet-expanded\)\}/);
+  assert.match(source,/\.legend-cms-sheet-handle\{[\s\S]*touch-action:none[\s\S]*cursor:ns-resize/);
+  assert.match(source,/sheetHandle\?\.addEventListener\('pointerdown'/);
+  assert.match(source,/sheetHandle\?\.addEventListener\('pointermove'/);
+  assert.match(source,/setSheetExpanded\(expand\)/);
+  assert.match(source,/panelToggleIcon = hidden => hidden[\s\S]*<svg/);
+  assert.match(source,/aria-label',hidden \? 'Open Website Studio controls' : 'Hide Website Studio controls'/);
+  assert.doesNotMatch(source,/panelToggle\.textContent = 'Full-page canvas'/);
   assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;height:100dvh;overflow-y:auto/);
   assert.match(source,/\.legend-cms-bar button\{[\s\S]*min-height:32px[\s\S]*font-size:11px/);
-  assert.match(source,/\.legend-cms-primary-tabs button\{[\s\S]*min-height:32px/);
-  assert.match(source,/\.legend-cms-menu button,\.legend-cms-panel section>button\{[\s\S]*min-height:34px/);
 });
