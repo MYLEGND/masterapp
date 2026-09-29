@@ -29,7 +29,7 @@ public sealed record CommerceStoreContext(
     string AccentColor,
     string? LogoUrl,
     string? GlobalCheckoutUrl,
-    WebsiteThemeOverride Theme,
+    WebsiteDesignTheme Theme,
     string? WebsiteShellPrefix,
     string? WebsiteShellSuffix);
 
@@ -288,7 +288,7 @@ public sealed class CommerceStoreContextService(
         var root = !isParfait && useScopedPath
             ? "/store/s/" + Uri.EscapeDataString(business.Key)
             : "/store";
-        var theme = websiteDocument?.Theme ?? new WebsiteThemeOverride();
+        var theme = websiteDocument?.Theme ?? new WebsiteDesignTheme();
 
         return new CommerceStoreContext(
             business.Id,
