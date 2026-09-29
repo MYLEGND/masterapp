@@ -3274,9 +3274,8 @@
 
     if (title) title.textContent = elementLabel(selected);
     const isImage = selected instanceof HTMLImageElement;
-    const selectedExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
-    const extra = selected.dataset.cmsExtraField ? null : selectedExtra;
-    const isCode = selectedExtra?.type === 'code' && !selected.dataset.cmsExtraField;
+    const selectedNode = selected.dataset.cmsCompositionId ? compositionNode(selected.dataset.cmsCompositionId) : null;
+    const isCode = selectedNode?.type === 'embed';
     if (inlineHelp) inlineHelp.hidden = !isInlineEditable(selected);
     if (imageGroup) imageGroup.hidden = !isImage;
     if (codeGroup) codeGroup.hidden = !isCode;
@@ -3469,78 +3468,44 @@
   }
 
   function addImage(file) {
-    if (!selectedSection) {
+    if(!selectedSection){
       alert('Select content inside the section where you want the new image.');
       return;
     }
-    readImage(file, dataUrl => {
+    readImage(file,dataUrl=>{
+      const parentId=selectedSection?.dataset?.cmsCompositionId;
+      const parent=parentId ? compositionNode(parentId) : null;
+      if(!parent){alert('Select a canonical section before adding an image.');return;}
       checkpoint();
-      if (usesCanonicalComposition()) {
-        const parentId=selectedSection?.dataset?.cmsCompositionId;
-        const parent=parentId ? compositionNode(parentId) : null;
-        if(!parent){ alert('Select a section before adding an image.'); return; }
-        const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
-        const node={id,type:'image',tag:'img',className:'cms-extra-image',mediaAssetId:compositionMediaAssetId(dataUrl),mediaUrl:dataUrl,alt:'',signals:[],style:{widthPercent:70,paddingTop:16,paddingBottom:16},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]};
-        parent.children ||= []; parent.children.push(node);
-        renderCanonicalCompositionPage();
-        setSelected(document.querySelector('[data-cms-id="'+CSS.escape(id)+'"]'));
-        markDirty();
-        return;
-      }
-      const extra = {
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-        sectionId: selectedSection.dataset.cmsSection,
-        type: 'image',
-        imageDataUrl: dataUrl,
-        style: { widthPercent: 70, paddingTop: 16, paddingBottom: 16 }
+      const id=freshStableId();
+      const node={
+        id,type:'image',tag:'img',className:'cms-extra-image',
+        mediaAssetId:compositionMediaAssetId(dataUrl),mediaUrl:dataUrl,alt:'',
+        signals:[],style:{widthPercent:70,paddingTop:16,paddingBottom:16},
+        breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
       };
-      pageState().extras.push(extra);
-      const el = createExtra(extra);
-      setSelected(el);
+      parent.children ||= [];
+      parent.children.push(node);
+      renderCanonicalCompositionPage();
+      setSelected(findEditableElement(id));
       markDirty();
     });
   }
 
   function removeSelected() {
-    if (!selected) return;
-    if (usesCanonicalComposition() && selected.dataset.cmsCompositionId) {
-      const current=compositionNode(selected.dataset.cmsCompositionId);
-      if (current && (current.actionKey || current.systemKey || current.systemBinding || current.type === 'form')) {
-        alert('This component has protected platform wiring. Rename, restyle, or reposition it without deleting its canonical behavior.');
-        return;
-      }
+    if(!selected || selected.dataset.cmsSignalOnly || !selected.dataset.cmsCompositionId) return;
+    const entry=compositionEntry(selected.dataset.cmsCompositionId);
+    const current=entry?.node;
+    if(!current) return;
+    if(current.actionKey || current.systemKey || current.systemBinding || current.type==='form'){
+      alert('This component has protected platform wiring. Rename, restyle, or reposition it without deleting its canonical behavior.');
+      return;
     }
     checkpoint();
-    if (usesCanonicalComposition() && selected.dataset.cmsCompositionId) {
-      const id=selected.dataset.cmsCompositionId;
-      if (!removeCompositionNode(id)) return;
-      renderCanonicalCompositionPage();
-      setSelected(null);
-      markDirty();
-      return;
-    }
-    if (selected.dataset.cmsSignalOnly) { markDeleted(pageElementDeletionKey(selected.dataset.cmsId)); delete pageState().elements[selected.dataset.cmsId]; markDirty(); renderSignalControls(); return; }
-    if (selected.dataset.cmsExtraId) {
-      const removedId = selected.dataset.cmsExtraId;
-      const removedSection = selected.dataset.cmsSection;
-      const removedExtras = pageState().extras.filter(x => x.id === removedId || (removedSection && (x.sectionId === removedSection || x.placement?.sectionId === removedSection)));
-      removedExtras.forEach(extra => markDeleted(pageExtraDeletionKey(extra.id)));
-      pageState().extras = pageState().extras.filter(x => !removedExtras.includes(x));
-      const removedNode = document.querySelector(`[data-cms-id="extra:${CSS.escape(removedId)}"]`) || selected;
-      scaledElements.delete(removedNode);
-      removedNode.remove();
-      setSelected(null);
-      markDirty();
-      return;
-    }
-    markDeleted(pageElementDeletionKey(selected.dataset.cmsId));
-    delete pageState().elements[selected.dataset.cmsId];
-    const original = rememberOriginal(selected);
-    selected.hidden = original.hidden;
-    if (selected instanceof HTMLImageElement) selected.src = original.src || '';
-    else if (!selected.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName)) { setContentText(selected, original.text); }
-    applyStyle(selected, null);
-    syncEditorControls();
+    if(!removeCompositionNode(current.id)) return;
+    if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
+    else renderCanonicalCompositionPage();
+    setSelected(null);
     markDirty();
   }
 
@@ -3553,13 +3518,12 @@
     if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
     saving = true;
     const submitted = JSON.stringify(documentState);
-    const submittedDeletedKeys = [...pendingDeletedKeys];
     let saved = false;
     try {
       const response = await fetch(`${API_BASE}/api/website-content/${publish ? 'manage/publish' : 'manage'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, deletedKeys: submittedDeletedKeys, ...(namedDraft || {}) })
+        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, ...(namedDraft || {}) })
       });
       if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || error.error || `Save failed (${response.status})`); }
       const payload = await response.json();
@@ -3567,7 +3531,6 @@
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
       revision = payload.revision ?? revision;
       namedDrafts = payload.drafts || namedDrafts;
-      submittedDeletedKeys.forEach(key => pendingDeletedKeys.delete(key));
       dirty = changedDuringSave;
       saved = true;
       if (status) status.textContent = changedDuringSave ? 'Draft saved; newer edits remain unsaved' : publish ? 'Published' : 'Draft saved';
@@ -4597,9 +4560,8 @@
 
   function openCodeEditor() {
     const block = selected;
-    const extra = block?.dataset?.cmsExtraId ? pageState().extras.find(x => x.id === block.dataset.cmsExtraId) : null;
     const composition = block?.dataset?.cmsCompositionId ? compositionNode(block.dataset.cmsCompositionId) : null;
-    const sourceNode = composition?.type === 'embed' ? composition : extra?.type === 'code' ? extra : null;
+    const sourceNode = composition?.type === 'embed' ? composition : null;
     if (!block || !sourceNode) return;
     clearTimeout(autoSaveTimer);
     const dialog = document.createElement('dialog');
@@ -4678,42 +4640,7 @@
   }
 
   function addBlock(type) {
-    if (usesCanonicalComposition()) { addCompositionBlock(type); return; }
-    const section = selectedSection || document.querySelector('[data-cms-section]');
-    if (!section && type !== 'section') return;
-    if (type === 'form' && document.querySelector('form[data-website-inquiry]')) {
-      alert('This page already has its canonical inquiry form. Select that form to move, resize, or review its automatic analytics and Meta wiring.');
-      return;
-    }
-    const sectionAnchor = type === 'section'
-      ? (selectedSection && !selectedSection.matches('.site-header,.site-footer') ? selectedSection : pageLayerSections()[0] || null)
-      : null;
-    checkpoint();
-    const extra = {
-      id: crypto.randomUUID(),
-      type,
-      sectionId: section?.dataset.cmsSection || `${pageKey}.root`,
-      text: type === 'button' ? 'Button' : type === 'text' ? 'Your text' : type === 'form' ? 'Send inquiry' : type === 'code' ? defaultCodeBlock : '',
-      title: type === 'form' ? 'Send an inquiry' : null,
-      signals: [],
-      style: type === 'code' ? { widthPercent: 100, heightPx: 320 } : type === 'form' ? { widthPercent: 100 } : {}
-    };
-    if (type === 'button') {
-      extra.href = '';
-      extra.target = '_self';
-      const container = selectedFlowContainer(section);
-      if (container) extra.placement = { sectionId: section.dataset.cmsSection, containerId: container.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
-    }
-    pageState().extras.push(extra);
-    const el = createExtra(extra);
-    if (type === 'section' && el && sectionAnchor?.parentElement === el.parentElement) {
-      el.parentElement.insertBefore(el, sectionAnchor.nextSibling);
-      syncSectionOrderFromDom();
-    }
-    if (extra.placement) applyPlacement(el, extra.placement);
-    setSelected(el, { openContent: type === 'button' }); markDirty();
-    if (type === 'button') document.getElementById('legend-cms-action')?.focus();
-    if (type === 'code') openCodeEditor();
+    addCompositionBlock(type);
   }
   function enhanceEditor(panel, preview) {
     document.querySelectorAll('[data-cms-id]').forEach(el => baselineNodes.set(el.dataset.cmsId, { el, parent: el.parentElement, next: el.nextSibling }));
