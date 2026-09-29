@@ -637,17 +637,19 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         var owner = MarketingOwnerScope.Business(businessId);
         var profileService = ActivatorUtilities.CreateInstance<Infrastructure.WebsiteEditing.BusinessWebsiteProfileService>(HttpContext.RequestServices);
         var profile = await profileService.GetAsync(businessId, cancellationToken);
-        var calendarAuthority = HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
-        var calendarConnection = await calendarAuthority.GetAsync(owner, cancellationToken);
         var setup = await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingProviderSetupProjection>()
             .ReadAsync(owner, cancellationToken);
+        var runtime = setup.RuntimeHealth;
+        var calendarConnection = runtime.Calendar.Connection;
         var evidence = setup.Evidence;
         var openAiConnection = setup.Connection;
         var openAiHealth = setup.Health;
         var openAiProvider = setup.Account;
         var openAiMeasurement = setup.Capability;
         var openAiProviderError = setup.OpenAiError;
+        var openAiProviderVerified = runtime.OpenAi.ProviderVerified;
         var accountReady =
+            openAiProviderVerified &&
             string.Equals(openAiProvider?.Status, "active", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(openAiProvider?.ReviewStatus, OpenAiAdsReviewStatuses.Approved, StringComparison.Ordinal) &&
             openAiConnection.PixelConfigured &&
@@ -667,7 +669,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 openAiReady = accountReady,
                 bookingPersonalLive = profile.Settings.BookingEnabled &&
                     (!string.IsNullOrWhiteSpace(profile.Settings.BookingEmbedUrl) || !string.IsNullOrWhiteSpace(profile.Settings.BookingFallbackUrl)),
-                calendarLinked = calendarConnection.Connected
+                calendarLinked = runtime.Calendar.ProviderVerified
             },
             marketing = new
             {
@@ -685,13 +687,14 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
             {
                 revision = openAiConnection.Revision,
                 exists = openAiConnection.Exists,
-                connected = openAiConnection.Connected,
+                connected = openAiProviderVerified,
+                storedConnected = openAiConnection.Connected,
                 accountId = openAiConnection.AccountId,
                 accountName = openAiConnection.AccountName,
                 role = openAiConnection.Role,
                 permissions = openAiConnection.Permissions,
                 authorizationMethod = openAiConnection.AuthorizationMethod,
-                connectionMethod = openAiConnection.Connected ? "Advertiser API key verified" : null,
+                connectionMethod = openAiProviderVerified ? "Advertiser API key verified" : null,
                 providerRole = openAiConnection.Role,
                 accountStatus = openAiProvider?.Status,
                 accountUrl = openAiProvider?.AccountUrl,
@@ -700,7 +703,9 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 currencyCode = openAiProvider?.CurrencyCode,
                 reviewStatus = openAiProvider?.ReviewStatus ?? openAiConnection.ReviewStatus,
                 reviewReason = openAiProvider?.ReviewReason,
-                providerStatusFresh = openAiProvider is not null,
+                providerStatusFresh = openAiProviderVerified,
+                providerStatus = runtime.OpenAi.Status,
+                providerCheckedUtc = runtime.OpenAi.CheckedUtc,
                 providerStatusError = openAiProviderError,
                 measurementCapabilityStatus = openAiMeasurement?.Status,
                 measurementCapabilityHttpStatus = openAiMeasurement?.HttpStatusCode,
@@ -725,7 +730,8 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
             },
             calendar = new
             {
-                connected = calendarConnection.Connected,
+                connected = runtime.Calendar.ProviderVerified,
+                storedConnected = calendarConnection.Connected,
                 revision = calendarConnection.Revision,
                 accountName = calendarConnection.AccountName,
                 email = calendarConnection.Email,
@@ -733,7 +739,20 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 permissions = calendarConnection.Permissions,
                 connectedUtc = calendarConnection.ConnectedUtc,
                 lastVerifiedUtc = calendarConnection.LastVerifiedUtc,
-                accessTokenExpiresUtc = calendarConnection.AccessTokenExpiresUtc
+                accessTokenExpiresUtc = calendarConnection.AccessTokenExpiresUtc,
+                providerStatus = runtime.Calendar.Status,
+                providerCheckedUtc = runtime.Calendar.CheckedUtc,
+                providerHttpStatus = runtime.Calendar.HttpStatusCode,
+                providerError = runtime.Calendar.Error
+            },
+            signals = new
+            {
+                operational = runtime.Signals.Operational,
+                status = runtime.Signals.Status,
+                runtime.Signals.FailedDeliveries,
+                runtime.Signals.RetryableDeliveries,
+                runtime.Signals.PendingDeliveries,
+                runtime.Signals.CheckedUtc
             },
             booking = new
             {
