@@ -451,7 +451,7 @@ test('Website Studio canvas keeps public viewport typography and mobile controls
   assert.equal(publicCss.includes('container:legend-public-preview'),false);
   assert.ok(source.includes('.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word'));
   assert.match(source,/\.legend-cms-panel>\*\{min-width:0;max-width:100%\}/);
-  assert.match(source,/\.legend-cms-panel\{[\s\S]*max-height:min\(46dvh,430px\)[\s\S]*border-radius:0 0 14px 14px/);
+  assert.match(source,/\.legend-cms-panel\{[\s\S]*--legend-cms-sheet-compact:min\(46dvh,430px\)[\s\S]*height:var\(--legend-cms-sheet-height,var\(--legend-cms-sheet-compact\)\)[\s\S]*border-radius:0 0 14px 14px/);
   assert.match(source,/\.legend-cms-bar\{[\s\S]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)[\s\S]*position:sticky/);
   assert.match(source,/\.legend-cms-primary-tabs\{[\s\S]*display:flex[\s\S]*overflow-x:auto/);
   assert.match(source,/\.legend-cms-menu\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
@@ -1243,13 +1243,17 @@ test('autosave persists edits before domain connection and panel can collapse to
     assert.ok(toggle);
     f.click('#legend-cms-panel-toggle');
     assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),true);
-    assert.equal(toggle.textContent,'Open controls');
+    assert.equal(toggle.textContent,'');
+    assert.equal(toggle.getAttribute('aria-label'),'Open Website Studio controls');
+    assert.match(toggle.innerHTML,/<svg/);
     assert.ok(f.w.document.querySelector('.legend-cms-selected'));
     f.editSelected('Still editing full width');
     assert.equal(f.w.document.querySelector('main h1').textContent,'Still editing full width');
     f.click('#legend-cms-panel-toggle');
     assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),false);
-    assert.equal(toggle.textContent,'Full-page canvas');
+    assert.equal(toggle.textContent,'');
+    assert.equal(toggle.getAttribute('aria-label'),'Hide Website Studio controls');
+    assert.match(toggle.innerHTML,/<svg/);
   } finally { f.close(); }
 });
 test('breakpoint editor writes responsive style and layout without replacing base geometry',async()=>{
