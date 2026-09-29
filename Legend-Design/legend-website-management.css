@@ -145,7 +145,19 @@
   .legend-website-manager header{
     padding:max(6px,env(safe-area-inset-top)) 10px 6px;
   }
-  .legend-website-manager header>button{min-height:34px;padding:5px 8px;border-radius:8px}
+  .legend-website-manager header>button{
+    position:relative;width:34px;min-width:34px;height:34px;min-height:34px;padding:0;
+    border:1px solid var(--legend-mobile-gold,#d4ad45);border-radius:999px;
+    background:var(--legend-mobile-surface,#081a3a);color:transparent;font-size:0;box-shadow:0 8px 24px #0005;
+  }
+  .legend-website-manager header>button::before{
+    content:"";position:absolute;left:8px;top:8px;width:16px;height:16px;
+    border:1.5px solid var(--legend-mobile-text,#f7f6f2);border-radius:1px;
+  }
+  .legend-website-manager header>button::after{
+    content:"";position:absolute;left:10px;top:13px;width:8px;height:8px;
+    border:solid var(--legend-mobile-text,#f7f6f2);border-width:0 0 1.5px 1.5px;transform:rotate(45deg);
+  }
   .legend-website-manager h2{font-size:1rem}
   .legend-website-manager .legend-website-eyebrow{font-size:.58rem}
   .legend-website-manager .wm-body{padding:7px 10px calc(10px + env(safe-area-inset-bottom))}
