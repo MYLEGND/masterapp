@@ -1,12 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the validated Website Studio v3 canonical materialization repair merged as PR #290. Deploy only Protect and the static LEGEND website because those are the only runtime hosts affected by the shared CMS route normalization and LEGEND same-origin materialization policy.",
-  "purpose": "Publish the canonical Website Studio v3 repair for Founder LEGEND, Protect, and Business editing. Protect normalizes agent-prefixed browser paths to canonical page routes before lookup/materialization; LEGEND permits same-origin Website Studio materialization frames while continuing to block cross-origin framing. Business custom-site editing continues through the shared Protect-hosted CMS/persistence authority. No Portal, Client, Parfait, analytics, Meta/OpenAI, CTA/action catalog, commerce, ownership, or unrelated application logic is changed.",
-  "requestId": "website-studio-v3-materialization-repair-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy the validated Website Studio canonical-authority cleanup from PR #294. Deploy only the runtime hosts changed by this repair: Protect, the static LEGEND website, and Parfait.",
+  "purpose": "Publish the canonical Website Studio and intake/form repair across Founder LEGEND, Agent Protect, Business websites, Protect, and Parfait. The release preserves server-owned quote/risk runtime forms, locks GPT away from backend wiring, centralizes ordinary inquiry presentation/runtime, removes the retired Protect lead-modal authority and duplicate form styling, canonicalizes agent routes and Business shell/navigation metadata, and restores public design parity inside Website Studio. No ClientApp runtime, unrelated CRM features, payments, authentication, or unrelated application logic is changed.",
+  "requestId": "website-studio-canonical-authority-cleanup-20260929",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
-    "masterapp-website"
+    "masterapp-website",
+    "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
