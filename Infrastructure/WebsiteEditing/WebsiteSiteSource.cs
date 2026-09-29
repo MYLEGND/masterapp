@@ -157,10 +157,7 @@ public static class WebsiteSiteSource
         var proposedNodeIds = Flatten(output).Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var entry in protectedNodes.Values)
         {
-            var protectedSemantic = !string.IsNullOrWhiteSpace(entry.Node.ActionKey) ||
-                !string.IsNullOrWhiteSpace(entry.Node.SystemKey) ||
-                !string.IsNullOrWhiteSpace(entry.Node.SystemBinding);
-            if (protectedSemantic && !proposedNodeIds.Contains(entry.Node.Id))
+            if (HasProtectedSemantics(entry.Node) && !proposedNodeIds.Contains(entry.Node.Id))
                 throw new ArgumentException($"Protected component '{entry.Node.Id}' cannot be removed because its canonical behavior is platform-owned.");
         }
 
@@ -350,6 +347,12 @@ public static class WebsiteSiteSource
         return result;
     }
 
+    private static bool HasProtectedSemantics(WebsiteCompositionNode node) =>
+        !string.IsNullOrWhiteSpace(node.ActionKey) ||
+        !string.IsNullOrWhiteSpace(node.SystemKey) ||
+        !string.IsNullOrWhiteSpace(node.SystemBinding) ||
+        (node.Signals?.Count ?? 0) > 0;
+
     private static WebsiteCompositionNode ProjectNode(WebsiteCompositionNode source)
     {
         var copy = Clone(source);
@@ -393,10 +396,9 @@ public static class WebsiteSiteSource
 
             if (baseline.TryGetValue(node.Id, out var previous))
             {
-                var protectedBehavior = !string.IsNullOrWhiteSpace(previous.Node.ActionKey) ||
-                    !string.IsNullOrWhiteSpace(previous.Node.SystemKey);
-                if (protectedBehavior && !string.Equals(previous.Node.Type, node.Type, StringComparison.Ordinal))
-                    throw new ArgumentException($"Protected component '{node.Id}' cannot change component type. Delete it explicitly and add a new free-content node instead.");
+                if (HasProtectedSemantics(previous.Node) &&
+                    !string.Equals(previous.Node.Type, node.Type, StringComparison.Ordinal))
+                    throw new ArgumentException($"Protected component '{node.Id}' cannot change component type while platform-owned behavior is attached.");
 
                 node.Signals = Clone(previous.Node.Signals);
 
