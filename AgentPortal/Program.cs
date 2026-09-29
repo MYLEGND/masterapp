@@ -242,7 +242,8 @@ builder.Services.AddScoped<DerivedAnalyticsService>();
 builder.Services.AddHttpClient("ResilientDefault")
     .SetHandlerLifetime(TimeSpan.FromMinutes(5));
 var hcBuilder = builder.Services.AddHealthChecks()
-    .AddCheck<DbReadinessCheck>("db", tags: ["ready"]);
+    .AddCheck<DbReadinessCheck>("db", tags: ["ready"])
+    .AddCheck<AgentPortal.Health.ProviderRuntimeHealthCheck>("providers", tags: ["provider"]);
 // Redis health check registered only when Redis is configured (redisConn declared above)
 if (!string.IsNullOrWhiteSpace(redisConn))
     hcBuilder.AddCheck<RedisReadinessCheck>("redis", tags: ["ready"]);
@@ -914,6 +915,14 @@ app.MapHealthChecks("/healthz", new Microsoft.AspNetCore.Diagnostics.HealthCheck
 app.MapHealthChecks("/readyz", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
     Predicate = check => check.Tags.Count == 0 || check.Tags.Contains("ready")
+}).AllowAnonymous();
+
+// Shared-provider canary: verifies only already-configured Founder provider
+// connections and emits aggregate health only. Release automation uses this
+// after Portal publication before continuing shared-runtime deployment.
+app.MapHealthChecks("/providerz", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("provider")
 }).AllowAnonymous();
 
 // ✅ REQUIRED so /MicrosoftIdentity/Account/... exists
