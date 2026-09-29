@@ -27,6 +27,16 @@ public static class WebsiteSystemTemplateAuthority
     public static bool IsKnownTemplateKey(string? value) =>
         !string.IsNullOrWhiteSpace(value) && KnownKeys.Contains(value.Trim());
 
+    public static bool IsRuntimeFormSystemKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            !value.StartsWith("protect_runtime_form:", StringComparison.Ordinal))
+            return false;
+        var suffix = value["protect_runtime_form:".Length..];
+        return suffix.Length is > 0 and <= 120 &&
+               suffix.All(character => char.IsLetterOrDigit(character) || character is '_' or '-' or '.');
+    }
+
     public static string? Resolve(string siteKey, string? pagePath)
     {
         if (!string.Equals(siteKey, WebsiteEditorSiteKeys.Protect, StringComparison.Ordinal))
