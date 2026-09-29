@@ -155,7 +155,7 @@ test('v3 selected source applies only validated server projection then uses norm
     {id:'hero',type:'section',tag:'section',signals:[],style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],children:[
       {id:'hero.title',type:'heading',tag:'h1',text:'Before',signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]}
     ]}
-  }},breakpoints:[],theme:{},reusableComponents:{},collections:{},store:{enabled:false}};
+  ]}},breakpoints:[],theme:{},reusableComponents:{},collections:{},store:{enabled:false}};
   const proposed=structuredClone(original); proposed.pages['/'].composition[0].children[0].text='After';
   const f=await domFixture({doc:original,sourceValidationPayload:{source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:proposed,deletedKeys:[],sourceMap:{}}});
   try{
