@@ -424,10 +424,10 @@ public static class WebsiteContentSanitizer
             if (node is null || remaining-- <= 0) break;
             var id = SanitizeId(node.Id);
             var type = (node.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || type is not ("section" or "container" or "heading" or "text" or "cta" or "link" or "image" or "video" or "form" or "embed" or "spacer" or "reusable"))
+            if (id.Length == 0 || !WebsiteCompositionSchema.IsAllowedType(type))
                 continue;
 
-            var tag = SanitizeCompositionTag(node.Tag, type);
+            var tag = WebsiteCompositionSchema.NormalizeTag(type, node.Tag);
             var systemKey = type switch
             {
                 "form" when string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal) =>
@@ -487,25 +487,6 @@ public static class WebsiteContentSanitizer
         return field is "displayName" or "legalName" or "businessType" or "contactEmail" or "contactPhone"
             ? key
             : null;
-    }
-
-    private static string? SanitizeCompositionTag(string? value, string type)
-    {
-        var tag = (value ?? string.Empty).Trim().ToLowerInvariant();
-        var allowed = type switch
-        {
-            "section" => new[] { "section" },
-            "container" => new[] { "div", "article", "header", "footer", "nav", "ul", "ol", "fieldset" },
-            "heading" => new[] { "h1", "h2", "h3", "h4", "h5", "h6" },
-            "text" => new[] { "p", "span", "small", "strong", "li", "label", "blockquote" },
-            "cta" or "link" => new[] { "a", "button" },
-            "image" => new[] { "img" },
-            "video" => new[] { "video" },
-            "form" => new[] { "form" },
-            "embed" or "spacer" or "reusable" => new[] { "div" },
-            _ => Array.Empty<string>()
-        };
-        return allowed.Contains(tag, StringComparer.Ordinal) ? tag : allowed.FirstOrDefault();
     }
 
     private static string? SanitizeClassName(string? value)
