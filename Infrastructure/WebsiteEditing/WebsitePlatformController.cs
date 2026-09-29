@@ -405,11 +405,23 @@ public class WebsitePlatformController : ControllerBase
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { error = "website_site_source_invalid", message = ex.Message });
+            return BadRequest(new
+            {
+                error = "website_site_source_invalid",
+                message = ex.Message,
+                canonicalProtectionViolation = true,
+                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+            });
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message, message = "LEGEND Site Source could not be validated. No draft changes were saved." });
+            return BadRequest(new
+            {
+                error = ex.Message,
+                message = "LEGEND Site Source could not be validated. No draft changes were saved.",
+                canonicalProtectionViolation = true,
+                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+            });
         }
     }
 

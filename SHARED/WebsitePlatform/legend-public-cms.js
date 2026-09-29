@@ -2047,7 +2047,7 @@
 
   function containsProtectedSystemNode(node) {
     if(!node) return false;
-    if(node.type==='form' || node.systemKey || node.systemBinding) return true;
+    if(node.type==='form' || node.systemKey || node.systemBinding || (Array.isArray(node.signals) && node.signals.length > 0)) return true;
     return (node.children || []).some(containsProtectedSystemNode);
   }
 
@@ -3042,6 +3042,82 @@
     if (renderInput || SITE_KEY !== 'business') return;
     document.querySelectorAll('a[href]').forEach(el => { const url = new URL(el.getAttribute('href'), location.origin); if (url.origin !== location.origin || !url.pathname.startsWith('/business-preview/')) return; url.searchParams.set('businessId', BUSINESS_ID); if (editorMode) url.searchParams.set('legendEdit', editorTicket); el.href = url.toString(); });
   }
+  function canonicalProtectedEditCorrection() {
+    return managementPayload?.agentContract?.protectedEditCorrection ||
+      'CANONICAL CORRECTION REQUIRED: preserve the existing stable node ID and component type; restore the protected component from the current canonical draft and change only allowed presentation.';
+  }
+
+  function clearCanonicalProtectionViolation() {
+    for (const warning of document.querySelectorAll('[data-canonical-protection-warning]')) {
+      warning.hidden = true;
+      warning.textContent = '';
+    }
+    delete window.LEGEND_WEBSITE_STUDIO_PROTECTION_VIOLATION;
+  }
+
+  function showCanonicalProtectionViolation(message, correction = canonicalProtectedEditCorrection()) {
+    const safeMessage = String(message || 'Website Studio rejected a protected edit.');
+    const safeCorrection = String(correction || canonicalProtectedEditCorrection());
+    const text = 'CANONICAL PROTECTION BLOCKED THIS EDIT: ' + safeMessage + '\n\nGPT REDIRECT: ' + safeCorrection;
+    window.LEGEND_WEBSITE_STUDIO_PROTECTION_VIOLATION = Object.freeze({
+      message: safeMessage,
+      correction: safeCorrection
+    });
+    let warnings = [...document.querySelectorAll('[data-canonical-protection-warning]')];
+    if (!warnings.length) {
+      const warning = document.createElement('div');
+      warning.dataset.canonicalProtectionWarning = 'true';
+      warning.className = 'legend-cms-protection-warning';
+      warning.setAttribute('role', 'alert');
+      document.body.prepend(warning);
+      warnings = [warning];
+    }
+    for (const warning of warnings) {
+      warning.hidden = false;
+      warning.textContent = text;
+    }
+    document.documentElement.hidden = false;
+    return text;
+  }
+
+  function editorAuthorizationUrl() {
+    const raw = typeof context.editorAuthorizationUrl === 'string' ? context.editorAuthorizationUrl.trim() : '';
+    if (!raw) return null;
+    try {
+      const url = new URL(raw, location.origin);
+      const localHttp = url.protocol === 'http:' && ['localhost','127.0.0.1'].includes(url.hostname);
+      if (url.protocol !== 'https:' && !localHttp) return null;
+      return url.href;
+    } catch {
+      return null;
+    }
+  }
+
+  function showEditorAuthorizationRecovery(message = 'Website Studio needs a fresh authorized session.') {
+    const href = editorAuthorizationUrl();
+    if (!href) return false;
+    window.LEGEND_WEBSITE_EDITOR_REAUTHORIZE_URL = href;
+    let host = document.querySelector('[data-legend-editor-reauthorize-panel]');
+    if (!host) {
+      host = document.createElement('aside');
+      host.dataset.legendEditorReauthorizePanel = 'true';
+      host.setAttribute('role', 'alert');
+      host.style.cssText = 'position:fixed;z-index:2147483646;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));max-width:720px;margin:0 auto;padding:16px 18px;border:1px solid #d4ad45;border-radius:14px;background:#081a32;color:#f7f6f2;box-shadow:0 18px 60px rgba(0,0,0,.35);font:600 14px/1.45 system-ui,sans-serif';
+      const copy = document.createElement('p');
+      copy.style.margin = '0 0 12px';
+      const link = document.createElement('a');
+      link.dataset.legendEditorReauthorize = 'true';
+      link.textContent = 'Reauthorize Website Studio';
+      link.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;border-radius:10px;background:#d4ad45;color:#081a32;text-decoration:none;font-weight:800';
+      host.append(copy, link);
+      document.body.prepend(host);
+    }
+    host.querySelector('p').textContent = message + ' Continue through the normal Agent Portal sign-in/approval flow; the portal will mint a new scoped editor ticket.';
+    host.querySelector('[data-legend-editor-reauthorize]').href = href;
+    document.documentElement.hidden = false;
+    return true;
+  }
+
   function unavailable(error) {
     if (SITE_KEY === 'business') { document.body.replaceChildren(); const main = document.createElement('main'); main.textContent = error.message || 'This website is unavailable.'; document.body.appendChild(main); document.documentElement.hidden = false; }
   }
@@ -3690,7 +3766,7 @@
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const immutableShell = isSharedShellElement(selected);
-      const protectedSemantic = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || selected.tagName === 'FORM';
+      const protectedSemantic = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length > 0) || selected.tagName === 'FORM';
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
@@ -3881,8 +3957,10 @@
     const entry=compositionEntry(selected.dataset.cmsCompositionId);
     const current=entry?.node;
     if(!current) return;
-    if(current.actionKey || current.systemKey || current.systemBinding || current.type==='form'){
-      alert('This component has protected platform wiring. Rename, restyle, or reposition it without deleting its canonical behavior.');
+    if(current.actionKey || current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length > 0) || current.type==='form'){
+      const message='This component has protected platform wiring and cannot be deleted or replaced.';
+      showCanonicalProtectionViolation(message);
+      alert(message+' '+canonicalProtectedEditCorrection());
       return;
     }
     checkpoint();
@@ -3913,7 +3991,12 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, ...(namedDraft || {}) })
       });
-      if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || error.error || `Save failed (${response.status})`); }
+      if (!response.ok) {
+        if ((response.status===401 || response.status===403) &&
+            showEditorAuthorizationRecovery('Website Studio authorization expired before this draft could be saved.')) return false;
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || error.error || `Save failed (${response.status})`);
+      }
       const payload = await response.json();
       const changedDuringSave = JSON.stringify(documentState) !== submitted;
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
@@ -4168,6 +4251,7 @@
     sourceEditorDirty=false;
     const status=document.getElementById('legend-cms-source-status');
     if(status) status.textContent='Source is synchronized with the current draft.';
+    if(force) clearCanonicalProtectionViolation();
   }
 
   async function applySiteSource() {
@@ -4202,10 +4286,13 @@
         JSON.parse(sourceText);
       }
     }catch(error){
-      if(status) status.textContent=error?.message || 'Source syntax is invalid.';
+      const message=error?.message || 'Source syntax is invalid.';
+      if(status) status.textContent=message;
+      showCanonicalProtectionViolation(message);
       return;
     }
 
+    clearCanonicalProtectionViolation();
     if(status) status.textContent='Validating protected actions, media, and structure…';
     try{
       const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
@@ -4213,7 +4300,18 @@
         body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText})
       });
       const payload=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(payload.message || payload.error || 'Site Source validation failed.');
+      if(!response.ok) {
+        if ((response.status===401 || response.status===403) &&
+            showEditorAuthorizationRecovery('Website Studio authorization expired while validating this edit.')) return;
+        const message=payload.message || payload.error || 'Site Source validation failed.';
+        if(payload.canonicalProtectionViolation===true)
+          showCanonicalProtectionViolation(message,payload.correction);
+        else
+          showCanonicalProtectionViolation(message);
+        if(status) status.textContent=message;
+        return;
+      }
+      clearCanonicalProtectionViolation();
       checkpoint();
       documentState=normalizeDocument(payload.proposedDocument || {});
       sourceEditorDirty=false;
@@ -4224,7 +4322,9 @@
       refreshSiteSourceEditor(true);
       if(status) status.textContent='Applied to the canonical draft. Protected wiring unchanged.';
     }catch(error){
-      if(status) status.textContent=error?.message || 'Site Source could not be applied.';
+      const message=error?.message || 'Site Source could not be applied.';
+      if(status) status.textContent=message;
+      showCanonicalProtectionViolation(message);
     }
   }
 
@@ -4649,7 +4749,9 @@
     const copy=cloneCanonicalValue(node);
     const rewrite=current=>{
       current.id=freshStableId();
-      current.signals=(current.signals || []).map(binding=>({...binding,id:freshStableId()}));
+      // Duplicating presentation never duplicates hidden analytics/provider wiring.
+      // New custom mappings are added only through the canonical Analytics controls.
+      current.signals=[];
       (current.children || []).forEach(rewrite);
     };
     rewrite(copy);
@@ -5065,7 +5167,7 @@
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
-    sourceView.innerHTML='<h2>LEGEND Site Source</h2><p>One deterministic source view of the same v3 graph used by the canvas and browser-operated GPT. Canonical actions and system forms are validated server-side and provider/event wiring is not editable here.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Entire site</option><option value="selection">Selected component / section</option></select></label><small id="legend-cms-source-location">Master Source · entire website</small><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false"></textarea><small id="legend-cms-source-status" role="status">Source is synchronized with the current draft.</small><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply validated source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Reload from canvas</button></div>';
+    sourceView.innerHTML='<h2>LEGEND Site Source</h2><p>One deterministic source view of the same v3 graph used by the canvas and browser-operated GPT. Canonical actions and system forms are validated server-side and provider/event wiring is not editable here.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Entire site</option><option value="selection">Selected component / section</option></select></label><small id="legend-cms-source-location">Master Source · entire website</small><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false"></textarea><small id="legend-cms-source-status" role="status">Source is synchronized with the current draft.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply validated source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Reload from canvas</button></div>';
     tools.appendChild(sourceView);
 
     const publishView=document.createElement('section'); publishView.dataset.cmsView='publish'; publishView.hidden=true;
@@ -5086,7 +5188,7 @@
     gpt.id='legend-cms-browser-agent-workspace';
     gpt.dataset.agentWorkspace='browser-only';
     gpt.dataset.externalAiApi='false';
-    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
     const agentScript=gpt.querySelector('#legend-cms-agent-contract-script');
     if(agentScript) agentScript.textContent=managementPayload?.agentContract?.promptTemplate || 'Canonical GPT operating contract unavailable; do not modify this website until the server contract is loaded.';
     tools.appendChild(gpt);
@@ -5378,7 +5480,7 @@
       .legend-cms-collaboration-roster,.legend-cms-collaboration-comments{display:grid;gap:8px;margin:10px 0 16px}.legend-cms-collaborator,.legend-cms-comment{display:grid;gap:6px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-collaborator small,.legend-cms-comment small{margin:0}.legend-cms-comment[data-depth="1"]{margin-left:18px;border-left:3px solid #d4ad45}.legend-cms-comment-head{display:flex;gap:8px;justify-content:space-between;align-items:center}.legend-cms-comment-head span{text-transform:capitalize;font-size:11px;color:#d4ad45}
       .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
-      .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
+      .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}.legend-cms-protection-warning{white-space:pre-wrap;margin:10px 0;padding:12px 14px;border:1px solid #ff6b6b;border-left:5px solid #ff4d4d;border-radius:10px;background:#35191c;color:#ff8f8f!important;font-weight:800;line-height:1.45;overflow-wrap:anywhere}
       .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
@@ -5585,9 +5687,16 @@
       const url = new URL(`${API_BASE}/api/website-content/manage`);
       url.searchParams.set('ticket', editorTicket);
       const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) throw new Error('This edit session has expired.');
+      if (!response.ok) {
+        if ((response.status===401 || response.status===403) &&
+            showEditorAuthorizationRecovery('This Website Studio authorization is missing or expired.')) return;
+        throw new Error('This edit session has expired.');
+      }
       const payload = await response.json();
-      if (payload.siteKey && payload.siteKey !== SITE_KEY) throw new Error('This edit session belongs to a different website. Open it from your profile.');
+      if (payload.siteKey && payload.siteKey !== SITE_KEY) {
+        if (showEditorAuthorizationRecovery('This Website Studio authorization belongs to a different website scope.')) return;
+        throw new Error('This edit session belongs to a different website. Open it from your profile.');
+      }
       bindBusiness(payload);
       managementPayload = payload;
       storeContext = payload.store || null;
