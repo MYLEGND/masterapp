@@ -102,7 +102,7 @@ public sealed class WebsiteInquiryIsolationTests
     }
 
     [Fact]
-    public async Task BusinessInquiryImmediatelyUsesCurrentScopedRecipient_AndPublishedFormBindingControlsMetaEligibility()
+    public async Task BusinessInquiryImmediatelyUsesCurrentScopedRecipient_AndCanonicalV3LeadRemainsServerAuthorityEligible()
     {
         using var f = new Fixture();
         await f.SeedPublishedAsync();
@@ -174,9 +174,10 @@ public sealed class WebsiteInquiryIsolationTests
         var analytics = Assert.Single(await f.Db.AnalyticsEvents
             .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
         Assert.Equal("contact-form", analytics.WebsiteBindingId);
-        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(
             analytics.MetadataJson,
             "metaServerAuthorityEligible") == true);
+        Assert.DoesNotContain("WebsiteSignalBindingId", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
