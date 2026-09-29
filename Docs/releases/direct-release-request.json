@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy the fully validated Website Studio canonical-authority cleanup merged as PR #294. This release-request-only PR exists to satisfy the repository's exact merged-PR deployment gate; deploy only Protect, the static LEGEND website, and Parfait. Do not broaden scope.",
-  "purpose": "Publish the canonical Website Studio and intake/form repair across Founder LEGEND, Agent Protect, Business websites, Protect, and Parfait. The release preserves server-owned quote/risk runtime forms, locks GPT away from backend wiring, centralizes ordinary inquiry presentation/runtime, removes the retired Protect lead-modal authority and duplicate form styling, canonicalizes agent routes and Business shell/navigation metadata, and restores public design parity inside Website Studio. No ClientApp runtime, unrelated CRM features, payments, authentication, or unrelated application logic is changed.",
-  "requestId": "website-studio-canonical-authority-cleanup-20260929-merged-pr",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy the isolated Website Studio GPT authoring-contract and mobile editor repair after exact-head validation. Deploy only Protect, the static LEGEND website, and Parfait because those are the runtime hosts affected by the shared Website Studio surface.",
+  "purpose": "Publish a stricter single-source Website Studio authoring contract for GPT with explicit canonical graph structure, stable node-ID rules, responsive authoring rules, protected-form boundaries, CTA/catalog rules, valid source examples, and a deterministic edit/validate/save workflow. Centralize node type/tag grammar so sanitizer and GPT read the same authority. Repair mobile Website Studio controls and GPT contract rendering without introducing editor-specific public-site layout overrides. No ClientApp, AgentPortal runtime, CRM, payments, authentication, analytics delivery, Meta/OpenAI event semantics, lead routing, commerce behavior, or unrelated application logic is changed.",
+  "requestId": "website-studio-gpt-authoring-mobile-20260929",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",

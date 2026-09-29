@@ -140,6 +140,64 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void SiteSource_SignalOnlyNodeCannotBeDeletedOrTypeReplaced()
+    {
+        var baseline = CanonicalDocument();
+        var tracked = new WebsiteCompositionNode
+        {
+            Id = "home.hero.signal-only",
+            Type = "text",
+            Tag = "p",
+            Text = "Tracked supporting copy",
+            Signals =
+            [
+                new WebsiteSignalBinding
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Trigger = "click",
+                    EventName = "cta_click",
+                    ActionKey = "cta_click",
+                    DeliveryMode = "analytics"
+                }
+            ]
+        };
+        baseline.Pages["/"].Composition[0].Children.Add(tracked);
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        Assert.DoesNotContain(tracked.Signals[0].Id, serialized, StringComparison.Ordinal);
+
+        var removedModel = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var removedHero = removedModel.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
+        removedHero.Children.RemoveAll(node => node.Id == tracked.Id);
+
+        var removed = JsonSerializer.Serialize(
+            removedModel,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var deleteError = Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(removed, baseline, BusinessActions()));
+        Assert.Contains("cannot be removed", deleteError.Message, StringComparison.OrdinalIgnoreCase);
+
+        var replacedModel = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var replacedHero = replacedModel.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
+        var replacement = replacedHero.Children.Single(node => node.Id == tracked.Id);
+        replacement.Type = "heading";
+        replacement.Tag = "h2";
+
+        var replaced = JsonSerializer.Serialize(
+            replacedModel,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var typeError = Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(replaced, baseline, BusinessActions()));
+        Assert.Contains("cannot change component type", typeError.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SiteSource_CannotInventActionOrSystemAuthority()
     {
         var source = CanonicalDocument();

@@ -367,26 +367,41 @@ test('business header navigation projects one canonical page catalog without pre
   }finally{f.close();}
 });
 
-test('Website Studio canvas keeps public viewport typography and has no editor-only responsive CSS authority',()=>{
+test('Website Studio canvas keeps public viewport typography and mobile controls stay inside the viewport',()=>{
   assert.ok(source.includes('body.legend-cms-editing{display:block'));
   assert.ok(source.includes('.legend-cms-preview{width:100vw'));
   assert.equal(source.includes('grid-template-columns:minmax(0,1fr) minmax(20rem,24rem)'),false);
   assert.equal(publicCss.includes('@container legend-public-preview'),false);
   assert.equal(publicCss.includes('container:legend-public-preview'),false);
+  assert.ok(source.includes('.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word'));
+  assert.ok(source.includes('.legend-cms-panel>*{min-width:0;max-width:100%}'));
+  assert.ok(source.includes('.legend-cms-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:sticky'));
+  assert.ok(source.includes('.legend-cms-primary-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}'));
+  assert.ok(source.includes('.legend-cms-row,.legend-cms-theme{grid-template-columns:1fr}'));
 });
 
-test('GPT workspace consumes the canonical server contract and contract locks backend behavior',async()=>{
+test('GPT workspace consumes one canonical node grammar and teaches creative safe authoring',async()=>{
   const prompt='SERVER CANONICAL CONTRACT: actionKey systemKey signals form_field_semantics publish_authority';
   const f=await domFixture({agentContract:{schema:'legend-website-studio-agent/v1',promptTemplate:prompt}});
   try{
     f.click('[data-open="gpt"]');
     assert.equal(f.w.document.querySelector('#legend-cms-agent-contract-script')?.textContent,prompt);
-    assert.match(agentContractSource,/WebsiteContentDocument v3 is the only writable website-content source/);
-    assert.match(agentContractSource,/Do not replace or edit the ActionKey of a protected CTA/);
+    assert.match(agentContractSource,/Turn the user's intent into a polished, distinctive, responsive website/);
+    assert.match(agentContractSource,/Modify the existing canonical graph whenever possible/);
+    assert.match(agentContractSource,/GRAPH STRUCTURE/);
+    assert.match(agentContractSource,/CANONICAL NODE TYPE -> TAG GRAMMAR/);
+    assert.match(agentContractSource,/WebsiteCompositionSchema\.PromptGrammar/);
+    assert.match(agentContractSource,/Every node ID must be non-empty and globally unique/);
+    assert.match(agentContractSource,/Do not create duplicate desktop\/mobile copies/);
+    assert.match(agentContractSource,/VALID SOURCE SHAPE EXAMPLE/);
+    assert.match(agentContractSource,/EDITING ALGORITHM/);
+    assert.match(agentContractSource,/Never solve validation by deleting protected semantics/);
     assert.match(agentContractSource,/FirstName, LastName, Phone, Email, Message/);
-    assert.match(agentContractSource,/Keep the server-rendered runtime form mounted/);
-    assert.match(agentContractSource,/Website Studio\/edit\/materialization mode is preview-only/);
-    assert.match(agentContractSource,/Meta\/OpenAI conversion wiring/);
+    assert.match(agentContractSource,/Keep the real runtime form mounted/);
+    assert.match(agentContractSource,/zero-production-signal environment/);
+    assert.match(editorContractsSource,/public static class WebsiteCompositionSchema/);
+    for(const type of ['section','container','heading','text','cta','link','image','video','form','embed','spacer','reusable'])
+      assert.ok(editorContractsSource.includes(`["${type}"]`));
   }finally{f.close();}
 });
 
