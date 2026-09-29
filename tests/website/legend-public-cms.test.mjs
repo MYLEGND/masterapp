@@ -320,8 +320,8 @@ async function domFixture({siteKey='legend',doc={},store=null,denied=false,searc
 }
 
 test('v3 canonical composition renders natively and canvas/source share the same node',async()=>{
-  const doc={version:3,compositionMode:'canonical',elements:{},extras:[],store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},pages:{'/':{
-    title:'Home',description:'Canonical home',navigation:{label:'Home',showInNavigation:true,order:0,isDeleted:false},elements:{},sectionOrder:{},extras:[],composition:[
+  const doc={version:3,store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},pages:{'/':{
+    title:'Home',description:'Canonical home',navigation:{label:'Home',showInNavigation:true,order:0,isDeleted:false},composition:[
       {id:'home.hero',type:'section',tag:'section',className:'hero',signals:[],style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],children:[
         {id:'home.hero.title',type:'heading',tag:'h1',text:'Canonical title',signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]},
         {id:'home.hero.cta',type:'cta',tag:'a',text:'Contact us',actionKey:'legend_contact',href:'/contact',signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]}
@@ -343,13 +343,14 @@ test('v3 canonical composition renders natively and canvas/source share the same
     assert.equal(parsed.style.widthPercent,55);
     const saved=await f.save();
     assert.equal(saved.pages['/'].composition[0].children[0].style.widthPercent,55);
-    assert.deepEqual(saved.pages['/'].elements,{});
-    assert.deepEqual(saved.pages['/'].extras,[]);
+    assert.equal(Object.hasOwn(saved.pages['/'],'elements'),false);
+    assert.equal(Object.hasOwn(saved.pages['/'],'extras'),false);
+    assert.equal(Object.hasOwn(saved.pages['/'],'sectionOrder'),false);
   }finally{f.close();}
 });
 
 test('v3 selected source applies only validated server projection then uses normal save authority',async()=>{
-  const original={version:3,compositionMode:'canonical',elements:{},extras:[],pages:{'/':{title:'Home',description:'',navigation:{label:'Home',showInNavigation:true,order:0,isDeleted:false},elements:{},sectionOrder:{},extras:[],composition:[
+  const original={version:3,pages:{'/':{title:'Home',description:'',navigation:{label:'Home',showInNavigation:true,order:0,isDeleted:false},composition:[
     {id:'hero',type:'section',tag:'section',signals:[],style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],children:[
       {id:'hero.title',type:'heading',tag:'h1',text:'Before',signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]}
     ]}
@@ -577,6 +578,26 @@ test('shared Website Studio contains no app-side OpenAI proposal endpoint',()=>{
   assert.equal(source.includes('pendingAiProposal'),false);
   assert.ok(source.includes('externalAiApi'));
   assert.ok(source.includes('browser-only'));
+});
+
+test('writable Website Studio exposes only the v3 composition authority',()=>{
+  for(const retired of [
+    'pageState().elements',
+    'pageState().extras',
+    'pageState().sectionOrder',
+    'documentState.elements',
+    'documentState.extras',
+    'documentState.sectionOrder'
+  ]) assert.equal(source.includes(retired),false,retired+' must never return as a writer');
+
+  assert.equal(source.includes('legacyMigration.elements ='),false);
+  assert.equal(source.includes('legacyMigration.extras ='),false);
+  assert.equal(source.includes('legacyMigration.sectionOrder ='),false);
+  assert.equal(source.includes('function createExtra('),false);
+  assert.ok(source.includes('function createLegacyExtra('));
+  assert.match(source,/async function save\([\s\S]*?if \(legacyMigration\)[\s\S]*?return false;/);
+  assert.match(source,/function buildEditor\(\) \{[\s\S]*?if \(legacyMigration\)[\s\S]*?throw new Error/);
+  assert.match(source,/READ-ONLY PRE-V3 COMPATIBILITY BOUNDARY/);
 });
 
 test('public declarative click motion plays once and is not duplicated by responsive refresh',async()=>{
