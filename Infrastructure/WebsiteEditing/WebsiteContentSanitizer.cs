@@ -134,7 +134,7 @@ public static class WebsiteContentSanitizer
             {
                 Title = ClampText(page.Value.Title),
                 Description = ClampText(page.Value.Description),
-                Navigation = SanitizeNavigation(path, page.Value.Navigation),
+                Navigation = SanitizeNavigation(path, page.Value.Navigation, page.Value.Title),
                 DynamicBinding = SanitizeDynamicBinding(page.Value.DynamicBinding),
                 SystemTemplateKey = WebsiteSystemTemplateAuthority.IsKnownTemplateKey(page.Value.SystemTemplateKey)
                     ? page.Value.SystemTemplateKey!.Trim()
@@ -290,7 +290,7 @@ public static class WebsiteContentSanitizer
                 Title = ClampText(page.Value.Title),
                 Description = ClampText(page.Value.Description),
                 TemplatePath = SanitizePagePath(page.Value.TemplatePath),
-                Navigation = SanitizeNavigation(path, page.Value.Navigation),
+                Navigation = SanitizeNavigation(path, page.Value.Navigation, page.Value.Title),
                 DynamicBinding = SanitizeDynamicBinding(page.Value.DynamicBinding),
                 Elements = body.Elements,
                 SectionOrder = body.SectionOrder,
@@ -456,7 +456,7 @@ public static class WebsiteContentSanitizer
                 ActionKey = type is "cta" or "link" ? SanitizeActionKey(node.ActionKey) : null,
                 Href = type is "cta" or "link" ? SanitizeUrl(node.Href) : null,
                 Target = type is "cta" or "link" ? SanitizeTarget(node.Target) : null,
-                Alt = type is "image" or "video" ? ClampText(node.Alt) : null,
+                Alt = type is "image" or "video" ? SanitizeMediaAlt(node.Alt, node.Title, node.Text, mediaUrl, type) : null,
                 MediaAssetId = type is "image" or "video" ? node.MediaAssetId : null,
                 MediaUrl = mediaUrl,
                 SystemKey = systemKey,
@@ -475,6 +475,48 @@ public static class WebsiteContentSanitizer
             result.Add(clean);
         }
         return result;
+    }
+
+    private static string? SanitizeMediaAlt(string? value, string? title, string? text, string? mediaUrl, string type)
+    {
+        if (!string.Equals(type, "image", StringComparison.Ordinal))
+            return ClampText(value);
+
+        // An explicit empty alt is a valid decorative-image decision and must
+        // remain distinct from a missing alt attribute.
+        if (value is not null)
+            return ClampText(value) ?? string.Empty;
+
+        foreach (var candidate in new[] { ClampText(title), ClampText(text) })
+            if (!string.IsNullOrWhiteSpace(candidate))
+                return candidate;
+
+        if (!string.IsNullOrWhiteSpace(mediaUrl) &&
+            !mediaUrl.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            var path = mediaUrl;
+            if (Uri.TryCreate(mediaUrl, UriKind.Absolute, out var absolute))
+                path = absolute.AbsolutePath;
+
+            var file = System.IO.Path.GetFileNameWithoutExtension(path);
+            if (!string.IsNullOrWhiteSpace(file))
+            {
+                try { file = Uri.UnescapeDataString(file); } catch (UriFormatException) { }
+                file = file.Replace('-', ' ').Replace('_', ' ').Trim();
+                if (file.Length > 0)
+                {
+                    var words = file.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(word => word.Length == 1
+                            ? word.ToUpperInvariant()
+                            : char.ToUpperInvariant(word[0]) + word[1..])
+                        .ToArray();
+                    var derived = string.Join(' ', words);
+                    return derived.Length <= 160 ? derived : derived[..160];
+                }
+            }
+        }
+
+        return "Website image";
     }
 
     private static string? SanitizeSystemBinding(string? value)
@@ -587,14 +629,38 @@ public static class WebsiteContentSanitizer
         return clean;
     }
 
-    private static WebsitePageNavigation SanitizeNavigation(string pagePath, WebsitePageNavigation? source)
+    private static WebsitePageNavigation SanitizeNavigation(string pagePath, WebsitePageNavigation? source, string? pageTitle)
     {
         source ??= new WebsitePageNavigation();
         var parent = SanitizePagePath(source.ParentPath);
         if (string.Equals(parent, pagePath, StringComparison.Ordinal)) parent = null;
         var label = ClampText(source.Label);
+        if (source.ShowInNavigation && !source.IsDeleted && string.IsNullOrWhiteSpace(label))
+            label = DefaultNavigationLabel(pagePath, pageTitle);
         if (label?.Length > 120) label = label[..120];
         return new WebsitePageNavigation { Label = label, ShowInNavigation = source.ShowInNavigation, ParentPath = parent, Order = Math.Clamp(source.Order, -10000, 10000), IsDeleted = source.IsDeleted };
+    }
+
+    private static string DefaultNavigationLabel(string pagePath, string? pageTitle)
+    {
+        var title = ClampText(pageTitle);
+        if (!string.IsNullOrWhiteSpace(title))
+            return title.Length <= 120 ? title : title[..120];
+
+        if (string.Equals(pagePath, "/", StringComparison.Ordinal))
+            return "Home";
+
+        var segment = pagePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "Page";
+        try { segment = Uri.UnescapeDataString(segment); } catch (UriFormatException) { }
+        segment = segment.Replace('-', ' ').Replace('_', ' ').Trim();
+        if (segment.Length == 0) return "Page";
+        var words = segment.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(word => word.Length == 1
+                ? word.ToUpperInvariant()
+                : char.ToUpperInvariant(word[0]) + word[1..])
+            .ToArray();
+        var label = string.Join(' ', words);
+        return label.Length <= 120 ? label : label[..120];
     }
 
     private static WebsiteDynamicPageBinding? SanitizeDynamicBinding(WebsiteDynamicPageBinding? source)
