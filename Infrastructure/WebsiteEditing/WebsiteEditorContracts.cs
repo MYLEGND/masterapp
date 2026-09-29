@@ -68,6 +68,30 @@ public sealed class WebsiteSharedShellDocument
     public List<WebsiteCompositionNode> Footer { get; set; } = new();
 }
 
+public sealed class WebsiteStyleOverride
+{
+    public string? TextAlign { get; set; }
+    public decimal? FontScale { get; set; }
+    public decimal? WidthPercent { get; set; }
+    public decimal? PaddingTop { get; set; }
+    public decimal? PaddingBottom { get; set; }
+    public string? ObjectPosition { get; set; }
+    public string? Color { get; set; }
+    public string? BackgroundColor { get; set; }
+    public string? FontFamily { get; set; }
+    public int? FontWeight { get; set; }
+    public decimal? FontSize { get; set; }
+    public decimal? LineHeight { get; set; }
+    public decimal? LetterSpacing { get; set; }
+    public decimal? PaddingLeft { get; set; }
+    public decimal? PaddingRight { get; set; }
+    public decimal? BorderRadius { get; set; }
+    public string? ObjectFit { get; set; }
+    public decimal? HeightPx { get; set; }
+    public decimal? OffsetXPercent { get; set; }
+    public decimal? OffsetYPx { get; set; }
+}
+
 public sealed class WebsiteThemeOverride
 {
     public string? Navy { get; set; }
