@@ -1,12 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization to deploy the validated Website Studio editor-entry hotfix merged as PR #286. Deploy only the application shells that package the changed shared website-management launcher: AgentPortal and ClientApp. Do not redeploy Protect, Parfait, the static LEGEND website, or Cloudflare routing.",
-  "purpose": "Publish PR #286 editor-entry authority repair. Agent and Founder website management now reuse the already-authorized canonical website session ticket and open the exact scoped live site with legendEdit, eliminating the redundant second ticket/redirect path that could leave Protect or LEGEND in public browse mode. Business editor behavior is preserved.",
-  "requestId": "website-editor-entry-authority-hotfix-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the validated canonical Meta provider-version negotiation repair merged as PR #289. Deploy only the .NET web hosts that consume the shared Meta transport: AgentPortal, ClientApp, Protect, and Parfait. Do not deploy the static LEGEND website or change Cloudflare routing.",
+  "purpose": "Publish PR #289 canonical Meta transport replacement. Remove reliance on the bad unversioned Ads API behavior: when Meta returns provider deprecation error #2635, the single MetaGraphEndpointAuthority reads Meta's recommended vN.N version, retries the same request, and reuses the negotiated version across campaigns, insights, account metadata, OAuth/account discovery, and Meta CAPI. No analytics taxonomy, CRM, OpenAI, attribution, website runtime, campaign mutation, or routing changes are included.",
+  "requestId": "canonical-meta-provider-version-negotiation-20260928",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
-    "masterapp-client"
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
