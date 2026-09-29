@@ -118,7 +118,7 @@ public static class WebsiteDraftQualityInspector
 
                 if (node.Hidden != true)
                 {
-                    if (node.Type == "image" && string.IsNullOrWhiteSpace(node.Alt))
+                    if (node.Type == "image" && node.Alt is null)
                         checks.Add(new("image_alt_missing", "warning", "Add alternative text for this image.", scope, node.Id));
 
                     if (node.Type is "cta" or "link" &&
@@ -170,7 +170,7 @@ public static class WebsiteDraftQualityInspector
         foreach (var (id, value) in elements ?? new Dictionary<string, LegacyWebsiteElementRecord>())
         {
             if (value.Hidden == true) continue;
-            if (!string.IsNullOrWhiteSpace(value.ImageDataUrl) && string.IsNullOrWhiteSpace(value.Alt))
+            if (!string.IsNullOrWhiteSpace(value.ImageDataUrl) && value.Alt is null)
                 checks.Add(new("image_alt_missing", "warning", "Add alternative text for this image.", scope, id));
             if (!string.IsNullOrWhiteSpace(value.Href) && value.Href == "#")
                 checks.Add(new("link_destination_missing", "warning", "Choose a working destination for this link.", scope, id));
@@ -181,7 +181,7 @@ public static class WebsiteDraftQualityInspector
         {
             if (!ids.Add(extra.Id))
                 checks.Add(new("duplicate_extra_id", "error", "Two legacy blocks share the same identity.", scope, "extra:" + extra.Id));
-            if (extra.Type == "image" && string.IsNullOrWhiteSpace(extra.Alt))
+            if (extra.Type == "image" && extra.Alt is null)
                 checks.Add(new("image_alt_missing", "warning", "Add alternative text for this image.", scope, "extra:" + extra.Id));
             if (extra.Type == "button" && string.IsNullOrWhiteSpace(extra.ActionKey) && string.IsNullOrWhiteSpace(extra.Href))
                 checks.Add(new("button_destination_missing", "error", "Legacy buttons need a working action or destination before migration.", scope, "extra:" + extra.Id));

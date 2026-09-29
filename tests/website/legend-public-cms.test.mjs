@@ -136,6 +136,50 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   return {w,calls,animations,alerts,click,input,change,editSelected,save,close:()=>w.close()};
 }
 
+test('canonical startup fills navigation and image accessibility defaults and prevents routine width overflow',async()=>{
+  const doc=canonicalDocument();
+  delete doc.pages['/'].navigation.label;
+  const image=canonicalNodeByType(doc,'image');
+  delete image.alt;
+  image.mediaUrl='/assets/hero-photo.png';
+
+  const f=await domFixture({
+    doc,
+    html:'<!doctype html><html><head></head><body data-page-key="home"><main><section><h1>Home</h1><img src="/assets/hero-photo.png"><p>averylongunbrokencontenttokenaverylongunbrokencontenttokenaverylongunbrokencontenttoken</p></section></main></body></html>'
+  });
+  try{
+    assert.equal(f.w.document.querySelector('main img')?.getAttribute('alt'),'Hero Photo');
+    const saved=await f.save();
+    assert.equal(saved.pages['/'].navigation.label,'Home');
+    assert.equal(canonicalNodeByType(saved,'image')?.alt,'Hero Photo');
+    assert.match(source,/main \*\{min-width:0;box-sizing:border-box\}/);
+    assert.match(source,/overflow-wrap:anywhere;word-break:normal;white-space:normal/);
+    assert.match(source,/\[data-cms-editable="true"\]\{min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere\}/);
+  }finally{f.close();}
+});
+
+test('existing v3 startup artifacts are deleted only when semantically empty',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition[0].children.push(
+    canonicalNode('home.empty.icon','text','span',{className:'icon',text:''}),
+    canonicalNode('home.meaningful.icon','text','p',{className:'icon',text:'Meaningful text stays'}),
+    canonicalNode('home.hero.visual','container','div',{className:'hero-mark',children:[
+      canonicalNode('home.hero.halo','container','div',{className:'halo'}),
+      canonicalNode('home.hero.empty','text','span',{text:''})
+    ]})
+  );
+  const f=await domFixture({doc});
+  try{
+    const saved=await f.save();
+    const ids=canonicalNodes(saved).map(node=>node.id);
+    assert.equal(ids.includes('home.empty.icon'),false);
+    assert.equal(ids.includes('home.hero.visual'),false);
+    assert.equal(ids.includes('home.hero.halo'),false);
+    assert.equal(ids.includes('home.hero.empty'),false);
+    assert.equal(ids.includes('home.meaningful.icon'),true);
+  }finally{f.close();}
+});
+
 test('materialization never invents publishable links from unmanaged runtime buttons or empty anchors',()=>{
   assert.match(source,/const unmanagedInteractiveControl\s*=\s*[\s\S]*tag === 'button' && !actionKey[\s\S]*tag === 'a' && !actionKey && !rawHref/);
   assert.match(source,/const presentationOnlyControl = runtimePresentationControl \|\| unmanagedInteractiveControl/);
@@ -375,10 +419,13 @@ test('Website Studio canvas keeps public viewport typography and mobile controls
   assert.equal(publicCss.includes('@container legend-public-preview'),false);
   assert.equal(publicCss.includes('container:legend-public-preview'),false);
   assert.ok(source.includes('.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word'));
-  assert.ok(source.includes('.legend-cms-panel>*{min-width:0;max-width:100%}'));
-  assert.ok(source.includes('.legend-cms-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:sticky'));
-  assert.ok(source.includes('.legend-cms-primary-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}'));
-  assert.ok(source.includes('.legend-cms-row,.legend-cms-theme{grid-template-columns:1fr}'));
+  assert.match(source,/\.legend-cms-panel>\*\{min-width:0;max-width:100%\}/);
+  assert.match(source,/\.legend-cms-panel\{[\s\S]*max-height:min\(46dvh,430px\)[\s\S]*border-radius:0 0 14px 14px/);
+  assert.match(source,/\.legend-cms-bar\{[\s\S]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)[\s\S]*position:sticky/);
+  assert.match(source,/\.legend-cms-primary-tabs\{[\s\S]*display:flex[\s\S]*overflow-x:auto/);
+  assert.match(source,/\.legend-cms-menu\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.equal(source.includes('padding:max(72px,calc(env(safe-area-inset-top) + 60px))'),false);
+  assert.equal(source.includes('grid-template-columns:repeat(2,minmax(0,1fr));position:sticky;top:max(56px'),false);
 });
 
 test('GPT workspace consumes one canonical node grammar and teaches creative safe authoring',async()=>{
@@ -1921,8 +1968,11 @@ test('quality inspector keeps saved-server checks separate from rendered canonic
     assert.match(liveMeta,/Live page checks \(rendered canvas\)/);
     assert.match(savedText,/Saved draft dynamic collection is unavailable/);
     assert.doesNotMatch(savedText,/missing alternative text|no working destination/);
-    assert.match(liveText,/missing alternative text/);
+    assert.doesNotMatch(liveText,/missing alternative text/);
     assert.match(liveText,/no working destination/);
+    const renderedImage=f.w.document.querySelector('main img');
+    assert.ok(renderedImage?.hasAttribute('alt'));
+    assert.equal(renderedImage.getAttribute('alt'),'');
     assert.ok(f.calls.some(call=>new URL(call.url).pathname.endsWith('/manage/quality')));
   } finally { f.close(); }
 });
@@ -2422,4 +2472,13 @@ test('GPT contract is conversion-first on desktop and mobile and obeys the canon
   ]) assert.ok(agentContractSource.includes(phrase),phrase);
   assert.ok(agentContractSource.includes('protected Signals'));
   assert.ok(agentContractSource.includes('signal_bearing_node_identity'));
+});
+
+
+test('mobile Website Studio is a compact top sheet that preserves visible canvas below it',()=>{
+  assert.match(source,/@media\(max-width:800px\)[\s\S]*\.legend-cms-panel\{[\s\S]*height:auto;max-height:min\(46dvh,430px\)/);
+  assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;height:100dvh;overflow-y:auto/);
+  assert.match(source,/\.legend-cms-bar button\{[\s\S]*min-height:32px[\s\S]*font-size:11px/);
+  assert.match(source,/\.legend-cms-primary-tabs button\{[\s\S]*min-height:32px/);
+  assert.match(source,/\.legend-cms-menu button,\.legend-cms-panel section>button\{[\s\S]*min-height:34px/);
 });

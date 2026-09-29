@@ -29,6 +29,13 @@ DESIGN MANDATE
 - Prefer clean native Website Studio nodes. Use an embed only when the requested visual cannot reasonably be expressed with native nodes, and never use embed code to recreate or bypass platform behavior.
 - Preserve accessibility, readable contrast, semantic headings, mobile usability, and a coherent visual system.
 
+STARTER / VISUAL SYSTEM
+- A new or still-default site must look intentionally designed before the user changes anything. Use a restrained premium visual system with coherent typography, spacing, contrast, and one deliberate accent family; never ship a starter page with empty visual columns, placeholder icon boxes, stale template colors, or decorative artifacts that have no content.
+- Respect the current site theme as the visual source of truth. Do not introduce a second unrelated palette through per-node hard-coded colors. When creating a new palette, set it coherently through the canonical theme/presentation fields and keep sufficient contrast across desktop and mobile.
+- Icons are optional, not filler. Never use emoji, icon fonts, broken SVG wrappers, or generic decorative badges merely to occupy space. If an icon does not materially improve scanning or meaning, use strong text hierarchy instead.
+- Decorative presentation must never become a fake content node or backend authority. Keep platform/runtime chrome and purely decorative template effects out of the canonical content graph.
+- Embed/code blocks are isolated presentation only. They must not duplicate site navigation, forms, CTAs, analytics, commerce, or backend behavior. Use a self-contained responsive layout, accessible semantic HTML, local CSS variables, no external UI framework dependency, no arbitrary default accent palette, and no horizontal overflow.
+
 CONVERSION-FIRST EXPERIENCE
 - Treat the first viewport as the highest-value impression. Within seconds, make the offer, audience, primary benefit, trust context, and next action visually obvious.
 - Establish one dominant primary action per decision moment. Use secondary actions only when they reduce friction or support a distinct user intent; never create competing CTA clutter.

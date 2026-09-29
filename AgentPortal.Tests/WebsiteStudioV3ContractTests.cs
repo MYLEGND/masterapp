@@ -120,6 +120,93 @@ public sealed class WebsiteStudioV3ContractTests
     }
 
     [Fact]
+    public void Sanitize_CanonicalizesStartupNavigationAndImageAccessibilityDefaults()
+    {
+        var source = new WebsiteContentDocument();
+        source.Pages["/"] = new WebsitePageDocument
+        {
+            Navigation = new WebsitePageNavigation { ShowInNavigation = true },
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.photo",
+                    Type = "image",
+                    Tag = "img",
+                    MediaUrl = "/assets/hero-photo.png"
+                },
+                new WebsiteCompositionNode
+                {
+                    Id = "home.decorative",
+                    Type = "image",
+                    Tag = "img",
+                    MediaUrl = "/assets/decorative.png",
+                    Alt = ""
+                }
+            ]
+        };
+        source.Pages["/about"] = new WebsitePageDocument
+        {
+            Title = "About Us",
+            Navigation = new WebsitePageNavigation { ShowInNavigation = true }
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+
+        Assert.Equal("Home", clean.Pages["/"].Navigation.Label);
+        Assert.Equal("About Us", clean.Pages["/about"].Navigation.Label);
+        Assert.Equal("Hero Photo", clean.Pages["/"].Composition.Single(node => node.Id == "home.photo").Alt);
+        Assert.Equal("", clean.Pages["/"].Composition.Single(node => node.Id == "home.decorative").Alt);
+
+        var report = WebsiteDraftQualityInspector.Inspect(clean);
+        Assert.DoesNotContain(report.Checks, check => check.Code == "navigation_label_missing");
+        Assert.DoesNotContain(report.Checks, check => check.Code == "image_alt_missing");
+    }
+
+    [Fact]
+    public void Sanitize_DeletesOnlySemanticallyEmptyRetiredStarterDecoration()
+    {
+        var source = new WebsiteContentDocument();
+        source.Pages["/"] = new WebsitePageDocument
+        {
+            Title = "Home",
+            Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true },
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.hero",
+                    Type = "section",
+                    Tag = "section",
+                    Children =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "home.hero.visual",
+                            Type = "container",
+                            Tag = "div",
+                            ClassName = "hero-mark",
+                            Children =
+                            [
+                                new WebsiteCompositionNode { Id = "home.hero.halo", Type = "container", Tag = "div", ClassName = "halo" },
+                                new WebsiteCompositionNode { Id = "home.hero.empty", Type = "text", Tag = "span", Text = "" }
+                            ]
+                        },
+                        new WebsiteCompositionNode { Id = "home.card.icon", Type = "text", Tag = "span", ClassName = "icon", Text = "" },
+                        new WebsiteCompositionNode { Id = "home.card.copy", Type = "text", Tag = "p", ClassName = "icon", Text = "Meaningful text stays" }
+                    ]
+                }
+            ]
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+        var hero = Assert.Single(clean.Pages["/"].Composition);
+        Assert.DoesNotContain(hero.Children, node => node.Id == "home.hero.visual");
+        Assert.DoesNotContain(hero.Children, node => node.Id == "home.card.icon");
+        Assert.Contains(hero.Children, node => node.Id == "home.card.copy" && node.Text == "Meaningful text stays");
+    }
+
+    [Fact]
     public void ReusableDefinitions_AreCompositionOnly_AndMissingInstancesFailQuality()
     {
         var source = new WebsiteContentDocument();

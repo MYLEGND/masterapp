@@ -156,4 +156,45 @@ public sealed class AnalyticsCanonicalArchitectureTests
         var view = File.ReadAllText(Path.Combine(Root, "AgentPortal/Views/WebsiteAnalytics/Index.cshtml"));
         Assert.Single(Regex.Matches(view, @"src=""[^""]*/website-analytics\.js(?:[?""])"));
     }
+
+    [Fact]
+    public void DurableMarketingAndWebsiteNotificationWorkersHaveOneControlPlaneHost()
+    {
+        var portal = File.ReadAllText(Path.Combine(Root, "AgentPortal", "Program.cs"));
+        var protect = File.ReadAllText(Path.Combine(Root, "Protect-Website", "Program.cs"));
+        var marketing = File.ReadAllText(Path.Combine(Root, "Infrastructure", "Analytics", "MarketingConnectionStore.cs"));
+        var leads = File.ReadAllText(Path.Combine(Root, "Infrastructure", "Leads", "WebsiteLeadServiceRegistration.cs"));
+        var parfaitMail = File.ReadAllText(Path.Combine(Root, "ParfaitApp", "Services", "GraphMailService.cs"));
+
+        Assert.Contains("AddMarketingBackgroundWorkers(builder.Services, builder.Configuration)", portal, StringComparison.Ordinal);
+        Assert.Contains("AddWebsiteLeadBackgroundWorkers(builder.Services)", portal, StringComparison.Ordinal);
+        Assert.Contains("AddWebsiteLeadNotificationTransport(builder.Services)", protect, StringComparison.Ordinal);
+
+        foreach (var worker in new[]
+        {
+            "MetaSignalAnalyticsBridge",
+            "MetaSignalOutcomeDispatcherHostedService",
+            "OpenAiConversionDispatcherHostedService"
+        })
+        {
+            Assert.Contains($"AddHostedService<{worker}>()", marketing, StringComparison.Ordinal);
+            Assert.DoesNotContain($"AddHostedService<Infrastructure.Analytics.{worker}>()", protect, StringComparison.Ordinal);
+        }
+
+        foreach (var worker in new[] { "BusinessInquiryNotificationWorker", "WebsiteLeadNotificationRecoveryWorker" })
+        {
+            Assert.Contains($"AddHostedService<{worker}>()", leads, StringComparison.Ordinal);
+            Assert.DoesNotContain($"AddHostedService<{worker}>()", protect, StringComparison.Ordinal);
+        }
+
+        Assert.False(File.Exists(Path.Combine(Root, "Protect-Website", "Services", "Communication", "IProtectEmailSender.cs")));
+        Assert.False(File.Exists(Path.Combine(Root, "Protect-Website", "Services", "Communication", "GraphProtectEmailSender.cs")));
+        Assert.False(File.Exists(Path.Combine(Root, "Protect-Website", "Services", "Meta", "MetaCapiCredentialProtector.cs")));
+        Assert.False(File.Exists(Path.Combine(Root, "AgentPortal", "Services", "MetaCapiCredentialProtector.cs")));
+        Assert.True(File.Exists(Path.Combine(Root, "Infrastructure", "Leads", "GraphWebsiteInquiryEmailSender.cs")));
+        Assert.True(File.Exists(Path.Combine(Root, "Infrastructure", "Analytics", "MetaCapiCredentialProtector.cs")));
+
+        Assert.DoesNotContain("SendContactEmailsAsync", parfaitMail, StringComparison.Ordinal);
+        Assert.DoesNotContain("Contact:RecipientEmail", parfaitMail, StringComparison.Ordinal);
+    }
 }

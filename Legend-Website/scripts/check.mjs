@@ -15,6 +15,8 @@ for(const route of routes){const f=resolve(root,'dist',route,'index.html');await
 for(const excluded of ['store','team']){try{await access(resolve(root,'dist',excluded,'index.html'));throw new Error(`Excluded route generated: ${excluded}`)}catch(e){if(e.code!=='ENOENT')throw e;}}
 const css=await readFile(resolve(root,'dist/site.css'),'utf8');
 if(css.includes('overflow:hidden}body')) throw new Error('Global body scroll accidentally disabled.');
+if(!css.includes(':root[data-legend-site="business"]')) throw new Error('Business starter theme authority is missing.');
+if(!css.includes('.hero--single')) throw new Error('Single-column starter hero authority is missing.');
 console.log('Route, business preview, global chrome, exclusion, and scroll checks passed.');
 
 const index=await readFile(resolve(root,'dist','index.html'),'utf8');
@@ -77,7 +79,7 @@ for(const route of ['','about','services','contact']){
   const html=await readFile(resolve(root,'dist/business-preview',route,'index.html'),'utf8');
   if(!html.includes(`data-page-key="${route||'home'}"`))throw new Error('Business page scope is missing: '+route);
   if(/Berthony|MyLegnd, LLC|Christ-centered|connect@mylegnd/.test(html))throw new Error('LEGEND company facts leaked into business template: '+route);
-  if(!html.includes('noindex,nofollow')||!html.includes('<html lang="en" hidden>'))throw new Error('Business draft must wait for authenticated/published content: '+route);
+  if(!html.includes('noindex,nofollow')||!html.includes('data-legend-site="business"')||!/<html[^>]*\shidden(?:\s|>)/.test(html))throw new Error('Business draft must wait for authenticated/published content and use the business starter authority: '+route);
 }
 const config=await readFile(resolve(root,'public/web.config'),'utf8');
 if(!config.includes('Reject unrecognized website host'))throw new Error('Static LEGEND origin must reject foreign hosts.');

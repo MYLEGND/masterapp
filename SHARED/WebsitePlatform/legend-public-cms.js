@@ -179,23 +179,82 @@
       !node.actionKey && !node.systemKey && !node.systemBinding && !node.href;
   }
 
+  function wordsFromResourceName(value) {
+    if (typeof value !== 'string' || !value.trim() || value.startsWith('data:')) return '';
+    let path=value.trim();
+    try {
+      const url=new URL(path,location.origin);
+      path=url.pathname;
+    } catch { /* Keep a relative/static path as-is. */ }
+    let name=path.split('/').filter(Boolean).pop() || '';
+    try { name=decodeURIComponent(name); } catch { }
+    name=name.replace(/\.[a-z0-9]{1,8}$/i,'').replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
+    if(!name) return '';
+    return name.split(' ').map(word=>word ? word[0].toUpperCase()+word.slice(1) : '').join(' ').slice(0,160);
+  }
+
+  function defaultImageAlt(node) {
+    if (!node || typeof node !== 'object') return 'Website image';
+    // Explicit empty alt means decorative. Preserve that author decision.
+    if (node.alt != null) return String(node.alt).trim();
+    for (const candidate of [node.title,node.text]) {
+      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim().slice(0,160);
+    }
+    return wordsFromResourceName(node.mediaUrl) || 'Website image';
+  }
+
+  function defaultNavigationLabel(route,title) {
+    if(typeof title==='string' && title.trim()) return title.trim().slice(0,120);
+    if(route==='/') return 'Home';
+    const segment=String(route||'/').split('/').filter(Boolean).pop() || 'Page';
+    let value=segment;
+    try { value=decodeURIComponent(value); } catch { }
+    value=value.replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
+    if(!value) return 'Page';
+    return value.split(' ').map(word=>word ? word[0].toUpperCase()+word.slice(1) : '').join(' ').slice(0,120);
+  }
+
+  function isRetiredTemplateDecorationNode(node) {
+    if (!node || typeof node !== 'object') return false;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    const hasMeaning=
+      String(node.text || '').trim() ||
+      String(node.title || '').trim() ||
+      node.actionKey || node.href || node.alt ||
+      node.mediaAssetId || node.mediaUrl ||
+      node.systemKey || node.systemBinding || node.syncSourceId ||
+      node.dataBinding ||
+      (Array.isArray(node.signals) && node.signals.length) ||
+      (Array.isArray(node.children) && node.children.length);
+    if(hasMeaning) return false;
+    if(classes.includes('icon') || classes.includes('halo') || classes.includes('hero-mark')) return true;
+    return node.type==='text' && String(node.tag || '').toLowerCase()==='span' && classes.length===0;
+  }
+
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
     return input
       .filter(node => node && typeof node === 'object')
-      .map(node => ({
-        ...node,
-        children: normalizeCompositionNodes(node.children),
-        style: node.style && typeof node.style === 'object' ? node.style : {},
-        breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
-        layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
-        breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
-        animations: Array.isArray(node.animations) ? node.animations : [],
-        signals: Array.isArray(node.signals) ? node.signals : []
-      }))
+      .map(node => {
+        const normalized={
+          ...node,
+          children: normalizeCompositionNodes(node.children),
+          style: node.style && typeof node.style === 'object' ? node.style : {},
+          breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
+          layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
+          breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
+          animations: Array.isArray(node.animations) ? node.animations : [],
+          signals: Array.isArray(node.signals) ? node.signals : []
+        };
+        if(normalized.type==='image') normalized.alt=defaultImageAlt(normalized);
+        return normalized;
+      })
       // Menu toggles are reconstructed runtime chrome. They were accidentally
       // persisted by early v3 materialization and have no website destination.
-      .filter(node => !isRuntimeShellChromeNode(node));
+      .filter(node => !isRuntimeShellChromeNode(node))
+      // Repair early v3 drafts that persisted presentation-only template wrappers
+      // after their SVG/pseudo-element contents were deliberately excluded.
+      .filter(node => !isRetiredTemplateDecorationNode(node));
   }
 
   function normalizeHeaderComposition(input) {
@@ -253,12 +312,19 @@
       // route identity independent of agent URL scope, so collapse those rows
       // into the one canonical page key and never serialize the prefixed copy.
       if (pages[route] && rawRoute !== route) continue;
+      const title=cleanBusinessPreviewTitle(value.title);
+      const navigation=value.navigation && typeof value.navigation === 'object'
+        ? {...value.navigation}
+        : {showInNavigation:true,order:0,isDeleted:false};
+      navigation.showInNavigation=navigation.showInNavigation!==false;
+      navigation.isDeleted=navigation.isDeleted===true;
+      navigation.order=Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0;
+      if(navigation.showInNavigation && !navigation.isDeleted && !String(navigation.label||'').trim())
+        navigation.label=defaultNavigationLabel(route,title);
       pages[route] = {
-        title: cleanBusinessPreviewTitle(value.title),
+        title,
         description: typeof value.description === 'string' ? value.description : null,
-        navigation: value.navigation && typeof value.navigation === 'object'
-          ? {...value.navigation}
-          : {showInNavigation:true,order:0,isDeleted:false},
+        navigation,
         dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
         systemTemplateKey: typeof value.systemTemplateKey === 'string' ? value.systemTemplateKey : null,
         composition: normalizeCompositionNodes(value.composition)
@@ -345,7 +411,7 @@
       documentState.pages[route]={
         title:null,
         description:null,
-        navigation:{showInNavigation:true,order:0,isDeleted:false},
+        navigation:{label:defaultNavigationLabel(route,null),showInNavigation:true,order:0,isDeleted:false},
         dynamicBinding:null,
         composition:[]
       };
@@ -484,6 +550,18 @@
       document.querySelector('.nav'),
       document.querySelector('.site-footer')
     ].filter(Boolean);
+
+    // Missing alt is corrected at the shared presentation boundary before the
+    // DOM can be materialized into canonical v3. Explicit alt="" remains a
+    // valid decorative-image decision.
+    document.querySelectorAll('main img').forEach(image=>{
+      if(image.hasAttribute('alt')) return;
+      image.setAttribute('alt',defaultImageAlt({
+        type:'image',
+        title:image.getAttribute('aria-label') || image.getAttribute('title'),
+        mediaUrl:image.getAttribute('src')
+      }));
+    });
 
     // Stable system-form identities are assigned before generic DOM IDs.
     document.querySelectorAll('[data-legend-public-inquiry-form]').forEach((mount,index)=>{
@@ -1072,7 +1150,7 @@
     });
   }
 
-  const defaultCodeBlock = '<div style="font:600 18px/1.5 system-ui;padding:24px">Edit this code block to build custom content.</div>';
+  const defaultCodeBlock = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{--ink:#131b2a;--muted:#657083;--surface:#f6f7f9;--line:#d9dee7;--accent:#b8955a}*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);font:500 16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:clamp(18px,5vw,36px)}main{max-width:760px;margin:auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(24px,6vw,48px);box-shadow:0 18px 50px #0c132214}small{display:block;color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px}h2{margin:0 0 12px;font-size:clamp(28px,7vw,46px);line-height:1.05;letter-spacing:-.035em}p{margin:0;color:var(--muted);overflow-wrap:anywhere}</style></head><body><main><small>Custom content</small><h2>Build something distinctive.</h2><p>Edit this sandboxed block with responsive, accessible presentation that belongs to this website.</p></main></body></html>';
 
   function renderCodePreview(el, extra) {
     const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
@@ -1250,6 +1328,10 @@
 
   function materializeCompositionNode(el, fallbackId = null) {
     if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    // Template decoration is deliberately presentation-only. Persisting SVG/icon
+    // wrappers as ordinary v3 nodes creates empty colored boxes after the SVG is
+    // filtered from the safe composition grammar.
+    if (el.matches?.('[data-cms-decoration="true"]')) return null;
     // Menu toggles are runtime shell chrome, not editable website links. Keeping
     // them in v3 created invalid link nodes with no action/destination and made
     // publish fail. Runtime recreates and wires this control from primary nav.
@@ -1356,7 +1438,9 @@
       actionKey:presentationOnlyControl ? null : (actionKey || null),
       href:presentationOnlyControl ? null : (rawHref || null),
       target:presentationOnlyControl ? null : ((tag === 'a' ? el.getAttribute('target') : model.target) || null),
-      alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || model.alt || null) : null,
+      alt:(tag === 'img' || tag === 'video')
+        ? (el.hasAttribute('alt') ? el.getAttribute('alt') : (model.alt ?? null))
+        : null,
       hidden:el.hidden === true ? true : (model.hidden === false ? false : null),
       signals:presentationOnlyControl ? [] : cloneCanonicalValue(model.signals || []),
       style:cloneCanonicalValue(model.style || {}),
@@ -2747,7 +2831,8 @@
       page.description=snapshot.description ?? page.description;
       page.systemTemplateKey=snapshot.systemTemplateKey ?? page.systemTemplateKey ?? null;
       page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
-      if(SITE_KEY==='business' && !page.navigation.label && routeEntry?.label) page.navigation.label=routeEntry.label;
+      if(!String(page.navigation.label||'').trim())
+        page.navigation.label=routeEntry?.label || defaultNavigationLabel(route,page.title);
       page.composition=normalizeCompositionNodes(snapshot.composition);
       next.pages[route]=page;
     }
@@ -4582,7 +4667,7 @@
       checks.push({ code:'live_duplicate_id', severity:'error', message:`Duplicate rendered id "${id}" appears ${count} times.` });
 
     document.querySelectorAll('main img:not([hidden])').forEach(image => {
-      if (!image.getAttribute('alt')?.trim())
+      if (!image.hasAttribute('alt'))
         checks.push({ code:'live_image_alt_missing', severity:'warning', message:'A rendered image is missing alternative text.', elementId:image.dataset.cmsId || image.id || null });
     });
 
@@ -5397,7 +5482,10 @@
       html,body{max-width:100%}
       body{overflow-x:clip}
       main,main>*{min-width:0;max-width:100%;box-sizing:border-box}
+      main *{min-width:0;box-sizing:border-box}
+      main :is(h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span){max-width:100%;overflow-wrap:anywhere;word-break:normal;white-space:normal}
       main img,main video,main iframe,main form{max-width:100%}
+      [data-cms-editable="true"]{min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}
       [data-cms-id][hidden]{display:none}
       .cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0;max-width:100%}
       .cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}
@@ -5485,7 +5573,62 @@
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .legend-cms-image,.legend-legacy-migration-image{display:block;margin-left:auto;margin-right:auto;height:auto}
-      @media(max-width:800px){html{max-width:100%;overflow-x:hidden}body.legend-cms-editing{width:100%;max-width:100%;overflow-x:hidden}.legend-cms-preview{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}.legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}.legend-cms-panel{width:100%;max-width:100%;min-width:0;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border-top:2px solid #d4ad45;padding:max(72px,calc(env(safe-area-inset-top) + 60px)) 14px max(16px,env(safe-area-inset-bottom))}.legend-cms-panel>*{min-width:0;max-width:100%}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:12px;max-width:calc(100vw - 24px)}.legend-cms-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:sticky;top:max(56px,calc(env(safe-area-inset-top) + 48px));gap:8px;padding:8px 0 12px;margin:0 0 12px}.legend-cms-bar button{width:100%;min-width:0}.legend-cms-bar #legend-cms-status{grid-column:1/-1}.legend-cms-primary-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.legend-cms-row,.legend-cms-theme{grid-template-columns:1fr}.legend-cms-agent-contract pre{max-height:42dvh;overflow:auto;overscroll-behavior:contain}.legend-cms-site-source{min-height:44dvh;font-size:11px}}
+      @media(max-width:800px){
+        html{max-width:100%;overflow-x:hidden}
+        body.legend-cms-editing{width:100%;max-width:100%;overflow:hidden}
+        .legend-cms-preview{width:100%;max-width:100%;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;padding-top:0}
+        .legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}
+        .legend-cms-panel{
+          top:0;right:0;bottom:auto;width:100%;max-width:100%;min-width:0;
+          height:auto;max-height:min(46dvh,430px);overflow-y:auto;overflow-x:hidden;
+          overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+          border:0;border-bottom:1px solid #d4ad45;border-radius:0 0 14px 14px;
+          padding:max(6px,env(safe-area-inset-top)) 10px 10px;
+          box-shadow:0 14px 32px #0007;
+        }
+        .legend-cms-panel>*{min-width:0;max-width:100%}
+        .legend-cms-panel-toggle{
+          top:max(6px,env(safe-area-inset-top));right:8px;
+          min-height:34px;padding:6px 9px;font-size:12px;max-width:calc(100vw - 16px)
+        }
+        .legend-cms-panel h2{font-size:16px;margin:0 74px 2px 0}
+        .legend-cms-panel>small{margin:0 74px 6px 0;font-size:11px}
+        .legend-cms-bar{
+          display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+          position:sticky;top:calc(-1 * max(6px,env(safe-area-inset-top)));
+          z-index:5;gap:4px;padding:5px 0 6px;margin:0 0 7px;
+          background:#081a3af7;border-bottom:1px solid #344766;
+        }
+        .legend-cms-bar button{
+          width:100%;min-width:0;min-height:32px;padding:5px 3px;border-radius:7px;
+          font-size:11px;line-height:1.05;white-space:normal
+        }
+        .legend-cms-bar #legend-cms-status{
+          grid-column:1/-1;min-height:0;margin:0;padding:1px 3px;
+          font-size:10px;line-height:1.2
+        }
+        .legend-cms-primary-tabs{
+          display:flex;grid-template-columns:none;gap:5px;overflow-x:auto;
+          margin:0 0 7px;padding:0 0 2px;scrollbar-width:none
+        }
+        .legend-cms-primary-tabs::-webkit-scrollbar{display:none}
+        .legend-cms-primary-tabs button{
+          flex:0 0 auto;min-height:32px;padding:6px 9px;font-size:11px
+        }
+        .legend-cms-menu{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+        .legend-cms-menu button,.legend-cms-panel section>button{
+          min-height:34px;padding:7px 6px;border-radius:8px;font-size:11px;
+          line-height:1.15;text-align:center
+        }
+        .legend-cms-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+        .legend-cms-theme{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+        .legend-cms-group{gap:5px;margin:7px 0}
+        .legend-cms-inline-help{margin:5px 0 8px;padding:7px 8px;font-size:11px}
+        .legend-cms-agent-contract{padding:8px 9px;border-radius:9px}
+        .legend-cms-agent-contract pre{max-height:26dvh;overflow:auto;overscroll-behavior:contain;font-size:10px;line-height:1.4}
+        .legend-cms-site-source{min-height:28dvh;font-size:10px;padding:9px}
+        .legend-cms-protection-warning{margin:6px 0;padding:8px 9px;font-size:10px}
+      }
     `;
     document.head.appendChild(style);
   }

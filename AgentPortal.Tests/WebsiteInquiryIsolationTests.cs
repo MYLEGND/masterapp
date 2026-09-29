@@ -20,7 +20,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using ProtectWebsite.Controllers;
-using ProtectWebsite.Services.Communication;
 using Shared.Analytics;
 using Xunit;
 
@@ -525,7 +524,7 @@ public sealed class WebsiteInquiryIsolationTests
         public Guid BusinessId { get; } = Guid.NewGuid();
         public Guid VersionId { get; } = Guid.NewGuid();
         public WebsiteInquiriesController Controller { get; }
-        public Mock<IProtectEmailSender> EmailSender { get; } = new();
+        public Mock<IWebsiteInquiryEmailSender> EmailSender { get; } = new();
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());
         public Fixture(string origin = "https://business.example")
         {

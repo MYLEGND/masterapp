@@ -1,16 +1,15 @@
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Logging;
 using Shared.Meta;
 
-namespace AgentPortal.Services;
+namespace Infrastructure.Analytics;
 
-public sealed class MetaCapiCredentialProtector
+/// <summary>
+/// Single Meta CAPI credential protection authority shared across hosts.
+/// </summary>
+public sealed class MetaCapiCredentialProtector(IDataProtectionProvider provider)
 {
-    private readonly IDataProtector _protector;
-
-    public MetaCapiCredentialProtector(IDataProtectionProvider provider)
-    {
-        _protector = provider.CreateProtector(MetaCapiCredentialProtection.Purpose);
-    }
+    private readonly IDataProtector _protector = provider.CreateProtector(MetaCapiCredentialProtection.Purpose);
 
     public string? Protect(string? plaintext)
     {

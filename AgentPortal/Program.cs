@@ -45,6 +45,8 @@ using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingBackgroundWorkers(builder.Services, builder.Configuration);
+Infrastructure.Leads.WebsiteLeadServiceRegistration.AddWebsiteLeadBackgroundWorkers(builder.Services);
 builder.Services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
 
 // QuestPDF license (Community; change if revenue threshold exceeded)
@@ -233,7 +235,6 @@ builder.Services.AddHostedService<AzureAgentDirectorySyncHostedService>();
 builder.Services.AddHostedService<BillingReconciliationHostedService>();
 builder.Services.AddHostedService<ClientBillingNotificationDeliveryHostedService>();
 builder.Services.AddHostedService<HouseholdPartnerInvitationDeliveryHostedService>();
-builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.AddSingleton<PiiProtector>();
 builder.Services.AddSingleton<IngestSignatureValidator>();
 builder.Services.AddMemoryCache();
