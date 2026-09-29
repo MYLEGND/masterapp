@@ -68,8 +68,9 @@ public static class WebsiteContentSanitizer
         if (version != WebsiteStudioContract.CurrentDocumentVersion)
             throw new ArgumentException("Portable website documents must use the canonical v3 schema.");
 
-        return System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(root.ToJsonString(), options)
+        var document = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(root.ToJsonString(), options)
             ?? throw new ArgumentException("Canonical website document is invalid.");
+        return Sanitize(document);
     }
 
     private static bool ContainsLegacyAuthority(System.Text.Json.Nodes.JsonNode? root)
@@ -106,6 +107,8 @@ public static class WebsiteContentSanitizer
     {
         if (source.LegacyMigration is not null)
             throw new InvalidOperationException("website_legacy_migration_cannot_be_saved");
+
+        RejectUnexpectedCanonicalFields(source);
 
         var breakpoints = SanitizeBreakpoints(source.Breakpoints);
         var breakpointKeys = breakpoints.Select(x => x.Key).ToHashSet(StringComparer.Ordinal);
@@ -156,6 +159,44 @@ public static class WebsiteContentSanitizer
         clean.Theme = SanitizeTheme(source.Theme);
         clean.UpdatedUtc = source.UpdatedUtc;
         return clean;
+    }
+
+    private static void RejectUnexpectedCanonicalFields(WebsiteContentDocument source)
+    {
+        static void Reject(
+            IReadOnlyDictionary<string, System.Text.Json.JsonElement>? fields,
+            string location)
+        {
+            if (fields is null || fields.Count == 0) return;
+            throw new ArgumentException(
+                $"Unsupported website field(s) at {location}: {string.Join(", ", fields.Keys.OrderBy(value => value, StringComparer.Ordinal))}");
+        }
+
+        void Visit(IEnumerable<WebsiteCompositionNode>? nodes, string location)
+        {
+            foreach (var node in nodes ?? [])
+            {
+                Reject(node.UnexpectedFields, location + "/" + node.Id);
+                Visit(node.Children, location + "/" + node.Id);
+            }
+        }
+
+        Reject(source.UnexpectedFields, "document");
+        Reject(source.Shell?.UnexpectedFields, "shell");
+        Visit(source.Shell?.Header, "shell/header");
+        Visit(source.Shell?.Footer, "shell/footer");
+
+        foreach (var (path, page) in source.Pages ?? new())
+        {
+            Reject(page?.UnexpectedFields, "page:" + path);
+            Visit(page?.Composition, "page:" + path);
+        }
+
+        foreach (var (id, component) in source.ReusableComponents ?? new())
+        {
+            Reject(component?.UnexpectedFields, "component:" + id);
+            Visit(component?.Composition, "component:" + id);
+        }
     }
 
     private static WebsiteStoreSettings SanitizeStore(WebsiteStoreSettings? source) => new()
@@ -260,7 +301,7 @@ public static class WebsiteContentSanitizer
         return clean;
     }
 
-    private static WebsiteExtraComponent? SanitizeLegacyExtra(WebsiteExtraComponent? extra, HashSet<string> breakpointKeys)
+    private static LegacyWebsiteExtraComponent? SanitizeLegacyExtra(LegacyWebsiteExtraComponent? extra, HashSet<string> breakpointKeys)
     {
         if (extra is null) return null;
         var id = SanitizeId(extra.Id);
@@ -269,7 +310,7 @@ public static class WebsiteContentSanitizer
         if (id.Length == 0 || sectionId.Length == 0 ||
             type is not ("text" or "image" or "button" or "video" or "section" or "card" or "form" or "code" or "reusable"))
             return null;
-        return new WebsiteExtraComponent
+        return new LegacyWebsiteExtraComponent
         {
             Id = id,
             SectionId = sectionId,
@@ -295,7 +336,7 @@ public static class WebsiteContentSanitizer
         };
     }
 
-    private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source, HashSet<string> breakpointKeys) => new()
+    private static LegacyWebsiteElementOverride SanitizeElement(LegacyWebsiteElementOverride source, HashSet<string> breakpointKeys) => new()
     {
         Signals = WebsiteSignalBindingPolicy.Validate(source.Signals),
         ActionKey = SanitizeActionKey(source.ActionKey),
@@ -316,9 +357,9 @@ public static class WebsiteContentSanitizer
 
     private sealed class SanitizedPageBody
     {
-        public Dictionary<string, WebsiteElementOverride> Elements { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, LegacyWebsiteElementOverride> Elements { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, int> SectionOrder { get; } = new(StringComparer.Ordinal);
-        public List<WebsiteExtraComponent> Extras { get; } = new();
+        public List<LegacyWebsiteExtraComponent> Extras { get; } = new();
     }
 
     private static SanitizedPageBody SanitizeLegacyPageBody(LegacyWebsitePageDocument source, HashSet<string> breakpointKeys)
@@ -822,12 +863,12 @@ public static class WebsiteContentSanitizer
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return null;
         return uri.Scheme == "https" || (!media && uri.Scheme is "mailto" or "tel") ? url : null;
     }
-    private static WebsitePlacement? SanitizePlacement(WebsitePlacement? value)
+    private static LegacyWebsitePlacement? SanitizePlacement(LegacyWebsitePlacement? value)
     {
         if (value is null) return null;
         var section = SanitizeId(value.SectionId);
         if (section.Length == 0) return null;
         var column = Math.Clamp(value.Column, 1, 12);
-        return new WebsitePlacement { SectionId = section, BeforeId = SanitizeId(value.BeforeId), ContainerId = SanitizeId(value.ContainerId), Flow = value.Flow, Column = column, Span = Math.Clamp(value.Span, 1, 13 - column) };
+        return new LegacyWebsitePlacement { SectionId = section, BeforeId = SanitizeId(value.BeforeId), ContainerId = SanitizeId(value.ContainerId), Flow = value.Flow, Column = column, Span = Math.Clamp(value.Span, 1, 13 - column) };
     }
 }
