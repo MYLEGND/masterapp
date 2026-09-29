@@ -43,6 +43,9 @@
     var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
     var openAiPixelId = (ViewData["ResolvedOpenAiPixelId"]?.ToString() ?? string.Empty).Trim();
     var hasOpenAiPixel = !string.IsNullOrWhiteSpace(openAiPixelId);
+    var websiteStudioMode =
+        Context.Request.Query.ContainsKey("legendEdit") ||
+        Context.Request.Query.ContainsKey("legendMaterialize");
     var analyticsBrowserConfigJson = JsonSerializer.Serialize(new
     {
         siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect,
@@ -102,6 +105,7 @@
 
     <link rel="icon" type="image/svg+xml" href="~/images/favicon/legend-favicon.svg" asp-append-version="true" />
     <script>
+        window.LEGEND_WEBSITE_STUDIO_MODE = @websiteStudioMode.ToString().ToLowerInvariant();
         window.AGENT_TRACKING_PROFILE_ID = "@trackingProfileId";
         window.AGENT_TRACKING_SLUG = "@trackingSlug";
         window.IS_FOUNDER_PATH = @isFounderPath.ToString().ToLowerInvariant();
@@ -307,33 +311,38 @@
         document.body.dataset.pageMode = "@ViewData["PageMode"]";
         document.body.dataset.pageCategory = "@ViewData["PageCategory"]";
         document.body.dataset.quoteType = "@ViewData["QuoteTypeForTracking"]";
-        window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(analyticsBrowserConfigJson);
-    </script>
-    <script src="~/js/tracking.js" asp-append-version="true"></script>
-    <!-- ================= META PIXEL ================= -->
-    @if (hasMetaPixel)
-    {
-        <script>
-        if (window.__legendTrackingInitialized && window.LegendAnalytics?.measurementConsent?.isAllowed?.()) {
-        !function(f,b,e,v,n,t,s)
-        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-        n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t,s)}(window, document,'script',
-        'https://connect.facebook.net/en_US/fbevents.js');
-        fbq('init', '@metaPixelId');
+        if (!window.LEGEND_WEBSITE_STUDIO_MODE) {
+            window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(analyticsBrowserConfigJson);
         }
-        </script>
-    }
-    <!-- ================= END META PIXEL ================= -->
-    @if (hasOpenAiPixel)
+    </script>
+    @if (!websiteStudioMode)
     {
-        <script src="~/js/openai-measurement.js" asp-append-version="true"></script>
-        <script>
-            if (window.__legendTrackingInitialized) window.LegendOpenAiMeasurement?.configure?.({ pixelId: @Html.Raw(JsonSerializer.Serialize(openAiPixelId)) });
-        </script>
+        <script src="~/js/tracking.js" asp-append-version="true"></script>
+        <!-- ================= META PIXEL ================= -->
+        @if (hasMetaPixel)
+        {
+            <script>
+            if (window.__legendTrackingInitialized && window.LegendAnalytics?.measurementConsent?.isAllowed?.()) {
+            !function(f,b,e,v,n,t,s)
+            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+            n.queue=[];t=b.createElement(e);t.async=!0;
+            t.src=v;s=b.getElementsByTagName(e)[0];
+            s.parentNode.insertBefore(t,s)}(window, document,'script',
+            'https://connect.facebook.net/en_US/fbevents.js');
+            fbq('init', '@metaPixelId');
+            }
+            </script>
+        }
+        <!-- ================= END META PIXEL ================= -->
+        @if (hasOpenAiPixel)
+        {
+            <script src="~/js/openai-measurement.js" asp-append-version="true"></script>
+            <script>
+                if (window.__legendTrackingInitialized) window.LegendOpenAiMeasurement?.configure?.({ pixelId: @Html.Raw(JsonSerializer.Serialize(openAiPixelId)) });
+            </script>
+        }
     }
     <script src="~/js/lead-modal.js" asp-append-version="true"></script>
     <script>
