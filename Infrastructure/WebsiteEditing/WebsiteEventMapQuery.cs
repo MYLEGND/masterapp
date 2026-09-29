@@ -85,8 +85,8 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
         {
             var version = versions.SingleOrDefault(v => v.Id == state.PublishedVersionId && v.StateId == state.Id);
             WebsiteContentDocument document;
-            try { document = version is null ? new() : JsonSerializer.Deserialize<WebsiteContentDocument>(version.DocumentJson, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new(); }
-            catch (JsonException) { continue; }
+            try { document = version is null ? new() : WebsiteContentSanitizer.ReadPersisted(version.DocumentJson, new JsonSerializerOptions(JsonSerializerDefaults.Web)); }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException) { continue; }
             var stateOwner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, state, ct);
             var stateEvents = new List<AnalyticsEvent>();
             if (stateOwner is not null)
@@ -142,18 +142,29 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                 }
             }
 
-            foreach (var page in document.Pages)
+            if (document.LegacyMigration is { } legacy)
             {
-                if (string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
+                foreach (var page in legacy.Pages)
                 {
-                    Composition(page.Key, page.Value.Composition);
-                    continue;
+                    foreach (var element in page.Value.Elements)
+                        Element(page.Key, element.Key, element.Value.Text, element.Value.ActionKey, element.Value.Signals);
+                    foreach (var extra in page.Value.Extras)
+                        Element(page.Key, "extra:" + extra.Id, extra.Text ?? extra.Title, extra.ActionKey, extra.Signals);
                 }
-                foreach (var element in page.Value.Elements) Element(page.Key, element.Key, element.Value.Text, element.Value.ActionKey, element.Value.Signals);
-                foreach (var extra in page.Value.Extras) Element(page.Key, "extra:" + extra.Id, extra.Text ?? extra.Title, extra.ActionKey, extra.Signals);
+                foreach (var element in legacy.Elements)
+                    Element("*", element.Key, element.Value.Text, element.Value.ActionKey, element.Value.Signals);
+                foreach (var extra in legacy.Extras)
+                    Element("*", "extra:" + extra.Id, extra.Text ?? extra.Title, extra.ActionKey, extra.Signals);
             }
-            foreach (var element in document.Elements) Element("*", element.Key, element.Value.Text, element.Value.ActionKey, element.Value.Signals);
-            foreach (var extra in document.Extras) Element("*", "extra:" + extra.Id, extra.Text ?? extra.Title, extra.ActionKey, extra.Signals);
+            else
+            {
+                Composition("@shell/header", document.Shell.Header);
+                Composition("@shell/footer", document.Shell.Footer);
+                foreach (var page in document.Pages)
+                    Composition(page.Key, page.Value.Composition);
+                foreach (var component in document.ReusableComponents)
+                    Composition("@component/" + component.Key, component.Value.Composition);
+            }
             foreach (var behavior in AnalyticsEventCatalog.Behaviors.Where(b => !string.IsNullOrWhiteSpace(b.AutomaticTrigger)))
                 Add("*", "automatic:" + behavior.Key, behavior.DisplayLabel, behavior.Key, null, behavior, true);
         }
