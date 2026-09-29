@@ -116,7 +116,7 @@ public static class WebsiteContentSanitizer
         {
             Version = WebsiteStudioContract.CurrentDocumentVersion,
             FaviconImageDataUrl = SanitizeImage(source.FaviconImageDataUrl),
-            Store = SanitizeStore(source.Store),
+            Store = SanitizeStore(source.Store, breakpointKeys),
             Breakpoints = breakpoints,
             Shell = new WebsiteSharedShellDocument
             {
@@ -199,12 +199,25 @@ public static class WebsiteContentSanitizer
         }
     }
 
-    private static WebsiteStoreSettings SanitizeStore(WebsiteStoreSettings? source) => new()
+    private static WebsiteStoreSettings SanitizeStore(
+        WebsiteStoreSettings? source,
+        HashSet<string> breakpointKeys) => new()
     {
         Enabled = source?.Enabled == true,
         NavigationLabel = SanitizeStoreLabel(source?.NavigationLabel),
         CartIcon = SanitizeCartIcon(source?.CartIcon),
-        CartIconSizePx = Math.Clamp(source?.CartIconSizePx ?? 28, 16, 96)
+        CartIconSizePx = Math.Clamp(source?.CartIconSizePx ?? 28, 16, 96),
+        StoreNavigation = SanitizeControlPresentation(source?.StoreNavigation, breakpointKeys),
+        CartNavigation = SanitizeControlPresentation(source?.CartNavigation, breakpointKeys)
+    };
+
+    private static WebsiteControlPresentation SanitizeControlPresentation(
+        WebsiteControlPresentation? source,
+        HashSet<string> breakpointKeys) => new()
+    {
+        Style = SanitizeStyle(source?.Style),
+        BreakpointStyles = SanitizeStyleMap(source?.BreakpointStyles, breakpointKeys),
+        Animations = SanitizeAnimations(source?.Animations)
     };
 
     private static WebsiteContentDocument ProjectLegacyForOneWayMigration(LegacyWebsiteContentDocument legacy)
@@ -241,7 +254,7 @@ public static class WebsiteContentSanitizer
         {
             Version = Math.Min(source.Version <= 0 ? 2 : source.Version, 2),
             FaviconImageDataUrl = SanitizeImage(source.FaviconImageDataUrl),
-            Store = SanitizeStore(source.Store),
+            Store = SanitizeStore(source.Store, breakpointKeys),
             Breakpoints = breakpoints
         };
 
