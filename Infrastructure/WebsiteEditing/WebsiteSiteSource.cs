@@ -30,7 +30,6 @@ public sealed class WebsiteSiteSourcePage
 
 public sealed record WebsiteSiteSourceParseResult(
     WebsiteContentDocument Document,
-    IReadOnlyList<string> DeletedKeys,
     IReadOnlyDictionary<string, WebsiteSiteSourceLocation> SourceMap);
 
 public sealed record WebsiteSiteSourceLocation(int Line, string? PagePath, string NodeId);
@@ -117,7 +116,6 @@ public static class WebsiteSiteSource
                 StringComparer.Ordinal)
         };
 
-        var deleted = new List<string>();
         var pagePaths = new HashSet<string>(StringComparer.Ordinal);
         var nodeIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -152,10 +150,6 @@ public static class WebsiteSiteSource
             output.Pages[path] = next;
         }
 
-        foreach (var path in current.Pages.Keys)
-            if (!output.Pages.ContainsKey(path))
-                deleted.Add("page:" + path);
-
         if (!output.Pages.TryGetValue("/", out var home) || home.Navigation.IsDeleted)
             throw new ArgumentException("LEGEND Site Source must keep one active home page.");
 
@@ -178,7 +172,7 @@ public static class WebsiteSiteSource
         if (!string.Equals(reparsed.Schema, Schema, StringComparison.Ordinal))
             throw new InvalidOperationException("website_site_source_roundtrip_failed");
 
-        return new WebsiteSiteSourceParseResult(output, deleted, BuildSourceMap(serialized));
+        return new WebsiteSiteSourceParseResult(output, BuildSourceMap(serialized));
     }
 
     public static IReadOnlyDictionary<string, WebsiteSiteSourceLocation> BuildSourceMap(string sourceText)
