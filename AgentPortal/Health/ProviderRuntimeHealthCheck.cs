@@ -13,7 +13,7 @@ namespace AgentPortal.Health;
 /// payloads, or user data are emitted by the health endpoint.
 /// </summary>
 public sealed class ProviderRuntimeHealthCheck(
-    IPlatformConnectionHealthAuthority authority,
+    IServiceScopeFactory scopeFactory,
     IMemoryCache cache,
     ILogger<ProviderRuntimeHealthCheck> logger) : IHealthCheck
 {
@@ -28,6 +28,8 @@ public sealed class ProviderRuntimeHealthCheck(
 
         try
         {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var authority = scope.ServiceProvider.GetRequiredService<IPlatformConnectionHealthAuthority>();
             var snapshot = await authority.ReadAsync(MarketingOwnerScope.Founder, cancellationToken);
             var failures = new List<string>();
 
