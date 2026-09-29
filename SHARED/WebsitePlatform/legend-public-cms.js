@@ -4281,6 +4281,26 @@
     }).join('');
   }
 
+  function freshStableId() {
+    return (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random())
+      .replaceAll('-','').replace('.','');
+  }
+
+  function cloneCanonicalNodeFresh(node,{offsetY=0}={}) {
+    const copy=structuredClone(node);
+    const rewrite=current=>{
+      current.id=freshStableId();
+      current.signals=(current.signals || []).map(binding=>({...binding,id:freshStableId()}));
+      (current.children || []).forEach(rewrite);
+    };
+    rewrite(copy);
+    if(offsetY){
+      copy.style ||= {};
+      copy.style.offsetYPx=(Number(copy.style.offsetYPx)||0)+offsetY;
+    }
+    return copy;
+  }
+
   function installStudioControls(panel) {
     panel.querySelectorAll('button').forEach(button => button.type = 'button');
     document.getElementById('legend-cms-layer-search').addEventListener('input', refreshLayers);
@@ -4297,219 +4317,105 @@
     pageNavInput('legend-cms-page-nav-visible',(navigation,input)=>navigation.showInNavigation=input.checked);
     pageNavInput('legend-cms-page-parent',(navigation,input)=>navigation.parentPath=normalizePageRoute(input.value),'change');
     document.getElementById('legend-cms-page-create')?.addEventListener('click',async()=>{
-      if(SITE_KEY!=='business') return; const route=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
-      if(!route || route==='/' || websitePageEntries(true).some(entry=>entry.route===route)){ alert('Enter a unique website route such as /team or /services/commercial.'); return; }
-      checkpoint(); const label=(document.getElementById('legend-cms-page-nav-label')?.value || route.split('/').filter(Boolean).at(-1) || 'Page').trim();
-      if (usesCanonicalComposition()) {
-        const sectionId=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
-        const textId=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+1)).replaceAll('-','');
-        documentState.pages[route]={title:label,description:'',navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},elements:{},sectionOrder:{},extras:[],composition:[
-          {id:sectionId,type:'section',tag:'section',className:'section',signals:[],style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],children:[
-            {id:textId,type:'heading',tag:'h1',text:label,signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]}
-          ]}
-        ]};
-      } else {
-        const sectionId=crypto.randomUUID(); const textId=crypto.randomUUID();
-        documentState.pages[route]={title:label,description:'',templatePath:null,navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},elements:{},sectionOrder:{},extras:[{id:sectionId,type:'section',sectionId:'custom.root',style:{}},{id:textId,type:'text',sectionId:'extra:'+sectionId,text:label,style:{}}]};
-      }
-      markDirty(); await navigateToEditorPage(route);
-    });
-    document.getElementById('legend-cms-page-duplicate')?.addEventListener('click',async()=>{
-      if(SITE_KEY!=='business') return; const sourceRoute=currentPageRoute(); const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
-      if(!target || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){ alert('Enter a unique route for the duplicate.'); return; }
-      checkpoint(); const source=JSON.parse(JSON.stringify(pageState())); const template=templatePageEntries().has(sourceRoute)?sourceRoute:(normalizePageRoute(source.templatePath)||null);
-      source.templatePath=template; source.navigation={...(source.navigation||{}),label:(source.navigation?.label||source.title||'Copy')+' copy',isDeleted:false,order:websitePageEntries(true).length*10};
-      documentState.pages[target]=source; markDirty(); await navigateToEditorPage(target);
-    });
-    document.getElementById('legend-cms-page-rename')?.addEventListener('click',async()=>{
-      if(SITE_KEY!=='business') return; const sourceRoute=currentPageRoute(); const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
-      if(sourceRoute==='/' || !target || target==='/' || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){ alert('Enter a unique route. The home page route cannot be renamed.'); return; }
-      checkpoint(); const source=JSON.parse(JSON.stringify(pageState())); const template=templatePageEntries().has(sourceRoute)?sourceRoute:(normalizePageRoute(source.templatePath)||null); source.templatePath=template;
-      documentState.pages[target]=source; const tombstone=ensurePageRecord(sourceRoute); tombstone.navigation={...(tombstone.navigation||{}),showInNavigation:false,isDeleted:true}; tombstone.elements={}; tombstone.sectionOrder={}; tombstone.extras=[]; tombstone.composition=[];
-      markDirty(); await navigateToEditorPage(target);
-    });
-    document.getElementById('legend-cms-page-delete')?.addEventListener('click',async()=>{
-      if(SITE_KEY!=='business') return; const route=currentPageRoute(); if(route==='/') return; checkpoint(); const page=ensurePageRecord(route);
-      page.navigation ||= {showInNavigation:true,order:0,isDeleted:false}; page.navigation.isDeleted=!page.navigation.isDeleted; if(page.navigation.isDeleted) page.navigation.showInNavigation=false; markDirty();
-      if(page.navigation.isDeleted) await navigateToEditorPage('/'); else syncPageControls();
-    });
-    document.getElementById('legend-cms-duplicate').addEventListener('click', () => {
-      if (!selected || !selectedSection || selected.dataset.cmsSignalOnly) return;
-      if (usesCanonicalComposition() && selected.dataset.cmsCompositionId) {
-        const entry=compositionEntry(selected.dataset.cmsCompositionId);
-        if(!entry?.node || entry.node.type==='form'){
-          if(entry?.node?.type==='form') alert('Each page uses one canonical inquiry form.');
-          return;
-        }
-        const remap=node=>{
-          const copy=structuredClone(node);
-          const rewrite=current=>{
-            current.id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random())).replaceAll('-','').replace('.','');
-            current.signals=[];
-            (current.children||[]).forEach(rewrite);
-          };
-          rewrite(copy);
-          copy.style ||= {};
-          copy.style.offsetYPx=(Number(copy.style.offsetYPx)||0)+16;
-          return copy;
-        };
-        checkpoint();
-        const copy=remap(entry.node);
-        const siblings=compositionChildren(entry.parent);
-        const index=siblings.findIndex(node=>node.id===entry.node.id);
-        siblings.splice(index+1,0,copy);
-        renderCanonicalCompositionPage();
-        setSelected(findEditableElement(copy.id));
-        markDirty();
+      if(SITE_KEY!=='business') return;
+      const route=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(!route || route==='/' || websitePageEntries(true).some(entry=>entry.route===route)){
+        alert('Enter a unique website route such as /team or /services/commercial.');
         return;
       }
-      const sourceExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
-      if (sourceExtra?.type === 'form' || selected.tagName === 'FORM') {
-        alert('Each page uses one canonical inquiry form. Duplicate the surrounding content instead.');
-        return;
-      }
-
-      const shiftCopy = copy => {
-        copy.style ||= {};
-        const currentY = Number(copy.style.offsetYPx);
-        copy.style.offsetYPx = (Number.isFinite(currentY) ? currentY : 0) + 16;
-        delete copy.hidden;
-        copy.signals = [];
-        return copy;
-      };
-      const rewriteExtraRef = (value, idMap) => {
-        if (typeof value !== 'string' || !value.startsWith('extra:')) return value;
-        const oldId = value.slice(6);
-        return idMap.has(oldId) ? 'extra:' + idMap.get(oldId) : value;
-      };
-
-      if (sourceExtra) {
-        checkpoint();
-        if (sourceExtra.type === 'section') {
-          const sourceIds = new Set([sourceExtra.id]);
-          let changed = true;
-          while (changed) {
-            changed = false;
-            for (const item of pageState().extras) {
-              const parent = String(item.sectionId || '').startsWith('extra:') ? String(item.sectionId).slice(6) : null;
-              if (parent && sourceIds.has(parent) && !sourceIds.has(item.id)) { sourceIds.add(item.id); changed = true; }
-            }
-          }
-          const originals = pageState().extras.filter(item => sourceIds.has(item.id));
-          const idMap = new Map(originals.map(item => [item.id, crypto.randomUUID()]));
-          const copies = originals.map(item => {
-            const copy = JSON.parse(JSON.stringify(item));
-            copy.id = idMap.get(item.id);
-            copy.sectionId = item.id === sourceExtra.id ? sourceExtra.sectionId : rewriteExtraRef(item.sectionId, idMap);
-            copy.signals = [];
-            if (copy.placement) {
-              copy.placement.sectionId = rewriteExtraRef(copy.placement.sectionId, idMap);
-              copy.placement.containerId = rewriteExtraRef(copy.placement.containerId, idMap);
-              copy.placement.beforeId = rewriteExtraRef(copy.placement.beforeId, idMap);
-            }
-            if (item.id === sourceExtra.id) shiftCopy(copy);
-            return copy;
-          });
-          pageState().extras.push(...copies);
-          const rootCopy = copies.find(item => item.id === idMap.get(sourceExtra.id));
-          const createdSections = new Map();
-          copies.filter(item => item.type === 'section').forEach(item => createdSections.set(item.id, createExtra(item)));
-          copies.filter(item => item.type !== 'section').forEach(item => {
-            const created = createExtra(item);
-            if (item.placement) applyPlacement(created, item.placement);
-          });
-          const sourceNode = document.querySelector(`[data-cms-id="extra:${CSS.escape(sourceExtra.id)}"]`);
-          const createdRoot = rootCopy ? createdSections.get(rootCopy.id) : null;
-          if (sourceNode && createdRoot && sourceNode.parentElement === createdRoot.parentElement)
-            sourceNode.parentElement.insertBefore(createdRoot, sourceNode.nextSibling);
-          syncSectionOrderFromDom();
-          setSelected(createdRoot || null);
-          markDirty();
-          return;
-        }
-
-        const copy = shiftCopy(JSON.parse(JSON.stringify(sourceExtra)));
-        copy.id = crypto.randomUUID();
-        copy.sectionId = sourceExtra.sectionId;
-        if (copy.placement) { copy.placement.beforeId = null; }
-        pageState().extras.push(copy);
-        const created = createExtra(copy);
-        if (copy.placement) applyPlacement(created, copy.placement);
-        const field = selected.dataset.cmsExtraField;
-        setSelected(field ? created?.querySelector?.(`[data-cms-extra-field="${CSS.escape(field)}"]`) || created : created);
-        markDirty();
-        return;
-      }
-
-      const serviceCard = businessServiceCardFor(selected);
-      if (serviceCard) {
-        const grid = serviceCard.parentElement;
-        if (!grid?.dataset.cmsId) return;
-        checkpoint();
-        const heading = serviceCard.querySelector('h1,h2,h3,h4,h5');
-        const body = [...serviceCard.querySelectorAll('p')].find(node => !node.classList.contains('eyebrow')) || serviceCard.querySelector('p');
-        const copy = {
-          id: crypto.randomUUID(), type: 'card', sectionId: selectedSection.dataset.cmsSection,
-          title: heading?.textContent || 'New service', text: body?.textContent || '', style: {},
-          signals: [],
-          placement: { sectionId: selectedSection.dataset.cmsSection, containerId: grid.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 }
-        };
-        pageState().extras.push(copy);
-        const created = createExtra(copy); applyPlacement(created, copy.placement); setSelected(created.querySelector('h3') || created); markDirty();
-        return;
-      }
-
-      if (selected.dataset.cmsSection) {
-        if (selected.matches('.site-header,.site-footer')) return;
-        if (selected.querySelector?.('form[data-website-inquiry]')) {
-          alert('This section contains the canonical inquiry form. Move or redesign the section instead of creating a second live inquiry authority.');
-          return;
-        }
-        checkpoint();
-        const copy={
-          id:crypto.randomUUID(), type:'section', sectionId:selected.dataset.cmsSection,
-          templateSectionId:selected.dataset.cmsSection, style:{}, signals:[]
-        };
-        pageState().extras.push(copy);
-        const created=createExtra(copy);
-        if (created && selected.parentElement===created.parentElement) selected.parentElement.insertBefore(created,selected.nextSibling);
-        syncSectionOrderFromDom(); setSelected(created); markDirty(); return;
-      }
-      const supported = ['P','H1','H2','H3','H4','H5','H6','A','BUTTON','IMG','VIDEO','LI','SMALL','STRONG','SPAN'];
-      if (!supported.includes(selected.tagName)) return;
-
       checkpoint();
-      const original = pageState().elements[selected.dataset.cmsId] || {};
-      const copy = shiftCopy({
-        id: crypto.randomUUID(),
-        sectionId: selectedSection.dataset.cmsSection,
-        type: ({ A: 'button', BUTTON: 'button', IMG: 'image', VIDEO: 'video' }[selected.tagName] || 'text'),
-        text: selected.textContent || '',
-        style: JSON.parse(JSON.stringify(original.style || {})),
-        breakpointStyles: JSON.parse(JSON.stringify(original.breakpointStyles || {})),
-        layout: JSON.parse(JSON.stringify(original.layout || {})),
-        breakpointLayouts: JSON.parse(JSON.stringify(original.breakpointLayouts || {})),
-        signals: []
-      });
-      if (copy.type === 'button') {
-        copy.actionKey = original.actionKey || null;
-        copy.href = original.href ?? rememberOriginal(selected).href;
-        copy.target = original.target ?? selected.getAttribute('target');
+      const label=(document.getElementById('legend-cms-page-nav-label')?.value ||
+        route.split('/').filter(Boolean).at(-1) || 'Page').trim();
+      const sectionId=freshStableId();
+      const textId=freshStableId();
+      documentState.pages[route]={
+        title:label,
+        description:'',
+        navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},
+        dynamicBinding:null,
+        composition:[{
+          id:sectionId,type:'section',tag:'section',className:'section',signals:[],
+          style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],
+          children:[{
+            id:textId,type:'heading',tag:'h1',text:label,signals:[],
+            style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+          }]
+        }]
+      };
+      markDirty();
+      await navigateToEditorPage(route);
+    });
+
+    document.getElementById('legend-cms-page-duplicate')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return;
+      const sourceRoute=currentPageRoute();
+      const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(!target || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){
+        alert('Enter a unique route for the duplicate.');
+        return;
       }
-      if (copy.type === 'image') {
-        copy.imageDataUrl = original.imageDataUrl ?? rememberOriginal(selected).src;
-        copy.alt = original.alt ?? selected.getAttribute('alt');
+      checkpoint();
+      const source=structuredClone(pageState());
+      source.composition=(source.composition || []).map(node=>cloneCanonicalNodeFresh(node));
+      source.navigation={
+        ...(source.navigation || {}),
+        label:(source.navigation?.label || source.title || 'Copy')+' copy',
+        isDeleted:false,
+        order:websitePageEntries(true).length*10
+      };
+      documentState.pages[target]=source;
+      markDirty();
+      await navigateToEditorPage(target);
+    });
+
+    document.getElementById('legend-cms-page-rename')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return;
+      const sourceRoute=currentPageRoute();
+      const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(sourceRoute==='/' || !target || target==='/' || target===sourceRoute ||
+        websitePageEntries(true).some(entry=>entry.route===target)){
+        alert('Enter a unique route. The home page route cannot be renamed.');
+        return;
       }
-      if (copy.type === 'video') copy.videoUrl = original.videoUrl ?? rememberOriginal(selected).src;
-      const parent = selected.parentElement;
-      if (parent && parent !== selectedSection && parent.dataset?.cmsId && !parent.closest(lockedSelector))
-        copy.placement = { sectionId: selectedSection.dataset.cmsSection, containerId: parent.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
-      pageState().extras.push(copy);
-      const created = createExtra(copy);
-      if (copy.placement) applyPlacement(created, copy.placement);
-      setSelected(created);
+      checkpoint();
+      documentState.pages[target]=documentState.pages[sourceRoute];
+      delete documentState.pages[sourceRoute];
+      markDirty();
+      await navigateToEditorPage(target);
+    });
+
+    document.getElementById('legend-cms-page-delete')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return;
+      const route=currentPageRoute();
+      if(route==='/') return;
+      checkpoint();
+      const page=ensurePageRecord(route);
+      page.navigation.isDeleted=!page.navigation.isDeleted;
+      if(page.navigation.isDeleted) page.navigation.showInNavigation=false;
+      markDirty();
+      if(page.navigation.isDeleted) await navigateToEditorPage('/');
+      else syncPageControls();
+    });
+
+    document.getElementById('legend-cms-duplicate').addEventListener('click',()=>{
+      if(!selected || selected.dataset.cmsSignalOnly || !selected.dataset.cmsCompositionId) return;
+      const entry=compositionEntry(selected.dataset.cmsCompositionId);
+      if(!entry?.node) return;
+      if(entry.node.type==='form' || entry.node.systemKey){
+        alert('Protected system components cannot be duplicated. Duplicate the surrounding content instead.');
+        return;
+      }
+      checkpoint();
+      const copy=cloneCanonicalNodeFresh(entry.node,{offsetY:16});
+      const siblings=compositionChildren(entry.parent,entry.root);
+      const index=siblings.findIndex(node=>node.id===entry.node.id);
+      siblings.splice(index+1,0,copy);
+      if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
+      else renderCanonicalCompositionPage();
+      setSelected(findEditableElement(copy.id));
       markDirty();
     });
+
     const fontInput = panel.querySelector('[data-theme-key="fontFamily"]');
     if (fontInput?.replaceWith) {
       const select = document.createElement('select'); select.dataset.themeKey = 'fontFamily';
