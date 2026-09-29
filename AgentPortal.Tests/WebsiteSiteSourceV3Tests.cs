@@ -326,7 +326,7 @@ public sealed class WebsiteSiteSourceV3Tests
 
         Assert.Equal("protect_template:life_wizard", parsed.Document.Pages["/"].SystemTemplateKey);
         Assert.Equal("protect_runtime_form:quote_life", runtime.SystemKey);
-        Assert.Equal("/Quote/Life", runtime.Href);
+        Assert.Null(runtime.Href);
         Assert.Equal("protected", runtime.DataBinding?.CollectionId);
         Assert.Equal("Visible runtime presentation", runtime.Text);
     }
