@@ -133,6 +133,30 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   return {w,calls,animations,alerts,click,input,change,editSelected,save,close:()=>w.close()};
 }
 
+test('materialization never invents publishable links from unmanaged runtime buttons or empty anchors',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition=[];
+  const html='<!doctype html><html><head></head><body data-page-key="home"><main><section><button type="button">Toggle details</button><a>Decorative label</a><a href="/contact">Safe contact link</a></section></main></body></html>';
+  const f=await domFixture({doc,html});
+  try{
+    const saved=await f.save();
+    const nodes=canonicalNodes(saved);
+    const toggle=nodes.find(node=>node.text==='Toggle details');
+    const decorative=nodes.find(node=>node.text==='Decorative label');
+    const safe=nodes.find(node=>node.text==='Safe contact link');
+    for(const control of [toggle,decorative]){
+      assert.ok(control);
+      assert.equal(control.type,'text');
+      assert.equal(control.tag,'span');
+      assert.equal(control.href ?? null,null);
+      assert.equal(control.actionKey ?? null,null);
+    }
+    assert.ok(safe);
+    assert.equal(safe.type,'link');
+    assert.equal(safe.href,'/contact');
+  }finally{f.close();}
+});
+
 test('Protect template-backed runtime controls remain presentation-only and cannot become free publishable links',async()=>{
   const doc=canonicalDocument();
   doc.pages['/'].systemTemplateKey='protect_template:life_wizard';
