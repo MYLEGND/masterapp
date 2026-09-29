@@ -766,33 +766,58 @@ test('Layers lists and reorders only whole sections, never individual fields or 
   }finally{f.close();}
 });
 
-test('new button goes to the bottom of the selected container and persists that flow placement',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><main><section><div class="chosen"><h1>Headline</h1><p>Copy</p></div><div class="other"><p>Other</p></div></section></main></body></html>';
-  const f=await domFixture({html});
+test('new button is appended to the selected canonical container with no placement side-store',async()=>{
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.children=[
+    canonicalNode('home.chosen','container','div',{className:'chosen',children:[
+      canonicalNode('home.chosen.title','heading','h1',{text:'Headline'}),
+      canonicalNode('home.chosen.copy','text','p',{text:'Copy'})
+    ]}),
+    canonicalNode('home.other','container','div',{className:'other',children:[
+      canonicalNode('home.other.copy','text','p',{text:'Other'})
+    ]})
+  ];
+  const f=await domFixture({doc});
   try {
     f.click('.chosen h1'); f.click('[data-add="button"]');
     const container=f.w.document.querySelector('.chosen');
-    const button=container.querySelector('[data-cms-extra-id]');
+    const button=container.querySelector('.legend-cms-selected');
     assert.ok(button); assert.equal(container.lastElementChild,button);
-    const saved=await f.save(); const extra=saved.pages['/'].extras[0];
-    assert.equal(extra.type,'button'); assert.equal(extra.placement.flow,true);
-    assert.equal(extra.placement.containerId,container.dataset.cmsId); assert.equal(extra.placement.beforeId,null);
+    const saved=await f.save();
+    const chosen=canonicalNodeById(saved,'home.chosen');
+    const inserted=chosen.children.at(-1);
+    assert.equal(inserted.type,'cta');
+    assert.equal(inserted.id,button.dataset.cmsCompositionId);
+    assert.equal(Object.hasOwn(inserted,'placement'),false);
   } finally { f.close(); }
 });
-test('duplicated service child owns independent drag geometry while the card remains the content authority',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><main><section><div class="card-grid"><article class="card"><h3>Service one</h3><p>First description</p></article></div></section></main></body></html>';
-  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},html});
+test('duplicated service subtree receives fresh IDs and child geometry stays inside that subtree',async()=>{
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.children=[
+    canonicalNode('services.grid','container','div',{className:'card-grid',children:[
+      canonicalNode('service.one','container','article',{className:'card',children:[
+        canonicalNode('service.one.title','heading','h3',{text:'Service one'}),
+        canonicalNode('service.one.copy','text','p',{text:'First description'})
+      ]})
+    ]})
+  ];
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc});
   try{
     f.click('.card-grid > article.card h3');
     f.click('#legend-cms-duplicate');
-    const heading=f.w.document.querySelector('.cms-extra-card h3');
-    const card=heading.closest('article');
-    const section=heading.closest('[data-cms-section]');
+    const cards=[...f.w.document.querySelectorAll('.card-grid > article.card')];
+    assert.equal(cards.length,2);
+    const copyCard=cards[1];
+    const copyId=copyCard.dataset.cmsCompositionId;
+    assert.notEqual(copyId,'service.one');
+    const heading=copyCard.querySelector('h3');
+    f.click('.card-grid > article.card:nth-of-type(2) h3');
+    const sectionEl=heading.closest('[data-cms-section]');
     const preview=f.w.document.querySelector('.legend-cms-preview');
-    assert.ok(heading&&card&&section&&preview);
     heading.getBoundingClientRect=()=>({left:100,top:100,right:300,bottom:140,width:200,height:40});
-    card.getBoundingClientRect=()=>({left:80,top:80,right:480,bottom:240,width:400,height:160});
-    section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
+    sectionEl.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
     preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
     const move=f.w.document.querySelector('.legend-cms-move-handle');
     move.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
@@ -800,33 +825,56 @@ test('duplicated service child owns independent drag geometry while the card rem
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:140,clientY:120,button:0}));
     f.editSelected('Duplicated service title');
     const saved=await f.save();
-    const extra=saved.pages['/'].extras.find(value=>value.type==='card');
-    assert.equal(extra.title,'Duplicated service title');
-    assert.equal(extra.style?.offsetXPercent,undefined);
-    const child=saved.pages['/'].elements[`extra:${extra.id}:title`];
-    assert.ok(child);
-    assert.equal(child.style.offsetXPercent,10);
-    assert.equal(child.style.offsetYPx,20);
+    const copy=canonicalNodeById(saved,copyId);
+    assert.ok(copy);
+    assert.equal(copy.type,'container');
+    assert.notEqual(copy.children[0].id,'service.one.title');
+    assert.equal(copy.children[0].text,'Duplicated service title');
+    assert.equal(copy.children[0].style.offsetXPercent,10);
+    assert.equal(copy.children[0].style.offsetYPx,20);
   }finally{f.close();}
 });
 
-test('business services can be duplicated and deleted as whole cards without generic icons',async()=>{
-  const html='<!doctype html><html><body data-page-key="home"><main><section><div class="card-grid"><article class="card"><h3>Service one</h3><p>First description</p></article><article class="card"><h3>Service two</h3><p>Second description</p></article></div></section></main></body></html>';
-  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},html});
+test('business services duplicate and delete as complete canonical card subtrees',async()=>{
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.children=[
+    canonicalNode('services.grid','container','div',{className:'card-grid',children:[
+      canonicalNode('service.one','container','article',{className:'card',children:[
+        canonicalNode('service.one.title','heading','h3',{text:'Service one'}),
+        canonicalNode('service.one.copy','text','p',{text:'First description'})
+      ]}),
+      canonicalNode('service.two','container','article',{className:'card',children:[
+        canonicalNode('service.two.title','heading','h3',{text:'Service two'}),
+        canonicalNode('service.two.copy','text','p',{text:'Second description'})
+      ]})
+    ]})
+  ];
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc});
   try {
     f.click('.card-grid > article.card h3');
     assert.equal(f.w.document.querySelector('#legend-cms-duplicate').textContent,'Duplicate service');
     assert.equal(f.w.document.querySelector('#legend-cms-remove').textContent,'Delete service');
     f.click('#legend-cms-duplicate');
-    const cards=f.w.document.querySelectorAll('.card-grid > article.card');
-    assert.equal(cards.length,3); assert.equal(cards[2].querySelector('h3').textContent,'Service one');
-    assert.equal(cards[2].querySelector('.icon'),null);
-    let saved=await f.save(); const service=saved.pages['/'].extras.find(item=>item.type==='card');
-    assert.ok(service); assert.equal(service.title,'Service one'); assert.equal(service.text,'First description'); assert.equal(service.placement.flow,true);
-    f.click('.card-grid > article.card h3'); f.click('#legend-cms-remove');
-    assert.equal(f.w.document.querySelector('.card-grid > article.card').hidden,true);
+    let cards=[...f.w.document.querySelectorAll('.card-grid > article.card')];
+    assert.equal(cards.length,3);
+    assert.equal(cards[1].querySelector('h3').textContent,'Service one');
+    assert.equal(cards[1].querySelector('.icon'),null);
+
+    let saved=await f.save();
+    let grid=canonicalNodeById(saved,'services.grid');
+    assert.equal(grid.children.length,3);
+    assert.equal(grid.children[1].children[0].text,'Service one');
+    assert.equal(grid.children[1].hidden,null);
+
+    f.click('.card-grid > article.card:first-child h3');
+    f.click('#legend-cms-remove');
+    cards=[...f.w.document.querySelectorAll('.card-grid > article.card')];
+    assert.equal(cards.length,2);
     saved=await f.save();
-    assert.ok(Object.values(saved.pages['/'].elements).some(item=>item.hidden===true));
+    grid=canonicalNodeById(saved,'services.grid');
+    assert.equal(grid.children.some(node=>node.id==='service.one'),false);
+    assert.equal(grid.children.some(node=>node.hidden===true),false);
   } finally { f.close(); }
 });
 
@@ -927,7 +975,7 @@ test('inquiry form builder is autonomous and exposes no required manual mapping'
   try{
     f.click('main h1');
     f.click('[data-add="form"]');
-    const form=f.w.document.querySelector('form.cms-extra-form[data-website-inquiry]');
+    const form=f.w.document.querySelector('form.legend-cms-inquiry-form[data-website-inquiry]');
     assert.ok(form);
     assert.ok(form.id.startsWith('website_inquiry_'));
     assert.equal(form.dataset.formKey,'website_inquiry');
@@ -949,9 +997,11 @@ test('inquiry form builder is autonomous and exposes no required manual mapping'
     assert.ok(advanced);
     assert.equal(advanced.hidden,true);
     const saved=await f.save();
-    const extra=saved.pages['/'].extras.find(value=>value.type==='form');
-    assert.ok(extra);
-    assert.deepEqual(extra.signals,[]);
+    const formNode=canonicalNodes(saved).find(value=>value.type==='form');
+    assert.ok(formNode);
+    assert.equal(formNode.systemKey,'canonical_inquiry');
+    assert.deepEqual(formNode.signals,[]);
+    assert.equal(Object.hasOwn(saved.pages['/'],'extras'),false);
   }finally{f.close();}
 });
 
@@ -969,7 +1019,7 @@ test('direct canvas replaces designated drop controls and persists shared geomet
     f.input('#legend-cms-offset-x','25');
     f.input('#legend-cms-offset-y','48');
     saved=await f.save();
-    const style=Object.values(saved.pages['/'].elements)[0].style;
+    const style=canonicalNodeById(saved,'home.h1.node.1').style;
     assert.equal(style.widthPercent,50);assert.equal(style.heightPx,240);assert.equal(style.offsetXPercent,25);assert.equal(style.offsetYPx,48);
   }finally{f.close();}
   const loaded=await domFixture({doc:saved,search:''});try {
@@ -1000,7 +1050,7 @@ test('section resize changes the canvas height without creating a section offset
     f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:300,clientY:327,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:300,clientY:327,button:0}));
     const saved=await f.save();
-    const style=saved.pages['/'].elements['section:home.section.1'].style;
+    const style=canonicalNodeById(saved,'home.section.1').style;
     assert.equal(style.heightPx,277);
     assert.equal(style.offsetYPx,undefined);
     assert.equal(section.style.height,'277px');
@@ -1067,7 +1117,7 @@ test('selection movement resizing and text editing use separate non-competing ge
     f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:180,clientY:150,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:180,clientY:150,button:0}));
     let saved=await f.save();
-    const first=Object.values(saved.pages['/'].elements)[0] || {};
+    const first=canonicalNodeById(saved,'home.h1.node.1') || {};
     assert.equal(first.style?.offsetXPercent,undefined);
     assert.equal(first.style?.offsetYPx,undefined);
 
@@ -1082,7 +1132,7 @@ test('selection movement resizing and text editing use separate non-competing ge
     f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:130,clientY:112,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:130,clientY:112,button:0}));
     saved=await f.save();
-    const moved=Object.values(saved.pages['/'].elements)[0];
+    const moved=canonicalNodeById(saved,'home.h1.node.1');
     assert.equal(moved.style.offsetXPercent,5);
     assert.equal(moved.style.offsetYPx,12);
 
@@ -1092,7 +1142,7 @@ test('selection movement resizing and text editing use separate non-competing ge
     f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:360,clientY:120,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:360,clientY:120,button:0}));
     saved=await f.save();
-    const resized=Object.values(saved.pages['/'].elements)[0];
+    const resized=canonicalNodeById(saved,'home.h1.node.1');
     assert.ok(resized.style.widthPercent>33);
     assert.equal(resized.style.offsetXPercent,5);
     assert.equal(resized.style.offsetYPx,12);
