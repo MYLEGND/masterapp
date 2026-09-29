@@ -209,9 +209,9 @@ public sealed class WebsiteStudioV3ContractTests
         Assert.True(migrationView.Pages.ContainsKey("/"));
         Assert.Throws<InvalidOperationException>(() => WebsiteContentSanitizer.Sanitize(migrationView));
         var canonicalJson = JsonSerializer.Serialize(migrationView, options);
-        Assert.DoesNotContain(""elements"", canonicalJson, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(""extras"", canonicalJson, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(""sectionOrder"", canonicalJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"elements\"", canonicalJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"extras\"", canonicalJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"sectionOrder\"", canonicalJson, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
