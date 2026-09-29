@@ -405,6 +405,15 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
   assert.equal(source.includes('function readImage('),false);
   assert.equal(source.includes('function restoreHistory('),false);
   assert.ok(source.includes('function restoreCanonicalV3History('));
+  assert.equal(source.includes('function applyPlacement('),false);
+  assert.ok(source.includes('function applyLegacyPlacement('));
+  assert.ok(source.includes('function legacyRecordAsCanonicalModel('));
+  const canonicalApply=source.slice(
+    source.indexOf('function applyCompositionNode('),
+    source.indexOf('function buildLegacyExtraNode(')
+  );
+  assert.equal(canonicalApply.includes('imageDataUrl'),false);
+  assert.equal(canonicalApply.includes('videoUrl'),false);
   assert.equal(source.includes('node.mediaUrl=asset.url'),false);
   assert.equal(source.includes('mediaUrl:asset.url'),false);
   assert.ok(source.includes('node.mediaAssetId=asset.id'));
