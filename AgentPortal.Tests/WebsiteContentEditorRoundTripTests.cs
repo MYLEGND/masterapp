@@ -145,7 +145,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         };
 
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
         Assert.Equal("Saved page content", Node(saved).Text);
         Assert.Equal(document.FaviconImageDataUrl, saved.FaviconImageDataUrl);
 
@@ -293,7 +293,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             PaddingTop = 0,
             PaddingBottom = 0
         };
-        var accepted = Node(ReadDocument(await fixture.Controller.Save(new(ticket, document, 1))).Style;
+        var accepted = Node(ReadDocument(await fixture.Controller.Save(new(ticket, document, 1)))).Style;
         Assert.Equal(0.05m, accepted.FontScale);
         Assert.Equal(0.25m, accepted.WidthPercent);
         Assert.Equal(0m, accepted.PaddingTop);
