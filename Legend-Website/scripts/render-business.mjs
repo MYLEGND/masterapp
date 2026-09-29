@@ -21,7 +21,8 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const templateByRoute=new Map(businessPages.map(page=>[page.key==='home'?'/':'/'+page.key,page]));
   const descriptors=new Map();
 
-  for(const route of templateByRoute.keys()) descriptors.set(route,{route,sourceRoute:route,dynamicItem:null});
+  if(!canonicalV3)
+    for(const route of templateByRoute.keys()) descriptors.set(route,{route,sourceRoute:route,dynamicItem:null});
   for(const rawRoute of Object.keys(documents)) {
     if(!staticRoute.test(rawRoute)||rawRoute.length>160)throw new Error('Invalid website page route.');
     const route=normalizeRoute(rawRoute);
@@ -53,10 +54,12 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
 
   const descriptorMeta=descriptor=>{
     const page=documents[descriptor.sourceRoute]||{};
-    const templatePath=typeof page.templatePath==='string'?normalizeRoute(page.templatePath):null;
-    const templateRoute=templatePath&&templateByRoute.has(templatePath)
-      ? templatePath
-      : templateByRoute.has(descriptor.sourceRoute)?descriptor.sourceRoute:null;
+    const templatePath=!canonicalV3&&typeof page.templatePath==='string'?normalizeRoute(page.templatePath):null;
+    const templateRoute=canonicalV3
+      ? '/'
+      : templatePath&&templateByRoute.has(templatePath)
+        ? templatePath
+        : templateByRoute.has(descriptor.sourceRoute)?descriptor.sourceRoute:null;
     const built=templateRoute?templateByRoute.get(templateRoute):null;
     const navigation=page.navigation||{};
     const dynamic=!!descriptor.dynamicItem;
@@ -72,7 +75,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
         : typeof navigation.parentPath==='string'&&navigation.parentPath!==descriptor.route?normalizeRoute(navigation.parentPath):null,
       order:Number.isFinite(Number(navigation.order))?Number(navigation.order):0,
       isDeleted:navigation.isDeleted===true,
-      template:!!built,
+      template:!canonicalV3&&!!built,
       dynamic
     };
   };
