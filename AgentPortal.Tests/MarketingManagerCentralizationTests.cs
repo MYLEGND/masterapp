@@ -116,7 +116,7 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
-    public void CanonicalMetaEndpointRelease_RemainsScopedToAffectedDotNetHosts()
+    public void CanonicalMetaProviderVersionRelease_RemainsScopedToAffectedDotNetHosts()
     {
         var root = Root();
         var request = Read(root, "Docs", "releases", "direct-release-request.json");
@@ -129,8 +129,9 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
-        Assert.Contains("canonical-meta-endpoint-authority-20260928", request, StringComparison.Ordinal);
+        Assert.Contains("canonical-meta-provider-version-negotiation-20260928", request, StringComparison.Ordinal);
         Assert.Contains("AgentPortal, ClientApp, Protect, and Parfait", request, StringComparison.Ordinal);
+        Assert.Contains("PR #289", request, StringComparison.Ordinal);
     }
 
     [Fact]
