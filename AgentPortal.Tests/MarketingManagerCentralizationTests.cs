@@ -116,22 +116,28 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
-    public void CanonicalMetaProviderVersionRelease_RemainsScopedToAffectedDotNetHosts()
+    public void CanonicalPlatformWorkerWorkspaceRelease_CoversOnlyActuallyAffectedApps()
     {
         var root = Root();
         var request = Read(root, "Docs", "releases", "direct-release-request.json");
 
-        Assert.Contains("\"masterapp-portal\"", request, StringComparison.Ordinal);
-        Assert.Contains("\"masterapp-client\"", request, StringComparison.Ordinal);
-        Assert.Contains("\"masterapp-protect\"", request, StringComparison.Ordinal);
-        Assert.Contains("\"masterapp-parfait\"", request, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"masterapp-website\"", request, StringComparison.Ordinal);
+        foreach (var target in new[]
+        {
+            "masterapp-portal",
+            "masterapp-client",
+            "masterapp-protect",
+            "masterapp-parfait",
+            "masterapp-website"
+        })
+            Assert.Contains($"\"{target}\"", request, StringComparison.Ordinal);
+
         Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
-        Assert.Contains("canonical-meta-provider-version-negotiation-20260928", request, StringComparison.Ordinal);
-        Assert.Contains("AgentPortal, ClientApp, Protect, and Parfait", request, StringComparison.Ordinal);
-        Assert.Contains("PR #289", request, StringComparison.Ordinal);
+        Assert.Contains("canonical-platform-worker-workspace-cleanup-20260929", request, StringComparison.Ordinal);
+        Assert.Contains("f9198d47a1a987567913be5041d6bd887998ae67", request, StringComparison.Ordinal);
+        Assert.Contains("shared Infrastructure", request, StringComparison.Ordinal);
+        Assert.Contains("AgentPortal control-plane", request, StringComparison.Ordinal);
     }
 
     [Fact]
