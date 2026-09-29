@@ -161,7 +161,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("IOpenAiAdsAccountConnectionAuthority", business, StringComparison.Ordinal);
         Assert.Contains("IOpenAiAdsDirectConnectionService", business, StringComparison.Ordinal);
         Assert.Contains("MarketingProviderSetupProjection", business, StringComparison.Ordinal);
-        Assert.Contains("IOpenAiMeasurementHealthService", Read("Infrastructure", "Analytics", "MarketingProviderSetupProjection.cs"), StringComparison.Ordinal);
+        Assert.Contains("IPlatformConnectionHealthAuthority", Read("Infrastructure", "Analytics", "MarketingProviderSetupProjection.cs"), StringComparison.Ordinal);
+        Assert.DoesNotContain("GetAdsAsync(owner", Read("Infrastructure", "Analytics", "MarketingProviderSetupProjection.cs"), StringComparison.Ordinal);
         Assert.Contains("canonical_business_marketing_setup", business, StringComparison.Ordinal);
         Assert.Contains("evidenceError = setup.EvidenceError", business, StringComparison.Ordinal);
         Assert.Contains("OpenAiClickReference.Normalize", Read("Infrastructure", "Analytics", "MarketingMeasurementEvidenceService.cs"), StringComparison.Ordinal);
