@@ -5258,9 +5258,9 @@
       if (!selected || isSharedShellElement(selected)) return;
       const current=selectedCompositionNode(false);
       if (current && (current.actionKey || current.systemKey || current.systemBinding || selected.tagName === 'FORM')) return;
-      const serviceCard = businessServiceCardFor(selected);
-      if (serviceCard?.dataset?.cmsCompositionId) { setSelected(serviceCard); removeSelected(); return; }
-      checkpoint(); const ov = selectedCompositionNode(); ov.hidden = true; selected.hidden = true; setSelected(null); markDirty();
+      const serviceCard=businessServiceCardFor(selected);
+      if(serviceCard?.dataset?.cmsCompositionId) setSelected(serviceCard);
+      removeSelected();
     });
     document.getElementById('legend-cms-reset')?.addEventListener('click', removeSelected);
     document.getElementById('legend-cms-exit')?.addEventListener('click', () => {
