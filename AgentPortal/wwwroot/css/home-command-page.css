@@ -1,44 +1,7 @@
-.home-command-page .home-hero-panel {
-    padding: 0.86rem 1.08rem 0.88rem;
-}
-
 .home-command-page .home-hero-panel .dashboard-command-center-top {
     grid-template-columns: minmax(0, 1fr) minmax(480px, 0.84fr);
     gap: 0.72rem 0.9rem;
     align-items: center;
-}
-
-.home-command-page .dashboard-hero-copy {
-    gap: 0.18rem;
-    align-content: center;
-}
-
-.home-command-page .dashboard-hero-title {
-    font-size: clamp(1.95rem, 2.9vw, 3.1rem);
-    line-height: 0.92;
-    max-width: none;
-    white-space: nowrap;
-}
-
-.home-hero-summary {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.52rem;
-}
-
-.home-hero-summary .dashboard-stat-card {
-    min-height: 72px;
-    gap: 0.16rem;
-    padding: 0.66rem 0.76rem;
-    align-content: center;
-}
-
-.home-hero-stat-title {
-    color: #ffffff;
-    font-size: 0.94rem;
-    font-weight: 940;
-    line-height: 1;
-    letter-spacing: -0.03em;
 }
 
 .home-flash-banner {
@@ -54,10 +17,6 @@
     font-size: 0.93rem;
     font-weight: 780;
     box-shadow: 0 18px 30px rgba(4, 10, 28, 0.16);
-}
-
-.home-tools-panel {
-    padding-top: 1.08rem;
 }
 
 .home-tools-head-actions,
@@ -175,14 +134,6 @@
 
 .home-clients-trigger-inline {
     min-width: 148px;
-}
-
-.home-command-page .home-tools-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.home-factfinder-panel {
-    padding-top: 1.08rem;
 }
 
 .home-factfinder-open {
@@ -870,20 +821,6 @@
 
 @media (max-width: 1280px) {
     .home-command-page .home-tools-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 1180px) {
-    .home-command-page .home-hero-panel .dashboard-command-center-top {
-        grid-template-columns: 1fr;
-    }
-
-    .home-command-page .dashboard-hero-title {
-        white-space: normal;
-    }
-
-    .home-hero-summary {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
