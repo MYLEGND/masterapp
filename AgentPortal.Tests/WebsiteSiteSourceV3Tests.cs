@@ -317,8 +317,8 @@ public sealed class WebsiteSiteSourceV3Tests
         var serialized = WebsiteSiteSource.Serialize(baseline);
         Assert.DoesNotContain("protect_runtime_form:", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("protect_template:", serialized, StringComparison.Ordinal);
-        Assert.DoesNotContain(""collectionId": "protected"", serialized, StringComparison.Ordinal);
-        Assert.DoesNotContain(""href": "/Quote/Life"", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"collectionId\": \"protected\"", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"href\": \"/Quote/Life\"", serialized, StringComparison.Ordinal);
 
         var parsed = WebsiteSiteSource.Parse(serialized, baseline, BusinessActions());
         var runtime = parsed.Document.Pages["/"].Composition[0].Children
