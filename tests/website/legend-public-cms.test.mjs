@@ -656,7 +656,8 @@ test('shared business inquiry uses Protect contact identity and two-column rows'
   assert.ok(source.includes("requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []"));
   assert.ok(publicInquiryFormCss.includes('.public-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'));
   assert.match(publicInquiryFormCss, /@media\(max-width:650px\)[\s\S]*?\.public-form-grid\{grid-template-columns:1fr;gap:14px\}/);
-  assert.match(publicCss, /@container legend-public-preview \(max-width:650px\)[\s\S]*?\.public-form-grid\{grid-template-columns:1fr;gap:14px\}/);
+  assert.doesNotMatch(publicCss, /@container legend-public-preview/);
+  assert.equal(publicCss.includes('.public-form-grid'),false);
 });
 
 test('Founder and business websites use one shared inquiry runtime with no hard-coded founder email form path',()=>{
@@ -1394,7 +1395,8 @@ test('editor preview is horizontally locked to the rendered website at every bre
     assert.equal(preview.scrollLeft,0);
     f.w.dispatchEvent(new f.w.Event('resize'));
     assert.equal(preview.scrollLeft,0);
-    assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom;[^}]*contain:inline-size/);
+    assert.match(source,/\.legend-cms-preview\{width:100vw;max-width:none;min-width:100vw;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom/);
+    assert.match(source,/@media\(max-width:800px\)[\s\S]*?\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:hidden/);
     assert.doesNotMatch(source,/window\.innerWidth > 800/);
   }finally{f.close();}
 });
