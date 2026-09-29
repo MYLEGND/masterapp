@@ -231,6 +231,36 @@
     return node.type==='text' && String(node.tag || '').toLowerCase()==='span' && classes.length===0;
   }
 
+  function canonicalizePassiveLinkNode(node) {
+    if (!node || node.type!=='link' || node.actionKey || node.dataBinding?.target==='href') return node;
+    const href=String(node.href || '').trim();
+    if (href && href!=='#') return node;
+    // A destination-less anchor is presentation, not navigation. Converting it
+    // here repairs already-persisted early-v3 placeholder links instead of
+    // teaching readiness checks to ignore dead interactions.
+    node.type='text';
+    node.tag='span';
+    node.actionKey=null;
+    node.href=null;
+    node.target=null;
+    node.signals=[];
+    return node;
+  }
+
+  function canonicalizePlatformBrandGeometry(node) {
+    if (!node || typeof node!=='object') return node;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    if (!classes.includes('brand') && !classes.includes('brand-wordmark')) return node;
+    const clear=style=>{
+      if (!style || typeof style!=='object') return;
+      delete style.widthPercent;
+      delete style.offsetXPercent;
+    };
+    clear(node.style);
+    Object.values(node.breakpointStyles || {}).forEach(clear);
+    return node;
+  }
+
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
     return input
@@ -247,6 +277,8 @@
           signals: Array.isArray(node.signals) ? node.signals : []
         };
         if(normalized.type==='image') normalized.alt=defaultImageAlt(normalized);
+        canonicalizePassiveLinkNode(normalized);
+        canonicalizePlatformBrandGeometry(normalized);
         return normalized;
       })
       // Menu toggles are reconstructed runtime chrome. They were accidentally
@@ -1416,9 +1448,10 @@
     const runtimePresentationControl = !!runtimeFormAncestor && runtimeFormAncestor !== el &&
       (tag === 'a' || tag === 'button');
     const rawHref = tag === 'a' ? el.getAttribute('href') : model.href;
+    const dynamicHref = model.dataBinding?.target === 'href' || extra?.dataBinding?.target === 'href';
     const unmanagedInteractiveControl =
       (tag === 'button' && !actionKey) ||
-      (tag === 'a' && !actionKey && !rawHref);
+      (tag === 'a' && !actionKey && !dynamicHref && (!rawHref || rawHref === '#'));
     const presentationOnlyControl = runtimePresentationControl || unmanagedInteractiveControl;
 
     let type = 'text';
@@ -1454,9 +1487,15 @@
 
     if (tag === 'nav' && (el.id === 'primary-nav' || el.hasAttribute('data-public-nav')))
       node.systemKey='primary_navigation';
-    if (el.hasAttribute('data-business-name')) node.systemBinding='business_name';
-    else if (el.hasAttribute('data-business-field'))
-      node.systemBinding='business_field:' + el.getAttribute('data-business-field');
+    const boundName = el.hasAttribute('data-business-name')
+      ? el
+      : ((type==='text' || type==='heading') ? el.querySelector?.('[data-business-name]') : null);
+    const boundField = el.hasAttribute('data-business-field')
+      ? el
+      : ((type==='text' || type==='heading') ? el.querySelector?.('[data-business-field]') : null);
+    if (boundName) node.systemBinding='business_name';
+    else if (boundField)
+      node.systemBinding='business_field:' + boundField.getAttribute('data-business-field');
 
     if (type === 'image' || type === 'video') {
       const raw = type === 'image'
@@ -2987,9 +3026,6 @@
     action.addEventListener('click',()=>void updateStore(!enabled));
     if (!enabled) {
       host.appendChild(action);
-      const help=document.createElement('small');
-      help.textContent='Adds one scoped Store page, Store/Shop navigation, cart, product catalog and centralized checkout. Products remain preserved if the Store page is later removed.';
-      host.appendChild(help);
       return;
     }
 
@@ -4688,7 +4724,9 @@
 
     document.querySelectorAll('main [data-cms-editable="true"]').forEach(node => {
       if (node.hidden) return;
-      if (Number(node.scrollWidth) > Number(node.clientWidth) + 1)
+      const overflowX=getComputedStyle(node).overflowX;
+      const visiblyClipped=overflowX==='hidden' || overflowX==='clip';
+      if (!visiblyClipped && Number(node.scrollWidth) > Number(node.clientWidth) + 1)
         checks.push({ code:'live_horizontal_overflow', severity:'warning', message:'Rendered content overflows its visible width.', elementId:node.dataset.cmsId || null });
     });
     return checks;
