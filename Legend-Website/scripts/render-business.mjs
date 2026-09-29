@@ -126,7 +126,9 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     }
 
     const routeKey=route==='/'?'home':route.slice(1).replace(/\//g,'-');
-    const renderPageKey=built?.key || (sourceRoute==='/'?'home':sourceRoute.slice(1).replace(/\//g,'-'));
+    const renderPageKey=canonicalV3
+      ? routeKey
+      : built?.key || (sourceRoute==='/'?'home':sourceRoute.slice(1).replace(/\//g,'-'));
     doc.body.dataset.pageKey=renderPageKey;
     const location=new URL('https://website.invalid'+route);
     const sandbox={window,document:doc,location,URL,URLSearchParams,console:{warn(){},error(){}},
