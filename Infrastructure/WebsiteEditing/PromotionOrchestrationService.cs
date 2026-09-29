@@ -291,7 +291,7 @@ public sealed class PromotionOrchestrationService(
         var document = ReadDocument(published.Version.DocumentJson);
         var pagePath = NormalizePagePath(request.PagePath);
         var page = document.Pages.TryGetValue(pagePath, out var found) ? found : document.Pages.GetValueOrDefault("/");
-        var image = FindHttpImage(page);
+        var image = FindHttpImage(document, pagePath);
 
         return new(
             PromotionSourceKinds.Service,
@@ -340,7 +340,7 @@ public sealed class PromotionOrchestrationService(
             title,
             description,
             baseUrl + (path == "/" ? string.Empty : path),
-            FindHttpImage(page),
+            FindHttpImage(document, path),
             null,
             businessName,
             businessType,
@@ -575,12 +575,35 @@ public sealed class PromotionOrchestrationService(
         return path;
     }
 
-    private static string? FindHttpImage(WebsitePageDocument? page)
+    private static string? FindHttpImage(WebsiteContentDocument document, string pagePath)
     {
-        if (page is null) return null;
-        var values = page.Elements.Values.Select(x => x.ImageDataUrl)
-            .Concat(page.Extras.Select(x => x.ImageDataUrl));
-        return values.FirstOrDefault(IsHttpUrl);
+        if (document.LegacyMigration is { } legacy &&
+            legacy.Pages.TryGetValue(pagePath, out var legacyPage))
+        {
+            var legacyValues = legacyPage.Elements.Values.Select(value => value.ImageDataUrl)
+                .Concat(legacyPage.Extras.Select(value => value.ImageDataUrl));
+            return legacyValues.FirstOrDefault(IsHttpUrl);
+        }
+
+        if (!document.Pages.TryGetValue(pagePath, out var page)) return null;
+
+        string? Find(IEnumerable<WebsiteCompositionNode> nodes)
+        {
+            foreach (var node in nodes ?? [])
+            {
+                if (node.Type == "image")
+                {
+                    if (IsHttpUrl(node.MediaUrl)) return node.MediaUrl;
+                    if (node.MediaAssetId.HasValue)
+                        return "/api/website-content/media/" + node.MediaAssetId.Value.ToString("D");
+                }
+                var child = Find(node.Children);
+                if (child is not null) return child;
+            }
+            return null;
+        }
+
+        return Find(page.Composition);
     }
 
     private static bool IsHttpUrl(string? value) =>
