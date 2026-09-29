@@ -2888,6 +2888,33 @@ textarea.client-create-notes {
         font-size: 0.78rem;
     }
 
+    .home-mini-tools {
+        gap: var(--legend-mobile-gap);
+        padding: 0.5rem;
+        border-radius: var(--legend-mobile-radius);
+    }
+
+    .home-mini-tools a,
+    .home-mini-tools .zoom-hub-trigger {
+        width: 38px;
+        height: 38px;
+        border-radius: 9px;
+        box-shadow: none;
+    }
+
+    .home-mini-tools .outlook-link {
+        width: 24px;
+        height: 24px;
+    }
+
+    .home-clients-trigger,
+    .home-factfinder-open {
+        min-height: var(--legend-mobile-control-height);
+        padding: 6px 9px;
+        border-radius: 8px;
+        font-size: .75rem;
+    }
+
     .home-command-page .home-tools-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
