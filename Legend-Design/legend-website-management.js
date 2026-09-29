@@ -23,8 +23,14 @@
     dialog.addEventListener('close', () => { dialog.remove(); if (parentInstance) parentInstance.show(); else trigger.focus(); }); dialog.showModal();
     let session, state, busy = false;
     const editorHref = () => {
-      const url = new URL(trigger.dataset.edit, location.origin);
-      if (trigger.dataset.scope === 'business' && session?.ticket) url.searchParams.set('legendEdit', session.ticket);
+      // The management session has already been authorized against the canonical
+      // website API. Reuse that exact ticket for editor entry instead of minting
+      // a second cross-app ticket/redirect for founder and agent scopes.
+      const destination = trigger.dataset.scope === 'business'
+        ? trigger.dataset.edit
+        : (trigger.dataset.live || trigger.dataset.edit);
+      const url = new URL(destination, location.origin);
+      if (session?.ticket) url.searchParams.set('legendEdit', session.ticket);
       return url.href;
     };
     const request = async (path, payload) => {
