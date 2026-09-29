@@ -59,7 +59,7 @@ public static class WebsiteContentSanitizer
         var root = System.Text.Json.Nodes.JsonNode.Parse(json)
             ?? throw new ArgumentException("Canonical website document is empty.");
         if (ContainsLegacyAuthority(root))
-            throw new ArgumentException("Legacy website override fields are not valid in a v3 document.");
+            throw new ArgumentException("Pre-v3 website mutation fields are not valid in a canonical v3 document.");
 
         var version = 0;
         if (root is System.Text.Json.Nodes.JsonObject rootObject &&
@@ -336,7 +336,7 @@ public static class WebsiteContentSanitizer
         };
     }
 
-    private static LegacyWebsiteElementOverride SanitizeElement(LegacyWebsiteElementOverride source, HashSet<string> breakpointKeys) => new()
+    private static LegacyWebsiteElementRecord SanitizeElement(LegacyWebsiteElementRecord source, HashSet<string> breakpointKeys) => new()
     {
         Signals = WebsiteSignalBindingPolicy.Validate(source.Signals),
         ActionKey = SanitizeActionKey(source.ActionKey),
@@ -357,7 +357,7 @@ public static class WebsiteContentSanitizer
 
     private sealed class SanitizedPageBody
     {
-        public Dictionary<string, LegacyWebsiteElementOverride> Elements { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, LegacyWebsiteElementRecord> Elements { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, int> SectionOrder { get; } = new(StringComparer.Ordinal);
         public List<LegacyWebsiteExtraComponent> Extras { get; } = new();
     }
@@ -839,7 +839,7 @@ public static class WebsiteContentSanitizer
             return null;
 
         // Existing first-party/static template assets must survive the one-time
-        // v2 -> v3 materialization exactly. New/changed user media is separately
+        // pre-v3 -> v3 materialization exactly. New/changed user media is separately
         // required to use an owner-scoped WebsiteMediaAsset ID by Site Source.
         if (url.StartsWith('/') && !url.StartsWith("//")) return url;
 
