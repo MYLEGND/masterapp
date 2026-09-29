@@ -1968,8 +1968,11 @@ test('quality inspector keeps saved-server checks separate from rendered canonic
     assert.match(liveMeta,/Live page checks \(rendered canvas\)/);
     assert.match(savedText,/Saved draft dynamic collection is unavailable/);
     assert.doesNotMatch(savedText,/missing alternative text|no working destination/);
-    assert.match(liveText,/missing alternative text/);
+    assert.doesNotMatch(liveText,/missing alternative text/);
     assert.match(liveText,/no working destination/);
+    const renderedImage=f.w.document.querySelector('main img');
+    assert.ok(renderedImage?.hasAttribute('alt'));
+    assert.equal(renderedImage.getAttribute('alt'),'');
     assert.ok(f.calls.some(call=>new URL(call.url).pathname.endsWith('/manage/quality')));
   } finally { f.close(); }
 });
