@@ -162,12 +162,12 @@ public static class WebsiteDraftQualityInspector
     }
 
     private static void InspectLegacyElements(
-        IDictionary<string, LegacyWebsiteElementOverride>? elements,
+        IDictionary<string, LegacyWebsiteElementRecord>? elements,
         IEnumerable<LegacyWebsiteExtraComponent>? extras,
         List<WebsiteQualityCheck> checks,
         string scope)
     {
-        foreach (var (id, value) in elements ?? new Dictionary<string, LegacyWebsiteElementOverride>())
+        foreach (var (id, value) in elements ?? new Dictionary<string, LegacyWebsiteElementRecord>())
         {
             if (value.Hidden == true) continue;
             if (!string.IsNullOrWhiteSpace(value.ImageDataUrl) && string.IsNullOrWhiteSpace(value.Alt))
