@@ -4690,8 +4690,15 @@
     const map={button:'cta',code:'embed'};
     const nodeType=map[type] || type;
     const tags={section:'section',text:'p',cta:'a',video:'video',form:'form',embed:'div'}; 
+    const defaultClasses={
+      section:'section',
+      cta:'btn primary',
+      image:'legend-cms-image',
+      form:'public-form legend-cms-inquiry-form',
+      embed:'legend-cms-embed'
+    };
     const node={
-      id,type:nodeType,tag:tags[nodeType] || 'div',className:null,
+      id,type:nodeType,tag:tags[nodeType] || 'div',className:defaultClasses[nodeType] || null,
       text:nodeType==='cta'?'Button':nodeType==='text'?'Your text':nodeType==='form'?'Send inquiry':nodeType==='embed'?defaultCodeBlock:'',
       title:nodeType==='form'?'Send an inquiry':null,
       actionKey:null,href:null,target:nodeType==='cta'?'_self':null,
@@ -4706,7 +4713,8 @@
       const index=selectedId ? roots.findIndex(value=>value.id===selectedId) : -1;
       if(index>=0) roots.splice(index+1,0,node); else roots.push(node);
     } else {
-      const parentId=sectionEl?.dataset?.cmsCompositionId;
+      const flowContainer=selectedFlowContainer(sectionEl);
+      const parentId=flowContainer?.dataset?.cmsCompositionId || sectionEl?.dataset?.cmsCompositionId;
       const parent=parentId ? compositionNode(parentId) : (pageState().composition || []).find(value=>value.type==='section');
       if(!parent){ alert('Select a section before adding content.'); return; }
       parent.children ||= [];
