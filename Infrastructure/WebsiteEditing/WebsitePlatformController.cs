@@ -868,7 +868,8 @@ public class WebsitePlatformController : ControllerBase
         {
             document = WebsiteContentSanitizer.Sanitize(request.Document);
         }
-        catch (ArgumentException ex) { return BadRequest(new { error = "invalid_signal_binding", message = ex.Message }); }
+        catch (ArgumentException ex) { return BadRequest(new { error = "invalid_website_document", message = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message, message = "Materialize the website into the canonical v3 graph before saving." }); }
         document.UpdatedUtc = DateTime.UtcNow;
         if (request.DraftId.HasValue || request.DraftName is not null)
         {
