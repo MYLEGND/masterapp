@@ -173,7 +173,7 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse(retargeted, source, BusinessActions()));
 
-        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(serialized)!;
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(serialized, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         var hero = model.Pages.Single(page => page.Path == "/").Composition
             .Single(node => node.Id == "home.hero");
         hero.Children.RemoveAll(node => node.Id == "home.hero.quote");
@@ -206,7 +206,7 @@ public sealed class WebsiteSiteSourceV3Tests
     {
         var baseline = CanonicalDocument();
         var source = WebsiteSiteSource.Serialize(baseline);
-        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source)!;
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
 
         var navigation = model.Shell.Header.Single(node => node.Id == "shell.primary-nav");
         model.Shell.Header.Remove(navigation);
@@ -217,7 +217,7 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse(moved, baseline, BusinessActions()));
 
-        model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source)!;
+        model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         model.Shell.Header.RemoveAll(node => node.Id == "shell.primary-nav");
         var removed = JsonSerializer.Serialize(
             model,
@@ -225,7 +225,7 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse(removed, baseline, BusinessActions()));
 
-        model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source)!;
+        model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         model.Pages.Single(page => page.Path == "/").Composition.Add(new WebsiteCompositionNode
         {
             Id = "invented-nav",
