@@ -55,14 +55,11 @@ public sealed class MetaAdsService : IMetaAdsService
         if (string.IsNullOrWhiteSpace(accountId))
             throw new InvalidOperationException("No Meta Ads account mapping found for this agent. Connect Meta Ads to bind an account.");
 
-        var version = (_config["MetaAds:ApiVersion"] ?? "v21.0").Trim();
-        if (string.IsNullOrWhiteSpace(version)) version = "v21.0";
-
         var client = _httpClientFactory.CreateClient("ResilientDefault");
-        var accountMetadata = await FetchAccountMetadataAsync(client, version, accountId, token, range, ct);
+        var accountMetadata = await FetchAccountMetadataAsync(client, accountId, token, range, ct);
 
-        var campaigns = await FetchCampaignDefinitionsAsync(client, version, accountId, token, ct);
-        var insights = await FetchCampaignInsightsAsync(client, version, accountId, token, range, accountMetadata.TimeZone, ct);
+        var campaigns = await FetchCampaignDefinitionsAsync(client, accountId, token, ct);
+        var insights = await FetchCampaignInsightsAsync(client, accountId, token, range, accountMetadata.TimeZone, ct);
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
         var websiteLeadCounts = await BuildWebsiteLeadCountsAsync(range, scope, scopedAgentIds, campaigns, ct);
         var campaignOutcomes = await BuildCampaignOutcomeCountsAsync(range, scope, scopedAgentIds, campaigns, ct);
@@ -486,10 +483,10 @@ public sealed class MetaAdsService : IMetaAdsService
         return null;
     }
 
-    private async Task<List<MetaCampaignSeed>> FetchCampaignDefinitionsAsync(HttpClient client, string version, string accountId, string token, CancellationToken ct)
+    private async Task<List<MetaCampaignSeed>> FetchCampaignDefinitionsAsync(HttpClient client, string accountId, string token, CancellationToken ct)
     {
         var rows = new List<MetaCampaignSeed>();
-        string? nextUrl = BuildCampaignsUrl(version, accountId, token);
+        string? nextUrl = BuildCampaignsUrl(accountId, token);
 
         while (!string.IsNullOrWhiteSpace(nextUrl))
         {
@@ -544,10 +541,10 @@ public sealed class MetaAdsService : IMetaAdsService
         return rows;
     }
 
-    private async Task<Dictionary<string, MetaCampaignInsight>> FetchCampaignInsightsAsync(HttpClient client, string version, string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone, CancellationToken ct)
+    private async Task<Dictionary<string, MetaCampaignInsight>> FetchCampaignInsightsAsync(HttpClient client, string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone, CancellationToken ct)
     {
         var map = new Dictionary<string, MetaCampaignInsight>(StringComparer.OrdinalIgnoreCase);
-        string? nextUrl = BuildInsightsUrl(version, accountId, token, range, reportTimeZone);
+        string? nextUrl = BuildInsightsUrl(accountId, token, range, reportTimeZone);
 
         while (!string.IsNullOrWhiteSpace(nextUrl))
         {
@@ -600,22 +597,22 @@ public sealed class MetaAdsService : IMetaAdsService
         return map;
     }
 
-    private static string BuildCampaignsUrl(string version, string accountId, string token)
+    private static string BuildCampaignsUrl(string accountId, string token)
     {
         var fields = "id,name,status,effective_status,configured_status,objective,start_time,stop_time,updated_time";
-        return $"https://graph.facebook.com/{version}/act_{accountId}/campaigns?fields={Uri.EscapeDataString(fields)}&limit=500&access_token={Uri.EscapeDataString(token)}";
+        return $"{MetaGraphEndpointAuthority.Graph($"act_{accountId}/campaigns")}?fields={Uri.EscapeDataString(fields)}&limit=500&access_token={Uri.EscapeDataString(token)}";
     }
 
-    private static string BuildInsightsUrl(string version, string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone)
+    private static string BuildInsightsUrl(string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone)
     {
         var fields = "campaign_id,campaign_name,spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions";
         var since = TimeZoneInfo.ConvertTimeFromUtc(range.FromUtc, reportTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var until = TimeZoneInfo.ConvertTimeFromUtc(range.ToUtc, reportTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var timeRange = $"{{\"since\":\"{since}\",\"until\":\"{until}\"}}";
-        return $"https://graph.facebook.com/{version}/act_{accountId}/insights?level=campaign&fields={Uri.EscapeDataString(fields)}&time_range={Uri.EscapeDataString(timeRange)}&limit=500&access_token={Uri.EscapeDataString(token)}";
+        return $"{MetaGraphEndpointAuthority.Graph($"act_{accountId}/insights")}?level=campaign&fields={Uri.EscapeDataString(fields)}&time_range={Uri.EscapeDataString(timeRange)}&limit=500&access_token={Uri.EscapeDataString(token)}";
     }
 
-    private async Task<MetaAccountMetadata> FetchAccountMetadataAsync(HttpClient client, string version, string accountId, string token, TimeRangeRequest range, CancellationToken ct)
+    private async Task<MetaAccountMetadata> FetchAccountMetadataAsync(HttpClient client, string accountId, string token, TimeRangeRequest range, CancellationToken ct)
     {
         var fallbackTimeZone = range.ViewerTimeZone ?? TimeZoneInfo.Utc;
         var metadata = new MetaAccountMetadata
@@ -628,7 +625,7 @@ public sealed class MetaAdsService : IMetaAdsService
         try
         {
             var fields = "name,timezone_name,timezone_offset_hours_utc";
-            var url = $"https://graph.facebook.com/{version}/act_{accountId}?fields={Uri.EscapeDataString(fields)}&access_token={Uri.EscapeDataString(token)}";
+            var url = $"{MetaGraphEndpointAuthority.Graph($"act_{accountId}")}?fields={Uri.EscapeDataString(fields)}&access_token={Uri.EscapeDataString(token)}";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             using var res = await client.SendAsync(req, ct);
             var json = await res.Content.ReadAsStringAsync(ct);
