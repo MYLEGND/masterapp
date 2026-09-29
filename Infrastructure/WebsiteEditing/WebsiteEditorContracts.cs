@@ -43,6 +43,8 @@ public sealed class WebsiteControlPresentation
 {
     public WebsiteVisualStyle Style { get; set; } = new();
     public Dictionary<string, WebsiteVisualStyle> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteCompositionLayout Layout { get; set; } = new();
+    public Dictionary<string, WebsiteCompositionLayout> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteAnimationBinding> Animations { get; set; } = new();
 }
 
