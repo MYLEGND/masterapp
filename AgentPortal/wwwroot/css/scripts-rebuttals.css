@@ -1811,19 +1811,6 @@ details.section{
 
     
 
-    @media (max-width: 980px){
-        
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
     #mpShell .hero-actions{
         display:grid;
         grid-template-columns: repeat(2, minmax(0, max-content));
@@ -3099,38 +3086,6 @@ details.section{
 
 
 
-    @media (max-width: 980px){
-        
-    }
-
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    @media (max-width: 1760px){
-        
-    }
-
-    @media (max-width: 1420px){
-        
-    }
-
-    @media (max-width: 1180px){
-        
-    }
-
     #rbShell .nav-card,
     #rbShell .content-card{
         background: var(--surface);
@@ -3445,74 +3400,7 @@ details.section{
 
     
 
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-/* === FinalExpense.cshtml === */
-
-    
-
-    
-
-    @media (max-width: 980px){
-        
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
+    /* === FinalExpense.cshtml === */
 
     
 
@@ -3764,81 +3652,6 @@ details.section{
     
     
 
-    @media (max-width: 980px){
-    }
-
-    @media (max-width: 760px){
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    @media (max-width: 1760px){
-        
-    }
-
-    @media (max-width: 1420px){
-        
-    }
-
-    @media (max-width: 1180px){
-        
-    }
-
-    
-
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     @keyframes rbArrowPulse{
         0%, 100%{
             box-shadow:
@@ -4055,13 +3868,7 @@ details.section{
 
     
 
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-/* === Index.cshtml === */
+    /* === Index.cshtml === */
 
     body{
         background:
@@ -4618,67 +4425,6 @@ details.section{
 
     
 
-    @media (max-width: 980px){
-        
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     /* ===== LEFT NAV — SAME COLOR LOGIC STRUCTURE AS REBUTTALS ===== */
     
 
@@ -4915,82 +4661,6 @@ details.section{
 
     
 
-    @media (max-width: 980px){
-        
-    }
-
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    @media (max-width: 1760px){
-        
-    }
-
-    @media (max-width: 1420px){
-        
-    }
-
-    @media (max-width: 1180px){
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     @keyframes rbArrowPulse{
         0%, 100%{
             box-shadow:
@@ -5221,13 +4891,7 @@ details.section{
 
     
 
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-/* === ProsperAgedMortgageProtection.cshtml === */
+    /* === ProsperAgedMortgageProtection.cshtml === */
 
     #mpShell{
         background:
