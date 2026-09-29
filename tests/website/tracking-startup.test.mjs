@@ -80,7 +80,9 @@ test('Protect layout never bootstraps production measurement or lead runtime in 
   assert.match(layout,/websiteStudioMode\s*=\s*[\s\S]*ContainsKey\("legendEdit"\)[\s\S]*ContainsKey\("legendMaterialize"\)/);
   assert.match(layout,/window\.LEGEND_WEBSITE_STUDIO_MODE\s*=/);
   assert.match(layout,/@if \(!websiteStudioMode\)[\s\S]*src="~\/js\/tracking\.js"/);
-  assert.match(layout,/@if \(!websiteStudioMode\)[\s\S]*src="~\/js\/lead-modal\.js"/);
+  assert.doesNotMatch(layout,/lead-modal\.js/);
+  assert.doesNotMatch(layout,/id="leadModal"|id="leadForm"/);
+  assert.match(layout,/type="module" src="~\/js\/public-inquiry-form\.mjs"/);
   assert.match(layout,/@if \(!websiteStudioMode\)[\s\S]*_PageHealth\.cshtml/);
 });
 
