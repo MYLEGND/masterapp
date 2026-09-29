@@ -61,9 +61,6 @@
   let dirty = false;
   let sourceEditorDirty = false;
   let autoSaveTimer = null;
-  const pendingDeletedKeys = new Set();
-
-  function markDeleted(key) { if (key) pendingDeletedKeys.add(key); }
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
@@ -3578,7 +3575,7 @@
   const undoStack = [], redoStack = [];
   const baselineNodes = new Map();
   function historySnapshot() {
-    return JSON.stringify({ document: documentState, deletedKeys: [...pendingDeletedKeys] });
+    return JSON.stringify(documentState);
   }
   function checkpoint() {
     undoStack.push(historySnapshot());
@@ -3590,9 +3587,7 @@
     to.push(historySnapshot());
     baselineNodes.forEach(({ el, parent, next }) => { if (el.dataset.cmsSignalOnly) return; if (parent) parent.insertBefore(el, next?.parentElement === parent ? next : null); const original = rememberOriginal(el); el.hidden = original.hidden; if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) { setContentText(el, original.text); } if (original.href != null) el.setAttribute('href',original.href); if (original.src != null) el.setAttribute('src',original.src); applyStyle(el, null); });
     const snapshot = JSON.parse(from.pop());
-    pendingDeletedKeys.clear();
-    for (const key of snapshot.deletedKeys || []) pendingDeletedKeys.add(key);
-    applyDocument(snapshot.document || snapshot);
+    applyDocument(snapshot);
     setSelected(null);
     markDirty();
   }
@@ -4042,33 +4037,43 @@
     const isImage=asset.contentType.startsWith('image/');
     const isVideo=asset.contentType.startsWith('video/');
     if(!isImage && !isVideo) return;
+
     if(selected && ((isImage && selected instanceof HTMLImageElement) || (isVideo && selected.tagName==='VIDEO'))){
-      checkpoint(); const override=selectedOverride(); if(!override) return;
-      if (selected.dataset.cmsCompositionId) {
-        override.mediaAssetId=asset.id || compositionMediaAssetId(asset.url);
-        override.mediaUrl=asset.url;
-        if(isImage) override.alt ||= asset.name || '';
-      } else if(isImage) override.imageDataUrl=asset.url; else override.videoUrl=asset.url;
-      applyElementOverride(selected,override); syncEditorControls(); markDirty(); return;
+      const node=selectedOverride();
+      if(!node) return;
+      checkpoint();
+      node.mediaAssetId=asset.id || compositionMediaAssetId(asset.url);
+      node.mediaUrl=asset.url;
+      if(isImage) node.alt ||= asset.name || '';
+      applyElementOverride(selected,node);
+      syncEditorControls();
+      markDirty();
+      return;
     }
-    const section=selectedSection || document.querySelector('[data-cms-section]');
-    if(!section){ alert('Select a section before inserting media.'); return; }
+
+    const section=selectedSection || document.querySelector('main [data-cms-section]');
+    const parentId=section?.dataset?.cmsCompositionId;
+    const parent=parentId ? compositionNode(parentId) : null;
+    if(!parent){alert('Select a canonical section before inserting media.');return;}
+
     checkpoint();
-    if (usesCanonicalComposition()) {
-      const parent=section.dataset.cmsCompositionId ? compositionNode(section.dataset.cmsCompositionId) : null;
-      if(!parent){ alert('Select a canonical section before inserting media.'); return; }
-      const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
-      const node={id,type:isImage?'image':'video',tag:isImage?'img':'video',className:isImage?'cms-extra-image':null,
-        mediaAssetId:asset.id || compositionMediaAssetId(asset.url),mediaUrl:asset.url,alt:isImage?(asset.name||''):null,
-        signals:[],style:{widthPercent:isImage?70:100},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]};
-      parent.children ||= []; parent.children.push(node);
-      renderCanonicalCompositionPage();
-      setSelected(findEditableElement(id)); markDirty(); return;
-    }
-    const extra={id:crypto.randomUUID(),type:isImage?'image':'video',sectionId:section.dataset.cmsSection,style:{widthPercent:isImage?70:100}};
-    if(isImage){ extra.imageDataUrl=asset.url; extra.alt=asset.name || ''; } else extra.videoUrl=asset.url;
-    pageState().extras.push(extra); const created=createExtra(extra); setSelected(created); markDirty();
+    const id=freshStableId();
+    const node={
+      id,type:isImage?'image':'video',tag:isImage?'img':'video',
+      className:isImage?'cms-extra-image':null,
+      mediaAssetId:asset.id || compositionMediaAssetId(asset.url),
+      mediaUrl:asset.url,
+      alt:isImage?(asset.name||''):null,
+      signals:[],style:{widthPercent:isImage?70:100},breakpointStyles:{},
+      layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+    };
+    parent.children ||= [];
+    parent.children.push(node);
+    renderCanonicalCompositionPage();
+    setSelected(findEditableElement(id));
+    markDirty();
   }
+
   function liveQualityChecks() {
     const checks = [];
     const main = document.querySelector('main');
@@ -4800,7 +4805,7 @@
     });
     document.getElementById('legend-cms-breakpoint-remove')?.addEventListener('click', () => {
       const current=(documentState.breakpoints||[]).find(value=>value.key===editorBreakpointKey); if (!current || current.isSystem) return;
-      checkpoint(); const key=current.key; markDeleted('breakpoint:' + key); documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
+      checkpoint(); const key=current.key; documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
       forEachDocumentOverride(override=>{ if(override?.breakpointStyles) delete override.breakpointStyles[key]; if(override?.breakpointLayouts) delete override.breakpointLayouts[key]; });
       editorBreakpointKey='base'; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
     });
@@ -5136,7 +5141,6 @@
     document.getElementById('legend-cms-favicon-remove')?.addEventListener('click', () => {
       if (!documentState.faviconImageDataUrl) return;
       checkpoint();
-      markDeleted('site:favicon');
       documentState.faviconImageDataUrl = null;
       applyFavicon(null);
       syncFaviconControls();
@@ -5168,11 +5172,7 @@
       const current=selectedOverride(false);
       if (current && (current.actionKey || current.systemKey || current.systemBinding || selected.tagName === 'FORM')) return;
       const serviceCard = businessServiceCardFor(selected);
-      if (serviceCard) {
-        if (serviceCard.dataset.cmsExtraId) { setSelected(serviceCard); removeSelected(); return; }
-        checkpoint(); const ov = ensureOverride(serviceCard.dataset.cmsId); ov.hidden = true; serviceCard.hidden = true; setSelected(null); markDirty(); return;
-      }
-      if (selected.dataset.cmsExtraId) { removeSelected(); return; }
+      if (serviceCard?.dataset?.cmsCompositionId) { setSelected(serviceCard); removeSelected(); return; }
       checkpoint(); const ov = selectedOverride(); ov.hidden = true; selected.hidden = true; setSelected(null); markDirty();
     });
     document.getElementById('legend-cms-reset')?.addEventListener('click', removeSelected);
