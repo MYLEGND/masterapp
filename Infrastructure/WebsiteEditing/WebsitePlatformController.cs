@@ -146,6 +146,7 @@ public class WebsitePlatformController : ControllerBase
                 return NotFound(new { error = "website_not_published" });
             document = new WebsiteContentDocument();
         }
+        WebsiteSystemTemplateAuthority.Apply(siteKey, document);
         var publicFacts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         IReadOnlyDictionary<string, WebsiteCollectionProjection> publicCollections = business is null
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
@@ -283,6 +284,7 @@ public class WebsitePlatformController : ControllerBase
         var business = actor.CommerceBusinessId.HasValue ? await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken) : null;
         var facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         var draft = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, draft);
         IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData = business is null
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
             : await new WebsiteCollectionProjectionService(_db).LoadCatalogAsync(business.Id, cancellationToken);
@@ -324,6 +326,7 @@ public class WebsitePlatformController : ControllerBase
 
         var state = await StateAsync(actor, cancellationToken);
         var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         if (document.LegacyMigration is not null)
             return Ok(new
             {
@@ -366,6 +369,7 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = "revision_conflict", revision = state.Revision });
 
         var baseline = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, baseline);
         if (baseline.LegacyMigration is not null)
             return Conflict(new
             {
@@ -866,6 +870,7 @@ public class WebsitePlatformController : ControllerBase
         try
         {
             document = WebsiteContentSanitizer.Sanitize(request.Document);
+            WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         }
         catch (ArgumentException ex) { return BadRequest(new { error = "invalid_website_document", message = ex.Message }); }
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message, message = "Materialize the website into the canonical v3 graph before saving." }); }
@@ -1024,6 +1029,7 @@ public class WebsitePlatformController : ControllerBase
         var state = await StateAsync(actor, cancellationToken);
         if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict" });
         var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         CommerceBusiness? business = null;
         WebsiteBusinessFacts? facts = null;
         if (actor.SiteKey == WebsiteEditorSiteKeys.Business)
