@@ -992,6 +992,21 @@
       : null;
   }
 
+  function legacyRecordAsCanonicalModel(record) {
+    const model=structuredClone(record || {});
+    if(!model.mediaUrl) model.mediaUrl=model.imageDataUrl || model.videoUrl || null;
+    delete model.imageDataUrl;
+    delete model.videoUrl;
+    delete model.placement;
+    delete model.templateSectionId;
+    delete model.sectionId;
+    return model;
+  }
+
+  function applyLegacyRecord(el, record) {
+    applyCompositionNode(el, legacyRecordAsCanonicalModel(record));
+  }
+
   function renderLegacyReusableInstance(wrapper,instance) {
     if(!wrapper || !instance) return;
     wrapper.replaceChildren();
@@ -1023,7 +1038,7 @@
       const node=buildLegacyExtraNode(item,false,instance.id);
       node.classList.add('legend-cms-reusable-child');
       parent.appendChild(node);
-      applyCompositionNode(node,item);
+      applyLegacyRecord(node,item);
     }
   }
 
@@ -1045,7 +1060,7 @@
     }
     const el=buildLegacyExtraNode(extra,true);
     section.appendChild(el);
-    applyCompositionNode(el,extra);
+    applyLegacyRecord(el,extra);
     return el;
   }
 
@@ -1079,9 +1094,9 @@
     extras.filter(extra=>extra.type!=='section').forEach(createLegacyExtra);
 
     for(const [id,legacyRecord] of Object.entries(legacyMigration.elements || {}))
-      applyCompositionNode(findEditableElement(id),legacyRecord);
+      applyLegacyRecord(findEditableElement(id),legacyRecord);
     for(const [id,legacyRecord] of Object.entries(page.elements || {}))
-      applyCompositionNode(findEditableElement(id),legacyRecord);
+      applyLegacyRecord(findEditableElement(id),legacyRecord);
 
     applyLegacySectionOrder();
     for(const [id,legacyRecord] of Object.entries(page.elements || {}))
@@ -1640,7 +1655,7 @@
     const commerceControl = !!el.dataset.legendStoreNav;
     if (el instanceof HTMLImageElement) {
       const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
-      el.src = media ? mediaUrl(media) : model.imageDataUrl ? mediaUrl(model.imageDataUrl) : (original.src || '');
+      el.src = media ? mediaUrl(media) : (original.src || '');
     } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
       const compositionHasChildren = !!el.dataset.cmsCompositionId && Array.isArray(model.children) && model.children.length > 0;
       if (!compositionHasChildren) setContentText(el, model.text != null ? model.text : (original.text || ''), model.text != null);
@@ -1653,7 +1668,7 @@
     }
     if (model.alt != null && el.tagName === 'IMG') el.alt = model.alt;
     if (el.tagName === 'VIDEO') {
-      const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : (model.mediaUrl || model.videoUrl);
+      const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
       if (media && safeUrl(media, true)) el.src = mediaUrl(media);
     }
     applyDataBinding(el, model.dataBinding);
@@ -2111,13 +2126,13 @@
     if(legacyMigration){
       const page=legacyPageState();
       for(const [id,model] of Object.entries(legacyMigration.elements || {}))
-        applyCompositionNode(findEditableElement(id),model);
+        applyLegacyRecord(findEditableElement(id),model);
       for(const [id,model] of Object.entries(page.elements || {}))
-        applyCompositionNode(findEditableElement(id),model);
+        applyLegacyRecord(findEditableElement(id),model);
       for(const extra of [...(legacyMigration.extras || []),...(page.extras || [])]){
         const node=document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]');
         if(extra.type==='reusable') renderLegacyReusableInstance(node,extra);
-        else applyCompositionNode(node,extra);
+        else applyLegacyRecord(node,extra);
       }
     }else{
       for(const root of allCanonicalRootSets())
