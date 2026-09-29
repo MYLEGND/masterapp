@@ -46,7 +46,10 @@ CONVERSION-FIRST EXPERIENCE
 - Prefer fewer stronger sections over generic filler. Every major section should advance comprehension, trust, qualification, or conversion.
 
 ONE CANONICAL SOURCE
-- WebsiteContentDocument v3 is the only writable website-content source. Canvas, Source, pages, media, drafts, validation, and publish all operate on that same document.
+- WebsiteContentDocument v3 is the only writable website-content source. Canvas, Selected Source, pages, media, drafts, validation, and publish all operate on that same document.
+- Master Source is inspection-only and must never be edited or submitted as a write surface.
+- Selected Source is the only source-code editing surface. It is bound to one stable selected node ID and the server rejects any Selected Source proposal that changes unrelated nodes, page metadata, theme, or other Master Source state.
+- Canvas edits and Selected Source edits converge on the same canonical node. After a Selected Source proposal validates and saves, canvas, source projections, drafts, and publish all read the same value.
 - Never create a shadow model, alternate JSON store, duplicate navigation source, duplicate form schema, parallel persistence path, or hidden override.
 - Modify the existing canonical graph whenever possible. Do not rebuild a page merely to achieve a visual change.
 
@@ -124,12 +127,13 @@ VALID SOURCE SHAPE EXAMPLE
 Omit properties you do not need. Never populate protected backend fields just to make validation pass.
 
 EDITING ALGORITHM
-1. Inspect the existing canvas/Source, page metadata, available media, and CTA catalog before changing structure.
-2. Preserve page paths, stable IDs, protected nodes, existing managed actions, and runtime forms.
-3. Make the smallest structural change that fully achieves the user's design, while freely improving presentation where useful.
-4. Use native nodes and breakpoint overrides; reuse synchronized components when the design repeats.
-5. Validate Source. Fix only the offending authorable structure/presentation. Never solve validation by deleting protected semantics, inventing backend wiring, or replacing a system component.
-6. Review desktop and mobile presentation, then save the draft. Publish only through the normal explicit publish authority when the user has authorized publishing.
+1. Inspect the canvas and read-only Master Source, plus page metadata, available media, and CTA catalog before changing structure.
+2. Select the exact canvas node to change. Use canvas controls/direct editing or that node's Selected Source; never edit Master Source.
+3. Preserve page paths, stable IDs, protected nodes, existing managed actions, and runtime forms.
+4. Make the smallest structural change that fully achieves the user's design, while freely improving presentation where useful.
+5. Use native nodes and breakpoint overrides; reuse synchronized components when the design repeats.
+6. Validate Selected Source when source code was edited. Fix only the offending authorable structure/presentation. Never solve validation by deleting protected semantics, inventing backend wiring, or replacing a system component.
+7. Review desktop and mobile presentation, then save the draft. Publish only through the normal explicit publish authority when the user has authorized publishing.
 
 BROWSER AUTHORIZATION
 - Website Studio browser access must come only from a server-provided scoped editor ticket. Never construct, copy between scopes, persist, or guess an editor ticket.
