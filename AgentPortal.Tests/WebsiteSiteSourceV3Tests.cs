@@ -27,17 +27,23 @@ public sealed class WebsiteSiteSourceV3Tests
             ActionKey = "cta_click",
             DeliveryMode = "analytics"
         };
+
         return new WebsiteContentDocument
         {
-            CompositionMode = "canonical",
-            Elements = new(StringComparer.Ordinal)
+            Shell = new WebsiteSharedShellDocument
             {
-                ["shell.contact"] = new WebsiteElementOverride
-                {
-                    Text = "Contact",
-                    ActionKey = "business_contact",
-                    Signals = [binding]
-                }
+                Header =
+                [
+                    new WebsiteCompositionNode
+                    {
+                        Id = "shell.contact",
+                        Type = "cta",
+                        Tag = "a",
+                        Text = "Contact",
+                        ActionKey = "business_contact",
+                        Signals = [binding]
+                    }
+                ]
             },
             Pages = new(StringComparer.Ordinal)
             {
@@ -104,17 +110,19 @@ public sealed class WebsiteSiteSourceV3Tests
 
         Assert.Contains("legend-site-source/v1", serialized, StringComparison.Ordinal);
         Assert.Contains("home.hero.quote", serialized, StringComparison.Ordinal);
+        Assert.Contains("shell.contact", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("cta_click", serialized, StringComparison.Ordinal);
 
         var parsed = WebsiteSiteSource.Parse(serialized, source, actions);
-        var quote = parsed.Document.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.quote");
+        var quote = parsed.Document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.quote");
+        var shell = Assert.Single(parsed.Document.Shell.Header);
 
         Assert.Equal("business_quote", quote.ActionKey);
         Assert.Single(quote.Signals);
         Assert.Equal("cta_click", quote.Signals[0].EventName);
-        Assert.Equal("canonical", parsed.Document.CompositionMode);
-        Assert.Empty(parsed.Document.Pages["/"].Elements);
-        Assert.Empty(parsed.Document.Pages["/"].Extras);
+        Assert.Equal("business_contact", shell.ActionKey);
+        Assert.Single(shell.Signals);
         Assert.Equal(serialized, WebsiteSiteSource.Serialize(parsed.Document));
     }
 
@@ -128,13 +136,15 @@ public sealed class WebsiteSiteSourceV3Tests
             "\"actionKey\": \"business_quote\"",
             "\"actionKey\": \"fake_backend_action\"",
             StringComparison.Ordinal);
-        Assert.Throws<ArgumentException>(() => WebsiteSiteSource.Parse(fakeAction, source, BusinessActions()));
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(fakeAction, source, BusinessActions()));
 
         var fakeForm = serialized.Replace(
             "\"systemKey\": \"canonical_inquiry\"",
             "\"systemKey\": \"custom_submit\"",
             StringComparison.Ordinal);
-        Assert.Throws<ArgumentException>(() => WebsiteSiteSource.Parse(fakeForm, source, BusinessActions()));
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(fakeForm, source, BusinessActions()));
     }
 
     [Fact]
@@ -147,48 +157,20 @@ public sealed class WebsiteSiteSourceV3Tests
             "\"actionKey\": \"business_quote\"",
             "\"actionKey\": \"business_contact\"",
             StringComparison.Ordinal);
-        Assert.Throws<ArgumentException>(() => WebsiteSiteSource.Parse(retargeted, source, BusinessActions()));
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(retargeted, source, BusinessActions()));
 
         var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(serialized)!;
-        var hero = model.Pages.Single(page => page.Path == "/").Composition.Single(node => node.Id == "home.hero");
+        var hero = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
         hero.Children.RemoveAll(node => node.Id == "home.hero.quote");
-        var removed = JsonSerializer.Serialize(model, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
 
-        Assert.Throws<ArgumentException>(() => WebsiteSiteSource.Parse(removed, source, BusinessActions()));
-    }
+        var removed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
 
-    [Fact]
-    public void CanonicalEmptyPage_DoesNotResurrectLegacyTemplateOverrides()
-    {
-        var document = CanonicalDocument();
-        document.Pages["/empty"] = new WebsitePageDocument
-        {
-            Title = "Empty",
-            TemplatePath = "/about",
-            Navigation = new WebsitePageNavigation { Label = "Empty", Order = 20 },
-            Elements = new(StringComparer.Ordinal)
-            {
-                ["legacy"] = new WebsiteElementOverride { Text = "Must not return" }
-            },
-            Extras =
-            [
-                new WebsiteExtraComponent
-                {
-                    Id = "legacy-extra",
-                    SectionId = "legacy",
-                    Type = "text",
-                    Text = "Must not return"
-                }
-            ],
-            Composition = []
-        };
-
-        var clean = WebsiteContentSanitizer.Sanitize(document);
-
-        Assert.Null(clean.Pages["/empty"].TemplatePath);
-        Assert.Empty(clean.Pages["/empty"].Elements);
-        Assert.Empty(clean.Pages["/empty"].Extras);
-        Assert.Empty(clean.Pages["/empty"].Composition);
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(removed, source, BusinessActions()));
     }
 
     [Fact]
@@ -201,40 +183,21 @@ public sealed class WebsiteSiteSourceV3Tests
             "\"mediaUrl\": \"https://outside.example/image.jpg\"",
             StringComparison.Ordinal);
 
-        Assert.Throws<ArgumentException>(() => WebsiteSiteSource.Parse(changed, source, BusinessActions()));
-    }
-
-    [Fact]
-    public void Sanitizer_RetiresLegacyPageStoresWhenCompositionExists()
-    {
-        var document = CanonicalDocument();
-        document.Pages["/"].TemplatePath = "/";
-        document.Pages["/"].Elements["legacy"] = new WebsiteElementOverride { Text = "legacy" };
-        document.Pages["/"].Extras.Add(new WebsiteExtraComponent
-        {
-            Id = "legacy-extra",
-            SectionId = "legacy-section",
-            Type = "text",
-            Text = "legacy"
-        });
-
-        var clean = WebsiteContentSanitizer.Sanitize(document);
-
-        Assert.Null(clean.Pages["/"].TemplatePath);
-        Assert.Empty(clean.Pages["/"].Elements);
-        Assert.Empty(clean.Pages["/"].Extras);
-        Assert.NotEmpty(clean.Pages["/"].Composition);
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(changed, source, BusinessActions()));
     }
 
     [Fact]
     public void Sanitizer_PreservesExistingRelativeStaticMediaDuringMaterialization()
     {
         var document = CanonicalDocument();
-        var image = document.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.image");
+        var image = document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.image");
         image.MediaUrl = "/assets/client-hero.webp";
 
         var clean = WebsiteContentSanitizer.Sanitize(document);
-        var preserved = clean.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.image");
+        var preserved = clean.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.image");
 
         Assert.Equal("/assets/client-hero.webp", preserved.MediaUrl);
     }
@@ -244,7 +207,8 @@ public sealed class WebsiteSiteSourceV3Tests
     {
         var document = WebsiteContentSanitizer.Sanitize(CanonicalDocument());
         var error = WebsiteCallToActionCatalog.PrepareForPublish(document, BusinessActions());
-        var quote = document.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.quote");
+        var quote = document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.quote");
 
         Assert.Null(error);
         Assert.Equal("business_quote", quote.ActionKey);
