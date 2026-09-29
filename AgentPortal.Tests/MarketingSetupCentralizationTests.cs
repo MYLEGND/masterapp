@@ -221,10 +221,12 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("TryImportFounderApplicationConnectionAsync", authority, StringComparison.Ordinal);
         Assert.Contains("IMicrosoftCalendarConnectionAuthority", registration, StringComparison.Ordinal);
 
-        Assert.Contains("calendarLinked = calendarConnection.Connected", controller, StringComparison.Ordinal);
+        Assert.Contains("calendarLinked = runtime.Calendar.ProviderVerified", controller, StringComparison.Ordinal);
+        Assert.Contains("var runtime = setup.RuntimeHealth;", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"calendar-connect\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"calendar-disconnect\")]", controller, StringComparison.Ordinal);
-        Assert.Contains("calendarLinked = calendarConnection.Connected", business, StringComparison.Ordinal);
+        Assert.Contains("calendarLinked = runtime.Calendar.ProviderVerified", business, StringComparison.Ordinal);
+        Assert.Contains("var runtime = setup.RuntimeHealth;", business, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/calendar-connect\")]", business, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/calendar-disconnect\")]", business, StringComparison.Ordinal);
 
