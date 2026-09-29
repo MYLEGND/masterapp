@@ -1328,28 +1328,38 @@
       };
     }
 
+    const runtimeFormAncestor = SITE_KEY === 'protect'
+      ? el.closest?.('form[data-form-key]:not([data-website-inquiry])')
+      : null;
+    const runtimePresentationControl = !!runtimeFormAncestor && runtimeFormAncestor !== el &&
+      (tag === 'a' || tag === 'button');
+
     let type = 'text';
     if (tag === 'section') type='section';
     else if (['div','article','header','footer','nav','ul','ol','fieldset'].includes(tag)) type='container';
     else if (/^h[1-6]$/.test(tag)) type='heading';
-    else if (tag === 'a' || tag === 'button') type=actionKey ? 'cta' : 'link';
+    else if (tag === 'a' || tag === 'button') type=runtimePresentationControl ? 'text' : (actionKey ? 'cta' : 'link');
     else if (tag === 'img') type='image';
     else if (tag === 'video') type='video';
 
+    // Internal runtime-form controls are presentation projections only. Their
+    // actual button/link behavior stays on the still-mounted server template,
+    // so V3 never turns Next/Back/Submit controls into publishable free links.
+    const projectedTag = runtimePresentationControl ? 'span' : tag;
     const node = {
-      id, type, tag, className:cleanCompositionClassName(el),
-      actionKey:actionKey || null,
-      href:(tag === 'a' ? el.getAttribute('href') : model.href) || null,
-      target:(tag === 'a' ? el.getAttribute('target') : model.target) || null,
+      id, type, tag:projectedTag, className:cleanCompositionClassName(el),
+      actionKey:runtimePresentationControl ? null : (actionKey || null),
+      href:runtimePresentationControl ? null : ((tag === 'a' ? el.getAttribute('href') : model.href) || null),
+      target:runtimePresentationControl ? null : ((tag === 'a' ? el.getAttribute('target') : model.target) || null),
       alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || model.alt || null) : null,
       hidden:el.hidden === true ? true : (model.hidden === false ? false : null),
-      signals:cloneCanonicalValue(model.signals || []),
+      signals:runtimePresentationControl ? [] : cloneCanonicalValue(model.signals || []),
       style:cloneCanonicalValue(model.style || {}),
       breakpointStyles:cloneCanonicalValue(model.breakpointStyles || {}),
       layout:cloneCanonicalValue(model.layout || {}),
       breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || {}),
       animations:cloneCanonicalValue(model.animations || []),
-      dataBinding:cloneCanonicalValue(model.dataBinding || null),
+      dataBinding:runtimePresentationControl ? null : cloneCanonicalValue(model.dataBinding || null),
       children:[]
     };
 
