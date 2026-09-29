@@ -521,24 +521,33 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     public async Task<IActionResult> MetaConnectionStatus(Guid businessId, CancellationToken cancellationToken = default)
     {
         if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
+        var owner = MarketingOwnerScope.Business(businessId);
         var store = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
-        var row = await store.GetStatusAsync(MarketingOwnerScope.Business(businessId), cancellationToken);
-        var connected = row is not null &&
-            !row.DisconnectedUtc.HasValue &&
-            !string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext) &&
-            (!row.AccessTokenExpiresUtc.HasValue || row.AccessTokenExpiresUtc > DateTime.UtcNow);
+        var row = await store.GetStatusAsync(owner, cancellationToken);
+        var runtime = await HttpContext.RequestServices
+            .GetRequiredService<Infrastructure.Analytics.IPlatformConnectionHealthAuthority>()
+            .ReadAsync(owner, cancellationToken);
+        var connected = runtime.Meta.ProviderVerified;
         return Json(new
         {
             connected,
+            storedConnected = runtime.Meta.StoredConnected,
             requiresAgentScope = false,
-            accountId = row?.AdAccountId,
-            accountName = row?.AdAccountName,
+            accountId = runtime.Meta.AccountId ?? row?.AdAccountId,
+            accountName = runtime.Meta.AccountName ?? row?.AdAccountName,
             businessId = row?.MetaBusinessManagerId,
             businessName = row?.MetaBusinessManagerName,
             metaUserName = row?.MetaUserName,
             connectedUtc = row?.ConnectedUtc,
             accessTokenExpiresUtc = row?.AccessTokenExpiresUtc,
-            message = connected ? null : "Meta Ads not connected for this business."
+            providerStatus = runtime.Meta.Status,
+            providerCheckedUtc = runtime.Meta.CheckedUtc,
+            providerHttpStatus = runtime.Meta.HttpStatusCode,
+            message = connected
+                ? null
+                : runtime.Meta.StoredConnected
+                    ? $"Meta Ads connection needs attention ({runtime.Meta.Status})."
+                    : "Meta Ads not connected for this business."
         });
     }
 
