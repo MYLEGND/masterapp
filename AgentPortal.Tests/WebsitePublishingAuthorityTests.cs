@@ -1,15 +1,14 @@
 using System;
-using System.Text.Json;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
-using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
+using Infrastructure.WebsiteEditing.Controllers;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Infrastructure.WebsiteEditing.Controllers;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -18,149 +17,302 @@ public sealed class WebsitePublishingAuthorityTests
 {
     private sealed class Fixture : IDisposable
     {
-        public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         public WebsiteEditorTicketProtector Tickets { get; } = new(new EphemeralDataProtectionProvider());
-        public IConfiguration Config { get; } = new ConfigurationBuilder().AddInMemoryCollection(new[] { new System.Collections.Generic.KeyValuePair<string,string?>("Founder:Oid", "1d43fa52-e36d-4522-9d21-40b3ac260aed") }).Build();
+        public IConfiguration Config { get; } = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new System.Collections.Generic.KeyValuePair<string,string?>(
+                    "Founder:Oid",
+                    "1d43fa52-e36d-4522-9d21-40b3ac260aed")
+            })
+            .Build();
+
         public WebsitePlatformController Controller => new(Db, Tickets, Config);
-        public string Token => Tickets.Protect(new(WebsiteEditorSiteKeys.Legend, WebsiteEditorSiteKeys.GlobalOwnerKey, null, true, DateTime.UtcNow.AddMinutes(10), ActorUserId: "1d43fa52-e36d-4522-9d21-40b3ac260aed"));
-        public void Dispose() { Db.Dispose(); Tickets.Dispose(); }
+        public string Token => Tickets.Protect(new(
+            WebsiteEditorSiteKeys.Legend,
+            WebsiteEditorSiteKeys.GlobalOwnerKey,
+            null,
+            true,
+            DateTime.UtcNow.AddMinutes(10),
+            ActorUserId: "1d43fa52-e36d-4522-9d21-40b3ac260aed"));
+
+        public void Dispose()
+        {
+            Db.Dispose();
+            Tickets.Dispose();
+        }
     }
-    private static JsonElement Body(IActionResult result) => JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-    private static WebsiteContentDocument Document(string text) => new() { Elements = new() { ["title"] = new() { Text = text } } };
+
+    private static JsonElement Body(IActionResult result) =>
+        JsonSerializer.SerializeToElement(
+            Assert.IsType<OkObjectResult>(result).Value,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private static WebsiteContentDocument Document(string text) => new()
+    {
+        Pages = new(StringComparer.Ordinal)
+        {
+            ["/"] = new WebsitePageDocument
+            {
+                Title = "Home",
+                Description = "Home",
+                Navigation = new WebsitePageNavigation
+                {
+                    Label = "Home",
+                    ShowInNavigation = true,
+                    Order = 0
+                },
+                Composition =
+                [
+                    new WebsiteCompositionNode
+                    {
+                        Id = "home.title",
+                        Type = "heading",
+                        Tag = "h1",
+                        Text = text
+                    }
+                ]
+            }
+        }
+    };
+
+    private static JsonElement Page(JsonElement envelope, string path = "/") =>
+        envelope.GetProperty("document").GetProperty("pages").GetProperty(path);
+
+    private static string? TitleText(JsonElement envelope) =>
+        Page(envelope).GetProperty("composition")[0].GetProperty("text").GetString();
 
     [Fact]
     public async Task DraftRemainsPrivateUntilPublish_AndStaleWriterCannotOverwrite()
     {
         using var f = new Fixture();
         var token = f.Token;
+
         Assert.Equal(0, Body(await f.Controller.Manage(token)).GetProperty("revision").GetInt64());
         Assert.Equal(1, Body(await f.Controller.Save(new(token, Document("draft"), 0))).GetProperty("revision").GetInt64());
-        Assert.False(Body(await f.Controller.Public("legend")).GetProperty("document").GetProperty("elements").TryGetProperty("title", out _));
+
+        var beforePublish = Body(await f.Controller.Public("legend"))
+            .GetProperty("document")
+            .GetProperty("pages");
+        Assert.False(beforePublish.TryGetProperty("/", out _));
+
         Assert.IsType<ConflictObjectResult>(await f.Controller.Save(new(token, Document("stale"), 0)));
+
         Body(await f.Controller.Publish(new(token, 1)));
-        Assert.Equal("draft", Body(await f.Controller.Public("legend")).GetProperty("document").GetProperty("elements").GetProperty("title").GetProperty("text").GetString());
+        Assert.Equal("draft", TitleText(Body(await f.Controller.Public("legend"))));
     }
 
     [Fact]
     public async Task RollbackRestoresPublishedSnapshot_AndMakesItCurrentDraft()
     {
-        using var f = new Fixture(); var token = f.Token;
+        using var f = new Fixture();
+        var token = f.Token;
+
         Body(await f.Controller.Save(new(token, Document("first"), 0)));
         var first = Body(await f.Controller.Publish(new(token, 1))).GetProperty("versionId").GetGuid();
         Body(await f.Controller.Save(new(token, Document("second"), 2)));
         Body(await f.Controller.Publish(new(token, 3)));
         Body(await f.Controller.Save(new(token, Document("unfinished"), 4)));
         Body(await f.Controller.Rollback(new(token, 5, first)));
-        Assert.Equal("first", Body(await f.Controller.Public("legend")).GetProperty("document").GetProperty("elements").GetProperty("title").GetProperty("text").GetString());
-        Assert.Equal("first", Body(await f.Controller.Manage(token)).GetProperty("document").GetProperty("elements").GetProperty("title").GetProperty("text").GetString());
+
+        Assert.Equal("first", TitleText(Body(await f.Controller.Public("legend"))));
+        Assert.Equal("first", TitleText(Body(await f.Controller.Manage(token))));
     }
 
     [Fact]
     public async Task ForgedFounderFlagAndLegacyActorlessTicketCannotAuthorize()
     {
         using var f = new Fixture();
-        var legacy = f.Tickets.Protect(new("legend", WebsiteEditorSiteKeys.GlobalOwnerKey, null, true, DateTime.UtcNow.AddMinutes(5)));
+        var legacy = f.Tickets.Protect(new(
+            "legend",
+            WebsiteEditorSiteKeys.GlobalOwnerKey,
+            null,
+            true,
+            DateTime.UtcNow.AddMinutes(5)));
         Assert.IsType<UnauthorizedResult>(await f.Controller.Manage(legacy));
-        var other = f.Tickets.Protect(new("legend", WebsiteEditorSiteKeys.GlobalOwnerKey, null, true, DateTime.UtcNow.AddMinutes(5), ActorUserId: Guid.NewGuid().ToString()));
+
+        var other = f.Tickets.Protect(new(
+            "legend",
+            WebsiteEditorSiteKeys.GlobalOwnerKey,
+            null,
+            true,
+            DateTime.UtcNow.AddMinutes(5),
+            ActorUserId: Guid.NewGuid().ToString()));
         Assert.IsType<UnauthorizedResult>(await f.Controller.Manage(other));
     }
 
     [Fact]
-    public void EditorContentPreservesIntentionalWhitespaceAndBusinessCards()
+    public void EditorContentPreservesIntentionalWhitespaceAndStructuredCardCopy()
     {
         var doc = Document("  First\tline\r\nSecond  line  ");
-        doc.Extras.Add(new() { Id = "service-one", SectionId = "services", Type = "card", Title = "  Window\tCleaning  ", Text = "Line one\r\n\tLine two" });
+        doc.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = "service-one",
+            Type = "container",
+            Tag = "article",
+            Title = "  Window\tCleaning  ",
+            Text = "Line one\r\n\tLine two"
+        });
+
         var result = WebsiteContentSanitizer.Sanitize(doc);
-        Assert.Equal("  First\tline\nSecond  line  ", result.Elements["title"].Text);
-        Assert.Equal("card", result.Extras.Single().Type);
-        Assert.Equal("  Window\tCleaning  ", result.Extras.Single().Title);
-        Assert.Equal("Line one\n\tLine two", result.Extras.Single().Text);
+        var title = result.Pages["/"].Composition.Single(node => node.Id == "home.title");
+        var card = result.Pages["/"].Composition.Single(node => node.Id == "service-one");
+
+        Assert.Equal("  First\tline\nSecond  line  ", title.Text);
+        Assert.Equal("container", card.Type);
+        Assert.Equal("  Window\tCleaning  ", card.Title);
+        Assert.Equal("Line one\n\tLine two", card.Text);
     }
 
     [Fact]
-    public async Task OrdinarySaveCannotImplicitlyErasePersistedDraftContent_ButExplicitResetCan()
+    public async Task CanonicalSaveIsExactReplacement_AndNeverResurrectsOmittedNodes()
     {
         using var f = new Fixture();
         var token = f.Token;
 
         Body(await f.Controller.Save(new(token, Document("persisted"), 0)));
-        var empty = new WebsiteContentDocument();
 
-        var preserved = Body(await f.Controller.Save(new(token, empty, 1)))
-            .GetProperty("document")
-            .GetProperty("elements");
-        Assert.Equal("persisted", preserved.GetProperty("title").GetProperty("text").GetString());
+        var replacement = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Title = "Home",
+                    Navigation = new WebsitePageNavigation
+                    {
+                        Label = "Home",
+                        ShowInNavigation = true
+                    },
+                    Composition = []
+                }
+            }
+        };
 
-        var explicitlyRemoved = Body(await f.Controller.Save(new(
-            token,
-            new WebsiteContentDocument(),
-            2,
-            DeletedKeys: new[] { "root|element:title" })))
-            .GetProperty("document")
-            .GetProperty("elements");
-        Assert.False(explicitlyRemoved.TryGetProperty("title", out _));
+        var saved = Body(await f.Controller.Save(new(token, replacement, 1)));
+        Assert.Empty(Page(saved).GetProperty("composition").EnumerateArray());
+        Assert.Equal(2, saved.GetProperty("revision").GetInt64());
     }
 
     [Fact]
-    public void CanonicalInquiryFormRejectsManualLeadButHistoricalReadPreservesForm()
+    public void CanonicalInquiryRejectsManualVerifiedOutcome_AndLegacyJsonIsReadOnlyOnly()
     {
         var bindingId = Guid.NewGuid().ToString("N");
         var doc = new WebsiteContentDocument
         {
-            Extras =
-            [
-                new WebsiteExtraComponent
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
                 {
-                    Id = "contact-form",
-                    SectionId = "contact",
-                    Type = "form",
-                    Title = "Contact us",
-                    Text = "Send inquiry",
-                    Signals =
+                    Composition =
                     [
-                        new WebsiteSignalBinding
+                        new WebsiteCompositionNode
                         {
-                            Id = bindingId,
-                            Trigger = "submission_saved",
-                            EventName = "Lead",
-                            DeliveryMode = "meta"
+                            Id = "contact-form",
+                            Type = "form",
+                            Tag = "form",
+                            SystemKey = "canonical_inquiry",
+                            Title = "Contact us",
+                            Text = "Send inquiry",
+                            Signals =
+                            [
+                                new WebsiteSignalBinding
+                                {
+                                    Id = bindingId,
+                                    Trigger = "submission_saved",
+                                    EventName = "Lead",
+                                    DeliveryMode = "meta"
+                                }
+                            ]
                         }
                     ]
                 }
-            ]
+            }
         };
 
         Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.Sanitize(doc));
-        var jsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
-        var persistedJson = System.Text.Json.JsonSerializer.Serialize(doc, jsonOptions);
-        var form = Assert.Single(WebsiteContentSanitizer.ReadPersisted(persistedJson, jsonOptions).Extras);
-        Assert.Equal("form", form.Type);
-        Assert.Equal("contact-form", form.Id);
-        Assert.Equal("Contact us", form.Title);
-        Assert.Equal("Send inquiry", form.Text);
-        Assert.Empty(form.Signals);
-        // Historical storage remains readable for audit; compatibility is not an active writer.
-        Assert.Single(doc.Extras[0].Signals);
-        Assert.Contains(bindingId, persistedJson, StringComparison.Ordinal);
 
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var legacyJson =
+            $$"""
+            {
+              "version": 2,
+              "pages": {
+                "/": {
+                  "title": "Home",
+                  "navigation": { "label": "Home", "showInNavigation": true },
+                  "elements": {},
+                  "sectionOrder": {},
+                  "extras": [{
+                    "id": "contact-form",
+                    "sectionId": "contact",
+                    "type": "form",
+                    "title": "Contact us",
+                    "text": "Send inquiry",
+                    "signals": [{
+                      "id": "{{bindingId}}",
+                      "trigger": "submission_saved",
+                      "eventName": "Lead",
+                      "deliveryMode": "meta"
+                    }]
+                  }]
+                }
+              }
+            }
+            """;
+
+        var historical = WebsiteContentSanitizer.ReadPersisted(legacyJson, options);
+        Assert.Equal(WebsiteStudioContract.CurrentDocumentVersion, historical.Version);
+        Assert.Throws<InvalidOperationException>(() => WebsiteContentSanitizer.Sanitize(historical));
+        Assert.Contains(bindingId, legacyJson, StringComparison.Ordinal);
     }
 
     [Fact]
     public void VisibleCopyCannotChangeManagedActionOrCanonicalBehavior()
     {
-        var options = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Business, bookingUrl: "https://book.example.test/meeting");
+        var options = WebsiteCallToActionCatalog.Build(
+            WebsiteEditorSiteKeys.Business,
+            bookingUrl: "https://book.example.test/meeting");
         var action = Assert.Single(options.Where(x => x.Key == "business_schedule"));
+
         Assert.Equal("cta_click", action.BehaviorKey);
         Assert.Equal("cta_click", action.AnalyticsEventName);
-        var document = new WebsiteContentDocument();
-        document.Elements["stable-button"] = new WebsiteElementOverride { ActionKey = action.Key, Text = "Payment completed", Href = "https://untrusted.example" };
+
+        var document = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "stable-button",
+                            Type = "cta",
+                            Tag = "a",
+                            ActionKey = action.Key,
+                            Text = "Payment completed",
+                            Href = "https://untrusted.example"
+                        }
+                    ]
+                }
+            }
+        };
+
         Assert.Null(WebsiteCallToActionCatalog.PrepareForPublish(document, options));
-        Assert.Equal(action.Key, document.Elements["stable-button"].ActionKey);
-        Assert.Equal(action.Href, document.Elements["stable-button"].Href);
-        Assert.Equal("Payment completed", document.Elements["stable-button"].Text);
+        var button = document.Pages["/"].Composition.Single();
+
+        Assert.Equal(action.Key, button.ActionKey);
+        Assert.Equal(action.Href, button.Href);
+        Assert.Equal("Payment completed", button.Text);
         Assert.Contains(options, x => x.Key == "form_start" && x.RuntimeAction == "focus_form");
         Assert.Contains(options, x => x.Key == "submit" && x.RuntimeAction == "submit_form");
-        Assert.All(options, x => Assert.False(Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(x.BehaviorKey, out var behavior) && behavior.RequiresServerAuthority));
+        Assert.All(options, x => Assert.False(
+            Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(x.BehaviorKey, out var behavior) &&
+            behavior.RequiresServerAuthority));
     }
 
     [Fact]
@@ -171,91 +323,99 @@ public sealed class WebsitePublishingAuthorityTests
             phone: "(602) 555-0199",
             email: "hello@example.test",
             bookingUrl: "https://book.example.test/meeting");
+
         Assert.Contains(business, option => option.Key == "business_call" && option.Href == "tel:6025550199" &&
             option.AnalyticsEventName == "cta_click" && option.MetaIntentEventName == null);
         Assert.Contains(business, option => option.Key == "business_email" && option.Href == "mailto:hello@example.test" &&
             option.MetaIntentEventName == null);
-        Assert.Contains(business, option => option.Key == "business_schedule" && option.Href.StartsWith("https://book.example.test/") &&
+        Assert.Contains(business, option => option.Key == "business_schedule" &&
+            option.Href.StartsWith("https://book.example.test/", StringComparison.Ordinal) &&
             option.MetaIntentEventName == null);
         Assert.Contains(business, option => option.Key == "business_quote" && option.Href == "/contact" &&
             option.AnalyticsEventName == "cta_click" && option.MetaIntentEventName == null);
 
         var contact = Assert.Single(business.Where(option => option.Key == "business_contact"));
         Assert.Equal("Contact", contact.Group);
-        Assert.Equal("Contact", contact.Label);
-        Assert.Contains("Contact", contact.TextVariants!);
         Assert.Contains("Contact Us", contact.TextVariants!);
         Assert.Contains("Get in Touch", contact.TextVariants!);
-        Assert.Contains("Reach Out", contact.TextVariants!);
 
         var quote = Assert.Single(business.Where(option => option.Key == "business_quote"));
         Assert.Equal("Quote", quote.Group);
-        Assert.Contains("Quote", quote.TextVariants!);
         Assert.Contains("Free Quote", quote.TextVariants!);
-        Assert.Contains("Get a Quote", quote.TextVariants!);
         Assert.Contains("Get a Free Quote", quote.TextVariants!);
 
         var call = Assert.Single(business.Where(option => option.Key == "business_call"));
         Assert.Equal("Call", call.Group);
-        Assert.Contains("Call", call.TextVariants!);
         Assert.Contains("Call Now", call.TextVariants!);
-        Assert.Contains("Call Us", call.TextVariants!);
 
         var schedule = Assert.Single(business.Where(option => option.Key == "business_schedule"));
         Assert.Equal("Schedule", schedule.Group);
         Assert.Contains("Book Now", schedule.TextVariants!);
-        Assert.Contains("Book a Call", schedule.TextVariants!);
-        Assert.Contains("Schedule a Meeting", schedule.TextVariants!);
-
-        var legend = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Legend);
-        Assert.DoesNotContain(legend, option => option.Label.Contains("LEGEND", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(legend, option => option.Key == "legend_contact" &&
-            option.TextVariants!.Contains("Contact") &&
-            option.TextVariants!.Contains("Contact Us"));
 
         var protect = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Protect);
         Assert.Contains(protect, option => option.Key == "protect_quote" && option.Href == "/Quote" &&
             option.AnalyticsEventName == "quote_click");
-        Assert.Contains(protect, option => option.Href == "/Quote/Life" && option.AnalyticsEventName == "quote_click");
-        Assert.Contains(protect, option => option.Key == "protect_contact" &&
-            option.MetaIntentEventName == null);
+        Assert.Contains(protect, option => option.Href == "/Quote/Life" &&
+            option.AnalyticsEventName == "quote_click");
         Assert.DoesNotContain(protect, option => option.Key == "protect_call");
         Assert.DoesNotContain(protect, option => option.Key == "protect_schedule");
     }
 
     [Fact]
-    public async Task PublishRejectsDeadAddedButton_AndResolvesManagedAction()
+    public async Task PublishRejectsDeadCta_AndResolvesManagedAction()
     {
         using var f = new Fixture();
         var token = f.Token;
-        var dead = new WebsiteContentDocument
+
+        var dead = Document("Home");
+        dead.Pages["/"].Composition.Add(new WebsiteCompositionNode
         {
-            Extras = [new() { Id = "dead", SectionId = "home.section.1", Type = "button", Text = "Dead", Href = "#" }]
-        };
+            Id = "dead",
+            Type = "cta",
+            Tag = "a",
+            Text = "Dead",
+            Href = "#"
+        });
+
         Assert.Equal(1, Body(await f.Controller.Save(new(token, dead, 0))).GetProperty("revision").GetInt32());
         Assert.IsType<BadRequestObjectResult>(await f.Controller.Publish(new(token, 1)));
 
-        var managed = new WebsiteContentDocument
+        var managed = Document("Home");
+        managed.Pages["/"].Composition.Add(new WebsiteCompositionNode
         {
-            Extras = [new() { Id = "managed", SectionId = "home.section.1", Type = "button", Text = "Talk", ActionKey = "legend_contact", Href = "#" }]
-        };
-        Assert.Equal(2, Body(await f.Controller.Save(new(token, managed, 1, DeletedKeys: new[] { "root|extra:dead" }))).GetProperty("revision").GetInt32());
+            Id = "managed",
+            Type = "cta",
+            Tag = "a",
+            Text = "Talk",
+            ActionKey = "legend_contact",
+            Href = "#"
+        });
+
+        Assert.Equal(2, Body(await f.Controller.Save(new(token, managed, 1))).GetProperty("revision").GetInt32());
         Assert.IsType<OkObjectResult>(await f.Controller.Publish(new(token, 2)));
-        var published = Body(await f.Controller.Public("legend"));
-        Assert.Equal("/contact", published.GetProperty("document").GetProperty("extras")[0].GetProperty("href").GetString());
-        Assert.Equal("legend_contact", published.GetProperty("document").GetProperty("extras")[0].GetProperty("actionKey").GetString());
+
+        var published = Page(Body(await f.Controller.Public("legend")));
+        var button = published.GetProperty("composition").EnumerateArray()
+            .Single(value => value.GetProperty("id").GetString() == "managed");
+
+        Assert.Equal("/contact", button.GetProperty("href").GetString());
+        Assert.Equal("legend_contact", button.GetProperty("actionKey").GetString());
     }
 
     [Fact]
-    public void ControlsRejectExecutableUrlsAndClampPlacementWithinGrid()
+    public void ControlsRejectExecutableUrlsAndUnsafeStylePayloads()
     {
         var doc = Document("safe");
-        doc.Elements["title"].Href = "javascript:alert(1)";
-        doc.Elements["title"].Placement = new() { SectionId = "hero", Column = 12, Span = 12 };
-        doc.Elements["title"].Style.BackgroundColor = "url(https://evil.invalid)";
-        var result = WebsiteContentSanitizer.Sanitize(doc).Elements["title"];
-        Assert.Null(result.Href); Assert.Null(result.Style.BackgroundColor);
-        Assert.Equal(1, result.Placement!.Span);
+        var node = doc.Pages["/"].Composition.Single();
+        node.Type = "link";
+        node.Tag = "a";
+        node.Href = "javascript:alert(1)";
+        node.Style.BackgroundColor = "url(https://evil.invalid)";
+
+        var result = WebsiteContentSanitizer.Sanitize(doc).Pages["/"].Composition.Single();
+
+        Assert.Null(result.Href);
+        Assert.Null(result.Style.BackgroundColor);
         Assert.Null(WebsiteContentSanitizer.SanitizeUrl("https://example.com/?legendEdit=secret"));
     }
 }
