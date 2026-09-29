@@ -53,7 +53,7 @@ public sealed class WebsiteContentDocument
     // Read-only migration envelope. Never serialized into v3, never accepted by
     // save/publish, and removed immediately after the browser materializes v3.
     [JsonIgnore]
-    public LegacyWebsiteContentDocument? LegacyMigration { get; set; }
+    internal LegacyWebsiteContentDocument? LegacyMigration { get; set; }
 }
 
 public sealed class WebsiteSharedShellDocument
