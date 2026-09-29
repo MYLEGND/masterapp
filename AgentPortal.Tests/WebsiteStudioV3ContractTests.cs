@@ -35,18 +35,18 @@ public sealed class WebsiteStudioV3ContractTests
                             Type = "heading",
                             Tag = "h1",
                             Text = "Existing text",
-                            Style = new WebsiteStyleOverride { WidthPercent = 80 },
+                            Style = new WebsiteVisualStyle { WidthPercent = 80 },
                             BreakpointStyles = new(StringComparer.Ordinal)
                             {
-                                ["mobile"] = new WebsiteStyleOverride { WidthPercent = 100, FontScale = 0.9m },
-                                ["wide"] = new WebsiteStyleOverride { WidthPercent = 70 },
-                                ["unknown"] = new WebsiteStyleOverride { WidthPercent = 1 }
+                                ["mobile"] = new WebsiteVisualStyle { WidthPercent = 100, FontScale = 0.9m },
+                                ["wide"] = new WebsiteVisualStyle { WidthPercent = 70 },
+                                ["unknown"] = new WebsiteVisualStyle { WidthPercent = 1 }
                             },
-                            Layout = new WebsiteLayoutOverride { Mode = "flex", Direction = "row", GapPx = 24, AlignItems = "center", Wrap = "wrap" },
+                            Layout = new WebsiteCompositionLayout { Mode = "flex", Direction = "row", GapPx = 24, AlignItems = "center", Wrap = "wrap" },
                             BreakpointLayouts = new(StringComparer.Ordinal)
                             {
-                                ["mobile"] = new WebsiteLayoutOverride { Mode = "stack", Direction = "column", GapPx = 12 },
-                                ["unknown"] = new WebsiteLayoutOverride { Mode = "grid", Columns = 99 }
+                                ["mobile"] = new WebsiteCompositionLayout { Mode = "stack", Direction = "column", GapPx = 12 },
+                                ["unknown"] = new WebsiteCompositionLayout { Mode = "grid", Columns = 99 }
                             },
                             Animations =
                             [
