@@ -235,6 +235,13 @@
     };
   }
 
+  function cleanBusinessPreviewTitle(value) {
+    if (typeof value !== 'string') return null;
+    if (SITE_KEY !== 'business') return value;
+    const suffix=' | Business website preview';
+    return value.endsWith(suffix) ? value.slice(0,-suffix.length) : value;
+  }
+
   function normalizeDocument(input) {
     const pages = {};
     for (const [key,value] of Object.entries(input?.pages && typeof input.pages === 'object' ? input.pages : {})) {
@@ -247,7 +254,7 @@
       // into the one canonical page key and never serialize the prefixed copy.
       if (pages[route] && rawRoute !== route) continue;
       pages[route] = {
-        title: typeof value.title === 'string' ? value.title : null,
+        title: cleanBusinessPreviewTitle(value.title),
         description: typeof value.description === 'string' ? value.description : null,
         navigation: value.navigation && typeof value.navigation === 'object'
           ? {...value.navigation}
@@ -2720,9 +2727,7 @@
       if(!route) throw new Error('Materialized page route was invalid.');
       const page=next.pages[route] || {navigation:{showInNavigation:true,order:0,isDeleted:false},composition:[]};
       const routeEntry=entries.find(entry=>entry.route===route);
-      const previewSuffix=' | Business website preview';
-      const snapshotTitle=SITE_KEY==='business' && typeof snapshot.title==='string' && snapshot.title.endsWith(previewSuffix)
-        ? snapshot.title.slice(0,-previewSuffix.length) : snapshot.title;
+      const snapshotTitle=cleanBusinessPreviewTitle(snapshot.title);
       page.title=snapshotTitle ?? page.title;
       page.description=snapshot.description ?? page.description;
       page.systemTemplateKey=snapshot.systemTemplateKey ?? page.systemTemplateKey ?? null;
