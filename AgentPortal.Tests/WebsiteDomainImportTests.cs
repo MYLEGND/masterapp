@@ -366,15 +366,50 @@ public sealed class WebsiteDomainImportTests
     }
 
     [Fact]
-    public async Task ExportDoesNotOverwriteExistingPage()
+    public async Task CanonicalV3ExportDoesNotOverwriteExistingPage()
     {
         var service = new WebsiteImportService(null!); // No media operations in this document.
         var existing = new WebsiteContentDocument();
-        existing.Pages["/about"] = new WebsitePageDocument { Title = "Client edited title" };
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"pages\":{\"/about\":{\"title\":\"Old imported title\"},\"/contact\":{\"title\":\"Contact\"}}}"));
-        var result = await service.PrepareExportAsync(stream, false, existing, true, "business:test", "https://protect.mylegnd.com");
+        existing.Pages["/about"] = new WebsitePageDocument
+        {
+            Title = "Client edited title",
+            Navigation = new WebsitePageNavigation { Label = "About", ShowInNavigation = true }
+        };
+
+        var imported = new WebsiteContentDocument
+        {
+            Pages = new()
+            {
+                ["/about"] = new WebsitePageDocument
+                {
+                    Title = "Old imported title",
+                    Navigation = new WebsitePageNavigation { Label = "About", ShowInNavigation = true }
+                },
+                ["/contact"] = new WebsitePageDocument
+                {
+                    Title = "Contact",
+                    Navigation = new WebsitePageNavigation { Label = "Contact", ShowInNavigation = true },
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "contact-section",
+                            Type = "section",
+                            Tag = "section"
+                        }
+                    ]
+                }
+            }
+        };
+        var json = JsonSerializer.Serialize(imported, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await service.PrepareExportAsync(
+            stream, false, existing, true, "business:test", "https://protect.mylegnd.com");
+
         Assert.Equal("Client edited title", result.Document.Pages["/about"].Title);
         Assert.Equal("Contact", result.Document.Pages["/contact"].Title);
+        Assert.Equal("contact-section", Assert.Single(result.Document.Pages["/contact"].Composition).Id);
         Assert.Equal(1, result.Report.PreservedComponents);
         Assert.Single(existing.Pages);
     }
