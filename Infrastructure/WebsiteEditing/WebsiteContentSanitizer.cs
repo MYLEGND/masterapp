@@ -425,9 +425,15 @@ public static class WebsiteContentSanitizer
                 continue;
 
             var tag = SanitizeCompositionTag(node.Tag, type);
-            var systemKey = type == "form"
-                ? (string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal) ? "canonical_inquiry" : null)
-                : null;
+            var systemKey = type switch
+            {
+                "form" when string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal) =>
+                    "canonical_inquiry",
+                "container" when string.Equals(tag, "nav", StringComparison.Ordinal) &&
+                                 string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal) =>
+                    "primary_navigation",
+                _ => null
+            };
             if (type == "form" && systemKey is null) continue;
 
             var mediaUrl = type is "image" or "video"
@@ -484,7 +490,7 @@ public static class WebsiteContentSanitizer
         var allowed = type switch
         {
             "section" => new[] { "section" },
-            "container" => new[] { "div", "article", "header", "footer", "ul", "ol" },
+            "container" => new[] { "div", "article", "header", "footer", "nav", "ul", "ol" },
             "heading" => new[] { "h1", "h2", "h3", "h4", "h5", "h6" },
             "text" => new[] { "p", "span", "small", "strong", "li", "label", "blockquote" },
             "cta" or "link" => new[] { "a", "button" },
