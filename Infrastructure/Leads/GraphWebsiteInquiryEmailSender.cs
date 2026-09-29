@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
