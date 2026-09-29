@@ -9,7 +9,9 @@ const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-pub
 const publicInquiryFormSource = readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.mjs', import.meta.url), 'utf8');
 const publicInquiryFormCss = readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.css', import.meta.url), 'utf8');
 const protectContactSource = readFileSync(new URL('../../Protect-Website/Views/Contact/Index.cshtml', import.meta.url), 'utf8');
+const protectLayoutSource = readFileSync(new URL('../../Protect-Website/Views/Shared/_Layout.cshtml', import.meta.url), 'utf8');
 const parfaitContactSource = readFileSync(new URL('../../ParfaitApp/Views/Contact/Index.cshtml', import.meta.url), 'utf8');
+const parfaitLayoutSource = readFileSync(new URL('../../ParfaitApp/Views/Shared/_Layout.cshtml', import.meta.url), 'utf8');
 const metaSignalSource = readFileSync(new URL('../../SHARED/WebsitePlatform/meta-signal-intelligence.js', import.meta.url), 'utf8');
 const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
@@ -728,6 +730,14 @@ test('Founder and business websites use one shared inquiry runtime with no hard-
   assert.ok(publicInquiryFormSource.includes('name="Message"'));
   assert.ok(protectContactSource.includes('data-legend-public-inquiry-form'));
   assert.ok(parfaitContactSource.includes('data-legend-public-inquiry-form'));
+  assert.ok(publicInquiryFormSource.includes("window.addEventListener('legend:website-content-rendered', start)"));
+  assert.ok(publicInquiryFormSource.includes("document.querySelector('[data-website-inquiry]:not([data-preview])')"));
+  assert.ok(protectLayoutSource.includes('~/js/public-inquiry-form.mjs'));
+  assert.ok(protectLayoutSource.includes('~/css/public-inquiry-form.css'));
+  assert.ok(parfaitLayoutSource.includes('~/js/public-inquiry-form.mjs'));
+  assert.ok(parfaitLayoutSource.includes('~/css/public-inquiry-form.css'));
+  assert.equal(protectContactSource.includes('public-inquiry-form.mjs'),false);
+  assert.equal(parfaitContactSource.includes('public-inquiry-form.mjs'),false);
   assert.equal(protectContactSource.includes('mailto:'),false);
   assert.equal(parfaitContactSource.includes('mailto:'),false);
   assert.equal(businessBuildSource.includes('mailto:connect@mylegnd.com'),false);
