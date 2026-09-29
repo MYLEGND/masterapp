@@ -1,4 +1,11 @@
 (() => {
+  const websiteStudioParams = new URLSearchParams(window.location?.search || '');
+  if (window.LEGEND_WEBSITE_STUDIO_MODE === true ||
+      websiteStudioParams.has('legendEdit') ||
+      websiteStudioParams.has('legendMaterialize')) {
+    window.__legendMetaSignalSuppressedForWebsiteStudio = true;
+    return;
+  }
   const STORAGE_VISITOR = 'legend_visitor_id';
   const STORAGE_SESSION = 'legend_session_id';
   const STORAGE_SESSION_TS = 'legend_session_ts';
