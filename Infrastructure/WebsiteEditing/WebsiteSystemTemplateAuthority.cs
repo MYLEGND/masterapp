@@ -12,17 +12,28 @@ public static class WebsiteSystemTemplateAuthority
 {
     public const string Prefix = "protect_template:";
 
-    private static readonly HashSet<string> KnownKeys = new(StringComparer.Ordinal)
-    {
-        Prefix + "life_wizard",
-        Prefix + "home_quote",
-        Prefix + "auto_quote",
-        Prefix + "commercial_quote",
-        Prefix + "disability_quote",
-        Prefix + "dvh_quote",
-        Prefix + "risk_assessment",
-        Prefix + "quote_thank_you"
-    };
+    // One route-to-template authority. Known template keys are derived from this
+    // map so validation and resolution cannot drift into parallel lists.
+    private static readonly IReadOnlyDictionary<string, string> TemplatesByRoute =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/RiskAssessment"] = Prefix + "risk_assessment",
+            ["/Quote/Life"] = Prefix + "life_wizard",
+            ["/Quote/Whole-Life"] = Prefix + "life_wizard",
+            ["/Quote/Term-Life"] = Prefix + "life_wizard",
+            ["/Quote/Final-Expense"] = Prefix + "life_wizard",
+            ["/Quote/Mortgage-Protection"] = Prefix + "life_wizard",
+            ["/Quote/IUL"] = Prefix + "life_wizard",
+            ["/Quote/Home"] = Prefix + "home_quote",
+            ["/Quote/Auto"] = Prefix + "auto_quote",
+            ["/Quote/Commercial"] = Prefix + "commercial_quote",
+            ["/Quote/Disability"] = Prefix + "disability_quote",
+            ["/Quote/Dental-Vision-Hearing"] = Prefix + "dvh_quote",
+            ["/ThankYou"] = Prefix + "quote_thank_you"
+        };
+
+    private static readonly HashSet<string> KnownKeys =
+        TemplatesByRoute.Values.ToHashSet(StringComparer.Ordinal);
 
     public static bool IsKnownTemplateKey(string? value) =>
         !string.IsNullOrWhiteSpace(value) && KnownKeys.Contains(value.Trim());
@@ -43,23 +54,7 @@ public static class WebsiteSystemTemplateAuthority
             return null;
 
         var path = NormalizeProtectPath(pagePath);
-        return path switch
-        {
-            "/RiskAssessment" => Prefix + "risk_assessment",
-            "/Quote/Life" or
-            "/Quote/Whole-Life" or
-            "/Quote/Term-Life" or
-            "/Quote/Final-Expense" or
-            "/Quote/Mortgage-Protection" or
-            "/Quote/IUL" => Prefix + "life_wizard",
-            "/Quote/Home" => Prefix + "home_quote",
-            "/Quote/Auto" => Prefix + "auto_quote",
-            "/Quote/Commercial" => Prefix + "commercial_quote",
-            "/Quote/Disability" => Prefix + "disability_quote",
-            "/Quote/Dental-Vision-Hearing" => Prefix + "dvh_quote",
-            "/ThankYou" => Prefix + "quote_thank_you",
-            _ => null
-        };
+        return TemplatesByRoute.TryGetValue(path, out var templateKey) ? templateKey : null;
     }
 
     public static WebsiteContentDocument Apply(string siteKey, WebsiteContentDocument document)
