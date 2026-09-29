@@ -1308,6 +1308,10 @@
 
   function materializeCompositionNode(el, fallbackId = null) {
     if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    // Template decoration is deliberately presentation-only. Persisting SVG/icon
+    // wrappers as ordinary v3 nodes creates empty colored boxes after the SVG is
+    // filtered from the safe composition grammar.
+    if (el.matches?.('[data-cms-decoration="true"]')) return null;
     // Menu toggles are runtime shell chrome, not editable website links. Keeping
     // them in v3 created invalid link nodes with no action/destination and made
     // publish fail. Runtime recreates and wires this control from primary nav.
@@ -1414,7 +1418,9 @@
       actionKey:presentationOnlyControl ? null : (actionKey || null),
       href:presentationOnlyControl ? null : (rawHref || null),
       target:presentationOnlyControl ? null : ((tag === 'a' ? el.getAttribute('target') : model.target) || null),
-      alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || model.alt || null) : null,
+      alt:(tag === 'img' || tag === 'video')
+        ? (el.hasAttribute('alt') ? el.getAttribute('alt') : (model.alt ?? null))
+        : null,
       hidden:el.hidden === true ? true : (model.hidden === false ? false : null),
       signals:presentationOnlyControl ? [] : cloneCanonicalValue(model.signals || []),
       style:cloneCanonicalValue(model.style || {}),
