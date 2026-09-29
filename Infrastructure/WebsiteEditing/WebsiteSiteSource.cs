@@ -354,10 +354,27 @@ public static class WebsiteSiteSource
     {
         var copy = Clone(source);
         copy.Signals = [];
+
         // System/runtime/data authority is not an authoring surface. Parse restores
-        // it by stable node ID from the current canonical baseline.
+        // it by stable node ID from the current canonical baseline. Keep the opaque
+        // ActionKey visible so GPT can understand the selected preset action, but
+        // never expose its server-owned destination, target, data binding, form
+        // endpoint, or system binding through Site Source.
+        var protectedBackendSemantics =
+            !string.IsNullOrWhiteSpace(source.ActionKey) ||
+            !string.IsNullOrWhiteSpace(source.SystemKey) ||
+            !string.IsNullOrWhiteSpace(source.SystemBinding) ||
+            string.Equals(source.Type, "form", StringComparison.Ordinal);
+
         copy.SystemKey = null;
         copy.SystemBinding = null;
+        if (protectedBackendSemantics)
+        {
+            copy.Href = null;
+            copy.Target = null;
+            copy.DataBinding = null;
+        }
+
         copy.Children = source.Children.Select(ProjectNode).ToList();
         return copy;
     }
