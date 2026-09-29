@@ -269,7 +269,9 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.Equal("name", parsedQuote.DataBinding?.Field);
 
         Assert.Equal("canonical_inquiry", parsedForm.SystemKey);
-        Assert.Equal("/api/website-inquiries/public", parsedForm.Href);
+        // Canonical inquiry execution is selected by SystemKey; the executable
+        // endpoint is runtime-owned and is never persisted in WebsiteContentDocument.
+        Assert.Null(parsedForm.Href);
         Assert.Equal("canonical", parsedForm.DataBinding?.CollectionId);
         Assert.Equal("contact", parsedForm.DataBinding?.Field);
     }
