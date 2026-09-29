@@ -14,6 +14,7 @@ const metaSignalSource = readFileSync(new URL('../../SHARED/WebsitePlatform/meta
 const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
 const businessMiddlewareSource = readFileSync(new URL('../../Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
+const legendWebConfigSource = readFileSync(new URL('../../Legend-Website/public/web.config', import.meta.url), 'utf8');
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
@@ -240,6 +241,11 @@ test('Protect nested agent URL resolves to the canonical page route',async()=>{
     assert.equal(f.w.document.querySelector('main h1')?.textContent,'Coverage canonical');
     assert.deepEqual(f.alerts,[]);
   }finally{f.close();}
+});
+
+test('LEGEND static host permits only same-origin Website Studio materialization frames',()=>{
+  assert.match(legendWebConfigSource,/X-Frame-Options" value="SAMEORIGIN"/);
+  assert.equal(/X-Frame-Options" value="DENY"/.test(legendWebConfigSource),false);
 });
 
 test('pre-v3 migration is an explicit read-only one-way materialization boundary',()=>{
