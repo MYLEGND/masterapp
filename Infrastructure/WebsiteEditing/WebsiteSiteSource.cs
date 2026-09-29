@@ -388,6 +388,23 @@ public static class WebsiteSiteSource
                         node.ActionKey = previous.Node.ActionKey;
                     else if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
                         throw new ArgumentException($"Protected component '{node.Id}' cannot change its canonical action identity.");
+
+                    // A preset CTA's visible label/presentation is editable, but its
+                    // destination and window behavior belong to the server catalog.
+                    // Source/GPT cannot turn a locked action into an arbitrary link.
+                    node.Href = previous.Node.Href;
+                    node.Target = previous.Node.Target;
+                }
+
+                if (!string.IsNullOrWhiteSpace(previous.Node.SystemKey) ||
+                    !string.IsNullOrWhiteSpace(previous.Node.SystemBinding) ||
+                    string.Equals(previous.Node.Type, "form", StringComparison.Ordinal))
+                {
+                    // Preserve backend-owned semantic/data wiring while allowing
+                    // copy, style, layout, motion, and other public presentation.
+                    node.Href = previous.Node.Href;
+                    node.Target = previous.Node.Target;
+                    node.DataBinding = Clone(previous.Node.DataBinding);
                 }
 
                 if (node.Type is "image" or "video" &&
