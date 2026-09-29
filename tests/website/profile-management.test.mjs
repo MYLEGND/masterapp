@@ -14,7 +14,7 @@ async function fixture({ caps = {}, failPublish = false, scope = 'business' } = 
   window.confirm = () => true;
   window.URL.createObjectURL = () => 'blob:export'; window.URL.revokeObjectURL = () => {};
   window.HTMLAnchorElement.prototype.click = function () {};
-  const state = { revision: 7, publishedRevision: 6, document: { version: 1, elements: {} }, capabilities: { canPublish: true, canImport: true, canManageDomains: true, canSchedule: true, ...caps }, history: [{ versionId: 'version-a', revision: 6, createdUtc: '2026-09-01T10:00:00Z' }], readiness: { checks: [] } };
+  const state = { revision: 7, publishedRevision: 6, document: { version: 1, elements: {} }, capabilities: { canPublish: true, canImport: true, canManageDomains: true, canSchedule: true, canPromote: true, ...caps }, history: [{ versionId: 'version-a', revision: 6, createdUtc: '2026-09-01T10:00:00Z' }], readiness: { checks: [] } };
   window.fetch = async (url, options = {}) => {
     const parsed = new URL(url, window.location.href), body = options.body ? JSON.parse(options.body) : null;
     calls.push({ path: parsed.pathname, url: parsed, options, body });
