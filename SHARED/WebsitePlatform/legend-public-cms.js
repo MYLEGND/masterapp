@@ -1548,158 +1548,206 @@
   }
 
   function reusableDefinition(instance) {
-    return instance?.type === 'reusable' && instance.syncSourceId ? documentState.reusableComponents?.[instance.syncSourceId] || null : null;
+    return instance?.type==='reusable' && instance.syncSourceId
+      ? documentState.reusableComponents?.[instance.syncSourceId] || null
+      : null;
+  }
+
+  function reusableDefinitionClone(node, instanceId) {
+    const copy=structuredClone(node);
+    const originalId=copy.id;
+    copy.id=instanceId+'.'+originalId;
+    copy.signals=[];
+    copy.children=(copy.children || []).map(child=>reusableDefinitionClone(child,instanceId));
+    return copy;
   }
 
   function renderReusableInstance(wrapper, instance) {
-    if (!wrapper || !instance) return;
+    if(!wrapper || !instance) return;
     wrapper.replaceChildren();
-    const definition = reusableDefinition(instance);
-    wrapper.dataset.cmsReusableId = instance.syncSourceId || '';
-    if (!definition) {
-      if (editorMode) {
-        const missing = document.createElement('p'); missing.className = 'legend-cms-reusable-missing';
-        missing.textContent = 'Reusable component is unavailable. Restore its definition or remove this instance.';
+    wrapper.dataset.cmsReusableId=instance.syncSourceId || '';
+    const definition=reusableDefinition(instance);
+    if(!definition){
+      if(editorMode){
+        const missing=document.createElement('p');
+        missing.className='legend-cms-reusable-missing';
+        missing.textContent='Reusable component is unavailable. Restore its definition or remove this instance.';
         wrapper.appendChild(missing);
       }
-      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance)); applyAnimations(wrapper, instance.animations);
+      applyStyle(wrapper,effectiveStyle(instance));
+      applyLayout(wrapper,effectiveLayout(instance));
+      applyAnimations(wrapper,instance.animations);
       return;
     }
-    const values = Array.isArray(definition.extras) ? definition.extras : [];
-    const root = values.find(value => value.sectionId === 'component.root') || values[0] || null;
-    const sectionMap = new Map([['component.root', wrapper]]);
-    if (definition.kind === 'section' && root?.type === 'section') {
-      sectionMap.set(`extra:${root.id}`, wrapper);
-      applyStyle(wrapper, { ...effectiveStyle(root), ...effectiveStyle(instance) });
-      applyLayout(wrapper, { ...effectiveLayout(root), ...effectiveLayout(instance) });
-      applyAnimations(wrapper, instance.animations);
-    } else {
-      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance)); applyAnimations(wrapper, instance.animations);
+
+    for(const definitionNode of definition.composition || []){
+      const rendered=buildCompositionNode(reusableDefinitionClone(definitionNode,instance.id));
+      if(!rendered) continue;
+      rendered.classList.add('legend-cms-reusable-child');
+      rendered.querySelectorAll?.('[data-cms-editable]').forEach(child=>{
+        child.dataset.cmsLocked='true';
+        delete child.dataset.cmsEditable;
+        delete child.dataset.cmsCompositionId;
+      });
+      rendered.dataset.cmsLocked='true';
+      delete rendered.dataset.cmsEditable;
+      delete rendered.dataset.cmsCompositionId;
+      wrapper.appendChild(rendered);
     }
-    for (const item of values.filter(value => value.type === 'section' && value !== root)) {
-      const parent = sectionMap.get(item.sectionId) || wrapper;
-      const node = buildExtraNode(item, false, instance.id); node.classList.add('legend-cms-reusable-child');
-      parent.appendChild(node); sectionMap.set(`extra:${item.id}`, node);
-      applyStyle(node, effectiveStyle(item)); applyLayout(node, effectiveLayout(item));
-    }
-    const leaves = values.filter(value => value.type !== 'section');
-    for (const item of leaves) {
-      if (definition.kind === 'block' && root && item !== root) continue;
-      const parent = sectionMap.get(item.sectionId) || wrapper;
-      const node = buildExtraNode(item, false, instance.id); node.classList.add('legend-cms-reusable-child');
-      parent.appendChild(node); applyElementOverride(node, item);
-    }
+    applyStyle(wrapper,effectiveStyle(instance));
+    applyLayout(wrapper,effectiveLayout(instance));
+    applyAnimations(wrapper,instance.animations);
   }
 
-  function createExtra(extra) {
-    const section = extra.type === 'section' ? document.querySelector('main') : document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
-    if (!section) return null;
-    if (extra.type === 'reusable') {
-      const definition = reusableDefinition(extra);
-      const el = document.createElement(definition?.kind === 'section' ? 'section' : 'div');
-      el.className = 'cms-extra cms-reusable-instance';
-      el.dataset.cmsExtraId = extra.id; el.dataset.cmsId = `extra:${extra.id}`; el.dataset.cmsEditable = 'true';
-      if (extra.hidden === true) el.hidden = true;
-      section.appendChild(el); renderReusableInstance(el, extra); return el;
-    }
-    const el = buildExtraNode(extra, true);
-    section.appendChild(el); applyElementOverride(el, extra); return el;
+  function selectedCompositionSource() {
+    const id=selected?.dataset?.cmsCompositionId;
+    return id ? compositionNode(id) : null;
   }
 
-  function selectedAddedExtra() {
-    const id = selected?.dataset?.cmsExtraId;
-    return id ? pageState().extras.find(extra => extra.id === id) || null : null;
+  function containsProtectedSystemNode(node) {
+    if(!node) return false;
+    if(node.type==='form' || node.systemKey || node.systemBinding) return true;
+    return (node.children || []).some(containsProtectedSystemNode);
   }
 
-  function captureReusableDefinition(name, existingId = null) {
-    const source = selectedAddedExtra();
-    if (!source || source.type === 'reusable' || source.type === 'form') return null;
-    const componentId = existingId || crypto.randomUUID().replaceAll('-', '');
-    const sourceIds = new Set([source.id]);
-    if (source.type === 'section') {
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const extra of pageState().extras) {
-          const sectionId = String(extra.sectionId || '');
-          const parent = sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
-          if (parent && sourceIds.has(parent) && !sourceIds.has(extra.id)) { sourceIds.add(extra.id); changed = true; }
-        }
-      }
-    }
-    const sourceExtras = [source, ...pageState().extras.filter(extra => extra.id !== source.id && sourceIds.has(extra.id))];
-    const idMap = new Map([[source.id, 'root']]);
-    sourceExtras.slice(1).forEach((extra, index) => idMap.set(extra.id, `item-${index + 1}`));
-    const extras = sourceExtras.map(extra => {
-      const copy = JSON.parse(JSON.stringify(extra));
-      const oldId = extra.id;
-      const sectionId = String(extra.sectionId || '');
-      const parent = sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
-      copy.id = idMap.get(oldId);
-      copy.sectionId = oldId === source.id ? 'component.root' : parent && idMap.has(parent) ? `extra:${idMap.get(parent)}` : 'component.root';
-      copy.placement = null; copy.signals = []; copy.syncSourceId = null; delete copy.hidden;
-      return copy;
-    });
-    return { id: componentId, name: (name || 'Reusable component').trim().slice(0, 120), kind: source.type === 'section' ? 'section' : 'block', elements: {}, sectionOrder: {}, extras };
+  function cloneReusableDefinitionNode(node, componentId, path='root') {
+    const copy=structuredClone(node);
+    copy.id=componentId+'.'+path;
+    copy.signals=[];
+    copy.syncSourceId=null;
+    delete copy.hidden;
+    copy.children=(node.children || []).map((child,index)=>
+      cloneReusableDefinitionNode(child,componentId,path+'.'+(index+1)));
+    return copy;
+  }
+
+  function captureReusableDefinition(name, existingId=null) {
+    const source=selectedCompositionSource();
+    if(!source || source.type==='reusable' || containsProtectedSystemNode(source)) return null;
+    const componentId=existingId || crypto.randomUUID().replaceAll('-','');
+    return {
+      id:componentId,
+      name:(name || 'Reusable component').trim().slice(0,120),
+      kind:source.type==='section' ? 'section' : 'block',
+      composition:[cloneReusableDefinitionNode(source,componentId)]
+    };
   }
 
   function componentInUse(componentId) {
-    let used = false;
-    const inspect = extras => { if ((extras || []).some(extra => extra.type === 'reusable' && extra.syncSourceId === componentId)) used = true; };
-    inspect(documentState.extras);
-    Object.values(documentState.pages || {}).forEach(page => inspect(page?.extras));
+    let used=false;
+    const inspect=nodes=>walkComposition(nodes,node=>{
+      if(node.type==='reusable' && node.syncSourceId===componentId){used=true;return false;}
+    });
+    inspect(documentState.shell?.header || []);
+    inspect(documentState.shell?.footer || []);
+    Object.values(documentState.pages || {}).forEach(page=>inspect(page?.composition || []));
     return used;
   }
 
-  function refreshReusableInstances(componentId = null) {
-    document.querySelectorAll('.cms-reusable-instance[data-cms-extra-id]').forEach(wrapper => {
-      const instance = pageState().extras.find(extra => extra.id === wrapper.dataset.cmsExtraId);
-      if (!instance || (componentId && instance.syncSourceId !== componentId)) return;
-      renderReusableInstance(wrapper, instance);
+  function refreshReusableInstances(componentId=null) {
+    document.querySelectorAll('.cms-reusable-instance[data-cms-reusable-id]').forEach(wrapper=>{
+      const instance=compositionNode(wrapper.dataset.cmsCompositionId || wrapper.dataset.cmsId);
+      if(!instance || (componentId && instance.syncSourceId!==componentId)) return;
+      renderReusableInstance(wrapper,instance);
     });
     updateDirectCanvasUi();
   }
 
   function renderReusableComponents() {
-    const host = document.getElementById('legend-cms-component-list');
-    const status = document.getElementById('legend-cms-component-status');
-    if (!host?.replaceChildren) return;
+    const host=document.getElementById('legend-cms-component-list');
+    const status=document.getElementById('legend-cms-component-status');
+    if(!host?.replaceChildren) return;
     host.replaceChildren();
-    const definitions = Object.values(documentState.reusableComponents || {}).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-    for (const definition of definitions) {
-      const row = document.createElement('div'); row.className = 'legend-cms-component-row';
-      const info = document.createElement('div');
-      const title = document.createElement('strong'); title.textContent = definition.name || definition.id;
-      const meta = document.createElement('small'); meta.textContent = `${definition.kind || 'block'} · ${definition.id}`;
-      info.append(title, meta);
-      const insert = document.createElement('button'); insert.type = 'button'; insert.textContent = 'Insert';
-      insert.addEventListener('click', () => {
-        const section = selectedSection || document.querySelector('[data-cms-section]');
-        if (!section) { if (status) status.textContent = 'Select a section before inserting a reusable component.'; return; }
+
+    const definitions=Object.values(documentState.reusableComponents || {})
+      .sort((a,b)=>(a.name || '').localeCompare(b.name || ''));
+
+    for(const definition of definitions){
+      const row=document.createElement('div');
+      row.className='legend-cms-component-row';
+      const info=document.createElement('div');
+      const title=document.createElement('strong');
+      title.textContent=definition.name || definition.id;
+      const meta=document.createElement('small');
+      meta.textContent=(definition.kind || 'block')+' · '+definition.id;
+      info.append(title,meta);
+
+      const insert=document.createElement('button');
+      insert.type='button';
+      insert.textContent='Insert';
+      insert.addEventListener('click',()=>{
+        const section=selectedSection || document.querySelector('main [data-cms-section]');
+        const parentId=section?.dataset?.cmsCompositionId;
+        const parent=parentId ? compositionNode(parentId) : null;
+        if(!parent){
+          if(status) status.textContent='Select a canonical section before inserting a reusable component.';
+          return;
+        }
         checkpoint();
-        const instance = { id: crypto.randomUUID(), type: 'reusable', sectionId: section.dataset.cmsSection, syncSourceId: definition.id, style: { widthPercent: 100 }, signals: [] };
-        pageState().extras.push(instance);
-        const created = createExtra(instance); setSelected(created); markDirty(); renderReusableComponents();
+        const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
+        const instance={
+          id,
+          type:'reusable',
+          tag:'div',
+          syncSourceId:definition.id,
+          signals:[],
+          style:{widthPercent:100},
+          breakpointStyles:{},
+          layout:{mode:'free',direction:'column'},
+          breakpointLayouts:{},
+          animations:[],
+          children:[]
+        };
+        parent.children ||= [];
+        parent.children.push(instance);
+        renderCanonicalCompositionPage();
+        setSelected(findEditableElement(id));
+        markDirty();
+        renderReusableComponents();
       });
-      const update = document.createElement('button'); update.type = 'button'; update.textContent = 'Update from selected';
-      const selectedSource = selectedAddedExtra(); update.disabled = !selectedSource || selectedSource.type === 'reusable';
-      update.addEventListener('click', () => {
-        const next = captureReusableDefinition(definition.name, definition.id);
-        if (!next) { if (status) status.textContent = 'Select an added block or added section to update this component.'; return; }
-        checkpoint(); documentState.reusableComponents[definition.id] = next;
-        refreshReusableInstances(definition.id); markDirty(); renderReusableComponents();
+
+      const update=document.createElement('button');
+      update.type='button';
+      update.textContent='Update from selected';
+      const source=selectedCompositionSource();
+      update.disabled=!source || source.type==='reusable' || containsProtectedSystemNode(source);
+      update.addEventListener('click',()=>{
+        const next=captureReusableDefinition(definition.name,definition.id);
+        if(!next){
+          if(status) status.textContent='Select a non-system canonical block or section to update this component.';
+          return;
+        }
+        checkpoint();
+        documentState.reusableComponents[definition.id]=next;
+        refreshReusableInstances(definition.id);
+        markDirty();
+        renderReusableComponents();
       });
-      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Delete';
-      remove.disabled = componentInUse(definition.id);
-      remove.title = remove.disabled ? 'Remove every instance before deleting this reusable definition.' : '';
-      remove.addEventListener('click', () => {
-        if (componentInUse(definition.id)) return;
-        checkpoint(); markDeleted('component:' + definition.id); delete documentState.reusableComponents[definition.id]; markDirty(); renderReusableComponents();
+
+      const remove=document.createElement('button');
+      remove.type='button';
+      remove.textContent='Delete';
+      remove.disabled=componentInUse(definition.id);
+      remove.title=remove.disabled ? 'Remove every instance before deleting this reusable definition.' : '';
+      remove.addEventListener('click',()=>{
+        if(componentInUse(definition.id)) return;
+        checkpoint();
+        delete documentState.reusableComponents[definition.id];
+        markDirty();
+        renderReusableComponents();
       });
-      row.append(info, insert, update, remove); host.appendChild(row);
+
+      row.append(info,insert,update,remove);
+      host.appendChild(row);
     }
-    if (!definitions.length) { const empty = document.createElement('p'); empty.textContent = 'No reusable components yet.'; host.appendChild(empty); }
+
+    if(!definitions.length){
+      const empty=document.createElement('p');
+      empty.textContent='No reusable components yet.';
+      host.appendChild(empty);
+    }
   }
+
   function pageLayerSections() {
     return Array.from(document.querySelectorAll('[data-cms-section]')).filter(section => {
       if (section.matches('.site-header,.site-footer')) return false;
@@ -1709,45 +1757,11 @@
   }
 
   function syncSectionOrderFromDom() {
-    const page = pageState();
-    if (usesCanonicalComposition()) {
-      const roots=page.composition ||= [];
-      const byId=new Map(roots.map(node=>[node.id,node]));
-      const ordered=pageLayerSections().map(section=>byId.get(section.dataset.cmsCompositionId)).filter(Boolean);
-      const orderedIds=new Set(ordered.map(node=>node.id));
-      page.composition=[...ordered,...roots.filter(node=>!orderedIds.has(node.id))];
-      return;
-    }
-    page.sectionOrder ||= {};
-    const active = new Set();
-    pageLayerSections().forEach((section,index)=>{
-      const id=section.dataset.cmsSection;
-      if(!id) return;
-      active.add(id);
-      page.sectionOrder[id]=index;
-    });
-    for(const key of Object.keys(page.sectionOrder)) if(!active.has(key)) delete page.sectionOrder[key];
-  }
-
-  function applySectionOrder() {
-    if (usesCanonicalComposition()) return;
-    const sections=pageLayerSections();
-    const position=new Map(sections.map((section,index)=>[section,index]));
-    sections.sort((a,b)=>{
-      const ai=pageState().sectionOrder[a.dataset.cmsSection];
-      const bi=pageState().sectionOrder[b.dataset.cmsSection];
-      const av=Number.isFinite(Number(ai))?Number(ai):position.get(a);
-      const bv=Number.isFinite(Number(bi))?Number(bi):position.get(b);
-      return av-bv;
-    });
-    const groups=new Map();
-    for(const section of sections){
-      const parent=section.parentElement;
-      if(!parent) continue;
-      if(!groups.has(parent)) groups.set(parent,[]);
-      groups.get(parent).push(section);
-    }
-    groups.forEach(group=>group.forEach(section=>section.parentElement.appendChild(section)));
+    const roots=pageState().composition ||= [];
+    const byId=new Map(roots.map(node=>[node.id,node]));
+    const ordered=pageLayerSections().map(section=>byId.get(section.dataset.cmsCompositionId)).filter(Boolean);
+    const orderedIds=new Set(ordered.map(node=>node.id));
+    pageState().composition=[...ordered,...roots.filter(node=>!orderedIds.has(node.id))];
   }
 
   function reorderSectionByLayer(sourceId,targetId) {
