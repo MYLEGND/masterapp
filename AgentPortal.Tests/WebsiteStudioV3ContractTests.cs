@@ -215,6 +215,39 @@ public sealed class WebsiteStudioV3ContractTests
     }
 
     [Fact]
+    public void CanonicalV3Contract_HasNoParallelPageOrDesignAuthority()
+    {
+        static HashSet<string> PublicProperties(Type type) =>
+            type.GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
+                .Select(property => property.Name)
+                .ToHashSet(StringComparer.Ordinal);
+
+        var documentProperties = PublicProperties(typeof(WebsiteContentDocument));
+        Assert.DoesNotContain("Elements", documentProperties);
+        Assert.DoesNotContain("Extras", documentProperties);
+        Assert.DoesNotContain("SectionOrder", documentProperties);
+        Assert.DoesNotContain("CompositionMode", documentProperties);
+        Assert.DoesNotContain("LegacyMigration", documentProperties);
+
+        var pageProperties = PublicProperties(typeof(WebsitePageDocument));
+        Assert.DoesNotContain("Elements", pageProperties);
+        Assert.DoesNotContain("Extras", pageProperties);
+        Assert.DoesNotContain("SectionOrder", pageProperties);
+        Assert.DoesNotContain("TemplatePath", pageProperties);
+        Assert.Contains("Composition", pageProperties);
+
+        var reusableProperties = PublicProperties(typeof(WebsiteReusableComponentDefinition));
+        Assert.DoesNotContain("Elements", reusableProperties);
+        Assert.DoesNotContain("Extras", reusableProperties);
+        Assert.DoesNotContain("SectionOrder", reusableProperties);
+        Assert.Contains("Composition", reusableProperties);
+
+        Assert.Equal(typeof(WebsiteVisualStyle), typeof(WebsiteCompositionNode).GetProperty("Style")!.PropertyType);
+        Assert.Equal(typeof(WebsiteCompositionLayout), typeof(WebsiteCompositionNode).GetProperty("Layout")!.PropertyType);
+        Assert.Equal(typeof(WebsiteDesignTheme), typeof(WebsiteContentDocument).GetProperty("Theme")!.PropertyType);
+    }
+
+    [Fact]
     public void CanonicalAssembly_DoesNotExposeRetiredOverrideTypes()
     {
         var assembly = typeof(WebsiteContentDocument).Assembly;
