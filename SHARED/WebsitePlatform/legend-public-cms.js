@@ -28,6 +28,17 @@
   const editorTicket = params.get('legendEdit') || '';
   const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
   const editorMode = !!editorTicket && !materializeMode;
+  const studioIsolationMode = editorMode || materializeMode;
+  if (studioIsolationMode) {
+    window.LEGEND_WEBSITE_STUDIO_MODE = true;
+    // Block production form mutations from the browser while Studio is active.
+    // Website Studio save/publish uses explicit fetch calls outside form submit.
+    document.addEventListener('submit', event => {
+      if (event.target?.closest?.('.legend-cms-editor')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+  }
   const originalTitle = document.title || '';
   const originalDescription = document.querySelector('meta[name="description"]')?.content || '';
   const initialFaviconLink = document.querySelector('link[rel~="icon"]');
