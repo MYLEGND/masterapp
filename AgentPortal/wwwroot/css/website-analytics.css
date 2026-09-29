@@ -2630,11 +2630,6 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     cursor: not-allowed;
 }
 
-/* Responsive */
-@media (max-width: 480px) {
-    .ai-drawer { width: 100vw; }
-}
-
 body {
     background:
         radial-gradient(900px 380px at 0% 0%, rgba(199,153,49,.08), transparent 52%),
