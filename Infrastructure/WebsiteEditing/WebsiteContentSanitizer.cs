@@ -136,6 +136,9 @@ public static class WebsiteContentSanitizer
                 Description = ClampText(page.Value.Description),
                 Navigation = SanitizeNavigation(path, page.Value.Navigation),
                 DynamicBinding = SanitizeDynamicBinding(page.Value.DynamicBinding),
+                SystemTemplateKey = WebsiteSystemTemplateAuthority.IsKnownTemplateKey(page.Value.SystemTemplateKey)
+                    ? page.Value.SystemTemplateKey!.Trim()
+                    : null,
                 Composition = SanitizeComposition(page.Value.Composition, breakpointKeys)
             };
         }
