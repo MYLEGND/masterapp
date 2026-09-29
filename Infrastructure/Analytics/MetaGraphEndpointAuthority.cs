@@ -108,14 +108,15 @@ public static class MetaGraphEndpointAuthority
                 return result;
 
             if (!TryReadRecommendedVersion(result.Body, out var recommendedVersion) ||
-                attempted.Contains(recommendedVersion))
+                attempted.Contains(recommendedVersion) ||
+                attempt == 2)
                 return result;
 
             Interlocked.Exchange(ref _negotiatedVersion, recommendedVersion);
             version = recommendedVersion;
         }
 
-        throw new InvalidOperationException("Meta Graph version negotiation exhausted without a provider response.");
+        throw new InvalidOperationException("Meta Graph transport reached an unreachable negotiation state.");
     }
 
     private static async Task<MetaGraphHttpResult> SendAttemptAsync(
