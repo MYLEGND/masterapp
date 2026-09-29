@@ -533,7 +533,7 @@ for (const siteKey of ['legend','protect','business']) {
       assert.equal(heading.textContent,value);
       assert.equal(heading.dataset.cmsPreserveWhitespace,'true');
       saved=await f.save();
-      assert.ok(Object.values(saved.pages['/'].elements).some(item=>item.text===value));
+      assert.equal(canonicalNodeById(saved,'home.h1.node.1').text,value);
     } finally { f.close(); }
     const published=await domFixture({siteKey,business,doc:saved,search:''});
     try {
@@ -550,7 +550,9 @@ test('shared CTA chooser starts neutral, applies one canonical action, and keeps
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},ctaCatalog:actions,signalCatalog:{events:[],matchingFields:[],runtimeEnabled:true}});
   try {
     f.click('main h1'); f.click('[data-add="button"]');
-    const button=f.w.document.querySelector('[data-cms-extra-id]');
+    const button=f.w.document.querySelector('.legend-cms-selected');
+    const buttonId=button?.dataset?.cmsCompositionId;
+    assert.ok(buttonId);
     assert.ok(button.classList.contains('primary'));
     assert.equal(button.getAttribute('href'),null);
     assert.equal(button.textContent,'Button');
@@ -568,10 +570,11 @@ test('shared CTA chooser starts neutral, applies one canonical action, and keeps
       .find(node=>node.textContent==='Add advanced custom mapping');
     assert.ok(advanced); assert.equal(advanced.hidden,true);
 
-    const saved=await f.save(); const extra=saved.pages['/'].extras[0];
-    assert.equal(extra.actionKey,'business_call');
-    assert.equal(extra.href,'tel:+16025550199');
-    assert.equal(extra.text,'Talk with our team');
+    const saved=await f.save(); const buttonNode=canonicalNodeById(saved,buttonId);
+    assert.equal(buttonNode.actionKey,'business_call');
+    assert.equal(buttonNode.href,'tel:+16025550199');
+    assert.equal(buttonNode.text,'Talk with our team');
+    assert.equal(Object.hasOwn(saved.pages['/'],'extras'),false);
   } finally { f.close(); }
 });
 test('button action picker groups human CTA phrases by one backend wiring contract and keeps navigation separate',async()=>{
@@ -602,14 +605,15 @@ test('button action picker groups human CTA phrases by one backend wiring contra
     assert.doesNotMatch(allOptionText,/AUTO|Contact LEGEND|Page ·|This website ·/);
 
     f.change('#legend-cms-action','managed:business_quote:3');
-    const button=f.w.document.querySelector('[data-cms-extra-id]');
+    const button=f.w.document.querySelector('.legend-cms-selected');
     assert.equal(button.textContent,'Get a Free Quote');
     assert.equal(button.getAttribute('href'),'/contact');
-    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Every phrase in this group uses the same destination and event contract/);
+    assert.equal(f.w.document.querySelector('#legend-cms-action').disabled,true);
+    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Protected wiring/);
 
     f.change('#legend-cms-action','custom');
-    f.change('#legend-cms-action','page:/contact');
-    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Navigation only/);
+    assert.equal(button.dataset.websiteActionKey,'business_quote');
+    assert.equal(button.getAttribute('href'),'/contact');
   }finally{f.close();}
 });
 
@@ -655,7 +659,7 @@ test('double-click text-edit mode disables move and resize gestures until editin
     f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:180,clientY:150,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:180,clientY:150,button:0}));
     let saved=await f.save();
-    let style=Object.values(saved.pages['/'].elements)[0]?.style || {};
+    let style=canonicalNodeById(saved,'home.h1.node.1')?.style || {};
     assert.equal(style.offsetXPercent,undefined);
     assert.equal(style.offsetYPx,undefined);
 
@@ -665,7 +669,7 @@ test('double-click text-edit mode disables move and resize gestures until editin
     f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:130,clientY:112,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:130,clientY:112,button:0}));
     saved=await f.save();
-    style=Object.values(saved.pages['/'].elements)[0].style;
+    style=canonicalNodeById(saved,'home.h1.node.1').style;
     assert.equal(style.offsetXPercent,5);
     assert.equal(style.offsetYPx,12);
   }finally{f.close();}
@@ -677,20 +681,18 @@ test('Duplicate selected is visible with the selected content controls and prese
   try{
     f.click('main h1'); f.click('[data-add="button"]');
     f.change('#legend-cms-action','managed:legend_contact:1');
+    const originalId=f.w.document.querySelector('.legend-cms-selected').dataset.cmsCompositionId;
     const duplicate=f.w.document.querySelector('#legend-cms-duplicate');
     assert.equal(duplicate.closest('[data-cms-view="content"]')!==null,true);
     assert.equal(duplicate.disabled,false);
     f.click('#legend-cms-duplicate');
-    const buttons=[...f.w.document.querySelectorAll('a[data-cms-extra-id]')];
-    assert.equal(buttons.length,2);
     const saved=await f.save();
-    const copies=saved.pages['/'].extras.filter(extra=>extra.type==='button');
+    const copies=canonicalNodes(saved).filter(node=>node.type==='cta' && node.actionKey==='legend_contact');
     assert.equal(copies.length,2);
+    assert.ok(copies.some(node=>node.id===originalId));
     assert.notEqual(copies[0].id,copies[1].id);
-    assert.equal(copies[0].actionKey,'legend_contact');
-    assert.equal(copies[1].actionKey,'legend_contact');
-    assert.equal(copies[1].href,'/contact');
-    assert.deepEqual(copies[1].signals,[]);
+    assert.ok(copies.every(node=>node.href==='/contact'));
+    assert.ok(copies.every(node=>Array.isArray(node.signals)));
   }finally{f.close();}
 });
 
@@ -699,10 +701,11 @@ test('manual destination remains available and intentionally leaves managed CTA 
   const f=await domFixture({ctaCatalog:actions});
   try {
     f.click('main h1'); f.click('[data-add="button"]');
+    const nodeId=f.w.document.querySelector('.legend-cms-selected').dataset.cmsCompositionId;
     f.input('#legend-cms-href','https://example.com/custom');
-    const saved=await f.save(); const extra=saved.pages['/'].extras[0];
-    assert.equal(extra.actionKey,undefined);
-    assert.equal(extra.href,'https://example.com/custom');
+    const saved=await f.save(); const link=canonicalNodeById(saved,nodeId);
+    assert.equal(link.actionKey,null);
+    assert.equal(link.href,'https://example.com/custom');
   } finally { f.close(); }
 });
 
@@ -720,8 +723,10 @@ test('new section inserts directly after the selected section and survives save 
     assert.equal(sections.indexOf(added),2);
     assert.equal(sections[1],middle);
     saved=await f.save();
-    assert.equal(saved.pages['/'].sectionOrder[middle.dataset.cmsSection],1);
-    assert.equal(saved.pages['/'].sectionOrder[added.dataset.cmsSection],2);
+    const order=saved.pages['/'].composition.map(node=>node.id);
+    assert.equal(order.indexOf(middle.dataset.cmsCompositionId),1);
+    assert.equal(order.indexOf(added.dataset.cmsCompositionId),2);
+    assert.equal(Object.hasOwn(saved.pages['/'],'sectionOrder'),false);
   }finally{f.close();}
   const loaded=await domFixture({html,doc:saved,search:''});
   try{
@@ -755,8 +760,9 @@ test('Layers lists and reorders only whole sections, never individual fields or 
     const sections=[...f.w.document.querySelectorAll('main > section')];
     assert.match(sections[0].textContent,/Second/);
     const saved=await f.save();
-    assert.equal(saved.pages['/'].sectionOrder[sections[0].dataset.cmsSection],0);
-    assert.equal(saved.pages['/'].sectionOrder[sections[1].dataset.cmsSection],1);
+    assert.deepEqual(saved.pages['/'].composition.slice(0,2).map(node=>node.id),
+      sections.slice(0,2).map(section=>section.dataset.cmsCompositionId));
+    assert.equal(Object.hasOwn(saved.pages['/'],'sectionOrder'),false);
   }finally{f.close();}
 });
 
@@ -832,7 +838,7 @@ for(const siteKey of ['legend','protect']) {
       assert.equal(f.w.document.querySelector('main a').href,'https://business.example/book');
       f.input('#legend-cms-href','javascript:alert(1)');
       assert.equal(f.w.document.querySelector('main a').href,'https://business.example/book');
-      const saved=await f.save(); assert.ok(Object.values(saved.pages['/'].elements).some(x=>x.href==='https://business.example/book'));
+      const saved=await f.save(); assert.equal(canonicalNodeById(saved,'home.a.node.1').href,'https://business.example/book');
       assert.equal(JSON.parse(f.calls.at(-1).body).expectedRevision,'r1');
       assert.ok(f.calls.every(x=>!x.url.includes('/public/')));
     } finally {f.close();}
@@ -846,7 +852,7 @@ test('autosave persists edits before domain connection and panel can collapse to
     await new Promise(resolve=>setTimeout(resolve,1000));
     const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
     assert.ok(saveCall);
-    assert.equal(JSON.parse(saveCall.body).document.pages['/'].elements[Object.keys(JSON.parse(saveCall.body).document.pages['/'].elements)[0]].text,'Persisted before domain');
+    assert.equal(canonicalNodeById(JSON.parse(saveCall.body).document,'home.h1.node.1').text,'Persisted before domain');
     const toggle=f.w.document.querySelector('#legend-cms-panel-toggle');
     assert.ok(toggle);
     f.click('#legend-cms-panel-toggle');
@@ -870,12 +876,12 @@ test('breakpoint editor writes responsive style and layout without replacing bas
     f.input('#legend-cms-layout-mode','stack');
     f.input('#legend-cms-layout-gap','16');
     const saved=await f.save();
-    const override=Object.values(saved.pages['/'].elements).find(value=>value.breakpointStyles?.mobile?.widthPercent===55);
-    assert.ok(override);
-    assert.equal(override.style?.widthPercent,undefined);
-    assert.equal(override.breakpointStyles.mobile.widthPercent,55);
-    assert.equal(override.breakpointLayouts.mobile.mode,'stack');
-    assert.equal(override.breakpointLayouts.mobile.gapPx,16);
+    const model=canonicalNodeById(saved,'home.h1.node.1');
+    assert.ok(model);
+    assert.equal(model.style?.widthPercent,undefined);
+    assert.equal(model.breakpointStyles.mobile.widthPercent,55);
+    assert.equal(model.breakpointLayouts.mobile.mode,'stack');
+    assert.equal(model.breakpointLayouts.mobile.gapPx,16);
   } finally { f.close(); }
 });
 
@@ -894,13 +900,18 @@ test('custom breakpoint can be added used and removed without leaving hidden res
     f.click('#legend-cms-breakpoint-remove');
     const saved=await f.save();
     assert.equal(saved.breakpoints.some(value=>value.key==='large-tablet'),false);
-    assert.equal(Object.values(saved.pages['/'].elements).some(value=>value.breakpointStyles?.['large-tablet']),false);
+    assert.equal(canonicalNodes(saved).some(value=>value.breakpointStyles?.['large-tablet']),false);
   } finally { f.close(); }
 });
-test('section deletion preserves child structure, reset restores, global theme remains separate',async()=>{
-  const f=await domFixture();try {f.click('main h1');f.click('#legend-cms-container'); f.click('#legend-cms-remove');
-    assert.equal(f.w.document.querySelector('main section').hidden,true);assert.ok(f.w.document.querySelector('main section h1'));
-    const doc=await f.save();assert.equal(doc.pages['/'].elements['section:home.section.1'].hidden,true);
+test('section deletion removes the canonical node without leaving a hidden parallel record',async()=>{
+  const f=await domFixture();try {
+    f.click('main h1');f.click('#legend-cms-container');
+    const sectionId=f.w.document.querySelector('.legend-cms-selected').dataset.cmsCompositionId;
+    f.click('#legend-cms-remove');
+    const doc=await f.save();
+    assert.equal(canonicalNodeById(doc,sectionId),null);
+    assert.equal(Object.hasOwn(doc.pages['/'],'elements'),false);
+    assert.equal(Object.hasOwn(doc.pages['/'],'extras'),false);
   }finally{f.close();}
 });
 test('inquiry form builder is autonomous and exposes no required manual mapping',async()=>{
