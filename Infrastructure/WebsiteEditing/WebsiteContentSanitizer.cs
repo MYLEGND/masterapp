@@ -435,6 +435,8 @@ public static class WebsiteContentSanitizer
                 "container" when string.Equals(tag, "nav", StringComparison.Ordinal) &&
                                  string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal) =>
                     "primary_navigation",
+                "container" when WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(node.SystemKey) =>
+                    node.SystemKey!.Trim(),
                 _ => null
             };
             if (type == "form" && systemKey is null) continue;
