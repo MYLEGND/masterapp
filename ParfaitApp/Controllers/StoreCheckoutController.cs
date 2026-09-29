@@ -395,7 +395,7 @@ public sealed class StoreCheckoutController : Controller
             AccentColor: "",
             LogoUrl: null,
             GlobalCheckoutUrl: null,
-            Theme: new WebsiteThemeOverride(),
+            Theme: new WebsiteDesignTheme(),
             WebsiteShellPrefix: null,
             WebsiteShellSuffix: null));
     }
