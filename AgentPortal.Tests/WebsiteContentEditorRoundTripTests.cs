@@ -167,7 +167,7 @@ public sealed class WebsiteContentEditorRoundTripTests
     {
         using var fixture = new Fixture(siteKey);
         var document = CanonicalDocument("Updated title");
-        Node(document).Style = new WebsiteStyleOverride
+        Node(document).Style = new WebsiteVisualStyle
         {
             FontScale = 12.75m,
             WidthPercent = 250.25m,
@@ -177,7 +177,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         };
 
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
         AssertLargeStyle(Node(saved).Style);
 
         fixture.Db.ChangeTracker.Clear();
@@ -273,7 +273,7 @@ public sealed class WebsiteContentEditorRoundTripTests
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
         var document = CanonicalDocument();
-        Node(document).Style = new WebsiteStyleOverride
+        Node(document).Style = new WebsiteVisualStyle
         {
             FontScale = 0,
             WidthPercent = -1,
@@ -286,7 +286,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         fixture.Db.ChangeTracker.Clear();
         AssertNoAdjustments(Node(ReadDocument(await fixture.CreateController().Manage(ticket))).Style);
 
-        Node(document).Style = new WebsiteStyleOverride
+        Node(document).Style = new WebsiteVisualStyle
         {
             FontScale = 0.05m,
             WidthPercent = 0.25m,
@@ -857,7 +857,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         return envelope.GetProperty("document").Deserialize<WebsiteContentDocument>(JsonOptions)!;
     }
 
-    private static void AssertLargeStyle(WebsiteStyleOverride style)
+    private static void AssertLargeStyle(WebsiteVisualStyle style)
     {
         Assert.Equal(12.75m, style.FontScale);
         Assert.Equal(250.25m, style.WidthPercent);
@@ -866,7 +866,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal("start", style.TextAlign);
     }
 
-    private static void AssertNoAdjustments(WebsiteStyleOverride style)
+    private static void AssertNoAdjustments(WebsiteVisualStyle style)
     {
         Assert.Null(style.FontScale);
         Assert.Null(style.WidthPercent);
