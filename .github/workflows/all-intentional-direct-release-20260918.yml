@@ -842,7 +842,7 @@ jobs:
           echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
       - name: Direct deploy Website immutable ZIP
         id: website
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.resumestate.outputs.website_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.resumestate.outputs.website_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') && (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') || steps.providercanary.outcome == 'success') }}
         continue-on-error: true
         shell: bash
         run: python3 scripts/deploy-approved-app.py --target website
