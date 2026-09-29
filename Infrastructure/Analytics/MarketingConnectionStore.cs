@@ -186,6 +186,7 @@ public static class MarketingServiceRegistration
         services.AddSingleton(sp => MarketingCredentialProtector.CreateShared(
             sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
         services.AddScoped<MarketingConnectionStore>();
+        services.TryAddSingleton<MetaCapiCredentialProtector>();
         services.TryAddScoped<AgentTrackingResolver>();
         services.TryAddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
         services.TryAddScoped<MarketingBrowserConfigurationService>();
@@ -229,6 +230,27 @@ public static class MarketingServiceRegistration
         services.TryAddScoped<IMetaAdsService, MetaAdsService>();
         services.AddScoped<AgentMarketingProfileService>();
         services.AddScoped<Infrastructure.Leads.WebsiteIntakeRecipientResolver>();
+        return services;
+    }
+
+    /// <summary>
+    /// Runs durable marketing projection/delivery from the platform control-plane
+    /// host. Public website hosts must not register these workers.
+    /// </summary>
+    public static IServiceCollection AddMarketingBackgroundWorkers(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.TryAddScoped<IMetaSendAuthority, MetaSendAuthority>();
+        services.Configure<MetaOptions>(configuration.GetSection("Meta"));
+        services.Configure<MetaSignalIntelligenceOptions>(configuration.GetSection("MetaSignalIntelligence"));
+        services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddHostedService<MetaSignalAnalyticsBridge>();
+        services.AddHostedService<MetaSignalOutcomeDispatcherHostedService>();
+        services.AddHostedService<OpenAiConversionDispatcherHostedService>();
         return services;
     }
 }
