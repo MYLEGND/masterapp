@@ -1,4 +1,16 @@
 (() => {
+  const websiteStudioParams = new URLSearchParams(window.location?.search || '');
+  const WEBSITE_STUDIO_ISOLATED =
+    window.LEGEND_WEBSITE_STUDIO_MODE === true ||
+    websiteStudioParams.has('legendEdit') ||
+    websiteStudioParams.has('legendMaterialize');
+  if (WEBSITE_STUDIO_ISOLATED) {
+    // Website Studio is a zero-production-signal environment. Do not create
+    // visitor/session attribution, listeners, queues, page views, CTA events,
+    // form events, provider bridges, or network ingestion from edit/migration.
+    window.__legendTrackingSuppressedForWebsiteStudio = true;
+    return;
+  }
   if (window.__legendTrackingInitialized) {
     return;
   }

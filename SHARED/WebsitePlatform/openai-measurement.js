@@ -1,6 +1,14 @@
 (() => {
   'use strict';
 
+  const websiteStudioParams = new URLSearchParams(window.location?.search || '');
+  if (window.LEGEND_WEBSITE_STUDIO_MODE === true ||
+      websiteStudioParams.has('legendEdit') ||
+      websiteStudioParams.has('legendMaterialize')) {
+    window.__legendOpenAiMeasurementSuppressedForWebsiteStudio = true;
+    return;
+  }
+
   const SDK_URL = 'https://bzrcdn.openai.com/sdk/oaiq.min.js';
   const initializedPixels = new Set();
   const configuredPixels = new Map();

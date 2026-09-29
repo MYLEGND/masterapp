@@ -136,6 +136,9 @@ public static class WebsiteContentSanitizer
                 Description = ClampText(page.Value.Description),
                 Navigation = SanitizeNavigation(path, page.Value.Navigation),
                 DynamicBinding = SanitizeDynamicBinding(page.Value.DynamicBinding),
+                SystemTemplateKey = WebsiteSystemTemplateAuthority.IsKnownTemplateKey(page.Value.SystemTemplateKey)
+                    ? page.Value.SystemTemplateKey!.Trim()
+                    : null,
                 Composition = SanitizeComposition(page.Value.Composition, breakpointKeys)
             };
         }
@@ -432,6 +435,8 @@ public static class WebsiteContentSanitizer
                 "container" when string.Equals(tag, "nav", StringComparison.Ordinal) &&
                                  string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal) =>
                     "primary_navigation",
+                "container" when WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(node.SystemKey) =>
+                    node.SystemKey!.Trim(),
                 _ => null
             };
             if (type == "form" && systemKey is null) continue;
@@ -490,7 +495,7 @@ public static class WebsiteContentSanitizer
         var allowed = type switch
         {
             "section" => new[] { "section" },
-            "container" => new[] { "div", "article", "header", "footer", "nav", "ul", "ol" },
+            "container" => new[] { "div", "article", "header", "footer", "nav", "ul", "ol", "fieldset" },
             "heading" => new[] { "h1", "h2", "h3", "h4", "h5", "h6" },
             "text" => new[] { "p", "span", "small", "strong", "li", "label", "blockquote" },
             "cta" or "link" => new[] { "a", "button" },

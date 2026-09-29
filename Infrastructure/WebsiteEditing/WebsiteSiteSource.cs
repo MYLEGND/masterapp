@@ -143,6 +143,7 @@ public static class WebsiteSiteSource
                 Description = page.Description,
                 Navigation = page.Navigation ?? new WebsitePageNavigation(),
                 DynamicBinding = page.DynamicBinding ?? currentPage?.DynamicBinding,
+                SystemTemplateKey = currentPage?.SystemTemplateKey,
                 Composition = Clone(page.Composition ?? [])
             };
 
@@ -200,6 +201,11 @@ public static class WebsiteSiteSource
         if (document.LegacyMigration is not null || document.Version != WebsiteStudioContract.CurrentDocumentVersion)
             throw new ArgumentException("Website v3 composition is not canonical.");
 
+        foreach (var page in document.Pages.Values)
+            if (page.SystemTemplateKey is not null &&
+                !WebsiteSystemTemplateAuthority.IsKnownTemplateKey(page.SystemTemplateKey))
+                throw new ArgumentException("Website runtime template binding is invalid.");
+
         var validActions = ctaCatalog.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var primaryNavigationCount = 0;
@@ -215,6 +221,13 @@ public static class WebsiteSiteSource
             if (node.Type == "form" &&
                 !string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
                 throw new ArgumentException("Website forms must use the canonical inquiry authority.");
+
+            if (WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(node.SystemKey))
+            {
+                if (!document.Pages.TryGetValue(pagePath, out var runtimePage) ||
+                    !WebsiteSystemTemplateAuthority.IsKnownTemplateKey(runtimePage.SystemTemplateKey))
+                    throw new ArgumentException("Protected runtime forms are allowed only on server-bound Protect template pages.");
+            }
 
             if (string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal))
             {
@@ -341,6 +354,27 @@ public static class WebsiteSiteSource
     {
         var copy = Clone(source);
         copy.Signals = [];
+
+        // System/runtime/data authority is not an authoring surface. Parse restores
+        // it by stable node ID from the current canonical baseline. Keep the opaque
+        // ActionKey visible so GPT can understand the selected preset action, but
+        // never expose its server-owned destination, target, data binding, form
+        // endpoint, or system binding through Site Source.
+        var protectedBackendSemantics =
+            !string.IsNullOrWhiteSpace(source.ActionKey) ||
+            !string.IsNullOrWhiteSpace(source.SystemKey) ||
+            !string.IsNullOrWhiteSpace(source.SystemBinding) ||
+            string.Equals(source.Type, "form", StringComparison.Ordinal);
+
+        copy.SystemKey = null;
+        copy.SystemBinding = null;
+        if (protectedBackendSemantics)
+        {
+            copy.Href = null;
+            copy.Target = null;
+            copy.DataBinding = null;
+        }
+
         copy.Children = source.Children.Select(ProjectNode).ToList();
         return copy;
     }
@@ -368,13 +402,17 @@ public static class WebsiteSiteSource
 
                 if (!string.IsNullOrWhiteSpace(previous.Node.SystemKey))
                 {
-                    if (!string.Equals(previous.Node.SystemKey, node.SystemKey, StringComparison.Ordinal))
+                    if (string.IsNullOrWhiteSpace(node.SystemKey))
+                        node.SystemKey = previous.Node.SystemKey;
+                    else if (!string.Equals(previous.Node.SystemKey, node.SystemKey, StringComparison.Ordinal))
                         throw new ArgumentException($"Protected component '{node.Id}' cannot change its system authority.");
                 }
 
                 if (!string.IsNullOrWhiteSpace(previous.Node.SystemBinding))
                 {
-                    if (!string.Equals(previous.Node.SystemBinding, node.SystemBinding, StringComparison.Ordinal))
+                    if (string.IsNullOrWhiteSpace(node.SystemBinding))
+                        node.SystemBinding = previous.Node.SystemBinding;
+                    else if (!string.Equals(previous.Node.SystemBinding, node.SystemBinding, StringComparison.Ordinal))
                         throw new ArgumentException($"Protected component '{node.Id}' cannot change its system data authority.");
                 }
                 else if (!string.IsNullOrWhiteSpace(node.SystemBinding))
@@ -388,6 +426,24 @@ public static class WebsiteSiteSource
                         node.ActionKey = previous.Node.ActionKey;
                     else if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
                         throw new ArgumentException($"Protected component '{node.Id}' cannot change its canonical action identity.");
+
+                    // A preset CTA's visible label/presentation is editable, but its
+                    // destination and window behavior belong to the server catalog.
+                    // Source/GPT cannot turn a locked action into an arbitrary link.
+                    node.Href = previous.Node.Href;
+                    node.Target = previous.Node.Target;
+                }
+
+                if (!string.IsNullOrWhiteSpace(previous.Node.ActionKey) ||
+                    !string.IsNullOrWhiteSpace(previous.Node.SystemKey) ||
+                    !string.IsNullOrWhiteSpace(previous.Node.SystemBinding) ||
+                    string.Equals(previous.Node.Type, "form", StringComparison.Ordinal))
+                {
+                    // Preserve backend-owned semantic/data wiring while allowing
+                    // copy, style, layout, motion, and other public presentation.
+                    node.Href = previous.Node.Href;
+                    node.Target = previous.Node.Target;
+                    node.DataBinding = Clone(previous.Node.DataBinding);
                 }
 
                 if (node.Type is "image" or "video" &&

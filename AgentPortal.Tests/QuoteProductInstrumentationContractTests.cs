@@ -185,7 +185,9 @@ public class QuoteProductInstrumentationContractTests
 
         Assert.Contains("window.LEGEND_ANALYTICS_CONFIG =", layout, StringComparison.Ordinal);
         Assert.Contains("<script src=\"~/js/tracking.js\" asp-append-version=\"true\"></script>", layout, StringComparison.Ordinal);
-        Assert.Contains("<script src=\"~/js/lead-modal.js\" asp-append-version=\"true\"></script>", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("lead-modal.js", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"leadForm\"", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"leadModal\"", layout, StringComparison.Ordinal);
         Assert.Contains("<script src=\"~/js/meta-signal-intelligence.js\" asp-append-version=\"true\"></script>", lifeView, StringComparison.Ordinal);
         Assert.Contains("<script src=\"~/js/life-estimate-engine.js\" asp-append-version=\"true\"></script>", lifeView, StringComparison.Ordinal);
         Assert.Contains("<script src=\"~/js/trusted-carrier-strip.js\" asp-append-version=\"true\"></script>", lifeView, StringComparison.Ordinal);

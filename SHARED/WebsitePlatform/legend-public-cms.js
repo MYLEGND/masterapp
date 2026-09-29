@@ -28,6 +28,17 @@
   const editorTicket = params.get('legendEdit') || '';
   const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
   const editorMode = !!editorTicket && !materializeMode;
+  const studioIsolationMode = editorMode || materializeMode;
+  if (studioIsolationMode) {
+    window.LEGEND_WEBSITE_STUDIO_MODE = true;
+    // Block production form mutations from the browser while Studio is active.
+    // Website Studio save/publish uses explicit fetch calls outside form submit.
+    document.addEventListener('submit', event => {
+      if (event.target?.closest?.('.legend-cms-editor')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+  }
   const originalTitle = document.title || '';
   const originalDescription = document.querySelector('meta[name="description"]')?.content || '';
   const initialFaviconLink = document.querySelector('link[rel~="icon"]');
@@ -60,6 +71,7 @@
   let activeEditorPanel = 'content';
   let dirty = false;
   let sourceEditorDirty = false;
+  let templateRepairPending = false;
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
@@ -159,18 +171,57 @@
     return doc;
   }
 
+  function isRuntimeShellChromeNode(node) {
+    if (!node || typeof node !== 'object') return false;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    return String(node.tag || '').toLowerCase()==='button' &&
+      classes.includes('nav-toggle') &&
+      !node.actionKey && !node.systemKey && !node.systemBinding && !node.href;
+  }
+
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
-    return input.filter(node => node && typeof node === 'object').map(node => ({
-      ...node,
-      children: normalizeCompositionNodes(node.children),
-      style: node.style && typeof node.style === 'object' ? node.style : {},
-      breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
-      layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
-      breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
-      animations: Array.isArray(node.animations) ? node.animations : [],
-      signals: Array.isArray(node.signals) ? node.signals : []
-    }));
+    return input
+      .filter(node => node && typeof node === 'object')
+      .map(node => ({
+        ...node,
+        children: normalizeCompositionNodes(node.children),
+        style: node.style && typeof node.style === 'object' ? node.style : {},
+        breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
+        layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
+        breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
+        animations: Array.isArray(node.animations) ? node.animations : [],
+        signals: Array.isArray(node.signals) ? node.signals : []
+      }))
+      // Menu toggles are reconstructed runtime chrome. They were accidentally
+      // persisted by early v3 materialization and have no website destination.
+      .filter(node => !isRuntimeShellChromeNode(node));
+  }
+
+  function normalizeHeaderComposition(input) {
+    const roots=normalizeCompositionNodes(input);
+    let primarySeen=false;
+    const clean=nodes => {
+      const result=[];
+      for(const node of nodes || []) {
+        const classes=String(node?.className || '').split(/\s+/).filter(Boolean);
+        const primary=node?.systemKey==='primary_navigation';
+        const templateNav=!primary && String(node?.tag || '').toLowerCase()==='nav' && classes.includes('nav');
+        if(templateNav && SITE_KEY==='business') continue;
+        if(primary) {
+          if(primarySeen) continue;
+          primarySeen=true;
+          // Page links are a projection of versioned page navigation metadata,
+          // not a second persisted list inside the shell.
+          if(SITE_KEY==='business') node.children=[];
+        } else {
+          node.children=clean(node.children);
+        }
+        result.push(node);
+      }
+      return result;
+    };
+    return clean(roots);
   }
 
   function normalizeControlPresentation(input) {
@@ -184,19 +235,32 @@
     };
   }
 
+  function cleanBusinessPreviewTitle(value) {
+    if (typeof value !== 'string') return null;
+    if (SITE_KEY !== 'business') return value;
+    const suffix=' | Business website preview';
+    return value.endsWith(suffix) ? value.slice(0,-suffix.length) : value;
+  }
+
   function normalizeDocument(input) {
     const pages = {};
     for (const [key,value] of Object.entries(input?.pages && typeof input.pages === 'object' ? input.pages : {})) {
       if (!value || typeof value !== 'object') continue;
-      const route = normalizePageRoute(key);
+      const rawRoute = normalizePageRoute(key);
+      const route = canonicalSiteRoute(rawRoute);
       if (!route) continue;
+      // Protect v2 could persist the browser-owned /a/{slug}/... path. V3 owns
+      // route identity independent of agent URL scope, so collapse those rows
+      // into the one canonical page key and never serialize the prefixed copy.
+      if (pages[route] && rawRoute !== route) continue;
       pages[route] = {
-        title: typeof value.title === 'string' ? value.title : null,
+        title: cleanBusinessPreviewTitle(value.title),
         description: typeof value.description === 'string' ? value.description : null,
         navigation: value.navigation && typeof value.navigation === 'object'
           ? {...value.navigation}
           : {showInNavigation:true,order:0,isDeleted:false},
         dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
+        systemTemplateKey: typeof value.systemTemplateKey === 'string' ? value.systemTemplateKey : null,
         composition: normalizeCompositionNodes(value.composition)
       };
     }
@@ -217,7 +281,7 @@
       faviconImageDataUrl:typeof input?.faviconImageDataUrl==='string'?input.faviconImageDataUrl:null,
       breakpoints:normalizeBreakpoints(input?.breakpoints),
       shell:{
-        header:normalizeCompositionNodes(input?.shell?.header),
+        header:normalizeHeaderComposition(input?.shell?.header),
         footer:normalizeCompositionNodes(input?.shell?.footer)
       },
       reusableComponents,
@@ -262,10 +326,16 @@
     return pathname;
   }
 
+  function canonicalSiteRoute(value) {
+    const normalized = normalizePageRoute(value);
+    if (!normalized) return null;
+    const scoped = protectCanonicalPathname(normalized);
+    return normalizePageRoute(scoped) || normalized;
+  }
+
   function currentPageRoute() {
     const browserPath = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
-    const pathname = protectCanonicalPathname(browserPath);
-    return normalizePageRoute(pathname) || '/';
+    return canonicalSiteRoute(browserPath) || '/';
   }
 
   function pageState() {
@@ -284,6 +354,31 @@
     page.composition ||= [];
     page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
     return page;
+  }
+
+  function pageUsesSystemTemplate(page = pageState()) {
+    return SITE_KEY === 'protect' &&
+      typeof page?.systemTemplateKey === 'string' &&
+      page.systemTemplateKey.startsWith('protect_template:');
+  }
+
+  function containsProtectedRuntimeForm(nodes) {
+    let found=false;
+    walkComposition(nodes,node=>{
+      if(String(node?.systemKey || '').startsWith('protect_runtime_form:')) {
+        found=true;
+        return false;
+      }
+    });
+    return found;
+  }
+
+  function applyTemplateBackedCompositionPage() {
+    const page=pageState();
+    walkComposition(page.composition || [],node=>{
+      const el=findEditableElement(node.id);
+      if(el) applyCompositionNode(el,node);
+    });
   }
 
   function usesCanonicalComposition() {
@@ -390,6 +485,23 @@
       document.querySelector('.site-footer')
     ].filter(Boolean);
 
+    // Stable system-form identities are assigned before generic DOM IDs.
+    document.querySelectorAll('[data-legend-public-inquiry-form]').forEach((mount,index)=>{
+      mount.dataset.cmsId = index ? 'form.canonical_inquiry.' + (index + 1) : 'form.canonical_inquiry';
+      mount.dataset.cmsEditable = 'true';
+      mount.dataset.cmsSystemForm = 'canonical_inquiry';
+      rememberOriginal(mount);
+    });
+    if (SITE_KEY === 'protect') {
+      document.querySelectorAll('form[data-form-key]:not([data-website-inquiry])').forEach((form,index)=>{
+        const formKey=safeId(form.dataset.formKey || form.id || ('runtime-' + (index + 1))) || ('runtime-' + (index + 1));
+        form.dataset.cmsId='runtime.form.'+formKey;
+        form.dataset.cmsEditable='true';
+        form.dataset.cmsSystemForm='protect_runtime_form:'+formKey;
+        rememberOriginal(form);
+      });
+    }
+
     const sections = [...document.querySelectorAll(sectionCandidates), ...document.querySelectorAll('.site-header,.site-footer')];
     sections.forEach((section, index) => {
       if (!section.dataset.cmsSection) {
@@ -402,7 +514,7 @@
 
     let counter = 0, addedCounter = 0;
     roots.forEach(root => {
-      root.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article,header,footer').forEach(el => {
+      root.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article,header,footer,form,fieldset').forEach(el => {
         if (!canEditElement(el)) return;
         if (!['IMG','VIDEO','A','DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) && el.children.length > 0) return;
         if (!el.dataset.cmsId) {
@@ -987,7 +1099,7 @@
   function legacyMigrationPageState() {
     const pages=legacyMigration?.pages && typeof legacyMigration.pages==='object' ? legacyMigration.pages : {};
     const route=currentPageRoute();
-    return pages[route] || pages[pageKey] || (route==='/' ? pages.home : null) ||
+    return legacyPageForRoute(route) || pages[pageKey] || (route==='/' ? pages.home : null) ||
       {elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
   }
 
@@ -1138,28 +1250,62 @@
 
   function materializeCompositionNode(el, fallbackId = null) {
     if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    // Menu toggles are runtime shell chrome, not editable website links. Keeping
+    // them in v3 created invalid link nodes with no action/destination and made
+    // publish fail. Runtime recreates and wires this control from primary nav.
+    if (el.matches?.('[data-public-nav-toggle],.nav-toggle')) return null;
     const tag = el.tagName.toLowerCase();
     if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
 
     const id = el.dataset.cmsId || fallbackId || pageKey + '.' + safeId(tag) + '.node';
+    if (!el.dataset.cmsId) {
+      el.dataset.cmsId=id;
+      el.dataset.cmsEditable='true';
+      rememberOriginal(el);
+    }
     const model = legacyMigrationRecordForElement(el) || {};
     const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
     const extra = el.dataset.cmsExtraId ? legacyMigrationExtraById(el.dataset.cmsExtraId) : null;
 
-    if (tag === 'form' && el.matches('[data-website-inquiry]')) {
+    if (el.matches?.('[data-legend-public-inquiry-form]') ||
+        (tag === 'form' && el.matches('[data-website-inquiry]'))) {
       return {
         id, type:'form', tag:'form', className:cleanCompositionClassName(el),
-        title:el.querySelector('legend')?.textContent || extra?.title || 'Send an inquiry',
-        text:el.querySelector('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
+        title:el.querySelector?.('legend')?.textContent || extra?.title || 'Send an inquiry',
+        text:el.querySelector?.('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
         systemKey:'canonical_inquiry', signals:cloneCanonicalValue(model.signals || extra?.signals || []),
         style:cloneCanonicalValue(model.style || extra?.style || {}),
         breakpointStyles:cloneCanonicalValue(model.breakpointStyles || extra?.breakpointStyles || {}),
         layout:cloneCanonicalValue(model.layout || extra?.layout || {}),
         breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || extra?.breakpointLayouts || {}),
         animations:cloneCanonicalValue(model.animations || extra?.animations || []),
-        dataBinding:cloneCanonicalValue(model.dataBinding || extra?.dataBinding || null),
+        dataBinding:null,
         children:[]
       };
+    }
+
+    if (tag === 'form' && SITE_KEY === 'protect' && el.dataset.formKey) {
+      const formKey=safeId(el.dataset.formKey || el.id || id) || 'runtime';
+      const runtimeNode={
+        id, type:'container', tag:'div', className:cleanCompositionClassName(el),
+        systemKey:'protect_runtime_form:'+formKey,
+        signals:[],
+        style:cloneCanonicalValue(model.style || {}),
+        breakpointStyles:cloneCanonicalValue(model.breakpointStyles || {}),
+        layout:cloneCanonicalValue(model.layout || {}),
+        breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(model.animations || []),
+        dataBinding:null,
+        children:[]
+      };
+      let childIndex=0;
+      for(const child of [...el.children].filter(child =>
+        child instanceof HTMLElement &&
+        !['input','select','textarea','script','style','noscript'].includes(child.tagName.toLowerCase()))) {
+        const childNode=materializeCompositionNode(child,id+'.child.'+(++childIndex));
+        if(childNode) runtimeNode.children.push(childNode);
+      }
+      return runtimeNode;
     }
 
     if (extra?.type === 'code' && el.classList.contains('legend-legacy-migration-code')) {
@@ -1182,28 +1328,43 @@
       };
     }
 
+    const runtimeFormAncestor = SITE_KEY === 'protect'
+      ? el.closest?.('form[data-form-key]:not([data-website-inquiry])')
+      : null;
+    const runtimePresentationControl = !!runtimeFormAncestor && runtimeFormAncestor !== el &&
+      (tag === 'a' || tag === 'button');
+    const rawHref = tag === 'a' ? el.getAttribute('href') : model.href;
+    const unmanagedInteractiveControl =
+      (tag === 'button' && !actionKey) ||
+      (tag === 'a' && !actionKey && !rawHref);
+    const presentationOnlyControl = runtimePresentationControl || unmanagedInteractiveControl;
+
     let type = 'text';
     if (tag === 'section') type='section';
-    else if (['div','article','header','footer','nav','ul','ol'].includes(tag)) type='container';
+    else if (['div','article','header','footer','nav','ul','ol','fieldset'].includes(tag)) type='container';
     else if (/^h[1-6]$/.test(tag)) type='heading';
-    else if (tag === 'a' || tag === 'button') type=actionKey ? 'cta' : 'link';
+    else if (tag === 'a' || tag === 'button') type=presentationOnlyControl ? 'text' : (actionKey ? 'cta' : 'link');
     else if (tag === 'img') type='image';
     else if (tag === 'video') type='video';
 
+    // Runtime/UI-only controls are presentation projections only. Their actual
+    // behavior stays with the server/runtime owner. Materialization must never
+    // manufacture a publishable link from an unmanaged button or empty anchor.
+    const projectedTag = presentationOnlyControl ? 'span' : tag;
     const node = {
-      id, type, tag, className:cleanCompositionClassName(el),
-      actionKey:actionKey || null,
-      href:(tag === 'a' ? el.getAttribute('href') : model.href) || null,
-      target:(tag === 'a' ? el.getAttribute('target') : model.target) || null,
+      id, type, tag:projectedTag, className:cleanCompositionClassName(el),
+      actionKey:presentationOnlyControl ? null : (actionKey || null),
+      href:presentationOnlyControl ? null : (rawHref || null),
+      target:presentationOnlyControl ? null : ((tag === 'a' ? el.getAttribute('target') : model.target) || null),
       alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || model.alt || null) : null,
       hidden:el.hidden === true ? true : (model.hidden === false ? false : null),
-      signals:cloneCanonicalValue(model.signals || []),
+      signals:presentationOnlyControl ? [] : cloneCanonicalValue(model.signals || []),
       style:cloneCanonicalValue(model.style || {}),
       breakpointStyles:cloneCanonicalValue(model.breakpointStyles || {}),
       layout:cloneCanonicalValue(model.layout || {}),
       breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || {}),
       animations:cloneCanonicalValue(model.animations || []),
-      dataBinding:cloneCanonicalValue(model.dataBinding || null),
+      dataBinding:presentationOnlyControl ? null : cloneCanonicalValue(model.dataBinding || null),
       children:[]
     };
 
@@ -1275,7 +1436,7 @@
     const type=String(node?.type || 'text');
     const tag=String(node?.tag || '').toLowerCase();
     const allowed={
-      section:['section'],container:['div','article','header','footer','nav','ul','ol'],
+      section:['section'],container:['div','article','header','footer','nav','ul','ol','fieldset'],
       heading:['h1','h2','h3','h4','h5','h6'],text:['p','span','small','strong','li','label','blockquote'],
       cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],embed:['div'],spacer:['div'],reusable:['div']
     }[type] || ['div'];
@@ -1437,6 +1598,33 @@
     }
   }
 
+  function ensureCanonicalNavigationToggle() {
+    const header=document.querySelector('.site-header');
+    const nav=header?.querySelector('#primary-nav,[data-public-nav]');
+    if(!header || !nav) return;
+    let toggle=header.querySelector('[data-public-nav-toggle]');
+    if(!toggle){
+      toggle=document.createElement('button');
+      toggle.type='button';
+      toggle.className='nav-toggle';
+      toggle.dataset.publicNavToggle='';
+      toggle.dataset.cmsLocked='true';
+      toggle.setAttribute('aria-controls','primary-nav');
+      toggle.setAttribute('aria-expanded','false');
+      toggle.textContent='Menu';
+      header.insertBefore(toggle,nav);
+    }
+    if(toggle.dataset.legendRuntimeBound==='true') return;
+    toggle.dataset.legendRuntimeBound='true';
+    const close=()=>{nav.dataset.open='false';toggle.setAttribute('aria-expanded','false');};
+    toggle.addEventListener('click',()=>{
+      const open=nav.dataset.open==='true';
+      nav.dataset.open=open?'false':'true';
+      toggle.setAttribute('aria-expanded',open?'false':'true');
+    });
+    nav.addEventListener('click',event=>{if(event.target.closest?.('a')) close();});
+  }
+
   function renderCanonicalShell() {
     const renderRoot=(selector,nodes,requiredClass)=>{
       const existing=document.querySelector(selector);
@@ -1455,6 +1643,7 @@
     };
     renderRoot('.site-header',documentState.shell?.header || [],'site-header');
     renderRoot('.site-footer',documentState.shell?.footer || [],'site-footer');
+    ensureCanonicalNavigationToggle();
   }
 
   function mediaUrl(value) {
@@ -2093,8 +2282,12 @@
 
   function applyBusinessPageNavigation() {
     if (SITE_KEY !== 'business') return;
-    const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
+    const header=document.querySelector('.site-header');
+    const nav=header?.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]') || document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
+    // Business navigation is projected exclusively from canonical page metadata.
+    // Remove stale preview/template nav copies instead of merging them.
+    header?.querySelectorAll('nav.nav,[data-public-nav]').forEach(candidate=>{if(candidate!==nav) candidate.remove();});
 
     // One authority only: the template route catalog plus this website's
     // versioned page metadata. Never merge the already-rendered DOM back into
@@ -2146,13 +2339,32 @@
     }else{
       document.querySelectorAll('.legend-legacy-migration-node').forEach(node=>{scaledElements.delete(node);node.remove();});
       renderCanonicalShell();
-      renderCanonicalCompositionPage();
+      const page=pageState();
+      if(pageUsesSystemTemplate(page)){
+        const liveRuntime=document.querySelector('form[data-form-key]:not([data-website-inquiry])');
+        if(liveRuntime && !containsProtectedRuntimeForm(page.composition)){
+          // Repair early v3 drafts that flattened an executable form into generic
+          // content. Re-materialize presentation from the still-mounted server
+          // template, while the form execution stays outside WebsiteContentDocument.
+          page.composition=materializeCurrentPageComposition();
+          templateRepairPending=true;
+          dirty=true;
+        }
+        applyTemplateBackedCompositionPage();
+      }else{
+        renderCanonicalCompositionPage();
+      }
     }
 
     if(SITE_KEY==='business' && (managementPayload || renderInput))
       bindBusiness(managementPayload || renderInput);
     applyBusinessPageNavigation();
     applyStoreNavigation();
+    try {
+      window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
+        detail:{siteKey:SITE_KEY,page:currentPageRoute(),editor:editorMode,materialize:materializeMode}
+      }));
+    } catch {}
   }
 
   function refreshResponsiveComposition() {
@@ -2317,7 +2529,7 @@
     const entries=new Map();
     const catalog=Array.isArray(renderInput?.pageCatalog) ? renderInput.pageCatalog : (context.pages || []);
     catalog.forEach((page,index) => {
-      const route=normalizePageRoute(page?.route || page?.path);
+      const route=canonicalSiteRoute(page?.route || page?.path);
       if (!route) return;
       entries.set(route,{
         route,
@@ -2334,20 +2546,24 @@
 
   function legacyPageForRoute(route) {
     if(!legacyMigration?.pages) return null;
-    return legacyMigration.pages[route] || (route==='/' ? legacyMigration.pages.home : null) || null;
+    const direct=legacyMigration.pages[route] || (route==='/' ? legacyMigration.pages.home : null);
+    if(direct) return direct;
+    for(const [rawPath,page] of Object.entries(legacyMigration.pages))
+      if(canonicalSiteRoute(rawPath)===route) return page;
+    return null;
   }
 
   function websitePageEntries(includeDeleted = true) {
     const entries=publishedRouteCatalogEntries();
     for(const [rawPath,page] of Object.entries(documentState.pages || {})){
-      const route=normalizePageRoute(rawPath);
+      const route=canonicalSiteRoute(rawPath);
       if(!route || !page || typeof page!=='object') continue;
       const previous=entries.get(route);
       const navigation=page.navigation || {};
       const legacy=legacyPageForRoute(route);
       entries.set(route,{
         route,
-        label:SITE_KEY==='business' ? (navigation.label || page.title || previous?.label || route) : (page.title || navigation.label || previous?.label || route),
+        label:SITE_KEY==='business' ? (navigation.label || previous?.label || page.title || route) : (page.title || navigation.label || previous?.label || route),
         nativeRoute:previous?.nativeRoute===true,
         legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
         deleted:navigation.isDeleted===true,
@@ -2379,7 +2595,7 @@
   }
 
   function editorUrlForRoute(route, materialize = false) {
-    route=normalizePageRoute(route); if(!route) return null;
+    route=canonicalSiteRoute(route); if(!route) return null;
     const publishedRoutes=publishedRouteCatalogEntries();
     const entry=websitePageEntries(true).find(value=>value.route===route);
     const url=new URL(location.origin);
@@ -2412,6 +2628,7 @@
       route:currentPageRoute(),
       title:pageState().title ?? originalTitle,
       description:pageState().description ?? originalDescription,
+      systemTemplateKey:pageState().systemTemplateKey || null,
       composition:materializeCurrentPageComposition(),
       shell:materializeCurrentShell()
     };
@@ -2524,8 +2741,13 @@
       const route=normalizePageRoute(snapshot.route);
       if(!route) throw new Error('Materialized page route was invalid.');
       const page=next.pages[route] || {navigation:{showInNavigation:true,order:0,isDeleted:false},composition:[]};
-      page.title=snapshot.title ?? page.title;
+      const routeEntry=entries.find(entry=>entry.route===route);
+      const snapshotTitle=cleanBusinessPreviewTitle(snapshot.title);
+      page.title=snapshotTitle ?? page.title;
       page.description=snapshot.description ?? page.description;
+      page.systemTemplateKey=snapshot.systemTemplateKey ?? page.systemTemplateKey ?? null;
+      page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+      if(SITE_KEY==='business' && !page.navigation.label && routeEntry?.label) page.navigation.label=routeEntry.label;
       page.composition=normalizeCompositionNodes(snapshot.composition);
       next.pages[route]=page;
     }
@@ -4864,7 +5086,9 @@
     gpt.id='legend-cms-browser-agent-workspace';
     gpt.dataset.agentWorkspace='browser-only';
     gpt.dataset.externalAiApi='false';
-    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><ul><li>Source, canvas, media, pages, draft, validation, and publish all modify the same WebsiteContentDocument v3.</li><li>Preset CTA action keys, inquiry authority, commerce scope, analytics, Meta, and OpenAI conversion wiring remain backend-owned.</li><li>GPT may restyle, rewrite, reposition, add pages/sections/content, choose only available preset actions, and use media owned by this website.</li><li>Publishing remains an explicit browser action through the normal immutable publish authority.</li></ul></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    const agentScript=gpt.querySelector('#legend-cms-agent-contract-script');
+    if(agentScript) agentScript.textContent=managementPayload?.agentContract?.promptTemplate || 'Canonical GPT operating contract unavailable; do not modify this website until the server contract is loaded.';
     tools.appendChild(gpt);
 
     const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
@@ -5124,9 +5348,8 @@
       .legend-cms-corner-nw,.legend-cms-corner-ne,.legend-cms-corner-se,.legend-cms-corner-sw{width:14px;height:14px}
       .legend-cms-corner-nw{left:-7px;top:-7px;cursor:nwse-resize}.legend-cms-corner-ne{right:-7px;top:-7px;cursor:nesw-resize}.legend-cms-corner-se{right:-7px;bottom:-7px;cursor:nwse-resize}.legend-cms-corner-sw{left:-7px;bottom:-7px;cursor:nesw-resize}
       .legend-cms-edge-handle:hover{background:#d4ad451f!important}
-      body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
-      body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
-      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0);contain:inline-size}
+      body.legend-cms-editing{display:block;height:100dvh;min-height:0;margin:0;overflow:hidden}
+      .legend-cms-preview{width:100vw;max-width:none;min-width:100vw;min-height:0;height:100dvh;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0)}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
@@ -5135,7 +5358,7 @@
       .legend-cms-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:14px 0;background:#081a3a;color:#fff;border-bottom:1px solid #344766;margin:0 0 12px;position:sticky;top:-20px;z-index:2}
       .legend-cms-bar button{min-height:38px;border-radius:8px;padding:8px 12px;border:1px solid #50617e;background:#142c50;color:#fff;font-weight:650}
       .legend-cms-bar .primary{background:#d4ad45;color:#081a3a}
-      .legend-cms-panel{min-width:0;min-height:0;height:100%;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+      .legend-cms-panel{position:fixed;z-index:2147483000;top:0;right:0;width:min(24rem,92vw);min-width:20rem;min-height:0;height:100dvh;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom));box-shadow:-18px 0 42px #0005}
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
@@ -5160,7 +5383,7 @@
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .legend-cms-image,.legend-legacy-migration-image{display:block;margin-left:auto;margin-right:auto;height:auto}
-      @media(max-width:800px){html{max-width:100%;overflow-x:hidden}body.legend-cms-editing{width:100%;max-width:100%;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr);overflow-x:hidden}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-preview{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}.legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}.legend-cms-panel{width:100%;max-width:100%;min-width:0;overflow-x:hidden;border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
+      @media(max-width:800px){html{max-width:100%;overflow-x:hidden}body.legend-cms-editing{width:100%;max-width:100%;overflow-x:hidden}.legend-cms-preview{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}.legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}.legend-cms-panel{width:100%;max-width:100%;min-width:0;overflow-x:hidden;border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
     `;
     document.head.appendChild(style);
   }
@@ -5389,6 +5612,12 @@
 
       if(legacyMigration && payload.capabilities?.compositionV3===true){
         await materializeCanonicalSite();
+      }
+
+      if(!materializeMode && templateRepairPending && !legacyMigration){
+        const repaired=await save(false);
+        if(!repaired) throw new Error('Protected form presentation could not be repaired safely. Publishing remains blocked.');
+        templateRepairPending=false;
       }
 
       preservePreviewNavigation();

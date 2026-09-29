@@ -152,10 +152,17 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse(fakeAction, source, BusinessActions()));
 
-        var fakeForm = serialized.Replace(
-            "\"systemKey\": \"canonical_inquiry\"",
-            "\"systemKey\": \"custom_submit\"",
-            StringComparison.Ordinal);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var hero = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
+        var form = hero.Children.Single(node => node.Id == "home.hero.form");
+        Assert.Null(form.SystemKey);
+        form.SystemKey = "custom_submit";
+        var fakeForm = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
         Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse(fakeForm, source, BusinessActions()));
     }
@@ -184,6 +191,146 @@ public sealed class WebsiteSiteSourceV3Tests
 
         Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse(removed, source, BusinessActions()));
+    }
+
+    [Fact]
+    public void SiteSource_ProtectedActionAndFormBackendSemanticsRemainServerOwned()
+    {
+        var baseline = CanonicalDocument();
+        var quoteBaseline = baseline.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.quote");
+        quoteBaseline.Href = "/contact";
+        quoteBaseline.Target = "_self";
+        quoteBaseline.DataBinding = new WebsiteDataBinding
+        {
+            CollectionId = "canonical",
+            Field = "name",
+            Target = "text"
+        };
+
+        var formBaseline = baseline.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.form");
+        formBaseline.Href = "/api/website-inquiries/public";
+        formBaseline.DataBinding = new WebsiteDataBinding
+        {
+            CollectionId = "canonical",
+            Field = "contact",
+            Target = "text"
+        };
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+        var hero = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
+        var quote = hero.Children.Single(node => node.Id == "home.hero.quote");
+        var form = hero.Children.Single(node => node.Id == "home.hero.form");
+
+        Assert.Null(quote.Href);
+        Assert.Null(quote.Target);
+        Assert.Null(quote.DataBinding);
+        Assert.Null(form.Href);
+        Assert.Null(form.DataBinding);
+        Assert.DoesNotContain("/api/website-inquiries/public", serialized, StringComparison.Ordinal);
+
+        quote.Href = "https://untrusted.example/changed";
+        quote.Target = "_blank";
+        quote.DataBinding = new WebsiteDataBinding
+        {
+            CollectionId = "forged",
+            Field = "forged",
+            Target = "href"
+        };
+
+        form.Href = "https://untrusted.example/intake";
+        form.DataBinding = new WebsiteDataBinding
+        {
+            CollectionId = "forged",
+            Field = "owner",
+            Target = "href"
+        };
+
+        var proposed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var parsed = WebsiteSiteSource.Parse(proposed, baseline, BusinessActions());
+
+        var parsedHero = parsed.Document.Pages["/"].Composition
+            .Single(node => node.Id == "home.hero");
+        var parsedQuote = parsedHero.Children.Single(node => node.Id == "home.hero.quote");
+        var parsedForm = parsedHero.Children.Single(node => node.Id == "home.hero.form");
+
+        Assert.Equal("business_quote", parsedQuote.ActionKey);
+        Assert.Equal("/contact", parsedQuote.Href);
+        Assert.Equal("_self", parsedQuote.Target);
+        Assert.Equal("canonical", parsedQuote.DataBinding?.CollectionId);
+        Assert.Equal("name", parsedQuote.DataBinding?.Field);
+
+        Assert.Equal("canonical_inquiry", parsedForm.SystemKey);
+        // Canonical inquiry execution is selected by SystemKey; the executable
+        // endpoint is runtime-owned and is never persisted in WebsiteContentDocument.
+        Assert.Null(parsedForm.Href);
+        Assert.Equal("canonical", parsedForm.DataBinding?.CollectionId);
+        Assert.Equal("contact", parsedForm.DataBinding?.Field);
+    }
+
+    [Fact]
+    public void ProtectSystemTemplateAuthority_UsesCanonicalRouteIdentityForFounderAgentAndPaidVariants()
+    {
+        Assert.Equal(
+            "protect_template:life_wizard",
+            WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Protect, "/Quote/Life"));
+        Assert.Equal(
+            "protect_template:life_wizard",
+            WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Protect, "/a/legend/Quote/Life/landing"));
+        Assert.Equal(
+            "protect_template:risk_assessment",
+            WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Protect, "/a/agent-one/RiskAssessment"));
+        Assert.Equal(
+            "protect_template:dvh_quote",
+            WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Protect, "/Quote/Dental-Vision-Hearing/landing"));
+        Assert.Null(WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Legend, "/Quote/Life"));
+        Assert.Null(WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Business, "/Quote/Life"));
+    }
+
+    [Fact]
+    public void SiteSource_HidesRuntimeSystemAuthorityButRoundTripsPresentationByStableNodeId()
+    {
+        var baseline = CanonicalDocument();
+        baseline.Pages["/"].SystemTemplateKey = "protect_template:life_wizard";
+        baseline.Pages["/"].Composition[0].Children.Add(new WebsiteCompositionNode
+        {
+            Id = "runtime.form.quote-life",
+            Type = "container",
+            Tag = "div",
+            SystemKey = "protect_runtime_form:quote_life",
+            Href = "/Quote/Life",
+            DataBinding = new WebsiteDataBinding
+            {
+                CollectionId = "protected",
+                Field = "runtime",
+                Target = "text"
+            },
+            Text = "Visible runtime presentation"
+        });
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        Assert.DoesNotContain("protect_runtime_form:", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("protect_template:", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"collectionId\": \"protected\"", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"href\": \"/Quote/Life\"", serialized, StringComparison.Ordinal);
+
+        var parsed = WebsiteSiteSource.Parse(serialized, baseline, BusinessActions());
+        var runtime = parsed.Document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "runtime.form.quote-life");
+
+        Assert.Equal("protect_template:life_wizard", parsed.Document.Pages["/"].SystemTemplateKey);
+        Assert.Equal("protect_runtime_form:quote_life", runtime.SystemKey);
+        Assert.Null(runtime.Href);
+        Assert.Equal("protected", runtime.DataBinding?.CollectionId);
+        Assert.Equal("Visible runtime presentation", runtime.Text);
     }
 
     [Fact]
