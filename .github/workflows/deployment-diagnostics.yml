@@ -242,6 +242,45 @@ jobs:
           CS
           export LEGEND_META_DIAG_SCRATCH="$scratch"
           dotnet run --project "$scratch/meta-diag/meta-diag.csproj" -c Release
+      - name: Read recent AgentPortal Meta campaign warning body
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          if timeout 75s az webapp log download -g masterapp-rg -n masterapp-portal --log-file "$scratch/portal-logs.zip" --only-show-errors >/dev/null 2>&1; then
+            python3 - "$scratch/portal-logs.zip" <<'PYLOG'
+          import io, os, re, sys, zipfile
+          path=sys.argv[1]
+          patterns=("Meta campaigns fetch failed","Meta insights fetch failed","Meta account metadata fetch failed")
+          found=[]
+          try:
+              with zipfile.ZipFile(path) as z:
+                  for name in z.namelist():
+                      if name.endswith('/'): continue
+                      try:
+                          data=z.read(name)
+                      except Exception:
+                          continue
+                      text=data.decode('utf-8','replace')
+                      for line in text.splitlines():
+                          if any(p in line for p in patterns):
+                              # Provider bodies should not echo credentials, but redact defensively.
+                              line=re.sub(r'(?i)(access[_-]?token[=:" ]+)[^&\s",}]+', r'\1[REDACTED]', line)
+                              line=re.sub(r'(?i)(client_secret[=:" ]+)[^&\s",}]+', r'\1[REDACTED]', line)
+                              found.append((name,line[-3000:]))
+          except zipfile.BadZipFile:
+              pass
+          if not found:
+              print('META_RUNTIME_LOG_EVIDENCE none_found')
+          else:
+              for name,line in found[-20:]:
+                  print(f'META_RUNTIME_LOG_EVIDENCE file={name} {line}')
+          PYLOG
+          else
+            echo "META_RUNTIME_LOG_EVIDENCE download_unavailable"
+          fi
       - name: Observe current app state and recent capacity without mutations
         shell: bash
         run: |
