@@ -221,5 +221,12 @@ public sealed class WebsiteStudioV3ContractTests
         Assert.Null(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteElementOverride"));
         Assert.Null(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteExtraComponent"));
         Assert.Null(assembly.GetType("Infrastructure.WebsiteEditing.WebsitePlacement"));
+        Assert.Null(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteStyleOverride"));
+        Assert.Null(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteLayoutOverride"));
+        Assert.Null(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteThemeOverride"));
+
+        Assert.NotNull(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteVisualStyle"));
+        Assert.NotNull(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteCompositionLayout"));
+        Assert.NotNull(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteDesignTheme"));
     }
 }
