@@ -217,6 +217,8 @@ public static class WebsiteContentSanitizer
     {
         Style = SanitizeStyle(source?.Style),
         BreakpointStyles = SanitizeStyleMap(source?.BreakpointStyles, breakpointKeys),
+        Layout = SanitizeLayout(source?.Layout),
+        BreakpointLayouts = SanitizeLayoutMap(source?.BreakpointLayouts, breakpointKeys),
         Animations = SanitizeAnimations(source?.Animations)
     };
 
