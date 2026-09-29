@@ -281,12 +281,12 @@ public sealed class WebsiteImportService(WebsiteMediaService media)
                 if (paths.TryGetValue(id, out var prior)) return prior;
                 var opened = await media.OpenAsync(ownerKey, id, ct)
                     ?? throw new InvalidOperationException("An owned media asset is unavailable for export.");
-                await using var content = opened.Value.Content;
-                total += opened.Value.Asset.SizeBytes;
+                await using var content = opened.Content;
+                total += opened.Asset.SizeBytes;
                 if (total > 20_000_000)
                     throw new InvalidOperationException("Portable export exceeds 20 MB of media. Export media separately.");
 
-                var extension = opened.Value.Asset.ContentType switch
+                var extension = opened.Asset.ContentType switch
                 {
                     "image/png" => ".png",
                     "image/webp" => ".webp",
