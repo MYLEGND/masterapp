@@ -51,7 +51,8 @@ public static class WebsiteSiteSource
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNameCaseInsensitive = false
+        PropertyNameCaseInsensitive = false,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
     public static string Serialize(WebsiteContentDocument document)
