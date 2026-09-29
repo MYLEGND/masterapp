@@ -158,6 +158,28 @@ test('canonical startup fills navigation and image accessibility defaults and pr
   }finally{f.close();}
 });
 
+test('existing v3 startup artifacts are deleted only when semantically empty',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition[0].children.push(
+    canonicalNode('home.empty.icon','text','span',{className:'icon',text:''}),
+    canonicalNode('home.meaningful.icon','text','p',{className:'icon',text:'Meaningful text stays'}),
+    canonicalNode('home.hero.visual','container','div',{className:'hero-mark',children:[
+      canonicalNode('home.hero.halo','container','div',{className:'halo'}),
+      canonicalNode('home.hero.empty','text','span',{text:''})
+    ]})
+  );
+  const f=await domFixture({doc});
+  try{
+    const saved=await f.save();
+    const ids=canonicalNodes(saved).map(node=>node.id);
+    assert.equal(ids.includes('home.empty.icon'),false);
+    assert.equal(ids.includes('home.hero.visual'),false);
+    assert.equal(ids.includes('home.hero.halo'),false);
+    assert.equal(ids.includes('home.hero.empty'),false);
+    assert.equal(ids.includes('home.meaningful.icon'),true);
+  }finally{f.close();}
+});
+
 test('materialization never invents publishable links from unmanaged runtime buttons or empty anchors',()=>{
   assert.match(source,/const unmanagedInteractiveControl\s*=\s*[\s\S]*tag === 'button' && !actionKey[\s\S]*tag === 'a' && !actionKey && !rawHref/);
   assert.match(source,/const presentationOnlyControl = runtimePresentationControl \|\| unmanagedInteractiveControl/);
