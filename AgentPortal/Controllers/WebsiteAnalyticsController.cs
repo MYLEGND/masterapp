@@ -1758,14 +1758,27 @@ namespace AgentPortal.Controllers;
 
         var owner = await ResolveAdvertisingOwnerAsync(agentId.Value, HttpContext.RequestAborted);
         if (owner is null) return Forbid();
-        var record = await MarketingConnections.GetAdsAsync(owner, HttpContext.RequestAborted);
-        if (record == null)
+
+        var runtime = await HttpContext.RequestServices
+            .GetRequiredService<Infrastructure.Analytics.IPlatformConnectionHealthAuthority>()
+            .ReadAsync(owner, HttpContext.RequestAborted);
+        var row = await MarketingConnections.GetStatusAsync(owner, HttpContext.RequestAborted);
+        if (!runtime.Meta.ProviderVerified)
         {
             return Json(new MetaAdsConnectionStatusDto
             {
                 Connected = false,
                 AgentTrackingProfileId = agentId,
-                Message = "Meta Ads not connected for the selected agent."
+                AccountId = runtime.Meta.AccountId ?? row?.AdAccountId,
+                AccountName = runtime.Meta.AccountName ?? row?.AdAccountName,
+                BusinessId = row?.MetaBusinessManagerId,
+                BusinessName = row?.MetaBusinessManagerName,
+                MetaUserName = row?.MetaUserName,
+                ConnectedUtc = row?.ConnectedUtc,
+                AccessTokenExpiresUtc = row?.AccessTokenExpiresUtc,
+                Message = runtime.Meta.StoredConnected
+                    ? $"Meta Ads connection needs attention ({runtime.Meta.Status})."
+                    : "Meta Ads not connected for the selected agent."
             });
         }
 
@@ -1773,13 +1786,13 @@ namespace AgentPortal.Controllers;
         {
             Connected = true,
             AgentTrackingProfileId = agentId,
-            AccountId = record.AccountId,
-            AccountName = record.AccountName,
-            BusinessId = record.BusinessId,
-            BusinessName = record.BusinessName,
-            MetaUserName = record.MetaUserName,
-            ConnectedUtc = record.ConnectedUtc,
-            AccessTokenExpiresUtc = record.AccessTokenExpiresUtc
+            AccountId = runtime.Meta.AccountId ?? row?.AdAccountId,
+            AccountName = runtime.Meta.AccountName ?? row?.AdAccountName,
+            BusinessId = row?.MetaBusinessManagerId,
+            BusinessName = row?.MetaBusinessManagerName,
+            MetaUserName = row?.MetaUserName,
+            ConnectedUtc = row?.ConnectedUtc,
+            AccessTokenExpiresUtc = row?.AccessTokenExpiresUtc
         });
     }
 
