@@ -159,18 +159,57 @@
     return doc;
   }
 
+  function isRuntimeShellChromeNode(node) {
+    if (!node || typeof node !== 'object') return false;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    return String(node.tag || '').toLowerCase()==='button' &&
+      classes.includes('nav-toggle') &&
+      !node.actionKey && !node.systemKey && !node.systemBinding && !node.href;
+  }
+
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
-    return input.filter(node => node && typeof node === 'object').map(node => ({
-      ...node,
-      children: normalizeCompositionNodes(node.children),
-      style: node.style && typeof node.style === 'object' ? node.style : {},
-      breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
-      layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
-      breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
-      animations: Array.isArray(node.animations) ? node.animations : [],
-      signals: Array.isArray(node.signals) ? node.signals : []
-    }));
+    return input
+      .filter(node => node && typeof node === 'object')
+      .map(node => ({
+        ...node,
+        children: normalizeCompositionNodes(node.children),
+        style: node.style && typeof node.style === 'object' ? node.style : {},
+        breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
+        layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
+        breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
+        animations: Array.isArray(node.animations) ? node.animations : [],
+        signals: Array.isArray(node.signals) ? node.signals : []
+      }))
+      // Menu toggles are reconstructed runtime chrome. They were accidentally
+      // persisted by early v3 materialization and have no website destination.
+      .filter(node => !isRuntimeShellChromeNode(node));
+  }
+
+  function normalizeHeaderComposition(input) {
+    const roots=normalizeCompositionNodes(input);
+    let primarySeen=false;
+    const clean=nodes => {
+      const result=[];
+      for(const node of nodes || []) {
+        const classes=String(node?.className || '').split(/\s+/).filter(Boolean);
+        const primary=node?.systemKey==='primary_navigation';
+        const templateNav=!primary && String(node?.tag || '').toLowerCase()==='nav' && classes.includes('nav');
+        if(templateNav && SITE_KEY==='business') continue;
+        if(primary) {
+          if(primarySeen) continue;
+          primarySeen=true;
+          // Page links are a projection of versioned page navigation metadata,
+          // not a second persisted list inside the shell.
+          if(SITE_KEY==='business') node.children=[];
+        } else {
+          node.children=clean(node.children);
+        }
+        result.push(node);
+      }
+      return result;
+    };
+    return clean(roots);
   }
 
   function normalizeControlPresentation(input) {
@@ -222,7 +261,7 @@
       faviconImageDataUrl:typeof input?.faviconImageDataUrl==='string'?input.faviconImageDataUrl:null,
       breakpoints:normalizeBreakpoints(input?.breakpoints),
       shell:{
-        header:normalizeCompositionNodes(input?.shell?.header),
+        header:normalizeHeaderComposition(input?.shell?.header),
         footer:normalizeCompositionNodes(input?.shell?.footer)
       },
       reusableComponents,
@@ -998,7 +1037,7 @@
   function legacyMigrationPageState() {
     const pages=legacyMigration?.pages && typeof legacyMigration.pages==='object' ? legacyMigration.pages : {};
     const route=currentPageRoute();
-    return pages[route] || pages[pageKey] || (route==='/' ? pages.home : null) ||
+    return legacyPageForRoute(route) || pages[pageKey] || (route==='/' ? pages.home : null) ||
       {elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
   }
 
