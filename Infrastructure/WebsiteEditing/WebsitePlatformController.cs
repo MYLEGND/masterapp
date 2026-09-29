@@ -159,7 +159,8 @@ public class WebsitePlatformController : ControllerBase
             facts = publicFacts,
             collections = publicCollections.Values,
             store = await StorePayloadAsync(siteKey, document, publicStoreScope, ticket: null, cancellationToken),
-            document
+            document,
+            legacyMigration = document.LegacyMigration
         });
     }
 
@@ -433,6 +434,8 @@ public class WebsitePlatformController : ControllerBase
             ?? throw new InvalidOperationException("The commerce scope could not be created.");
 
         var document = Read(state.DraftJson);
+        if (document.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required", message = "Open Website Studio to materialize this legacy draft before changing store settings." });
         document.Store.Enabled = true;
         if (!string.IsNullOrWhiteSpace(request.NavigationLabel))
             document.Store.NavigationLabel = request.NavigationLabel.Trim();
@@ -474,6 +477,8 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = "revision_conflict" });
 
         var document = Read(state.DraftJson);
+        if (document.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required", message = "Open Website Studio to materialize this legacy draft before changing store settings." });
         document.Store.Enabled = false;
         document = WebsiteContentSanitizer.Sanitize(document);
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
@@ -974,18 +979,18 @@ public class WebsitePlatformController : ControllerBase
             business = await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken);
             facts = await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         }
+        if (document.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required", message = "This website must be materialized into the canonical v3 composition graph before publishing." });
+
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
-        if (string.Equals(document.CompositionMode, "canonical", StringComparison.Ordinal))
+        try
         {
-            try
-            {
-                WebsiteSiteSource.ValidateCanonical(document, ctaOptions);
-                await ValidateCompositionMediaOwnershipAsync(actor, document, cancellationToken);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(new { error = "website_preflight_failed", message = ex.Message });
-            }
+            WebsiteSiteSource.ValidateCanonical(document, ctaOptions);
+            await ValidateCompositionMediaOwnershipAsync(actor, document, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_preflight_failed", message = ex.Message });
         }
         var ctaError = WebsiteCallToActionCatalog.PrepareForPublish(document, ctaOptions);
         if (ctaError is not null) return BadRequest(new { error = "button_destination_required", message = ctaError });
@@ -1339,8 +1344,10 @@ public class WebsitePlatformController : ControllerBase
             }
         }
 
-        foreach (var page in document.Pages.Values)
-            Visit(page.Composition);
+        Visit(document.Shell.Header);
+        Visit(document.Shell.Footer);
+        foreach (var page in document.Pages.Values) Visit(page.Composition);
+        foreach (var component in document.ReusableComponents.Values) Visit(component.Composition);
 
         if (ids.Count == 0) return;
 
