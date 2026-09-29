@@ -1,14 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy this isolated canonical platform-worker and Website Workspace cleanup only after exact-head validation is green. Preserve the frozen approved golden revision f9198d47a1a987567913be5041d6bd887998ae67 until validation completes; do not broaden beyond the actually affected five application packages.",
-  "purpose": "Replace Protect-owned marketing and website-notification worker hosting with shared Infrastructure registration executed by the AgentPortal control-plane host; replace host-specific website mail and Meta credential authorities with canonical shared implementations; delete dormant Parfait contact-mail code; flatten Website Workspace actions into one compact modal with direct draft editing; replace the mobile Website Studio full-height blocking panel with one compact top-sheet responsive authority; and repair Website Studio startup quality at the canonical boundaries so visible pages receive navigation labels, images receive valid accessibility defaults, editable content cannot overflow the viewport, stale template decoration cannot persist as empty v3 nodes, Business starts from a premium scoped theme without empty hero chrome, Protect starter cards use durable text-led markers, and GPT/embed starter rules do not reintroduce stale palettes or broken icon placeholders. Analytics writers, event catalogs, owner scope, lead/CRM persistence, attribution, Meta/OpenAI conversion semantics, commerce outcomes, authentication authority, and published website truth remain unchanged.",
-  "requestId": "canonical-platform-worker-workspace-cleanup-20260929",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy this isolated mobile Website Studio and startup-readiness repair only after exact-head validation is green. Preserve golden approved revision cba58037256c3c64a1cbd1bc8606734b7c1934a2 until validation completes; deploy only packages that consume the changed shared Website Studio/public presentation or Infrastructure website-editing authority.",
+  "purpose": "Replace the remaining mobile Website Studio sheet defect with one canonical draggable compact/expanded top-sheet authority plus an icon-only hide/open control; repair persisted destination-less placeholder anchors into non-interactive presentation while preserving genuine dynamic href bindings; remove corrupt stored horizontal geometry from platform brand/wordmark nodes; replace per-character mobile heading/brand wrapping with bounded readable shared geometry; remove redundant Add Store explanatory chrome and tighten the control; and keep saved-draft/live readiness evidence aligned with those canonical startup guarantees. No analytics, advertising, CRM, commerce transaction, authentication, Cloudflare routing, or unrelated application behavior is changed.",
+  "requestId": "mobile-studio-readiness-canonical-20260929",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait",
     "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
