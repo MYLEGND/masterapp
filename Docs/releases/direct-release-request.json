@@ -1,14 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the validated canonical Meta provider-version negotiation repair merged as PR #289. Deploy only the .NET web hosts that consume the shared Meta transport: AgentPortal, ClientApp, Protect, and Parfait. Do not deploy the static LEGEND website or change Cloudflare routing.",
-  "purpose": "Publish PR #289 canonical Meta transport replacement. Remove reliance on the bad unversioned Ads API behavior: when Meta returns provider deprecation error #2635, the single MetaGraphEndpointAuthority reads Meta's recommended vN.N version, retries the same request, and reuses the negotiated version across campaigns, insights, account metadata, OAuth/account discovery, and Meta CAPI. No analytics taxonomy, CRM, OpenAI, attribution, website runtime, campaign mutation, or routing changes are included.",
-  "requestId": "canonical-meta-provider-version-negotiation-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the validated Website Studio v3 canonical materialization repair merged as PR #290. Deploy only Protect and the static LEGEND website because those are the only runtime hosts affected by the shared CMS route normalization and LEGEND same-origin materialization policy.",
+  "purpose": "Publish the canonical Website Studio v3 repair for Founder LEGEND, Protect, and Business editing. Protect normalizes agent-prefixed browser paths to canonical page routes before lookup/materialization; LEGEND permits same-origin Website Studio materialization frames while continuing to block cross-origin framing. Business custom-site editing continues through the shared Protect-hosted CMS/persistence authority. No Portal, Client, Parfait, analytics, Meta/OpenAI, CTA/action catalog, commerce, ownership, or unrelated application logic is changed.",
+  "requestId": "website-studio-v3-materialization-repair-20260928",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait"
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
