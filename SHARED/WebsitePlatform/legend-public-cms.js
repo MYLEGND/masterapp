@@ -833,7 +833,7 @@
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
     ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
-    // A chosen solid color replaces template gradients in editor and published rendering.
+    // A chosen solid color replaces inherited background imagery in editor and published rendering.
     if (style.backgroundColor) el.style.backgroundImage = 'none';
     ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius'].forEach(key => { if (spacingNumber(style[key])) el.style[key] = `${style[key]}px`; });
     if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
@@ -2369,7 +2369,7 @@
     const entry=websitePageEntries(true).find(value=>value.route===route);
     const url=new URL(location.origin);
     if (SITE_KEY==='business') {
-      const nativePublishedRoute=templates.has(route) && (!legacyMigration || !entry?.legacyTemplatePath || entry.legacyTemplatePath===route);
+      const nativePublishedRoute=publishedRoutes.has(route) && (!legacyMigration || !entry?.legacyTemplatePath || entry.legacyTemplatePath===route);
       url.pathname='/business-preview/' + (nativePublishedRoute ? route.replace(/^\//,'') : '');
       url.searchParams.set('businessId',BUSINESS_ID);
       if (!nativePublishedRoute) url.searchParams.set('cmsPage',route);
