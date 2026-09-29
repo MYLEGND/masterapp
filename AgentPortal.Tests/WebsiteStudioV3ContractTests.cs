@@ -164,6 +164,102 @@ public sealed class WebsiteStudioV3ContractTests
     }
 
     [Fact]
+    public void Sanitize_RepairsDeadLinksAndCorruptBrandGeometryWithoutBreakingDynamicHrefBindings()
+    {
+        var source = new WebsiteContentDocument
+        {
+            Shell = new WebsiteSharedShell
+            {
+                Header =
+                [
+                    new WebsiteCompositionNode
+                    {
+                        Id = "shell.brand",
+                        Type = "container",
+                        Tag = "div",
+                        ClassName = "brand-wordmark",
+                        Style = new WebsiteVisualStyle { WidthPercent = 4, OffsetXPercent = 91 },
+                        BreakpointStyles = new Dictionary<string, WebsiteVisualStyle>(StringComparer.Ordinal)
+                        {
+                            ["mobile"] = new WebsiteVisualStyle { WidthPercent = 3, OffsetXPercent = 95 }
+                        },
+                        Children =
+                        [
+                            new WebsiteCompositionNode
+                            {
+                                Id = "shell.brand.copy",
+                                Type = "text",
+                                Tag = "strong",
+                                Text = "Canonical Business",
+                                SystemBinding = "business_name"
+                            }
+                        ]
+                    }
+                ]
+            }
+        };
+        source.Pages["/"] = new WebsitePageDocument
+        {
+            Title = "Home",
+            Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true },
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.dead-link",
+                    Type = "link",
+                    Tag = "a",
+                    Text = "Placeholder",
+                    Href = "#"
+                },
+                new WebsiteCompositionNode
+                {
+                    Id = "home.dynamic-link",
+                    Type = "link",
+                    Tag = "a",
+                    Text = "Dynamic",
+                    DataBinding = new WebsiteDataBinding
+                    {
+                        CollectionId = "catalog",
+                        Field = "url",
+                        Target = "href"
+                    }
+                }
+            ]
+        };
+        source.Collections["catalog"] = new WebsiteCollectionDefinition
+        {
+            Id = "catalog",
+            Source = "business-profile",
+            Fields = ["url"]
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+
+        var dead = clean.Pages["/"].Composition.Single(node => node.Id == "home.dead-link");
+        Assert.Equal("text", dead.Type);
+        Assert.Equal("span", dead.Tag);
+        Assert.Null(dead.Href);
+        Assert.Null(dead.ActionKey);
+        Assert.Empty(dead.Signals);
+
+        var dynamic = clean.Pages["/"].Composition.Single(node => node.Id == "home.dynamic-link");
+        Assert.Equal("link", dynamic.Type);
+        Assert.Equal("href", dynamic.DataBinding?.Target);
+
+        var brand = Assert.Single(clean.Shell.Header);
+        Assert.Null(brand.Style.WidthPercent);
+        Assert.Null(brand.Style.OffsetXPercent);
+        Assert.Null(brand.BreakpointStyles["mobile"].WidthPercent);
+        Assert.Null(brand.BreakpointStyles["mobile"].OffsetXPercent);
+
+        var report = WebsiteDraftQualityInspector.Inspect(clean);
+        Assert.DoesNotContain(report.Checks, check =>
+            check.Code == "link_destination_missing" &&
+            check.ElementId is "home.dead-link" or "home.dynamic-link");
+    }
+
+    [Fact]
     public void Sanitize_DeletesOnlySemanticallyEmptyRetiredStarterDecoration()
     {
         var source = new WebsiteContentDocument();
