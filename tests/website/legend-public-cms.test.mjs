@@ -133,6 +133,33 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   return {w,calls,animations,alerts,click,input,change,editSelected,save,close:()=>w.close()};
 }
 
+test('Protect template-backed runtime controls remain presentation-only and cannot become free publishable links',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].systemTemplateKey='protect_template:life_wizard';
+  doc.pages['/'].composition=[];
+  const html='<!doctype html><html><head></head><body data-page-key="quote-life"><main><section class="quote-page"><form id="lifeWizardForm" data-form-key="quote_life" data-ajax-submit="true"><fieldset><div><button type="button">Next</button><a href="/Quote/Life/results">Review</a></div></fieldset></form></section></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Life',html});
+  try{
+    const saved=await f.save();
+    const runtime=canonicalNodes(saved).find(node=>String(node.systemKey||'').startsWith('protect_runtime_form:'));
+    assert.ok(runtime);
+    const descendants=[];
+    visitCanonicalNodes(runtime.children,node=>descendants.push(node));
+    const next=descendants.find(node=>node.text==='Next');
+    const review=descendants.find(node=>node.text==='Review');
+    assert.ok(next);
+    assert.ok(review);
+    for(const control of [next,review]){
+      assert.equal(control.type,'text');
+      assert.equal(control.tag,'span');
+      assert.equal(control.actionKey ?? null,null);
+      assert.equal(control.href ?? null,null);
+      assert.equal(control.dataBinding ?? null,null);
+      assert.deepEqual(control.signals || [],[]);
+    }
+  }finally{f.close();}
+});
+
 test('v3 canonical composition renders natively and canvas/source share the same node',async()=>{
   const doc={version:3,store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},pages:{'/':{
     title:'Home',description:'Canonical home',navigation:{label:'Home',showInNavigation:true,order:0,isDeleted:false},composition:[
