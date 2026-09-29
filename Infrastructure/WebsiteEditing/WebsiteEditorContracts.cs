@@ -223,6 +223,10 @@ public sealed class WebsitePageDocument
     public WebsitePageNavigation Navigation { get; set; } = new();
     public WebsiteDynamicPageBinding? DynamicBinding { get; set; }
 
+    // Server-owned runtime template binding. It is derived from site + canonical route,
+    // never authored by GPT/Site Source. V3 still owns all allowed presentation.
+    public string? SystemTemplateKey { get; set; }
+
     // The complete editable page body. There is no parallel template/mutation store.
     public List<WebsiteCompositionNode> Composition { get; set; } = new();
 }
