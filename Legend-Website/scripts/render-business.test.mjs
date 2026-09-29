@@ -69,6 +69,7 @@ test('canonical v3 business publication renders only the composition graph and k
   };
 
   const result=await compileBusiness({business,document:canonical});
+  assert.deepEqual(Object.keys(result.pages),['/','/contact']);
   assert.ok(result.pages['/']);
   assert.ok(result.pages['/contact']);
   const home=parseHTML(result.pages['/'].html).document;
