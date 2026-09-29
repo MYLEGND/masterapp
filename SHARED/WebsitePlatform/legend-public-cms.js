@@ -837,27 +837,18 @@
 
 
   function overrideForElement(el, create = true) {
-    if (!el?.dataset?.cmsId) return null;
-    // Shared website shell edits remain document-global platform presentation.
-    if (isSharedShellElement(el))
-      return globalShellOverride(el.dataset.cmsId, create);
-    // v3 canvas/source/AI all mutate this exact composition node.
-    if (el.dataset.cmsCompositionId) {
-      const node=compositionNode(el.dataset.cmsCompositionId);
-      if (node && create) { node.style ||= {}; node.signals ||= []; node.children ||= []; }
-      return node;
+    if (!el?.dataset?.cmsId || legacyMigration) return null;
+    const id=el.dataset.cmsCompositionId || el.dataset.cmsId;
+    const node=compositionNode(id);
+    if (node && create) {
+      node.style ||= {};
+      node.signals ||= [];
+      node.children ||= [];
     }
-    // v2 compatibility exists only until one-time effective-DOM materialization.
-    if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
-      return pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
-    return create ? ensureOverride(el.dataset.cmsId) : pageState().elements[el.dataset.cmsId] || null;
+    return node;
   }
 
   function contentOverrideForElement(el, create = true) {
-    if (el?.dataset?.cmsExtraId) {
-      const extra = pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
-      if (extra) return extra;
-    }
     return overrideForElement(el, create);
   }
 
@@ -948,11 +939,27 @@
     } catch { return null; }
   }
 
+  function legacyPageState() {
+    const pages=legacyMigration?.pages && typeof legacyMigration.pages==='object' ? legacyMigration.pages : {};
+    const route=currentPageRoute();
+    return pages[route] || pages[pageKey] || (route==='/' ? pages.home : null) ||
+      {elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
+  }
+
+  function legacyExtraById(id) {
+    const page=legacyPageState();
+    return (page.extras || []).find(extra=>extra?.id===id) ||
+      (legacyMigration?.extras || []).find(extra=>extra?.id===id) || null;
+  }
+
   function legacyOverrideForElement(el) {
-    if (!el) return null;
+    if (!el || !legacyMigration) return null;
     if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
-      return pageState().extras.find(extra => extra.id === el.dataset.cmsExtraId) || null;
-    return pageState().elements?.[el.dataset.cmsId] || null;
+      return legacyExtraById(el.dataset.cmsExtraId);
+    if (isSharedShellElement(el))
+      return legacyMigration.elements?.[el.dataset.cmsId] || null;
+    return legacyPageState().elements?.[el.dataset.cmsId] ||
+      legacyMigration.elements?.[el.dataset.cmsId] || null;
   }
 
   function cleanCompositionClassName(el) {
@@ -969,7 +976,7 @@
     const id = el.dataset.cmsId || fallbackId || pageKey + '.' + safeId(tag) + '.node';
     const override = legacyOverrideForElement(el) || {};
     const actionKey = override.actionKey || el.dataset.websiteActionKey || null;
-    const extra = el.dataset.cmsExtraId ? pageState().extras.find(value => value.id === el.dataset.cmsExtraId) : null;
+    const extra = el.dataset.cmsExtraId ? legacyExtraById(el.dataset.cmsExtraId) : null;
 
     if (tag === 'form' && el.matches('[data-website-inquiry]')) {
       return {
