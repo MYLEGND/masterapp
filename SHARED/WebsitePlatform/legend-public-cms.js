@@ -3560,12 +3560,6 @@
     return copy;
   }
 
-  function sourceProjectionOverride(value) {
-    const copy=structuredClone(value || {});
-    delete copy.signals;
-    return copy;
-  }
-
   function siteSourceProjection() {
     const pages=Object.entries(documentState.pages || {})
       .sort((a,b)=>(Number(a[1]?.navigation?.order)||0)-(Number(b[1]?.navigation?.order)||0) || a[0].localeCompare(b[0]))
@@ -3577,9 +3571,7 @@
         dynamicBinding:structuredClone(page?.dynamicBinding || null),
         composition:(page?.composition || []).map(sourceProjectionNode)
       }));
-    const shellElements={};
-    for(const [id,value] of Object.entries(documentState.elements || {}))
-      shellElements[id]=sourceProjectionOverride(value);
+
     return {
       schema:'legend-site-source/v1',
       version:3,
@@ -3587,15 +3579,22 @@
       store:structuredClone(documentState.store || {}),
       breakpoints:structuredClone(documentState.breakpoints || []),
       theme:structuredClone(documentState.theme || {}),
-      shellElements,
-      globalExtras:(documentState.extras || []).map(sourceProjectionOverride),
+      shell:{
+        header:(documentState.shell?.header || []).map(sourceProjectionNode),
+        footer:(documentState.shell?.footer || []).map(sourceProjectionNode)
+      },
       pages,
-      reusableComponents:Object.fromEntries(Object.entries(documentState.reusableComponents || {}).map(([id,component])=>{
-        const copy=structuredClone(component || {});
-        for(const element of Object.values(copy.elements || {})) delete element.signals;
-        for(const extra of copy.extras || []) delete extra.signals;
-        return [id,copy];
-      })),
+      reusableComponents:Object.fromEntries(
+        Object.entries(documentState.reusableComponents || {}).map(([id,component])=>[
+          id,
+          {
+            id,
+            name:component?.name || id,
+            kind:component?.kind === 'block' ? 'block' : 'section',
+            composition:(component?.composition || []).map(sourceProjectionNode)
+          }
+        ])
+      ),
       collections:structuredClone(documentState.collections || {})
     };
   }
@@ -3660,11 +3659,20 @@
         const replacement=JSON.parse(sourceText);
         if(replacement?.id!==id) throw new Error('Selected Source must keep the stable node ID '+id+'.');
         const projected=siteSourceProjection();
-        let replaced=false;
-        for(const page of projected.pages){
-          if(sourceReplaceNode(page.composition,id,replacement)){ replaced=true; break; }
+        let replaced=
+          sourceReplaceNode(projected.shell?.header,id,replacement) ||
+          sourceReplaceNode(projected.shell?.footer,id,replacement);
+        if(!replaced){
+          for(const page of projected.pages){
+            if(sourceReplaceNode(page.composition,id,replacement)){ replaced=true; break; }
+          }
         }
-        if(!replaced) throw new Error('The selected source node is no longer present in this draft.');
+        if(!replaced){
+          for(const component of Object.values(projected.reusableComponents || {})){
+            if(sourceReplaceNode(component.composition,id,replacement)){ replaced=true; break; }
+          }
+        }
+        if(!replaced) throw new Error('The selected source node is no longer present in this canonical draft.');
         sourceText=JSON.stringify(projected,null,2);
       }else{
         JSON.parse(sourceText);
@@ -3684,7 +3692,6 @@
       if(!response.ok) throw new Error(payload.message || payload.error || 'Site Source validation failed.');
       checkpoint();
       documentState=normalizeDocument(payload.proposedDocument || {});
-      for(const key of payload.deletedKeys || []) pendingDeletedKeys.add(key);
       sourceEditorDirty=false;
       applyDocument(documentState);
       dirty=true;
