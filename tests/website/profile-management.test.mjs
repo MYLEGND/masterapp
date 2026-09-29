@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../../Legend-Design/legend-website-management.js', import.meta.url), 'utf8');
+const managementCss = readFileSync(new URL('../../Legend-Design/legend-website-management.css', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setTimeout(resolve, 40));
 async function fixture({ caps = {}, failPublish = false, scope = 'business' } = {}) {
   const dom = new JSDOM(`<button data-website-manage data-session="/profile/session" data-edit="/profile/edit" data-live="https://business.test" data-title="Business A" data-scope="${scope}">Manage</button>`, { url: 'https://client.mylegnd.com/profile', runScripts: 'outside-only' });
@@ -187,4 +188,14 @@ test('draft workspace is one scrollable list with edit and delete actions in the
   assert.equal([...f.document.querySelectorAll('.wm-draft-list button')].filter(node=>node.textContent==='Delete').length,2);
   assert.equal([...f.document.querySelectorAll('button')].some(node=>node.textContent==='Load draft'),false);
   f.dom.window.close();
+});
+
+
+test('website workspace responsive CSS keeps mobile actions compact and draft rows usable',()=>{
+  assert.match(managementCss,/\.wm-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\);gap:7px\}/);
+  assert.match(managementCss,/\.wm-tile\{min-height:48px;padding:8px 9px;font-size:\.88rem\}/);
+  assert.match(managementCss,/\.wm-list\{max-height:calc\(100dvh - 170px\)\}/);
+  assert.match(managementCss,/\.wm-list-actions\{display:flex;gap:6px;flex:0 0 auto\}/);
+  assert.equal(managementCss.includes('min-height:68px'),false);
+  assert.equal(managementCss.includes('min-height:58px'),false);
 });
