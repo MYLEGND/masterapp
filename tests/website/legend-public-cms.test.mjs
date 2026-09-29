@@ -1005,7 +1005,7 @@ test('button action picker groups human CTA phrases by one backend wiring contra
   }finally{f.close();}
 });
 
-test('selecting another canvas child preserves the active side-panel tool instead of forcing Content',async()=>{
+test('first canvas selection always opens Content for the newly selected canonical node',async()=>{
   const html='<!doctype html><html><body data-page-key="home"><main><section><a href="/contact"><span>Contact</span></a><h2>Heading</h2></section></main></body></html>';
   const f=await domFixture({html});
   try{
@@ -1013,17 +1013,17 @@ test('selecting another canvas child preserves the active side-panel tool instea
     const appearance=f.w.document.querySelector('[data-cms-view="appearance"]');
     const content=f.w.document.querySelector('[data-cms-view="content"]');
     assert.equal(appearance.hidden,false);
-    f.click('main h2');
-    assert.equal(appearance.hidden,false);
-    assert.equal(content.hidden,true);
-    f.click('main a span');
-    assert.equal(appearance.hidden,false);
-    assert.equal(content.hidden,true);
-    assert.equal(f.w.document.querySelector('.legend-cms-selected').tagName,'A');
 
-    const same=f.w.document.querySelector('main a span');
-    same.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
+    f.click('main h2');
     assert.equal(content.hidden,false);
+    assert.equal(appearance.hidden,true);
+    assert.equal(f.w.document.querySelector('.legend-cms-selected').tagName,'H2');
+
+    f.click('[data-open="appearance"]');
+    f.click('main a span');
+    assert.equal(content.hidden,false);
+    assert.equal(appearance.hidden,true);
+    assert.equal(f.w.document.querySelector('.legend-cms-selected').tagName,'A');
   }finally{f.close();}
 });
 
@@ -2537,7 +2537,14 @@ test('server-rejected GPT source edit renders the canonical red correction in So
   const contract={schema:'legend-website-studio-agent/v1',promptTemplate:'contract',protectedEditCorrection:correction};
   const f=await domFixture({agentContract:contract,sourceValidationStatus:400,sourceValidationPayload:payload});
   try{
+    f.click('main h1');
     f.click('[data-open="source"]');
+    const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
+    assert.equal(sourceInput.readOnly,false);
+    const selected=JSON.parse(sourceInput.value);
+    selected.text='Rejected edit';
+    sourceInput.value=JSON.stringify(selected,null,2);
+    sourceInput.dispatchEvent(new f.w.Event('input',{bubbles:true}));
     f.click('#legend-cms-source-apply');
     await new Promise(resolve=>setTimeout(resolve,0));
     const warnings=[...f.w.document.querySelectorAll('[data-canonical-protection-warning]')].filter(node=>!node.hidden);
