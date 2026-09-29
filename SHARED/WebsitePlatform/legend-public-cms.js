@@ -132,16 +132,16 @@
     }
   }
 
-  function constrainOverrideGeometry(override) {
-    if (!override || typeof override !== 'object') return;
-    constrainHorizontalStyleRecord(override.style);
-    if (override.breakpointStyles && typeof override.breakpointStyles === 'object')
-      Object.values(override.breakpointStyles).forEach(constrainHorizontalStyleRecord);
+  function constrainCompositionGeometry(model) {
+    if (!model || typeof model !== 'object') return;
+    constrainHorizontalStyleRecord(model.style);
+    if (model.breakpointStyles && typeof model.breakpointStyles === 'object')
+      Object.values(model.breakpointStyles).forEach(constrainHorizontalStyleRecord);
   }
 
   function constrainDocumentGeometry(doc) {
     const visit = nodes => (nodes || []).forEach(node => {
-      constrainOverrideGeometry(node);
+      constrainCompositionGeometry(node);
       visit(node?.children);
     });
     visit(doc?.shell?.header);
@@ -534,8 +534,8 @@
     if (type === 'INPUT' && selected.type === 'tel') triggers.push('field_completed');
     if (selected.dataset.cmsSection) triggers.push('scroll_threshold');
     const candidates = signalCatalog.events.filter(option => !option.requiresServerOutcome && option.triggers.some(trigger => triggers.includes(trigger)));
-    const overrides = selectedOverride();
-    const bindings = overrides?.signals || [];
+    const models = selectedCompositionNode();
+    const bindings = models?.signals || [];
     paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
     if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
     const managedActionKey = selected.dataset.websiteActionKey;
@@ -607,7 +607,7 @@
       diagnostics.appendChild(diagnosticActions);
       host.appendChild(diagnostics);
       const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove mapping';
-      remove.addEventListener('click', () => { checkpoint(); overrides.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
+      remove.addEventListener('click', () => { checkpoint(); models.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
     }
     const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add advanced custom mapping';
     const automaticContract = (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
@@ -616,7 +616,7 @@
     add.addEventListener('click', () => {
       const option = candidates.flatMap(x => x.triggers.filter(t => triggers.includes(t) && !bindings.some(b => b.trigger === t)).map(t => ({ event: x, trigger: t })))[0];
       if (!option) { paragraph('All supported triggers for this element are already mapped.'); return; }
-      checkpoint(); overrides.signals ||= []; overrides.signals.push({ id: crypto.randomUUID().replaceAll('-',''), eventName: option.event.name, actionKey: option.event.actionKey, trigger: option.trigger, deliveryMode: 'off', oncePerSession: true, matchingFields: [] });
+      checkpoint(); models.signals ||= []; models.signals.push({ id: crypto.randomUUID().replaceAll('-',''), eventName: option.event.name, actionKey: option.event.actionKey, trigger: option.trigger, deliveryMode: 'off', oncePerSession: true, matchingFields: [] });
       markDirty(); renderSignalControls();
     }); host.appendChild(add);
   }
@@ -671,10 +671,10 @@
     return candidates[0]?.key || null;
   }
 
-  function effectiveStyle(override) {
-    const base = override?.style && typeof override.style === 'object' ? override.style : {};
+  function effectiveStyle(model) {
+    const base = model?.style && typeof model.style === 'object' ? model.style : {};
     const key = activeBreakpoint();
-    const responsive = key && override?.breakpointStyles && typeof override.breakpointStyles[key] === 'object' ? override.breakpointStyles[key] : null;
+    const responsive = key && model?.breakpointStyles && typeof model.breakpointStyles[key] === 'object' ? model.breakpointStyles[key] : null;
     const style = responsive ? { ...base, ...responsive } : { ...base };
     // Stored width and in-section position are independent. Rendering constrains
     // the effective width to the remaining section space, so movement stays free
@@ -686,10 +686,10 @@
     return style;
   }
 
-  function effectiveLayout(override) {
-    const base = override?.layout && typeof override.layout === 'object' ? override.layout : { mode:'free' };
+  function effectiveLayout(model) {
+    const base = model?.layout && typeof model.layout === 'object' ? model.layout : { mode:'free' };
     const key = activeBreakpoint();
-    const responsive = key && override?.breakpointLayouts && typeof override.breakpointLayouts[key] === 'object' ? override.breakpointLayouts[key] : null;
+    const responsive = key && model?.breakpointLayouts && typeof model.breakpointLayouts[key] === 'object' ? model.breakpointLayouts[key] : null;
     return responsive ? { ...base, ...responsive } : base;
   }
 
@@ -711,27 +711,27 @@
       if (layout.justifyContent) el.style.justifyContent = layout.justifyContent;
     }
   }
-  function editingStyle(override, create = false) {
-    if (!override) return null;
+  function editingStyle(model, create = false) {
+    if (!model) return null;
     if (editorBreakpointKey === 'base') {
-      if (create) override.style ||= {};
-      return override.style || {};
+      if (create) model.style ||= {};
+      return model.style || {};
     }
-    if (create) { override.breakpointStyles ||= {}; override.breakpointStyles[editorBreakpointKey] ||= {}; }
-    return override.breakpointStyles?.[editorBreakpointKey] || {};
+    if (create) { model.breakpointStyles ||= {}; model.breakpointStyles[editorBreakpointKey] ||= {}; }
+    return model.breakpointStyles?.[editorBreakpointKey] || {};
   }
 
-  function editingLayout(override, create = false) {
-    if (!override) return null;
+  function editingLayout(model, create = false) {
+    if (!model) return null;
     if (editorBreakpointKey === 'base') {
-      if (create) override.layout ||= { mode:'free', direction:'column' };
-      return override.layout || { mode:'free', direction:'column' };
+      if (create) model.layout ||= { mode:'free', direction:'column' };
+      return model.layout || { mode:'free', direction:'column' };
     }
-    if (create) { override.breakpointLayouts ||= {}; override.breakpointLayouts[editorBreakpointKey] ||= {}; }
-    return override.breakpointLayouts?.[editorBreakpointKey] || {};
+    if (create) { model.breakpointLayouts ||= {}; model.breakpointLayouts[editorBreakpointKey] ||= {}; }
+    return model.breakpointLayouts?.[editorBreakpointKey] || {};
   }
 
-  function forEachDocumentOverride(action) {
+  function forEachCompositionNode(action) {
     const visit=nodes=>walkComposition(nodes,node=>action(node));
     visit(documentState.shell?.header || []);
     visit(documentState.shell?.footer || []);
@@ -762,7 +762,7 @@
       const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
       editorPreview.style.width='100%'; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
     }
-    refreshResponsiveOverrides();
+    refreshResponsiveComposition();
     syncEditorControls();
   }
   function applyStyle(el, style) {
@@ -828,7 +828,7 @@
   }
 
 
-  function overrideForElement(el, create = true) {
+  function compositionNodeForElement(el, create = true) {
     if (!el?.dataset?.cmsId || legacyMigration) return null;
     const id=el.dataset.cmsCompositionId || el.dataset.cmsId;
     const node=compositionNode(id);
@@ -840,8 +840,8 @@
     return node;
   }
 
-  function contentOverrideForElement(el, create = true) {
-    return overrideForElement(el, create);
+  function editableCompositionNodeForElement(el, create = true) {
+    return compositionNodeForElement(el, create);
   }
 
   function isInlineEditable(el) {
@@ -864,11 +864,11 @@
       inlineEditCheckpointed = false;
       return;
     }
-    const override = contentOverrideForElement(el, false);
-    if (override) {
+    const model = editableCompositionNodeForElement(el, false);
+    if (model) {
       const value = inlineTextValue(el);
-      if (el.dataset.cmsExtraField === 'title') override.title = value;
-      else override.text = value;
+      if (el.dataset.cmsExtraField === 'title') model.title = value;
+      else model.text = value;
       setContentText(el, value, true);
     }
     el.removeAttribute?.('contenteditable');
@@ -895,11 +895,11 @@
     el.addEventListener('input', () => {
       if (!inlineEditCheckpointed) checkpoint();
       inlineEditCheckpointed = false;
-      const override = contentOverrideForElement(el);
-      if (!override) return;
+      const model = editableCompositionNodeForElement(el);
+      if (!model) return;
       const value = inlineTextValue(el);
-      if (el.dataset.cmsExtraField === 'title') override.title = value;
-      else override.text = value;
+      if (el.dataset.cmsExtraField === 'title') model.title = value;
+      else model.text = value;
       el.dataset.cmsPreserveWhitespace = 'true';
       markDirty();
       updateDirectCanvasUi();
@@ -947,7 +947,7 @@
       (legacyMigration?.extras || []).find(extra=>extra?.id===id) || null;
   }
 
-  function legacyOverrideForElement(el) {
+  function legacyMigrationRecordForElement(el) {
     if (!el || !legacyMigration) return null;
     if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
       return legacyExtraById(el.dataset.cmsExtraId);
@@ -994,7 +994,7 @@
       const node=buildExtraNode(item,false,instance.id);
       node.classList.add('legend-cms-reusable-child');
       parent.appendChild(node);
-      applyElementOverride(node,item);
+      applyCompositionNode(node,item);
     }
   }
 
@@ -1016,7 +1016,7 @@
     }
     const el=buildExtraNode(extra,true);
     section.appendChild(el);
-    applyElementOverride(el,extra);
+    applyCompositionNode(el,extra);
     return el;
   }
 
@@ -1049,14 +1049,14 @@
     extras.filter(extra=>extra.type==='section').forEach(createLegacyExtra);
     extras.filter(extra=>extra.type!=='section').forEach(createLegacyExtra);
 
-    for(const [id,override] of Object.entries(legacyMigration.elements || {}))
-      applyElementOverride(findEditableElement(id),override);
-    for(const [id,override] of Object.entries(page.elements || {}))
-      applyElementOverride(findEditableElement(id),override);
+    for(const [id,legacyRecord] of Object.entries(legacyMigration.elements || {}))
+      applyCompositionNode(findEditableElement(id),legacyRecord);
+    for(const [id,legacyRecord] of Object.entries(page.elements || {}))
+      applyCompositionNode(findEditableElement(id),legacyRecord);
 
     applyLegacySectionOrder();
-    for(const [id,override] of Object.entries(page.elements || {}))
-      applyPlacement(findEditableElement(id),override.placement);
+    for(const [id,legacyRecord] of Object.entries(page.elements || {}))
+      applyPlacement(findEditableElement(id),legacyRecord.placement);
     for(const extra of extras)
       applyPlacement(document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]'),extra.placement);
   }
@@ -1073,8 +1073,8 @@
     if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
 
     const id = el.dataset.cmsId || fallbackId || pageKey + '.' + safeId(tag) + '.node';
-    const override = legacyOverrideForElement(el) || {};
-    const actionKey = override.actionKey || el.dataset.websiteActionKey || null;
+    const model = legacyMigrationRecordForElement(el) || {};
+    const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
     const extra = el.dataset.cmsExtraId ? legacyExtraById(el.dataset.cmsExtraId) : null;
 
     if (tag === 'form' && el.matches('[data-website-inquiry]')) {
@@ -1082,13 +1082,13 @@
         id, type:'form', tag:'form', className:cleanCompositionClassName(el),
         title:el.querySelector('legend')?.textContent || extra?.title || 'Send an inquiry',
         text:el.querySelector('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
-        systemKey:'canonical_inquiry', signals:structuredClone(override.signals || extra?.signals || []),
-        style:structuredClone(override.style || extra?.style || {}),
-        breakpointStyles:structuredClone(override.breakpointStyles || extra?.breakpointStyles || {}),
-        layout:structuredClone(override.layout || extra?.layout || {}),
-        breakpointLayouts:structuredClone(override.breakpointLayouts || extra?.breakpointLayouts || {}),
-        animations:structuredClone(override.animations || extra?.animations || []),
-        dataBinding:structuredClone(override.dataBinding || extra?.dataBinding || null),
+        systemKey:'canonical_inquiry', signals:structuredClone(model.signals || extra?.signals || []),
+        style:structuredClone(model.style || extra?.style || {}),
+        breakpointStyles:structuredClone(model.breakpointStyles || extra?.breakpointStyles || {}),
+        layout:structuredClone(model.layout || extra?.layout || {}),
+        breakpointLayouts:structuredClone(model.breakpointLayouts || extra?.breakpointLayouts || {}),
+        animations:structuredClone(model.animations || extra?.animations || []),
+        dataBinding:structuredClone(model.dataBinding || extra?.dataBinding || null),
         children:[]
       };
     }
@@ -1124,17 +1124,17 @@
     const node = {
       id, type, tag, className:cleanCompositionClassName(el),
       actionKey:actionKey || null,
-      href:(tag === 'a' ? el.getAttribute('href') : override.href) || null,
-      target:(tag === 'a' ? el.getAttribute('target') : override.target) || null,
-      alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || override.alt || null) : null,
-      hidden:el.hidden === true ? true : (override.hidden === false ? false : null),
-      signals:structuredClone(override.signals || []),
-      style:structuredClone(override.style || {}),
-      breakpointStyles:structuredClone(override.breakpointStyles || {}),
-      layout:structuredClone(override.layout || {}),
-      breakpointLayouts:structuredClone(override.breakpointLayouts || {}),
-      animations:structuredClone(override.animations || []),
-      dataBinding:structuredClone(override.dataBinding || null),
+      href:(tag === 'a' ? el.getAttribute('href') : model.href) || null,
+      target:(tag === 'a' ? el.getAttribute('target') : model.target) || null,
+      alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || model.alt || null) : null,
+      hidden:el.hidden === true ? true : (model.hidden === false ? false : null),
+      signals:structuredClone(model.signals || []),
+      style:structuredClone(model.style || {}),
+      breakpointStyles:structuredClone(model.breakpointStyles || {}),
+      layout:structuredClone(model.layout || {}),
+      breakpointLayouts:structuredClone(model.breakpointLayouts || {}),
+      animations:structuredClone(model.animations || []),
+      dataBinding:structuredClone(model.dataBinding || null),
       children:[]
     };
 
@@ -1144,8 +1144,8 @@
 
     if (type === 'image' || type === 'video') {
       const raw = type === 'image'
-        ? (override.imageDataUrl || el.getAttribute('src') || '')
-        : (override.videoUrl || el.getAttribute('src') || '');
+        ? (model.imageDataUrl || el.getAttribute('src') || '')
+        : (model.videoUrl || el.getAttribute('src') || '');
       node.mediaAssetId = compositionMediaAssetId(raw);
       node.mediaUrl = raw || null;
     }
@@ -1270,7 +1270,7 @@
     el.dataset.cmsEditable='true';
     if (node.type === 'section' || node.tag === 'header' || node.tag === 'footer') el.dataset.cmsSection=node.id;
     rememberOriginal(el);
-    applyElementOverride(el,node);
+    applyCompositionNode(el,node);
     return el;
   }
 
@@ -1475,7 +1475,7 @@
     host.replaceChildren();
     const status = document.getElementById('legend-cms-motion-status');
     if (!selected || selected.dataset.cmsSignalOnly) { if (status) status.textContent='Select a page element or added block.'; return; }
-    const existing = overrideForElement(selected, false);
+    const existing = compositionNodeForElement(selected, false);
     const bindings = Array.isArray(existing?.animations) ? existing.animations : [];
     if (status) status.textContent = bindings.length ? `${bindings.length} motion interaction${bindings.length===1?'':'s'} on this element.` : 'No motion interactions on this element.';
     const selectControl = (labelText, values, value, onChange) => {
@@ -1502,11 +1502,11 @@
       onceLabel.append(once,document.createTextNode(' Play once per page session')); row.appendChild(onceLabel);
       const actions=document.createElement('div'); actions.className='legend-cms-row';
       const preview=document.createElement('button'); preview.type='button'; preview.textContent='Preview effect'; preview.addEventListener('click',()=>playAnimation(selected,binding));
-      const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remove'; remove.addEventListener('click',()=>{ const ov=selectedOverride(); mutate(()=>ov.animations=(ov.animations||[]).filter(item=>item.id!==binding.id)); });
+      const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remove'; remove.addEventListener('click',()=>{ const ov=selectedCompositionNode(); mutate(()=>ov.animations=(ov.animations||[]).filter(item=>item.id!==binding.id)); });
       actions.append(preview,remove); row.appendChild(actions); host.appendChild(row);
     }
     const add=document.createElement('button'); add.type='button'; add.textContent='Add motion interaction'; add.disabled=bindings.length>=8;
-    add.addEventListener('click',()=>{ const ov=selectedOverride(); checkpoint(); ov.animations ||= []; ov.animations.push({id:crypto.randomUUID().replaceAll('-',''),trigger:'view',effect:'fade',durationMs:400,delayMs:0,distancePx:24,easing:'ease',once:true}); markDirty(); renderMotionControls(); });
+    add.addEventListener('click',()=>{ const ov=selectedCompositionNode(); checkpoint(); ov.animations ||= []; ov.animations.push({id:crypto.randomUUID().replaceAll('-',''),trigger:'view',effect:'fade',durationMs:400,delayMs:0,distancePx:24,easing:'ease',once:true}); markDirty(); renderMotionControls(); });
     host.appendChild(add);
   }
   function findEditableElement(id) {
@@ -1522,39 +1522,39 @@
     return node;
   }
 
-  function applyElementOverride(el, override) {
+  function applyCompositionNode(el, model) {
     if (el?.dataset.cmsSignalOnly) return;
-    if (!el || !override) return;
-    if (override.actionKey) el.dataset.websiteActionKey = override.actionKey;
-    else if (override.href != null) delete el.dataset.websiteActionKey;
-    if (override.hidden === true) el.hidden = true;
-    else if (override.hidden === false) el.hidden = false;
+    if (!el || !model) return;
+    if (model.actionKey) el.dataset.websiteActionKey = model.actionKey;
+    else if (model.href != null) delete el.dataset.websiteActionKey;
+    if (model.hidden === true) el.hidden = true;
+    else if (model.hidden === false) el.hidden = false;
 
     const original = rememberOriginal(el);
     const entityBound = el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field');
     const commerceControl = !!el.dataset.legendStoreNav;
     if (el instanceof HTMLImageElement) {
-      const media = override.mediaAssetId ? API_BASE + '/api/website-content/media/' + override.mediaAssetId : override.mediaUrl;
-      el.src = media ? mediaUrl(media) : override.imageDataUrl ? mediaUrl(override.imageDataUrl) : (original.src || '');
+      const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
+      el.src = media ? mediaUrl(media) : model.imageDataUrl ? mediaUrl(model.imageDataUrl) : (original.src || '');
     } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
-      const compositionHasChildren = !!el.dataset.cmsCompositionId && Array.isArray(override.children) && override.children.length > 0;
-      if (!compositionHasChildren) setContentText(el, override.text != null ? override.text : (original.text || ''), override.text != null);
+      const compositionHasChildren = !!el.dataset.cmsCompositionId && Array.isArray(model.children) && model.children.length > 0;
+      if (!compositionHasChildren) setContentText(el, model.text != null ? model.text : (original.text || ''), model.text != null);
     }
 
     if (el.tagName === 'A' && !commerceControl) {
-      const href = override.href != null && safeUrl(override.href) ? override.href : original.href;
+      const href = model.href != null && safeUrl(model.href) ? model.href : original.href;
       if (href) el.setAttribute('href', href); else el.removeAttribute('href');
-      el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
+      el.target = model.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
     }
-    if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
+    if (model.alt != null && el.tagName === 'IMG') el.alt = model.alt;
     if (el.tagName === 'VIDEO') {
-      const media = override.mediaAssetId ? API_BASE + '/api/website-content/media/' + override.mediaAssetId : (override.mediaUrl || override.videoUrl);
+      const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : (model.mediaUrl || model.videoUrl);
       if (media && safeUrl(media, true)) el.src = mediaUrl(media);
     }
-    applyDataBinding(el, override.dataBinding);
-    applyStyle(el, effectiveStyle(override));
-    applyLayout(el, effectiveLayout(override));
-    applyAnimations(el, override.animations);
+    applyDataBinding(el, model.dataBinding);
+    applyStyle(el, effectiveStyle(model));
+    applyLayout(el, effectiveLayout(model));
+    applyAnimations(el, model.animations);
   }
 
   function buildExtraNode(extra, editable = true, idPrefix = '') {
@@ -2002,21 +2002,21 @@
     applyStoreNavigation();
   }
 
-  function refreshResponsiveOverrides() {
+  function refreshResponsiveComposition() {
     if(legacyMigration){
       const page=legacyPageState();
-      for(const [id,override] of Object.entries(legacyMigration.elements || {}))
-        applyElementOverride(findEditableElement(id),override);
-      for(const [id,override] of Object.entries(page.elements || {}))
-        applyElementOverride(findEditableElement(id),override);
+      for(const [id,model] of Object.entries(legacyMigration.elements || {}))
+        applyCompositionNode(findEditableElement(id),model);
+      for(const [id,model] of Object.entries(page.elements || {}))
+        applyCompositionNode(findEditableElement(id),model);
       for(const extra of [...(legacyMigration.extras || []),...(page.extras || [])]){
         const node=document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]');
         if(extra.type==='reusable') renderLegacyReusableInstance(node,extra);
-        else applyElementOverride(node,extra);
+        else applyCompositionNode(node,extra);
       }
     }else{
       for(const root of allCanonicalRootSets())
-        walkComposition(root.nodes,node=>applyElementOverride(findEditableElement(node.id),node));
+        walkComposition(root.nodes,node=>applyCompositionNode(findEditableElement(node.id),node));
       refreshReusableInstances();
     }
     refreshScaledElements();
@@ -2378,7 +2378,7 @@
     const saved=await save(false);
     if(!saved || dirty) throw new Error('Canonical Site Source migration could not be saved.');
     applyDocument(documentState);
-    if(status) status.textContent='Site Source ready · legacy override authority deleted';
+    if(status) status.textContent='Site Source ready · legacy mutation authority deleted';
     return true;
   }
 
@@ -2771,15 +2771,15 @@
     const candidates = [];
     if (!legacyMigration) {
       walkComposition(page.composition, node => {
-        candidates.push({ id:node.id, override:node, node:findEditableElement(node.id) });
+        candidates.push({ id:node.id, model:node, node:findEditableElement(node.id) });
       });
     } else {
       const legacyPage=legacyPageState();
       candidates.push(
-        ...Object.entries(legacyPage.elements || {}).map(([id, override]) => ({ id, override, node:findEditableElement(id) })),
+        ...Object.entries(legacyPage.elements || {}).map(([id, model]) => ({ id, model, node:findEditableElement(id) })),
         ...(legacyPage.extras || []).map(extra => ({
           id:'extra:'+extra.id,
-          override:extra,
+          model:extra,
           node:document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]')
         }))
       );
@@ -2811,8 +2811,8 @@
     };
 
     for (const candidate of candidates) {
-      if (!candidate.node || !Array.isArray(candidate.override?.signals)) continue;
-      for (const binding of candidate.override.signals) {
+      if (!candidate.node || !Array.isArray(candidate.model?.signals)) continue;
+      for (const binding of candidate.model.signals) {
         if (!binding?.id || !binding.eventName || binding.deliveryMode === 'off' || !allowedTriggers.has(binding.trigger)) continue;
         // Managed actions enrich the existing source envelope instead of creating
         // a second event for this visual binding.
@@ -3044,11 +3044,11 @@
     updateDirectCanvasUi();
   }
 
-  function selectedOverride(create = true) {
-    const override = overrideForElement(selected, create);
-    if (create && override && selected?.dataset.websiteActionKey && !Object.hasOwn(override, 'actionKey'))
-      override.actionKey = selected.dataset.websiteActionKey;
-    return override;
+  function selectedCompositionNode(create = true) {
+    const model = compositionNodeForElement(selected, create);
+    if (create && model && selected?.dataset.websiteActionKey && !Object.hasOwn(model, 'actionKey'))
+      model.actionKey = selected.dataset.websiteActionKey;
+    return model;
   }
 
   function previewRelativeRect(el) {
@@ -3127,9 +3127,9 @@
       const selectedRect = selected.getBoundingClientRect();
       const sectionRect = section.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
-      const override = selectedOverride();
-      if (!override) return false;
-      const gestureStyle = editingStyle(override, true);
+      const model = selectedCompositionNode();
+      if (!model) return false;
+      const gestureStyle = editingStyle(model, true);
       checkpoint();
       const measuredWidthPercent = parentRect.width > 0 ? Math.min(100, selectedRect.width / parentRect.width * 100) : 100;
       const startWidthPercent = positiveNumber(gestureStyle.widthPercent) ? Math.min(100, Number(gestureStyle.widthPercent)) : measuredWidthPercent;
@@ -3167,8 +3167,8 @@
       if (!gesture || selected !== gesture.target) return;
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
-      const override = selectedOverride();
-      if (!override) return;
+      const model = selectedCompositionNode();
+      if (!model) return;
       const style = gesture.style;
       const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
       const parentWidth = gesture.parentRect.width || sectionWidth || 1;
@@ -3218,7 +3218,7 @@
           : Math.max(0, Math.min(Math.max(0, 100 - constrainedWidth), Number(style.offsetXPercent)));
       }
       gesture.changed = true;
-      applyElementOverride(selected, override);
+      applyCompositionNode(selected, model);
       updateDirectCanvasUi();
       event.preventDefault();
     }, { passive: false });
@@ -3246,7 +3246,7 @@
     }, { passive: false });
     window.addEventListener('resize', () => {
       lockPreviewHorizontalScroll();
-      refreshResponsiveOverrides();
+      refreshResponsiveComposition();
     });
     lockPreviewHorizontalScroll();
     updateDirectCanvasUi();
@@ -3285,7 +3285,7 @@
     if (imageGroup) imageGroup.hidden = !isImage;
     if (codeGroup) codeGroup.hidden = !isCode;
 
-    const ov = selectedOverride(false) || {};
+    const ov = selectedCompositionNode(false) || {};
     const editStyle = editingStyle(ov, false);
     const editLayout = editingLayout(ov, false);
     const computed = getComputedStyle(selected);
@@ -3396,7 +3396,7 @@
     }
     control.setCustomValidity('');
     checkpoint();
-    const ov = selectedOverride();
+    const ov = selectedCompositionNode();
     if (!ov) return;
     if (control.id === 'legend-cms-hidden') {
       ov.hidden = control.checked;
@@ -3418,7 +3418,7 @@
         if (control.value) style.textAlign = control.value;
         else delete style.textAlign;
       } else return;
-      applyElementOverride(selected, ov);
+      applyCompositionNode(selected, ov);
     }
     updateDirectCanvasUi();
     markDirty();
@@ -3655,8 +3655,8 @@
     if(notice) notice.hidden=SITE_KEY==='business';
     if(SITE_KEY!=='business') return;
     const sources=approvedDataSources();
-    const override=selectedOverride?.() || null;
-    const binding=override?.dataBinding || null;
+    const model=selectedCompositionNode?.() || null;
+    const binding=model?.dataBinding || null;
     const boundSource=sourceForCollection(binding?.collectionId);
     const sourceSelect=document.getElementById('legend-cms-data-source');
     const sourceKey=boundSource?.key || sourceSelect?.value || sources[0]?.key || '';
@@ -4042,13 +4042,13 @@
     if(!isImage && !isVideo) return;
 
     if(selected && ((isImage && selected instanceof HTMLImageElement) || (isVideo && selected.tagName==='VIDEO'))){
-      const node=selectedOverride();
+      const node=selectedCompositionNode();
       if(!node) return;
       checkpoint();
       node.mediaAssetId=asset.id || compositionMediaAssetId(asset.url);
       node.mediaUrl=asset.url;
       if(isImage) node.alt ||= asset.name || '';
-      applyElementOverride(selected,node);
+      applyCompositionNode(selected,node);
       syncEditorControls();
       markDirty();
       return;
@@ -4193,7 +4193,7 @@
       row.append(drag,select);
       if(section.hidden){
         const restore=document.createElement('button');restore.type='button';restore.textContent='Show'; restore.setAttribute('aria-label',`Show ${label}`);
-        restore.addEventListener('click',()=>{setSelected(section);checkpoint();const value=selectedOverride();if(!value)return;value.hidden=false;section.hidden=false;markDirty();syncEditorControls();showPanel('layers');});
+        restore.addEventListener('click',()=>{setSelected(section);checkpoint();const value=selectedCompositionNode();if(!value)return;value.hidden=false;section.hidden=false;markDirty();syncEditorControls();showPanel('layers');});
         row.appendChild(restore);
       }
       row.addEventListener('dragstart',event=>{
@@ -4483,7 +4483,7 @@
     return items;
   }
 
-  function syncCtaControls(override, currentHref) {
+  function syncCtaControls(model, currentHref) {
     const select = document.getElementById('legend-cms-action');
     const custom = document.getElementById('legend-cms-custom-link');
     const wiring = document.getElementById('legend-cms-action-wiring');
@@ -4535,7 +4535,7 @@
     const customOption = document.createElement('option'); customOption.value = 'custom'; customOption.textContent = 'Custom Link / Custom Action…'; other.appendChild(customOption);
     select.appendChild(other);
 
-    const key = override?.actionKey || selected?.dataset.websiteActionKey;
+    const key = model?.actionKey || selected?.dataset.websiteActionKey;
     const byKey = key ? options.find(option => option.managed && option.actionKey === key) : null;
     const byHref = !key && currentHref ? options.find(option => !option.managed && option.href === currentHref) : null;
     const selectedOption = byKey || byHref || null;
@@ -4662,7 +4662,7 @@
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. Use X/Y offsets for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint values inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. Use X/Y offsets for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
@@ -4757,11 +4757,11 @@
       if(!source || !source.fields?.includes(field)) return;
       if(target==='image' && !(selected instanceof HTMLImageElement)){ alert('Image data can only bind to an image.'); return; }
       if(target==='href' && selected.tagName!=='A'){ alert('Link destinations can only bind to a link.'); return; }
-      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[field]); const override=selectedOverride(); if(!collection || !override) return;
-      override.dataBinding={collectionId:collection.id,field,target}; applyElementOverride(selected,override); markDirty(); renderDataControls();
+      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[field]); const model=selectedCompositionNode(); if(!collection || !model) return;
+      model.dataBinding={collectionId:collection.id,field,target}; applyCompositionNode(selected,model); markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-data-clear')?.addEventListener('click',()=>{
-      const override=selectedOverride(); if(!override?.dataBinding) return; checkpoint(); delete override.dataBinding; applyElementOverride(selected,override); markDirty(); renderDataControls();
+      const model=selectedCompositionNode(); if(!model?.dataBinding) return; checkpoint(); delete model.dataBinding; applyCompositionNode(selected,model); markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-dynamic-apply')?.addEventListener('click',()=>{
       if(SITE_KEY!=='business') return;
@@ -4774,12 +4774,12 @@
       pageState().dynamicBinding={collectionId:collection.id,itemKeyField,routePattern:routePattern.toLowerCase()}; dynamicCollectionItem=null; markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-dynamic-clear')?.addEventListener('click',()=>{
-      if(!pageState().dynamicBinding) return; checkpoint(); pageState().dynamicBinding=null; dynamicCollectionItem=null; refreshResponsiveOverrides(); markDirty(); renderDataControls();
+      if(!pageState().dynamicBinding) return; checkpoint(); pageState().dynamicBinding=null; dynamicCollectionItem=null; refreshResponsiveComposition(); markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-dynamic-preview')?.addEventListener('change',event=>{
       const binding=pageState().dynamicBinding; const projection=binding?collectionData.get(binding.collectionId):null;
       const item=(projection?.items||[]).find(value=>value.key===event.target.value);
-      dynamicCollectionItem=item?{collectionId:binding.collectionId,key:item.key,fields:item.fields}:null; refreshResponsiveOverrides(); renderDataControls();
+      dynamicCollectionItem=item?{collectionId:binding.collectionId,key:item.key,fields:item.fields}:null; refreshResponsiveComposition(); renderDataControls();
     });
     document.getElementById('legend-cms-collaboration-add')?.addEventListener('click',()=>void createCollaborationComment(false));
     document.getElementById('legend-cms-collaboration-page')?.addEventListener('click',()=>void createCollaborationComment(true));
@@ -4809,7 +4809,7 @@
     document.getElementById('legend-cms-breakpoint-remove')?.addEventListener('click', () => {
       const current=(documentState.breakpoints||[]).find(value=>value.key===editorBreakpointKey); if (!current || current.isSystem) return;
       checkpoint(); const key=current.key; documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
-      forEachDocumentOverride(override=>{ if(override?.breakpointStyles) delete override.breakpointStyles[key]; if(override?.breakpointLayouts) delete override.breakpointLayouts[key]; });
+      forEachCompositionNode(model=>{ if(model?.breakpointStyles) delete model.breakpointStyles[key]; if(model?.breakpointLayouts) delete model.breakpointLayouts[key]; });
       editorBreakpointKey='base'; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
     });
     const layoutHandlers={
@@ -4823,12 +4823,12 @@
       'legend-cms-layout-wrap':['wrap',value=>value||null]
     };
     Object.entries(layoutHandlers).forEach(([id,[field,convert]])=>document.getElementById(id)?.addEventListener('input',event=>{
-      if(!selected) return; checkpoint(); const override=selectedOverride(); if(!override) return; const layout=editingLayout(override,true); const value=convert(event.target.value); if(value==null) delete layout[field]; else layout[field]=value; applyElementOverride(selected,override); updateDirectCanvasUi(); markDirty();
+      if(!selected) return; checkpoint(); const model=selectedCompositionNode(); if(!model) return; const layout=editingLayout(model,true); const value=convert(event.target.value); if(value==null) delete layout[field]; else layout[field]=value; applyCompositionNode(selected,model); updateDirectCanvasUi(); markDirty();
     }));
     installStudioControls(panel);
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
-      const ov = selectedOverride(); if (!ov) return;
+      const ov = selectedCompositionNode(); if (!ov) return;
       if (ov.actionKey) { syncEditorControls(); return; }
       checkpoint();
       const option = availableCtaOptions().find(candidate => candidate.choiceKey === event.target.value);
@@ -4842,7 +4842,7 @@
           ov.target = '_self';
           document.getElementById('legend-cms-custom-link').hidden = true;
         }
-        applyElementOverride(selected, ov); syncEditorControls(); markDirty();
+        applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
         return;
       }
       if (!option.managed && ov.actionKey) { syncEditorControls(); return; }
@@ -4852,31 +4852,31 @@
         ov.text = option.defaultText || option.label;
         setContentText(selected, ov.text, true);
       }
-      applyElementOverride(selected, ov); syncEditorControls(); markDirty();
+      applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
     });
     panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-extra-image').click());
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
-    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedOverride(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
+    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedCompositionNode(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
       if (!selected) return;
       if (!/^#[a-f0-9]{6}$/i.test(input.value)) { input.setCustomValidity('Enter a six-digit hex color, such as #000000.'); input.reportValidity(); return; }
-      input.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov.style ||= {}; ov.style[input.dataset.colorHex] = input.value.toLowerCase();
+      input.setCustomValidity(''); checkpoint(); const ov = selectedCompositionNode(); ov.style ||= {}; ov.style[input.dataset.colorHex] = input.value.toLowerCase();
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
     panel.querySelectorAll('[data-color-reset]').forEach(button => button.addEventListener('click', () => {
-      if (!selected) return; checkpoint(); const ov = selectedOverride(); if (ov.style) delete ov.style[button.dataset.colorReset];
+      if (!selected) return; checkpoint(); const ov = selectedCompositionNode(); if (ov.style) delete ov.style[button.dataset.colorReset];
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
-    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyElementOverride(selected, ov); markDirty(); }));
+    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedCompositionNode(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyCompositionNode(selected, ov); markDirty(); }));
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => {
       const video = selected;
       if (video?.tagName !== 'VIDEO') return;
       const url = await uploadMedia(event.target.files?.[0]);
       if (!url || selected !== video) return;
       checkpoint();
-      const ov = selectedOverride();
+      const ov = selectedCompositionNode();
       if (video.dataset.cmsCompositionId) {
         ov.mediaAssetId = compositionMediaAssetId(url);
         ov.mediaUrl = url;
@@ -4884,11 +4884,11 @@
       } else {
         ov.videoUrl = url;
       }
-      applyElementOverride(video, ov);
+      applyCompositionNode(video, ov);
       syncEditorControls();
       markDirty();
     });
-    document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
+    document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedCompositionNode(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyCompositionNode(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
     document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
     installDirectCanvasControls(preview);
@@ -5120,7 +5120,7 @@
       readImage(file, dataUrl => {
         if (selected !== imageTarget) return;
         checkpoint();
-        const ov = selectedOverride();
+        const ov = selectedCompositionNode();
         if (!ov) return;
         if (selected.dataset.cmsCompositionId) {
           ov.mediaAssetId = compositionMediaAssetId(dataUrl);
@@ -5174,11 +5174,11 @@
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected || isSharedShellElement(selected)) return;
-      const current=selectedOverride(false);
+      const current=selectedCompositionNode(false);
       if (current && (current.actionKey || current.systemKey || current.systemBinding || selected.tagName === 'FORM')) return;
       const serviceCard = businessServiceCardFor(selected);
       if (serviceCard?.dataset?.cmsCompositionId) { setSelected(serviceCard); removeSelected(); return; }
-      checkpoint(); const ov = selectedOverride(); ov.hidden = true; selected.hidden = true; setSelected(null); markDirty();
+      checkpoint(); const ov = selectedCompositionNode(); ov.hidden = true; selected.hidden = true; setSelected(null); markDirty();
     });
     document.getElementById('legend-cms-reset')?.addEventListener('click', removeSelected);
     document.getElementById('legend-cms-exit')?.addEventListener('click', () => {
@@ -5256,7 +5256,7 @@
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
       if (!editorMode) void startPublicRuntime();
-      window.addEventListener('resize', refreshResponsiveOverrides);
+      window.addEventListener('resize', refreshResponsiveComposition);
       if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
     }
     return;
@@ -5269,7 +5269,7 @@
       try { await loadPublic(); await startPublicRuntime(); }
       catch (error) { unavailable(error); }
     }
-    window.addEventListener('resize', refreshResponsiveOverrides);
+    window.addEventListener('resize', refreshResponsiveComposition);
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
   }, { once: true });
 })();
