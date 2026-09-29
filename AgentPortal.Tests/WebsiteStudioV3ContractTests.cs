@@ -120,6 +120,50 @@ public sealed class WebsiteStudioV3ContractTests
     }
 
     [Fact]
+    public void Sanitize_CanonicalizesStartupNavigationAndImageAccessibilityDefaults()
+    {
+        var source = new WebsiteContentDocument();
+        source.Pages["/"] = new WebsitePageDocument
+        {
+            Navigation = new WebsitePageNavigation { ShowInNavigation = true },
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.photo",
+                    Type = "image",
+                    Tag = "img",
+                    MediaUrl = "/assets/hero-photo.png"
+                },
+                new WebsiteCompositionNode
+                {
+                    Id = "home.decorative",
+                    Type = "image",
+                    Tag = "img",
+                    MediaUrl = "/assets/decorative.png",
+                    Alt = ""
+                }
+            ]
+        };
+        source.Pages["/about"] = new WebsitePageDocument
+        {
+            Title = "About Us",
+            Navigation = new WebsitePageNavigation { ShowInNavigation = true }
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+
+        Assert.Equal("Home", clean.Pages["/"].Navigation.Label);
+        Assert.Equal("About Us", clean.Pages["/about"].Navigation.Label);
+        Assert.Equal("Hero Photo", clean.Pages["/"].Composition.Single(node => node.Id == "home.photo").Alt);
+        Assert.Equal("", clean.Pages["/"].Composition.Single(node => node.Id == "home.decorative").Alt);
+
+        var report = WebsiteDraftQualityInspector.Inspect(clean);
+        Assert.DoesNotContain(report.Checks, check => check.Code == "navigation_label_missing");
+        Assert.DoesNotContain(report.Checks, check => check.Code == "image_alt_missing");
+    }
+
+    [Fact]
     public void ReusableDefinitions_AreCompositionOnly_AndMissingInstancesFailQuality()
     {
         var source = new WebsiteContentDocument();
