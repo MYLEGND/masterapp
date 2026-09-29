@@ -107,8 +107,6 @@ public sealed class MetaConversionsApiResult
 
 public sealed class MetaConversionsApiService : IMetaConversionsApiService
 {
-    private const string ApiVersion = "v21.0";
-
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
@@ -252,7 +250,7 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             };
         }
 
-        var endpoint = $"https://graph.facebook.com/{ApiVersion}/{pixelId}/events";
+        var endpoint = MetaGraphEndpointAuthority.Graph($"{pixelId}/events");
         // META AUDIT HOOK (SAFE)
         // TODO: Finalizer layer validation point
         // Make log arguments null-safe: normalizedEventName is expected non-null but coalesce defensively,
