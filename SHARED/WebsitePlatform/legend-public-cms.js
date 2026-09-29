@@ -188,8 +188,13 @@
     const pages = {};
     for (const [key,value] of Object.entries(input?.pages && typeof input.pages === 'object' ? input.pages : {})) {
       if (!value || typeof value !== 'object') continue;
-      const route = normalizePageRoute(key);
+      const rawRoute = normalizePageRoute(key);
+      const route = canonicalSiteRoute(rawRoute);
       if (!route) continue;
+      // Protect v2 could persist the browser-owned /a/{slug}/... path. V3 owns
+      // route identity independent of agent URL scope, so collapse those rows
+      // into the one canonical page key and never serialize the prefixed copy.
+      if (pages[route] && rawRoute !== route) continue;
       pages[route] = {
         title: typeof value.title === 'string' ? value.title : null,
         description: typeof value.description === 'string' ? value.description : null,
@@ -262,10 +267,16 @@
     return pathname;
   }
 
+  function canonicalSiteRoute(value) {
+    const normalized = normalizePageRoute(value);
+    if (!normalized) return null;
+    const scoped = protectCanonicalPathname(normalized);
+    return normalizePageRoute(scoped) || normalized;
+  }
+
   function currentPageRoute() {
     const browserPath = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
-    const pathname = protectCanonicalPathname(browserPath);
-    return normalizePageRoute(pathname) || '/';
+    return canonicalSiteRoute(browserPath) || '/';
   }
 
   function pageState() {
@@ -1138,6 +1149,10 @@
 
   function materializeCompositionNode(el, fallbackId = null) {
     if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    // Menu toggles are runtime shell chrome, not editable website links. Keeping
+    // them in v3 created invalid link nodes with no action/destination and made
+    // publish fail. Runtime recreates and wires this control from primary nav.
+    if (el.matches?.('[data-public-nav-toggle],.nav-toggle')) return null;
     const tag = el.tagName.toLowerCase();
     if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
 
@@ -1437,6 +1452,33 @@
     }
   }
 
+  function ensureCanonicalNavigationToggle() {
+    const header=document.querySelector('.site-header');
+    const nav=header?.querySelector('#primary-nav,[data-public-nav]');
+    if(!header || !nav) return;
+    let toggle=header.querySelector('[data-public-nav-toggle]');
+    if(!toggle){
+      toggle=document.createElement('button');
+      toggle.type='button';
+      toggle.className='nav-toggle';
+      toggle.dataset.publicNavToggle='';
+      toggle.dataset.cmsLocked='true';
+      toggle.setAttribute('aria-controls','primary-nav');
+      toggle.setAttribute('aria-expanded','false');
+      toggle.textContent='Menu';
+      header.insertBefore(toggle,nav);
+    }
+    if(toggle.dataset.legendRuntimeBound==='true') return;
+    toggle.dataset.legendRuntimeBound='true';
+    const close=()=>{nav.dataset.open='false';toggle.setAttribute('aria-expanded','false');};
+    toggle.addEventListener('click',()=>{
+      const open=nav.dataset.open==='true';
+      nav.dataset.open=open?'false':'true';
+      toggle.setAttribute('aria-expanded',open?'false':'true');
+    });
+    nav.addEventListener('click',event=>{if(event.target.closest?.('a')) close();});
+  }
+
   function renderCanonicalShell() {
     const renderRoot=(selector,nodes,requiredClass)=>{
       const existing=document.querySelector(selector);
@@ -1455,6 +1497,7 @@
     };
     renderRoot('.site-header',documentState.shell?.header || [],'site-header');
     renderRoot('.site-footer',documentState.shell?.footer || [],'site-footer');
+    ensureCanonicalNavigationToggle();
   }
 
   function mediaUrl(value) {
@@ -2093,8 +2136,12 @@
 
   function applyBusinessPageNavigation() {
     if (SITE_KEY !== 'business') return;
-    const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
+    const header=document.querySelector('.site-header');
+    const nav=header?.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]') || document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
+    // Business navigation is projected exclusively from canonical page metadata.
+    // Remove stale preview/template nav copies instead of merging them.
+    header?.querySelectorAll('nav.nav,[data-public-nav]').forEach(candidate=>{if(candidate!==nav) candidate.remove();});
 
     // One authority only: the template route catalog plus this website's
     // versioned page metadata. Never merge the already-rendered DOM back into
@@ -2317,7 +2364,7 @@
     const entries=new Map();
     const catalog=Array.isArray(renderInput?.pageCatalog) ? renderInput.pageCatalog : (context.pages || []);
     catalog.forEach((page,index) => {
-      const route=normalizePageRoute(page?.route || page?.path);
+      const route=canonicalSiteRoute(page?.route || page?.path);
       if (!route) return;
       entries.set(route,{
         route,
@@ -2334,20 +2381,24 @@
 
   function legacyPageForRoute(route) {
     if(!legacyMigration?.pages) return null;
-    return legacyMigration.pages[route] || (route==='/' ? legacyMigration.pages.home : null) || null;
+    const direct=legacyMigration.pages[route] || (route==='/' ? legacyMigration.pages.home : null);
+    if(direct) return direct;
+    for(const [rawPath,page] of Object.entries(legacyMigration.pages))
+      if(canonicalSiteRoute(rawPath)===route) return page;
+    return null;
   }
 
   function websitePageEntries(includeDeleted = true) {
     const entries=publishedRouteCatalogEntries();
     for(const [rawPath,page] of Object.entries(documentState.pages || {})){
-      const route=normalizePageRoute(rawPath);
+      const route=canonicalSiteRoute(rawPath);
       if(!route || !page || typeof page!=='object') continue;
       const previous=entries.get(route);
       const navigation=page.navigation || {};
       const legacy=legacyPageForRoute(route);
       entries.set(route,{
         route,
-        label:SITE_KEY==='business' ? (navigation.label || page.title || previous?.label || route) : (page.title || navigation.label || previous?.label || route),
+        label:SITE_KEY==='business' ? (navigation.label || previous?.label || page.title || route) : (page.title || navigation.label || previous?.label || route),
         nativeRoute:previous?.nativeRoute===true,
         legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
         deleted:navigation.isDeleted===true,
@@ -2379,7 +2430,7 @@
   }
 
   function editorUrlForRoute(route, materialize = false) {
-    route=normalizePageRoute(route); if(!route) return null;
+    route=canonicalSiteRoute(route); if(!route) return null;
     const publishedRoutes=publishedRouteCatalogEntries();
     const entry=websitePageEntries(true).find(value=>value.route===route);
     const url=new URL(location.origin);
@@ -2524,8 +2575,14 @@
       const route=normalizePageRoute(snapshot.route);
       if(!route) throw new Error('Materialized page route was invalid.');
       const page=next.pages[route] || {navigation:{showInNavigation:true,order:0,isDeleted:false},composition:[]};
-      page.title=snapshot.title ?? page.title;
+      const routeEntry=entries.find(entry=>entry.route===route);
+      const previewSuffix=' | Business website preview';
+      const snapshotTitle=SITE_KEY==='business' && typeof snapshot.title==='string' && snapshot.title.endsWith(previewSuffix)
+        ? snapshot.title.slice(0,-previewSuffix.length) : snapshot.title;
+      page.title=snapshotTitle ?? page.title;
       page.description=snapshot.description ?? page.description;
+      page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+      if(SITE_KEY==='business' && !page.navigation.label && routeEntry?.label) page.navigation.label=routeEntry.label;
       page.composition=normalizeCompositionNodes(snapshot.composition);
       next.pages[route]=page;
     }
@@ -4864,7 +4921,9 @@
     gpt.id='legend-cms-browser-agent-workspace';
     gpt.dataset.agentWorkspace='browser-only';
     gpt.dataset.externalAiApi='false';
-    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><ul><li>Source, canvas, media, pages, draft, validation, and publish all modify the same WebsiteContentDocument v3.</li><li>Preset CTA action keys, inquiry authority, commerce scope, analytics, Meta, and OpenAI conversion wiring remain backend-owned.</li><li>GPT may restyle, rewrite, reposition, add pages/sections/content, choose only available preset actions, and use media owned by this website.</li><li>Publishing remains an explicit browser action through the normal immutable publish authority.</li></ul></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    const agentScript=gpt.querySelector('#legend-cms-agent-contract-script');
+    if(agentScript) agentScript.textContent=managementPayload?.agentContract?.promptTemplate || 'Canonical GPT operating contract unavailable; do not modify this website until the server contract is loaded.';
     tools.appendChild(gpt);
 
     const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
@@ -5124,9 +5183,8 @@
       .legend-cms-corner-nw,.legend-cms-corner-ne,.legend-cms-corner-se,.legend-cms-corner-sw{width:14px;height:14px}
       .legend-cms-corner-nw{left:-7px;top:-7px;cursor:nwse-resize}.legend-cms-corner-ne{right:-7px;top:-7px;cursor:nesw-resize}.legend-cms-corner-se{right:-7px;bottom:-7px;cursor:nwse-resize}.legend-cms-corner-sw{left:-7px;bottom:-7px;cursor:nesw-resize}
       .legend-cms-edge-handle:hover{background:#d4ad451f!important}
-      body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
-      body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
-      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0);contain:inline-size}
+      body.legend-cms-editing{display:block;height:100dvh;min-height:0;margin:0;overflow:hidden}
+      .legend-cms-preview{width:100vw;max-width:none;min-width:100vw;min-height:0;height:100dvh;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0)}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
@@ -5135,7 +5193,7 @@
       .legend-cms-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:14px 0;background:#081a3a;color:#fff;border-bottom:1px solid #344766;margin:0 0 12px;position:sticky;top:-20px;z-index:2}
       .legend-cms-bar button{min-height:38px;border-radius:8px;padding:8px 12px;border:1px solid #50617e;background:#142c50;color:#fff;font-weight:650}
       .legend-cms-bar .primary{background:#d4ad45;color:#081a3a}
-      .legend-cms-panel{min-width:0;min-height:0;height:100%;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+      .legend-cms-panel{position:fixed;z-index:2147483000;top:0;right:0;width:min(24rem,92vw);min-width:20rem;min-height:0;height:100dvh;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom));box-shadow:-18px 0 42px #0005}
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
