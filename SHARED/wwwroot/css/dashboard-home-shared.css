@@ -17,6 +17,19 @@
     --legend-modal-area-start: 24px;
     --legend-modal-area-end: 24px;
     --legend-modal-safe-height: calc(100dvh - 48px);
+
+    /* Approved Website Studio mobile contract, reused by authenticated apps. */
+    --legend-mobile-surface: #081a3a;
+    --legend-mobile-surface-deep: #07152d;
+    --legend-mobile-control: #142c50;
+    --legend-mobile-control-line: #50617e;
+    --legend-mobile-gold: #d4ad45;
+    --legend-mobile-gold-bright: #f0cf78;
+    --legend-mobile-text: #f7f6f2;
+    --legend-mobile-muted: #b8c6dc;
+    --legend-mobile-radius: 14px;
+    --legend-mobile-control-height: 34px;
+    --legend-mobile-gap: 6px;
 }
 
 /* One shared content-region boundary; backdrop and focus ownership stay with
@@ -56,6 +69,99 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 @media (max-width: 900px) {
+    /*
+     * Canonical compact modal chrome. Behavior, IDs, data hooks and feature
+     * content stay untouched; this block owns only authenticated mobile UI.
+     */
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface] {
+        padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end);
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] {
+        display: flex !important;
+        align-items: flex-start;
+        justify-content: center;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal > .modal-dialog[data-legend-modal-panel] {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: 0 !important;
+        height: auto !important;
+        max-height: var(--legend-modal-safe-height) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        transform: none;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal > .modal-dialog > .modal-content[data-legend-modal-panel],
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: 0 !important;
+        height: auto !important;
+        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        margin: 0 !important;
+        overflow: hidden !important;
+        border: 1px solid var(--legend-mobile-gold) !important;
+        border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius) !important;
+        background: var(--legend-mobile-surface) !important;
+        color: var(--legend-mobile-text) !important;
+        box-shadow: 0 14px 32px #0007 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal .modal-header,
+    html[data-legend-modal-region] body.legend-app .modal .modal-footer {
+        flex: 0 0 auto;
+        min-height: 0;
+        gap: var(--legend-mobile-gap);
+        padding: 7px 10px !important;
+        border-color: #344766 !important;
+        background: var(--legend-mobile-surface) !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal .modal-body {
+        min-height: 0;
+        padding: 9px 10px 10px !important;
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal :is(.modal-title, h2, h3) {
+        margin-block: 0;
+        font-size: 1rem;
+        line-height: 1.15;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal :is(button, .btn, a.btn) {
+        min-height: var(--legend-mobile-control-height);
+        padding: 6px 9px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        line-height: 1.1;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+        min-height: 38px;
+        padding: 7px 8px;
+        border-radius: 8px;
+        font-size: 16px;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal :is(.btn-close, [aria-label^="Close"], [aria-label^="close"]) {
+        width: var(--legend-mobile-control-height);
+        min-width: var(--legend-mobile-control-height);
+        height: var(--legend-mobile-control-height);
+        min-height: var(--legend-mobile-control-height);
+        padding: 0;
+    }
+
+    /*
+     * CRM quick views keep their proven drag/snap mechanics while consuming
+     * this same palette, radius and compact control density.
+     */
     html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet] {
         top: auto;
         right: 0;
@@ -66,8 +172,10 @@ html[data-legend-modal-region] body .modal .modal-body {
         height: var(--legend-modal-safe-height);
         max-height: var(--legend-modal-safe-height);
         margin: 0;
-        border-radius: 30px 30px 0 0;
+        border: 1px solid var(--legend-mobile-gold);
+        border-radius: var(--legend-mobile-radius) var(--legend-mobile-radius) 0 0;
         border-bottom: 0;
+        background: var(--legend-mobile-surface);
         display: block;
         overflow-x: hidden;
         overflow-y: auto;
@@ -108,8 +216,8 @@ html[data-legend-modal-region] body .modal .modal-body {
         align-items: center;
         justify-content: center;
         width: 100%;
-        height: 28px;
-        padding: 10px 0 8px;
+        height: 22px;
+        padding: 5px 0 3px;
         cursor: grab;
         touch-action: none;
     }
@@ -120,11 +228,11 @@ html[data-legend-modal-region] body .modal .modal-body {
 
     html[data-legend-modal-region] body [data-legend-mobile-sheet] > .legend-mobile-sheet-handle::before {
         content: "";
-        width: 42px;
-        height: 5px;
+        width: 38px;
+        height: 4px;
         border-radius: 999px;
-        background: rgba(214, 224, 244, .48);
-        box-shadow: 0 1px 0 rgba(255, 255, 255, .08);
+        background: var(--legend-mobile-muted);
+        opacity: .9;
     }
 }
 
@@ -2665,7 +2773,21 @@ textarea.client-create-notes {
 
 @media (max-width: 720px) {
     .home-hero-summary {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.35rem;
+    }
+
+    .home-hero-summary .dashboard-stat-card {
+        min-height: 58px;
+        padding: 0.42rem 0.48rem;
+    }
+
+    .home-hero-summary .dashboard-stat-label {
+        font-size: 0.58rem;
+    }
+
+    .home-hero-stat-title {
+        font-size: 0.78rem;
     }
 
     .home-command-page .home-tools-grid {
@@ -2673,7 +2795,7 @@ textarea.client-create-notes {
     }
 
     .home-focus-shell {
-        padding: 1.25rem;
+        padding: 0.7rem;
     }
 
     .client-profile-upload-row {
@@ -3688,7 +3810,7 @@ textarea.client-create-notes {
 
 @media (max-width: 920px) {
     .dashboard-page-shell {
-        padding: 1rem 0.75rem 2rem;
+        padding: 0.5rem 0.38rem 0.9rem;
     }
 
     /* Shared mobile/tablet tool-grid authority for AgentPortal + ClientApp. */
@@ -3701,9 +3823,9 @@ textarea.client-create-notes {
     .dashboard-command-center-panel,
     .dashboard-analytics-panel,
     .dashboard-page-shell .category-container {
-        border-radius: 24px;
-        padding-left: 1rem;
-        padding-right: 1rem;
+        border-radius: var(--legend-mobile-radius);
+        padding-left: 0.65rem;
+        padding-right: 0.65rem;
     }
 
     .dashboard-hero-stats:not(.dashboard-detail-modal-metrics),
@@ -3722,6 +3844,16 @@ textarea.client-create-notes {
 
     .dashboard-page-shell .category-head {
         flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.45rem;
+    }
+
+    .dashboard-page-shell .category-summary-pill {
+        min-height: 32px;
+        padding: 0.3rem 0.62rem 0.3rem 0.34rem;
+        font-size: 0.7rem;
+        letter-spacing: 0.04em;
     }
 
     .legend-connect-page .legend-connect-metrics--three,
@@ -3747,14 +3879,14 @@ textarea.client-create-notes {
 
 @media (max-width: 720px) {
     .dashboard-hero-title {
-        font-size: 1.72rem;
-        line-height: 1.02;
+        font-size: 1.45rem;
+        line-height: 1;
     }
 
     .dashboard-hero-lead,
     .dashboard-section-copy {
-        font-size: 0.82rem;
-        line-height: 1.42;
+        font-size: 0.76rem;
+        line-height: 1.35;
     }
 
     .dashboard-search-shell {
@@ -3779,26 +3911,26 @@ textarea.client-create-notes {
     }
 
     .legend-exec-btn {
-        min-height: 102px;
+        min-height: 68px;
     }
 
     .dashboard-page-shell .centered-tools {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.85rem;
+        gap: 0.45rem;
     }
 
     .dashboard-page-shell .dashboard-tool {
-        min-height: 132px;
-        height: 132px;
-        padding: 0.78rem 0.66rem;
+        min-height: 88px;
+        height: 88px;
+        padding: 0.48rem 0.42rem;
     }
 
     .dashboard-page-shell .dashboard-tool img {
-        width: 96px;
-        height: 58px;
-        min-width: 96px;
-        min-height: 58px;
-        padding: 0.45rem 0.72rem;
+        width: 58px;
+        height: 36px;
+        min-width: 58px;
+        min-height: 36px;
+        padding: 0.22rem 0.32rem;
     }
 
     .dashboard-page-shell .category-summary-pill[data-mobile-state] {
@@ -3819,15 +3951,15 @@ textarea.client-create-notes {
 
 @media (max-width: 520px) {
     .dashboard-page-shell {
-        padding: 0.85rem 0.55rem 1.5rem;
+        padding: 0.42rem 0.3rem 0.75rem;
     }
 
     .dashboard-command-center-panel,
     .dashboard-analytics-panel,
     .dashboard-page-shell .category-container {
         width: 100%;
-        border-radius: 20px;
-        margin-bottom: 1rem;
+        border-radius: var(--legend-mobile-radius);
+        margin-bottom: 0.6rem;
     }
 
     .dashboard-eyebrow,
@@ -3851,22 +3983,22 @@ textarea.client-create-notes {
     }
 
     .dashboard-page-shell .dashboard-tool {
-        min-height: 108px;
-        height: 108px;
-        padding: 0.62rem 0.5rem;
+        min-height: 84px;
+        height: 84px;
+        padding: 0.42rem 0.38rem;
     }
 
     .dashboard-page-shell .dashboard-tool img {
-        width: 78px;
-        height: 48px;
-        min-width: 78px;
-        min-height: 48px;
-        padding: 0.32rem 0.48rem;
+        width: 54px;
+        height: 34px;
+        min-width: 54px;
+        min-height: 34px;
+        padding: 0.18rem 0.28rem;
     }
 
     .dashboard-page-shell .dashboard-tool .tool-name {
-        font-size: 0.78rem;
-        line-height: 1.12;
+        font-size: 0.7rem;
+        line-height: 1.08;
     }
 
     .legend-connect-page .legend-connect-metrics--three,
@@ -4380,38 +4512,50 @@ header .legend-global-nav .container-fluid {
 @media (max-width: 840px) {
     .legend-global-nav {
         min-height: 0;
-        padding: 10px max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left));
+        padding: 6px max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left));
         border-radius: 0;
     }
 
     /*
-     * Mobile header contract: one permanent top row.
-     * Logo | Life HAC motto | menu toggle never reflows when the menu opens.
-     * The two expandable groups occupy full-width rows underneath.
+     * Canonical mobile header: one tiny permanent row plus one compact command
+     * tray, using the approved Website Studio open/close visual language.
      */
     header .legend-global-nav .container-fluid {
         display: grid !important;
-        grid-template-columns: minmax(54px, 72px) minmax(0, 1fr) minmax(44px, 64px);
+        grid-template-columns: minmax(40px, 48px) minmax(0, 1fr) 38px;
         grid-template-areas:
             "brand motto toggle"
             "left left left"
             "right right right";
         align-items: center !important;
-        gap: 0.5rem 0.6rem;
+        gap: 5px 7px;
         width: 100%;
         padding: 0;
+        overflow: hidden;
+        border: 1px solid transparent;
+        border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius);
+        transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+    }
+
+    header .legend-global-nav.mobile-open .container-fluid {
+        border-color: var(--legend-mobile-gold);
+        border-top-color: transparent;
+        background: var(--legend-mobile-surface);
+        box-shadow: 0 14px 32px #0007;
     }
 
     .legend-global-nav .navbar-brand {
         grid-area: brand;
         justify-self: start;
         min-width: 0;
+        margin: 0;
+        padding: 0;
     }
 
     .legend-global-nav .navbar-brand img {
         width: auto;
         max-width: 100%;
-        max-height: 58px;
+        max-height: 40px;
     }
 
     .legend-global-nav .header-psalms {
@@ -4422,17 +4566,72 @@ header .legend-global-nav .container-fluid {
 
     .legend-global-nav .nav-toggle {
         grid-area: toggle;
-        display: inline-flex;
+        display: inline-grid;
         justify-self: end;
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+        min-height: 34px;
+        padding: 0;
+        place-items: center;
+        border: 1px solid var(--legend-mobile-gold);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--legend-mobile-surface) 95%, transparent);
+        box-shadow: 0 8px 24px #0005;
     }
 
-    .legend-global-nav .navbar-left {
-        grid-area: left;
+    .legend-global-nav .nav-toggle-bars {
+        position: relative;
+        display: block;
+        width: 16px;
+        height: 16px;
+        border: 1.5px solid currentColor;
+        border-radius: 1px;
+        background: transparent;
+        transform: none;
+        color: var(--legend-mobile-text);
     }
 
-    .legend-global-nav .navbar-right {
-        grid-area: right;
+    .legend-global-nav .nav-toggle-bars::before {
+        position: absolute;
+        content: "";
+        left: 4px;
+        top: 6px;
+        width: 7px;
+        height: 1.5px;
+        border: 0;
+        border-radius: 999px;
+        background: currentColor;
+        transform: none;
+        opacity: 1;
     }
+
+    .legend-global-nav .nav-toggle-bars::after {
+        position: absolute;
+        content: "";
+        right: 3px;
+        top: 4px;
+        width: 5px;
+        height: 5px;
+        border: solid currentColor;
+        border-width: 1.5px 1.5px 0 0;
+        background: transparent;
+        transform: rotate(45deg);
+        opacity: 1;
+    }
+
+    .legend-global-nav.mobile-open .nav-toggle-bars { transform: none; }
+    .legend-global-nav.mobile-open .nav-toggle-bars::before { left: 4px; transform: none; }
+    .legend-global-nav.mobile-open .nav-toggle-bars::after {
+        right: auto;
+        left: 3px;
+        border-width: 0 0 1.5px 1.5px;
+        transform: rotate(45deg);
+        opacity: 1;
+    }
+
+    .legend-global-nav .navbar-left { grid-area: left; }
+    .legend-global-nav .navbar-right { grid-area: right; }
 
     .legend-global-nav .navbar-left,
     .legend-global-nav .navbar-right {
@@ -4440,11 +4639,11 @@ header .legend-global-nav .container-fluid {
         width: 100%;
         min-width: 0;
         margin: 0;
-        padding: 0.55rem;
-        border: 1.4px solid rgba(199, 153, 49, 0.55);
-        border-radius: 14px;
-        background: linear-gradient(175deg, #0b1224, #0c142a);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        padding: 2px 6px 4px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
     }
 
     .legend-global-nav.mobile-open .navbar-left,
@@ -4454,29 +4653,16 @@ header .legend-global-nav .container-fluid {
 
     .legend-global-nav .navbar-left .nav-rows-grid {
         display: grid;
-        gap: 0.5rem;
+        gap: var(--legend-mobile-gap);
         width: 100%;
         min-width: 0;
     }
 
-    /*
-     * Mobile navigation density is owned here globally.
-     * The primary row is four compact equal tracks so the common four actions
-     * occupy one row. Utility actions share the second row. The profile control
-     * is forced onto its own third row.
-     */
-    .legend-global-nav .navbar-left .nav-row {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        align-items: stretch;
-        gap: 0.4rem;
-        width: 100%;
-    }
-
+    .legend-global-nav .navbar-left .nav-row,
     .legend-global-nav .navbar-right {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
         align-items: stretch;
-        gap: 0.4rem;
+        gap: 5px;
     }
 
     .legend-global-nav .navbar-left .nav-item,
@@ -4489,29 +4675,34 @@ header .legend-global-nav .container-fluid {
     .legend-global-nav .navbar-left .nav-link,
     .legend-global-nav .navbar-right .nav-link,
     .legend-global-nav .navbar-right .btn-link,
-    .legend-global-nav .navbar-left .explore-trigger {
+    .legend-global-nav .navbar-left .explore-trigger,
+    .legend-global-nav .legend-founder-ai-nav-button,
+    .legend-global-nav .messaging-nav-button {
         width: 100%;
         min-width: 0;
-        min-height: 40px;
+        min-height: var(--legend-mobile-control-height);
+        height: var(--legend-mobile-control-height);
         margin: 0;
-        padding: 0.4rem 0.28rem;
-        border-radius: 11px;
+        padding: 5px 6px;
+        border: 1px solid var(--legend-mobile-control-line);
+        border-radius: 8px;
+        background: var(--legend-mobile-control);
+        color: var(--legend-mobile-text);
         justify-content: center;
         text-align: center;
-        font-size: clamp(0.76rem, 3.4vw, 0.92rem);
-        line-height: 1.08;
+        font-size: clamp(0.68rem, 2.9vw, 0.78rem);
+        line-height: 1.05;
         white-space: normal;
         overflow-wrap: anywhere;
+        box-shadow: none;
     }
 
-    .legend-global-nav .navbar-left .explore-trigger {
-        height: 40px;
-    }
+    .legend-global-nav .navbar-left .explore-trigger { min-width: 0; }
 
     .legend-global-nav .nav-context-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
-        gap: 0.45rem;
+        gap: 5px;
         width: 100%;
     }
 
@@ -4520,46 +4711,52 @@ header .legend-global-nav .container-fluid {
         width: 100%;
         max-width: 100%;
         min-width: 0;
+        min-height: var(--legend-mobile-control-height);
+        padding: 5px 7px;
+        border-radius: 8px;
+        font-size: 0.72rem;
     }
 
-    .legend-global-nav .navbar-right .dropdown {
+    .legend-global-nav .navbar-right .dropdown,
+    .legend-global-nav .navbar-right > .dropdown:last-child {
         width: 100%;
         min-width: 0;
         max-width: 100%;
-    }
-
-    .legend-global-nav .navbar-right > .dropdown:last-child {
-        grid-column: 1 / -1;
-        justify-self: start;
-        width: auto;
-        max-width: 100%;
+        grid-column: auto;
+        justify-self: stretch;
     }
 
     .legend-global-nav .profile-chip {
-        width: auto;
+        width: 100%;
         max-width: 100%;
         min-width: 0;
-        min-height: 40px;
-        padding: 0.32rem 0.52rem;
+        min-height: var(--legend-mobile-control-height);
+        height: var(--legend-mobile-control-height);
+        padding: 3px 5px;
+        border-radius: 8px;
+        justify-content: center;
+        gap: 0;
     }
 
     .legend-global-nav .profile-avatar {
-        width: 34px;
-        height: 34px;
+        width: 26px;
+        height: 26px;
+        flex: 0 0 26px;
     }
 
-    .legend-global-nav .profile-name {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
+    .legend-global-nav .profile-meta { display: none; }
 
     .legend-global-nav .dropdown-menu-centered,
     .legend-global-nav .dropdown-menu {
         position: static;
         width: 100%;
         max-width: 100%;
-        margin-top: 0.35rem;
+        margin-top: 4px;
+        padding: 4px;
+        border: 1px solid var(--legend-mobile-control-line);
+        border-radius: 8px;
+        background: var(--legend-mobile-surface-deep);
+        font-size: 0.75rem;
     }
 }
 
