@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Logging;
 using Shared.Meta;
 
 namespace Infrastructure.Analytics;
