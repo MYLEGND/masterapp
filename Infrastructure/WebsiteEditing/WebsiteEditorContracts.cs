@@ -40,20 +40,26 @@ public sealed class WebsiteContentDocument
     public string? FaviconImageDataUrl { get; set; }
     public WebsiteStoreSettings Store { get; set; } = new();
     public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteStudioContract.DefaultBreakpoints();
+
+    // v3 has exactly one editable composition graph. Shared header/footer,
+    // page bodies, and reusable components all use WebsiteCompositionNode.
+    public WebsiteSharedShellDocument Shell { get; set; } = new();
     public Dictionary<string, WebsitePageDocument> Pages { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
-    public List<WebsiteExtraComponent> Extras { get; set; } = new();
     public Dictionary<string, WebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, WebsiteCollectionDefinition> Collections { get; set; } = new(StringComparer.Ordinal);
     public WebsiteThemeOverride Theme { get; set; } = new();
-
-    // "canonical" means every managed page is owned by its v3 Composition graph.
-    // Null/legacy documents are materialized from the effective current runtime once,
-    // then this marker is persisted and the v2 page-local override path is retired.
-    public string? CompositionMode { get; set; }
-
     public DateTime? UpdatedUtc { get; set; }
+
+    // Read-only migration envelope. Never serialized into v3, never accepted by
+    // save/publish, and removed immediately after the browser materializes v3.
+    [JsonIgnore]
+    public LegacyWebsiteContentDocument? LegacyMigration { get; set; }
+}
+
+public sealed class WebsiteSharedShellDocument
+{
+    public List<WebsiteCompositionNode> Header { get; set; } = new();
+    public List<WebsiteCompositionNode> Footer { get; set; } = new();
 }
 
 public sealed class WebsiteElementOverride
@@ -211,9 +217,7 @@ public sealed class WebsiteReusableComponentDefinition
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "section";
-    public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
-    public List<WebsiteExtraComponent> Extras { get; set; } = new();
+    public List<WebsiteCompositionNode> Composition { get; set; } = new();
 }
 
 public sealed class WebsiteCollectionDefinition
@@ -247,22 +251,11 @@ public sealed class WebsitePageDocument
 {
     public string? Title { get; set; }
     public string? Description { get; set; }
-
-    // Legacy template identity is read only during v2 -> v3 materialization. Once a
-    // page has Composition nodes, the composition graph is the complete page authority.
-    public string? TemplatePath { get; set; }
     public WebsitePageNavigation Navigation { get; set; } = new();
     public WebsiteDynamicPageBinding? DynamicBinding { get; set; }
 
-    // v3 canonical page composition. Ordered nodes are rendered directly by the shared
-    // website runtime. Stable node IDs are also the source-map IDs used by canvas/source/AI.
+    // The complete editable page body. There is no parallel template/override store.
     public List<WebsiteCompositionNode> Composition { get; set; } = new();
-
-    // v2 compatibility input only. Sanitization clears these page-local override stores
-    // once Composition is present so a v3 page never has two editing authorities.
-    public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
-    public List<WebsiteExtraComponent> Extras { get; set; } = new();
 }
 
 public sealed class WebsiteCompositionNode
