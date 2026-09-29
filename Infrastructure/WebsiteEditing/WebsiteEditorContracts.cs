@@ -133,6 +133,42 @@ public static class WebsiteStudioContract
     ];
 }
 
+public static class WebsiteCompositionSchema
+{
+    public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> AllowedTagsByType =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+        {
+            ["section"] = ["section"],
+            ["container"] = ["div", "article", "header", "footer", "nav", "ul", "ol", "fieldset"],
+            ["heading"] = ["h1", "h2", "h3", "h4", "h5", "h6"],
+            ["text"] = ["p", "span", "small", "strong", "li", "label", "blockquote"],
+            ["cta"] = ["a", "button"],
+            ["link"] = ["a", "button"],
+            ["image"] = ["img"],
+            ["video"] = ["video"],
+            ["form"] = ["form"],
+            ["embed"] = ["div"],
+            ["spacer"] = ["div"],
+            ["reusable"] = ["div"]
+        };
+
+    public static bool IsAllowedType(string? type) =>
+        !string.IsNullOrWhiteSpace(type) && AllowedTagsByType.ContainsKey(type.Trim().ToLowerInvariant());
+
+    public static string? NormalizeTag(string? type, string? tag)
+    {
+        var key = (type ?? string.Empty).Trim().ToLowerInvariant();
+        if (!AllowedTagsByType.TryGetValue(key, out var allowed) || allowed.Count == 0) return null;
+        var candidate = (tag ?? string.Empty).Trim().ToLowerInvariant();
+        return allowed.Contains(candidate, StringComparer.Ordinal) ? candidate : allowed[0];
+    }
+
+    public static string PromptGrammar() =>
+        string.Join("\n", AllowedTagsByType.Select(pair =>
+            $"- {pair.Key}: {string.Join(" | ", pair.Value)}"));
+}
+
+
 public sealed class WebsiteBreakpointDefinition
 {
     public string Key { get; set; } = "";
