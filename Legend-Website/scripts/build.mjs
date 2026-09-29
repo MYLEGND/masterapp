@@ -72,7 +72,7 @@ const businessNav=()=>businessPages.map(page=>`<a href="/business-preview/${page
 function hero(model){
   const hasVisual=!!(model.image || model.imageCaption);
   const visual=hasVisual
-    ? `<div class="hero-mark"><div class="halo" data-cms-decoration="true" aria-hidden="true"></div>${model.image?`<img src="${model.image}" alt="${model.imageAlt||''}">`:''}${model.imageCaption?`<span>${model.imageCaption}</span>`:''}</div>`
+    ? `<div class="hero-mark">${model.image?`<img src="${model.image}" alt="${model.imageAlt||''}">`:''}${model.imageCaption?`<span>${model.imageCaption}</span>`:''}</div>`
     : '';
   return `<section class="hero${hasVisual?'':' hero--single'}"><div class="hero-copy"><p class="eyebrow">${model.kicker}</p><h1${model.businessName?' data-business-name data-business-field="displayName"':''}>${model.title}</h1><p class="hero-line">${model.tagline}</p><p>${model.text}</p><div class="actions">${model.actions.map(action=>`<a class="btn ${action.style}"${action.actionKey?` data-website-action-key="${action.actionKey}"`:""} href="${action.href}">${action.label}</a>`).join('')}</div>${model.verse?`<blockquote>${model.verse}<cite>${model.citation}</cite></blockquote>`:''}</div>${visual}</section>`;
 }
