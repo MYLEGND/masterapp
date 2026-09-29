@@ -57,13 +57,13 @@ public sealed class BusinessAnalyticsDetailTests
             {
                 ["/"] = new WebsitePageDocument
                 {
-                    Extras =
+                    Composition =
                     [
-                        new WebsiteExtraComponent
+                        new WebsiteCompositionNode
                         {
                             Id = "call",
-                            SectionId = "home.section",
-                            Type = "button",
+                            Type = "cta",
+                            Tag = "a",
                             Text = "Talk to us",
                             ActionKey = "business_call",
                             Href = "tel:6025550199"
@@ -87,8 +87,15 @@ public sealed class BusinessAnalyticsDetailTests
             DocumentJson = state.DraftJson
         };
         // Unpublished edits must not appear as live behavior or rewrite publication history.
-        document.Pages["/"].Extras[0].Text = "Unpublished call label";
-        document.Pages["/"].Extras.Add(new WebsiteExtraComponent { Id = "draft-only", ActionKey = "business_email", Text = "Draft email" });
+        document.Pages["/"].Composition[0].Text = "Unpublished call label";
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = "draft-only",
+            Type = "cta",
+            Tag = "a",
+            ActionKey = "business_email",
+            Text = "Draft email"
+        });
         state.DraftJson = System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         state.PublishedVersionId = version.Id;
         db.AddRange(business, settings, state, version);
@@ -107,11 +114,11 @@ public sealed class BusinessAnalyticsDetailTests
 
         Assert.Contains(model.EventMap, row => row.Element == "automatic:page_view" && row.Event == "page_view" && row.Mode == "automatic");
         Assert.Contains(model.EventMap, row => row.Element == "automatic:meaningful_scroll" && row.Event == "scroll_depth_50" && row.Mode == "automatic");
-        var call = Assert.Single(model.EventMap.Where(row => row.Element == "extra:call"));
+        var call = Assert.Single(model.EventMap.Where(row => row.Element == "call"));
         Assert.Equal("business_call", call.ActionKey);
         Assert.Equal("cta_click", call.Event);
         Assert.Equal("Talk to us", call.VisibleLabel);
-        Assert.DoesNotContain(model.EventMap, row => row.Element == "extra:draft-only" || row.VisibleLabel == "Unpublished call label");
+        Assert.DoesNotContain(model.EventMap, row => row.Element == "draft-only" || row.VisibleLabel == "Unpublished call label");
         Assert.Equal("browser", call.Authority);
         Assert.Equal(version.Id, call.PublishedVersion);
         Assert.Equal(3, call.Revision);

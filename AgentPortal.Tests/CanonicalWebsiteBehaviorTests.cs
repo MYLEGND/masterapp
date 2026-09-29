@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Infrastructure.Analytics;
@@ -89,20 +90,52 @@ public sealed class CanonicalWebsiteBehaviorTests
     }
 
     [Fact]
-    public void HistoricalPublishedBindingsRemainReadableButCannotCreateManualConfirmedOutcomes()
+    public void HistoricalPublishedBindingsRemainReadableOnlyThroughMigrationEnvelope()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-        var document = new WebsiteContentDocument { Elements = new() { ["old-form"] = new() {
-            Signals = [new() { EventName = "Lead", Trigger = "submission_saved", DeliveryMode = "meta" },
-                new() { EventName = "LeadFormStart", Trigger = "form_started", DeliveryMode = "meta" }] } } };
-        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.Sanitize(document));
-        var json = JsonSerializer.Serialize(document, options);
-        var read = WebsiteContentSanitizer.ReadPersisted(json, options);
-        var binding = Assert.Single(read.Elements["old-form"].Signals);
-        Assert.Equal("form_start", binding.EventName);
-        Assert.Equal("form_start", binding.ActionKey);
-        Assert.Equal("destinations", binding.DeliveryMode);
-        Assert.Equal(2, document.Elements["old-form"].Signals.Count);
+        const string legacyJson =
+            """
+            {
+              "version": 2,
+              "elements": {
+                "old-form": {
+                  "signals": [
+                    { "eventName": "Lead", "trigger": "submission_saved", "deliveryMode": "meta" },
+                    { "eventName": "LeadFormStart", "trigger": "form_started", "deliveryMode": "meta" }
+                  ]
+                }
+              }
+            }
+            """;
+
+        var canonicalAttempt = JsonSerializer.Deserialize<WebsiteContentDocument>(legacyJson, options)!;
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.Sanitize(canonicalAttempt));
+
+        var read = WebsiteContentSanitizer.ReadPersisted(legacyJson, options);
+        var migrationProperty = typeof(WebsiteContentDocument).GetProperty(
+            "LegacyMigration",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(migrationProperty);
+        var migration = migrationProperty!.GetValue(read);
+        Assert.NotNull(migration);
+
+        using var migratedJson = JsonDocument.Parse(JsonSerializer.Serialize(migration, migration!.GetType(), options));
+        var signals = migratedJson.RootElement
+            .GetProperty("elements")
+            .GetProperty("old-form")
+            .GetProperty("signals");
+
+        var binding = Assert.Single(signals.EnumerateArray().ToArray());
+        Assert.Equal("form_start", binding.GetProperty("eventName").GetString());
+        Assert.Equal("form_start", binding.GetProperty("actionKey").GetString());
+        Assert.Equal("destinations", binding.GetProperty("deliveryMode").GetString());
+
+        using var original = JsonDocument.Parse(legacyJson);
+        Assert.Equal(2, original.RootElement
+            .GetProperty("elements")
+            .GetProperty("old-form")
+            .GetProperty("signals")
+            .GetArrayLength());
     }
 
     [Fact]

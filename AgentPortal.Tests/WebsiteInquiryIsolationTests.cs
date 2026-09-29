@@ -102,7 +102,7 @@ public sealed class WebsiteInquiryIsolationTests
     }
 
     [Fact]
-    public async Task BusinessInquiryImmediatelyUsesCurrentScopedRecipient_AndPublishedFormBindingControlsMetaEligibility()
+    public async Task BusinessInquiryImmediatelyUsesCurrentScopedRecipient_AndCanonicalV3LeadRemainsServerAuthorityEligible()
     {
         using var f = new Fixture();
         await f.SeedPublishedAsync();
@@ -124,30 +124,22 @@ public sealed class WebsiteInquiryIsolationTests
         };
         f.Db.AddRange(profile, member);
 
-        var bindingId = Guid.NewGuid().ToString("N");
         var document = new WebsiteContentDocument
         {
             Pages =
             {
                 ["/contact"] = new WebsitePageDocument
                 {
-                    Extras =
+                    Composition =
                     [
-                        new WebsiteExtraComponent
+                        new WebsiteCompositionNode
                         {
                             Id = "contact-form",
-                            SectionId = "contact",
                             Type = "form",
-                            Signals =
-                            [
-                                new WebsiteSignalBinding
-                                {
-                                    Id = bindingId,
-                                    Trigger = "submission_saved",
-                                    EventName = "Lead",
-                                    DeliveryMode = "analytics"
-                                }
-                            ]
+                            Tag = "form",
+                            SystemKey = "canonical_inquiry",
+                            Title = "Contact us",
+                            Text = "Send inquiry"
                         }
                     ]
                 }
@@ -161,7 +153,7 @@ public sealed class WebsiteInquiryIsolationTests
         await f.Db.SaveChangesAsync();
 
         var result = Assert.IsType<OkObjectResult>(await f.Controller.Submit(
-            f.Request() with { SourceFormElementId = "extra:contact-form" },
+            f.Request() with { SourceFormElementId = "contact-form" },
             CancellationToken.None));
         var resultJson = System.Text.Json.JsonSerializer.Serialize(result.Value);
         Assert.Contains("\"notificationSent\":true", resultJson, StringComparison.OrdinalIgnoreCase);
@@ -181,10 +173,11 @@ public sealed class WebsiteInquiryIsolationTests
 
         var analytics = Assert.Single(await f.Db.AnalyticsEvents
             .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
-        Assert.Equal(bindingId, analytics.WebsiteBindingId);
-        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(
+        Assert.Equal("contact-form", analytics.WebsiteBindingId);
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(
             analytics.MetadataJson,
             "metaServerAuthorityEligible") == true);
+        Assert.DoesNotContain("WebsiteSignalBindingId", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

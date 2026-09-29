@@ -44,7 +44,6 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddHttpClient();
-builder.Services.AddScoped<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService, Infrastructure.WebsiteEditing.WebsiteStudioAiProposalService>();
 Infrastructure.Social.SocialServiceCollectionExtensions.AddMasterAppMediaStorage(builder.Services);
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteMediaService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteImportService>();

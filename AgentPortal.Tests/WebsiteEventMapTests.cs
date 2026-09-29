@@ -20,8 +20,27 @@ public sealed class WebsiteEventMapTests
         db.Add(agent);
         var state = new WebsiteContentState { OwnerKey = agent.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect, DraftJson = "{\"pages\":{\"/draft-only\":{}}}" };
         var binding = new WebsiteSignalBinding { EventName = "LeadFormStart", Trigger = "click", DeliveryMode = "analytics" };
-        var document = new WebsiteContentDocument { Pages = new() { ["/contact"] = new() { Elements = new() {
-            ["button"] = new() { Text = "Purchase", ActionKey = "custom-unresolved-action", Signals = [binding] } } } } };
+        var document = new WebsiteContentDocument
+        {
+            Pages = new()
+            {
+                ["/contact"] = new()
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "button",
+                            Type = "cta",
+                            Tag = "a",
+                            Text = "Purchase",
+                            ActionKey = "custom-unresolved-action",
+                            Signals = [binding]
+                        }
+                    ]
+                }
+            }
+        };
         var version = new WebsiteContentVersion { StateId = state.Id, DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
         state.PublishedVersionId = version.Id;
         db.AddRange(state, version, new WebsiteContentState { OwnerKey = "other", SiteKey = WebsiteEditorSiteKeys.Protect });
@@ -84,9 +103,34 @@ public sealed class WebsiteEventMapTests
         var profile = new AgentTrackingProfile { AgentUserId = "agent", AgentUpn = "agent@example.test", Slug = "agent" };
         var other = new AgentTrackingProfile { AgentUserId = "other", AgentUpn = "other@example.test", Slug = "other" };
         var state = new WebsiteContentState { OwnerKey = profile.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect };
-        var document = new WebsiteContentDocument { Pages = new() { ["/contact"] = new() { Elements = new() {
-            ["schedule"] = new() { Text = "Book now", ActionKey = "protect_schedule" },
-            ["unobserved"] = new() { Text = "Book now", ActionKey = "protect_schedule" } } } } };
+        var document = new WebsiteContentDocument
+        {
+            Pages = new()
+            {
+                ["/contact"] = new()
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "schedule",
+                            Type = "cta",
+                            Tag = "a",
+                            Text = "Book now",
+                            ActionKey = "protect_schedule"
+                        },
+                        new WebsiteCompositionNode
+                        {
+                            Id = "unobserved",
+                            Type = "cta",
+                            Tag = "a",
+                            Text = "Book now",
+                            ActionKey = "protect_schedule"
+                        }
+                    ]
+                }
+            }
+        };
         var version = new WebsiteContentVersion { StateId = state.Id, DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
         state.PublishedVersionId = version.Id;
         db.AddRange(profile, other, state, version);

@@ -26,7 +26,8 @@
     || 'home';
 
   const editorTicket = params.get('legendEdit') || '';
-  const editorMode = !!editorTicket;
+  const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
+  const editorMode = !!editorTicket && !materializeMode;
   const originalTitle = document.title || '';
   const originalDescription = document.querySelector('meta[name="description"]')?.content || '';
   const initialFaviconLink = document.querySelector('link[rel~="icon"]');
@@ -37,13 +38,13 @@
     { key: 'tablet', label: 'Tablet', minWidth: 768, maxWidth: 1199, isSystem: true },
     { key: 'desktop', label: 'Desktop', minWidth: 1200, maxWidth: null, isSystem: true }
   ];
-  let documentState = { version: 2, faviconImageDataUrl: null, breakpoints: defaultBreakpoints(), elements: {}, sectionOrder: {}, extras: [], reusableComponents: {}, collections: {}, theme: {}, pages: {} };
+  let documentState = { version: 3, faviconImageDataUrl: null, breakpoints: defaultBreakpoints(), shell:{header:[],footer:[]}, reusableComponents:{}, collections:{}, theme:{}, store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28}, pages:{} };
+  let legacyMigration = null;
   let signalCatalog = null;
   let ctaCatalog = [];
   let managementPayload = null;
   let storeContext = null;
   let storePreviewActive = false;
-  let pendingAiProposal = null;
   let collaborationReplyTo = null;
   let collectionData = new Map();
   let dynamicCollectionItem = renderInput?.dynamicItem || null;
@@ -58,12 +59,8 @@
   let inlineEditCheckpointed = false;
   let activeEditorPanel = 'content';
   let dirty = false;
+  let sourceEditorDirty = false;
   let autoSaveTimer = null;
-  const pendingDeletedKeys = new Set();
-
-  function pageElementDeletionKey(id) { return `page:${currentPageRoute()}|element:${id}`; }
-  function pageExtraDeletionKey(id) { return `page:${currentPageRoute()}|extra:${id}`; }
-  function markDeleted(key) { if (key) pendingDeletedKeys.add(key); }
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
@@ -75,6 +72,12 @@
       style: Object.fromEntries(styleProperties.map(key => [key, el.style[key] || '']))
     });
     return originals.get(el);
+  }
+
+  function cloneCanonicalValue(value) {
+    if (value == null || typeof value !== 'object') return value;
+    if (typeof globalThis.structuredClone === 'function') return globalThis.structuredClone(value);
+    return JSON.parse(JSON.stringify(value));
   }
 
   function positiveNumber(value) { return typeof value === 'number' && Number.isFinite(value) && value > 0; }
@@ -135,64 +138,101 @@
     }
   }
 
-  function constrainOverrideGeometry(override) {
-    if (!override || typeof override !== 'object') return;
-    constrainHorizontalStyleRecord(override.style);
-    if (override.breakpointStyles && typeof override.breakpointStyles === 'object')
-      Object.values(override.breakpointStyles).forEach(constrainHorizontalStyleRecord);
+  function constrainCompositionGeometry(model) {
+    if (!model || typeof model !== 'object') return;
+    constrainHorizontalStyleRecord(model.style);
+    if (model.breakpointStyles && typeof model.breakpointStyles === 'object')
+      Object.values(model.breakpointStyles).forEach(constrainHorizontalStyleRecord);
   }
 
   function constrainDocumentGeometry(doc) {
-    Object.values(doc.elements || {}).forEach(constrainOverrideGeometry);
-    (doc.extras || []).forEach(constrainOverrideGeometry);
-    Object.values(doc.pages || {}).forEach(page => {
-      Object.values(page?.elements || {}).forEach(constrainOverrideGeometry);
-      (page?.extras || []).forEach(constrainOverrideGeometry);
+    const visit = nodes => (nodes || []).forEach(node => {
+      constrainCompositionGeometry(node);
+      visit(node?.children);
     });
-    Object.values(doc.reusableComponents || {}).forEach(component => {
-      Object.values(component?.elements || {}).forEach(constrainOverrideGeometry);
-      (component?.extras || []).forEach(constrainOverrideGeometry);
-    });
+    visit(doc?.shell?.header);
+    visit(doc?.shell?.footer);
+    Object.values(doc?.pages || {}).forEach(page => visit(page?.composition));
+    Object.values(doc?.reusableComponents || {}).forEach(component => visit(component?.composition));
+    constrainCompositionGeometry(doc?.store?.storeNavigation);
+    constrainCompositionGeometry(doc?.store?.cartNavigation);
     return doc;
+  }
+
+  function normalizeCompositionNodes(input) {
+    if (!Array.isArray(input)) return [];
+    return input.filter(node => node && typeof node === 'object').map(node => ({
+      ...node,
+      children: normalizeCompositionNodes(node.children),
+      style: node.style && typeof node.style === 'object' ? node.style : {},
+      breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
+      layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
+      breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
+      animations: Array.isArray(node.animations) ? node.animations : [],
+      signals: Array.isArray(node.signals) ? node.signals : []
+    }));
+  }
+
+  function normalizeControlPresentation(input) {
+    const value=input && typeof input==='object' ? input : {};
+    return {
+      style:value.style && typeof value.style==='object' ? {...value.style} : {},
+      breakpointStyles:value.breakpointStyles && typeof value.breakpointStyles==='object' ? cloneCanonicalValue(value.breakpointStyles) : {},
+      layout:value.layout && typeof value.layout==='object' ? {...value.layout} : {mode:'free',direction:'column'},
+      breakpointLayouts:value.breakpointLayouts && typeof value.breakpointLayouts==='object' ? cloneCanonicalValue(value.breakpointLayouts) : {},
+      animations:Array.isArray(value.animations) ? cloneCanonicalValue(value.animations) : []
+    };
   }
 
   function normalizeDocument(input) {
     const pages = {};
-    const sourcePages = input?.pages && typeof input.pages === 'object' ? input.pages : {};
-    // Read legacy template keys, but only write canonical route keys. Canonical
-    // content wins a collision; unrelated legacy content is retained.
-    for (const [key, value] of Object.entries(sourcePages).sort(([a], [b]) => Number(a.startsWith('/')) - Number(b.startsWith('/')))) {
+    for (const [key,value] of Object.entries(input?.pages && typeof input.pages === 'object' ? input.pages : {})) {
       if (!value || typeof value !== 'object') continue;
-      const route = key.startsWith('/') ? key : key === 'home' ? '/' : `/${key}`;
-      const previous = pages[route];
-      pages[route] = previous ? {
-        ...previous, ...value,
-        elements: { ...previous.elements, ...value.elements },
-        sectionOrder: { ...previous.sectionOrder, ...value.sectionOrder },
-        extras: [...new Map([...(previous.extras || []), ...(value.extras || [])].map(extra => [extra.id, extra])).values()]
-      } : value;
+      const route = normalizePageRoute(key);
+      if (!route) continue;
+      pages[route] = {
+        title: typeof value.title === 'string' ? value.title : null,
+        description: typeof value.description === 'string' ? value.description : null,
+        navigation: value.navigation && typeof value.navigation === 'object'
+          ? {...value.navigation}
+          : {showInNavigation:true,order:0,isDeleted:false},
+        dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
+        composition: normalizeCompositionNodes(value.composition)
+      };
     }
+
+    const reusableComponents={};
+    for(const [id,value] of Object.entries(input?.reusableComponents && typeof input.reusableComponents === 'object' ? input.reusableComponents : {})){
+      if(!value || typeof value!=='object') continue;
+      reusableComponents[id]={
+        id,
+        name:typeof value.name==='string'?value.name:id,
+        kind:value.kind==='block'?'block':'section',
+        composition:normalizeCompositionNodes(value.composition)
+      };
+    }
+
     const normalized = {
-      version: 2,
-      faviconImageDataUrl: typeof input?.faviconImageDataUrl === 'string' ? input.faviconImageDataUrl : null,
-      breakpoints: normalizeBreakpoints(input?.breakpoints),
-      elements: input?.elements && typeof input.elements === 'object' ? input.elements : {},
-      sectionOrder: input?.sectionOrder && typeof input.sectionOrder === 'object' ? input.sectionOrder : {},
-      extras: Array.isArray(input?.extras) ? input.extras : [],
-      reusableComponents: input?.reusableComponents && typeof input.reusableComponents === 'object' ? input.reusableComponents : {},
-      collections: input?.collections && typeof input.collections === 'object' ? input.collections : {},
-      theme: input?.theme && typeof input.theme === 'object' ? input.theme : {},
-      store: {
-        enabled: input?.store?.enabled === true,
-        navigationLabel: typeof input?.store?.navigationLabel === 'string' && input.store.navigationLabel.trim()
-          ? input.store.navigationLabel.trim().slice(0, 40)
-          : 'Store',
-        cartIcon: ['cart','bag','basket'].includes(String(input?.store?.cartIcon || '').toLowerCase())
-          ? String(input.store.cartIcon).toLowerCase()
-          : 'cart',
-        cartIconSizePx: Number.isFinite(Number(input?.store?.cartIconSizePx))
-          ? Math.max(16, Math.min(96, Number(input.store.cartIconSizePx)))
-          : 28
+      version:3,
+      faviconImageDataUrl:typeof input?.faviconImageDataUrl==='string'?input.faviconImageDataUrl:null,
+      breakpoints:normalizeBreakpoints(input?.breakpoints),
+      shell:{
+        header:normalizeCompositionNodes(input?.shell?.header),
+        footer:normalizeCompositionNodes(input?.shell?.footer)
+      },
+      reusableComponents,
+      collections:input?.collections && typeof input.collections==='object' ? cloneCanonicalValue(input.collections) : {},
+      theme:input?.theme && typeof input.theme==='object' ? {...input.theme} : {},
+      store:{
+        enabled:input?.store?.enabled===true,
+        navigationLabel:typeof input?.store?.navigationLabel==='string' && input.store.navigationLabel.trim()
+          ? input.store.navigationLabel.trim().slice(0,40) : 'Store',
+        cartIcon:['cart','bag','basket'].includes(String(input?.store?.cartIcon||'').toLowerCase())
+          ? String(input.store.cartIcon).toLowerCase() : 'cart',
+        cartIconSizePx:Number.isFinite(Number(input?.store?.cartIconSizePx))
+          ? Math.max(16,Math.min(96,Number(input.store.cartIconSizePx))) : 28,
+        storeNavigation:normalizeControlPresentation(input?.store?.storeNavigation),
+        cartNavigation:normalizeControlPresentation(input?.store?.cartNavigation)
       },
       pages
     };
@@ -215,19 +255,78 @@
 
   function pageState() {
     documentState.pages ||= {};
-    const routeKey = currentPageRoute();
-    if (!documentState.pages[routeKey]) {
-      const belongs = id => id.startsWith(`${pageKey}.`) || id.startsWith(`section:${pageKey}.`);
-      const elements = Object.fromEntries(Object.entries(documentState.elements).filter(([id]) => belongs(id)));
-      const sectionOrder = Object.fromEntries(Object.entries(documentState.sectionOrder).filter(([id]) => belongs(id)));
-      const extras = documentState.extras.filter(extra => belongs(extra.sectionId || ''));
-      documentState.pages[routeKey] = { elements, sectionOrder, extras, navigation: { showInNavigation: true, order: 0, isDeleted: false } };
-      Object.keys(elements).forEach(id => delete documentState.elements[id]);
-      Object.keys(sectionOrder).forEach(id => delete documentState.sectionOrder[id]);
-      documentState.extras = documentState.extras.filter(extra => !extras.includes(extra));
+    const route=currentPageRoute();
+    if(!documentState.pages[route]){
+      documentState.pages[route]={
+        title:null,
+        description:null,
+        navigation:{showInNavigation:true,order:0,isDeleted:false},
+        dynamicBinding:null,
+        composition:[]
+      };
     }
-    const page = documentState.pages[routeKey]; page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.navigation ||= { showInNavigation: true, order: 0, isDeleted: false };
+    const page=documentState.pages[route];
+    page.composition ||= [];
+    page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
     return page;
+  }
+
+  function usesCanonicalComposition() {
+    return legacyMigration == null;
+  }
+
+  function walkComposition(nodes, visit, parent = null) {
+    for (const node of Array.isArray(nodes) ? nodes : []) {
+      if (!node || typeof node !== 'object') continue;
+      if (visit(node, parent) === false) return false;
+      if (walkComposition(node.children, visit, node) === false) return false;
+    }
+    return true;
+  }
+
+  function allCanonicalRootSets() {
+    const roots=[
+      {scope:'page',nodes:pageState().composition},
+      {scope:'shell.header',nodes:documentState.shell?.header || []},
+      {scope:'shell.footer',nodes:documentState.shell?.footer || []}
+    ];
+    for(const [id,component] of Object.entries(documentState.reusableComponents || {}))
+      roots.push({scope:'component:'+id,nodes:component?.composition || []});
+    return roots;
+  }
+
+  function compositionEntry(id) {
+    let found=null;
+    for(const root of allCanonicalRootSets()){
+      walkComposition(root.nodes,(node,parent)=>{
+        if(node.id!==id) return;
+        found={node,parent,root};
+        return false;
+      });
+      if(found) break;
+    }
+    return found;
+  }
+
+  function compositionNode(id) {
+    return compositionEntry(id)?.node || null;
+  }
+
+  function compositionChildren(parent, root = null) {
+    if(parent) return parent.children ||= [];
+    return root?.nodes || pageState().composition;
+  }
+
+  function removeCompositionNode(id) {
+    let removed=null;
+    const removeFrom=nodes=>{
+      if(!Array.isArray(nodes)) return false;
+      const index=nodes.findIndex(node=>node?.id===id);
+      if(index>=0){ [removed]=nodes.splice(index,1); return true; }
+      return nodes.some(node=>removeFrom(node?.children));
+    };
+    for(const root of allCanonicalRootSets()) if(removeFrom(root.nodes)) break;
+    return removed;
   }
 
   function safeId(value) {
@@ -242,15 +341,6 @@
     return !!el?.closest?.('.site-header,.site-footer');
   }
 
-  function globalShellOverride(id, create = true) {
-    if (!id) return null;
-    documentState.elements ||= {};
-    if (!documentState.elements[id] && create) documentState.elements[id] = { style: {} };
-    const value = documentState.elements[id] || null;
-    if (value && create) value.style ||= {};
-    return value;
-  }
-
   function canEditElement(el) {
     if (!(el instanceof HTMLElement)) return false;
     if (el.closest('.legend-cms-editor')) return false;
@@ -263,7 +353,7 @@
 
   function isDirectCanvasSelectable(el) {
     if (!(el instanceof HTMLElement)) return false;
-    if (el.dataset.cmsSection || el.dataset.cmsExtraId) return true;
+    if (el.dataset.cmsSection) return true;
     return !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName);
   }
 
@@ -325,7 +415,7 @@
 
   function selectedSignalElementId() {
     if (!selected) return null;
-    return selected.dataset.cmsExtraId ? `extra:${selected.dataset.cmsExtraId}` : selected.dataset.cmsId || null;
+    return selected.dataset.cmsCompositionId || selected.dataset.cmsId || null;
   }
 
   function signalDiagnosticHost(bindingId) {
@@ -465,8 +555,8 @@
     if (type === 'INPUT' && selected.type === 'tel') triggers.push('field_completed');
     if (selected.dataset.cmsSection) triggers.push('scroll_threshold');
     const candidates = signalCatalog.events.filter(option => !option.requiresServerOutcome && option.triggers.some(trigger => triggers.includes(trigger)));
-    const overrides = selectedOverride();
-    const bindings = overrides?.signals || [];
+    const models = selectedWebsiteModel();
+    const bindings = models?.signals || [];
     paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
     if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
     const managedActionKey = selected.dataset.websiteActionKey;
@@ -538,7 +628,7 @@
       diagnostics.appendChild(diagnosticActions);
       host.appendChild(diagnostics);
       const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove mapping';
-      remove.addEventListener('click', () => { checkpoint(); overrides.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
+      remove.addEventListener('click', () => { checkpoint(); models.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
     }
     const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add advanced custom mapping';
     const automaticContract = (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
@@ -547,7 +637,7 @@
     add.addEventListener('click', () => {
       const option = candidates.flatMap(x => x.triggers.filter(t => triggers.includes(t) && !bindings.some(b => b.trigger === t)).map(t => ({ event: x, trigger: t })))[0];
       if (!option) { paragraph('All supported triggers for this element are already mapped.'); return; }
-      checkpoint(); overrides.signals ||= []; overrides.signals.push({ id: crypto.randomUUID().replaceAll('-',''), eventName: option.event.name, actionKey: option.event.actionKey, trigger: option.trigger, deliveryMode: 'off', oncePerSession: true, matchingFields: [] });
+      checkpoint(); models.signals ||= []; models.signals.push({ id: crypto.randomUUID().replaceAll('-',''), eventName: option.event.name, actionKey: option.event.actionKey, trigger: option.trigger, deliveryMode: 'off', oncePerSession: true, matchingFields: [] });
       markDirty(); renderSignalControls();
     }); host.appendChild(add);
   }
@@ -602,10 +692,10 @@
     return candidates[0]?.key || null;
   }
 
-  function effectiveStyle(override) {
-    const base = override?.style && typeof override.style === 'object' ? override.style : {};
+  function effectiveStyle(model) {
+    const base = model?.style && typeof model.style === 'object' ? model.style : {};
     const key = activeBreakpoint();
-    const responsive = key && override?.breakpointStyles && typeof override.breakpointStyles[key] === 'object' ? override.breakpointStyles[key] : null;
+    const responsive = key && model?.breakpointStyles && typeof model.breakpointStyles[key] === 'object' ? model.breakpointStyles[key] : null;
     const style = responsive ? { ...base, ...responsive } : { ...base };
     // Stored width and in-section position are independent. Rendering constrains
     // the effective width to the remaining section space, so movement stays free
@@ -617,10 +707,10 @@
     return style;
   }
 
-  function effectiveLayout(override) {
-    const base = override?.layout && typeof override.layout === 'object' ? override.layout : { mode:'free' };
+  function effectiveLayout(model) {
+    const base = model?.layout && typeof model.layout === 'object' ? model.layout : { mode:'free' };
     const key = activeBreakpoint();
-    const responsive = key && override?.breakpointLayouts && typeof override.breakpointLayouts[key] === 'object' ? override.breakpointLayouts[key] : null;
+    const responsive = key && model?.breakpointLayouts && typeof model.breakpointLayouts[key] === 'object' ? model.breakpointLayouts[key] : null;
     return responsive ? { ...base, ...responsive } : base;
   }
 
@@ -642,37 +732,34 @@
       if (layout.justifyContent) el.style.justifyContent = layout.justifyContent;
     }
   }
-  function editingStyle(override, create = false) {
-    if (!override) return null;
+  function editingStyle(model, create = false) {
+    if (!model) return null;
     if (editorBreakpointKey === 'base') {
-      if (create) override.style ||= {};
-      return override.style || {};
+      if (create) model.style ||= {};
+      return model.style || {};
     }
-    if (create) { override.breakpointStyles ||= {}; override.breakpointStyles[editorBreakpointKey] ||= {}; }
-    return override.breakpointStyles?.[editorBreakpointKey] || {};
+    if (create) { model.breakpointStyles ||= {}; model.breakpointStyles[editorBreakpointKey] ||= {}; }
+    return model.breakpointStyles?.[editorBreakpointKey] || {};
   }
 
-  function editingLayout(override, create = false) {
-    if (!override) return null;
+  function editingLayout(model, create = false) {
+    if (!model) return null;
     if (editorBreakpointKey === 'base') {
-      if (create) override.layout ||= { mode:'free', direction:'column' };
-      return override.layout || { mode:'free', direction:'column' };
+      if (create) model.layout ||= { mode:'free', direction:'column' };
+      return model.layout || { mode:'free', direction:'column' };
     }
-    if (create) { override.breakpointLayouts ||= {}; override.breakpointLayouts[editorBreakpointKey] ||= {}; }
-    return override.breakpointLayouts?.[editorBreakpointKey] || {};
+    if (create) { model.breakpointLayouts ||= {}; model.breakpointLayouts[editorBreakpointKey] ||= {}; }
+    return model.breakpointLayouts?.[editorBreakpointKey] || {};
   }
 
-  function forEachDocumentOverride(action) {
-    Object.values(documentState.elements || {}).forEach(action);
-    (documentState.extras || []).forEach(action);
-    Object.values(documentState.pages || {}).forEach(page => {
-      Object.values(page?.elements || {}).forEach(action);
-      (page?.extras || []).forEach(action);
-    });
-    Object.values(documentState.reusableComponents || {}).forEach(component => {
-      Object.values(component?.elements || {}).forEach(action);
-      (component?.extras || []).forEach(action);
-    });
+  function forEachWebsiteModel(action) {
+    const visit=nodes=>walkComposition(nodes,node=>action(node));
+    visit(documentState.shell?.header || []);
+    visit(documentState.shell?.footer || []);
+    Object.values(documentState.pages || {}).forEach(page=>visit(page?.composition || []));
+    Object.values(documentState.reusableComponents || {}).forEach(component=>visit(component?.composition || []));
+    action(documentState.store?.storeNavigation);
+    action(documentState.store?.cartNavigation);
   }
 
   function syncBreakpointControls() {
@@ -698,7 +785,7 @@
       const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
       editorPreview.style.width='100%'; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
     }
-    refreshResponsiveOverrides();
+    refreshResponsiveComposition();
     syncEditorControls();
   }
   function applyStyle(el, style) {
@@ -733,7 +820,7 @@
         el.style.height = `${style.heightPx}px`;
         // Ordinary website content never becomes its own scroll container.
         // Code frames remain clipped to their explicit sandbox frame.
-        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'visible';
+        el.style.overflow = (el.classList.contains('legend-cms-embed') || el.classList.contains('legend-legacy-migration-code')) ? 'hidden' : 'visible';
       }
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
@@ -746,7 +833,7 @@
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
     ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
-    // A chosen solid color replaces template gradients in editor and published rendering.
+    // A chosen solid color replaces inherited background imagery in editor and published rendering.
     if (style.backgroundColor) el.style.backgroundImage = 'none';
     ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius'].forEach(key => { if (spacingNumber(style[key])) el.style[key] = `${style[key]}px`; });
     if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
@@ -764,26 +851,34 @@
   }
 
 
-  function overrideForElement(el, create = true) {
-    if (!el?.dataset?.cmsId) return null;
-    // Shared website shell edits are document-global and therefore render on
-    // every page. Page-specific content remains in the page record.
-    if (isSharedShellElement(el))
-      return globalShellOverride(el.dataset.cmsId, create);
-    // An added composite block (for example a service card) owns its content,
-    // but each selectable child owns its own geometry/style. This keeps one
-    // canonical document store while allowing title/copy/etc. to move independently.
-    if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
-      return pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
-    return create ? ensureOverride(el.dataset.cmsId) : pageState().elements[el.dataset.cmsId] || null;
+  function compositionNodeForElement(el, create = true) {
+    if (!el?.dataset?.cmsId || legacyMigration) return null;
+    const id=el.dataset.cmsCompositionId || el.dataset.cmsId;
+    const node=compositionNode(id);
+    if (node && create) {
+      node.style ||= {};
+      node.signals ||= [];
+      node.children ||= [];
+    }
+    return node;
   }
 
-  function contentOverrideForElement(el, create = true) {
-    if (el?.dataset?.cmsExtraId) {
-      const extra = pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
-      if (extra) return extra;
-    }
-    return overrideForElement(el, create);
+  function storeControlPresentationForElement(el, create = true) {
+    if (!el || legacyMigration) return null;
+    const key=el.dataset?.legendStoreNav;
+    if (key!=='store' && key!=='cart') return null;
+    documentState.store ||= {};
+    const field=key==='store' ? 'storeNavigation' : 'cartNavigation';
+    if(create) documentState.store[field] ||= normalizeControlPresentation(null);
+    return documentState.store[field] || null;
+  }
+
+  function editableWebsiteModelForElement(el, create = true) {
+    return storeControlPresentationForElement(el, create) || compositionNodeForElement(el, create);
+  }
+
+  function editableCompositionNodeForElement(el, create = true) {
+    return compositionNodeForElement(el, create);
   }
 
   function isInlineEditable(el) {
@@ -806,11 +901,10 @@
       inlineEditCheckpointed = false;
       return;
     }
-    const override = contentOverrideForElement(el, false);
-    if (override) {
+    const model = editableCompositionNodeForElement(el, false);
+    if (model) {
       const value = inlineTextValue(el);
-      if (el.dataset.cmsExtraField === 'title') override.title = value;
-      else override.text = value;
+      model.text = value;
       setContentText(el, value, true);
     }
     el.removeAttribute?.('contenteditable');
@@ -837,11 +931,10 @@
     el.addEventListener('input', () => {
       if (!inlineEditCheckpointed) checkpoint();
       inlineEditCheckpointed = false;
-      const override = contentOverrideForElement(el);
-      if (!override) return;
+      const model = editableCompositionNodeForElement(el);
+      if (!model) return;
       const value = inlineTextValue(el);
-      if (el.dataset.cmsExtraField === 'title') override.title = value;
-      else override.text = value;
+      model.text = value;
       el.dataset.cmsPreserveWhitespace = 'true';
       markDirty();
       updateDirectCanvasUi();
@@ -862,6 +955,491 @@
     // the parent page's script policy. This keeps owner code isolated without
     // weakening the main site's CSP with unsafe-inline/unsafe-eval.
     frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source);
+  }
+
+  function compositionMediaAssetId(value) {
+    if (!value) return null;
+    try {
+      const url = new URL(value, API_BASE);
+      const match = url.pathname.match(/^\/api\/website-content\/media\/([a-f0-9-]{36})$/i);
+      return match ? match[1] : null;
+    } catch { return null; }
+  }
+
+  // READ-ONLY PRE-V3 COMPATIBILITY BOUNDARY.
+  // Used only to render/migrate persisted historical JSON and old immutable versions.
+  // These helpers never mutate documentState and are never reachable from writable editor controls.
+  function legacyMigrationPageState() {
+    const pages=legacyMigration?.pages && typeof legacyMigration.pages==='object' ? legacyMigration.pages : {};
+    const route=currentPageRoute();
+    return pages[route] || pages[pageKey] || (route==='/' ? pages.home : null) ||
+      {elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
+  }
+
+  function legacyMigrationExtraById(id) {
+    const page=legacyMigrationPageState();
+    return (page.extras || []).find(extra=>extra?.id===id) ||
+      (legacyMigration?.extras || []).find(extra=>extra?.id===id) || null;
+  }
+
+  // BEGIN ONE-WAY LEGACY V2 -> CANONICAL V3 MIGRATION.
+  // These helpers only render the separately supplied read-only legacyMigration
+  // envelope long enough to materialize the effective website into v3. They never
+  // write legacy fields into documentState, Site Source, drafts, or published v3.
+  function legacyMigrationRecordForElement(el) {
+    if (!el || !legacyMigration) return null;
+    if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
+      return legacyMigrationExtraById(el.dataset.cmsExtraId);
+    if (isSharedShellElement(el))
+      return legacyMigration.elements?.[el.dataset.cmsId] || null;
+    return legacyMigrationPageState().elements?.[el.dataset.cmsId] ||
+      legacyMigration.elements?.[el.dataset.cmsId] || null;
+  }
+
+  function legacyMigrationReusableDefinition(instance) {
+    return instance?.type==='reusable' && instance.syncSourceId
+      ? legacyMigration?.reusableComponents?.[instance.syncSourceId] || null
+      : null;
+  }
+
+  function legacyRecordAsCanonicalModel(record) {
+    const model=cloneCanonicalValue(record || {});
+    if(!model.mediaUrl) model.mediaUrl=model.imageDataUrl || model.videoUrl || null;
+    delete model.imageDataUrl;
+    delete model.videoUrl;
+    delete model.placement;
+    delete model.templateSectionId;
+    delete model.sectionId;
+    return model;
+  }
+
+  function applyLegacyMigrationRecord(el, record) {
+    applyCompositionNode(el, legacyRecordAsCanonicalModel(record));
+  }
+
+  function renderLegacyMigrationReusableInstance(wrapper,instance) {
+    if(!wrapper || !instance) return;
+    wrapper.replaceChildren();
+    const definition=legacyMigrationReusableDefinition(instance);
+    if(!definition) return;
+    const values=Array.isArray(definition.extras)?definition.extras:[];
+    const root=values.find(value=>value.sectionId==='component.root') || values[0] || null;
+    const sectionMap=new Map([['component.root',wrapper]]);
+    if(definition.kind==='section' && root?.type==='section'){
+      sectionMap.set('extra:'+root.id,wrapper);
+      applyStyle(wrapper,{...effectiveStyle(root),...effectiveStyle(instance)});
+      applyLayout(wrapper,{...effectiveLayout(root),...effectiveLayout(instance)});
+    }else{
+      applyStyle(wrapper,effectiveStyle(instance));
+      applyLayout(wrapper,effectiveLayout(instance));
+    }
+    for(const item of values.filter(value=>value.type==='section' && value!==root)){
+      const parent=sectionMap.get(item.sectionId)||wrapper;
+      const node=buildLegacyExtraNode(item,false,instance.id);
+      node.classList.add('legend-cms-reusable-child');
+      parent.appendChild(node);
+      sectionMap.set('extra:'+item.id,node);
+      applyStyle(node,effectiveStyle(item));
+      applyLayout(node,effectiveLayout(item));
+    }
+    for(const item of values.filter(value=>value.type!=='section')){
+      if(definition.kind==='block' && root && item!==root) continue;
+      const parent=sectionMap.get(item.sectionId)||wrapper;
+      const node=buildLegacyExtraNode(item,false,instance.id);
+      node.classList.add('legend-cms-reusable-child');
+      parent.appendChild(node);
+      applyLegacyMigrationRecord(node,item);
+    }
+  }
+
+  function createLegacyMigrationExtra(extra) {
+    const section=extra.type==='section'
+      ? document.querySelector('main')
+      : document.querySelector('[data-cms-section="'+CSS.escape(extra.sectionId)+'"]');
+    if(!section) return null;
+    if(extra.type==='reusable'){
+      const definition=legacyMigrationReusableDefinition(extra);
+      const el=document.createElement(definition?.kind==='section'?'section':'div');
+      el.className='legend-legacy-migration-node cms-reusable-instance';
+      el.dataset.cmsExtraId=extra.id;
+      el.dataset.cmsId='extra:'+extra.id;
+      if(extra.hidden===true) el.hidden=true;
+      section.appendChild(el);
+      renderLegacyMigrationReusableInstance(el,extra);
+      return el;
+    }
+    const el=buildLegacyExtraNode(extra,true);
+    section.appendChild(el);
+    applyLegacyMigrationRecord(el,extra);
+    return el;
+  }
+
+  function applyLegacyMigrationSectionOrder() {
+    const order=legacyMigrationPageState().sectionOrder || {};
+    const sections=pageLayerSections();
+    const original=new Map(sections.map((section,index)=>[section,index]));
+    sections.sort((left,right)=>{
+      const a=order[left.dataset.cmsSection];
+      const b=order[right.dataset.cmsSection];
+      return (Number.isFinite(Number(a))?Number(a):original.get(left))-
+        (Number.isFinite(Number(b))?Number(b):original.get(right));
+    });
+    const groups=new Map();
+    for(const section of sections){
+      const parent=section.parentElement;
+      if(!parent) continue;
+      if(!groups.has(parent)) groups.set(parent,[]);
+      groups.get(parent).push(section);
+    }
+    groups.forEach(group=>group.forEach(section=>section.parentElement.appendChild(section)));
+  }
+
+  function applyLegacyMigrationPreview() {
+    if(!legacyMigration) return;
+    const page=legacyMigrationPageState();
+    document.querySelectorAll('.legend-legacy-migration-node').forEach(node=>node.remove());
+
+    const extras=[...(legacyMigration.extras || []),...(page.extras || [])];
+    extras.filter(extra=>extra.type==='section').forEach(createLegacyMigrationExtra);
+    extras.filter(extra=>extra.type!=='section').forEach(createLegacyMigrationExtra);
+
+    for(const [id,legacyRecord] of Object.entries(legacyMigration.elements || {}))
+      applyLegacyMigrationRecord(findEditableElement(id),legacyRecord);
+    for(const [id,legacyRecord] of Object.entries(page.elements || {}))
+      applyLegacyMigrationRecord(findEditableElement(id),legacyRecord);
+
+    applyLegacyMigrationSectionOrder();
+    for(const [id,legacyRecord] of Object.entries(page.elements || {}))
+      applyLegacyMigrationPlacement(findEditableElement(id),legacyRecord.placement);
+    for(const extra of extras)
+      applyLegacyMigrationPlacement(document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]'),extra.placement);
+  }
+
+  function cleanCompositionClassName(el) {
+    return [...(el?.classList || [])]
+      .filter(name => name && !['legend-cms-inline-editing','legend-cms-selected','legend-cms-snap-x','legend-cms-snap-y'].includes(name))
+      .join(' ') || null;
+  }
+
+  function materializeCompositionNode(el, fallbackId = null) {
+    if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    const tag = el.tagName.toLowerCase();
+    if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
+
+    const id = el.dataset.cmsId || fallbackId || pageKey + '.' + safeId(tag) + '.node';
+    const model = legacyMigrationRecordForElement(el) || {};
+    const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
+    const extra = el.dataset.cmsExtraId ? legacyMigrationExtraById(el.dataset.cmsExtraId) : null;
+
+    if (tag === 'form' && el.matches('[data-website-inquiry]')) {
+      return {
+        id, type:'form', tag:'form', className:cleanCompositionClassName(el),
+        title:el.querySelector('legend')?.textContent || extra?.title || 'Send an inquiry',
+        text:el.querySelector('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
+        systemKey:'canonical_inquiry', signals:cloneCanonicalValue(model.signals || extra?.signals || []),
+        style:cloneCanonicalValue(model.style || extra?.style || {}),
+        breakpointStyles:cloneCanonicalValue(model.breakpointStyles || extra?.breakpointStyles || {}),
+        layout:cloneCanonicalValue(model.layout || extra?.layout || {}),
+        breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || extra?.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(model.animations || extra?.animations || []),
+        dataBinding:cloneCanonicalValue(model.dataBinding || extra?.dataBinding || null),
+        children:[]
+      };
+    }
+
+    if (extra?.type === 'code' && el.classList.contains('legend-legacy-migration-code')) {
+      return {
+        id, type:'embed', tag:'div', className:cleanCompositionClassName(el),
+        text:extra.text || defaultCodeBlock, signals:cloneCanonicalValue(extra.signals || []),
+        style:cloneCanonicalValue(extra.style || {}), breakpointStyles:cloneCanonicalValue(extra.breakpointStyles || {}),
+        layout:cloneCanonicalValue(extra.layout || {}), breakpointLayouts:cloneCanonicalValue(extra.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(extra.animations || []), dataBinding:cloneCanonicalValue(extra.dataBinding || null), children:[]
+      };
+    }
+
+    if (extra?.type === 'reusable' && extra.syncSourceId) {
+      return {
+        id, type:'reusable', tag:'div', className:cleanCompositionClassName(el),
+        syncSourceId:extra.syncSourceId, signals:[],
+        style:cloneCanonicalValue(extra.style || {}), breakpointStyles:cloneCanonicalValue(extra.breakpointStyles || {}),
+        layout:cloneCanonicalValue(extra.layout || {}), breakpointLayouts:cloneCanonicalValue(extra.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(extra.animations || []), dataBinding:cloneCanonicalValue(extra.dataBinding || null), children:[]
+      };
+    }
+
+    let type = 'text';
+    if (tag === 'section') type='section';
+    else if (['div','article','header','footer','nav','ul','ol'].includes(tag)) type='container';
+    else if (/^h[1-6]$/.test(tag)) type='heading';
+    else if (tag === 'a' || tag === 'button') type=actionKey ? 'cta' : 'link';
+    else if (tag === 'img') type='image';
+    else if (tag === 'video') type='video';
+
+    const node = {
+      id, type, tag, className:cleanCompositionClassName(el),
+      actionKey:actionKey || null,
+      href:(tag === 'a' ? el.getAttribute('href') : model.href) || null,
+      target:(tag === 'a' ? el.getAttribute('target') : model.target) || null,
+      alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || model.alt || null) : null,
+      hidden:el.hidden === true ? true : (model.hidden === false ? false : null),
+      signals:cloneCanonicalValue(model.signals || []),
+      style:cloneCanonicalValue(model.style || {}),
+      breakpointStyles:cloneCanonicalValue(model.breakpointStyles || {}),
+      layout:cloneCanonicalValue(model.layout || {}),
+      breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || {}),
+      animations:cloneCanonicalValue(model.animations || []),
+      dataBinding:cloneCanonicalValue(model.dataBinding || null),
+      children:[]
+    };
+
+    if (tag === 'nav' && (el.id === 'primary-nav' || el.hasAttribute('data-public-nav')))
+      node.systemKey='primary_navigation';
+    if (el.hasAttribute('data-business-name')) node.systemBinding='business_name';
+    else if (el.hasAttribute('data-business-field'))
+      node.systemBinding='business_field:' + el.getAttribute('data-business-field');
+
+    if (type === 'image' || type === 'video') {
+      const raw = type === 'image'
+        ? (model.imageDataUrl || el.getAttribute('src') || '')
+        : (model.videoUrl || el.getAttribute('src') || '');
+      node.mediaAssetId = compositionMediaAssetId(raw);
+      node.mediaUrl = raw || null;
+    }
+
+    const childElements = [...el.children].filter(child =>
+      child instanceof HTMLElement &&
+      !['svg','i','script','style','noscript'].includes(child.tagName.toLowerCase()) &&
+      !child.closest('.legend-cms-editor'));
+
+    if (['section','container','cta','link'].includes(type) && childElements.length) {
+      let childIndex = 0;
+      for (const child of childElements) {
+        const childNode = materializeCompositionNode(child, id + '.child.' + (++childIndex));
+        if (childNode) node.children.push(childNode);
+      }
+      const directText = [...el.childNodes]
+        .filter(child => child.nodeType === 3 && String(child.textContent || '').trim())
+        .map(child => String(child.textContent || '').replace(/\r/g,''))
+        .join(' ')
+        .trim();
+      if (directText) node.children.unshift({
+        id:id + '.text',type:'text',tag:'span',text:directText,className:null,
+        signals:[],style:{},breakpointStyles:{},layout:{},breakpointLayouts:{},animations:[],children:[]
+      });
+    } else if (!['image','video','section','container'].includes(type)) {
+      node.text = inlineTextValue(el);
+    }
+
+    return node;
+  }
+
+  function materializeCurrentPageComposition() {
+    const main = document.querySelector('main');
+    if (!main) return [];
+    const nodes = [];
+    let index = 0;
+    for (const child of [...main.children]) {
+      const node = materializeCompositionNode(child, pageKey + '.root.' + (++index));
+      if (node) nodes.push(node);
+    }
+    return nodes;
+  }
+
+  function materializeCurrentShell() {
+    const header=document.querySelector('.site-header');
+    const footer=document.querySelector('.site-footer');
+    const headerNode=header ? materializeCompositionNode(header,'shell.header') : null;
+    const footerNode=footer ? materializeCompositionNode(footer,'shell.footer') : null;
+    return {
+      header:headerNode ? [headerNode] : [],
+      footer:footerNode ? [footerNode] : []
+    };
+  }
+
+  function safeCompositionTag(node) {
+    const type=String(node?.type || 'text');
+    const tag=String(node?.tag || '').toLowerCase();
+    const allowed={
+      section:['section'],container:['div','article','header','footer','nav','ul','ol'],
+      heading:['h1','h2','h3','h4','h5','h6'],text:['p','span','small','strong','li','label','blockquote'],
+      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],embed:['div'],spacer:['div'],reusable:['div']
+    }[type] || ['div'];
+    return allowed.includes(tag) ? tag : allowed[0];
+  }
+
+  function buildCanonicalInquiryForm(node) {
+    const el=document.createElement('form');
+    el.id='website_inquiry_'+node.id;
+    el.className='public-form legend-cms-inquiry-form';
+    el.dataset.websiteInquiry='';
+    el.dataset.formKey='website_inquiry';
+    el.setAttribute('action','/api/website-inquiries/public');
+    el.setAttribute('method','post');
+
+    const fieldset=document.createElement('fieldset');
+    if(editorMode){el.dataset.preview='';fieldset.disabled=true;}
+    const legend=document.createElement('legend');
+    legend.textContent=node.title || 'Send an inquiry';
+    const grid=document.createElement('div');
+    grid.className='public-form-grid';
+
+    const field=(labelText,name,type='text',attrs={})=>{
+      const label=document.createElement('label');
+      label.textContent=labelText;
+      const input=name==='Message' ? document.createElement('textarea') : document.createElement('input');
+      if(name!=='Message') input.type=type;
+      input.name=name;
+      input.required=true;
+      if(name==='Message') input.rows=5;
+      Object.entries(attrs).forEach(([key,value])=>input.setAttribute(key,value));
+      label.appendChild(input);
+      return label;
+    };
+
+    grid.append(
+      field('First Name','FirstName','text',{autocomplete:'given-name',maxlength:'120'}),
+      field('Last Name','LastName','text',{autocomplete:'family-name',maxlength:'120'}),
+      field('Phone Number','Phone','tel',{inputmode:'tel',autocomplete:'tel',maxlength:'64'}),
+      field('Email','Email','email',{autocomplete:'email',maxlength:'254'})
+    );
+    const message=field('Message','Message','text',{maxlength:'12000'});
+    message.className='public-form-full';
+    grid.appendChild(message);
+
+    const consentLabel=document.createElement('label');
+    consentLabel.className='public-form-consent public-form-full';
+    const consent=document.createElement('input');
+    consent.type='checkbox';
+    consent.name='consent';
+    consent.required=true;
+    const consentText=document.createElement('span');
+    consentText.textContent='I agree to share this inquiry with this website.';
+    consentLabel.append(consent,consentText);
+    grid.appendChild(consentLabel);
+
+    const submit=document.createElement('button');
+    submit.type='submit';
+    submit.className='btn primary';
+    submit.textContent=node.text || 'Send inquiry';
+    const status=document.createElement('p');
+    status.setAttribute('role','status');
+    status.setAttribute('aria-live','polite');
+
+    fieldset.append(legend,grid,submit);
+    el.append(fieldset,status);
+    return el;
+  }
+
+  function buildCanonicalEmbed(node) {
+    const el=document.createElement('div');
+    el.className='legend-cms-embed';
+    const frame=document.createElement('iframe');
+    frame.dataset.cmsCodeFrame='true';
+    frame.title='Custom code block';
+    frame.setAttribute('sandbox','allow-scripts allow-forms allow-modals allow-popups');
+    frame.setAttribute('referrerpolicy','no-referrer');
+    frame.setAttribute('loading','lazy');
+    el.appendChild(frame);
+    renderCodePreview(el,node);
+    return el;
+  }
+
+  function buildCompositionNode(node) {
+    if (!node?.id) return null;
+    let el;
+    if (node.type === 'reusable') {
+      const definition = reusableDefinition(node);
+      el = document.createElement(definition?.kind === 'section' ? 'section' : 'div');
+      el.className = 'cms-reusable-instance';
+      el.dataset.cmsId = node.id;
+      el.dataset.cmsCompositionId = node.id;
+      el.dataset.cmsEditable = 'true';
+      if (node.hidden === true) el.hidden = true;
+      renderReusableInstance(el, node);
+    } else if (node.type === 'form') {
+      el = buildCanonicalInquiryForm(node);
+    } else if (node.type === 'embed') {
+      el = buildCanonicalEmbed(node);
+    } else {
+      el = document.createElement(safeCompositionTag(node));
+      if (node.className) el.className = node.className;
+      if (node.type === 'image') {
+        const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
+        if (source) el.src = mediaUrl(source);
+        el.alt = node.alt || '';
+      } else if (node.type === 'video') {
+        const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
+        if (source) el.src = mediaUrl(source);
+        el.controls = true; el.preload = 'metadata';
+      } else if (node.type === 'cta' || node.type === 'link') {
+        if (node.actionKey) el.dataset.websiteActionKey = node.actionKey;
+        if (el.tagName === 'A' && node.href && safeUrl(node.href)) el.setAttribute('href',node.href);
+        if (el.tagName === 'A') el.target = node.target === '_blank' ? '_blank' : '_self';
+      }
+
+      if (node.systemKey === 'primary_navigation') {
+        el.id='primary-nav';
+        el.classList.add('nav');
+        el.setAttribute('data-public-nav','');
+        el.dataset.cmsLocked='true';
+      }
+      if (node.systemBinding === 'business_name') el.setAttribute('data-business-name','');
+      else if (String(node.systemBinding || '').startsWith('business_field:'))
+        el.setAttribute('data-business-field',String(node.systemBinding).slice('business_field:'.length));
+
+      const children = Array.isArray(node.children) ? node.children : [];
+      if (children.length) {
+        for (const child of children) {
+          const childElement = buildCompositionNode(child);
+          if (childElement) el.appendChild(childElement);
+        }
+      } else if (node.text != null && !['IMG','VIDEO','FORM'].includes(el.tagName)) {
+        setContentText(el,String(node.text),true);
+      }
+    }
+
+    if (!el) return null;
+    if (node.className) {
+      const existing=[...el.classList];
+      el.className=[...new Set([...existing,...String(node.className).split(/\s+/).filter(Boolean)])].join(' ');
+    }
+    el.dataset.cmsCompositionId=node.id;
+    el.dataset.cmsId=node.id;
+    el.dataset.cmsEditable='true';
+    if (node.type === 'section' || node.tag === 'header' || node.tag === 'footer') el.dataset.cmsSection=node.id;
+    rememberOriginal(el);
+    applyCompositionNode(el,node);
+    return el;
+  }
+
+  function renderCanonicalCompositionPage() {
+    const main=document.querySelector('main');
+    if(!main) return;
+    main.replaceChildren();
+    for(const node of pageState().composition || []){
+      const element=buildCompositionNode(node);
+      if(element) main.appendChild(element);
+    }
+  }
+
+  function renderCanonicalShell() {
+    const renderRoot=(selector,nodes,requiredClass)=>{
+      const existing=document.querySelector(selector);
+      const rendered=(nodes || []).map(buildCompositionNode).filter(Boolean);
+      if(rendered.length===0){
+        existing?.remove();
+        return;
+      }
+      rendered[0].classList.add(requiredClass);
+      if(existing) existing.replaceWith(...rendered);
+      else {
+        const main=document.querySelector('main');
+        if(requiredClass==='site-header') main?.before(...rendered);
+        else main?.after(...rendered);
+      }
+    };
+    renderRoot('.site-header',documentState.shell?.header || [],'site-header');
+    renderRoot('.site-footer',documentState.shell?.footer || [],'site-footer');
   }
 
   function mediaUrl(value) {
@@ -1003,98 +1581,30 @@
     animationRuntime.set(el, { signature, cleanup:() => cleanups.forEach(cleanup => cleanup()) });
   }
 
-  function aiOperationLabel(operation) {
-    const kind=String(operation?.kind || '').replaceAll('_',' ');
-    if (operation?.kind==='suggest_image') return `${kind}: ${operation.imagePrompt || 'image direction'}`;
-    if (operation?.kind==='set_text') return `${kind}: ${(operation.text || '').slice(0,120)}`;
-    if (operation?.breakpointKey) return `${kind} · ${operation.breakpointKey}`;
-    return kind || 'website change';
+  function refreshBrowserAgentWorkspace() {
+    const status=document.getElementById('legend-cms-browser-agent-status');
+    if(!status) return;
+    const selectedId=selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null;
+    const actionCount=Array.isArray(ctaCatalog)?ctaCatalog.filter(option=>option?.managed!==false).length:0;
+    status.textContent=[
+      'Browser-managed workspace',
+      'site='+SITE_KEY,
+      'page='+currentPageRoute(),
+      'revision='+(revision ?? 'unsaved'),
+      'selected='+(selectedId || 'none'),
+      'canonicalActions='+actionCount,
+      'externalAiApi=false'
+    ].join(' · ');
   }
 
-  function renderAiProposal() {
-    const host=document.getElementById('legend-cms-ai-proposal');
-    const status=document.getElementById('legend-cms-ai-status');
-    const apply=document.getElementById('legend-cms-ai-apply');
-    const discard=document.getElementById('legend-cms-ai-discard');
-    if(!host?.replaceChildren) return;
-    host.replaceChildren();
-    if(!pendingAiProposal){
-      if(status) status.textContent='No proposal generated.';
-      if(apply) apply.disabled=true;
-      if(discard) discard.disabled=true;
-      return;
+  function openBrowserAgentSource(scope='site') {
+    const sourceScope=document.getElementById('legend-cms-source-scope');
+    if(sourceScope){
+      sourceScope.value=scope==='selection' && sourceSelectedNodeId() ? 'selection' : 'site';
+      sourceEditorDirty=false;
     }
-    if(status) status.textContent=`Proposal ready · base revision ${pendingAiProposal.baseRevision}. Review before applying.`;
-    const summary=document.createElement('p'); summary.className='legend-cms-ai-summary'; summary.textContent=pendingAiProposal.summary || 'Website Studio AI proposal'; host.appendChild(summary);
-    for(const operation of pendingAiProposal.operations || []){
-      const row=document.createElement('div'); row.className='legend-cms-ai-operation'; row.textContent=aiOperationLabel(operation); host.appendChild(row);
-    }
-    if(!(pendingAiProposal.operations || []).length){
-      const empty=document.createElement('p'); empty.textContent='The model proposed no document changes.'; host.appendChild(empty);
-    }
-    if(apply) apply.disabled=pendingAiProposal.baseRevision!==revision || !pendingAiProposal.proposedDocument;
-    if(discard) discard.disabled=false;
-  }
-
-  async function requestAiProposal() {
-    const status=document.getElementById('legend-cms-ai-status');
-    const prompt=document.getElementById('legend-cms-ai-prompt')?.value?.trim() || '';
-    const mode=document.getElementById('legend-cms-ai-mode')?.value || 'responsive';
-    if(!prompt){ if(status) status.textContent='Enter what you want the assistant to improve or create.'; return; }
-    if(mode==='responsive' && (!selected || selected.dataset.cmsSignalOnly)){
-      if(status) status.textContent='Select the element or section you want AI to make responsive.';
-      return;
-    }
-    if(dirty){
-      const saved=await save(false);
-      if(!saved || dirty){ if(status) status.textContent='Save the current draft before generating an AI proposal.'; return; }
-    }
-    if(status) status.textContent='Generating a structured proposal…';
-    pendingAiProposal=null;
-    try{
-      const selectedText=selected && !selected.dataset.cmsSection ? inlineTextValue(selected).slice(0,4000) : null;
-      const response=await fetch(`${API_BASE}/api/website-content/manage/ai/propose`,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          ticket:editorTicket,
-          expectedRevision:revision,
-          mode,
-          instruction:prompt,
-          pagePath:currentPageRoute(),
-          selectedElementId:selected?.dataset?.cmsId || null,
-          selectedSectionId:selectedSection?.dataset?.cmsSection || null,
-          selectedText
-        })
-      });
-      const payload=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(payload.message || payload.error || `AI proposal failed (${response.status})`);
-      if(payload.source!=='ai_proposal_preview' || payload.persisted!==false || payload.published!==false || !payload.proposedDocument)
-        throw new Error('AI proposal response was invalid.');
-      pendingAiProposal=payload;
-      renderAiProposal();
-    }catch(error){
-      pendingAiProposal=null;
-      if(status) status.textContent=error?.message || 'Unable to generate an AI proposal.';
-      renderAiProposal();
-    }
-  }
-
-  function applyAiProposal() {
-    const status=document.getElementById('legend-cms-ai-status');
-    if(!pendingAiProposal?.proposedDocument) return;
-    if(pendingAiProposal.baseRevision!==revision){
-      if(status) status.textContent='This proposal is stale because the saved draft revision changed. Generate it again.';
-      return;
-    }
-    checkpoint();
-    setSelected(null);
-    applyDocument(pendingAiProposal.proposedDocument);
-    pendingAiProposal=null;
-    markDirty();
-    renderAiProposal();
-    showPanel('ai');
-    if(status) status.textContent='Proposal applied to the local draft. Review the canvas, then save or publish normally.';
+    showPanel('source');
+    document.getElementById('legend-cms-site-source')?.focus();
   }
 
   function renderMotionControls() {
@@ -1103,7 +1613,7 @@
     host.replaceChildren();
     const status = document.getElementById('legend-cms-motion-status');
     if (!selected || selected.dataset.cmsSignalOnly) { if (status) status.textContent='Select a page element or added block.'; return; }
-    const existing = overrideForElement(selected, false);
+    const existing = compositionNodeForElement(selected, false);
     const bindings = Array.isArray(existing?.animations) ? existing.animations : [];
     if (status) status.textContent = bindings.length ? `${bindings.length} motion interaction${bindings.length===1?'':'s'} on this element.` : 'No motion interactions on this element.';
     const selectControl = (labelText, values, value, onChange) => {
@@ -1130,11 +1640,11 @@
       onceLabel.append(once,document.createTextNode(' Play once per page session')); row.appendChild(onceLabel);
       const actions=document.createElement('div'); actions.className='legend-cms-row';
       const preview=document.createElement('button'); preview.type='button'; preview.textContent='Preview effect'; preview.addEventListener('click',()=>playAnimation(selected,binding));
-      const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remove'; remove.addEventListener('click',()=>{ const ov=selectedOverride(); mutate(()=>ov.animations=(ov.animations||[]).filter(item=>item.id!==binding.id)); });
+      const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remove'; remove.addEventListener('click',()=>{ const ov=selectedWebsiteModel(); mutate(()=>ov.animations=(ov.animations||[]).filter(item=>item.id!==binding.id)); });
       actions.append(preview,remove); row.appendChild(actions); host.appendChild(row);
     }
     const add=document.createElement('button'); add.type='button'; add.textContent='Add motion interaction'; add.disabled=bindings.length>=8;
-    add.addEventListener('click',()=>{ const ov=selectedOverride(); checkpoint(); ov.animations ||= []; ov.animations.push({id:crypto.randomUUID().replaceAll('-',''),trigger:'view',effect:'fade',durationMs:400,delayMs:0,distancePx:24,easing:'ease',once:true}); markDirty(); renderMotionControls(); });
+    add.addEventListener('click',()=>{ const ov=selectedWebsiteModel(); checkpoint(); ov.animations ||= []; ov.animations.push({id:crypto.randomUUID().replaceAll('-',''),trigger:'view',effect:'fade',durationMs:400,delayMs:0,distancePx:24,easing:'ease',once:true}); markDirty(); renderMotionControls(); });
     host.appendChild(add);
   }
   function findEditableElement(id) {
@@ -1150,49 +1660,54 @@
     return node;
   }
 
-  function applyElementOverride(el, override) {
+  function applyCompositionNode(el, model) {
     if (el?.dataset.cmsSignalOnly) return;
-    if (!el || !override) return;
-    if (override.actionKey) el.dataset.websiteActionKey = override.actionKey;
-    else if (override.href != null) delete el.dataset.websiteActionKey;
-    if (override.hidden === true) el.hidden = true;
-    else if (override.hidden === false) el.hidden = false;
+    if (!el || !model) return;
+    if (model.actionKey) el.dataset.websiteActionKey = model.actionKey;
+    else if (model.href != null) delete el.dataset.websiteActionKey;
+    if (model.hidden === true) el.hidden = true;
+    else if (model.hidden === false) el.hidden = false;
 
     const original = rememberOriginal(el);
     const entityBound = el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field');
     const commerceControl = !!el.dataset.legendStoreNav;
     if (el instanceof HTMLImageElement) {
-      el.src = override.imageDataUrl ? mediaUrl(override.imageDataUrl) : (original.src || '');
+      const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
+      el.src = media ? mediaUrl(media) : (original.src || '');
     } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
-      setContentText(el, override.text != null ? override.text : (original.text || ''), override.text != null);
+      const compositionHasChildren = !!el.dataset.cmsCompositionId && Array.isArray(model.children) && model.children.length > 0;
+      if (!compositionHasChildren) setContentText(el, model.text != null ? model.text : (original.text || ''), model.text != null);
     }
 
     if (el.tagName === 'A' && !commerceControl) {
-      const href = override.href != null && safeUrl(override.href) ? override.href : original.href;
+      const href = model.href != null && safeUrl(model.href) ? model.href : original.href;
       if (href) el.setAttribute('href', href); else el.removeAttribute('href');
-      el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
+      el.target = model.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
     }
-    if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
-    if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
-    applyDataBinding(el, override.dataBinding);
-    applyStyle(el, effectiveStyle(override));
-    applyLayout(el, effectiveLayout(override));
-    applyAnimations(el, override.animations);
+    if (model.alt != null && el.tagName === 'IMG') el.alt = model.alt;
+    if (el.tagName === 'VIDEO') {
+      const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
+      if (media && safeUrl(media, true)) el.src = mediaUrl(media);
+    }
+    applyDataBinding(el, model.dataBinding);
+    applyStyle(el, effectiveStyle(model));
+    applyLayout(el, effectiveLayout(model));
+    applyAnimations(el, model.animations);
   }
 
-  function buildExtraNode(extra, editable = true, idPrefix = '') {
+  function buildLegacyExtraNode(extra, editable = true, idPrefix = '') {
     let el;
     if (extra.type === 'image') {
       el = document.createElement('img');
-      el.src = mediaUrl(extra.imageDataUrl || ''); el.alt = ''; el.className = 'cms-extra cms-extra-image';
+      el.src = mediaUrl(extra.imageDataUrl || ''); el.alt = ''; el.className = 'legend-legacy-migration-node legend-legacy-migration-image';
     } else if (extra.type === 'section') {
       el = document.createElement('section');
       if (editable) el.dataset.cmsSection = `extra:${extra.id}`;
-      el.className = 'cms-extra cms-extra-section';
+      el.className = 'legend-legacy-migration-node legend-legacy-migration-section';
       if (extra.templateSectionId) {
-        const template=document.querySelector(`[data-cms-section="${CSS.escape(extra.templateSectionId)}"]:not(.cms-extra-section)`);
+        const template=document.querySelector(`[data-cms-section="${CSS.escape(extra.templateSectionId)}"]:not(.legend-legacy-migration-section)`);
         if (template) {
-          el.className=['cms-extra','cms-extra-section',...template.classList].filter((value,index,array)=>value && array.indexOf(value)===index).join(' ');
+          el.className=['legend-legacy-migration-node','legend-legacy-migration-section',...template.classList].filter((value,index,array)=>value && array.indexOf(value)===index).join(' ');
           el.innerHTML=template.innerHTML;
           let childIndex=0;
           el.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article').forEach(child=>{
@@ -1206,9 +1721,9 @@
       }
     } else if (extra.type === 'video') {
       el = document.createElement('video'); el.controls = true; el.preload = 'metadata';
-      if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
+      if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'legend-legacy-migration-node';
     } else if (extra.type === 'card') {
-      el = document.createElement('article'); el.className = 'cms-extra card cms-extra-card';
+      el = document.createElement('article'); el.className = 'legend-legacy-migration-node card legend-legacy-migration-card';
       const heading = document.createElement('h3'); setContentText(heading, extra.title || 'New service', true);
       const copy = document.createElement('p'); setContentText(copy, extra.text || '', true);
       if (editable) for (const [node, field] of [[heading, 'title'], [copy, 'text']]) {
@@ -1218,11 +1733,11 @@
       el.append(heading, copy);
     } else if (extra.type === 'button') {
       el = document.createElement('a'); el.textContent = extra.text || 'New button';
-      if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
+      if (safeUrl(extra.href)) el.href = extra.href; el.className = 'legend-legacy-migration-node btn primary';
     } else if (extra.type === 'form') {
       el = document.createElement('form');
       el.id = `website_inquiry_${extra.id}`;
-      el.className = 'cms-extra public-form cms-extra-form';
+      el.className = 'legend-legacy-migration-node public-form legend-legacy-migration-form';
       el.dataset.websiteInquiry = '';
       el.dataset.formKey = 'website_inquiry';
       el.setAttribute('action', '/api/website-inquiries/public');
@@ -1255,13 +1770,13 @@
       const status = document.createElement('p'); status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
       fieldset.append(legend,grid,submit); el.append(fieldset,status);
     } else if (extra.type === 'code') {
-      el = document.createElement('div'); el.className = 'cms-extra cms-extra-code';
+      el = document.createElement('div'); el.className = 'legend-legacy-migration-node legend-legacy-migration-code';
       const frame = document.createElement('iframe'); frame.dataset.cmsCodeFrame = 'true'; frame.title = 'Custom code block';
       frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
       frame.setAttribute('referrerpolicy', 'no-referrer'); frame.setAttribute('loading', 'lazy');
       el.appendChild(frame); renderCodePreview(el, extra);
     } else {
-      el = document.createElement('p'); el.textContent = extra.text || ''; el.className = 'cms-extra cms-extra-text';
+      el = document.createElement('p'); el.textContent = extra.text || ''; el.className = 'legend-legacy-migration-node legend-legacy-migration-node-text';
     }
     if (editable) {
       el.dataset.cmsExtraId = extra.id; el.dataset.cmsId = `extra:${extra.id}`; el.dataset.cmsEditable = 'true';
@@ -1270,158 +1785,206 @@
   }
 
   function reusableDefinition(instance) {
-    return instance?.type === 'reusable' && instance.syncSourceId ? documentState.reusableComponents?.[instance.syncSourceId] || null : null;
+    return instance?.type==='reusable' && instance.syncSourceId
+      ? documentState.reusableComponents?.[instance.syncSourceId] || null
+      : null;
+  }
+
+  function reusableDefinitionClone(node, instanceId) {
+    const copy=cloneCanonicalValue(node);
+    const originalId=copy.id;
+    copy.id=instanceId+'.'+originalId;
+    copy.signals=[];
+    copy.children=(copy.children || []).map(child=>reusableDefinitionClone(child,instanceId));
+    return copy;
   }
 
   function renderReusableInstance(wrapper, instance) {
-    if (!wrapper || !instance) return;
+    if(!wrapper || !instance) return;
     wrapper.replaceChildren();
-    const definition = reusableDefinition(instance);
-    wrapper.dataset.cmsReusableId = instance.syncSourceId || '';
-    if (!definition) {
-      if (editorMode) {
-        const missing = document.createElement('p'); missing.className = 'legend-cms-reusable-missing';
-        missing.textContent = 'Reusable component is unavailable. Restore its definition or remove this instance.';
+    wrapper.dataset.cmsReusableId=instance.syncSourceId || '';
+    const definition=reusableDefinition(instance);
+    if(!definition){
+      if(editorMode){
+        const missing=document.createElement('p');
+        missing.className='legend-cms-reusable-missing';
+        missing.textContent='Reusable component is unavailable. Restore its definition or remove this instance.';
         wrapper.appendChild(missing);
       }
-      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance)); applyAnimations(wrapper, instance.animations);
+      applyStyle(wrapper,effectiveStyle(instance));
+      applyLayout(wrapper,effectiveLayout(instance));
+      applyAnimations(wrapper,instance.animations);
       return;
     }
-    const values = Array.isArray(definition.extras) ? definition.extras : [];
-    const root = values.find(value => value.sectionId === 'component.root') || values[0] || null;
-    const sectionMap = new Map([['component.root', wrapper]]);
-    if (definition.kind === 'section' && root?.type === 'section') {
-      sectionMap.set(`extra:${root.id}`, wrapper);
-      applyStyle(wrapper, { ...effectiveStyle(root), ...effectiveStyle(instance) });
-      applyLayout(wrapper, { ...effectiveLayout(root), ...effectiveLayout(instance) });
-      applyAnimations(wrapper, instance.animations);
-    } else {
-      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance)); applyAnimations(wrapper, instance.animations);
+
+    for(const definitionNode of definition.composition || []){
+      const rendered=buildCompositionNode(reusableDefinitionClone(definitionNode,instance.id));
+      if(!rendered) continue;
+      rendered.classList.add('legend-cms-reusable-child');
+      rendered.querySelectorAll?.('[data-cms-editable]').forEach(child=>{
+        child.dataset.cmsLocked='true';
+        delete child.dataset.cmsEditable;
+        delete child.dataset.cmsCompositionId;
+      });
+      rendered.dataset.cmsLocked='true';
+      delete rendered.dataset.cmsEditable;
+      delete rendered.dataset.cmsCompositionId;
+      wrapper.appendChild(rendered);
     }
-    for (const item of values.filter(value => value.type === 'section' && value !== root)) {
-      const parent = sectionMap.get(item.sectionId) || wrapper;
-      const node = buildExtraNode(item, false, instance.id); node.classList.add('legend-cms-reusable-child');
-      parent.appendChild(node); sectionMap.set(`extra:${item.id}`, node);
-      applyStyle(node, effectiveStyle(item)); applyLayout(node, effectiveLayout(item));
-    }
-    const leaves = values.filter(value => value.type !== 'section');
-    for (const item of leaves) {
-      if (definition.kind === 'block' && root && item !== root) continue;
-      const parent = sectionMap.get(item.sectionId) || wrapper;
-      const node = buildExtraNode(item, false, instance.id); node.classList.add('legend-cms-reusable-child');
-      parent.appendChild(node); applyElementOverride(node, item);
-    }
+    applyStyle(wrapper,effectiveStyle(instance));
+    applyLayout(wrapper,effectiveLayout(instance));
+    applyAnimations(wrapper,instance.animations);
   }
 
-  function createExtra(extra) {
-    const section = extra.type === 'section' ? document.querySelector('main') : document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
-    if (!section) return null;
-    if (extra.type === 'reusable') {
-      const definition = reusableDefinition(extra);
-      const el = document.createElement(definition?.kind === 'section' ? 'section' : 'div');
-      el.className = 'cms-extra cms-reusable-instance';
-      el.dataset.cmsExtraId = extra.id; el.dataset.cmsId = `extra:${extra.id}`; el.dataset.cmsEditable = 'true';
-      if (extra.hidden === true) el.hidden = true;
-      section.appendChild(el); renderReusableInstance(el, extra); return el;
-    }
-    const el = buildExtraNode(extra, true);
-    section.appendChild(el); applyElementOverride(el, extra); return el;
+  function selectedCompositionSource() {
+    const id=selected?.dataset?.cmsCompositionId;
+    return id ? compositionNode(id) : null;
   }
 
-  function selectedAddedExtra() {
-    const id = selected?.dataset?.cmsExtraId;
-    return id ? pageState().extras.find(extra => extra.id === id) || null : null;
+  function containsProtectedSystemNode(node) {
+    if(!node) return false;
+    if(node.type==='form' || node.systemKey || node.systemBinding) return true;
+    return (node.children || []).some(containsProtectedSystemNode);
   }
 
-  function captureReusableDefinition(name, existingId = null) {
-    const source = selectedAddedExtra();
-    if (!source || source.type === 'reusable' || source.type === 'form') return null;
-    const componentId = existingId || crypto.randomUUID().replaceAll('-', '');
-    const sourceIds = new Set([source.id]);
-    if (source.type === 'section') {
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const extra of pageState().extras) {
-          const sectionId = String(extra.sectionId || '');
-          const parent = sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
-          if (parent && sourceIds.has(parent) && !sourceIds.has(extra.id)) { sourceIds.add(extra.id); changed = true; }
-        }
-      }
-    }
-    const sourceExtras = [source, ...pageState().extras.filter(extra => extra.id !== source.id && sourceIds.has(extra.id))];
-    const idMap = new Map([[source.id, 'root']]);
-    sourceExtras.slice(1).forEach((extra, index) => idMap.set(extra.id, `item-${index + 1}`));
-    const extras = sourceExtras.map(extra => {
-      const copy = JSON.parse(JSON.stringify(extra));
-      const oldId = extra.id;
-      const sectionId = String(extra.sectionId || '');
-      const parent = sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
-      copy.id = idMap.get(oldId);
-      copy.sectionId = oldId === source.id ? 'component.root' : parent && idMap.has(parent) ? `extra:${idMap.get(parent)}` : 'component.root';
-      copy.placement = null; copy.signals = []; copy.syncSourceId = null; delete copy.hidden;
-      return copy;
-    });
-    return { id: componentId, name: (name || 'Reusable component').trim().slice(0, 120), kind: source.type === 'section' ? 'section' : 'block', elements: {}, sectionOrder: {}, extras };
+  function cloneReusableDefinitionNode(node, componentId, path='root') {
+    const copy=cloneCanonicalValue(node);
+    copy.id=componentId+'.'+path;
+    copy.signals=[];
+    copy.syncSourceId=null;
+    delete copy.hidden;
+    copy.children=(node.children || []).map((child,index)=>
+      cloneReusableDefinitionNode(child,componentId,path+'.'+(index+1)));
+    return copy;
+  }
+
+  function captureReusableDefinition(name, existingId=null) {
+    const source=selectedCompositionSource();
+    if(!source || source.type==='reusable' || containsProtectedSystemNode(source)) return null;
+    const componentId=existingId || crypto.randomUUID().replaceAll('-','');
+    return {
+      id:componentId,
+      name:(name || 'Reusable component').trim().slice(0,120),
+      kind:source.type==='section' ? 'section' : 'block',
+      composition:[cloneReusableDefinitionNode(source,componentId)]
+    };
   }
 
   function componentInUse(componentId) {
-    let used = false;
-    const inspect = extras => { if ((extras || []).some(extra => extra.type === 'reusable' && extra.syncSourceId === componentId)) used = true; };
-    inspect(documentState.extras);
-    Object.values(documentState.pages || {}).forEach(page => inspect(page?.extras));
+    let used=false;
+    const inspect=nodes=>walkComposition(nodes,node=>{
+      if(node.type==='reusable' && node.syncSourceId===componentId){used=true;return false;}
+    });
+    inspect(documentState.shell?.header || []);
+    inspect(documentState.shell?.footer || []);
+    Object.values(documentState.pages || {}).forEach(page=>inspect(page?.composition || []));
     return used;
   }
 
-  function refreshReusableInstances(componentId = null) {
-    document.querySelectorAll('.cms-reusable-instance[data-cms-extra-id]').forEach(wrapper => {
-      const instance = pageState().extras.find(extra => extra.id === wrapper.dataset.cmsExtraId);
-      if (!instance || (componentId && instance.syncSourceId !== componentId)) return;
-      renderReusableInstance(wrapper, instance);
+  function refreshReusableInstances(componentId=null) {
+    document.querySelectorAll('.cms-reusable-instance[data-cms-reusable-id]').forEach(wrapper=>{
+      const instance=compositionNode(wrapper.dataset.cmsCompositionId || wrapper.dataset.cmsId);
+      if(!instance || (componentId && instance.syncSourceId!==componentId)) return;
+      renderReusableInstance(wrapper,instance);
     });
     updateDirectCanvasUi();
   }
 
   function renderReusableComponents() {
-    const host = document.getElementById('legend-cms-component-list');
-    const status = document.getElementById('legend-cms-component-status');
-    if (!host?.replaceChildren) return;
+    const host=document.getElementById('legend-cms-component-list');
+    const status=document.getElementById('legend-cms-component-status');
+    if(!host?.replaceChildren) return;
     host.replaceChildren();
-    const definitions = Object.values(documentState.reusableComponents || {}).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-    for (const definition of definitions) {
-      const row = document.createElement('div'); row.className = 'legend-cms-component-row';
-      const info = document.createElement('div');
-      const title = document.createElement('strong'); title.textContent = definition.name || definition.id;
-      const meta = document.createElement('small'); meta.textContent = `${definition.kind || 'block'} · ${definition.id}`;
-      info.append(title, meta);
-      const insert = document.createElement('button'); insert.type = 'button'; insert.textContent = 'Insert';
-      insert.addEventListener('click', () => {
-        const section = selectedSection || document.querySelector('[data-cms-section]');
-        if (!section) { if (status) status.textContent = 'Select a section before inserting a reusable component.'; return; }
+
+    const definitions=Object.values(documentState.reusableComponents || {})
+      .sort((a,b)=>(a.name || '').localeCompare(b.name || ''));
+
+    for(const definition of definitions){
+      const row=document.createElement('div');
+      row.className='legend-cms-component-row';
+      const info=document.createElement('div');
+      const title=document.createElement('strong');
+      title.textContent=definition.name || definition.id;
+      const meta=document.createElement('small');
+      meta.textContent=(definition.kind || 'block')+' · '+definition.id;
+      info.append(title,meta);
+
+      const insert=document.createElement('button');
+      insert.type='button';
+      insert.textContent='Insert';
+      insert.addEventListener('click',()=>{
+        const section=selectedSection || document.querySelector('main [data-cms-section]');
+        const parentId=section?.dataset?.cmsCompositionId;
+        const parent=parentId ? compositionNode(parentId) : null;
+        if(!parent){
+          if(status) status.textContent='Select a canonical section before inserting a reusable component.';
+          return;
+        }
         checkpoint();
-        const instance = { id: crypto.randomUUID(), type: 'reusable', sectionId: section.dataset.cmsSection, syncSourceId: definition.id, style: { widthPercent: 100 }, signals: [] };
-        pageState().extras.push(instance);
-        const created = createExtra(instance); setSelected(created); markDirty(); renderReusableComponents();
+        const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
+        const instance={
+          id,
+          type:'reusable',
+          tag:'div',
+          syncSourceId:definition.id,
+          signals:[],
+          style:{widthPercent:100},
+          breakpointStyles:{},
+          layout:{mode:'free',direction:'column'},
+          breakpointLayouts:{},
+          animations:[],
+          children:[]
+        };
+        parent.children ||= [];
+        parent.children.push(instance);
+        renderCanonicalCompositionPage();
+        setSelected(findEditableElement(id));
+        markDirty();
+        renderReusableComponents();
       });
-      const update = document.createElement('button'); update.type = 'button'; update.textContent = 'Update from selected';
-      const selectedSource = selectedAddedExtra(); update.disabled = !selectedSource || selectedSource.type === 'reusable';
-      update.addEventListener('click', () => {
-        const next = captureReusableDefinition(definition.name, definition.id);
-        if (!next) { if (status) status.textContent = 'Select an added block or added section to update this component.'; return; }
-        checkpoint(); documentState.reusableComponents[definition.id] = next;
-        refreshReusableInstances(definition.id); markDirty(); renderReusableComponents();
+
+      const update=document.createElement('button');
+      update.type='button';
+      update.textContent='Update from selected';
+      const source=selectedCompositionSource();
+      update.disabled=!source || source.type==='reusable' || containsProtectedSystemNode(source);
+      update.addEventListener('click',()=>{
+        const next=captureReusableDefinition(definition.name,definition.id);
+        if(!next){
+          if(status) status.textContent='Select a non-system canonical block or section to update this component.';
+          return;
+        }
+        checkpoint();
+        documentState.reusableComponents[definition.id]=next;
+        refreshReusableInstances(definition.id);
+        markDirty();
+        renderReusableComponents();
       });
-      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Delete';
-      remove.disabled = componentInUse(definition.id);
-      remove.title = remove.disabled ? 'Remove every instance before deleting this reusable definition.' : '';
-      remove.addEventListener('click', () => {
-        if (componentInUse(definition.id)) return;
-        checkpoint(); markDeleted('component:' + definition.id); delete documentState.reusableComponents[definition.id]; markDirty(); renderReusableComponents();
+
+      const remove=document.createElement('button');
+      remove.type='button';
+      remove.textContent='Delete';
+      remove.disabled=componentInUse(definition.id);
+      remove.title=remove.disabled ? 'Remove every instance before deleting this reusable definition.' : '';
+      remove.addEventListener('click',()=>{
+        if(componentInUse(definition.id)) return;
+        checkpoint();
+        delete documentState.reusableComponents[definition.id];
+        markDirty();
+        renderReusableComponents();
       });
-      row.append(info, insert, update, remove); host.appendChild(row);
+
+      row.append(info,insert,update,remove);
+      host.appendChild(row);
     }
-    if (!definitions.length) { const empty = document.createElement('p'); empty.textContent = 'No reusable components yet.'; host.appendChild(empty); }
+
+    if(!definitions.length){
+      const empty=document.createElement('p');
+      empty.textContent='No reusable components yet.';
+      host.appendChild(empty);
+    }
   }
+
   function pageLayerSections() {
     return Array.from(document.querySelectorAll('[data-cms-section]')).filter(section => {
       if (section.matches('.site-header,.site-footer')) return false;
@@ -1431,36 +1994,11 @@
   }
 
   function syncSectionOrderFromDom() {
-    const page = pageState();
-    page.sectionOrder ||= {};
-    const active = new Set();
-    pageLayerSections().forEach((section,index)=>{
-      const id=section.dataset.cmsSection;
-      if(!id) return;
-      active.add(id);
-      page.sectionOrder[id]=index;
-    });
-    for(const key of Object.keys(page.sectionOrder)) if(!active.has(key)) delete page.sectionOrder[key];
-  }
-
-  function applySectionOrder() {
-    const sections=pageLayerSections();
-    const position=new Map(sections.map((section,index)=>[section,index]));
-    sections.sort((a,b)=>{
-      const ai=pageState().sectionOrder[a.dataset.cmsSection];
-      const bi=pageState().sectionOrder[b.dataset.cmsSection];
-      const av=Number.isFinite(Number(ai))?Number(ai):position.get(a);
-      const bv=Number.isFinite(Number(bi))?Number(bi):position.get(b);
-      return av-bv;
-    });
-    const groups=new Map();
-    for(const section of sections){
-      const parent=section.parentElement;
-      if(!parent) continue;
-      if(!groups.has(parent)) groups.set(parent,[]);
-      groups.get(parent).push(section);
-    }
-    groups.forEach(group=>group.forEach(section=>section.parentElement.appendChild(section)));
+    const roots=pageState().composition ||= [];
+    const byId=new Map(roots.map(node=>[node.id,node]));
+    const ordered=pageLayerSections().map(section=>byId.get(section.dataset.cmsCompositionId)).filter(Boolean);
+    const orderedIds=new Set(ordered.map(node=>node.id));
+    pageState().composition=[...ordered,...roots.filter(node=>!orderedIds.has(node.id))];
   }
 
   function reorderSectionByLayer(sourceId,targetId) {
@@ -1579,43 +2117,50 @@
   }
 
   function applyDocument(doc) {
-    documentState = normalizeDocument(doc);
+    documentState=normalizeDocument(doc);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
+
+    const metadata=pageState();
+    document.title=metadata.title ?? originalTitle;
+    const description=document.querySelector('meta[name="description"]');
+    if(description) description.setAttribute('content',metadata.description ?? originalDescription);
+
+    if(legacyMigration){
+      applyLegacyMigrationPreview();
+    }else{
+      document.querySelectorAll('.legend-legacy-migration-node').forEach(node=>{scaledElements.delete(node);node.remove();});
+      renderCanonicalShell();
+      renderCanonicalCompositionPage();
+    }
+
+    if(SITE_KEY==='business' && (managementPayload || renderInput))
+      bindBusiness(managementPayload || renderInput);
     applyBusinessPageNavigation();
     applyStoreNavigation();
-    const metadata = pageState();
-    document.title = metadata.title ?? originalTitle;
-    const description = document.querySelector('meta[name="description"]');
-    if (description) description.setAttribute('content', metadata.description ?? originalDescription);
-
-    document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
-    pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
-    pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
-    // Shared shell overrides are document-global and always apply before the
-    // current page's local element map.
-    Object.entries(documentState.elements || {}).forEach(([id, override]) => {
-      const el = findEditableElement(id);
-      applyElementOverride(el, override);
-    });
-    // Composite children do not exist until their parent extra is rendered.
-    // Re-apply the one canonical page element map after extras exist.
-    Object.entries(pageState().elements).forEach(([id, override]) => {
-      const el = findEditableElement(id);
-      applyElementOverride(el, override);
-    });
-    applySectionOrder();
-    Object.entries(pageState().elements).forEach(([id, ov]) => applyPlacement(findEditableElement(id), ov.placement));
-    pageState().extras.forEach(extra => applyPlacement(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra.placement));
   }
 
-  function refreshResponsiveOverrides() {
-    Object.entries(pageState().elements).forEach(([id, override]) => applyElementOverride(findEditableElement(id), override));
-    pageState().extras.forEach(extra => {
-      const node = document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`);
-      if (extra.type === 'reusable') renderReusableInstance(node, extra);
-      else applyElementOverride(node, extra);
-    });
+  function refreshResponsiveComposition() {
+    if(legacyMigration){
+      const page=legacyMigrationPageState();
+      for(const [id,model] of Object.entries(legacyMigration.elements || {}))
+        applyLegacyMigrationRecord(findEditableElement(id),model);
+      for(const [id,model] of Object.entries(page.elements || {}))
+        applyLegacyMigrationRecord(findEditableElement(id),model);
+      for(const extra of [...(legacyMigration.extras || []),...(page.extras || [])]){
+        const node=document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]');
+        if(extra.type==='reusable') renderLegacyMigrationReusableInstance(node,extra);
+        else applyLegacyMigrationRecord(node,extra);
+      }
+    }else{
+      for(const root of allCanonicalRootSets())
+        walkComposition(root.nodes,node=>applyCompositionNode(findEditableElement(node.id),node));
+      const store=document.querySelector('[data-legend-store-nav="store"]');
+      const cart=document.querySelector('[data-legend-store-nav="cart"]');
+      if(store) applyCompositionNode(store,documentState.store?.storeNavigation || {});
+      if(cart) applyCompositionNode(cart,documentState.store?.cartNavigation || {});
+      refreshReusableInstances();
+    }
     refreshScaledElements();
     updateDirectCanvasUi();
   }
@@ -1627,7 +2172,12 @@
     if (!business?.id || !business.displayName) throw new Error('This business website is unavailable.');
     BUSINESS_ID = business.id;
     document.querySelectorAll('[data-business-name]').forEach(el => { el.textContent = business.displayName; });
-    document.querySelectorAll('[data-business-field]').forEach(el => { const value = business[el.dataset.businessField]; el.textContent = value || ''; el.hidden = !value; });
+    document.querySelectorAll('[data-business-field]').forEach(el => {
+      const field=el.dataset.businessField;
+      const facts=payload.facts || {};
+      const value = business[field] ?? (field === 'contactEmail' ? facts.contactEmail : field === 'contactPhone' ? facts.phone : null);
+      el.textContent = value || ''; el.hidden = !value;
+    });
 
   }
 
@@ -1701,7 +2251,7 @@
     store.textContent=effectiveStoreLabel();
     store.dataset.legendStoreNav='store';
     store.dataset.cmsId=`${pageKey}.commerce.store-nav`;
-    store.dataset.cmsEditable='true';
+    if(editorMode) store.dataset.cmsEditable='true';
     store.dataset.websiteAnalyticsEvent='cta_click';
     store.dataset.websiteBindingId='commerce_store_nav';
     store.dataset.cta='commerce_store';
@@ -1711,7 +2261,7 @@
     cart.href=storeContext.cartUrl;
     cart.dataset.legendStoreNav='cart';
     cart.dataset.cmsId=`${pageKey}.commerce.cart-nav`;
-    cart.dataset.cmsEditable='true';
+    if(editorMode) cart.dataset.cmsEditable='true';
     cart.dataset.websiteAnalyticsEvent='cta_click';
     cart.dataset.websiteBindingId='commerce_cart_nav';
     cart.dataset.cta='commerce_cart';
@@ -1728,8 +2278,8 @@
 
     cluster.append(store,cart);
     nav.appendChild(cluster);
-    applyElementOverride(store, pageState().elements[store.dataset.cmsId]);
-    applyElementOverride(cart, pageState().elements[cart.dataset.cmsId]);
+    applyCompositionNode(store,documentState.store?.storeNavigation || {});
+    applyCompositionNode(cart,documentState.store?.cartNavigation || {});
     updateStoreCartCount();
   }
 
@@ -1748,7 +2298,7 @@
     count.hidden=total<1;
   }
 
-  function templatePageEntries() {
+  function publishedRouteCatalogEntries() {
     const entries=new Map();
     const catalog=Array.isArray(renderInput?.pageCatalog) ? renderInput.pageCatalog : (context.pages || []);
     catalog.forEach((page,index) => {
@@ -1757,7 +2307,7 @@
       entries.set(route,{
         route,
         label:page.label || route,
-        template:page.template !== false,
+        nativeRoute:page.template !== false,
         showInNavigation:page.showInNavigation !== false,
         parentPath:normalizePageRoute(page.parentPath),
         order:Number.isFinite(Number(page.order)) ? Number(page.order) : index * 10,
@@ -1767,22 +2317,28 @@
     return entries;
   }
 
+  function legacyPageForRoute(route) {
+    if(!legacyMigration?.pages) return null;
+    return legacyMigration.pages[route] || (route==='/' ? legacyMigration.pages.home : null) || null;
+  }
+
   function websitePageEntries(includeDeleted = true) {
-    const entries=templatePageEntries();
-    for (const [rawPath,page] of Object.entries(documentState.pages || {})) {
+    const entries=publishedRouteCatalogEntries();
+    for(const [rawPath,page] of Object.entries(documentState.pages || {})){
       const route=normalizePageRoute(rawPath);
-      if (!route || !page || typeof page!=='object') continue;
+      if(!route || !page || typeof page!=='object') continue;
       const previous=entries.get(route);
       const navigation=page.navigation || {};
+      const legacy=legacyPageForRoute(route);
       entries.set(route,{
         route,
-        label:navigation.label || page.title || previous?.label || route,
-        template:previous?.template === true || !!page.templatePath,
-        templatePath:normalizePageRoute(page.templatePath) || (previous?.template ? route : null),
-        deleted:navigation.isDeleted === true,
-        showInNavigation:navigation.showInNavigation !== false,
+        label:SITE_KEY==='business' ? (navigation.label || page.title || previous?.label || route) : (page.title || navigation.label || previous?.label || route),
+        nativeRoute:previous?.nativeRoute===true,
+        legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
+        deleted:navigation.isDeleted===true,
+        showInNavigation:navigation.showInNavigation!==false,
         parentPath:normalizePageRoute(navigation.parentPath),
-        order:Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0
+        order:Number.isFinite(Number(navigation.order))?Number(navigation.order):0
       });
     }
     return [...entries.values()]
@@ -1792,10 +2348,38 @@
 
   function ensurePageRecord(route) {
     documentState.pages ||= {};
-    if (!documentState.pages[route]) documentState.pages[route]={elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
+    if(!documentState.pages[route]){
+      documentState.pages[route]={
+        title:null,
+        description:null,
+        navigation:{showInNavigation:true,order:0,isDeleted:false},
+        dynamicBinding:null,
+        composition:[]
+      };
+    }
     const page=documentState.pages[route];
-    page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+    page.composition ||= [];
+    page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
     return page;
+  }
+
+  function editorUrlForRoute(route, materialize = false) {
+    route=normalizePageRoute(route); if(!route) return null;
+    const publishedRoutes=publishedRouteCatalogEntries();
+    const entry=websitePageEntries(true).find(value=>value.route===route);
+    const url=new URL(location.origin);
+    if (SITE_KEY==='business') {
+      const nativePublishedRoute=publishedRoutes.has(route) && (!legacyMigration || !entry?.legacyTemplatePath || entry.legacyTemplatePath===route);
+      url.pathname='/business-preview/' + (nativePublishedRoute ? route.replace(/^\//,'') : '');
+      url.searchParams.set('businessId',BUSINESS_ID);
+      if (!nativePublishedRoute) url.searchParams.set('cmsPage',route);
+    } else {
+      const prefix = SITE_KEY === 'protect' ? (managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}` : context.pagePrefix || '') : '';
+      url.pathname=prefix + (route==='/'?'/':route);
+    }
+    url.searchParams.set('legendEdit',editorTicket);
+    if(materialize) url.searchParams.set('legendMaterialize','1');
+    return url;
   }
 
   async function navigateToEditorPage(route) {
@@ -1804,21 +2388,144 @@
     route=normalizePageRoute(route); if(!route) return;
     if (saving) { const status=document.getElementById('legend-cms-status'); if(status) status.textContent='Wait for the current save to finish, then choose a page.'; return; }
     if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
-    const templates=templatePageEntries();
-    const entry=websitePageEntries(true).find(value=>value.route===route);
-    const url=new URL(location.origin);
-    if (SITE_KEY==='business') {
-      const nativeTemplate=templates.has(route) && (!entry?.templatePath || entry.templatePath===route);
-      url.pathname='/business-preview/' + (nativeTemplate ? route.replace(/^\//,'') : '');
-      url.searchParams.set('businessId',BUSINESS_ID);
-      if (!nativeTemplate) url.searchParams.set('cmsPage',route);
-    } else {
-      const prefix = SITE_KEY === 'protect' ? (managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}` : context.pagePrefix || '') : '';
-      url.pathname=prefix + (route==='/'?'/':route);
-    }
-    url.searchParams.set('legendEdit',editorTicket);
-    location.assign(url.toString());
+    const url=editorUrlForRoute(route);
+    if(url) location.assign(url.toString());
   }
+
+  function currentMaterializedPage() {
+    return {
+      route:currentPageRoute(),
+      title:pageState().title ?? originalTitle,
+      description:pageState().description ?? originalDescription,
+      composition:materializeCurrentPageComposition(),
+      shell:materializeCurrentShell()
+    };
+  }
+
+  async function requestMaterializedPage(route) {
+    if(route===currentPageRoute()) return currentMaterializedPage();
+    const url=editorUrlForRoute(route,true);
+    if(!url) throw new Error('Unable to resolve page '+route+' for Site Source migration.');
+    return await new Promise((resolve,reject)=>{
+      const frame=document.createElement('iframe');
+      frame.hidden=true;
+      frame.setAttribute('aria-hidden','true');
+      frame.src=url.toString();
+      const timeout=setTimeout(()=>finish(new Error('Timed out while materializing '+route+'.')),20000);
+      const onMessage=event=>{
+        if(event.origin!==location.origin || event.source!==frame.contentWindow) return;
+        if(event.data?.type!=='legend-site-materialized-page') return;
+        if(normalizePageRoute(event.data.route)!==route) return;
+        finish(null,event.data);
+      };
+      const finish=(error,value)=>{
+        clearTimeout(timeout); window.removeEventListener('message',onMessage); frame.remove();
+        error ? reject(error) : resolve(value);
+      };
+      window.addEventListener('message',onMessage);
+      document.body.appendChild(frame);
+    });
+  }
+
+  function materializeLegacyReusableDefinitions() {
+    const result={};
+    const definitions=legacyMigration?.reusableComponents || {};
+
+    const convert=(extra,componentId)=>{
+      const type=extra?.type==='section'?'section'
+        : extra?.type==='button'?(extra.actionKey?'cta':'link')
+        : extra?.type==='image'?'image'
+        : extra?.type==='video'?'video'
+        : extra?.type==='code'?'embed'
+        : extra?.type==='reusable'?'reusable'
+        : 'text';
+      return {
+        id:componentId+'.'+String(extra.id || crypto.randomUUID()).replace(/[^a-zA-Z0-9_.:-]/g,'-'),
+        type,
+        tag:type==='section'?'section':type==='cta'||type==='link'?'a':type==='image'?'img':type==='video'?'video':'div',
+        text:extra.text ?? null,
+        title:extra.title ?? null,
+        actionKey:extra.actionKey ?? null,
+        href:extra.href ?? null,
+        target:extra.target ?? null,
+        alt:extra.alt ?? null,
+        mediaAssetId:compositionMediaAssetId(extra.imageDataUrl || extra.videoUrl),
+        mediaUrl:(extra.imageDataUrl || extra.videoUrl) ?? null,
+        syncSourceId:extra.syncSourceId ?? null,
+        signals:[],
+        style:cloneCanonicalValue(extra.style || {}),
+        breakpointStyles:cloneCanonicalValue(extra.breakpointStyles || {}),
+        layout:cloneCanonicalValue(extra.layout || {}),
+        breakpointLayouts:cloneCanonicalValue(extra.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(extra.animations || []),
+        dataBinding:cloneCanonicalValue(extra.dataBinding || null),
+        children:[]
+      };
+    };
+
+    for(const [componentId,definition] of Object.entries(definitions)){
+      const extras=Array.isArray(definition?.extras)?definition.extras:[];
+      const nodes=new Map(extras.map(extra=>[extra.id,convert(extra,componentId)]));
+      const roots=[];
+      for(const extra of extras){
+        const node=nodes.get(extra.id); if(!node) continue;
+        const sectionId=String(extra.sectionId || '');
+        const parentId=sectionId.startsWith('extra:') ? sectionId.slice(6) : null;
+        const parent=parentId ? nodes.get(parentId) : null;
+        if(parent) parent.children.push(node);
+        else roots.push(node);
+      }
+      result[componentId]={
+        id:componentId,
+        name:definition?.name || componentId,
+        kind:definition?.kind==='block'?'block':'section',
+        composition:roots
+      };
+    }
+    return result;
+  }
+
+  async function materializeCanonicalSite() {
+    if(!legacyMigration) return true;
+    const status=document.getElementById('legend-cms-status');
+    const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
+    const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
+    const snapshots=[];
+
+    for(const route of routes){
+      if(status) status.textContent='Preparing canonical Site Source · '+(snapshots.length+1)+'/'+routes.length;
+      snapshots.push(await requestMaterializedPage(route));
+    }
+
+    const next=normalizeDocument(documentState);
+    const firstShell=snapshots.find(snapshot=>snapshot?.shell)?.shell;
+    next.shell={
+      header:normalizeCompositionNodes(firstShell?.header),
+      footer:normalizeCompositionNodes(firstShell?.footer)
+    };
+    next.reusableComponents=materializeLegacyReusableDefinitions();
+
+    for(const snapshot of snapshots){
+      const route=normalizePageRoute(snapshot.route);
+      if(!route) throw new Error('Materialized page route was invalid.');
+      const page=next.pages[route] || {navigation:{showInNavigation:true,order:0,isDeleted:false},composition:[]};
+      page.title=snapshot.title ?? page.title;
+      page.description=snapshot.description ?? page.description;
+      page.composition=normalizeCompositionNodes(snapshot.composition);
+      next.pages[route]=page;
+    }
+
+    next.version=3;
+    legacyMigration=null;
+    documentState=normalizeDocument(next);
+    dirty=true;
+    const saved=await save(false);
+    if(!saved || dirty) throw new Error('Canonical Site Source migration could not be saved.');
+    applyDocument(documentState);
+    if(status) status.textContent='Site Source ready · legacy mutation authority deleted';
+    return true;
+  }
+  // END ONE-WAY LEGACY V2 -> CANONICAL V3 MIGRATION.
 
   function renderPageManager() {
     const host=document.getElementById('legend-cms-page-list');
@@ -2206,10 +2913,22 @@
       'field_started', 'validation_failed', 'field_completed', 'scroll_threshold'
     ]);
     const page = pageState();
-    const candidates = [
-      ...Object.entries(page.elements || {}).map(([id, override]) => ({ id, override, node: findEditableElement(id) })),
-      ...(page.extras || []).map(extra => ({ id: `extra:${extra.id}`, override: extra, node: document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`) }))
-    ];
+    const candidates = [];
+    if (!legacyMigration) {
+      walkComposition(page.composition, node => {
+        candidates.push({ id:node.id, model:node, node:findEditableElement(node.id) });
+      });
+    } else {
+      const legacyPage=legacyMigrationPageState();
+      candidates.push(
+        ...Object.entries(legacyPage.elements || {}).map(([id, model]) => ({ id, model, node:findEditableElement(id) })),
+        ...(legacyPage.extras || []).map(extra => ({
+          id:'extra:'+extra.id,
+          model:extra,
+          node:document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]')
+        }))
+      );
+    }
     window.__legendWebsiteSignalBindingsCleanup?.();
     const cleanups = [];
 
@@ -2237,8 +2956,8 @@
     };
 
     for (const candidate of candidates) {
-      if (!candidate.node || !Array.isArray(candidate.override?.signals)) continue;
-      for (const binding of candidate.override.signals) {
+      if (!candidate.node || !Array.isArray(candidate.model?.signals)) continue;
+      for (const binding of candidate.model.signals) {
         if (!binding?.id || !binding.eventName || binding.deliveryMode === 'off' || !allowedTriggers.has(binding.trigger)) continue;
         // Managed actions enrich the existing source envelope instead of creating
         // a second event for this visual binding.
@@ -2407,6 +3126,7 @@
       if (!response.ok) { if (SITE_KEY === 'business') throw new Error('This business website is unavailable.'); return; }
       const payload = await response.json();
       storeContext = payload.store || null;
+      legacyMigration = payload.legacyMigration || null;
       if (payload.businessName) {
         document.querySelectorAll('[data-business-name]').forEach(element => {
           element.textContent = payload.businessName;
@@ -2432,19 +3152,12 @@
     return el?.closest?.('.card-grid > article.card') || null;
   }
 
-  function ensureOverride(id) {
-    if (!pageState().elements[id]) {
-      pageState().elements[id] = { style: {} };
-    }
-    if (!pageState().elements[id].style) pageState().elements[id].style = {};
-    return pageState().elements[id];
-  }
-
   function markDirty() {
     dirty = true;
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
     if (status) status.textContent = 'Saving changes…';
+    if (activeEditorPanel === 'source' && !sourceEditorDirty) refreshSiteSourceEditor();
     if (editorMode) {
       clearTimeout(autoSaveTimer);
       autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
@@ -2465,16 +3178,23 @@
     renderSignalControls();
     if (activeEditorPanel === 'motion') renderMotionControls();
     if (activeEditorPanel === 'data') renderDataControls();
+    if (activeEditorPanel === 'source' && !sourceEditorDirty) {
+      const scope=document.getElementById('legend-cms-source-scope');
+      if(scope && el?.dataset?.cmsCompositionId) scope.value='selection';
+      refreshSiteSourceEditor();
+    }
+    if (activeEditorPanel === 'gpt') refreshBrowserAgentWorkspace();
     if (openContent) showPanel('content');
     refreshLayers();
     updateDirectCanvasUi();
   }
 
-  function selectedOverride(create = true) {
-    const override = overrideForElement(selected, create);
-    if (create && override && selected?.dataset.websiteActionKey && !Object.hasOwn(override, 'actionKey'))
-      override.actionKey = selected.dataset.websiteActionKey;
-    return override;
+  function selectedWebsiteModel(create = true) {
+    const model = editableWebsiteModelForElement(selected, create);
+    const composition=selected?.dataset?.cmsCompositionId ? compositionNodeForElement(selected,create) : null;
+    if (create && composition && selected?.dataset.websiteActionKey && !Object.hasOwn(composition, 'actionKey'))
+      composition.actionKey = selected.dataset.websiteActionKey;
+    return model;
   }
 
   function previewRelativeRect(el) {
@@ -2553,9 +3273,9 @@
       const selectedRect = selected.getBoundingClientRect();
       const sectionRect = section.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
-      const override = selectedOverride();
-      if (!override) return false;
-      const gestureStyle = editingStyle(override, true);
+      const model = selectedWebsiteModel();
+      if (!model) return false;
+      const gestureStyle = editingStyle(model, true);
       checkpoint();
       const measuredWidthPercent = parentRect.width > 0 ? Math.min(100, selectedRect.width / parentRect.width * 100) : 100;
       const startWidthPercent = positiveNumber(gestureStyle.widthPercent) ? Math.min(100, Number(gestureStyle.widthPercent)) : measuredWidthPercent;
@@ -2593,8 +3313,8 @@
       if (!gesture || selected !== gesture.target) return;
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
-      const override = selectedOverride();
-      if (!override) return;
+      const model = selectedWebsiteModel();
+      if (!model) return;
       const style = gesture.style;
       const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
       const parentWidth = gesture.parentRect.width || sectionWidth || 1;
@@ -2644,7 +3364,7 @@
           : Math.max(0, Math.min(Math.max(0, 100 - constrainedWidth), Number(style.offsetXPercent)));
       }
       gesture.changed = true;
-      applyElementOverride(selected, override);
+      applyCompositionNode(selected, model);
       updateDirectCanvasUi();
       event.preventDefault();
     }, { passive: false });
@@ -2672,7 +3392,7 @@
     }, { passive: false });
     window.addEventListener('resize', () => {
       lockPreviewHorizontalScroll();
-      refreshResponsiveOverrides();
+      refreshResponsiveComposition();
     });
     lockPreviewHorizontalScroll();
     updateDirectCanvasUi();
@@ -2705,14 +3425,13 @@
 
     if (title) title.textContent = elementLabel(selected);
     const isImage = selected instanceof HTMLImageElement;
-    const selectedExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
-    const extra = selected.dataset.cmsExtraField ? null : selectedExtra;
-    const isCode = selectedExtra?.type === 'code' && !selected.dataset.cmsExtraField;
+    const selectedNode = selected.dataset.cmsCompositionId ? compositionNode(selected.dataset.cmsCompositionId) : null;
+    const isCode = selectedNode?.type === 'embed';
     if (inlineHelp) inlineHelp.hidden = !isInlineEditable(selected);
     if (imageGroup) imageGroup.hidden = !isImage;
     if (codeGroup) codeGroup.hidden = !isCode;
 
-    const ov = selectedOverride(false) || {};
+    const ov = selectedWebsiteModel(false) || {};
     const editStyle = editingStyle(ov, false);
     const editLayout = editingLayout(ov, false);
     const computed = getComputedStyle(selected);
@@ -2734,6 +3453,7 @@
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const immutableShell = isSharedShellElement(selected);
+      const protectedSemantic = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || selected.tagName === 'FORM';
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
@@ -2744,9 +3464,17 @@
         : ['A','BUTTON'].includes(selected.tagName) ? 'button'
         : ['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName) ? 'block'
         : 'element';
-      removeButton.textContent = immutableShell ? 'Global shell · cannot delete' : `Delete ${kind}`;
-      removeButton.disabled = immutableShell;
-      removeButton.title = immutableShell ? 'The website banner and footer are global shell authorities shared by every page and cannot be deleted.' : '';
+      removeButton.textContent = immutableShell
+        ? 'Global shell · cannot delete'
+        : protectedSemantic
+          ? 'Protected wiring · cannot delete'
+          : `Delete ${kind}`;
+      removeButton.disabled = immutableShell || protectedSemantic;
+      removeButton.title = immutableShell
+        ? 'The website banner and footer are global shell authorities shared by every page and cannot be deleted.'
+        : protectedSemantic
+          ? 'This component owns canonical platform behavior. Rename, restyle, or reposition it without changing/removing its backend identity.'
+          : '';
     }
     const sectionSelected = !!selected.dataset.cmsSection;
     if (scale) scale.value = String(editStyle?.fontScale ?? 1);
@@ -2760,14 +3488,15 @@
     if (scale) scale.disabled = isImage || isCode;
     if (width) width.disabled = sectionSelected;
     if (offsetX) offsetX.disabled = sectionSelected;
-    const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
+    const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
     document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(editStyle?.[key] || computed[key]) : editStyle?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
     document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(editStyle?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
     const isCommerceControl = !!selected.dataset.legendStoreNav;
     const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A' || isCommerceControl;
     if (selected.tagName === 'A' && !isCommerceControl) syncCtaControls(ov, values.href);
-    const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
+    const videoGroup = document.getElementById('legend-cms-video-group');
+    if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
     const layoutMode = document.getElementById('legend-cms-layout-mode'); if (layoutMode) layoutMode.value = editLayout?.mode || 'free';
     const layoutDirection = document.getElementById('legend-cms-layout-direction'); if (layoutDirection) layoutDirection.value = editLayout?.direction || 'column';
     const layoutGap = document.getElementById('legend-cms-layout-gap'); if (layoutGap) layoutGap.value = editLayout?.gapPx ?? '';
@@ -2776,7 +3505,11 @@
     const layoutAlign = document.getElementById('legend-cms-layout-align'); if (layoutAlign) layoutAlign.value = editLayout?.alignItems || '';
     const layoutJustify = document.getElementById('legend-cms-layout-justify'); if (layoutJustify) layoutJustify.value = editLayout?.justifyContent || '';
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
-    if (hidden) hidden.checked = ov.hidden === true || selected.hidden;
+    if (hidden) {
+      hidden.checked = ov.hidden === true || selected.hidden;
+      hidden.disabled = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || selected.tagName === 'FORM';
+    }
+    if (targetInput) targetInput.disabled = !!ov.actionKey;
   }
 
   function updateSelectedFromControls(event) {
@@ -2809,7 +3542,7 @@
     }
     control.setCustomValidity('');
     checkpoint();
-    const ov = selectedOverride();
+    const ov = selectedWebsiteModel();
     if (!ov) return;
     if (control.id === 'legend-cms-hidden') {
       ov.hidden = control.checked;
@@ -2831,7 +3564,7 @@
         if (control.value) style.textAlign = control.value;
         else delete style.textAlign;
       } else return;
-      applyElementOverride(selected, ov);
+      applyCompositionNode(selected, ov);
     }
     updateDirectCanvasUi();
     markDirty();
@@ -2844,80 +3577,82 @@
     try {
       const body = new FormData(); body.append('ticket', editorTicket); body.append('file', file);
       const response = await fetch(`${API_BASE}/api/website-content/manage/media`, { method: 'POST', body });
-      const result = await response.json();
-      if (!response.ok || !result.url) throw new Error(result.message || result.error || 'Upload failed.');
+      const asset = await response.json();
+      if (!response.ok || !asset?.id || !asset?.url || !asset?.contentType)
+        throw new Error(asset?.message || asset?.error || 'Upload failed.');
       if (status) status.textContent = 'Media uploaded; save your draft to retain placement';
-      return result.url;
+      return asset;
     } catch (error) { if (status) status.textContent = error.message; return null; }
   }
-  async function readImage(file, callback) {
-    if (!file) return;
-    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) { alert('Use a JPEG, PNG, or WebP image.'); return; }
-    const url = await uploadMedia(file); if (url) callback(url);
+
+  async function uploadImageAsset(file) {
+    if (!file) return null;
+    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
+      alert('Use a JPEG, PNG, or WebP image.');
+      return null;
+    }
+    return await uploadMedia(file);
   }
 
   function moveSelectedSection(delta) {
-    if (!selectedSection || selectedSection.matches('.site-header,.site-footer')) return;
-    const sections=pageLayerSections();
-    const index=sections.indexOf(selectedSection);
+    if (legacyMigration)
+      throw new Error('Legacy website content is read-only until canonical materialization completes.');
+    if (!selectedSection || selectedSection.matches('.site-header,.site-footer') || !selectedSection.dataset.cmsCompositionId) return;
+
+    const roots=pageState().composition || [];
+    const id=selectedSection.dataset.cmsCompositionId;
+    const index=roots.findIndex(node=>node.id===id);
     const target=index+delta;
-    if(index<0 || target<0 || target>=sections.length) return;
-    const targetSection=sections[target];
-    if(targetSection.parentElement!==selectedSection.parentElement) return;
+    if(index<0 || target<0 || target>=roots.length) return;
+
     checkpoint();
-    if(delta<0) selectedSection.parentElement.insertBefore(selectedSection,targetSection);
-    else selectedSection.parentElement.insertBefore(targetSection,selectedSection);
-    syncSectionOrderFromDom();
+    const [node]=roots.splice(index,1);
+    roots.splice(target,0,node);
+    renderCanonicalCompositionPage();
+    setSelected(findEditableElement(id));
     markDirty();
     refreshLayers();
   }
 
-  function addImage(file) {
-    if (!selectedSection) {
+  async function addImage(file) {
+    if(!selectedSection){
       alert('Select content inside the section where you want the new image.');
       return;
     }
-    readImage(file, dataUrl => {
-      checkpoint();
-      const extra = {
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-        sectionId: selectedSection.dataset.cmsSection,
-        type: 'image',
-        imageDataUrl: dataUrl,
-        style: { widthPercent: 70, paddingTop: 16, paddingBottom: 16 }
-      };
-      pageState().extras.push(extra);
-      const el = createExtra(extra);
-      setSelected(el);
-      markDirty();
-    });
+    const asset=await uploadImageAsset(file);
+    if(!asset) return;
+    const parentId=selectedSection?.dataset?.cmsCompositionId;
+    const parent=parentId ? compositionNode(parentId) : null;
+    if(!parent){alert('Select a canonical section before adding an image.');return;}
+    checkpoint();
+    const id=freshStableId();
+    const node={
+      id,type:'image',tag:'img',className:'legend-cms-image',
+      mediaAssetId:asset.id,alt:'',
+      signals:[],style:{widthPercent:70,paddingTop:16,paddingBottom:16},
+      breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+    };
+    parent.children ||= [];
+    parent.children.push(node);
+    renderCanonicalCompositionPage();
+    setSelected(findEditableElement(id));
+    markDirty();
   }
 
   function removeSelected() {
-    if (!selected) return;
-    checkpoint();
-    if (selected.dataset.cmsSignalOnly) { markDeleted(pageElementDeletionKey(selected.dataset.cmsId)); delete pageState().elements[selected.dataset.cmsId]; markDirty(); renderSignalControls(); return; }
-    if (selected.dataset.cmsExtraId) {
-      const removedId = selected.dataset.cmsExtraId;
-      const removedSection = selected.dataset.cmsSection;
-      const removedExtras = pageState().extras.filter(x => x.id === removedId || (removedSection && (x.sectionId === removedSection || x.placement?.sectionId === removedSection)));
-      removedExtras.forEach(extra => markDeleted(pageExtraDeletionKey(extra.id)));
-      pageState().extras = pageState().extras.filter(x => !removedExtras.includes(x));
-      const removedNode = document.querySelector(`[data-cms-id="extra:${CSS.escape(removedId)}"]`) || selected;
-      scaledElements.delete(removedNode);
-      removedNode.remove();
-      setSelected(null);
-      markDirty();
+    if(!selected || selected.dataset.cmsSignalOnly || !selected.dataset.cmsCompositionId) return;
+    const entry=compositionEntry(selected.dataset.cmsCompositionId);
+    const current=entry?.node;
+    if(!current) return;
+    if(current.actionKey || current.systemKey || current.systemBinding || current.type==='form'){
+      alert('This component has protected platform wiring. Rename, restyle, or reposition it without deleting its canonical behavior.');
       return;
     }
-    markDeleted(pageElementDeletionKey(selected.dataset.cmsId));
-    delete pageState().elements[selected.dataset.cmsId];
-    const original = rememberOriginal(selected);
-    selected.hidden = original.hidden;
-    if (selected instanceof HTMLImageElement) selected.src = original.src || '';
-    else if (!selected.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName)) { setContentText(selected, original.text); }
-    applyStyle(selected, null);
-    syncEditorControls();
+    checkpoint();
+    if(!removeCompositionNode(current.id)) return;
+    if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
+    else renderCanonicalCompositionPage();
+    setSelected(null);
     markDirty();
   }
 
@@ -2926,17 +3661,20 @@
     if (saving) return;
     clearTimeout(autoSaveTimer);
     const status = document.getElementById('legend-cms-status');
+    if (legacyMigration) {
+      if (status) status.textContent='Legacy website content is read-only until canonical materialization completes.';
+      return false;
+    }
     if (publish && dirty) { await save(false); if (dirty) return; }
     if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
     saving = true;
     const submitted = JSON.stringify(documentState);
-    const submittedDeletedKeys = [...pendingDeletedKeys];
     let saved = false;
     try {
       const response = await fetch(`${API_BASE}/api/website-content/${publish ? 'manage/publish' : 'manage'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, deletedKeys: submittedDeletedKeys, ...(namedDraft || {}) })
+        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, ...(namedDraft || {}) })
       });
       if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || error.error || `Save failed (${response.status})`); }
       const payload = await response.json();
@@ -2944,7 +3682,6 @@
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
       revision = payload.revision ?? revision;
       namedDrafts = payload.drafts || namedDrafts;
-      submittedDeletedKeys.forEach(key => pendingDeletedKeys.delete(key));
       dirty = changedDuringSave;
       saved = true;
       if (status) status.textContent = changedDuringSave ? 'Draft saved; newer edits remain unsaved' : publish ? 'Published' : 'Draft saved';
@@ -2990,23 +3727,22 @@
     document.body.appendChild(dialog); dialog.showModal(); name.focus();
   }
   const undoStack = [], redoStack = [];
-  const baselineNodes = new Map();
   function historySnapshot() {
-    return JSON.stringify({ document: documentState, deletedKeys: [...pendingDeletedKeys] });
+    return JSON.stringify(documentState);
   }
   function checkpoint() {
     undoStack.push(historySnapshot());
     if (undoStack.length > 80) undoStack.shift();
     redoStack.length = 0;
   }
-  function restoreHistory(from, to) {
+  // CANONICAL V3 HISTORY RESTORE.
+  // This restores only the WebsiteContentDocument v3 graph. It intentionally
+  // does not reconstruct template DOM, v2 elements/extras, or any override side-store.
+  function restoreCanonicalV3History(from, to) {
     if (!from.length) return;
     to.push(historySnapshot());
-    baselineNodes.forEach(({ el, parent, next }) => { if (el.dataset.cmsSignalOnly) return; if (parent) parent.insertBefore(el, next?.parentElement === parent ? next : null); const original = rememberOriginal(el); el.hidden = original.hidden; if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) { setContentText(el, original.text); } if (original.href != null) el.setAttribute('href',original.href); if (original.src != null) el.setAttribute('src',original.src); applyStyle(el, null); });
-    const snapshot = JSON.parse(from.pop());
-    pendingDeletedKeys.clear();
-    for (const key of snapshot.deletedKeys || []) pendingDeletedKeys.add(key);
-    applyDocument(snapshot.document || snapshot);
+    const snapshot = normalizeDocument(JSON.parse(from.pop()));
+    applyDocument(snapshot);
     setSelected(null);
     markDirty();
   }
@@ -3015,7 +3751,7 @@
     if (!media && (value.startsWith('#') || (value.startsWith('/') && !value.startsWith('//')))) return true;
     try { const url = new URL(value); return media ? url.protocol === 'https:' : ['https:','mailto:','tel:'].includes(url.protocol); } catch { return false; }
   }
-  function applyPlacement(el, placement) {
+  function applyLegacyMigrationPlacement(el, placement) {
     if (!el || !placement || el.dataset.cmsSection) return;
     const section = document.querySelector(`[data-cms-section="${CSS.escape(placement.sectionId || '')}"]`);
     if (!section || el.contains?.(section)) return;
@@ -3071,8 +3807,8 @@
     if(notice) notice.hidden=SITE_KEY==='business';
     if(SITE_KEY!=='business') return;
     const sources=approvedDataSources();
-    const override=selectedOverride?.() || null;
-    const binding=override?.dataBinding || null;
+    const model=selectedWebsiteModel?.() || null;
+    const binding=model?.dataBinding || null;
     const boundSource=sourceForCollection(binding?.collectionId);
     const sourceSelect=document.getElementById('legend-cms-data-source');
     const sourceKey=boundSource?.key || sourceSelect?.value || sources[0]?.key || '';
@@ -3104,15 +3840,171 @@
     const dynamicStatus=document.getElementById('legend-cms-dynamic-status');
     if(dynamicStatus) dynamicStatus.textContent=dynamic ? `Dynamic route ${dynamic.routePattern || ''} from ${dynamicSource?.label || dynamic.collectionId}.` : 'This page is static.';
   }
+  function sourceProjectionNode(node) {
+    const copy=cloneCanonicalValue(node || {});
+    delete copy.signals;
+    copy.children=(node?.children || []).map(sourceProjectionNode);
+    return copy;
+  }
+
+  function siteSourceProjection() {
+    const pages=Object.entries(documentState.pages || {})
+      .sort((a,b)=>(Number(a[1]?.navigation?.order)||0)-(Number(b[1]?.navigation?.order)||0) || a[0].localeCompare(b[0]))
+      .map(([path,page])=>({
+        path,
+        title:page?.title ?? null,
+        description:page?.description ?? null,
+        navigation:cloneCanonicalValue(page?.navigation || {showInNavigation:true,order:0,isDeleted:false}),
+        dynamicBinding:cloneCanonicalValue(page?.dynamicBinding || null),
+        composition:(page?.composition || []).map(sourceProjectionNode)
+      }));
+
+    return {
+      schema:'legend-site-source/v1',
+      version:3,
+      faviconImageDataUrl:documentState.faviconImageDataUrl || null,
+      store:cloneCanonicalValue(documentState.store || {}),
+      breakpoints:cloneCanonicalValue(documentState.breakpoints || []),
+      theme:cloneCanonicalValue(documentState.theme || {}),
+      shell:{
+        header:(documentState.shell?.header || []).map(sourceProjectionNode),
+        footer:(documentState.shell?.footer || []).map(sourceProjectionNode)
+      },
+      pages,
+      reusableComponents:Object.fromEntries(
+        Object.entries(documentState.reusableComponents || {}).map(([id,component])=>[
+          id,
+          {
+            id,
+            name:component?.name || id,
+            kind:component?.kind === 'block' ? 'block' : 'section',
+            composition:(component?.composition || []).map(sourceProjectionNode)
+          }
+        ])
+      ),
+      collections:cloneCanonicalValue(documentState.collections || {})
+    };
+  }
+
+  function sourceFindNode(nodes,id) {
+    for(const node of nodes || []){
+      if(node?.id===id) return node;
+      const child=sourceFindNode(node?.children,id); if(child) return child;
+    }
+    return null;
+  }
+
+  function sourceReplaceNode(nodes,id,replacement) {
+    for(let index=0;index<(nodes || []).length;index++){
+      const node=nodes[index];
+      if(node?.id===id){ nodes[index]=replacement; return true; }
+      if(sourceReplaceNode(node?.children,id,replacement)) return true;
+    }
+    return false;
+  }
+
+  function sourceSelectedNodeId() {
+    return selected?.dataset?.cmsCompositionId || null;
+  }
+
+  function refreshSiteSourceEditor(force=false) {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const label=document.getElementById('legend-cms-source-location');
+    if(!textarea || (sourceEditorDirty && !force)) return;
+    const selectedId=sourceSelectedNodeId();
+    if(scope && scope.value==='selection' && !selectedId) scope.value='site';
+    const mode=scope?.value || 'site';
+    if(mode==='selection' && selectedId){
+      const node=compositionNode(selectedId);
+      textarea.value=JSON.stringify(sourceProjectionNode(node),null,2);
+      if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+    }else{
+      textarea.value=JSON.stringify(siteSourceProjection(),null,2);
+      if(label) label.textContent='Master Source · entire website';
+      if(selectedId){
+        const marker='"id": "'+selectedId+'"';
+        const index=textarea.value.indexOf(marker);
+        if(index>=0){ textarea.setSelectionRange(index,index+marker.length); }
+      }
+    }
+    sourceEditorDirty=false;
+    const status=document.getElementById('legend-cms-source-status');
+    if(status) status.textContent='Source is synchronized with the current draft.';
+  }
+
+  async function applySiteSource() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const status=document.getElementById('legend-cms-source-status');
+    if(!textarea) return;
+    let sourceText=textarea.value;
+    try{
+      if(scope?.value==='selection'){
+        const id=sourceSelectedNodeId();
+        if(!id) throw new Error('Select a page component before editing Selected Source.');
+        const replacement=JSON.parse(sourceText);
+        if(replacement?.id!==id) throw new Error('Selected Source must keep the stable node ID '+id+'.');
+        const projected=siteSourceProjection();
+        let replaced=
+          sourceReplaceNode(projected.shell?.header,id,replacement) ||
+          sourceReplaceNode(projected.shell?.footer,id,replacement);
+        if(!replaced){
+          for(const page of projected.pages){
+            if(sourceReplaceNode(page.composition,id,replacement)){ replaced=true; break; }
+          }
+        }
+        if(!replaced){
+          for(const component of Object.values(projected.reusableComponents || {})){
+            if(sourceReplaceNode(component.composition,id,replacement)){ replaced=true; break; }
+          }
+        }
+        if(!replaced) throw new Error('The selected source node is no longer present in this canonical draft.');
+        sourceText=JSON.stringify(projected,null,2);
+      }else{
+        JSON.parse(sourceText);
+      }
+    }catch(error){
+      if(status) status.textContent=error?.message || 'Source syntax is invalid.';
+      return;
+    }
+
+    if(status) status.textContent='Validating protected actions, media, and structure…';
+    try{
+      const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText})
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(payload.message || payload.error || 'Site Source validation failed.');
+      checkpoint();
+      documentState=normalizeDocument(payload.proposedDocument || {});
+      sourceEditorDirty=false;
+      applyDocument(documentState);
+      dirty=true;
+      const saved=await save(false);
+      if(!saved || dirty) throw new Error('Validated source could not be saved.');
+      refreshSiteSourceEditor(true);
+      if(status) status.textContent='Applied to the canonical draft. Protected wiring unchanged.';
+    }catch(error){
+      if(status) status.textContent=error?.message || 'Site Source could not be applied.';
+    }
+  }
+
   function showPanel(name) {
     activeEditorPanel = name;
     document.querySelectorAll('[data-cms-view]').forEach(view => { view.hidden = view.dataset.cmsView !== name; });
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
     if (name === 'layers') refreshLayers();
     if (name === 'media') void refreshMediaLibrary();
+    if (name === 'source') {
+      const scope=document.getElementById('legend-cms-source-scope');
+      if(scope && sourceSelectedNodeId()) scope.value='selection';
+      refreshSiteSourceEditor();
+    }
     if (name === 'components') renderReusableComponents();
     if (name === 'data') renderDataControls();
-    if (name === 'ai') renderAiProposal();
+    if (name === 'gpt') refreshBrowserAgentWorkspace();
     if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
     if (name === 'signals') renderSignalControls();
@@ -3123,7 +4015,7 @@
 
   function collaborationSelectedElementId() {
     if (!selected) return null;
-    return selected.dataset.cmsExtraId ? `extra:${selected.dataset.cmsExtraId}` : selected.dataset.cmsId || null;
+    return selected.dataset.cmsCompositionId || selected.dataset.cmsId || null;
   }
 
   function collaborationAuthorLabel(comment) {
@@ -3300,18 +4192,42 @@
     const isImage=asset.contentType.startsWith('image/');
     const isVideo=asset.contentType.startsWith('video/');
     if(!isImage && !isVideo) return;
+
     if(selected && ((isImage && selected instanceof HTMLImageElement) || (isVideo && selected.tagName==='VIDEO'))){
-      checkpoint(); const override=selectedOverride(); if(!override) return;
-      if(isImage) override.imageDataUrl=asset.url; else override.videoUrl=asset.url;
-      applyElementOverride(selected,override); syncEditorControls(); markDirty(); return;
+      const node=selectedWebsiteModel();
+      if(!node) return;
+      checkpoint();
+      node.mediaAssetId=asset.id;
+      delete node.mediaUrl;
+      if(isImage) node.alt ||= asset.name || '';
+      applyCompositionNode(selected,node);
+      syncEditorControls();
+      markDirty();
+      return;
     }
-    const section=selectedSection || document.querySelector('[data-cms-section]');
-    if(!section){ alert('Select a section before inserting media.'); return; }
+
+    const section=selectedSection || document.querySelector('main [data-cms-section]');
+    const parentId=section?.dataset?.cmsCompositionId;
+    const parent=parentId ? compositionNode(parentId) : null;
+    if(!parent){alert('Select a canonical section before inserting media.');return;}
+
     checkpoint();
-    const extra={id:crypto.randomUUID(),type:isImage?'image':'video',sectionId:section.dataset.cmsSection,style:{widthPercent:isImage?70:100}};
-    if(isImage){ extra.imageDataUrl=asset.url; extra.alt=asset.name || ''; } else extra.videoUrl=asset.url;
-    pageState().extras.push(extra); const created=createExtra(extra); setSelected(created); markDirty();
+    const id=freshStableId();
+    const node={
+      id,type:isImage?'image':'video',tag:isImage?'img':'video',
+      className:isImage?'legend-cms-image':null,
+      mediaAssetId:asset.id,
+      alt:isImage?(asset.name||''):null,
+      signals:[],style:{widthPercent:isImage?70:100},breakpointStyles:{},
+      layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+    };
+    parent.children ||= [];
+    parent.children.push(node);
+    renderCanonicalCompositionPage();
+    setSelected(findEditableElement(id));
+    markDirty();
   }
+
   function liveQualityChecks() {
     const checks = [];
     const main = document.querySelector('main');
@@ -3428,7 +4344,7 @@
       row.append(drag,select);
       if(section.hidden){
         const restore=document.createElement('button');restore.type='button';restore.textContent='Show'; restore.setAttribute('aria-label',`Show ${label}`);
-        restore.addEventListener('click',()=>{setSelected(section);checkpoint();const value=selectedOverride();if(!value)return;value.hidden=false;section.hidden=false;markDirty();syncEditorControls();showPanel('layers');});
+        restore.addEventListener('click',()=>{setSelected(section);checkpoint();const value=selectedWebsiteModel();if(!value)return;value.hidden=false;section.hidden=false;markDirty();syncEditorControls();showPanel('layers');});
         row.appendChild(restore);
       }
       row.addEventListener('dragstart',event=>{
@@ -3483,8 +4399,28 @@
       const control = choices[key]
         ? `<select data-style-key="${key}"><option value="">Default</option>${choices[key].map(value => `<option value="${value}">${value}</option>`).join('')}</select>`
         : `<input data-style-key="${key}" type="${['color','backgroundColor'].includes(key) ? 'color' : 'number'}" step="any">`;
-      return `<label class="legend-cms-group">${label}${control}${['color','backgroundColor'].includes(key) ? `<input data-color-hex="${key}" type="text" maxlength="7" pattern="#[a-fA-F0-9]{6}" aria-label="${label} hex code" placeholder="#000000"><button type="button" data-color-reset="${key}">Use template color</button>` : ''}</label>`;
+      return `<label class="legend-cms-group">${label}${control}${['color','backgroundColor'].includes(key) ? `<input data-color-hex="${key}" type="text" maxlength="7" pattern="#[a-fA-F0-9]{6}" aria-label="${label} hex code" placeholder="#000000"><button type="button" data-color-reset="${key}">Use inherited color</button>` : ''}</label>`;
     }).join('');
+  }
+
+  function freshStableId() {
+    return (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random())
+      .replaceAll('-','').replace('.','');
+  }
+
+  function cloneCanonicalNodeFresh(node,{offsetY=0}={}) {
+    const copy=cloneCanonicalValue(node);
+    const rewrite=current=>{
+      current.id=freshStableId();
+      current.signals=(current.signals || []).map(binding=>({...binding,id:freshStableId()}));
+      (current.children || []).forEach(rewrite);
+    };
+    rewrite(copy);
+    if(offsetY){
+      copy.style ||= {};
+      copy.style.offsetYPx=(Number(copy.style.offsetYPx)||0)+offsetY;
+    }
+    return copy;
   }
 
   function installStudioControls(panel) {
@@ -3503,181 +4439,107 @@
     pageNavInput('legend-cms-page-nav-visible',(navigation,input)=>navigation.showInNavigation=input.checked);
     pageNavInput('legend-cms-page-parent',(navigation,input)=>navigation.parentPath=normalizePageRoute(input.value),'change');
     document.getElementById('legend-cms-page-create')?.addEventListener('click',async()=>{
-      if(SITE_KEY!=='business') return; const route=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
-      if(!route || route==='/' || websitePageEntries(true).some(entry=>entry.route===route)){ alert('Enter a unique website route such as /team or /services/commercial.'); return; }
-      checkpoint(); const label=(document.getElementById('legend-cms-page-nav-label')?.value || route.split('/').filter(Boolean).at(-1) || 'Page').trim();
-      const sectionId=crypto.randomUUID(); const textId=crypto.randomUUID();
-      documentState.pages[route]={title:label,description:'',templatePath:null,navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},elements:{},sectionOrder:{},extras:[{id:sectionId,type:'section',sectionId:'custom.root',style:{}},{id:textId,type:'text',sectionId:'extra:'+sectionId,text:label,style:{}}]};
-      markDirty(); await navigateToEditorPage(route);
-    });
-    document.getElementById('legend-cms-page-duplicate')?.addEventListener('click',async()=>{
-      if(SITE_KEY!=='business') return; const sourceRoute=currentPageRoute(); const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
-      if(!target || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){ alert('Enter a unique route for the duplicate.'); return; }
-      checkpoint(); const source=JSON.parse(JSON.stringify(pageState())); const template=templatePageEntries().has(sourceRoute)?sourceRoute:(normalizePageRoute(source.templatePath)||null);
-      source.templatePath=template; source.navigation={...(source.navigation||{}),label:(source.navigation?.label||source.title||'Copy')+' copy',isDeleted:false,order:websitePageEntries(true).length*10};
-      documentState.pages[target]=source; markDirty(); await navigateToEditorPage(target);
-    });
-    document.getElementById('legend-cms-page-rename')?.addEventListener('click',async()=>{
-      if(SITE_KEY!=='business') return; const sourceRoute=currentPageRoute(); const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
-      if(sourceRoute==='/' || !target || target==='/' || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){ alert('Enter a unique route. The home page route cannot be renamed.'); return; }
-      checkpoint(); const source=JSON.parse(JSON.stringify(pageState())); const template=templatePageEntries().has(sourceRoute)?sourceRoute:(normalizePageRoute(source.templatePath)||null); source.templatePath=template;
-      documentState.pages[target]=source; const tombstone=ensurePageRecord(sourceRoute); tombstone.navigation={...(tombstone.navigation||{}),showInNavigation:false,isDeleted:true}; tombstone.elements={}; tombstone.sectionOrder={}; tombstone.extras=[];
-      markDirty(); await navigateToEditorPage(target);
-    });
-    document.getElementById('legend-cms-page-delete')?.addEventListener('click',async()=>{
-      if(SITE_KEY!=='business') return; const route=currentPageRoute(); if(route==='/') return; checkpoint(); const page=ensurePageRecord(route);
-      page.navigation ||= {showInNavigation:true,order:0,isDeleted:false}; page.navigation.isDeleted=!page.navigation.isDeleted; if(page.navigation.isDeleted) page.navigation.showInNavigation=false; markDirty();
-      if(page.navigation.isDeleted) await navigateToEditorPage('/'); else syncPageControls();
-    });
-    document.getElementById('legend-cms-duplicate').addEventListener('click', () => {
-      if (!selected || !selectedSection || selected.dataset.cmsSignalOnly) return;
-      const sourceExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
-      if (sourceExtra?.type === 'form' || selected.tagName === 'FORM') {
-        alert('Each page uses one canonical inquiry form. Duplicate the surrounding content instead.');
+      if(SITE_KEY!=='business') return;
+      const route=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(!route || route==='/' || websitePageEntries(true).some(entry=>entry.route===route)){
+        alert('Enter a unique website route such as /team or /services/commercial.');
         return;
       }
-
-      const shiftCopy = copy => {
-        copy.style ||= {};
-        const currentY = Number(copy.style.offsetYPx);
-        copy.style.offsetYPx = (Number.isFinite(currentY) ? currentY : 0) + 16;
-        delete copy.hidden;
-        copy.signals = [];
-        return copy;
-      };
-      const rewriteExtraRef = (value, idMap) => {
-        if (typeof value !== 'string' || !value.startsWith('extra:')) return value;
-        const oldId = value.slice(6);
-        return idMap.has(oldId) ? 'extra:' + idMap.get(oldId) : value;
-      };
-
-      if (sourceExtra) {
-        checkpoint();
-        if (sourceExtra.type === 'section') {
-          const sourceIds = new Set([sourceExtra.id]);
-          let changed = true;
-          while (changed) {
-            changed = false;
-            for (const item of pageState().extras) {
-              const parent = String(item.sectionId || '').startsWith('extra:') ? String(item.sectionId).slice(6) : null;
-              if (parent && sourceIds.has(parent) && !sourceIds.has(item.id)) { sourceIds.add(item.id); changed = true; }
-            }
-          }
-          const originals = pageState().extras.filter(item => sourceIds.has(item.id));
-          const idMap = new Map(originals.map(item => [item.id, crypto.randomUUID()]));
-          const copies = originals.map(item => {
-            const copy = JSON.parse(JSON.stringify(item));
-            copy.id = idMap.get(item.id);
-            copy.sectionId = item.id === sourceExtra.id ? sourceExtra.sectionId : rewriteExtraRef(item.sectionId, idMap);
-            copy.signals = [];
-            if (copy.placement) {
-              copy.placement.sectionId = rewriteExtraRef(copy.placement.sectionId, idMap);
-              copy.placement.containerId = rewriteExtraRef(copy.placement.containerId, idMap);
-              copy.placement.beforeId = rewriteExtraRef(copy.placement.beforeId, idMap);
-            }
-            if (item.id === sourceExtra.id) shiftCopy(copy);
-            return copy;
-          });
-          pageState().extras.push(...copies);
-          const rootCopy = copies.find(item => item.id === idMap.get(sourceExtra.id));
-          const createdSections = new Map();
-          copies.filter(item => item.type === 'section').forEach(item => createdSections.set(item.id, createExtra(item)));
-          copies.filter(item => item.type !== 'section').forEach(item => {
-            const created = createExtra(item);
-            if (item.placement) applyPlacement(created, item.placement);
-          });
-          const sourceNode = document.querySelector(`[data-cms-id="extra:${CSS.escape(sourceExtra.id)}"]`);
-          const createdRoot = rootCopy ? createdSections.get(rootCopy.id) : null;
-          if (sourceNode && createdRoot && sourceNode.parentElement === createdRoot.parentElement)
-            sourceNode.parentElement.insertBefore(createdRoot, sourceNode.nextSibling);
-          syncSectionOrderFromDom();
-          setSelected(createdRoot || null);
-          markDirty();
-          return;
-        }
-
-        const copy = shiftCopy(JSON.parse(JSON.stringify(sourceExtra)));
-        copy.id = crypto.randomUUID();
-        copy.sectionId = sourceExtra.sectionId;
-        if (copy.placement) { copy.placement.beforeId = null; }
-        pageState().extras.push(copy);
-        const created = createExtra(copy);
-        if (copy.placement) applyPlacement(created, copy.placement);
-        const field = selected.dataset.cmsExtraField;
-        setSelected(field ? created?.querySelector?.(`[data-cms-extra-field="${CSS.escape(field)}"]`) || created : created);
-        markDirty();
-        return;
-      }
-
-      const serviceCard = businessServiceCardFor(selected);
-      if (serviceCard) {
-        const grid = serviceCard.parentElement;
-        if (!grid?.dataset.cmsId) return;
-        checkpoint();
-        const heading = serviceCard.querySelector('h1,h2,h3,h4,h5');
-        const body = [...serviceCard.querySelectorAll('p')].find(node => !node.classList.contains('eyebrow')) || serviceCard.querySelector('p');
-        const copy = {
-          id: crypto.randomUUID(), type: 'card', sectionId: selectedSection.dataset.cmsSection,
-          title: heading?.textContent || 'New service', text: body?.textContent || '', style: {},
-          signals: [],
-          placement: { sectionId: selectedSection.dataset.cmsSection, containerId: grid.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 }
-        };
-        pageState().extras.push(copy);
-        const created = createExtra(copy); applyPlacement(created, copy.placement); setSelected(created.querySelector('h3') || created); markDirty();
-        return;
-      }
-
-      if (selected.dataset.cmsSection) {
-        if (selected.matches('.site-header,.site-footer')) return;
-        if (selected.querySelector?.('form[data-website-inquiry]')) {
-          alert('This section contains the canonical inquiry form. Move or redesign the section instead of creating a second live inquiry authority.');
-          return;
-        }
-        checkpoint();
-        const copy={
-          id:crypto.randomUUID(), type:'section', sectionId:selected.dataset.cmsSection,
-          templateSectionId:selected.dataset.cmsSection, style:{}, signals:[]
-        };
-        pageState().extras.push(copy);
-        const created=createExtra(copy);
-        if (created && selected.parentElement===created.parentElement) selected.parentElement.insertBefore(created,selected.nextSibling);
-        syncSectionOrderFromDom(); setSelected(created); markDirty(); return;
-      }
-      const supported = ['P','H1','H2','H3','H4','H5','H6','A','BUTTON','IMG','VIDEO','LI','SMALL','STRONG','SPAN'];
-      if (!supported.includes(selected.tagName)) return;
-
       checkpoint();
-      const original = pageState().elements[selected.dataset.cmsId] || {};
-      const copy = shiftCopy({
-        id: crypto.randomUUID(),
-        sectionId: selectedSection.dataset.cmsSection,
-        type: ({ A: 'button', BUTTON: 'button', IMG: 'image', VIDEO: 'video' }[selected.tagName] || 'text'),
-        text: selected.textContent || '',
-        style: JSON.parse(JSON.stringify(original.style || {})),
-        breakpointStyles: JSON.parse(JSON.stringify(original.breakpointStyles || {})),
-        layout: JSON.parse(JSON.stringify(original.layout || {})),
-        breakpointLayouts: JSON.parse(JSON.stringify(original.breakpointLayouts || {})),
-        signals: []
-      });
-      if (copy.type === 'button') {
-        copy.actionKey = original.actionKey || null;
-        copy.href = original.href ?? rememberOriginal(selected).href;
-        copy.target = original.target ?? selected.getAttribute('target');
+      const label=(document.getElementById('legend-cms-page-nav-label')?.value ||
+        route.split('/').filter(Boolean).at(-1) || 'Page').trim();
+      const sectionId=freshStableId();
+      const textId=freshStableId();
+      documentState.pages[route]={
+        title:label,
+        description:'',
+        navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},
+        dynamicBinding:null,
+        composition:[{
+          id:sectionId,type:'section',tag:'section',className:'section',signals:[],
+          style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],
+          children:[{
+            id:textId,type:'heading',tag:'h1',text:label,signals:[],
+            style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+          }]
+        }]
+      };
+      markDirty();
+      await navigateToEditorPage(route);
+    });
+
+    document.getElementById('legend-cms-page-duplicate')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return;
+      const sourceRoute=currentPageRoute();
+      const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(!target || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){
+        alert('Enter a unique route for the duplicate.');
+        return;
       }
-      if (copy.type === 'image') {
-        copy.imageDataUrl = original.imageDataUrl ?? rememberOriginal(selected).src;
-        copy.alt = original.alt ?? selected.getAttribute('alt');
+      checkpoint();
+      const source=cloneCanonicalValue(pageState());
+      source.composition=(source.composition || []).map(node=>cloneCanonicalNodeFresh(node));
+      source.navigation={
+        ...(source.navigation || {}),
+        label:(source.navigation?.label || source.title || 'Copy')+' copy',
+        isDeleted:false,
+        order:websitePageEntries(true).length*10
+      };
+      documentState.pages[target]=source;
+      markDirty();
+      await navigateToEditorPage(target);
+    });
+
+    document.getElementById('legend-cms-page-rename')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return;
+      const sourceRoute=currentPageRoute();
+      const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(sourceRoute==='/' || !target || target==='/' || target===sourceRoute ||
+        websitePageEntries(true).some(entry=>entry.route===target)){
+        alert('Enter a unique route. The home page route cannot be renamed.');
+        return;
       }
-      if (copy.type === 'video') copy.videoUrl = original.videoUrl ?? rememberOriginal(selected).src;
-      const parent = selected.parentElement;
-      if (parent && parent !== selectedSection && parent.dataset?.cmsId && !parent.closest(lockedSelector))
-        copy.placement = { sectionId: selectedSection.dataset.cmsSection, containerId: parent.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
-      pageState().extras.push(copy);
-      const created = createExtra(copy);
-      if (copy.placement) applyPlacement(created, copy.placement);
-      setSelected(created);
+      checkpoint();
+      documentState.pages[target]=documentState.pages[sourceRoute];
+      delete documentState.pages[sourceRoute];
+      markDirty();
+      await navigateToEditorPage(target);
+    });
+
+    document.getElementById('legend-cms-page-delete')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return;
+      const route=currentPageRoute();
+      if(route==='/') return;
+      checkpoint();
+      const page=ensurePageRecord(route);
+      page.navigation.isDeleted=!page.navigation.isDeleted;
+      if(page.navigation.isDeleted) page.navigation.showInNavigation=false;
+      markDirty();
+      if(page.navigation.isDeleted) await navigateToEditorPage('/');
+      else syncPageControls();
+    });
+
+    document.getElementById('legend-cms-duplicate').addEventListener('click',()=>{
+      if(!selected || selected.dataset.cmsSignalOnly || !selected.dataset.cmsCompositionId) return;
+      const serviceCard=businessServiceCardFor(selected);
+      const selectedId=serviceCard?.dataset?.cmsCompositionId || selected.dataset.cmsCompositionId;
+      const entry=compositionEntry(selectedId);
+      if(!entry?.node) return;
+      if(entry.node.type==='form' || entry.node.systemKey){
+        alert('Protected system components cannot be duplicated. Duplicate the surrounding content instead.');
+        return;
+      }
+      checkpoint();
+      const copy=cloneCanonicalNodeFresh(entry.node,{offsetY:16});
+      const siblings=compositionChildren(entry.parent,entry.root);
+      const index=siblings.findIndex(node=>node.id===entry.node.id);
+      siblings.splice(index+1,0,copy);
+      if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
+      else renderCanonicalCompositionPage();
+      setSelected(findEditableElement(copy.id));
       markDirty();
     });
+
     const fontInput = panel.querySelector('[data-theme-key="fontFamily"]');
     if (fontInput?.replaceWith) {
       const select = document.createElement('select'); select.dataset.themeKey = 'fontFamily';
@@ -3699,8 +4561,8 @@
       if (event.target.closest?.('input,textarea,select,[contenteditable="true"]')) return;
       if (key === 'z' || key === 'y') {
         event.preventDefault();
-        if (key === 'y' || event.shiftKey) restoreHistory(redoStack, undoStack);
-        else restoreHistory(undoStack, redoStack);
+        if (key === 'y' || event.shiftKey) restoreCanonicalV3History(redoStack, undoStack);
+        else restoreCanonicalV3History(undoStack, redoStack);
       }
     });
     refreshHistoryControls();
@@ -3774,7 +4636,7 @@
     return items;
   }
 
-  function syncCtaControls(override, currentHref) {
+  function syncCtaControls(model, currentHref) {
     const select = document.getElementById('legend-cms-action');
     const custom = document.getElementById('legend-cms-custom-link');
     const wiring = document.getElementById('legend-cms-action-wiring');
@@ -3826,15 +4688,19 @@
     const customOption = document.createElement('option'); customOption.value = 'custom'; customOption.textContent = 'Custom Link / Custom Action…'; other.appendChild(customOption);
     select.appendChild(other);
 
-    const key = override?.actionKey || selected?.dataset.websiteActionKey;
+    const key = model?.actionKey || selected?.dataset.websiteActionKey;
     const byKey = key ? options.find(option => option.managed && option.actionKey === key) : null;
     const byHref = !key && currentHref ? options.find(option => !option.managed && option.href === currentHref) : null;
     const selectedOption = byKey || byHref || null;
     const hasCustomHref = currentHref && currentHref !== '#';
     select.value = selectedOption?.choiceKey || (hasCustomHref ? 'custom' : '');
-    if (custom) custom.hidden = select.value !== 'custom';
+    const lockedManaged = !!key && !!byKey;
+    select.disabled = lockedManaged;
+    if (custom) custom.hidden = lockedManaged || select.value !== 'custom';
     if (wiring) {
-      wiring.textContent = selectedOption?.managed
+      wiring.textContent = lockedManaged
+        ? `Protected wiring: ${selectedOption.defaultText || selectedOption.label || key}. The visible label, style, and position remain editable; the canonical action identity cannot change.`
+        : selectedOption?.managed
         ? `Automatic wiring: Analytics ${selectedOption.analyticsEventName || 'cta_click'}. Every phrase in this group uses the same destination and event contract.`
         : selectedOption
           ? 'Navigation only. This links to an existing page or section and does not create a second CTA wiring contract.'
@@ -3855,8 +4721,9 @@
 
   function openCodeEditor() {
     const block = selected;
-    const extra = block?.dataset?.cmsExtraId ? pageState().extras.find(x => x.id === block.dataset.cmsExtraId) : null;
-    if (!block || extra?.type !== 'code') return;
+    const composition = block?.dataset?.cmsCompositionId ? compositionNode(block.dataset.cmsCompositionId) : null;
+    const sourceNode = composition?.type === 'embed' ? composition : null;
+    if (!block || !sourceNode) return;
     clearTimeout(autoSaveTimer);
     const dialog = document.createElement('dialog');
     dialog.className = 'legend-cms-editor legend-cms-code-dialog';
@@ -3866,7 +4733,7 @@
     textarea.className = 'legend-cms-code-source';
     textarea.setAttribute('aria-label', 'Code block source');
     textarea.spellcheck = false;
-    textarea.value = extra.text || defaultCodeBlock;
+    textarea.value = sourceNode.text || defaultCodeBlock;
     const status = document.createElement('p'); status.setAttribute('role','status');
     const actions = document.createElement('div'); actions.className = 'legend-cms-code-actions';
     const saveButton = document.createElement('button'); saveButton.type = 'button'; saveButton.textContent = 'Save & preview';
@@ -3874,8 +4741,8 @@
     saveButton.addEventListener('click', () => {
       if (textarea.value.length > 100000) { status.textContent = 'Code blocks can contain up to 100,000 characters.'; return; }
       checkpoint();
-      extra.text = textarea.value;
-      renderCodePreview(block, extra);
+      sourceNode.text = textarea.value;
+      renderCodePreview(block, sourceNode);
       markDirty();
       dialog.close();
       updateDirectCanvasUi();
@@ -3889,60 +4756,88 @@
     textarea.focus();
   }
 
-  function addBlock(type) {
-    const section = selectedSection || document.querySelector('[data-cms-section]');
-    if (!section && type !== 'section') return;
+  function addCompositionBlock(type) {
+    const sectionEl = selectedSection || document.querySelector('[data-cms-section]');
+    if (!sectionEl && type !== 'section') return;
     if (type === 'form' && document.querySelector('form[data-website-inquiry]')) {
-      alert('This page already has its canonical inquiry form. Select that form to move, resize, or review its automatic analytics and Meta wiring.');
+      alert('This page already has its canonical inquiry form. Select it to restyle or reposition it.');
       return;
     }
-    const sectionAnchor = type === 'section'
-      ? (selectedSection && !selectedSection.matches('.site-header,.site-footer') ? selectedSection : pageLayerSections()[0] || null)
-      : null;
+
     checkpoint();
-    const extra = {
-      id: crypto.randomUUID(),
-      type,
-      sectionId: section?.dataset.cmsSection || `${pageKey}.root`,
-      text: type === 'button' ? 'Button' : type === 'text' ? 'Your text' : type === 'form' ? 'Send inquiry' : type === 'code' ? defaultCodeBlock : '',
-      title: type === 'form' ? 'Send an inquiry' : null,
-      signals: [],
-      style: type === 'code' ? { widthPercent: 100, heightPx: 320 } : type === 'form' ? { widthPercent: 100 } : {}
+    const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
+    const map={button:'cta',code:'embed'};
+    const nodeType=map[type] || type;
+    const tags={section:'section',text:'p',cta:'a',video:'video',form:'form',embed:'div'}; 
+    const defaultClasses={
+      section:'section',
+      cta:'btn primary',
+      image:'legend-cms-image',
+      form:'public-form legend-cms-inquiry-form',
+      embed:'legend-cms-embed'
     };
-    if (type === 'button') {
-      extra.href = '';
-      extra.target = '_self';
-      const container = selectedFlowContainer(section);
-      if (container) extra.placement = { sectionId: section.dataset.cmsSection, containerId: container.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
+    const node={
+      id,type:nodeType,tag:tags[nodeType] || 'div',className:defaultClasses[nodeType] || null,
+      text:nodeType==='cta'?'Button':nodeType==='text'?'Your text':nodeType==='form'?'Send inquiry':nodeType==='embed'?defaultCodeBlock:'',
+      title:nodeType==='form'?'Send an inquiry':null,
+      actionKey:null,href:null,target:nodeType==='cta'?'_self':null,
+      systemKey:nodeType==='form'?'canonical_inquiry':null,
+      signals:[],style:nodeType==='embed'?{widthPercent:100,heightPx:320}:nodeType==='form'?{widthPercent:100}:{},
+      breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+    };
+
+    if(nodeType==='section'){
+      const roots=pageState().composition ||= [];
+      const selectedId=sectionEl?.dataset?.cmsCompositionId;
+      const index=selectedId ? roots.findIndex(value=>value.id===selectedId) : -1;
+      if(index>=0) roots.splice(index+1,0,node); else roots.push(node);
+    } else {
+      const flowContainer=selectedFlowContainer(sectionEl);
+      const parentId=flowContainer?.dataset?.cmsCompositionId || sectionEl?.dataset?.cmsCompositionId;
+      const parent=parentId ? compositionNode(parentId) : (pageState().composition || []).find(value=>value.type==='section');
+      if(!parent){ alert('Select a section before adding content.'); return; }
+      parent.children ||= [];
+      parent.children.push(node);
     }
-    pageState().extras.push(extra);
-    const el = createExtra(extra);
-    if (type === 'section' && el && sectionAnchor?.parentElement === el.parentElement) {
-      el.parentElement.insertBefore(el, sectionAnchor.nextSibling);
-      syncSectionOrderFromDom();
-    }
-    if (extra.placement) applyPlacement(el, extra.placement);
-    setSelected(el, { openContent: type === 'button' }); markDirty();
-    if (type === 'button') document.getElementById('legend-cms-action')?.focus();
-    if (type === 'code') openCodeEditor();
+
+    renderCanonicalCompositionPage();
+    const created=document.querySelector('[data-cms-id="'+CSS.escape(id)+'"]');
+    setSelected(created,{openContent:nodeType==='cta'});
+    markDirty();
+    if(nodeType==='cta') document.getElementById('legend-cms-action')?.focus();
+    if(nodeType==='embed') openCodeEditor();
+  }
+
+  function addBlock(type) {
+    addCompositionBlock(type);
   }
   function enhanceEditor(panel, preview) {
-    document.querySelectorAll('[data-cms-id]').forEach(el => baselineNodes.set(el.dataset.cmsId, { el, parent: el.parentElement, next: el.nextSibling }));
     const content = document.createElement('div'); content.dataset.cmsView = 'content';
     Array.from(panel.children).filter(el => !el.classList.contains('legend-cms-bar')).forEach(el => content.appendChild(el));
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="ai">AI Assist</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="collaboration">Collaborate</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. Use X/Y offsets for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint values inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. Use X/Y offsets for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
-      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
+      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save any non-system canonical block or section once, then insert synchronized references. Protected platform components cannot be copied into reusable content.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
+    const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
+    sourceView.innerHTML='<h2>LEGEND Site Source</h2><p>One deterministic source view of the same v3 graph used by the canvas and browser-operated GPT. Canonical actions and system forms are validated server-side and provider/event wiring is not editable here.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Entire site</option><option value="selection">Selected component / section</option></select></label><small id="legend-cms-source-location">Master Source · entire website</small><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false"></textarea><small id="legend-cms-source-status" role="status">Source is synchronized with the current draft.</small><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply validated source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Reload from canvas</button></div>';
+    tools.appendChild(sourceView);
+
+    const publishView=document.createElement('section'); publishView.dataset.cmsView='publish'; publishView.hidden=true;
+    publishView.innerHTML='<h2>Publish</h2><p>The same immutable publish authority validates canonical CTAs, media ownership, forms, navigation, responsive structure, and website versioning before anything becomes live.</p><div class="legend-cms-row"><button id="legend-cms-publish-save-draft" type="button" data-agent-action="save-draft">Save named draft</button><button id="legend-cms-publish-now" type="button" data-agent-action="publish">Publish current draft</button></div><button id="legend-cms-publish-quality" type="button" data-agent-action="quality-preflight">Run quality preflight</button><small id="legend-cms-publish-note">Publishing never bypasses the canonical action/event catalogs.</small>';
+    tools.appendChild(publishView);
+
+    const advanced=document.createElement('section'); advanced.dataset.cmsView='advanced'; advanced.hidden=true;
+    advanced.innerHTML='<h2>Advanced controls</h2><p>Precision tools remain available without crowding the everyday workflow.</p><div class="legend-cms-menu"><button data-open="content">Selected content</button><button data-open="add">Add blocks</button><button data-open="appearance">Design</button><button data-open="layout">Responsive</button><button data-open="layers">Layers</button><button data-open="components">Components</button><button data-open="data">Dynamic data</button><button data-open="motion">Motion</button><button data-open="signals">Analytics</button><button data-open="quality">Quality</button><button data-open="collaboration">Collaborate</button><button data-open="theme">Site theme</button><button data-open="page">Pages & SEO</button></div>';
+    tools.appendChild(advanced);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
     signals.innerHTML = '<h2>Analytics & Meta</h2><p>Standard page engagement, managed buttons, and the canonical inquiry form are wired automatically from the shared Protect Website analytics and Meta authorities. Select content to review that wiring. Advanced custom mappings are only for non-standard interactions.</p><div id="legend-cms-signal-controls"></div>';
     tools.appendChild(signals);
@@ -3950,9 +4845,12 @@
     motion.innerHTML='<h2>Motion & interactions</h2><p>Declarative visual motion only. These effects never create analytics, leads, bookings, purchases, or other business outcomes.</p><small id="legend-cms-motion-status">Select an element to configure motion.</small><div id="legend-cms-motion-controls"></div>';
     tools.appendChild(motion);
 
-    const ai = document.createElement('section'); ai.dataset.cmsView='ai'; ai.hidden=true;
-    ai.innerHTML='<h2>AI creation assistant</h2><p>AI proposes typed changes only. Nothing is saved or published until you apply the proposal and use the normal draft/publish controls.</p><label class="legend-cms-group">Mode<select id="legend-cms-ai-mode"><option value="responsive">Responsive improvement</option><option value="create">Content / section creation</option></select></label><label class="legend-cms-group">Instruction<textarea id="legend-cms-ai-prompt" rows="5" maxlength="2000" placeholder="Example: make this section cleaner on mobile without changing the wording"></textarea></label><button id="legend-cms-ai-generate" type="button">Generate proposal</button><small id="legend-cms-ai-status" role="status">No proposal generated.</small><div id="legend-cms-ai-proposal"></div><div class="legend-cms-row"><button id="legend-cms-ai-apply" type="button" disabled>Apply proposal to draft</button><button id="legend-cms-ai-discard" type="button" disabled>Discard</button></div>';
-    tools.appendChild(ai);
+    const gpt = document.createElement('section'); gpt.dataset.cmsView='gpt'; gpt.hidden=true;
+    gpt.id='legend-cms-browser-agent-workspace';
+    gpt.dataset.agentWorkspace='browser-only';
+    gpt.dataset.externalAiApi='false';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><ul><li>Source, canvas, media, pages, draft, validation, and publish all modify the same WebsiteContentDocument v3.</li><li>Preset CTA action keys, inquiry authority, commerce scope, analytics, Meta, and OpenAI conversion wiring remain backend-owned.</li><li>GPT may restyle, rewrite, reposition, add pages/sections/content, choose only available preset actions, and use media owned by this website.</li><li>Publishing remains an explicit browser action through the normal immutable publish authority.</li></ul></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    tools.appendChild(gpt);
 
     const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
     quality.innerHTML = '<h2>Quality inspector</h2><p>Saved draft checks and live canvas checks are different evidence sources. The server remains authoritative for saved state and publication.</p><h3>Saved draft checks (server)</h3><small id="legend-cms-quality-saved-meta">Open Quality to inspect the persisted draft.</small><div id="legend-cms-quality-saved" class="legend-cms-quality-list"></div><h3>Live page checks (rendered canvas)</h3><small id="legend-cms-quality-live-meta">Open Quality to inspect the rendered canvas.</small><div id="legend-cms-quality-live" class="legend-cms-quality-list"></div><button id="legend-cms-quality-refresh" type="button">Run checks again</button>';
@@ -3977,9 +4875,36 @@
     if (content) content.appendChild(selectedActions);
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
-    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-video-file">Replace video from this website's media library</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
+    document.getElementById('legend-cms-agent-master-source')?.addEventListener('click',()=>openBrowserAgentSource('site'));
+    document.getElementById('legend-cms-agent-selection-source')?.addEventListener('click',()=>openBrowserAgentSource('selection'));
+    document.getElementById('legend-cms-agent-media')?.addEventListener('click',()=>showPanel('media'));
+    document.getElementById('legend-cms-agent-quality')?.addEventListener('click',()=>{showPanel('quality');void refreshQualityInspector();});
+    document.getElementById('legend-cms-agent-publish')?.addEventListener('click',()=>showPanel('publish'));
+
+    const sourceTextarea=document.getElementById('legend-cms-site-source');
+    sourceTextarea?.addEventListener('input',()=>{
+      sourceEditorDirty=true;
+      const status=document.getElementById('legend-cms-source-status');
+      if(status) status.textContent='Unsaved source changes · canvas remains on the last valid graph.';
+    });
+    document.getElementById('legend-cms-source-scope')?.addEventListener('change',()=>{
+      sourceEditorDirty=false;
+      refreshSiteSourceEditor(true);
+    });
+    document.getElementById('legend-cms-source-apply')?.addEventListener('click',()=>void applySiteSource());
+    document.getElementById('legend-cms-source-reload')?.addEventListener('click',()=>{
+      sourceEditorDirty=false;
+      refreshSiteSourceEditor(true);
+    });
+    document.getElementById('legend-cms-publish-save-draft')?.addEventListener('click',chooseDraft);
+    document.getElementById('legend-cms-publish-now')?.addEventListener('click',()=>void save(true));
+    document.getElementById('legend-cms-publish-quality')?.addEventListener('click',()=>{
+      showPanel('quality');
+      void refreshQualityInspector();
+    });
     syncBreakpointControls();
     document.getElementById('legend-cms-data-source')?.addEventListener('change',renderDataControls);
     document.getElementById('legend-cms-dynamic-source')?.addEventListener('change',renderDataControls);
@@ -3992,11 +4917,11 @@
       if(!source || !source.fields?.includes(field)) return;
       if(target==='image' && !(selected instanceof HTMLImageElement)){ alert('Image data can only bind to an image.'); return; }
       if(target==='href' && selected.tagName!=='A'){ alert('Link destinations can only bind to a link.'); return; }
-      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[field]); const override=selectedOverride(); if(!collection || !override) return;
-      override.dataBinding={collectionId:collection.id,field,target}; applyElementOverride(selected,override); markDirty(); renderDataControls();
+      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[field]); const model=selectedWebsiteModel(); if(!collection || !model) return;
+      model.dataBinding={collectionId:collection.id,field,target}; applyCompositionNode(selected,model); markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-data-clear')?.addEventListener('click',()=>{
-      const override=selectedOverride(); if(!override?.dataBinding) return; checkpoint(); delete override.dataBinding; applyElementOverride(selected,override); markDirty(); renderDataControls();
+      const model=selectedWebsiteModel(); if(!model?.dataBinding) return; checkpoint(); delete model.dataBinding; applyCompositionNode(selected,model); markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-dynamic-apply')?.addEventListener('click',()=>{
       if(SITE_KEY!=='business') return;
@@ -4009,30 +4934,27 @@
       pageState().dynamicBinding={collectionId:collection.id,itemKeyField,routePattern:routePattern.toLowerCase()}; dynamicCollectionItem=null; markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-dynamic-clear')?.addEventListener('click',()=>{
-      if(!pageState().dynamicBinding) return; checkpoint(); pageState().dynamicBinding=null; dynamicCollectionItem=null; refreshResponsiveOverrides(); markDirty(); renderDataControls();
+      if(!pageState().dynamicBinding) return; checkpoint(); pageState().dynamicBinding=null; dynamicCollectionItem=null; refreshResponsiveComposition(); markDirty(); renderDataControls();
     });
     document.getElementById('legend-cms-dynamic-preview')?.addEventListener('change',event=>{
       const binding=pageState().dynamicBinding; const projection=binding?collectionData.get(binding.collectionId):null;
       const item=(projection?.items||[]).find(value=>value.key===event.target.value);
-      dynamicCollectionItem=item?{collectionId:binding.collectionId,key:item.key,fields:item.fields}:null; refreshResponsiveOverrides(); renderDataControls();
+      dynamicCollectionItem=item?{collectionId:binding.collectionId,key:item.key,fields:item.fields}:null; refreshResponsiveComposition(); renderDataControls();
     });
     document.getElementById('legend-cms-collaboration-add')?.addEventListener('click',()=>void createCollaborationComment(false));
     document.getElementById('legend-cms-collaboration-page')?.addEventListener('click',()=>void createCollaborationComment(true));
-    document.getElementById('legend-cms-ai-generate')?.addEventListener('click',()=>void requestAiProposal());
-    document.getElementById('legend-cms-ai-apply')?.addEventListener('click',applyAiProposal);
-    document.getElementById('legend-cms-ai-discard')?.addEventListener('click',()=>{ pendingAiProposal=null; renderAiProposal(); });
     document.getElementById('legend-cms-component-save')?.addEventListener('click',()=>{
       const status=document.getElementById('legend-cms-component-status');
       const name=document.getElementById('legend-cms-component-name')?.value?.trim();
       const definition=captureReusableDefinition(name);
-      if(!definition){ if(status) status.textContent='Select an added block or added section. Template content stays linked to its template authority.'; return; }
+      if(!definition){ if(status) status.textContent='Select a non-system canonical block or section. Protected platform components cannot become reusable content.'; return; }
       checkpoint(); documentState.reusableComponents ||= {}; documentState.reusableComponents[definition.id]=definition;
       if(status) status.textContent=`Saved ${definition.name}.`; markDirty(); renderReusableComponents();
     });
     document.getElementById('legend-cms-media-refresh')?.addEventListener('click',()=>void refreshMediaLibrary());
     document.getElementById('legend-cms-media-search')?.addEventListener('input',()=>void refreshMediaLibrary());
     document.getElementById('legend-cms-media-kind')?.addEventListener('change',()=>void refreshMediaLibrary());
-    document.getElementById('legend-cms-media-upload')?.addEventListener('change',async event=>{ const file=event.target.files?.[0]; if(!file) return; const url=await uploadMedia(file); event.target.value=''; if(url) await refreshMediaLibrary(); });
+    document.getElementById('legend-cms-media-upload')?.addEventListener('change',async event=>{ const file=event.target.files?.[0]; if(!file) return; const asset=await uploadMedia(file); event.target.value=''; if(asset) await refreshMediaLibrary(); });
     document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void refreshQualityInspector());
     document.getElementById('legend-cms-breakpoint')?.addEventListener('change', event => { editorBreakpointKey=event.target.value; applyBreakpointPreview(); syncBreakpointControls(); });
     document.getElementById('legend-cms-breakpoint-add')?.addEventListener('click', () => {
@@ -4046,8 +4968,8 @@
     });
     document.getElementById('legend-cms-breakpoint-remove')?.addEventListener('click', () => {
       const current=(documentState.breakpoints||[]).find(value=>value.key===editorBreakpointKey); if (!current || current.isSystem) return;
-      checkpoint(); const key=current.key; markDeleted('breakpoint:' + key); documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
-      forEachDocumentOverride(override=>{ if(override?.breakpointStyles) delete override.breakpointStyles[key]; if(override?.breakpointLayouts) delete override.breakpointLayouts[key]; });
+      checkpoint(); const key=current.key; documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
+      forEachWebsiteModel(model=>{ if(model?.breakpointStyles) delete model.breakpointStyles[key]; if(model?.breakpointLayouts) delete model.breakpointLayouts[key]; });
       editorBreakpointKey='base'; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
     });
     const layoutHandlers={
@@ -4061,12 +4983,13 @@
       'legend-cms-layout-wrap':['wrap',value=>value||null]
     };
     Object.entries(layoutHandlers).forEach(([id,[field,convert]])=>document.getElementById(id)?.addEventListener('input',event=>{
-      if(!selected) return; checkpoint(); const override=selectedOverride(); if(!override) return; const layout=editingLayout(override,true); const value=convert(event.target.value); if(value==null) delete layout[field]; else layout[field]=value; applyElementOverride(selected,override); updateDirectCanvasUi(); markDirty();
+      if(!selected) return; checkpoint(); const model=selectedWebsiteModel(); if(!model) return; const layout=editingLayout(model,true); const value=convert(event.target.value); if(value==null) delete layout[field]; else layout[field]=value; applyCompositionNode(selected,model); updateDirectCanvasUi(); markDirty();
     }));
     installStudioControls(panel);
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
-      const ov = selectedOverride(); if (!ov) return;
+      const ov = selectedWebsiteModel(); if (!ov) return;
+      if (ov.actionKey) { syncEditorControls(); return; }
       checkpoint();
       const option = availableCtaOptions().find(candidate => candidate.choiceKey === event.target.value);
       if (!option) {
@@ -4079,40 +5002,54 @@
           ov.target = '_self';
           document.getElementById('legend-cms-custom-link').hidden = true;
         }
-        applyElementOverride(selected, ov); syncEditorControls(); markDirty();
+        applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
         return;
       }
       if (!option.managed && ov.actionKey) { syncEditorControls(); return; }
       if (option.managed) ov.actionKey = option.actionKey;
       ov.href = option.href; ov.target = option.openInNewTab ? '_blank' : '_self';
-      if (selected.dataset.cmsExtraId) {
+      if (selected.dataset.cmsCompositionId) {
         ov.text = option.defaultText || option.label;
         setContentText(selected, ov.text, true);
       }
-      applyElementOverride(selected, ov); syncEditorControls(); markDirty();
+      applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
     });
     panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
-    document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-extra-image').click());
+    document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-image-upload').click());
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
-    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedOverride(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
+    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedWebsiteModel(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
       if (!selected) return;
       if (!/^#[a-f0-9]{6}$/i.test(input.value)) { input.setCustomValidity('Enter a six-digit hex color, such as #000000.'); input.reportValidity(); return; }
-      input.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov.style ||= {}; ov.style[input.dataset.colorHex] = input.value.toLowerCase();
+      input.setCustomValidity(''); checkpoint(); const ov = selectedWebsiteModel(); ov.style ||= {}; ov.style[input.dataset.colorHex] = input.value.toLowerCase();
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
     panel.querySelectorAll('[data-color-reset]').forEach(button => button.addEventListener('click', () => {
-      if (!selected) return; checkpoint(); const ov = selectedOverride(); if (ov.style) delete ov.style[button.dataset.colorReset];
+      if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); if (ov.style) delete ov.style[button.dataset.colorReset];
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
-    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyElementOverride(selected, ov); markDirty(); }));
-    document.getElementById('legend-cms-video-file').addEventListener('change', async event => { const video = selected; if (video?.tagName !== 'VIDEO') return; const url = await uploadMedia(event.target.files?.[0]); if (!url || selected !== video) return; checkpoint(); const ov = selectedOverride(); ov.videoUrl = url; applyElementOverride(video, ov); syncEditorControls(); markDirty(); });
-    document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
-    document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
-    document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
+    ['href','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key === 'href' && !safeUrl(value)) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedWebsiteModel(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyCompositionNode(selected, ov); markDirty(); }));
+    document.getElementById('legend-cms-video-file').addEventListener('change', async event => {
+      const video = selected;
+      if (video?.tagName !== 'VIDEO' || !video.dataset.cmsCompositionId) return;
+      const asset = await uploadMedia(event.target.files?.[0]);
+      event.target.value='';
+      if (!asset || selected !== video || !String(asset.contentType).startsWith('video/')) return;
+      checkpoint();
+      const node = selectedWebsiteModel();
+      if(!node) return;
+      node.mediaAssetId = asset.id;
+      delete node.mediaUrl;
+      applyCompositionNode(video, node);
+      syncEditorControls();
+      markDirty();
+    });
+    document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyCompositionNode(selected, ov); markDirty(); });
+    document.getElementById('legend-cms-undo').addEventListener('click', () => restoreCanonicalV3History(undoStack, redoStack));
+    document.getElementById('legend-cms-redo').addEventListener('click', () => restoreCanonicalV3History(redoStack, undoStack));
     installDirectCanvasControls(preview);
-    showPanel('content');
+    showPanel('gpt');
   }
 
   function injectContentStyles() { const style = document.createElement('style'); style.textContent = `
@@ -4123,10 +5060,10 @@
       [data-cms-id][hidden]{display:none}
       .cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0;max-width:100%}
       .cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}
-      .cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px;max-width:100%;overflow-x:clip}
-      .cms-extra video,video.cms-extra{max-width:100%;height:auto}
-      .cms-extra-code{display:block;width:100%;max-width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}
-      .cms-extra-code iframe{display:block;width:100%;max-width:100%;height:100%;border:0;background:#fff}
+      .legend-legacy-migration-section{padding:clamp(24px,5vw,64px);min-height:120px;max-width:100%;overflow-x:clip}
+      .legend-legacy-migration-node video,video.legend-legacy-migration-node{max-width:100%;height:auto}
+      .legend-cms-embed,.legend-legacy-migration-code{display:block;width:100%;max-width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}
+      .legend-cms-embed iframe,.legend-legacy-migration-code iframe{display:block;width:100%;max-width:100%;height:100%;border:0;background:#fff}
       .legend-store-nav-cluster{display:flex;align-items:center;gap:clamp(8px,1vw,14px);margin-left:auto;flex:0 0 auto;white-space:nowrap}
       .legend-store-nav-cluster>a{display:inline-flex;align-items:center;justify-content:center}
       .legend-store-cart{position:relative}
@@ -4147,7 +5084,7 @@
       .legend-cms-selected{outline:none}
       [data-cms-editable="true"]{cursor:pointer}
       .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
-      .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
+      .legend-cms-preview .legend-cms-embed iframe,.legend-cms-preview .legend-legacy-migration-code iframe{pointer-events:none}
       .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad454d;background-color:#081a3a08;background-image:linear-gradient(to right,#d4ad4526 1px,transparent 1px),linear-gradient(to bottom,#d4ad4517 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px}
       .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;opacity:0;background:#f0cf78;box-shadow:0 0 0 1px #081a3a66}
       .legend-cms-grid-overlay::before{left:50%;top:0;bottom:0;width:1px;transform:translateX(-.5px)}
@@ -4204,15 +5141,18 @@
       .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
+      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
-      .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
+      .legend-cms-image,.legend-legacy-migration-image{display:block;margin-left:auto;margin-right:auto;height:auto}
       @media(max-width:800px){html{max-width:100%;overflow-x:hidden}body.legend-cms-editing{width:100%;max-width:100%;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr);overflow-x:hidden}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-preview{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}.legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}.legend-cms-panel{width:100%;max-width:100%;min-width:0;overflow-x:hidden;border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
     `;
     document.head.appendChild(style);
   }
 
   function buildEditor() {
+    if (legacyMigration)
+      throw new Error('Website Studio cannot open writable controls until canonical materialization completes.');
     injectEditorStyles();
     const preview = document.createElement('div');
     preview.className = 'legend-cms-preview';
@@ -4291,7 +5231,7 @@
     bar.innerHTML = `
       <button id="legend-cms-save">Save draft</button><button class="primary" id="legend-cms-publish">Publish</button>
       <span id="legend-cms-status" role="status" aria-live="polite">Draft editor</span>
-      <input id="legend-cms-extra-image" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <input id="legend-cms-image-upload" type="file" accept="image/jpeg,image/png,image/webp" hidden>
       <button id="legend-cms-up">Section ↑</button>
       <button id="legend-cms-down">Section ↓</button>
       <button id="legend-cms-reset">Reset selected</button><button id="legend-cms-remove">Delete selected</button>
@@ -4330,35 +5270,35 @@
     ['legend-cms-scale','legend-cms-width','legend-cms-height','legend-cms-padding-top','legend-cms-padding-bottom','legend-cms-offset-x','legend-cms-offset-y','legend-cms-align','legend-cms-hidden']
       .forEach(id => document.getElementById(id)?.addEventListener('input', updateSelectedFromControls));
 
-    document.getElementById('legend-cms-image')?.addEventListener('change', e => {
+    document.getElementById('legend-cms-image')?.addEventListener('change', async e => {
       const file = e.target.files?.[0];
-      if (!selected || !(selected instanceof HTMLImageElement)) return;
       const imageTarget = selected;
-      readImage(file, dataUrl => {
-        if (selected !== imageTarget) return;
-        checkpoint();
-        const ov = selectedOverride();
-        if (!ov) return;
-        ov.imageDataUrl = dataUrl;
-        selected.src = mediaUrl(dataUrl);
-        markDirty();
-      });
+      if (!imageTarget?.dataset?.cmsCompositionId || !(imageTarget instanceof HTMLImageElement)) return;
+      const asset=await uploadImageAsset(file);
+      e.target.value='';
+      if(!asset || selected!==imageTarget) return;
+      checkpoint();
+      const node=selectedWebsiteModel();
+      if(!node) return;
+      node.mediaAssetId=asset.id;
+      delete node.mediaUrl;
+      imageTarget.src=mediaUrl(asset.url);
+      markDirty();
     });
 
-    document.getElementById('legend-cms-favicon')?.addEventListener('change', e => {
-      const file = e.target.files?.[0];
-      readImage(file, dataUrl => {
-        checkpoint();
-        documentState.faviconImageDataUrl = dataUrl;
-        applyFavicon(dataUrl);
-        syncFaviconControls();
-        markDirty();
-      });
+    document.getElementById('legend-cms-favicon')?.addEventListener('change', async e => {
+      const asset=await uploadImageAsset(e.target.files?.[0]);
+      e.target.value='';
+      if(!asset) return;
+      checkpoint();
+      documentState.faviconImageDataUrl=asset.url;
+      applyFavicon(asset.url);
+      syncFaviconControls();
+      markDirty();
     });
     document.getElementById('legend-cms-favicon-remove')?.addEventListener('click', () => {
       if (!documentState.faviconImageDataUrl) return;
       checkpoint();
-      markDeleted('site:favicon');
       documentState.faviconImageDataUrl = null;
       applyFavicon(null);
       syncFaviconControls();
@@ -4382,18 +5322,16 @@
 
     document.getElementById('legend-cms-save')?.addEventListener('click', chooseDraft);
     document.getElementById('legend-cms-publish')?.addEventListener('click', () => save(true));
-    document.getElementById('legend-cms-extra-image')?.addEventListener('change', e => addImage(e.target.files?.[0]));
+    document.getElementById('legend-cms-image-upload')?.addEventListener('change', async e => { await addImage(e.target.files?.[0]); e.target.value=''; });
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected || isSharedShellElement(selected)) return;
-      const serviceCard = businessServiceCardFor(selected);
-      if (serviceCard) {
-        if (serviceCard.dataset.cmsExtraId) { setSelected(serviceCard); removeSelected(); return; }
-        checkpoint(); const ov = ensureOverride(serviceCard.dataset.cmsId); ov.hidden = true; serviceCard.hidden = true; setSelected(null); markDirty(); return;
-      }
-      if (selected.dataset.cmsExtraId) { removeSelected(); return; }
-      checkpoint(); const ov = selectedOverride(); ov.hidden = true; selected.hidden = true; setSelected(null); markDirty();
+      const current=selectedWebsiteModel(false);
+      if (current && (current.actionKey || current.systemKey || current.systemBinding || selected.tagName === 'FORM')) return;
+      const serviceCard=businessServiceCardFor(selected);
+      if(serviceCard?.dataset?.cmsCompositionId) setSelected(serviceCard);
+      removeSelected();
     });
     document.getElementById('legend-cms-reset')?.addEventListener('click', removeSelected);
     document.getElementById('legend-cms-exit')?.addEventListener('click', () => {
@@ -4415,6 +5353,7 @@
       bindBusiness(payload);
       managementPayload = payload;
       storeContext = payload.store || null;
+      legacyMigration = payload.legacyMigration || null;
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
       if (customPage) {
         const pages = normalizeDocument(payload.document).pages;
@@ -4425,6 +5364,18 @@
       revision = payload.revision;
       namedDrafts = payload.drafts || [];
       applyDocument(payload.document || {});
+
+      if(materializeMode){
+        const snapshot=currentMaterializedPage();
+        window.parent?.postMessage({type:'legend-site-materialized-page',...snapshot},location.origin);
+        document.documentElement.hidden=false;
+        return;
+      }
+
+      if(legacyMigration && payload.capabilities?.compositionV3===true){
+        await materializeCanonicalSite();
+      }
+
       preservePreviewNavigation();
       signalCatalog = Array.isArray(payload.signalCatalog?.events) && Array.isArray(payload.signalCatalog?.matchingFields)
         ? payload.signalCatalog : null;
@@ -4450,6 +5401,7 @@
   if (renderInput) {
     bindBusiness(renderInput);
     storeContext = renderInput.store || null;
+    legacyMigration = renderInput.legacyMigration || null;
     prepareDom();
     injectContentStyles();
     applyDocument(renderInput.document || {});
@@ -4457,7 +5409,7 @@
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
       if (!editorMode) void startPublicRuntime();
-      window.addEventListener('resize', refreshResponsiveOverrides);
+      window.addEventListener('resize', refreshResponsiveComposition);
       if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
     }
     return;
@@ -4465,12 +5417,12 @@
 
   document.addEventListener('DOMContentLoaded', async () => {
     injectContentStyles();
-    if (editorMode) await loadEditor();
+    if (editorMode || materializeMode) await loadEditor();
     else {
       try { await loadPublic(); await startPublicRuntime(); }
       catch (error) { unavailable(error); }
     }
-    window.addEventListener('resize', refreshResponsiveOverrides);
+    window.addEventListener('resize', refreshResponsiveComposition);
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
   }, { once: true });
 })();

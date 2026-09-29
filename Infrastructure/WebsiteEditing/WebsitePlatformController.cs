@@ -159,7 +159,8 @@ public class WebsitePlatformController : ControllerBase
             facts = publicFacts,
             collections = publicCollections.Values,
             store = await StorePayloadAsync(siteKey, document, publicStoreScope, ticket: null, cancellationToken),
-            document
+            document,
+            legacyMigration = document.LegacyMigration
         });
     }
 
@@ -286,7 +287,7 @@ public class WebsitePlatformController : ControllerBase
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
             : await new WebsiteCollectionProjectionService(_db).LoadCatalogAsync(business.Id, cancellationToken);
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, draft);
-        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = draft,
+        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = draft, legacyMigration = draft.LegacyMigration,
             revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
             facts,
             dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
@@ -296,9 +297,116 @@ public class WebsitePlatformController : ControllerBase
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history, signalCatalog = SignalCatalogPayload(), capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken), canDelete = await CanPublishAsync(actor, cancellationToken), canPromote = await CanPublishAsync(actor, cancellationToken) },
+            history, signalCatalog = SignalCatalogPayload(), capabilities = new {
+                canPublish = await CanPublishAsync(actor, cancellationToken),
+                canManageDomains = await CanPublishAsync(actor, cancellationToken),
+                canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business,
+                canSchedule = await CanPublishAsync(actor, cancellationToken),
+                canDelete = await CanPublishAsync(actor, cancellationToken),
+                canPromote = await CanPublishAsync(actor, cancellationToken),
+                compositionV3 = true,
+                browserAgentWorkspace = true,
+                externalAiApi = false,
+                requiresCompositionMaterialization = draft.LegacyMigration is not null
+            },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
+    }
+
+    [HttpGet("manage/source")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> SiteSource(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        if (document.LegacyMigration is not null)
+            return Ok(new
+            {
+                source = "legend_site_source",
+                revision = state.Revision,
+                requiresMaterialization = true,
+                schema = WebsiteSiteSource.Schema
+            });
+
+        try
+        {
+            var sourceText = WebsiteSiteSource.Serialize(document);
+            return Ok(new
+            {
+                source = "legend_site_source",
+                revision = state.Revision,
+                requiresMaterialization = false,
+                schema = WebsiteSiteSource.Schema,
+                text = sourceText,
+                sourceMap = WebsiteSiteSource.BuildSourceMap(sourceText)
+            });
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { error = "website_site_source_unavailable", message = ex.Message });
+        }
+    }
+
+    [HttpPost("manage/source/validate")]
+    [RequestSizeLimit(2_500_000)]
+    public async Task<IActionResult> ValidateSiteSource(
+        [FromBody] WebsiteSiteSourceRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+
+        var baseline = Read(state.DraftJson);
+        if (baseline.LegacyMigration is not null)
+            return Conflict(new
+            {
+                error = "website_site_source_materialization_required",
+                message = "Materialize the current website into the canonical v3 composition graph before editing Site Source."
+            });
+
+        CommerceBusiness? business = null;
+        WebsiteBusinessFacts? facts = null;
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue)
+        {
+            business = await _db.CommerceBusinesses.AsNoTracking()
+                .SingleAsync(value => value.Id == actor.CommerceBusinessId.Value, cancellationToken);
+            facts = await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken);
+        }
+
+        try
+        {
+            var options = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
+            var parsed = WebsiteSiteSource.Parse(request.Source, baseline, options);
+            await ValidateCompositionMediaOwnershipAsync(actor, parsed.Document, cancellationToken);
+            var normalized = WebsiteSiteSource.Serialize(parsed.Document);
+            return Ok(new
+            {
+                source = "legend_site_source_validation",
+                baseRevision = state.Revision,
+                persisted = false,
+                published = false,
+                text = normalized,
+                proposedDocument = parsed.Document,
+                sourceMap = parsed.SourceMap
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_site_source_invalid", message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message, message = "LEGEND Site Source could not be validated. No draft changes were saved." });
+        }
     }
 
     public sealed record StoreActionRequest(
@@ -325,6 +433,8 @@ public class WebsitePlatformController : ControllerBase
             ?? throw new InvalidOperationException("The commerce scope could not be created.");
 
         var document = Read(state.DraftJson);
+        if (document.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required", message = "Open Website Studio to materialize this legacy draft before changing store settings." });
         document.Store.Enabled = true;
         if (!string.IsNullOrWhiteSpace(request.NavigationLabel))
             document.Store.NavigationLabel = request.NavigationLabel.Trim();
@@ -366,6 +476,8 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = "revision_conflict" });
 
         var document = Read(state.DraftJson);
+        if (document.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required", message = "Open Website Studio to materialize this legacy draft before changing store settings." });
         document.Store.Enabled = false;
         document = WebsiteContentSanitizer.Sanitize(document);
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
@@ -390,15 +502,10 @@ public class WebsitePlatformController : ControllerBase
         });
     }
 
-    public sealed record WebsiteStudioAiRequest(
+    public sealed record WebsiteSiteSourceRequest(
         string Ticket,
         long ExpectedRevision,
-        string Mode,
-        string Instruction,
-        string PagePath,
-        string? SelectedElementId = null,
-        string? SelectedSectionId = null,
-        string? SelectedText = null);
+        string Source);
 
     public sealed record WebsiteSignalTestRequest(
         string Ticket,
@@ -421,7 +528,7 @@ public class WebsitePlatformController : ControllerBase
         string Status);
 
 
-    public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null, IReadOnlyList<string>? DeletedKeys = null);
+    public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null);
     public sealed record ProfileRequest(string Ticket, BusinessWebsiteProfileInput Settings);
     private object SignalCatalogPayload() => new { events = WebsiteSignalBindingPolicy.Options, automaticBehaviors = Shared.Analytics.AnalyticsEventCatalog.Behaviors.Where(behavior => !string.IsNullOrWhiteSpace(behavior.AutomaticTrigger)), matchingFields = WebsiteSignalBindingPolicy.ApprovedMatchingFields, runtimeEnabled = _configuration.GetValue<bool>("WebsiteMarketing:Enabled") };
 
@@ -718,96 +825,6 @@ public class WebsitePlatformController : ControllerBase
         });
     }
 
-    [HttpPost("manage/ai/propose")]
-    public async Task<IActionResult> WebsiteStudioAiProposal(
-        [FromBody] WebsiteStudioAiRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
-        if (actor is null) return Unauthorized();
-        var state = await StateAsync(actor, cancellationToken);
-        if (state.Revision != request.ExpectedRevision)
-            return Conflict(new { error = "revision_conflict", revision = state.Revision });
-
-        var document = Read(state.DraftJson);
-        var page = document.Pages.TryGetValue(request.PagePath, out var pageValue)
-            ? pageValue
-            : null;
-        CommerceBusiness? business = null;
-        WebsiteBusinessFacts? facts = null;
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue)
-        {
-            business = await _db.CommerceBusinesses.AsNoTracking()
-                .SingleAsync(value => value.Id == actor.CommerceBusinessId.Value, cancellationToken);
-            facts = await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken);
-        }
-
-        var context = new Infrastructure.WebsiteEditing.WebsiteStudioAiContext(
-            actor.SiteKey,
-            request.PagePath,
-            request.SelectedElementId,
-            request.SelectedSectionId,
-            request.SelectedText,
-            business?.DisplayName,
-            business?.BusinessType,
-            facts?.Services,
-            facts?.Hours,
-            document.Breakpoints,
-            page?.Title,
-            page?.Description);
-
-        try
-        {
-            var provider = HttpContext.RequestServices
-                .GetRequiredService<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService>();
-            var proposed = await provider.ProposeAsync(
-                new Infrastructure.WebsiteEditing.WebsiteStudioAiProviderRequest(
-                    request.Mode,
-                    request.Instruction,
-                    context),
-                cancellationToken);
-            var applied = WebsiteStudioAiProposalPolicy.Apply(
-                document,
-                request.Mode,
-                proposed.Summary,
-                request.PagePath,
-                request.SelectedElementId,
-                request.SelectedSectionId,
-                proposed.Operations);
-
-            return Ok(new
-            {
-                source = "ai_proposal_preview",
-                baseRevision = state.Revision,
-                applied.Mode,
-                applied.Summary,
-                applied.Operations,
-                proposedDocument = applied.ProposedDocument,
-                persisted = false,
-                published = false
-            });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = "invalid_ai_proposal", message = ex.Message });
-        }
-        catch (TimeoutException)
-        {
-            return StatusCode(StatusCodes.Status504GatewayTimeout,
-                new { error = "website_studio_ai_timeout", message = "Website Studio AI timed out. No draft changes were saved." });
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "website_studio_ai_not_configured")
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                new { error = ex.Message, message = "Website Studio AI is not configured. No draft changes were saved." });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return StatusCode(StatusCodes.Status502BadGateway,
-                new { error = ex.Message, message = "Website Studio AI could not produce a valid proposal. No draft changes were saved." });
-        }
-    }
-
     [HttpGet("manage/profile")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> BusinessProfile([FromQuery] string ticket, CancellationToken cancellationToken)
@@ -849,9 +866,9 @@ public class WebsitePlatformController : ControllerBase
         try
         {
             document = WebsiteContentSanitizer.Sanitize(request.Document);
-            document = PreserveServerDraftContent(Read(state.DraftJson), document, request.DeletedKeys);
         }
-        catch (ArgumentException ex) { return BadRequest(new { error = "invalid_signal_binding", message = ex.Message }); }
+        catch (ArgumentException ex) { return BadRequest(new { error = "invalid_website_document", message = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message, message = "Materialize the website into the canonical v3 graph before saving." }); }
         document.UpdatedUtc = DateTime.UtcNow;
         if (request.DraftId.HasValue || request.DraftName is not null)
         {
@@ -864,7 +881,9 @@ public class WebsitePlatformController : ControllerBase
             if (drafts.Any(d => d.Id != draft?.Id && string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
                 return Conflict(new { message = "That name already exists. Select the existing draft to update it, or choose another name." });
             if (draft is null) { draft = new WebsiteNamedDraft(); drafts.Add(draft); }
-            draft.Name = name; draft.Document = document; draft.UpdatedUtc = DateTime.UtcNow;
+            draft.Name = name;
+            draft.DocumentJson = JsonSerializer.Serialize(document, JsonOptions);
+            draft.UpdatedUtc = DateTime.UtcNow;
             state.NamedDraftsJson = JsonSerializer.Serialize(drafts, JsonOptions);
         }
         state.ScheduledPublishUtc = null;
@@ -879,92 +898,58 @@ public class WebsitePlatformController : ControllerBase
         return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
     }
 
-    private static WebsiteContentDocument PreserveServerDraftContent(
-        WebsiteContentDocument current,
-        WebsiteContentDocument incoming,
-        IReadOnlyList<string>? deletedKeys)
+    private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state)
     {
-        // Ordinary browser saves may update existing content but may not silently drop
-        // server-persisted website structure. Exact removals require an explicit deletion
-        // key emitted by the editor action that the user chose.
-        var deleted = new HashSet<string>(
-            (deletedKeys ?? Array.Empty<string>())
-                .Where(value => !string.IsNullOrWhiteSpace(value) && value.Length <= 512)
-                .Take(512),
-            StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(state.NamedDraftsJson)) return [];
 
-        static string PageKey(string path) => "page:" + path;
-        static string PageElementKey(string path, string id) => "page:" + path + "|element:" + id;
-        static string PageExtraKey(string path, string id) => "page:" + path + "|extra:" + id;
-
-        foreach (var (path, storedPage) in current.Pages)
+        try
         {
-            if (!incoming.Pages.TryGetValue(path, out var incomingPage))
+            using var parsed = JsonDocument.Parse(state.NamedDraftsJson);
+            if (parsed.RootElement.ValueKind != JsonValueKind.Array) return [];
+            var result = new List<WebsiteNamedDraft>();
+
+            foreach (var item in parsed.RootElement.EnumerateArray().Take(20))
             {
-                if (!deleted.Contains(PageKey(path)))
-                    incoming.Pages[path] = storedPage;
-                continue;
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                Guid id = Guid.NewGuid();
+                string name = "Website draft";
+                var updatedUtc = DateTime.UtcNow;
+                string? documentJson = null;
+
+                foreach (var property in item.EnumerateObject())
+                {
+                    if (property.Name.Equals("id", StringComparison.OrdinalIgnoreCase) &&
+                        Guid.TryParse(property.Value.ToString(), out var parsedId))
+                        id = parsedId;
+                    else if (property.Name.Equals("name", StringComparison.OrdinalIgnoreCase))
+                        name = property.Value.GetString() ?? name;
+                    else if (property.Name.Equals("updatedUtc", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value.TryGetDateTime(out var parsedUtc))
+                        updatedUtc = parsedUtc;
+                    else if (property.Name.Equals("documentJson", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value.ValueKind == JsonValueKind.String)
+                        documentJson = property.Value.GetString();
+                    else if (property.Name.Equals("document", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value.ValueKind == JsonValueKind.Object)
+                        documentJson = property.Value.GetRawText();
+                }
+
+                if (string.IsNullOrWhiteSpace(documentJson)) continue;
+                result.Add(new WebsiteNamedDraft
+                {
+                    Id = id,
+                    Name = name.Trim().Length is > 0 and <= 100 ? name.Trim() : "Website draft",
+                    DocumentJson = documentJson,
+                    UpdatedUtc = updatedUtc
+                });
             }
-
-            foreach (var (id, storedElement) in storedPage.Elements)
-                if (!incomingPage.Elements.ContainsKey(id) && !deleted.Contains(PageElementKey(path, id)))
-                    incomingPage.Elements[id] = storedElement;
-
-            foreach (var storedExtra in storedPage.Extras)
-                if (!incomingPage.Extras.Any(value => value.Id == storedExtra.Id) &&
-                    !deleted.Contains(PageExtraKey(path, storedExtra.Id)))
-                    incomingPage.Extras.Add(storedExtra);
-
-            foreach (var (id, order) in storedPage.SectionOrder)
-                if (!incomingPage.SectionOrder.ContainsKey(id))
-                    incomingPage.SectionOrder[id] = order;
+            return result;
         }
-
-        foreach (var (id, storedElement) in current.Elements)
-            if (!incoming.Elements.ContainsKey(id) && !deleted.Contains("root|element:" + id))
-                incoming.Elements[id] = storedElement;
-
-        foreach (var storedExtra in current.Extras)
-            if (!incoming.Extras.Any(value => value.Id == storedExtra.Id) &&
-                !deleted.Contains("root|extra:" + storedExtra.Id))
-                incoming.Extras.Add(storedExtra);
-
-        foreach (var (id, storedComponent) in current.ReusableComponents)
-            if (!incoming.ReusableComponents.ContainsKey(id) && !deleted.Contains("component:" + id))
-                incoming.ReusableComponents[id] = storedComponent;
-
-        foreach (var (id, storedCollection) in current.Collections)
-            if (!incoming.Collections.ContainsKey(id) && !deleted.Contains("collection:" + id))
-                incoming.Collections[id] = storedCollection;
-
-        foreach (var storedBreakpoint in current.Breakpoints.Where(value => !value.IsSystem))
-            if (!incoming.Breakpoints.Any(value => value.Key == storedBreakpoint.Key) &&
-                !deleted.Contains("breakpoint:" + storedBreakpoint.Key))
-                incoming.Breakpoints.Add(storedBreakpoint);
-
-        if (incoming.FaviconImageDataUrl is null &&
-            current.FaviconImageDataUrl is not null &&
-            !deleted.Contains("site:favicon"))
-            incoming.FaviconImageDataUrl = current.FaviconImageDataUrl;
-
-        incoming.Theme ??= new WebsiteThemeOverride();
-        var storedTheme = current.Theme ?? new WebsiteThemeOverride();
-        incoming.Theme.Navy ??= storedTheme.Navy;
-        incoming.Theme.NavyDeep ??= storedTheme.NavyDeep;
-        incoming.Theme.Gold ??= storedTheme.Gold;
-        incoming.Theme.GoldStrong ??= storedTheme.GoldStrong;
-        incoming.Theme.Muted ??= storedTheme.Muted;
-        incoming.Theme.Surface ??= storedTheme.Surface;
-        incoming.Theme.Text ??= storedTheme.Text;
-        incoming.Theme.FontFamily ??= storedTheme.FontFamily;
-        incoming.Theme.FontSize ??= storedTheme.FontSize;
-        incoming.Theme.BorderRadius ??= storedTheme.BorderRadius;
-
-        return incoming;
+        catch (JsonException)
+        {
+            return [];
+        }
     }
-
-    private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state) =>
-        string.IsNullOrWhiteSpace(state.NamedDraftsJson) ? new() : JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions) ?? new();
 
     public sealed record DraftRequest(string Ticket, long ExpectedRevision, Guid DraftId);
 
@@ -986,7 +971,7 @@ public class WebsitePlatformController : ControllerBase
         if (delete) drafts.Remove(draft);
         else
         {
-            state.DraftJson = JsonSerializer.Serialize(draft.Document, JsonOptions);
+            state.DraftJson = draft.DocumentJson;
             state.ScheduledPublishUtc = null; state.ScheduledRevision = null;
             state.ScheduledActorJson = null; state.ScheduleError = null;
         }
@@ -1046,7 +1031,19 @@ public class WebsitePlatformController : ControllerBase
             business = await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken);
             facts = await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         }
+        if (document.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required", message = "This website must be materialized into the canonical v3 composition graph before publishing." });
+
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
+        try
+        {
+            WebsiteSiteSource.ValidateCanonical(document, ctaOptions);
+            await ValidateCompositionMediaOwnershipAsync(actor, document, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_preflight_failed", message = ex.Message });
+        }
         var ctaError = WebsiteCallToActionCatalog.PrepareForPublish(document, ctaOptions);
         if (ctaError is not null) return BadRequest(new { error = "button_destination_required", message = ctaError });
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
@@ -1371,6 +1368,50 @@ public class WebsitePlatformController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { document = Read(state.DraftJson), revision = state.Revision, report = result.Report });
     }
+    private async Task ValidateCompositionMediaOwnershipAsync(
+        WebsiteEditorTicket actor,
+        WebsiteContentDocument document,
+        CancellationToken cancellationToken)
+    {
+        var ids = new HashSet<Guid>();
+        void Visit(IEnumerable<WebsiteCompositionNode> nodes)
+        {
+            foreach (var node in nodes ?? [])
+            {
+                if (node.MediaAssetId.HasValue && node.MediaAssetId.Value != Guid.Empty)
+                    ids.Add(node.MediaAssetId.Value);
+
+                if (!node.MediaAssetId.HasValue &&
+                    !string.IsNullOrWhiteSpace(node.MediaUrl) &&
+                    Uri.TryCreate(node.MediaUrl, UriKind.RelativeOrAbsolute, out var mediaUri))
+                {
+                    var path = mediaUri.IsAbsoluteUri ? mediaUri.AbsolutePath : node.MediaUrl.Split('?', '#')[0];
+                    const string marker = "/api/website-content/media/";
+                    var index = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                    if (index >= 0 && Guid.TryParse(path[(index + marker.Length)..].Trim('/'), out var parsed))
+                        ids.Add(parsed);
+                }
+
+                Visit(node.Children);
+            }
+        }
+
+        Visit(document.Shell.Header);
+        Visit(document.Shell.Footer);
+        foreach (var page in document.Pages.Values) Visit(page.Composition);
+        foreach (var component in document.ReusableComponents.Values) Visit(component.Composition);
+
+        if (ids.Count == 0) return;
+
+        var owned = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
+            .Where(asset => asset.OwnerKey == actor.OwnerUserId && ids.Contains(asset.Id))
+            .Select(asset => asset.Id)
+            .ToListAsync(cancellationToken);
+
+        if (owned.Count != ids.Count)
+            throw new ArgumentException("Website source references media that is unavailable to this website owner.");
+    }
+
     private string WebsiteContentApiBaseUrl() => (_configuration["WebsiteContentApiBaseUrl"] ?? "https://masterapp-protect.azurewebsites.net").TrimEnd('/');
     private string MediaBaseUrl() => WebsiteContentApiBaseUrl();
     private WebsiteDomainService DomainService() => HttpContext.RequestServices.GetRequiredService<WebsiteDomainService>();
@@ -1602,18 +1643,35 @@ public class WebsitePlatformController : ControllerBase
     {
         binding = null!;
         if (string.IsNullOrWhiteSpace(pagePath) || string.IsNullOrWhiteSpace(elementId) ||
-            string.IsNullOrWhiteSpace(bindingId) || !document.Pages.TryGetValue(pagePath, out var page))
+            string.IsNullOrWhiteSpace(bindingId))
             return false;
 
         IEnumerable<WebsiteSignalBinding>? bindings = null;
-        if (elementId.StartsWith("extra:", StringComparison.Ordinal))
+        if (document.LegacyMigration is { } legacy)
         {
-            var id = elementId.Split(':', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
-            bindings = page.Extras.FirstOrDefault(extra => extra.Id == id)?.Signals;
+            if (!legacy.Pages.TryGetValue(pagePath, out var legacyPage)) return false;
+            if (elementId.StartsWith("extra:", StringComparison.Ordinal))
+            {
+                var id = elementId.Split(':', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
+                bindings = legacyPage.Extras.FirstOrDefault(extra => extra.Id == id)?.Signals;
+            }
+            else if (legacyPage.Elements.TryGetValue(elementId, out var legacyElement))
+                bindings = legacyElement.Signals;
         }
-        else if (page.Elements.TryGetValue(elementId, out var element))
+        else
         {
-            bindings = element.Signals;
+            if (!document.Pages.TryGetValue(pagePath, out var page)) return false;
+            WebsiteCompositionNode? Find(IEnumerable<WebsiteCompositionNode> nodes)
+            {
+                foreach (var node in nodes ?? [])
+                {
+                    if (node.Id == elementId) return node;
+                    var child = Find(node.Children);
+                    if (child is not null) return child;
+                }
+                return null;
+            }
+            bindings = Find(page.Composition)?.Signals;
         }
 
         var matches = (bindings ?? []).Where(value => value.Id == bindingId).Take(2).ToArray();

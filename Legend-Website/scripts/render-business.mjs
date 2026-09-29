@@ -12,6 +12,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const cms=await readFile(resolve(root,'dist/legend-public-cms.js'),'utf8');
   const result={};
   const documents=input.document.pages||{};
+  const canonicalV3=Number(input.document?.version)===3;
   const projections=new Map((Array.isArray(input.collections)?input.collections:[])
     .filter(value=>value?.id).map(value=>[value.id,value]));
   const normalizeRoute=route=>(String(route||'').replace(/\/$/,'')||'/');
@@ -20,7 +21,8 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const templateByRoute=new Map(businessPages.map(page=>[page.key==='home'?'/':'/'+page.key,page]));
   const descriptors=new Map();
 
-  for(const route of templateByRoute.keys()) descriptors.set(route,{route,sourceRoute:route,dynamicItem:null});
+  if(!canonicalV3)
+    for(const route of templateByRoute.keys()) descriptors.set(route,{route,sourceRoute:route,dynamicItem:null});
   for(const rawRoute of Object.keys(documents)) {
     if(!staticRoute.test(rawRoute)||rawRoute.length>160)throw new Error('Invalid website page route.');
     const route=normalizeRoute(rawRoute);
@@ -52,10 +54,12 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
 
   const descriptorMeta=descriptor=>{
     const page=documents[descriptor.sourceRoute]||{};
-    const templatePath=typeof page.templatePath==='string'?normalizeRoute(page.templatePath):null;
-    const templateRoute=templatePath&&templateByRoute.has(templatePath)
-      ? templatePath
-      : templateByRoute.has(descriptor.sourceRoute)?descriptor.sourceRoute:null;
+    const templatePath=!canonicalV3&&typeof page.templatePath==='string'?normalizeRoute(page.templatePath):null;
+    const templateRoute=canonicalV3
+      ? '/'
+      : templatePath&&templateByRoute.has(templatePath)
+        ? templatePath
+        : templateByRoute.has(descriptor.sourceRoute)?descriptor.sourceRoute:null;
     const built=templateRoute?templateByRoute.get(templateRoute):null;
     const navigation=page.navigation||{};
     const dynamic=!!descriptor.dynamicItem;
@@ -71,7 +75,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
         : typeof navigation.parentPath==='string'&&navigation.parentPath!==descriptor.route?normalizeRoute(navigation.parentPath):null,
       order:Number.isFinite(Number(navigation.order))?Number(navigation.order):0,
       isDeleted:navigation.isDeleted===true,
-      template:!!built,
+      template:!canonicalV3&&!!built,
       dynamic
     };
   };
@@ -122,7 +126,9 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     }
 
     const routeKey=route==='/'?'home':route.slice(1).replace(/\//g,'-');
-    const renderPageKey=built?.key || (sourceRoute==='/'?'home':sourceRoute.slice(1).replace(/\//g,'-'));
+    const renderPageKey=canonicalV3
+      ? routeKey
+      : built?.key || (sourceRoute==='/'?'home':sourceRoute.slice(1).replace(/\//g,'-'));
     doc.body.dataset.pageKey=renderPageKey;
     const location=new URL('https://website.invalid'+route);
     const sandbox={window,document:doc,location,URL,URLSearchParams,console:{warn(){},error(){}},
@@ -134,7 +140,9 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     window.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'business',apiBase:'https://website.invalid',businessId:input.business.id};
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
     window.LEGEND_PUBLIC_CMS_RENDER_INPUT={
-      document:currentDocument,business:input.business,collections:input.collections||[],
+      document:currentDocument,
+      legacyMigration:canonicalV3?null:currentDocument,
+      business:input.business,collections:input.collections||[],
       store:storeContext,dynamicItem,pageKey:renderPageKey,pageCatalog,server:true
     };
     vm.runInNewContext(cms,sandbox,{timeout:3000,filename:'legend-public-cms.js'});
@@ -176,7 +184,9 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
           : collection)
       : (input.collections||[]);
     renderInput.textContent=JSON.stringify({
-      document:currentDocument,business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
+      document:currentDocument,
+      legacyMigration:canonicalV3?null:currentDocument,
+      business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
       pageKey:renderPageKey,pageCatalog,server:false,
       runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal,openAiMeasurementAsset:publicRuntimeAssets.openAiMeasurement}
     }).replace(/</g,'\\u003c');

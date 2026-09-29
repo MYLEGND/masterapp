@@ -420,15 +420,17 @@ public class WebsiteInquiryAuthority : ControllerBase
 
         try
         {
-            // Read-only binding identity translation from an already published version.
-            // New editor saves cannot create this retired manual outcome mapping.
-            var document = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(
+            // Historical-only translation. Canonical v3 forms do not carry a
+            // browser-authored Lead outcome mapping; Lead remains server-authoritative.
+            var document = WebsiteContentSanitizer.ReadPersisted(
                 scope.PublishedVersion.DocumentJson,
-                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            var legacy = document.LegacyMigration;
+            if (legacy is null) return null;
 
             var route = path.TrimEnd('/');
             if (route.Length == 0) route = "/";
-            if (!document.Pages.TryGetValue(route, out var page))
+            if (!legacy.Pages.TryGetValue(route, out var page))
                 return null;
 
             IEnumerable<WebsiteSignalBinding>? bindings = null;
