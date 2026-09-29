@@ -931,6 +931,9 @@
     } catch { return null; }
   }
 
+  // READ-ONLY PRE-V3 COMPATIBILITY BOUNDARY.
+  // Used only to render/migrate persisted historical JSON and old immutable versions.
+  // These helpers never mutate documentState and are never reachable from writable editor controls.
   function legacyPageState() {
     const pages=legacyMigration?.pages && typeof legacyMigration.pages==='object' ? legacyMigration.pages : {};
     const route=currentPageRoute();
@@ -2766,14 +2769,19 @@
     ]);
     const page = pageState();
     const candidates = [];
-    if (usesCanonicalComposition()) {
+    if (!legacyMigration) {
       walkComposition(page.composition, node => {
         candidates.push({ id:node.id, override:node, node:findEditableElement(node.id) });
       });
     } else {
+      const legacyPage=legacyPageState();
       candidates.push(
-        ...Object.entries(page.elements || {}).map(([id, override]) => ({ id, override, node: findEditableElement(id) })),
-        ...(page.extras || []).map(extra => ({ id: `extra:${extra.id}`, override: extra, node: document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`) }))
+        ...Object.entries(legacyPage.elements || {}).map(([id, override]) => ({ id, override, node:findEditableElement(id) })),
+        ...(legacyPage.extras || []).map(extra => ({
+          id:'extra:'+extra.id,
+          override:extra,
+          node:document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]')
+        }))
       );
     }
     window.__legendWebsiteSignalBindingsCleanup?.();
@@ -3436,30 +3444,21 @@
   }
 
   function moveSelectedSection(delta) {
-    if (!selectedSection || selectedSection.matches('.site-header,.site-footer')) return;
-    if (usesCanonicalComposition() && selectedSection.dataset.cmsCompositionId) {
-      const roots=pageState().composition || [];
-      const id=selectedSection.dataset.cmsCompositionId;
-      const index=roots.findIndex(node=>node.id===id);
-      const target=index+delta;
-      if(index<0 || target<0 || target>=roots.length) return;
-      checkpoint();
-      const [node]=roots.splice(index,1); roots.splice(target,0,node);
-      renderCanonicalCompositionPage();
-      setSelected(document.querySelector('[data-cms-id="'+CSS.escape(id)+'"]'));
-      markDirty(); refreshLayers();
-      return;
-    }
-    const sections=pageLayerSections();
-    const index=sections.indexOf(selectedSection);
+    if (legacyMigration)
+      throw new Error('Legacy website content is read-only until canonical materialization completes.');
+    if (!selectedSection || selectedSection.matches('.site-header,.site-footer') || !selectedSection.dataset.cmsCompositionId) return;
+
+    const roots=pageState().composition || [];
+    const id=selectedSection.dataset.cmsCompositionId;
+    const index=roots.findIndex(node=>node.id===id);
     const target=index+delta;
-    if(index<0 || target<0 || target>=sections.length) return;
-    const targetSection=sections[target];
-    if(targetSection.parentElement!==selectedSection.parentElement) return;
+    if(index<0 || target<0 || target>=roots.length) return;
+
     checkpoint();
-    if(delta<0) selectedSection.parentElement.insertBefore(selectedSection,targetSection);
-    else selectedSection.parentElement.insertBefore(targetSection,selectedSection);
-    syncSectionOrderFromDom();
+    const [node]=roots.splice(index,1);
+    roots.splice(target,0,node);
+    renderCanonicalCompositionPage();
+    setSelected(findEditableElement(id));
     markDirty();
     refreshLayers();
   }
@@ -3511,6 +3510,10 @@
     if (saving) return;
     clearTimeout(autoSaveTimer);
     const status = document.getElementById('legend-cms-status');
+    if (legacyMigration) {
+      if (status) status.textContent='Legacy website content is read-only until canonical materialization completes.';
+      return false;
+    }
     if (publish && dirty) { await save(false); if (dirty) return; }
     if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
     saving = true;
@@ -4991,6 +4994,8 @@
   }
 
   function buildEditor() {
+    if (legacyMigration)
+      throw new Error('Website Studio cannot open writable controls until canonical materialization completes.');
     injectEditorStyles();
     const preview = document.createElement('div');
     preview.className = 'legend-cms-preview';
