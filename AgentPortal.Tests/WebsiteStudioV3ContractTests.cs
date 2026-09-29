@@ -168,7 +168,7 @@ public sealed class WebsiteStudioV3ContractTests
     {
         var source = new WebsiteContentDocument
         {
-            Shell = new WebsiteSharedShell
+            Shell = new WebsiteSharedShellDocument
             {
                 Header =
                 [
