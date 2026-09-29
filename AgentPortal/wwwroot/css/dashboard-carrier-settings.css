@@ -692,10 +692,6 @@
 }
 
 @media (max-width: 720px) {
-    .legend-modal.carrier-settings-modal .modal-dialog {
-        max-width: calc(100vw - 22px);
-    }
-
     .carrier-editor-row {
         grid-template-columns: 1fr;
         gap: 0.68rem;
@@ -708,6 +704,7 @@
 
     .carrier-settings-statusbar {
         align-items: flex-start;
+        gap: var(--legend-mobile-gap, 6px);
     }
 }
 
@@ -729,16 +726,6 @@
     .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-clear-search,
     .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings {
         width: 100%;
-    }
-
-    .legend-modal.carrier-settings-modal .modal-header,
-    .legend-modal.carrier-settings-modal .modal-footer {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-
-    .legend-modal.carrier-settings-modal .modal-body {
-        padding: 1rem 0.92rem 1.1rem;
     }
 
     .carrier-category-block {
