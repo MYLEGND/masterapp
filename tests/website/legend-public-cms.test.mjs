@@ -1463,6 +1463,8 @@ test('editor preview is horizontally locked to the rendered website at every bre
     assert.match(source,/\.legend-cms-preview\{width:100vw;max-width:none;min-width:100vw;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom/);
     assert.match(source,/@media\(max-width:800px\)[\s\S]*?\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:hidden/);
     assert.doesNotMatch(source,/window\.innerWidth > 800/);
+    assert.doesNotMatch(source,/body\.legend-cms-editing\{[^}]*grid-template/);
+    assert.doesNotMatch(source,/body\.legend-cms-editing\.legend-cms-panel-hidden\{[^}]*grid-template/);
   }finally{f.close();}
 });
 
