@@ -36,6 +36,9 @@ public sealed class WebsiteStoreSettings
 
 public sealed class WebsiteContentDocument
 {
+    [JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? UnexpectedFields { get; set; }
+
     public int Version { get; set; } = WebsiteStudioContract.CurrentDocumentVersion;
     public string? FaviconImageDataUrl { get; set; }
     public WebsiteStoreSettings Store { get; set; } = new();
@@ -58,89 +61,11 @@ public sealed class WebsiteContentDocument
 
 public sealed class WebsiteSharedShellDocument
 {
+    [JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? UnexpectedFields { get; set; }
+
     public List<WebsiteCompositionNode> Header { get; set; } = new();
     public List<WebsiteCompositionNode> Footer { get; set; } = new();
-}
-
-public sealed class WebsiteElementOverride
-{
-    public List<WebsiteSignalBinding> Signals { get; set; } = new();
-    public string? Text { get; set; }
-    public string? ImageDataUrl { get; set; }
-    public bool? Hidden { get; set; }
-    public string? ActionKey { get; set; }
-    public string? Href { get; set; }
-    public string? Target { get; set; }
-    public string? Alt { get; set; }
-    public string? VideoUrl { get; set; }
-    public WebsitePlacement? Placement { get; set; }
-    public WebsiteStyleOverride Style { get; set; } = new();
-    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
-    public WebsiteLayoutOverride Layout { get; set; } = new();
-    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
-    public List<WebsiteAnimationBinding> Animations { get; set; } = new();
-    public string? SyncSourceId { get; set; }
-    public WebsiteDataBinding? DataBinding { get; set; }
-}
-
-public sealed class WebsiteStyleOverride
-{
-    public string? TextAlign { get; set; }
-    public decimal? FontScale { get; set; }
-    public decimal? WidthPercent { get; set; }
-    public decimal? PaddingTop { get; set; }
-    public decimal? PaddingBottom { get; set; }
-    public string? ObjectPosition { get; set; }
-    public string? Color { get; set; }
-    public string? BackgroundColor { get; set; }
-    public string? FontFamily { get; set; }
-    public int? FontWeight { get; set; }
-    public decimal? FontSize { get; set; }
-    public decimal? LineHeight { get; set; }
-    public decimal? LetterSpacing { get; set; }
-    public decimal? PaddingLeft { get; set; }
-    public decimal? PaddingRight { get; set; }
-    public decimal? BorderRadius { get; set; }
-    public string? ObjectFit { get; set; }
-    public decimal? HeightPx { get; set; }
-    public decimal? OffsetXPercent { get; set; }
-    public decimal? OffsetYPx { get; set; }
-
-}
-
-public sealed class WebsitePlacement
-{
-    public string SectionId { get; set; } = "";
-    public string? BeforeId { get; set; }
-    public string? ContainerId { get; set; }
-    public bool Flow { get; set; }
-    public int Column { get; set; } = 1;
-    public int Span { get; set; } = 12;
-}
-
-public sealed class WebsiteExtraComponent
-{
-    public List<WebsiteSignalBinding> Signals { get; set; } = new();
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string SectionId { get; set; } = "";
-    public string Type { get; set; } = "text";
-    public string? TemplateSectionId { get; set; }
-    public string? ActionKey { get; set; }
-    public string? Href { get; set; }
-    public string? Target { get; set; }
-    public string? Alt { get; set; }
-    public string? VideoUrl { get; set; }
-    public WebsitePlacement? Placement { get; set; }
-    public string? Title { get; set; }
-    public string? Text { get; set; }
-    public string? ImageDataUrl { get; set; }
-    public WebsiteStyleOverride Style { get; set; } = new();
-    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
-    public WebsiteLayoutOverride Layout { get; set; } = new();
-    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
-    public List<WebsiteAnimationBinding> Animations { get; set; } = new();
-    public string? SyncSourceId { get; set; }
-    public WebsiteDataBinding? DataBinding { get; set; }
 }
 
 public sealed class WebsiteThemeOverride
@@ -214,6 +139,9 @@ public sealed class WebsitePageNavigation
 
 public sealed class WebsiteReusableComponentDefinition
 {
+    [JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? UnexpectedFields { get; set; }
+
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "section";
@@ -249,6 +177,9 @@ public sealed record BusinessWebsiteProfileSummary(
 
 public sealed class WebsitePageDocument
 {
+    [JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? UnexpectedFields { get; set; }
+
     public string? Title { get; set; }
     public string? Description { get; set; }
     public WebsitePageNavigation Navigation { get; set; } = new();
@@ -260,6 +191,9 @@ public sealed class WebsitePageDocument
 
 public sealed class WebsiteCompositionNode
 {
+    [JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? UnexpectedFields { get; set; }
+
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Type { get; set; } = "text";
     public string? Tag { get; set; }
