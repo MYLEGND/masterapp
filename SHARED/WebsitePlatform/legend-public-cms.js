@@ -820,7 +820,7 @@
         el.style.height = `${style.heightPx}px`;
         // Ordinary website content never becomes its own scroll container.
         // Code frames remain clipped to their explicit sandbox frame.
-        el.style.overflow = (el.classList.contains('legend-cms-embed') || el.classList.contains('cms-extra-code')) ? 'hidden' : 'visible';
+        el.style.overflow = (el.classList.contains('legend-cms-embed') || el.classList.contains('legend-legacy-migration-code')) ? 'hidden' : 'visible';
       }
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
@@ -982,6 +982,10 @@
       (legacyMigration?.extras || []).find(extra=>extra?.id===id) || null;
   }
 
+  // BEGIN ONE-WAY LEGACY V2 -> CANONICAL V3 MIGRATION.
+  // These helpers only render the separately supplied read-only legacyMigration
+  // envelope long enough to materialize the effective website into v3. They never
+  // write legacy fields into documentState, Site Source, drafts, or published v3.
   function legacyMigrationRecordForElement(el) {
     if (!el || !legacyMigration) return null;
     if (el.dataset.cmsExtraId && !el.dataset.cmsExtraField)
@@ -1056,7 +1060,7 @@
     if(extra.type==='reusable'){
       const definition=legacyMigrationReusableDefinition(extra);
       const el=document.createElement(definition?.kind==='section'?'section':'div');
-      el.className='cms-extra cms-reusable-instance';
+      el.className='legend-legacy-migration-node cms-reusable-instance';
       el.dataset.cmsExtraId=extra.id;
       el.dataset.cmsId='extra:'+extra.id;
       if(extra.hidden===true) el.hidden=true;
@@ -1093,7 +1097,7 @@
   function applyLegacyMigrationPreview() {
     if(!legacyMigration) return;
     const page=legacyMigrationPageState();
-    document.querySelectorAll('.cms-extra').forEach(node=>node.remove());
+    document.querySelectorAll('.legend-legacy-migration-node').forEach(node=>node.remove());
 
     const extras=[...(legacyMigration.extras || []),...(page.extras || [])];
     extras.filter(extra=>extra.type==='section').forEach(createLegacyMigrationExtra);
@@ -1143,7 +1147,7 @@
       };
     }
 
-    if (extra?.type === 'code' && el.classList.contains('cms-extra-code')) {
+    if (extra?.type === 'code' && el.classList.contains('legend-legacy-migration-code')) {
       return {
         id, type:'embed', tag:'div', className:cleanCompositionClassName(el),
         text:extra.text || defaultCodeBlock, signals:cloneCanonicalValue(extra.signals || []),
@@ -1695,15 +1699,15 @@
     let el;
     if (extra.type === 'image') {
       el = document.createElement('img');
-      el.src = mediaUrl(extra.imageDataUrl || ''); el.alt = ''; el.className = 'cms-extra cms-extra-image';
+      el.src = mediaUrl(extra.imageDataUrl || ''); el.alt = ''; el.className = 'legend-legacy-migration-node legend-legacy-migration-image';
     } else if (extra.type === 'section') {
       el = document.createElement('section');
       if (editable) el.dataset.cmsSection = `extra:${extra.id}`;
-      el.className = 'cms-extra cms-extra-section';
+      el.className = 'legend-legacy-migration-node legend-legacy-migration-section';
       if (extra.templateSectionId) {
-        const template=document.querySelector(`[data-cms-section="${CSS.escape(extra.templateSectionId)}"]:not(.cms-extra-section)`);
+        const template=document.querySelector(`[data-cms-section="${CSS.escape(extra.templateSectionId)}"]:not(.legend-legacy-migration-section)`);
         if (template) {
-          el.className=['cms-extra','cms-extra-section',...template.classList].filter((value,index,array)=>value && array.indexOf(value)===index).join(' ');
+          el.className=['legend-legacy-migration-node','legend-legacy-migration-section',...template.classList].filter((value,index,array)=>value && array.indexOf(value)===index).join(' ');
           el.innerHTML=template.innerHTML;
           let childIndex=0;
           el.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article').forEach(child=>{
@@ -1717,9 +1721,9 @@
       }
     } else if (extra.type === 'video') {
       el = document.createElement('video'); el.controls = true; el.preload = 'metadata';
-      if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
+      if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'legend-legacy-migration-node';
     } else if (extra.type === 'card') {
-      el = document.createElement('article'); el.className = 'cms-extra card cms-extra-card';
+      el = document.createElement('article'); el.className = 'legend-legacy-migration-node card legend-legacy-migration-card';
       const heading = document.createElement('h3'); setContentText(heading, extra.title || 'New service', true);
       const copy = document.createElement('p'); setContentText(copy, extra.text || '', true);
       if (editable) for (const [node, field] of [[heading, 'title'], [copy, 'text']]) {
@@ -1729,11 +1733,11 @@
       el.append(heading, copy);
     } else if (extra.type === 'button') {
       el = document.createElement('a'); el.textContent = extra.text || 'New button';
-      if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
+      if (safeUrl(extra.href)) el.href = extra.href; el.className = 'legend-legacy-migration-node btn primary';
     } else if (extra.type === 'form') {
       el = document.createElement('form');
       el.id = `website_inquiry_${extra.id}`;
-      el.className = 'cms-extra public-form cms-extra-form';
+      el.className = 'legend-legacy-migration-node public-form legend-legacy-migration-form';
       el.dataset.websiteInquiry = '';
       el.dataset.formKey = 'website_inquiry';
       el.setAttribute('action', '/api/website-inquiries/public');
@@ -1766,13 +1770,13 @@
       const status = document.createElement('p'); status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
       fieldset.append(legend,grid,submit); el.append(fieldset,status);
     } else if (extra.type === 'code') {
-      el = document.createElement('div'); el.className = 'cms-extra cms-extra-code';
+      el = document.createElement('div'); el.className = 'legend-legacy-migration-node legend-legacy-migration-code';
       const frame = document.createElement('iframe'); frame.dataset.cmsCodeFrame = 'true'; frame.title = 'Custom code block';
       frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
       frame.setAttribute('referrerpolicy', 'no-referrer'); frame.setAttribute('loading', 'lazy');
       el.appendChild(frame); renderCodePreview(el, extra);
     } else {
-      el = document.createElement('p'); el.textContent = extra.text || ''; el.className = 'cms-extra cms-extra-text';
+      el = document.createElement('p'); el.textContent = extra.text || ''; el.className = 'legend-legacy-migration-node legend-legacy-migration-node-text';
     }
     if (editable) {
       el.dataset.cmsExtraId = extra.id; el.dataset.cmsId = `extra:${extra.id}`; el.dataset.cmsEditable = 'true';
@@ -2125,7 +2129,7 @@
     if(legacyMigration){
       applyLegacyMigrationPreview();
     }else{
-      document.querySelectorAll('.cms-extra').forEach(node=>{scaledElements.delete(node);node.remove();});
+      document.querySelectorAll('.legend-legacy-migration-node').forEach(node=>{scaledElements.delete(node);node.remove();});
       renderCanonicalShell();
       renderCanonicalCompositionPage();
     }
@@ -2294,7 +2298,7 @@
     count.hidden=total<1;
   }
 
-  function templatePageEntries() {
+  function publishedRouteCatalogEntries() {
     const entries=new Map();
     const catalog=Array.isArray(renderInput?.pageCatalog) ? renderInput.pageCatalog : (context.pages || []);
     catalog.forEach((page,index) => {
@@ -2303,7 +2307,7 @@
       entries.set(route,{
         route,
         label:page.label || route,
-        template:page.template !== false,
+        nativeRoute:page.template !== false,
         showInNavigation:page.showInNavigation !== false,
         parentPath:normalizePageRoute(page.parentPath),
         order:Number.isFinite(Number(page.order)) ? Number(page.order) : index * 10,
@@ -2319,7 +2323,7 @@
   }
 
   function websitePageEntries(includeDeleted = true) {
-    const entries=templatePageEntries();
+    const entries=publishedRouteCatalogEntries();
     for(const [rawPath,page] of Object.entries(documentState.pages || {})){
       const route=normalizePageRoute(rawPath);
       if(!route || !page || typeof page!=='object') continue;
@@ -2329,7 +2333,7 @@
       entries.set(route,{
         route,
         label:navigation.label || page.title || previous?.label || route,
-        template:previous?.template===true,
+        nativeRoute:previous?.nativeRoute===true,
         legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
         deleted:navigation.isDeleted===true,
         showInNavigation:navigation.showInNavigation!==false,
@@ -2361,14 +2365,14 @@
 
   function editorUrlForRoute(route, materialize = false) {
     route=normalizePageRoute(route); if(!route) return null;
-    const templates=templatePageEntries();
+    const publishedRoutes=publishedRouteCatalogEntries();
     const entry=websitePageEntries(true).find(value=>value.route===route);
     const url=new URL(location.origin);
     if (SITE_KEY==='business') {
-      const nativeTemplate=templates.has(route) && (!legacyMigration || !entry?.legacyTemplatePath || entry.legacyTemplatePath===route);
-      url.pathname='/business-preview/' + (nativeTemplate ? route.replace(/^\//,'') : '');
+      const nativePublishedRoute=templates.has(route) && (!legacyMigration || !entry?.legacyTemplatePath || entry.legacyTemplatePath===route);
+      url.pathname='/business-preview/' + (nativePublishedRoute ? route.replace(/^\//,'') : '');
       url.searchParams.set('businessId',BUSINESS_ID);
-      if (!nativeTemplate) url.searchParams.set('cmsPage',route);
+      if (!nativePublishedRoute) url.searchParams.set('cmsPage',route);
     } else {
       const prefix = SITE_KEY === 'protect' ? (managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}` : context.pagePrefix || '') : '';
       url.pathname=prefix + (route==='/'?'/':route);
@@ -2521,6 +2525,7 @@
     if(status) status.textContent='Site Source ready · legacy mutation authority deleted';
     return true;
   }
+  // END ONE-WAY LEGACY V2 -> CANONICAL V3 MIGRATION.
 
   function renderPageManager() {
     const host=document.getElementById('legend-cms-page-list');
@@ -4394,7 +4399,7 @@
       const control = choices[key]
         ? `<select data-style-key="${key}"><option value="">Default</option>${choices[key].map(value => `<option value="${value}">${value}</option>`).join('')}</select>`
         : `<input data-style-key="${key}" type="${['color','backgroundColor'].includes(key) ? 'color' : 'number'}" step="any">`;
-      return `<label class="legend-cms-group">${label}${control}${['color','backgroundColor'].includes(key) ? `<input data-color-hex="${key}" type="text" maxlength="7" pattern="#[a-fA-F0-9]{6}" aria-label="${label} hex code" placeholder="#000000"><button type="button" data-color-reset="${key}">Use template color</button>` : ''}</label>`;
+      return `<label class="legend-cms-group">${label}${control}${['color','backgroundColor'].includes(key) ? `<input data-color-hex="${key}" type="text" maxlength="7" pattern="#[a-fA-F0-9]{6}" aria-label="${label} hex code" placeholder="#000000"><button type="button" data-color-reset="${key}">Use inherited color</button>` : ''}</label>`;
     }).join('');
   }
 
@@ -4823,7 +4828,7 @@
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
-    sourceView.innerHTML='<h2>LEGEND Site Source</h2><p>One deterministic source view of the same v3 graph used by the canvas and AI. Canonical actions and system forms are validated server-side and provider/event wiring is not editable here.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Entire site</option><option value="selection">Selected component / section</option></select></label><small id="legend-cms-source-location">Master Source · entire website</small><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false"></textarea><small id="legend-cms-source-status" role="status">Source is synchronized with the current draft.</small><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply validated source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Reload from canvas</button></div>';
+    sourceView.innerHTML='<h2>LEGEND Site Source</h2><p>One deterministic source view of the same v3 graph used by the canvas and browser-operated GPT. Canonical actions and system forms are validated server-side and provider/event wiring is not editable here.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Entire site</option><option value="selection">Selected component / section</option></select></label><small id="legend-cms-source-location">Master Source · entire website</small><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false"></textarea><small id="legend-cms-source-status" role="status">Source is synchronized with the current draft.</small><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply validated source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Reload from canvas</button></div>';
     tools.appendChild(sourceView);
 
     const publishView=document.createElement('section'); publishView.dataset.cmsView='publish'; publishView.hidden=true;
@@ -5055,10 +5060,10 @@
       [data-cms-id][hidden]{display:none}
       .cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0;max-width:100%}
       .cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}
-      .cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px;max-width:100%;overflow-x:clip}
-      .cms-extra video,video.cms-extra{max-width:100%;height:auto}
-      .legend-cms-embed,.cms-extra-code{display:block;width:100%;max-width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}
-      .legend-cms-embed iframe,.cms-extra-code iframe{display:block;width:100%;max-width:100%;height:100%;border:0;background:#fff}
+      .legend-legacy-migration-section{padding:clamp(24px,5vw,64px);min-height:120px;max-width:100%;overflow-x:clip}
+      .legend-legacy-migration-node video,video.legend-legacy-migration-node{max-width:100%;height:auto}
+      .legend-cms-embed,.legend-legacy-migration-code{display:block;width:100%;max-width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}
+      .legend-cms-embed iframe,.legend-legacy-migration-code iframe{display:block;width:100%;max-width:100%;height:100%;border:0;background:#fff}
       .legend-store-nav-cluster{display:flex;align-items:center;gap:clamp(8px,1vw,14px);margin-left:auto;flex:0 0 auto;white-space:nowrap}
       .legend-store-nav-cluster>a{display:inline-flex;align-items:center;justify-content:center}
       .legend-store-cart{position:relative}
@@ -5079,7 +5084,7 @@
       .legend-cms-selected{outline:none}
       [data-cms-editable="true"]{cursor:pointer}
       .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
-      .legend-cms-preview .legend-cms-embed iframe,.legend-cms-preview .cms-extra-code iframe{pointer-events:none}
+      .legend-cms-preview .legend-cms-embed iframe,.legend-cms-preview .legend-legacy-migration-code iframe{pointer-events:none}
       .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad454d;background-color:#081a3a08;background-image:linear-gradient(to right,#d4ad4526 1px,transparent 1px),linear-gradient(to bottom,#d4ad4517 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px}
       .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;opacity:0;background:#f0cf78;box-shadow:0 0 0 1px #081a3a66}
       .legend-cms-grid-overlay::before{left:50%;top:0;bottom:0;width:1px;transform:translateX(-.5px)}
@@ -5139,7 +5144,7 @@
       .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
-      .legend-cms-image,.cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
+      .legend-cms-image,.legend-legacy-migration-image{display:block;margin-left:auto;margin-right:auto;height:auto}
       @media(max-width:800px){html{max-width:100%;overflow-x:hidden}body.legend-cms-editing{width:100%;max-width:100%;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr);overflow-x:hidden}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-preview{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}.legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}.legend-cms-panel{width:100%;max-width:100%;min-width:0;overflow-x:hidden;border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
     `;
     document.head.appendChild(style);
