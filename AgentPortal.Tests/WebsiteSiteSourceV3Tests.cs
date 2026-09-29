@@ -219,6 +219,15 @@ public sealed class WebsiteSiteSourceV3Tests
         var hero = model.Pages.Single(page => page.Path == "/").Composition
             .Single(node => node.Id == "home.hero");
         var quote = hero.Children.Single(node => node.Id == "home.hero.quote");
+        var form = hero.Children.Single(node => node.Id == "home.hero.form");
+
+        Assert.Null(quote.Href);
+        Assert.Null(quote.Target);
+        Assert.Null(quote.DataBinding);
+        Assert.Null(form.Href);
+        Assert.Null(form.DataBinding);
+        Assert.DoesNotContain("/api/website-inquiries/public", serialized, StringComparison.Ordinal);
+
         quote.Href = "https://untrusted.example/changed";
         quote.Target = "_blank";
         quote.DataBinding = new WebsiteDataBinding
@@ -228,7 +237,6 @@ public sealed class WebsiteSiteSourceV3Tests
             Target = "href"
         };
 
-        var form = hero.Children.Single(node => node.Id == "home.hero.form");
         form.Href = "https://untrusted.example/intake";
         form.DataBinding = new WebsiteDataBinding
         {
