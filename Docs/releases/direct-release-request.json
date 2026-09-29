@@ -1,14 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the already validated canonical Meta endpoint authority repair after merge to legend/approved-changes. Deploy only the affected .NET web hosts that consume the shared Meta marketing infrastructure: AgentPortal, ClientApp, Protect, and Parfait. Do not deploy the static LEGEND website or change Cloudflare routing.",
-  "purpose": "Publish merged PR #279: replace retired per-service Meta API version pins with the single MetaGraphEndpointAuthority used by campaigns/insights, OAuth/account discovery, and Meta CAPI. No analytics taxonomy, CRM, OpenAI, website runtime, campaign logic, or routing change is included.",
-  "requestId": "canonical-meta-endpoint-authority-20260928",
+  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the validated Website Studio v3 canonical replacement after merge to legend/approved-changes. Deploy only the applications affected by the v3 diff. Preserve the already merged Meta Ads campaign-fetch repair and do not modify Cloudflare routing.",
+  "purpose": "Publish merged PR #275 Website Studio v3: canonical WebsiteContentDocument v3 composition/source authority, browser-operated GPT workspace, one-way legacy materialization, protected CTA/signal/inquiry wiring, v3 business publication renderer, and removal of the app-side OpenAI Website Studio proposal path. Existing canonical analytics, Meta/OpenAI downstream measurement, CRM outcome, commerce, owner-scope, publishing and rollback authorities remain intact.",
+  "requestId": "website-studio-v3-canonical-release-20260928",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait"
+    "masterapp-parfait",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
