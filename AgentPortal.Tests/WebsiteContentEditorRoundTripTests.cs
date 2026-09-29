@@ -841,9 +841,9 @@ public sealed class WebsiteContentEditorRoundTripTests
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.Contains("page_title_missing", codes);
-        Assert.Contains("navigation_label_missing", codes);
         Assert.Contains("dynamic_collection_missing", codes);
-        Assert.Contains("image_alt_missing", codes);
+        Assert.DoesNotContain("navigation_label_missing", codes);
+        Assert.DoesNotContain("image_alt_missing", codes);
 
         Assert.IsType<UnauthorizedResult>(await fixture.CreateController().DraftQuality(
             "invalid-ticket",
