@@ -458,31 +458,10 @@ public static class WebsiteCallToActionCatalog
         WebsiteContentDocument document,
         IReadOnlyList<WebsiteCallToActionOption> options)
     {
+        if (document.LegacyMigration is not null)
+            return "This website must be materialized into the canonical v3 composition graph before publishing.";
+
         var byKey = options.ToDictionary(option => option.Key, StringComparer.Ordinal);
-        string? ResolveElement(WebsiteElementOverride element)
-        {
-            if (string.IsNullOrWhiteSpace(element.ActionKey)) return null;
-            if (!byKey.TryGetValue(element.ActionKey, out var option))
-                return "A configured button action is no longer available. Reopen the editor and choose an active action.";
-            element.Href = option.Href;
-            element.Target = option.OpenInNewTab ? "_blank" : "_self";
-            return null;
-        }
-        string? ResolveExtra(WebsiteExtraComponent extra)
-        {
-            if (!string.IsNullOrWhiteSpace(extra.ActionKey))
-            {
-                if (!byKey.TryGetValue(extra.ActionKey, out var option))
-                    return "A configured button action is no longer available. Reopen the editor and choose an active action.";
-                extra.Href = option.Href;
-                extra.Target = option.OpenInNewTab ? "_blank" : "_self";
-            }
-            if (extra.Type == "button" &&
-                (string.IsNullOrWhiteSpace(extra.Href) || extra.Href == "#" ||
-                 WebsiteContentSanitizer.SanitizeUrl(extra.Href) is null))
-                return "Every added button needs a working action or custom destination before publishing.";
-            return null;
-        }
 
         string? ResolveComposition(WebsiteCompositionNode node)
         {
@@ -512,34 +491,31 @@ public static class WebsiteCallToActionCatalog
             return null;
         }
 
-        foreach (var element in document.Elements.Values)
+        string? ResolveMany(IEnumerable<WebsiteCompositionNode> nodes)
         {
-            var error = ResolveElement(element);
-            if (error is not null) return error;
-        }
-        foreach (var extra in document.Extras)
-        {
-            var error = ResolveExtra(extra);
-            if (error is not null) return error;
-        }
-        foreach (var page in document.Pages.Values)
-        {
-            foreach (var element in page.Elements.Values)
-            {
-                var error = ResolveElement(element);
-                if (error is not null) return error;
-            }
-            foreach (var extra in page.Extras)
-            {
-                var error = ResolveExtra(extra);
-                if (error is not null) return error;
-            }
-            foreach (var node in page.Composition)
+            foreach (var node in nodes ?? [])
             {
                 var error = ResolveComposition(node);
                 if (error is not null) return error;
             }
+            return null;
         }
+
+        var shellError = ResolveMany(document.Shell.Header) ?? ResolveMany(document.Shell.Footer);
+        if (shellError is not null) return shellError;
+
+        foreach (var page in document.Pages.Values)
+        {
+            var error = ResolveMany(page.Composition);
+            if (error is not null) return error;
+        }
+
+        foreach (var component in document.ReusableComponents.Values)
+        {
+            var error = ResolveMany(component.Composition);
+            if (error is not null) return error;
+        }
+
         return null;
     }
 
