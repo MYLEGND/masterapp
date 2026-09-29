@@ -202,6 +202,7 @@ public static class WebsiteSiteSource
 
         var validActions = ctaCatalog.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
         var ids = new HashSet<string>(StringComparer.Ordinal);
+        var primaryNavigationCount = 0;
 
         foreach (var (pagePath, node) in Flatten(document))
         {
@@ -214,6 +215,15 @@ public static class WebsiteSiteSource
             if (node.Type == "form" &&
                 !string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
                 throw new ArgumentException("Website forms must use the canonical inquiry authority.");
+
+            if (string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal))
+            {
+                primaryNavigationCount++;
+                if (!string.Equals(pagePath, "@shell/header", StringComparison.Ordinal) ||
+                    node.Type != "container" ||
+                    !string.Equals(node.Tag, "nav", StringComparison.Ordinal))
+                    throw new ArgumentException("Primary navigation must remain the protected nav component in the shared website header.");
+            }
 
             if (node.Type == "reusable" &&
                 (string.IsNullOrWhiteSpace(node.SyncSourceId) ||
@@ -237,7 +247,10 @@ public static class WebsiteSiteSource
                 if (!validActions.Contains(node.ActionKey))
                     throw new ArgumentException($"Website CTA '{node.Id}' has an invalid action.");
             }
-        }
+        if (primaryNavigationCount > 1)
+            throw new ArgumentException("Website v3 may contain only one primary navigation authority.");
+    }
+
     }
 
     private static string InferSiteKey(string actionKey) =>
@@ -385,6 +398,8 @@ public static class WebsiteSiteSource
             else
             {
                 node.Signals = [];
+                if (node.Type != "form" && !string.IsNullOrWhiteSpace(node.SystemKey))
+                    throw new ArgumentException($"Free-content component '{node.Id}' cannot invent a platform system authority.");
                 if (node.Type is "image" or "video" &&
                     !node.MediaAssetId.HasValue &&
                     !string.IsNullOrWhiteSpace(node.MediaUrl))
