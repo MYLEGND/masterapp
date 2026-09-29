@@ -127,7 +127,7 @@ public sealed class WebsiteImportService(WebsiteMediaService media)
                     Type = "section",
                     Tag = "section",
                     ClassName = "section",
-                    Layout = new WebsiteLayoutOverride { Mode = "stack", Direction = "column" }
+                    Layout = new WebsiteCompositionLayout { Mode = "stack", Direction = "column" }
                 };
 
                 if (!string.IsNullOrWhiteSpace(title))
