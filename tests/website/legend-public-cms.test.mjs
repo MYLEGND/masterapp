@@ -375,10 +375,13 @@ test('Website Studio canvas keeps public viewport typography and mobile controls
   assert.equal(publicCss.includes('@container legend-public-preview'),false);
   assert.equal(publicCss.includes('container:legend-public-preview'),false);
   assert.ok(source.includes('.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word'));
-  assert.ok(source.includes('.legend-cms-panel>*{min-width:0;max-width:100%}'));
-  assert.ok(source.includes('.legend-cms-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:sticky'));
-  assert.ok(source.includes('.legend-cms-primary-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}'));
-  assert.ok(source.includes('.legend-cms-row,.legend-cms-theme{grid-template-columns:1fr}'));
+  assert.match(source,/\.legend-cms-panel>\*\{min-width:0;max-width:100%\}/);
+  assert.match(source,/\.legend-cms-panel\{[\s\S]*max-height:min\(46dvh,430px\)[\s\S]*border-radius:0 0 14px 14px/);
+  assert.match(source,/\.legend-cms-bar\{[\s\S]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)[\s\S]*position:sticky/);
+  assert.match(source,/\.legend-cms-primary-tabs\{[\s\S]*display:flex[\s\S]*overflow-x:auto/);
+  assert.match(source,/\.legend-cms-menu\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.equal(source.includes('padding:max(72px,calc(env(safe-area-inset-top) + 60px))'),false);
+  assert.equal(source.includes('grid-template-columns:repeat(2,minmax(0,1fr));position:sticky;top:max(56px'),false);
 });
 
 test('GPT workspace consumes one canonical node grammar and teaches creative safe authoring',async()=>{
@@ -2422,4 +2425,13 @@ test('GPT contract is conversion-first on desktop and mobile and obeys the canon
   ]) assert.ok(agentContractSource.includes(phrase),phrase);
   assert.ok(agentContractSource.includes('protected Signals'));
   assert.ok(agentContractSource.includes('signal_bearing_node_identity'));
+});
+
+
+test('mobile Website Studio is a compact top sheet that preserves visible canvas below it',()=>{
+  assert.match(source,/@media\(max-width:800px\)[\s\S]*\.legend-cms-panel\{[\s\S]*height:auto;max-height:min\(46dvh,430px\)/);
+  assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;height:100dvh;overflow-y:auto/);
+  assert.match(source,/\.legend-cms-bar button\{[\s\S]*min-height:32px[\s\S]*font-size:11px/);
+  assert.match(source,/\.legend-cms-primary-tabs button\{[\s\S]*min-height:32px/);
+  assert.match(source,/\.legend-cms-menu button,\.legend-cms-panel section>button\{[\s\S]*min-height:34px/);
 });
