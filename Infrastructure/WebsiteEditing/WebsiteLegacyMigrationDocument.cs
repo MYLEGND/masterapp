@@ -12,9 +12,9 @@ internal sealed class LegacyWebsiteContentDocument
     public WebsiteStoreSettings Store { get; set; } = new();
     public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteStudioContract.DefaultBreakpoints();
     public Dictionary<string, LegacyWebsitePageDocument> Pages { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, LegacyWebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
-    public List<WebsiteExtraComponent> Extras { get; set; } = new();
+    public List<LegacyWebsiteExtraComponent> Extras { get; set; } = new();
     public Dictionary<string, LegacyWebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, WebsiteCollectionDefinition> Collections { get; set; } = new(StringComparer.Ordinal);
     public WebsiteThemeOverride Theme { get; set; } = new();
@@ -28,9 +28,9 @@ internal sealed class LegacyWebsitePageDocument
     public string? TemplatePath { get; set; }
     public WebsitePageNavigation Navigation { get; set; } = new();
     public WebsiteDynamicPageBinding? DynamicBinding { get; set; }
-    public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, LegacyWebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
-    public List<WebsiteExtraComponent> Extras { get; set; } = new();
+    public List<LegacyWebsiteExtraComponent> Extras { get; set; } = new();
 }
 
 internal sealed class LegacyWebsiteReusableComponentDefinition
@@ -38,7 +38,64 @@ internal sealed class LegacyWebsiteReusableComponentDefinition
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "section";
-    public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, LegacyWebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
-    public List<WebsiteExtraComponent> Extras { get; set; } = new();
+    public List<LegacyWebsiteExtraComponent> Extras { get; set; } = new();
+}
+
+
+internal sealed class LegacyWebsiteElementOverride
+{
+    public List<WebsiteSignalBinding> Signals { get; set; } = new();
+    public string? Text { get; set; }
+    public string? ImageDataUrl { get; set; }
+    public bool? Hidden { get; set; }
+    public string? ActionKey { get; set; }
+    public string? Href { get; set; }
+    public string? Target { get; set; }
+    public string? Alt { get; set; }
+    public string? VideoUrl { get; set; }
+    public LegacyWebsitePlacement? Placement { get; set; }
+    public WebsiteStyleOverride Style { get; set; } = new();
+    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteLayoutOverride Layout { get; set; } = new();
+    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
+    public List<WebsiteAnimationBinding> Animations { get; set; } = new();
+    public string? SyncSourceId { get; set; }
+    public WebsiteDataBinding? DataBinding { get; set; }
+}
+
+internal sealed class LegacyWebsitePlacement
+{
+    public string SectionId { get; set; } = "";
+    public string? BeforeId { get; set; }
+    public string? ContainerId { get; set; }
+    public bool Flow { get; set; }
+    public int Column { get; set; } = 1;
+    public int Span { get; set; } = 12;
+}
+
+internal sealed class LegacyWebsiteExtraComponent
+{
+    public List<WebsiteSignalBinding> Signals { get; set; } = new();
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string SectionId { get; set; } = "";
+    public string Type { get; set; } = "text";
+    public string? TemplateSectionId { get; set; }
+    public string? ActionKey { get; set; }
+    public string? Href { get; set; }
+    public string? Target { get; set; }
+    public string? Alt { get; set; }
+    public string? VideoUrl { get; set; }
+    public LegacyWebsitePlacement? Placement { get; set; }
+    public string? Title { get; set; }
+    public string? Text { get; set; }
+    public string? ImageDataUrl { get; set; }
+    public WebsiteStyleOverride Style { get; set; } = new();
+    public Dictionary<string, WebsiteStyleOverride> BreakpointStyles { get; set; } = new(StringComparer.Ordinal);
+    public WebsiteLayoutOverride Layout { get; set; } = new();
+    public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
+    public List<WebsiteAnimationBinding> Animations { get; set; } = new();
+    public string? SyncSourceId { get; set; }
+    public WebsiteDataBinding? DataBinding { get; set; }
 }
