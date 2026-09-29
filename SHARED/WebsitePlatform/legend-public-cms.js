@@ -1100,9 +1100,9 @@
 
     applyLegacySectionOrder();
     for(const [id,legacyRecord] of Object.entries(page.elements || {}))
-      applyPlacement(findEditableElement(id),legacyRecord.placement);
+      applyLegacyPlacement(findEditableElement(id),legacyRecord.placement);
     for(const extra of extras)
-      applyPlacement(document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]'),extra.placement);
+      applyLegacyPlacement(document.querySelector('[data-cms-id="extra:'+CSS.escape(extra.id)+'"]'),extra.placement);
   }
 
   function cleanCompositionClassName(el) {
@@ -3731,7 +3731,7 @@
     if (!media && (value.startsWith('#') || (value.startsWith('/') && !value.startsWith('//')))) return true;
     try { const url = new URL(value); return media ? url.protocol === 'https:' : ['https:','mailto:','tel:'].includes(url.protocol); } catch { return false; }
   }
-  function applyPlacement(el, placement) {
+  function applyLegacyPlacement(el, placement) {
     if (!el || !placement || el.dataset.cmsSection) return;
     const section = document.querySelector(`[data-cms-section="${CSS.escape(placement.sectionId || '')}"]`);
     if (!section || el.contains?.(section)) return;
