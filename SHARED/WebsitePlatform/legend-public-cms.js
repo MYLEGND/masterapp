@@ -394,7 +394,7 @@
 
   function selectedSignalElementId() {
     if (!selected) return null;
-    return selected.dataset.cmsExtraId ? `extra:${selected.dataset.cmsExtraId}` : selected.dataset.cmsId || null;
+    return selected.dataset.cmsCompositionId || selected.dataset.cmsId || null;
   }
 
   function signalDiagnosticHost(bindingId) {
@@ -797,7 +797,7 @@
         el.style.height = `${style.heightPx}px`;
         // Ordinary website content never becomes its own scroll container.
         // Code frames remain clipped to their explicit sandbox frame.
-        el.style.overflow = el.classList.contains('cms-extra-code') ? 'hidden' : 'visible';
+        el.style.overflow = (el.classList.contains('legend-cms-embed') || el.classList.contains('cms-extra-code')) ? 'hidden' : 'visible';
       }
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
@@ -981,7 +981,7 @@
     }
     for(const item of values.filter(value=>value.type==='section' && value!==root)){
       const parent=sectionMap.get(item.sectionId)||wrapper;
-      const node=buildExtraNode(item,false,instance.id);
+      const node=buildLegacyExtraNode(item,false,instance.id);
       node.classList.add('legend-cms-reusable-child');
       parent.appendChild(node);
       sectionMap.set('extra:'+item.id,node);
@@ -991,7 +991,7 @@
     for(const item of values.filter(value=>value.type!=='section')){
       if(definition.kind==='block' && root && item!==root) continue;
       const parent=sectionMap.get(item.sectionId)||wrapper;
-      const node=buildExtraNode(item,false,instance.id);
+      const node=buildLegacyExtraNode(item,false,instance.id);
       node.classList.add('legend-cms-reusable-child');
       parent.appendChild(node);
       applyCompositionNode(node,item);
@@ -1014,7 +1014,7 @@
       renderLegacyReusableInstance(el,extra);
       return el;
     }
-    const el=buildExtraNode(extra,true);
+    const el=buildLegacyExtraNode(extra,true);
     section.appendChild(el);
     applyCompositionNode(el,extra);
     return el;
@@ -1211,23 +1211,99 @@
     return allowed.includes(tag) ? tag : allowed[0];
   }
 
+  function buildCanonicalInquiryForm(node) {
+    const el=document.createElement('form');
+    el.id='website_inquiry_'+node.id;
+    el.className='public-form legend-cms-inquiry-form';
+    el.dataset.websiteInquiry='';
+    el.dataset.formKey='website_inquiry';
+    el.setAttribute('action','/api/website-inquiries/public');
+    el.setAttribute('method','post');
+
+    const fieldset=document.createElement('fieldset');
+    if(editorMode){el.dataset.preview='';fieldset.disabled=true;}
+    const legend=document.createElement('legend');
+    legend.textContent=node.title || 'Send an inquiry';
+    const grid=document.createElement('div');
+    grid.className='public-form-grid';
+
+    const field=(labelText,name,type='text',attrs={})=>{
+      const label=document.createElement('label');
+      label.textContent=labelText;
+      const input=name==='Message' ? document.createElement('textarea') : document.createElement('input');
+      if(name!=='Message') input.type=type;
+      input.name=name;
+      input.required=true;
+      if(name==='Message') input.rows=5;
+      Object.entries(attrs).forEach(([key,value])=>input.setAttribute(key,value));
+      label.appendChild(input);
+      return label;
+    };
+
+    grid.append(
+      field('First Name','FirstName','text',{autocomplete:'given-name',maxlength:'120'}),
+      field('Last Name','LastName','text',{autocomplete:'family-name',maxlength:'120'}),
+      field('Phone Number','Phone','tel',{inputmode:'tel',autocomplete:'tel',maxlength:'64'}),
+      field('Email','Email','email',{autocomplete:'email',maxlength:'254'})
+    );
+    const message=field('Message','Message','text',{maxlength:'12000'});
+    message.className='public-form-full';
+    grid.appendChild(message);
+
+    const consentLabel=document.createElement('label');
+    consentLabel.className='public-form-consent public-form-full';
+    const consent=document.createElement('input');
+    consent.type='checkbox';
+    consent.name='consent';
+    consent.required=true;
+    const consentText=document.createElement('span');
+    consentText.textContent='I agree to share this inquiry with this website.';
+    consentLabel.append(consent,consentText);
+    grid.appendChild(consentLabel);
+
+    const submit=document.createElement('button');
+    submit.type='submit';
+    submit.className='btn primary';
+    submit.textContent=node.text || 'Send inquiry';
+    const status=document.createElement('p');
+    status.setAttribute('role','status');
+    status.setAttribute('aria-live','polite');
+
+    fieldset.append(legend,grid,submit);
+    el.append(fieldset,status);
+    return el;
+  }
+
+  function buildCanonicalEmbed(node) {
+    const el=document.createElement('div');
+    el.className='legend-cms-embed';
+    const frame=document.createElement('iframe');
+    frame.dataset.cmsCodeFrame='true';
+    frame.title='Custom code block';
+    frame.setAttribute('sandbox','allow-scripts allow-forms allow-modals allow-popups');
+    frame.setAttribute('referrerpolicy','no-referrer');
+    frame.setAttribute('loading','lazy');
+    el.appendChild(frame);
+    renderCodePreview(el,node);
+    return el;
+  }
+
   function buildCompositionNode(node) {
     if (!node?.id) return null;
     let el;
     if (node.type === 'reusable') {
       const definition = reusableDefinition(node);
       el = document.createElement(definition?.kind === 'section' ? 'section' : 'div');
-      el.className = 'cms-extra cms-reusable-instance';
-      el.dataset.cmsExtraId = node.id;
+      el.className = 'legend-cms-reusable-instance';
       el.dataset.cmsId = node.id;
       el.dataset.cmsCompositionId = node.id;
       el.dataset.cmsEditable = 'true';
       if (node.hidden === true) el.hidden = true;
       renderReusableInstance(el, node);
     } else if (node.type === 'form') {
-      el = buildExtraNode({id:node.id,type:'form',title:node.title,text:node.text,style:node.style||{},signals:node.signals||[]}, false);
+      el = buildCanonicalInquiryForm(node);
     } else if (node.type === 'embed') {
-      el = buildExtraNode({id:node.id,type:'code',text:node.text||defaultCodeBlock,style:node.style||{},signals:node.signals||[]}, false);
+      el = buildCanonicalEmbed(node);
     } else {
       el = document.createElement(safeCompositionTag(node));
       if (node.className) el.className = node.className;
@@ -1557,7 +1633,7 @@
     applyAnimations(el, model.animations);
   }
 
-  function buildExtraNode(extra, editable = true, idPrefix = '') {
+  function buildLegacyExtraNode(extra, editable = true, idPrefix = '') {
     let el;
     if (extra.type === 'image') {
       el = document.createElement('img');
@@ -3475,7 +3551,7 @@
       checkpoint();
       const id=freshStableId();
       const node={
-        id,type:'image',tag:'img',className:'cms-extra-image',
+        id,type:'image',tag:'img',className:'legend-cms-image',
         mediaAssetId:compositionMediaAssetId(dataUrl),mediaUrl:dataUrl,alt:'',
         signals:[],style:{widthPercent:70,paddingTop:16,paddingBottom:16},
         breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
@@ -4848,7 +4924,7 @@
       if (!option.managed && ov.actionKey) { syncEditorControls(); return; }
       if (option.managed) ov.actionKey = option.actionKey;
       ov.href = option.href; ov.target = option.openInNewTab ? '_blank' : '_self';
-      if (selected.dataset.cmsExtraId) {
+      if (selected.dataset.cmsCompositionId) {
         ov.text = option.defaultText || option.label;
         setContentText(selected, ov.text, true);
       }
@@ -4905,8 +4981,8 @@
       .cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}
       .cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px;max-width:100%;overflow-x:clip}
       .cms-extra video,video.cms-extra{max-width:100%;height:auto}
-      .cms-extra-code{display:block;width:100%;max-width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}
-      .cms-extra-code iframe{display:block;width:100%;max-width:100%;height:100%;border:0;background:#fff}
+      .legend-cms-embed,.cms-extra-code{display:block;width:100%;max-width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}
+      .legend-cms-embed iframe,.cms-extra-code iframe{display:block;width:100%;max-width:100%;height:100%;border:0;background:#fff}
       .legend-store-nav-cluster{display:flex;align-items:center;gap:clamp(8px,1vw,14px);margin-left:auto;flex:0 0 auto;white-space:nowrap}
       .legend-store-nav-cluster>a{display:inline-flex;align-items:center;justify-content:center}
       .legend-store-cart{position:relative}
@@ -4927,7 +5003,7 @@
       .legend-cms-selected{outline:none}
       [data-cms-editable="true"]{cursor:pointer}
       .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
-      .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
+      .legend-cms-preview .legend-cms-embed iframe,.legend-cms-preview .cms-extra-code iframe{pointer-events:none}
       .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad454d;background-color:#081a3a08;background-image:linear-gradient(to right,#d4ad4526 1px,transparent 1px),linear-gradient(to bottom,#d4ad4517 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px}
       .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;opacity:0;background:#f0cf78;box-shadow:0 0 0 1px #081a3a66}
       .legend-cms-grid-overlay::before{left:50%;top:0;bottom:0;width:1px;transform:translateX(-.5px)}
@@ -4987,7 +5063,7 @@
       .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
-      .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
+      .legend-cms-image,.cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
       @media(max-width:800px){html{max-width:100%;overflow-x:hidden}body.legend-cms-editing{width:100%;max-width:100%;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr);overflow-x:hidden}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-preview{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}.legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}.legend-cms-panel{width:100%;max-width:100%;min-width:0;overflow-x:hidden;border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
     `;
     document.head.appendChild(style);
