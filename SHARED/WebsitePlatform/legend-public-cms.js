@@ -248,8 +248,23 @@
     return route;
   }
 
+  function protectCanonicalPathname(pathname) {
+    if (SITE_KEY !== 'protect') return pathname;
+    const prefixes = [];
+    const pagePrefix = String(context.pagePrefix || '').trim().replace(/\/+$/, '');
+    if (pagePrefix && pagePrefix !== '/') prefixes.push(pagePrefix);
+    const agentSlug = String(managementPayload?.agentSlug || AGENT_SLUG || '').trim();
+    if (agentSlug) prefixes.push('/a/' + encodeURIComponent(agentSlug));
+    for (const prefix of [...new Set(prefixes)].sort((left, right) => right.length - left.length)) {
+      if (pathname === prefix) return '/';
+      if (pathname.startsWith(prefix + '/')) return pathname.slice(prefix.length) || '/';
+    }
+    return pathname;
+  }
+
   function currentPageRoute() {
-    const pathname = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
+    const browserPath = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
+    const pathname = protectCanonicalPathname(browserPath);
     return normalizePageRoute(pathname) || '/';
   }
 
