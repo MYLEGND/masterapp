@@ -150,7 +150,10 @@
     </script>
 
 
-    @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
+    @if (!websiteStudioMode)
+    {
+        @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
+    }
 </head>
 
 <body class="legend-public--protect @bodyClasses">
@@ -344,7 +347,10 @@
             </script>
         }
     }
-    <script src="~/js/lead-modal.js" asp-append-version="true"></script>
+    @if (!websiteStudioMode)
+    {
+        <script src="~/js/lead-modal.js" asp-append-version="true"></script>
+    }
     <script>
         // Preserve agent slug across internal navigation
         (function () {
