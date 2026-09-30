@@ -3496,9 +3496,6 @@ textarea.client-create-notes {
         padding: 0.9rem;
     }
 
-    .client-create-actions .client-create-button {
-        width: 100%;
-    }
 }
 
 /* Clients/Edit — household and dependent composition */
@@ -3807,9 +3804,6 @@ textarea.client-create-notes {
 
 @media (max-width: 720px) {
     .dashboard-detail-modal .modal-header {
-        position: sticky;
-        top: 0;
-        z-index: 2;
         gap: 0.65rem;
     }
 
@@ -4394,7 +4388,6 @@ textarea.client-create-notes {
     .founder-subscribers-page .dashboard-analytics-grid,
     .founder-subscriber-filter-grid,
     .founder-subscriber-distribution-grid,
-    .founder-subscriber-summary-actions,
     .founder-subscriber-modal-metrics {
         grid-template-columns: 1fr;
     }
@@ -4520,17 +4513,6 @@ textarea.client-create-notes {
         gap: 0.75rem;
     }
 
-    .dashboard-page-shell .search-actions {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-auto-flow: initial;
-        grid-auto-columns: initial;
-        width: 100%;
-    }
-
-    .dashboard-page-shell .dashboard-command-action {
-        width: 100%;
-    }
-
     .dashboard-page-shell .search-input-wrap {
         flex-basis: 100%;
         min-width: 0;
@@ -4627,19 +4609,6 @@ textarea.client-create-notes {
         line-height: 1.08;
     }
 
-    .factfinder-page-shell :is(.wizard-actions, .repeater-actions, .ff-card-actions) {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--legend-mobile-gap);
-        align-items: stretch;
-    }
-
-    .factfinder-page-shell :is(.wizard-actions, .repeater-actions, .ff-card-actions) .btn {
-        width: 100%;
-        min-width: 0;
-        justify-content: center;
-    }
-
     .legend-connect-page .legend-connect-metrics--three,
     .legend-connect-page .legend-connect-metrics--four,
     .legend-connect-page .legend-connect-metrics--five,
@@ -4668,10 +4637,6 @@ textarea.client-create-notes {
         font-size: 0.68rem;
     }
 
-    .legend-connect-modal-actions {
-        gap: 0.4rem;
-    }
-
     .legend-connect-acquisition-focus {
         gap: 0.72rem;
         padding: 0.82rem;
@@ -4695,15 +4660,6 @@ textarea.client-create-notes {
     .legend-connect-language-options {
         grid-template-columns: 1fr;
         max-height: min(280px, 42vh);
-    }
-
-    .legend-connect-focus-footer {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .legend-connect-focus-footer .dashboard-command-action {
-        width: 100%;
     }
 
     .legend-connect-production-control {
@@ -4734,16 +4690,6 @@ textarea.client-create-notes {
         font-size: 0.64rem;
     }
 
-    .legend-connect-composition-modal .modal-footer {
-        align-items: stretch;
-        flex-direction: column-reverse;
-    }
-
-    .legend-connect-composition-modal .modal-footer form,
-    .legend-connect-modal-cancel,
-    .legend-connect-modal-confirm {
-        width: 100%;
-    }
 }
 
 /* Messaging command center: intentionally scoped to the shared dashboard design system. */
@@ -7414,12 +7360,6 @@ header .legend-global-nav .container-fluid {
         align-items: flex-start;
     }
 
-    .messaging-thread-actions {
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 0.1rem;
-    }
-
     .messaging-command-center-journey {
         padding: 0.36rem 0.52rem;
         font-size: 0.67rem;
@@ -7442,13 +7382,8 @@ header .legend-global-nav .container-fluid {
         max-width: 91%;
     }
 
-    .messaging-send-actions {
-        align-items: stretch;
-    }
-
     .messaging-file-label,
     .messaging-primary-button {
-        flex: 1;
         text-align: center;
     }
 }
