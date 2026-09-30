@@ -364,297 +364,194 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     /*
-     * Canonical mobile action density. Use horizontal space before adding
-     * vertical scroll: action clusters become a symmetric two-column grid.
-     * Feature behavior and button wiring remain untouched.
+     * Canonical authenticated-mobile action authority.
+     *
+     * IMPORTANT: this is intentionally an allow-list. Never discover action
+     * containers by class-name suffix (for example "*-actions") and never
+     * force arbitrary Bootstrap grids/button groups into a two-column layout.
+     * Those broad selectors were the source of the cross-page mobile regression.
      */
-    body.legend-app .legend-app-content
-    :where(
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .d-grid,
-        .legend-connect-focus-footer,
+    body.legend-app .legend-app-content :is(
+        .legend-mobile-action-grid,
+        .client-create-actions,
+        .subscription-activation-actions,
+        .preview-actions,
+        .founder-subscriber-summary-actions,
+        .dashboard-page-shell .search-actions,
+        .factfinder-page-shell .wizard-actions,
+        .factfinder-page-shell .repeater-actions,
+        .factfinder-page-shell .ff-card-actions,
+        .drawer.crm-qv-shell .drawer-top-actions,
+        .drawer.crm-qv-shell .ph-actions,
+        .uw-actions,
+        #rbShell .rb-hero .hero-actions,
+        #mpShell .hero-actions,
+        .activation-notice-actions,
         .savings-illustration-footer,
-        .queue-record-footer,
         .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form)) {
+    ) {
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         align-items: stretch !important;
         gap: var(--legend-mobile-gap) !important;
+        min-width: 0;
     }
 
-    body.legend-app .legend-app-content
-    :where(
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .d-grid,
-        .legend-connect-focus-footer,
+    body.legend-app .legend-app-content :is(
+        .legend-mobile-action-grid,
+        .client-create-actions,
+        .subscription-activation-actions,
+        .preview-actions,
+        .founder-subscriber-summary-actions,
+        .dashboard-page-shell .search-actions,
+        .factfinder-page-shell .wizard-actions,
+        .factfinder-page-shell .repeater-actions,
+        .factfinder-page-shell .ff-card-actions,
+        .drawer.crm-qv-shell .drawer-top-actions,
+        .drawer.crm-qv-shell .ph-actions,
+        .uw-actions,
+        #rbShell .rb-hero .hero-actions,
+        #mpShell .hero-actions,
+        .activation-notice-actions,
         .savings-illustration-footer,
-        .queue-record-footer,
         .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form))
-    > :is(button, .btn, a, form) {
+    ) > :is(button, .btn, a, form, .hero-action-group) {
         min-width: 0 !important;
         width: 100% !important;
         margin: 0 !important;
     }
 
-    body.legend-app .legend-app-content
-    :where(
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .d-grid,
-        .legend-connect-focus-footer,
-        .savings-illustration-footer,
-        .queue-record-footer,
-        .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form))
-    > form > :is(button, .btn, a.btn) {
+    body.legend-app .legend-app-content :is(
+        .client-create-actions,
+        .subscription-activation-actions,
+        .preview-actions,
+        .dashboard-page-shell .search-actions,
+        .factfinder-page-shell .wizard-actions,
+        .factfinder-page-shell .repeater-actions,
+        .factfinder-page-shell .ff-card-actions,
+        .drawer.crm-qv-shell .drawer-top-actions,
+        .drawer.crm-qv-shell .ph-actions,
+        .uw-actions,
+        .activation-notice-actions,
+        .savings-illustration-footer
+    ) > form > :is(button, .btn, a.btn) {
         width: 100% !important;
         margin: 0 !important;
     }
 
-    body.legend-app .legend-app-content
-    :where(
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .d-grid,
-        .legend-connect-focus-footer,
-        .savings-illustration-footer,
-        .queue-record-footer,
-        .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form))
-    > :only-child {
+    body.legend-app .legend-app-content :is(
+        .client-create-actions,
+        .subscription-activation-actions,
+        .preview-actions
+    ) > :only-child {
         grid-column: auto !important;
         width: auto !important;
         justify-self: start !important;
     }
 
-    body.legend-app .legend-app-content
-    :where(
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .d-grid,
-        .legend-connect-focus-footer,
-        .savings-illustration-footer,
-        .queue-record-footer,
-        .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form))
-    > :last-child:nth-child(odd):not(:only-child) {
-        grid-column: 1 / -1 !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
-    :where(
-        .modal-footer,
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .legend-connect-focus-footer,
-        .savings-illustration-footer,
-        .queue-record-footer,
-        .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form)) {
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        align-items: stretch !important;
-        justify-content: stretch !important;
-        gap: var(--legend-mobile-gap) !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
-    :where(
-        .modal-footer,
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .legend-connect-focus-footer,
-        .savings-illustration-footer,
-        .queue-record-footer,
-        .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form))
-    > :is(button, .btn, a, form) {
-        min-width: 0 !important;
-        width: 100% !important;
-        margin: 0 !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
-    :where(
-        .modal-footer,
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .legend-connect-focus-footer,
-        .savings-illustration-footer,
-        .queue-record-footer,
-        .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form))
-    > form > :is(button, .btn, a.btn) {
-        width: 100% !important;
-        margin: 0 !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
-    :where(
-        .modal-footer,
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .legend-connect-focus-footer,
-        .savings-illustration-footer,
-        .queue-record-footer,
-        .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form))
-    > :only-child {
-        grid-column: auto !important;
-        width: auto !important;
-        justify-self: start !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
-    :where(
-        .modal-footer,
-        .actions,
-        [class$="-actions"],
-        [class*="-actions "],
-        [class$="__actions"],
-        [class*="__actions "],
-        [class$="-buttons"],
-        [class*="-buttons "],
-        [class$="-action-row"],
-        [class*="-action-row "],
-        .button-row,
-        .btn-row,
-        .btn-group,
-        .legend-connect-focus-footer,
-        .savings-illustration-footer,
-        .queue-record-footer,
-        .wa-modal-toggle-group
-    ):has(> :is(button, .btn, a, form))
-    > :last-child:nth-child(odd):not(:only-child) {
-        grid-column: 1 / -1 !important;
-    }
-
-    /* Nested action groups that cannot be expressed as direct-button containers. */
-    body.legend-app .legend-app-content .hero-actions {
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        align-items: stretch !important;
-        gap: var(--legend-mobile-gap) !important;
-        width: 100% !important;
-    }
-
-    body.legend-app .legend-app-content .hero-actions > .hero-action-group {
-        min-width: 0 !important;
-        width: 100% !important;
-        margin: 0 !important;
-    }
-
-    body.legend-app .legend-app-content .hero-actions > .hero-action-group :is(button, .btn, a, select.btn) {
-        min-width: 0 !important;
-        width: 100% !important;
-        margin: 0 !important;
-    }
-
-    body.legend-app .legend-app-content .hero-actions > .hero-action-group:last-child:nth-child(odd):not(:only-child) {
-        grid-column: 1 / -1 !important;
-    }
-
+    body.legend-app .legend-app-content :is(
+        #rbShell .rb-hero .hero-actions,
+        #mpShell .hero-actions
+    ) > .hero-action-group:last-child:nth-child(odd):not(:only-child),
     body.legend-app .legend-app-content .savings-illustration-footer > .savings-illustration-progress {
         grid-column: 1 / -1 !important;
+    }
+
+    body.legend-app .legend-app-content :is(
+        #rbShell .rb-hero .hero-actions,
+        #mpShell .hero-actions
+    ) > .hero-action-group :is(button, .btn, a, select.btn) {
+        min-width: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    /* Exact structural exceptions stay explicit instead of becoming global rules. */
+    body.legend-app .legend-app-content .home-clients-toolbar-actions {
+        justify-content: stretch;
+    }
+
+    body.legend-app .legend-app-content .home-clients-toolbar-actions > * {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .home-tools-head-actions,
+        .home-factfinder-actions,
+        .pipeline-action-row,
+        .pipeline-head-actions,
+        .pipeline-scope-actions,
+        .pipeline-nav-actions,
+        .lead-contact-card-actions,
+        .qv-right-actions,
+        .crm-command-modal-queues .myday-focus-actions,
+        .product-link-actions,
+        .wa-workbench-actions,
+        .wa-modal-header-actions,
+        .hp-builder-context-actions,
+        .uw-context-actions,
+        .el-projection-form-actions,
+        .savings-accelerator-actions
+    ) {
+        min-width: 0;
+        justify-content: flex-start;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .pipeline-action-row,
+        .pipeline-head-actions,
+        .pipeline-scope-actions,
+        .pipeline-nav-actions,
+        .archive-actions,
+        .product-link-actions,
+        .wa-workbench-actions,
+        .wa-modal-header-actions,
+        .hp-builder-context-actions,
+        .uw-context-actions,
+        .savings-accelerator-actions
+    ) {
+        width: 100%;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .queue-workspace-page .queue-record-actions,
+        .queue-workspace-page .queue-record-footer,
+        .legend-connect-focus-footer,
+        .hero-link-meta-actions:not(.wa-kpi-meta-actions),
+        .wa-modal-toolbar
+    ) {
+        width: 100%;
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .queue-workspace-page .queue-record-actions,
+        .queue-workspace-page .queue-record-footer
+    ) .btn,
+    body.legend-app .legend-app-content .legend-connect-focus-footer .dashboard-command-action,
+    body.legend-app .legend-app-content .hero-link-meta-actions:not(.wa-kpi-meta-actions) .btn {
+        width: 100%;
+    }
+
+    body.legend-app .legend-app-content .legend-connect-composition-modal .modal-footer {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+
+    body.legend-app .legend-app-content .legend-connect-composition-modal .modal-footer :is(form, .legend-connect-modal-cancel, .legend-connect-modal-confirm) {
+        width: 100%;
+    }
+
+    body.legend-app .legend-app-content .messaging-thread-actions {
+        align-items: flex-end;
+        flex-direction: column;
+        gap: .1rem;
+    }
+
+    body.legend-app .legend-app-content .messaging-send-actions {
+        align-items: stretch;
     }
 
     html[data-legend-modal-region] body.legend-app .modal .modal-header,
@@ -4407,8 +4304,12 @@ textarea.client-create-notes {
 }
 
 @media (max-width: 1180px) {
-    .dashboard-command-center-top {
-        grid-template-columns: 1fr;
+    .dashboard-command-center-top,
+    .home-command-page .home-hero-panel .dashboard-command-center-top,
+    .client-portal .home-command-page .home-hero-top,
+    .client-portal .membership-billing-hero,
+    .client-portal .membership-billing-layout {
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .dashboard-hero-stats,
@@ -4492,6 +4393,82 @@ textarea.client-create-notes {
 
     .legend-connect-focus-controls {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 767.98px) {
+    /*
+     * Canonical app-page structure. These selectors intentionally match the
+     * desktop component specificity so page CSS cannot keep a desktop grid on
+     * a phone. AgentPortal and ClientApp consume this one shared source.
+     */
+    .home-command-page .home-hero-panel .dashboard-command-center-top,
+    .client-portal .dashboard-command-center-top,
+    .client-portal .home-command-page .home-hero-top,
+    .client-portal .membership-billing-hero,
+    .client-portal .membership-billing-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .home-command-page .home-hero-panel,
+    .client-portal .dashboard-command-center-panel,
+    .client-portal .dashboard-analytics-panel,
+    .client-portal .dashboard-page-shell .category-container {
+        min-width: 0;
+        padding: var(--app-mobile-card-pad);
+    }
+
+    .home-command-page .dashboard-hero-copy,
+    .client-portal .dashboard-hero-copy,
+    .client-portal .dashboard-section-head,
+    .client-portal .category-head,
+    .client-portal .client-create-header,
+    .client-portal .client-edit-section-head {
+        min-width: 0;
+    }
+
+    .home-command-page .home-hero-summary {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--legend-mobile-gap);
+        min-width: 0;
+    }
+
+    .client-portal .home-command-page .home-hero-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--legend-mobile-gap);
+    }
+
+    .client-portal .home-command-page .home-hero-summary .dashboard-stat-card:last-child {
+        grid-column: 1 / -1;
+    }
+
+    .client-portal .dashboard-page-shell .centered-tools,
+    .client-portal .home-command-page .home-tools-grid,
+    .client-portal .client-dashboard-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--app-mobile-block-gap);
+    }
+
+    .client-portal .dashboard-page-shell .category-head,
+    .client-portal .preview-head,
+    .client-portal .membership-billing-panel-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--app-mobile-block-gap);
+    }
+
+    .client-portal .category-summary-pill {
+        max-width: 100%;
+        min-width: 0;
+        white-space: normal;
+    }
+
+    .home-command-page .dashboard-hero-title,
+    .client-portal .dashboard-hero-title {
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: normal;
+        word-break: normal;
     }
 }
 
