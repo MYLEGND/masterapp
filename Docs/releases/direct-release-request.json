@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the exact-head green canonical modal-surface repair from PR #334 to AgentPortal and ClientApp while preserving the approved compact global navigation.",
-  "purpose": "Deploy only AgentPortal and ClientApp. This release makes each modal surface own its own interaction shielding and panel stacking context, retires the external body-level scrim path that could sit above modal content, normalizes direct modal panels above direct backdrops, visually retires Bootstrap body backdrops while active surfaces own shielding, and deletes competing feature-level modal dim/blur ownership from Website Analytics, CRM, Home, Workstation/Proposal/Underwriting, Finance, Agency Command, Zoom, Life HAC, and Messaging. The approved compact global navigation is unchanged. Protect, Parfait, LEGEND public website, Cloudflare routing, database migrations, analytics event authority, Meta/OpenAI delivery, CRM data semantics, payments, and unrelated systems are excluded.",
-  "requestId": "canonical-modal-surface-authority-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged PR #334 canonical modal surface authority repair after exact-head green architecture validation, Step 5 approved-baseline comparison, and governed advertising validation.",
+  "purpose": "Deploy only AgentPortal and ClientApp from the current legend/approved-changes head. This release publishes the canonical modal surface authority repair: the shared modal owner keeps shielding inside the modal stacking context, direct modal panels remain above their backdrop, and stale feature-level dim/blur/backdrop ownership has been removed without changing the working global navigation. Protect, Parfait, LEGEND Website, Cloudflare routing, database migrations, analytics/Meta/OpenAI delivery, CRM data logic, payments, authentication, and unrelated systems are excluded.",
+  "requestId": "canonical-modal-authority-pr334-20260930",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
