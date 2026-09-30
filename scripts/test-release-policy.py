@@ -106,24 +106,33 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
         }
 
         class Api:
+            def __init__(self):
+                self.paths = []
             def pages(self, path, key=None):
-                self.path = path
-                return [pr]
+                self.paths.append(path)
+                if path == 'commits/' + merged + '/pulls':
+                    return [pr]
+                if path == 'pulls/308/files':
+                    return [{'filename': 'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs'}]
+                raise AssertionError(path)
 
         def fake_git(*args, **kwargs):
             if args[:4] == ('rev-list', '--parents', '-n', '1'):
-                return SimpleNamespace(returncode=0, stdout=f'{head} {merged}\n')
+                current = args[4]
+                if current == head:
+                    return SimpleNamespace(returncode=0, stdout=f'{head} {merged}\n')
             if args and args[0] == 'diff-tree':
                 return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
             return SimpleNamespace(returncode=1, stdout='')
 
         api = Api()
-        with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
+        with patch.object(self.lifecycle, 'direct_only_request',
+                          side_effect=lambda sha: sha == head), \
              patch.object(self.lifecycle, 'git', side_effect=fake_git):
             resolved = self.lifecycle.direct_release_approved_pr(api, head)
 
         self.assertEqual(resolved['number'], 308)
-        self.assertEqual(api.path, 'commits/' + merged + '/pulls')
+        self.assertIn('commits/' + merged + '/pulls', api.paths)
 
     def test_chained_control_only_authorizations_resolve_nearest_merged_pr(self):
         head = 'a' * 40
