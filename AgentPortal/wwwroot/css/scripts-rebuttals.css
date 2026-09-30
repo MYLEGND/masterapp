@@ -8223,28 +8223,6 @@ details.section{
     margin-top: 10px;
 }
 
-@media (max-width: 1200px){
-    #rbShell .content-card .content-body{
-        padding: 18px !important;
-    }
-
-    #rbShell .content-card .card-head{
-        padding: 18px 18px 16px !important;
-    }
-
-    #rbShell .section-head,
-    #rbShell .objection-body,
-    #rbShell .prosper-body{
-        padding-left: 18px !important;
-        padding-right: 18px !important;
-    }
-
-    #rbShell .objection-head,
-    #rbShell .prosper-stage-head{
-        padding: 17px 18px 13px 18px !important;
-    }
-}
-
 /* ========================================================================
    Rebuttals category rail refresh
    ======================================================================== */
@@ -8382,22 +8360,6 @@ details.section{
 #rbShell .cat-btn.warn .cat-name{ color: #fff7ed !important; }
 #rbShell .cat-btn.bad .cat-name{ color: #fff1f2 !important; }
 #rbShell .cat-btn.info .cat-name{ color: #eff6ff !important; }
-
-@media (max-width: 1200px){
-    #rbShell .nav-card .nav-body,
-    #rbShell .prosper-nav-card .nav-body{
-        gap: 8px;
-        padding: 12px !important;
-    }
-
-    #rbShell .cat-btn{
-        padding: 10px 11px 9px !important;
-    }
-
-    #rbShell .cat-note{
-        margin-left: 36px;
-    }
-}
 
 /* ========================================================================
    Rebuttals compact density pass
@@ -8549,8 +8511,30 @@ details.section{
 }
 
 @media (max-width: 1200px){
+    #rbShell .content-card .content-body{
+        padding: 12px !important;
+        gap: 8px;
+    }
+
+    #rbShell .content-card .card-head{
+        padding: 18px 18px 16px !important;
+    }
+
+    #rbShell .section-head,
+    #rbShell .objection-body,
+    #rbShell .prosper-body{
+        padding-left: 18px !important;
+        padding-right: 18px !important;
+    }
+
+    #rbShell .objection-head,
+    #rbShell .prosper-stage-head{
+        padding: 17px 18px 13px 18px !important;
+    }
+
     #rbShell .nav-card .nav-body,
     #rbShell .prosper-nav-card .nav-body{
+        gap: 8px;
         padding: 9px !important;
     }
 
@@ -8558,9 +8542,8 @@ details.section{
         padding: 7px 9px 6px !important;
     }
 
-    #rbShell .content-card .content-body{
-        padding: 12px !important;
-        gap: 8px;
+    #rbShell .cat-note{
+        margin-left: 36px;
     }
 }
 
