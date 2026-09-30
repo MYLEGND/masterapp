@@ -416,6 +416,44 @@ public static class WebsiteSiteSource
         return result;
     }
 
+    private static readonly HashSet<string> ReservedRuntimeClasses = new(StringComparer.Ordinal)
+    {
+        "site-header",
+        "site-footer",
+        "nav-toggle",
+        "public-form",
+        "legend-cms-inquiry-form",
+        "legend-cms-embed",
+        "legend-store-nav-cluster",
+        "legend-store-cart",
+        "pf-cart-count",
+        "cms-reusable-instance"
+    };
+
+    private static bool IsReservedRuntimeClass(string token) =>
+        ReservedRuntimeClasses.Contains(token) ||
+        token.StartsWith("legend-cms-", StringComparison.Ordinal) ||
+        token.StartsWith("legend-store-", StringComparison.Ordinal) ||
+        token.StartsWith("pf-", StringComparison.Ordinal);
+
+    private static HashSet<string> ClassTokens(string? value) =>
+        (value ?? string.Empty)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.Ordinal);
+
+    private static void ProtectRuntimeClasses(
+        WebsiteCompositionNode node,
+        WebsiteCompositionNode? previous)
+    {
+        var previousTokens = ClassTokens(previous?.ClassName);
+        foreach (var token in ClassTokens(node.ClassName))
+        {
+            if (IsReservedRuntimeClass(token) && !previousTokens.Contains(token))
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Component '{node.Id}' cannot invent platform runtime class '{token}'. Use author-owned presentation classes instead.");
+        }
+    }
+
     private static bool HasProtectedSemantics(WebsiteCompositionNode node) =>
         !string.IsNullOrWhiteSpace(node.SystemKey) ||
         !string.IsNullOrWhiteSpace(node.SystemBinding) ||
@@ -464,6 +502,7 @@ public static class WebsiteSiteSource
 
             if (baseline.TryGetValue(node.Id, out var previous))
             {
+                ProtectRuntimeClasses(node, previous.Node);
                 var protectedBehavior = HasProtectedSemantics(previous.Node);
                 if (protectedBehavior &&
                     !string.Equals(previous.Node.Type, node.Type, StringComparison.Ordinal))
@@ -519,6 +558,7 @@ public static class WebsiteSiteSource
             }
             else
             {
+                ProtectRuntimeClasses(node, null);
                 node.Signals = [];
                 if (node.Type != "form" && !string.IsNullOrWhiteSpace(node.SystemKey))
                     throw new WebsiteSiteSourceProtectionException($"Free-content component '{node.Id}' cannot invent a platform system authority.");
