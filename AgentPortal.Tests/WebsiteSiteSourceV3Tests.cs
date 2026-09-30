@@ -862,4 +862,149 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.DoesNotContain("QualifiedLead", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("PolicyIssued", serialized, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void NativeExperience_AllowsCreativeLogicButOnlyCanonicalBackendCapabilities()
+    {
+        var document = CanonicalDocument();
+        var experience = new WebsiteCompositionNode
+        {
+            Id = "home.project-estimator",
+            Type = "experience",
+            Tag = "form",
+            Title = "Project estimator",
+            Text = "Answer a few questions for a preliminary range.",
+            Experience = new WebsiteExperienceDefinition
+            {
+                Kind = "calculator",
+                SubmitCapability = WebsiteExperiencePolicy.LeadCaptureCapability,
+                Steps =
+                [
+                    new WebsiteExperienceStep
+                    {
+                        Key = "project",
+                        Title = "Project",
+                        ControlKeys = ["project_type", "project_size", "next"]
+                    },
+                    new WebsiteExperienceStep
+                    {
+                        Key = "contact",
+                        Title = "Contact",
+                        ControlKeys = ["first_name", "last_name", "phone", "email", "consent", "submit", "schedule"]
+                    }
+                ],
+                Controls =
+                [
+                    new WebsiteExperienceControl
+                    {
+                        Key = "project_type", Type = "choice", Label = "What do you need?", Required = true,
+                        Options =
+                        [
+                            new() { Value = "installation", Label = "New installation" },
+                            new() { Value = "repair", Label = "Repair / upgrade" }
+                        ]
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "project_size", Type = "number", Label = "Approximate size", Required = true,
+                        Min = 100, Max = 10000
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "first_name", Type = "text", Label = "First name", Required = true, ContactRole = "first_name"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "last_name", Type = "text", Label = "Last name", Required = true, ContactRole = "last_name"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "phone", Type = "tel", Label = "Phone", Required = true, ContactRole = "phone"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "email", Type = "email", Label = "Email", Required = true, ContactRole = "email"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "consent", Type = "checkbox", Label = "Share my inquiry", Required = true, ContactRole = "consent"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "next", Type = "button", Label = "Continue",
+                        Action = new() { Type = "next", TargetStep = "contact" }
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "submit", Type = "button", Label = "Send",
+                        Action = new() { Type = "submit" }
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "schedule", Type = "cta", Label = "Schedule instead",
+                        Action = new() { Type = "cta", ActionKey = "business_schedule" }
+                    }
+                ],
+                Calculations = new(StringComparer.Ordinal)
+                {
+                    ["estimate"] = new WebsiteExperienceExpression
+                    {
+                        Op = "multiply",
+                        Values =
+                        [
+                            new() { Op = "ref", Ref = "project_size" },
+                            new() { Op = "value", Value = JsonSerializer.SerializeToElement(3.25m) }
+                        ]
+                    }
+                },
+                Results =
+                [
+                    new WebsiteExperienceResult
+                    {
+                        Key = "estimate",
+                        Label = "Preliminary estimate",
+                        Format = "currency",
+                        Expression = new() { Op = "ref", Ref = "calc.estimate" }
+                    }
+                ]
+            }
+        };
+        document.Pages["/"].Composition[0].Children.Add(experience);
+
+        var clean = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSiteSource.ValidateCanonical(clean, BusinessActions());
+
+        var saved = clean.Pages["/"].Composition[0].Children.Single(node => node.Id == experience.Id);
+        Assert.Equal("experience", saved.Type);
+        Assert.Equal("calculator", saved.Experience!.Kind);
+        Assert.Equal(WebsiteExperiencePolicy.LeadCaptureCapability, saved.Experience.SubmitCapability);
+        Assert.Contains(saved.Experience.Controls, control => control.Key == "project_type");
+        Assert.Contains(saved.Experience.Controls, control => control.Action?.ActionKey == "business_schedule");
+
+        var source = WebsiteSiteSource.Serialize(clean);
+        Assert.Contains(""experience"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("/api/website-inquiries", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("website_lead_submitted", source, StringComparison.OrdinalIgnoreCase);
+
+        saved.Experience.Controls.Single(control => control.Key == "schedule").Action!.ActionKey = "invented_backend_action";
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteSiteSource.ValidateCanonical(clean, BusinessActions()));
+    }
+
+    [Fact]
+    public void NativeExperience_RejectsExecutableOrUnknownCalculationAuthority()
+    {
+        var definition = new WebsiteExperienceDefinition
+        {
+            Kind = "calculator",
+            Calculations = new(StringComparer.Ordinal)
+            {
+                ["unsafe"] = new WebsiteExperienceExpression { Op = "script" }
+            }
+        };
+
+        var error = Assert.Throws<ArgumentException>(() => WebsiteExperiencePolicy.Sanitize(definition));
+        Assert.Contains("not supported", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
 }
