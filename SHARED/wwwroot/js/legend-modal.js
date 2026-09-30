@@ -193,10 +193,21 @@
       '[data-close-subscriber-actions]',
       '[data-uw-close]',
       '[data-proposal-close]',
+      '[data-support-close="true"]',
+      '[data-legend-sheet-close]',
       '.btn-close',
       '.modal-close',
       '.qv-booking-close',
-      '.finance-support-close'
+      '.finance-support-close',
+      '.uw-close',
+      '.hp-dialog-close',
+      '.ws-client-picker-close',
+      '.ai-drawer-close',
+      '.home-clients-close',
+      '.home-zoom-close',
+      '.home-focus-close',
+      '.note-self-close',
+      '.founder-subscriber-action-modal-close'
     ].join(',');
     const controls = Array.from(surface.querySelectorAll(selectors));
     controls.forEach(control => {
@@ -204,15 +215,27 @@
       if (!control.getAttribute("aria-label")) control.setAttribute("aria-label", "Close");
     });
 
-    if (controls.length || !surface.matches(".modal")) return;
+    if (controls.length) return;
 
-    const panel = surface.querySelector("[data-legend-modal-panel], .modal-content, .modal-dialog");
-    if (!panel) return;
+    const panel = surface.querySelector("[data-legend-modal-panel], .modal-content, .modal-dialog") || surface;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "legend-modal-close-control legend-modal-generated-close";
     button.setAttribute("aria-label", "Close");
-    button.setAttribute("data-bs-dismiss", "modal");
+    button.setAttribute("data-legend-generated-modal-close", "1");
+    if (surface.matches(".modal")) button.setAttribute("data-bs-dismiss", "modal");
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      if (surface.matches(".modal") && window.bootstrap?.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(surface).hide();
+        return;
+      }
+      surface.dispatchEvent(new CustomEvent("legend:modal-close", { bubbles: true }));
+      surface.classList.remove("open", "show");
+      surface.setAttribute("aria-hidden", "true");
+      surface.hidden = true;
+      syncModalSurfaceState(surface);
+    });
     panel.prepend(button);
   }
 
