@@ -1,9 +1,3 @@
-.home-command-page .home-hero-panel .dashboard-command-center-top {
-    grid-template-columns: minmax(0, 1fr) minmax(480px, 0.84fr);
-    gap: 0.72rem 0.9rem;
-    align-items: center;
-}
-
 .home-flash-banner {
     width: 100%;
     margin: -0.15rem auto 1.15rem;

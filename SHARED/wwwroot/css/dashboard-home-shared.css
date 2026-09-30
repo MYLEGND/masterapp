@@ -4407,7 +4407,8 @@ textarea.client-create-notes {
 }
 
 @media (max-width: 1180px) {
-    .dashboard-command-center-top {
+    .dashboard-command-center-top,
+    .home-command-page .home-hero-top {
         grid-template-columns: 1fr;
     }
 

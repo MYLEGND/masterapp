@@ -1,5 +1,13 @@
 (() => {
   const breakpoint = 840;
+  let closeExplore = () => {};
+
+  const closeAllMobileNavigation = () => {
+    document.querySelectorAll('[data-legend-global-nav].mobile-open').forEach(nav => {
+      nav.classList.remove('mobile-open');
+      nav.querySelector('[data-legend-nav-toggle]')?.setAttribute('aria-expanded', 'false');
+    });
+  };
 
   document.querySelectorAll('[data-legend-global-nav]').forEach(nav => {
     const toggle = nav.querySelector('[data-legend-nav-toggle]');
@@ -12,6 +20,8 @@
     };
 
     toggle.addEventListener('click', () => {
+      const willOpen = !nav.classList.contains('mobile-open');
+      if (willOpen) closeExplore();
       const isOpen = nav.classList.toggle('mobile-open');
       toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     });
@@ -52,7 +62,6 @@
   const isMobile = () => window.innerWidth <= breakpoint;
 
   const syncResponsiveState = () => {
-    if (closeControl) closeControl.hidden = !isMobile();
     if (!drawer.classList.contains('open')) {
       window.LegendModal?.unlockPageScroll?.(scrollOwner);
       return;
@@ -78,7 +87,10 @@
     }
   };
 
+  closeExplore = closeDrawer;
+
   const openDrawer = () => {
+    closeAllMobileNavigation();
     window.LegendModal?.refreshViewportOffsets?.();
     drawer.classList.add('open');
     overlay.classList.add('open');

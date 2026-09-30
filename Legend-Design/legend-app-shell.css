@@ -208,6 +208,8 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
     background: var(--web-navy-deep);
 }
 
+.explore-close{display:none}
+
 .explore-title{
     font-weight: 1000;
     letter-spacing: 1.2px;
