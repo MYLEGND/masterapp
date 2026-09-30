@@ -34,6 +34,11 @@ public sealed record WebsiteSiteSourceParseResult(
 
 public sealed record WebsiteSiteSourceLocation(int Line, string? PagePath, string NodeId);
 
+public sealed class WebsiteSiteSourceProtectionException : ArgumentException
+{
+    public WebsiteSiteSourceProtectionException(string message) : base(message) { }
+}
+
 /// <summary>
 /// Deterministic source-code projection for WebsiteContentDocument v3.
 ///
@@ -90,7 +95,7 @@ public static class WebsiteSiteSource
 
         var current = WebsiteContentSanitizer.Sanitize(baseline);
         if ((source.Store?.Enabled == true) != current.Store.Enabled)
-            throw new ArgumentException("Enable or remove the website store through the canonical Store authority, not Site Source.");
+            throw new WebsiteSiteSourceProtectionException("Enable or remove the website store through the canonical Store authority, not Site Source.");
 
         var sourcePages = source.Pages ?? [];
         if (sourcePages.Count > 100) throw new ArgumentException("Website page limit exceeded.");
@@ -158,7 +163,7 @@ public static class WebsiteSiteSource
         foreach (var entry in protectedNodes.Values)
         {
             if (HasProtectedSemantics(entry.Node) && !proposedNodeIds.Contains(entry.Node.Id))
-                throw new ArgumentException($"Protected component '{entry.Node.Id}' cannot be removed because its canonical behavior is platform-owned.");
+                throw new WebsiteSiteSourceProtectionException($"Protected component '{entry.Node.Id}' cannot be removed because its canonical behavior is platform-owned.");
         }
 
         output = WebsiteContentSanitizer.Sanitize(output);
@@ -229,7 +234,7 @@ public static class WebsiteSiteSource
 
         if (ReplaceSelection(before, selectedNodeId, markerNode) != 1 ||
             ReplaceSelection(after, selectedNodeId, markerNode) != 1)
-            throw new ArgumentException(
+            throw new WebsiteSiteSourceProtectionException(
                 $"Selected Source component '{selectedNodeId}' must keep one stable canonical identity.");
 
         if (!string.Equals(Serialize(before), Serialize(after), StringComparison.Ordinal))
@@ -265,7 +270,7 @@ public static class WebsiteSiteSource
         foreach (var page in document.Pages.Values)
             if (page.SystemTemplateKey is not null &&
                 !WebsiteSystemTemplateAuthority.IsKnownTemplateKey(page.SystemTemplateKey))
-                throw new ArgumentException("Website runtime template binding is invalid.");
+                throw new WebsiteSiteSourceProtectionException("Website runtime template binding is invalid.");
 
         var validActions = ctaCatalog.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
         var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -277,17 +282,17 @@ public static class WebsiteSiteSource
                 throw new ArgumentException($"Duplicate website node ID '{node.Id}'.");
 
             if (!string.IsNullOrWhiteSpace(node.ActionKey) && !validActions.Contains(node.ActionKey))
-                throw new ArgumentException($"Website action '{node.ActionKey}' is not available for this website.");
+                throw new WebsiteSiteSourceProtectionException($"Website action '{node.ActionKey}' is not available for this website.");
 
             if (node.Type == "form" &&
                 !string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
-                throw new ArgumentException("Website forms must use the canonical inquiry authority.");
+                throw new WebsiteSiteSourceProtectionException("Website forms must use the canonical inquiry authority.");
 
             if (WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(node.SystemKey))
             {
                 if (!document.Pages.TryGetValue(pagePath, out var runtimePage) ||
                     !WebsiteSystemTemplateAuthority.IsKnownTemplateKey(runtimePage.SystemTemplateKey))
-                    throw new ArgumentException("Protected runtime forms are allowed only on server-bound Protect template pages.");
+                    throw new WebsiteSiteSourceProtectionException("Protected runtime forms are allowed only on server-bound Protect template pages.");
             }
 
             if (string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal))
@@ -296,13 +301,13 @@ public static class WebsiteSiteSource
                 if (!string.Equals(pagePath, "@shell/header", StringComparison.Ordinal) ||
                     node.Type != "container" ||
                     !string.Equals(node.Tag, "nav", StringComparison.Ordinal))
-                    throw new ArgumentException("Primary navigation must remain the protected nav component in the shared website header.");
+                    throw new WebsiteSiteSourceProtectionException("Primary navigation must remain the protected nav component in the shared website header.");
             }
 
             if (node.Type == "reusable" &&
                 (string.IsNullOrWhiteSpace(node.SyncSourceId) ||
                  !document.ReusableComponents.ContainsKey(node.SyncSourceId)))
-                throw new ArgumentException($"Reusable component '{node.Id}' must reference an existing synchronized component definition.");
+                throw new WebsiteSiteSourceProtectionException($"Reusable component '{node.Id}' must reference an existing synchronized component definition.");
 
             if (node.Type is "cta" or "link" &&
                 string.IsNullOrWhiteSpace(node.ActionKey) &&
@@ -319,12 +324,12 @@ public static class WebsiteSiteSource
                 // This extra check only prevents malformed keys that happen to collide
                 // with an unrelated string; site-specific availability is already exact.
                 if (!validActions.Contains(node.ActionKey))
-                    throw new ArgumentException($"Website CTA '{node.Id}' has an invalid action.");
+                    throw new WebsiteSiteSourceProtectionException($"Website CTA '{node.Id}' has an invalid action.");
             }
         }
 
         if (primaryNavigationCount > 1)
-            throw new ArgumentException("Website v3 may contain only one primary navigation authority.");
+            throw new WebsiteSiteSourceProtectionException("Website v3 may contain only one primary navigation authority.");
     }
 
     private static string InferSiteKey(string actionKey) =>
@@ -462,7 +467,7 @@ public static class WebsiteSiteSource
             {
                 if (HasProtectedSemantics(previous.Node) &&
                     !string.Equals(previous.Node.Type, node.Type, StringComparison.Ordinal))
-                    throw new ArgumentException($"Protected component '{node.Id}' cannot change component type while platform-owned behavior is attached.");
+                    throw new WebsiteSiteSourceProtectionException($"Protected component '{node.Id}' cannot change component type while platform-owned behavior is attached.");
 
                 node.Signals = Clone(previous.Node.Signals);
 
@@ -471,7 +476,7 @@ public static class WebsiteSiteSource
                     if (string.IsNullOrWhiteSpace(node.SystemKey))
                         node.SystemKey = previous.Node.SystemKey;
                     else if (!string.Equals(previous.Node.SystemKey, node.SystemKey, StringComparison.Ordinal))
-                        throw new ArgumentException($"Protected component '{node.Id}' cannot change its system authority.");
+                        throw new WebsiteSiteSourceProtectionException($"Protected component '{node.Id}' cannot change its system authority.");
                 }
 
                 if (!string.IsNullOrWhiteSpace(previous.Node.SystemBinding))
@@ -479,11 +484,11 @@ public static class WebsiteSiteSource
                     if (string.IsNullOrWhiteSpace(node.SystemBinding))
                         node.SystemBinding = previous.Node.SystemBinding;
                     else if (!string.Equals(previous.Node.SystemBinding, node.SystemBinding, StringComparison.Ordinal))
-                        throw new ArgumentException($"Protected component '{node.Id}' cannot change its system data authority.");
+                        throw new WebsiteSiteSourceProtectionException($"Protected component '{node.Id}' cannot change its system data authority.");
                 }
                 else if (!string.IsNullOrWhiteSpace(node.SystemBinding))
                 {
-                    throw new ArgumentException($"Free-content component '{node.Id}' cannot invent a system data authority.");
+                    throw new WebsiteSiteSourceProtectionException($"Free-content component '{node.Id}' cannot invent a system data authority.");
                 }
 
                 if (!string.IsNullOrWhiteSpace(previous.Node.ActionKey))
@@ -491,7 +496,7 @@ public static class WebsiteSiteSource
                     if (string.IsNullOrWhiteSpace(node.ActionKey))
                         node.ActionKey = previous.Node.ActionKey;
                     else if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
-                        throw new ArgumentException($"Protected component '{node.Id}' cannot change its canonical action identity.");
+                        throw new WebsiteSiteSourceProtectionException($"Protected component '{node.Id}' cannot change its canonical action identity.");
 
                     // A preset CTA's visible label/presentation is editable, but its
                     // destination and window behavior belong to the server catalog.
@@ -521,7 +526,7 @@ public static class WebsiteSiteSource
             {
                 node.Signals = [];
                 if (node.Type != "form" && !string.IsNullOrWhiteSpace(node.SystemKey))
-                    throw new ArgumentException($"Free-content component '{node.Id}' cannot invent a platform system authority.");
+                    throw new WebsiteSiteSourceProtectionException($"Free-content component '{node.Id}' cannot invent a platform system authority.");
                 if (node.Type is "image" or "video" &&
                     !node.MediaAssetId.HasValue &&
                     !string.IsNullOrWhiteSpace(node.MediaUrl))
@@ -529,13 +534,13 @@ public static class WebsiteSiteSource
             }
 
             if (!string.IsNullOrWhiteSpace(node.ActionKey) && !allowedActions.Contains(node.ActionKey))
-                throw new ArgumentException($"Action '{node.ActionKey}' is not available for this website.");
+                throw new WebsiteSiteSourceProtectionException($"Action '{node.ActionKey}' is not available for this website.");
 
             if (node.Type == "form")
             {
                 if (string.IsNullOrWhiteSpace(node.SystemKey)) node.SystemKey = "canonical_inquiry";
                 if (!string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
-                    throw new ArgumentException("Website forms must use the canonical inquiry authority.");
+                    throw new WebsiteSiteSourceProtectionException("Website forms must use the canonical inquiry authority.");
             }
 
             ProtectSemantics(node.Children, pagePath, baseline, allowedActions, allIds);
