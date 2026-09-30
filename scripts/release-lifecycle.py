@@ -310,16 +310,55 @@ def successful_release(api, run, app=None):
 
 
 def direct_only_request(sha):
-    # A one-release exception, bound to the commit which changes the request.
-    # A later unrelated commit cannot inherit a stale promotion exemption.
+    # A one-release exception bound to the exact commit that changes the request.
+    # Two authorized shapes exist:
+    # 1) a validated PR merge that carries the request in the merge itself; or
+    # 2) a single-parent control-only authorization immediately after that merge.
     path = 'Docs/releases/direct-release-request.json'
-    changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, '--', path, check=False)
-    if changed.returncode or path not in changed.stdout.splitlines():
+    lineage = git('rev-list', '--parents', '-n', '1', sha, check=False)
+    parts = lineage.stdout.strip().split() if not lineage.returncode else []
+    if not parts or parts[0] != sha or len(parts) not in {2, 3}:
         return False
+
+    changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, check=False)
+    if changed.returncode:
+        return False
+    names = changed.stdout.splitlines()
+    if path not in names:
+        return False
+    if len(parts) == 2 and names != [path]:
+        return False
+
     result = git('show', sha + ':' + path, check=False)
     if result.returncode:
         return False
     return json.loads(result.stdout).get('releaseMode') == 'approved-only'
+
+
+def direct_release_approved_pr(api, sha):
+    """Resolve an exact approved-only release revision to its validated merged PR.
+
+    A request may be carried by the merge commit itself, or by one control-only
+    single-parent authorization commit immediately after the merge. The resolved
+    PR is always the one whose merge commit introduced the validated application
+    candidate; any other lineage shape fails closed.
+    """
+    if not direct_only_request(sha):
+        return None
+    lineage = git('rev-list', '--parents', '-n', '1', sha, check=False)
+    parts = lineage.stdout.strip().split() if not lineage.returncode else []
+    if not parts or parts[0] != sha:
+        return None
+    if len(parts) == 3:
+        merged = sha
+    elif len(parts) == 2:
+        merged = parts[1]
+    else:
+        return None
+    pulls = api.pages('commits/' + merged + '/pulls')
+    matches = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == merged
+               and p.get('base', {}).get('ref') == APPROVED]
+    return matches[0] if len(matches) == 1 else None
 
 
 def reconcile_history_only(api, production=None, approved=None):
@@ -409,8 +448,7 @@ def reconcile(api, trigger=None):
     if direct_only_request(approved):
         runs = api.pages('actions/runs?head_sha=' + approved, 'workflow_runs')
         if not any(r['path'].split('@')[0] == '.github/workflows/' + DIRECT for r in runs):
-            pulls = api.pages('commits/' + approved + '/pulls')
-            pr = next((p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == approved and p['base']['ref'] == APPROVED), None)
+            pr = direct_release_approved_pr(api, approved)
             if pr is not None:
                 pending = candidate_validation(api, pr)
                 if pending: return {'retained': pending}

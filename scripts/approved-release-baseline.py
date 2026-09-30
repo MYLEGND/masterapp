@@ -80,10 +80,9 @@ def main():
         if not lifecycle.direct_only_request(head):
             raise ValueError('This exact revision has no changed approved release request; no deployment authorized')
         api = lifecycle.GitHub()
-        pulls = api.pages('commits/' + head + '/pulls')
-        pr = next((p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == head and p['base']['ref'] == lifecycle.APPROVED), None)
+        pr = lifecycle.direct_release_approved_pr(api, head)
         if pr is None:
-            raise ValueError('Exact release must identify its merged approved PR')
+            raise ValueError('Exact release must identify its immediately preceding merged approved PR')
         pending = lifecycle.candidate_validation(api, pr)
         if pending:
             raise ValueError(pending)
