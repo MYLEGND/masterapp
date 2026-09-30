@@ -1007,4 +1007,108 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.Contains("not supported", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+
+    [Fact]
+    public void PublishedBindingResolver_UsesImmutablePublishedLineageAndRejectsServerOutcomeForgery()
+    {
+        const string bindingId = "binding-shared";
+        var document = CanonicalDocument();
+        var first = document.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.quote");
+        first.Signals =
+        [
+            new WebsiteSignalBinding
+            {
+                Id = bindingId,
+                Trigger = "click",
+                EventName = "cta_click",
+                ActionKey = "business_quote",
+                DeliveryMode = "destinations"
+            }
+        ];
+        var second = document.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.form");
+        second.Signals =
+        [
+            new WebsiteSignalBinding
+            {
+                Id = bindingId,
+                Trigger = "form_started",
+                EventName = "form_start",
+                ActionKey = "form_start",
+                DeliveryMode = "analytics"
+            }
+        ];
+
+        var version = new Domain.Entities.WebsiteContentVersion
+        {
+            DocumentJson = JsonSerializer.Serialize(
+                WebsiteContentSanitizer.Sanitize(document),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        };
+        var metadata = JsonSerializer.Serialize(new
+        {
+            configuredWebsiteSignal = true,
+            configuredSignalBindings = new[]
+            {
+                new { id = bindingId, elementId = "home.hero.form" }
+            }
+        });
+
+        var resolved = PublishedWebsiteBindingResolver.Resolve(
+            version,
+            WebsiteEditorSiteKeys.Business,
+            "/",
+            bindingId,
+            metadata);
+
+        Assert.NotNull(resolved);
+        Assert.Equal("home.hero.form", resolved!.ElementId);
+        Assert.Equal("form_start", resolved.Binding.EventName);
+        Assert.Equal("form_start", resolved.Binding.ActionKey);
+
+        document.Pages["/"].Composition[0].Children.Add(new WebsiteCompositionNode
+        {
+            Id = "home.forged",
+            Type = "text",
+            Tag = "p",
+            Text = "Forged",
+            Signals =
+            [
+                new WebsiteSignalBinding
+                {
+                    Id = "forged-lead",
+                    Trigger = "click",
+                    EventName = "Lead",
+                    ActionKey = "lead_created",
+                    DeliveryMode = "destinations"
+                }
+            ]
+        });
+        version.DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Null(PublishedWebsiteBindingResolver.Resolve(
+            version,
+            WebsiteEditorSiteKeys.Business,
+            "/",
+            "forged-lead",
+            JsonSerializer.Serialize(new
+            {
+                configuredWebsiteSignal = true,
+                configuredSignalBindings = new[] { new { id = "forged-lead", elementId = "home.forged" } }
+            })));
+    }
+
+    [Fact]
+    public void AgentContract_TeachesConversionSignalCoherenceWithoutProviderAuthority()
+    {
+        var prompt = WebsiteStudioAgentContract.PromptTemplate;
+
+        Assert.Contains("Maximize truthful signal coverage, not event count", prompt, StringComparison.Ordinal);
+        Assert.Contains("form_field_complete", prompt, StringComparison.Ordinal);
+        Assert.Contains("server-confirmed outcome", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ADVERTISING-READY COHERENCE", prompt, StringComparison.Ordinal);
+        Assert.Contains("Selected Source must never write Signals or FieldSignals directly", prompt, StringComparison.Ordinal);
+        Assert.Contains("Ads Manager", prompt, StringComparison.Ordinal);
+        Assert.Contains("never manufacture Meta/OpenAI/provider event names", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
 }
