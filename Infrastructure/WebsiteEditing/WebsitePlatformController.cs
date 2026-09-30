@@ -618,7 +618,12 @@ public class WebsitePlatformController : ControllerBase
         try
         {
             signals = WebsiteSignalBindingPolicy.Validate(request.Signals);
-            ValidateExperienceSignalTarget(target, fieldKey, signals);
+            if (target.Type == "experience" && target.Experience is not null && fieldKey is not null)
+            {
+                var control = target.Experience.Controls.Single(control =>
+                    string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase));
+                WebsiteSignalBindingPolicy.ValidateExperienceControl(control, signals);
+            }
         }
         catch (ArgumentException ex)
         {
@@ -1894,44 +1899,6 @@ public class WebsitePlatformController : ControllerBase
 
         target = found;
         return true;
-    }
-
-    internal static void ValidateExperienceSignalTarget(
-        WebsiteCompositionNode target,
-        string? fieldKey,
-        IReadOnlyList<WebsiteSignalBinding> signals)
-    {
-        if (target.Type != "experience" || target.Experience is null || string.IsNullOrWhiteSpace(fieldKey))
-            return;
-
-        var control = target.Experience.Controls.Single(control =>
-            string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase));
-        var buttonLike = control.Type is "button" or "cta";
-
-        foreach (var binding in signals)
-        {
-            if (buttonLike)
-            {
-                if (binding.Trigger != "click")
-                    throw new ArgumentException(
-                        $"Interactive button '{control.Key}' may map only a canonical click behavior.");
-            }
-            else if (binding.Trigger is not ("field_started" or "field_completed" or "validation_failed"))
-            {
-                throw new ArgumentException(
-                    $"Interactive input '{control.Key}' may map only field start, field completion, or validation behaviors.");
-            }
-
-            if (binding.ActionKey == "phone_field_completed" &&
-                !string.Equals(control.ContactRole, "phone", StringComparison.Ordinal))
-                throw new ArgumentException(
-                    "PhoneFieldCompleted may be connected only to the control carrying the canonical phone contact role.");
-
-            if (binding.ActionKey == "contact_input_started" &&
-                control.ContactRole is not ("first_name" or "last_name" or "phone" or "email" or "message"))
-                throw new ArgumentException(
-                    "ContactInputStarted may be connected only to a canonical contact-input control.");
-        }
     }
 
     private static bool TryFindSignalBinding(
