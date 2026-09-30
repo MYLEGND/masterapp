@@ -2551,7 +2551,7 @@ test('editor navigation uses non-link controls and opens pages only on double-cl
 });
 
 test('text scaling stays unbounded while manually resized sections remain non-scrolling canvases',()=>{
-  assert.match(source,/id="legend-cms-scale" type="number" min="0" step="any"/);
+  assert.match(source,/id="legend-cms-scale" type="number" min="0\.05" step="any"/);
   assert.doesNotMatch(source,/id="legend-cms-scale"[^>]*max=/);
   assert.match(source,/scaledElements\.set\(el, style\.fontScale\)/);
   assert.match(source,/el\.style\.minHeight = '0';[\s\S]*el\.style\.height = `\$\{style\.heightPx\}px`;[\s\S]*el\.style\.overflow = 'visible';/);
