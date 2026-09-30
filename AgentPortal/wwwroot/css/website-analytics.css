@@ -376,24 +376,6 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 .wa-meta-signal-health-btn:focus-visible {
     outline: none;
 }
-@media (max-width: 991.98px) {
-    .wa-page-header {
-        padding: 1.25rem;
-    }
-    .wa-header-right {
-        width: 100%;
-        align-items: stretch;
-        justify-content: flex-start;
-    }
-    .wa-scope-picker {
-        width: 100%;
-    }
-    .wa-scope-select-shell,
-    .wa-scope-picker .form-select {
-        min-width: 0;
-        width: 100%;
-    }
-}
 .fa-kpi-title { color: var(--legend-gold); font-weight: 800; letter-spacing: .02em; }
 .fa-kpi-value { font-size: 1.8rem; font-weight: 900; }
 .fa-kpi-delta { color: var(--legend-silver); font-size: .9rem; font-weight: 700; display: inline-block; margin-right: 6px; }
@@ -3160,49 +3142,7 @@ body {
     box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
 }
 
-@media (max-width: 1199.98px) {
-    
-
-    .wa-header-right {
-        justify-self: stretch;
-        justify-items: stretch;
-        min-width: 0;
-    }
-
-    .wa-header-rail-main {
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        grid-auto-flow: row;
-        grid-auto-columns: auto;
-        justify-content: stretch;
-    }
-
-    .wa-header-rail-meta {
-        justify-content: flex-start;
-    }
-
-    
-
-    
-
-    
-
-    .control-bar-status {
-        justify-self: start;
-        min-width: 0;
-    }
-
-    .fa-kpi-grid-primary,
-    .fa-kpi-grid-secondary,
-    .fa-modules-support {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
 @media (max-width: 991.98px) {
-    .hero-link-top {
-        flex-direction: column;
-    }
-
     .hero-link-summary {
         justify-content: flex-start;
         max-width: none;
@@ -3221,44 +3161,6 @@ body {
 @media (max-width: 767.98px) {
     .fa-shell {
         margin-top: 1rem !important;
-    }
-
-    .hero-link,
-    .wa-page-header,
-    .control-bar,
-    .wa-methodology-note {
-        border-radius: 16px;
-    }
-
-    .hero-link-grid,
-    .fa-kpi-grid-primary,
-    .fa-kpi-grid-secondary,
-    .fa-modules-support {
-        grid-template-columns: 1fr;
-    }
-
-    
-
-    .hero-link-meta-actions {
-        flex-direction: column;
-    }
-
-    .hero-link-meta-actions .btn {
-        width: 100%;
-    }
-
-    
-
-    
-
-    .wa-page-header,
-    .control-bar {
-        padding: 1rem;
-    }
-
-    .wa-header-title,
-    .hero-link-title {
-        max-width: none;
     }
 }
 
@@ -4402,6 +4304,7 @@ body {
 
     .control-bar-status {
         justify-self: start;
+        min-width: 0;
     }
 
     .fa-kpi-grid-primary,
@@ -4470,6 +4373,7 @@ body {
 
     .wa-scope-select-shell,
     .wa-scope-picker .form-select {
+        min-width: 0;
         width: 100%;
     }
 
