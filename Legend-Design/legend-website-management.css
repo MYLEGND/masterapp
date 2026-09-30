@@ -164,10 +164,10 @@
   .legend-website-manager [role=status]{font-size:.72rem;margin-bottom:5px}
   .legend-website-manager .wm-hero-actions{gap:5px;margin-bottom:7px;padding-bottom:7px}
   .legend-website-manager .wm-hero-actions>a{flex:1;min-width:0;min-height:34px;padding:5px 7px;border-radius:8px;font-size:.76rem}
-  .legend-website-manager .wm-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
-  .legend-website-manager .wm-tile{min-height:40px;padding:6px 7px;border-radius:8px;font-size:.78rem}
+  .legend-website-manager .wm-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .legend-website-manager .wm-tile{min-height:48px;padding:8px 9px;font-size:.88rem}
   .legend-website-manager .wm-icon{width:17px;height:17px;flex-basis:17px}
-  .legend-website-manager .wm-list{max-height:calc(72dvh - 138px)}
+  .legend-website-manager .wm-list{max-height:calc(100dvh - 170px)}
   .legend-website-manager .wm-list-row,.legend-website-manager .wm-row{padding:6px}
   .legend-website-manager .wm-list-actions{gap:4px}
   .legend-website-manager .wm-list-actions button{min-height:32px;padding:5px 7px}
