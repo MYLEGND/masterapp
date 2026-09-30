@@ -389,6 +389,8 @@ test('Selected Source rebases revision conflicts without reporting a backend pro
 
 test('source protection UI is reserved for explicit protected-authority failures',()=>{
   assert.match(source,/response\.status===409 && payload\.error==='revision_conflict'/);
+  assert.match(source,/function selectedSourceHasConcurrentChange\([\s\S]*sourceEditorBaseNode/);
+  assert.match(source,/selectedSourceHasConcurrentChange\(baseDocument,selectedNodeId\)[\s\S]*selected component was changed elsewhere/);
   assert.match(source,/if\(payload\.canonicalProtectionViolation===true\)[\s\S]*showCanonicalProtectionViolation/);
   assert.match(websitePlatformControllerSource,/catch \(WebsiteSiteSourceProtectionException ex\)[\s\S]*canonicalProtectionViolation = true/);
   assert.match(websitePlatformControllerSource,/catch \(ArgumentException ex\)[\s\S]*canonicalProtectionViolation = false/);
