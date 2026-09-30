@@ -64,6 +64,51 @@ test('shared mobile navigation keeps the motto in the permanent top row and comp
   assert.doesNotMatch(css,/@media \(max-width: 840px\)[\s\S]*\.legend-global-nav \.navbar-left \.nav-row \{[\s\S]*flex-direction: column/);
 });
 
+test('Explore drawer has one shared mobile owner with explicit dismissal and scroll locking',()=>{
+  const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
+  assert.match(navScript,/data-legend-explore-close/);
+  assert.match(navScript,/LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/event\.target\.closest\('\.explore-item'\)/);
+  assert.match(navScript,/drawer\.setAttribute\('aria-hidden', isOpen \? 'false' : 'true'\)/);
+
+  for(const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml'
+  ]){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.equal(source.split('data-legend-explore-close').length-1,1,file);
+    assert.equal(source.includes("const trigger = document.getElementById('exploreTrigger');"),false,file);
+    assert.match(source,/id="exploreDrawer"[^>]*aria-hidden="true"/);
+  }
+});
+
+test('Explore mobile sheet stays below the banner and uses a symmetric two-column action grid',()=>{
+  const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-overlay\{[\s\S]*top:var\(--legend-modal-clearance-top,0px\)/);
+  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-drawer\{[\s\S]*top:max\(var\(--legend-modal-area-start,8px\),env\(safe-area-inset-top\)\)/);
+  assert.match(css,/\.explore-list\{[\s\S]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.explore-group-label\{[\s\S]*grid-column:1 \/ -1/);
+  assert.match(css,/\.explore-close::before\{[\s\S]*border:1\.5px solid var\(--legend-mobile-text/);
+});
+
+test('canonical mobile action density loads after page feature styles in both authenticated apps',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  assert.match(css,/Canonical mobile action density[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/);
+  assert.match(css,/:where\([\s\S]*\[class\$="-actions"\][\s\S]*\.d-grid[\s\S]*\):has\(> :is\(button, \.btn, a\.btn, form\)\)/);
+  assert.match(css,/:is\(\[data-legend-modal-panel\], \[data-legend-mobile-sheet\]\)[\s\S]*\.modal-footer[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/);
+
+  for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const featureBoundary=source.indexOf('RenderSection("Styles"');
+    const shared=source.indexOf('~/_content/Shared/css/dashboard-home-shared.css');
+    const booking=source.indexOf('~/css/qv-booking.css');
+    assert(featureBoundary>=0 && shared>featureBoundary,file+': shared mobile authority must follow page styles');
+    assert(booking>=0 && shared>booking,file+': shared mobile authority must follow booking feature CSS');
+  }
+});
+
 test('AgentPortal and ClientApp consume the same authenticated CSS authorities exactly once',()=>{
   const files=['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml'];
   for(const file of files){
