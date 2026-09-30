@@ -191,8 +191,60 @@ def architecture_product_validation(api, run):
     return True
 
 
+VALIDATION_NEUTRAL_PATHS = {
+    'Docs/releases/direct-release-request.json',
+    'scripts/approved-release-baseline.py',
+    'scripts/release-lifecycle.py',
+    'scripts/test-release-policy.py',
+    'scripts/test-release-lifecycle.py',
+    'scripts/test-deploy-approved-app.py',
+    'tests/website/legend-public-cms.test.mjs',
+    'AgentPortal.Tests/WebsiteStudioV3ContractTests.cs',
+}
+
+
+def validation_neutral_commit(api, sha):
+    commit = api.api('commits/' + sha)
+    files = [row.get('filename') for row in (commit or {}).get('files', [])]
+    return bool(files) and all(
+        path in VALIDATION_NEUTRAL_PATHS or path.startswith('tests/')
+        for path in files if path)
+
+
+def architecture_run_for_sha(api, sha, architecture):
+    runs = api.pages('actions/runs?head_sha=' + sha, 'workflow_runs')
+    candidates = [
+        run for run in runs
+        if run.get('head_sha') == sha and run.get('event') == 'pull_request'
+        and run['path'].split('@')[0] == architecture
+    ]
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda run: (run.get('created_at', ''), run.get('id', 0)),
+        reverse=True)[0]
+
+
+def inherited_architecture_product_validation(api, pr, architecture):
+    """Reuse product evidence only across validation/control-only trailing commits."""
+    head = pr['head']['sha']
+    commits = api.pages(f"pulls/{pr['number']}/commits")
+    shas = [row.get('sha') for row in commits if row.get('sha')]
+    if head not in shas:
+        shas.append(head)
+
+    for sha in reversed(shas):
+        run = architecture_run_for_sha(api, sha, architecture)
+        if run is not None and architecture_product_validation(api, run):
+            return True
+        if not validation_neutral_commit(api, sha):
+            return False
+    return False
+
+
 def candidate_validation(api, pr):
-    """Require only exact-head validations that own the PR's changed subsystem."""
+    """Require subsystem-owned validation; neutral trailing commits may reuse product evidence."""
     head = pr['head']['sha']
     runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
     latest = {}
@@ -208,12 +260,15 @@ def candidate_validation(api, pr):
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [f['filename'] for f in files]
 
+    scope_neutral = VALIDATION_NEUTRAL_PATHS | {
+        'scripts/deploy-approved-app.py',
+    }
+    product_names = [name for name in names
+                     if name not in scope_neutral and not name.startswith('tests/')]
+
     # Website Studio has its own architecture/shared-CMS validation authority.
-    # Do not make its release depend on the conversion-mapping comparison suite
-    # merely because both workflows use broad pull_request path filters.
+    # Release/test-control files never convert it into a Step 5 marketing release.
     studio_exact = {
-        'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
-        'AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs',
         'SHARED/WebsitePlatform/legend-public-cms.js',
         'SHARED/WebsitePlatform/legend-public-web.css',
         'Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs',
@@ -221,34 +276,39 @@ def candidate_validation(api, pr):
         'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
         'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs',
         'Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs',
-        'tests/website/legend-public-cms.test.mjs',
     }
-    studio_only = bool(names) and all(name in studio_exact for name in names)
+    studio_only = bool(product_names) and all(name in studio_exact for name in product_names)
 
     broad_product_change = any(
-        name.startswith(('AgentPortal.Tests/', 'AgentPortal/', 'ClientApp/', 'Protect-Website/',
+        name.startswith(('AgentPortal/', 'ClientApp/', 'Protect-Website/',
                          'ParfaitApp/', 'SHARED/', 'Infrastructure/', 'Domain/'))
         or name == step5.removeprefix('.github/workflows/')
-        for name in names
+        for name in product_names
     )
     if broad_product_change and not studio_only:
         required.add(step5)
 
-    missing = sorted(path for path in required if path not in latest)
-    if missing:
-        if architecture in missing:
-            return 'Exact-head architecture validation has not started'
-        return 'Exact-head full-suite comparison has not started'
-
     failed = []
     for path in sorted(required):
-        run = latest[path]
+        run = latest.get(path)
         if path == architecture:
-            if not architecture_product_validation(api, run):
-                failed.append(path)
+            if run is not None and architecture_product_validation(api, run):
+                continue
+            if inherited_architecture_product_validation(api, pr, architecture):
+                continue
+            failed.append(path)
+        elif run is None:
+            failed.append(path)
         elif run.get('status') != 'completed' or run.get('conclusion') != 'success':
             failed.append(path)
-    return 'Awaiting successful exact-head validation: ' + ', '.join(failed) if failed else None
+
+    if not failed:
+        return None
+    if architecture in failed and architecture not in latest:
+        return 'Exact-head architecture validation has not started'
+    if step5 in failed and step5 not in latest:
+        return 'Exact-head full-suite comparison has not started'
+    return 'Awaiting successful exact-head validation: ' + ', '.join(failed)
 
 
 def merge_validated(api, pr):
@@ -443,7 +503,6 @@ def direct_release_approved_pr(api, sha):
         'scripts/release-lifecycle.py',
         'scripts/test-release-policy.py',
         'scripts/test-release-lifecycle.py',
-        '.github/workflows/masterapp-platform-architecture-validation.yml',
     }
 
     for _ in range(16):

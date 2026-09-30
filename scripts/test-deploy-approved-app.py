@@ -22,9 +22,11 @@ def row(identifier, status):
 
 
 class FakeAzure:
-    def __init__(self, states, revisions, accepted=True):
+    def __init__(self, states, revisions, accepted=True, static=False, recovery_accepted=True):
         self.states, self.revisions, self.accepted = list(states), list(revisions), accepted
+        self.static, self.recovery_accepted = static, recovery_accepted
         self.uploads = 0
+        self.recovery_uploads = 0
         self.now = 0
 
     def deployments(self):
@@ -39,6 +41,12 @@ class FakeAzure:
     def submit(self):
         self.uploads += 1
         return self.accepted
+
+    def submit_static_recovery(self):
+        if not self.static:
+            raise RuntimeError('not static')
+        self.recovery_uploads += 1
+        return self.recovery_accepted
 
     def sleep(self, seconds):
         self.now += seconds
@@ -69,6 +77,28 @@ class ReconciliationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'failed'):
             azure.run()
         self.assertEqual(1, azure.uploads)
+
+    def test_static_terminal_onedeploy_failure_uses_one_verified_recovery_then_requires_live_revision(self):
+        azure = FakeAzure(
+            [[], [row('failed', 3)], [row('recovery', 1)], [row('recovery', 4)]],
+            [False, False, None, True, True],
+            accepted=False,
+            static=True)
+        self.assertEqual('deployed', azure.run())
+        self.assertEqual(1, azure.uploads)
+        self.assertEqual(1, azure.recovery_uploads)
+
+    def test_static_recovery_terminal_failure_is_not_retried_again(self):
+        azure = FakeAzure(
+            [[], [row('failed', 3)], [row('recovery-failed', 3)]],
+            [False, False, False],
+            accepted=False,
+            static=True,
+            recovery_accepted=False)
+        with self.assertRaisesRegex(RuntimeError, 'failed'):
+            azure.run()
+        self.assertEqual(1, azure.uploads)
+        self.assertEqual(1, azure.recovery_uploads)
 
     def test_unknown_upload_outcome_never_causes_another_upload(self):
         azure = FakeAzure([[]], [False], accepted=False)
@@ -152,6 +182,16 @@ class PackageTests(unittest.TestCase):
             for flag, value in [('--async', 'true'), ('--track-status', 'false'),
                                 ('--enable-kudu-warmup', 'false'), ('--type', 'zip')]:
                 self.assertEqual(value, command[command.index(flag) + 1])
+            self.assertEqual(1, run.call_count)
+
+    def test_static_recovery_uses_kudu_config_zip_once_with_same_package(self):
+        azure = deploy.Azure('masterapp-website', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40, static=True)
+        with patch.object(deploy.subprocess, 'run') as run:
+            run.return_value.returncode = 0
+            self.assertTrue(azure.submit_static_recovery())
+            command = run.call_args.args[0]
+            self.assertEqual(['az','webapp','deployment','source','config-zip'], command[:5])
+            self.assertEqual('/immutable.zip', command[command.index('--src') + 1])
             self.assertEqual(1, run.call_count)
 
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """One immutable upload, followed by read-only deployment/runtime reconciliation.
 
-A timeout is not a failed Azure operation. Never replay a deployment here: a
-terminal failure remains failed, and an unknown/active operation remains pending.
-The approved release workflow remains the only deployment authority.
+A timeout is not a failed Azure operation. Unknown/active operations are never
+replayed. A static Website OneDeploy that is proven terminal-failed while exact
+provenance remains old may use one bounded Kudu ZipDeploy recovery with the same
+verified immutable ZIP. The approved release workflow remains the only authority.
 """
 import argparse
 import hashlib
@@ -97,10 +98,31 @@ class Azure:
             print('::warning::Upload response timed out; Azure may still be working. No resubmission.', flush=True)
             return False
 
+    def submit_static_recovery(self):
+        if not self.static:
+            raise RuntimeError('Static deployment recovery is valid only for the Website target')
+        # This is not a retry of an ambiguous operation. It is authorized only
+        # after OneDeploy has reached terminal failure and exact provenance proves
+        # the candidate is still not live. Reuse the same verified immutable ZIP
+        # through Kudu ZipDeploy once, then return to read-only reconciliation.
+        command = ['az', 'webapp', 'deployment', 'source', 'config-zip',
+                   '-g', 'masterapp-rg', '-n', self.app, '--src', str(self.package),
+                   '--only-show-errors', '-o', 'json']
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=300)
+            if result.returncode:
+                print('::warning::Static recovery response was unsuccessful; reconciling Azure without another submission.', flush=True)
+                print(result.stderr[-4000:], flush=True)
+            return result.returncode == 0
+        except subprocess.TimeoutExpired:
+            print('::warning::Static recovery response timed out; Azure may still be working. No further submission.', flush=True)
+            return False
+
 
 def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15):
     started = clock()
     submitted = False
+    static_recovery_submitted = False
     baseline_ids = set()
     stable = 0
     previous = None
@@ -120,9 +142,23 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
             previous = state
         if len(new) > 1:
             raise RuntimeError('Multiple new Azure deployments detected; refusing to hide a concurrent publication')
-        if new and new[0]['status'] == 3:
-            raise RuntimeError(f"Azure deployment {new[0]['id']} failed. Inspect its deployment log; no automatic restart.")
         live = azure.revision_live()
+        if new and new[0]['status'] == 3:
+            failed = new[0]
+            if azure.static and not static_recovery_submitted and live is False and not active:
+                baseline_ids.add(failed['id'])
+                static_recovery_submitted = True
+                stable = 0
+                print(
+                    f"Static Website OneDeploy {failed['id']} failed terminally and the approved revision is not live; "
+                    "submitting the same verified immutable ZIP once through Kudu ZipDeploy.",
+                    flush=True)
+                azure.submit_static_recovery()
+                sleep(interval)
+                continue
+            raise RuntimeError(
+                f"Azure deployment {failed['id']} failed. "
+                "Inspect its deployment log; no automatic restart.")
         if active:
             # Even exact provenance cannot authorize success while another upload
             # may still replace/restart that revision. Wait for Azure to settle.

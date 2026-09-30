@@ -458,7 +458,7 @@ public static class WebsiteSiteSource
         }
     }
 
-    private static bool HasProtectedSemantics(WebsiteCompositionNode node) =>
+    internal static bool HasProtectedSemantics(WebsiteCompositionNode node) =>
         !string.IsNullOrWhiteSpace(node.SystemKey) ||
         !string.IsNullOrWhiteSpace(node.SystemBinding) ||
         string.Equals(node.Type, "form", StringComparison.Ordinal) ||

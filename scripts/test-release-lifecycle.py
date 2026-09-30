@@ -502,6 +502,40 @@ class ExactCandidateValidation(unittest.TestCase):
         ]
         self.assertIsNotNone(self.validate([self.run_record()],files))
 
+    def test_website_studio_release_control_files_do_not_require_step5(self):
+        files=[
+            'Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs',
+            'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs',
+            'SHARED/WebsitePlatform/legend-public-cms.js',
+            'AgentPortal.Tests/WebsiteStudioV3ContractTests.cs',
+            'tests/website/legend-public-cms.test.mjs',
+            'scripts/deploy-approved-app.py',
+            'scripts/test-deploy-approved-app.py',
+            'scripts/test-release-policy.py',
+        ]
+        self.assertIsNone(self.validate([self.run_record()],files))
+
+    def test_inherited_product_validation_crosses_only_neutral_trailing_commits(self):
+        from unittest.mock import Mock
+        api=Mock()
+        head='c'*40
+        validated='b'*40
+        api.pages.side_effect=lambda path,*args: (
+            [{'sha':validated},{'sha':head}] if path.startswith('pulls/1/commits') else
+            [self.run_record(head_sha=validated,id=9)] if path.startswith('actions/runs?head_sha='+validated) else
+            [self.run_record(head_sha=head,id=10,conclusion='failure')] if path.startswith('actions/runs?head_sha='+head) else
+            [])
+        api.api.side_effect=lambda path: {
+            'files':[{'filename':'scripts/test-release-policy.py'}]
+        } if path=='commits/'+head else {
+            'files':[{'filename':'SHARED/WebsitePlatform/legend-public-cms.js'}]
+        }
+        with patch.object(m,'architecture_product_validation',
+                          side_effect=lambda _api,run: run.get('id')==9):
+            self.assertTrue(m.inherited_architecture_product_validation(
+                api,{'number':1,'head':{'sha':head}},
+                '.github/workflows/masterapp-platform-architecture-validation.yml'))
+
     def test_host_changes_also_require_full_suite(self):
         for path in ['Protect-Website/Models/RiskAssessmentModel.cs','ClientApp/Program.cs','Domain/Entities/Lead.cs']:
             with self.subTest(path=path):

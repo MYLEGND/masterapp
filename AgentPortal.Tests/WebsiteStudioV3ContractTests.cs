@@ -445,4 +445,46 @@ public sealed class WebsiteStudioV3ContractTests
         Assert.NotNull(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteCompositionLayout"));
         Assert.NotNull(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteDesignTheme"));
     }
+    [Fact]
+    public void PersistedCanonicalDuplicateIds_PreserveProtectedIdentityAndRepairOnlyFreeDuplicate()
+    {
+        var document = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/Quote/Dental-Vision-Hearing"] = new WebsitePageDocument
+                {
+                    Title = "Dental Vision Hearing",
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "quote_dvh.root.1",
+                            Type = "section",
+                            Tag = "section",
+                            Text = "Presentation duplicate"
+                        },
+                        new WebsiteCompositionNode
+                        {
+                            Id = "quote_dvh.root.1",
+                            Type = "container",
+                            Tag = "div",
+                            SystemKey = "protect_runtime_form:quote_dvh_form"
+                        }
+                    ]
+                }
+            }
+        };
+
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var repaired = WebsiteContentSanitizer.ReadPersisted(JsonSerializer.Serialize(document, options), options);
+        var nodes = repaired.Pages["/Quote/Dental-Vision-Hearing"].Composition;
+
+        var protectedNode = Assert.Single(nodes.Where(node => !string.IsNullOrWhiteSpace(node.SystemKey)));
+        var freeNode = Assert.Single(nodes.Where(node => string.IsNullOrWhiteSpace(node.SystemKey)));
+        Assert.Equal("quote_dvh.root.1", protectedNode.Id);
+        Assert.StartsWith("quote_dvh.root.1.repair.", freeNode.Id);
+        Assert.Equal("Presentation duplicate", freeNode.Text);
+    }
+
 }
