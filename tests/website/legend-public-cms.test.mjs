@@ -749,6 +749,7 @@ test('published mobile flow neutralizes stale explicit free-canvas offsets and f
   const doc=canonicalDocument();
   const section=canonicalNodeById(doc,'home.section.1');
   section.layout={mode:'free',gapPx:8};
+  section.breakpointStyles.mobile={heightPx:980,offsetYPx:-100,marginTop:-50,minHeightPx:900,maxHeightPx:1200};
   section.breakpointLayouts.mobile={mode:'free',gapPx:16};
   const heading=canonicalNodeById(doc,'home.h1.node.1');
   heading.breakpointStyles.mobile={widthPercent:36,offsetXPercent:58,offsetYPx:-180,heightPx:150,fontSize:88};
@@ -768,6 +769,11 @@ test('published mobile flow neutralizes stale explicit free-canvas offsets and f
     assert.equal(root.style.display,'flex');
     assert.equal(root.style.flexDirection,'column');
     assert.equal(root.style.alignItems,'stretch');
+    assert.equal(root.style.height,'');
+    assert.equal(root.style.top,'');
+    assert.equal(root.style.marginTop,'0px');
+    assert.equal(root.style.minHeight,'');
+    assert.equal(root.style.maxHeight,'');
     for(const el of [h,a,img]){
       assert.equal(el.style.left,'0%');
       assert.equal(el.style.top,'0px');
