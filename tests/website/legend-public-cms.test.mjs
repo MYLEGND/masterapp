@@ -308,6 +308,8 @@ test('v3 canonical composition renders natively and canvas/source share the same
     assert.equal(f.w.document.querySelector('[data-open="content"]').getAttribute('aria-pressed'),'true');
     f.editSelected('Canonical canvas edit');
     f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.w.document.querySelector('#legend-cms-source-scope').value,'selection');
     assert.equal(f.w.document.querySelector('#legend-cms-site-source').readOnly,false);
     let parsed=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
@@ -356,6 +358,7 @@ test('Master Source is read only while Selected Source is editable and semantica
     assert.match(source,/\.legend-cms-source-style\{color:#7fb5ff\}/);
     assert.match(source,/\.legend-cms-source-color\{color:#ff8fa8\}/);
     assert.match(source,/\.legend-cms-source-size\{color:#ffb86b\}/);
+    assert.match(source,/\.legend-cms-source-structure\{color:#9bd67d\}/);
   }finally{f.close();}
 });
 
@@ -456,7 +459,7 @@ test('protected form fields expose typed presentation without exposing execution
 test('source protection UI is reserved for explicit protected-authority failures',()=>{
   assert.match(source,/response\.status===409 && payload\.error==='revision_conflict'/);
   assert.match(source,/function selectedSourceHasConcurrentChange\([\s\S]*sourceEditorBaseNode/);
-  assert.match(source,/selectedSourceHasConcurrentChange\(baseDocument,selectedNodeId\)[\s\S]*selected component was changed elsewhere/);
+  assert.match(source,/selectedSourceHasConcurrentChange\(baseSourceDocument,selectedNodeId\)[\s\S]*selected component was changed elsewhere/);
   assert.match(source,/if\(payload\.canonicalProtectionViolation===true\)[\s\S]*showCanonicalProtectionViolation/);
   assert.match(websitePlatformControllerSource,/catch \(WebsiteSiteSourceProtectionException ex\)[\s\S]*canonicalProtectionViolation = true/);
   assert.match(websitePlatformControllerSource,/catch \(ArgumentException ex\)[\s\S]*canonicalProtectionViolation = false/);
@@ -1126,12 +1129,13 @@ test('button action picker groups human CTA phrases by one backend wiring contra
     const button=f.w.document.querySelector('.legend-cms-selected');
     assert.equal(button.textContent,'Get a Free Quote');
     assert.equal(button.getAttribute('href'),'/contact');
-    assert.equal(f.w.document.querySelector('#legend-cms-action').disabled,true);
-    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Protected wiring/);
+    assert.equal(f.w.document.querySelector('#legend-cms-action').disabled,false);
+    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Managed action/);
 
     f.change('#legend-cms-action','custom');
-    assert.equal(button.dataset.websiteActionKey,'business_quote');
-    assert.equal(button.getAttribute('href'),'/contact');
+    assert.equal(button.dataset.websiteActionKey,undefined);
+    f.input('#legend-cms-href','https://example.com/custom');
+    assert.equal(button.getAttribute('href'),'https://example.com/custom');
   }finally{f.close();}
 });
 
@@ -1795,6 +1799,26 @@ test('disabled store control is a single compact Add Store action with no redund
     assert.equal(host.querySelector('small'),null);
     assert.doesNotMatch(source,/Adds one scoped Store page/);
     assert.match(source,/#legend-cms-store-toggle\{[^}]*justify-self:start/);
+  }finally{f.close();}
+});
+
+test('primary navigation keeps one behavior authority while its presentation is editable',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc,pages:[{path:'/',label:'Home'}]});
+  try{
+    const nav=f.w.document.querySelector('#primary-nav');
+    assert.ok(nav);
+    assert.equal(nav.dataset.cmsLocked,undefined);
+    assert.equal(nav.dataset.cmsBehaviorLocked,'true');
+    const link=nav.querySelector('[data-legend-page-nav="true"]');
+    assert.ok(link);
+    link.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    assert.equal(f.w.document.querySelector('.legend-cms-selected'),nav);
+    f.input('#legend-cms-scale','1.9');
+    const saved=await f.save();
+    const navNode=saved.shell.header[0].children.find(node=>node.id==='shell.primary-nav');
+    assert.equal(navNode.style.fontScale,1.9);
+    assert.equal(navNode.systemKey,'primary_navigation');
   }finally{f.close();}
 });
 
@@ -2614,19 +2638,29 @@ test('removing a scoped favicon restores the canonical fallback before publicati
 });
 
 
-test('managed canonical action identity survives copy styling and cannot be downgraded to custom wiring',async()=>{
-  const actions=[{key:'business_schedule',group:'Schedule',label:'Schedule',defaultText:'Book consultation',href:'https://booking.example/confirmed-flow',analyticsEventName:'cta_click',behaviorKey:'cta_click'}];
-  const f=await domFixture({ctaCatalog:actions});
+test('signal-bound managed action identity remains locked while presentation stays editable',async()=>{
+  const actions=[{key:'business_schedule',group:'Schedule',label:'Schedule',defaultText:'Book consultation',href:'https://booking.example/confirmed-flow',openInNewTab:false,analyticsEventName:'cta_click',behaviorKey:'cta_click'}];
+  const doc=canonicalDocument();
+  doc.pages['/'].composition[0].children.push(canonicalNode('home.schedule','cta','a',{
+    text:'Book consultation',
+    actionKey:'business_schedule',
+    href:'https://booking.example/confirmed-flow',
+    signals:[{id:'11111111111111111111111111111111',eventName:'cta_click',actionKey:'cta_click',trigger:'click',deliveryMode:'analytics',oncePerSession:true,matchingFields:[]}]
+  }));
+  const f=await domFixture({siteKey:'business',doc,ctaCatalog:actions,business:{id:'business-id',displayName:'Fixture business'}});
   try {
-    f.click('main h1'); f.click('[data-add="button"]');
-    f.change('#legend-cms-action','managed:business_schedule:0');
+    f.click('[data-cms-id="home.schedule"]');
     const button=f.w.document.querySelector('.legend-cms-selected');
     const elementId=button.dataset.cmsCompositionId;
+    assert.equal(f.w.document.querySelector('#legend-cms-action').disabled,true);
+    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Protected wiring/);
+
     f.editSelected('Pay now and complete my application');
     const style=f.w.document.querySelector('[data-style-key="fontSize"]');
     style.value='29'; style.dispatchEvent(new f.w.Event('input',{bubbles:true}));
-    f.input('#legend-cms-href','https://unrelated.example');
     f.change('#legend-cms-action','custom');
+    f.input('#legend-cms-href','https://unrelated.example');
+
     const saved=await f.save();
     const cta=canonicalNodeById(saved,elementId);
     assert.equal(cta.actionKey,'business_schedule');
@@ -2634,10 +2668,8 @@ test('managed canonical action identity survives copy styling and cannot be down
     assert.equal(cta.text,'Pay now and complete my application');
     assert.equal(cta.style.fontSize,29);
     assert.equal(button.dataset.cmsCompositionId,elementId);
-    assert.equal(f.w.document.querySelector('#legend-cms-action').disabled,true);
   }finally{f.close();}
 });
-
 
 
 test('signal-only nodes are protected in the editor and presentation duplication never clones hidden mappings',async()=>{
@@ -2669,6 +2701,7 @@ test('server-rejected GPT source edit renders the canonical red correction in So
   try{
     f.click('main h1');
     f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
     const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
     assert.equal(sourceInput.readOnly,false);
     const selected=JSON.parse(sourceInput.value);
