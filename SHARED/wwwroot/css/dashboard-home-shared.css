@@ -364,6 +364,191 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     /*
+     * Canonical mobile action density. Use horizontal space before adding
+     * vertical scroll: action clusters become a symmetric two-column grid.
+     * Feature behavior and button wiring remain untouched.
+     */
+    body.legend-app .legend-app-content
+    :where(
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .d-grid
+    ):has(> :is(button, .btn, a.btn, form)) {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        align-items: stretch !important;
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    body.legend-app .legend-app-content
+    :where(
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .d-grid
+    ):has(> :is(button, .btn, a.btn, form))
+    > :is(button, .btn, a.btn, form) {
+        min-width: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    body.legend-app .legend-app-content
+    :where(
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .d-grid
+    ):has(> :is(button, .btn, a.btn, form))
+    > form > :is(button, .btn, a.btn) {
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    body.legend-app .legend-app-content
+    :where(
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .d-grid
+    ):has(> :is(button, .btn, a.btn, form))
+    > :only-child {
+        grid-column: auto !important;
+        width: auto !important;
+        justify-self: start !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
+    :where(
+        .modal-footer,
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row
+    ):has(> :is(button, .btn, a.btn, form)) {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
+    :where(
+        .modal-footer,
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row
+    ):has(> :is(button, .btn, a.btn, form))
+    > :is(button, .btn, a.btn, form) {
+        min-width: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
+    :where(
+        .modal-footer,
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row
+    ):has(> :is(button, .btn, a.btn, form))
+    > form > :is(button, .btn, a.btn) {
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
+    :where(
+        .modal-footer,
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row
+    ):has(> :is(button, .btn, a.btn, form))
+    > :only-child {
+        grid-column: auto !important;
+        width: auto !important;
+        justify-self: start !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal .modal-header,
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet]) >
+    :is(.dhead, [class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], [class$="__head"], [class*="__head "], [class$="__header"], [class*="__header "], header) {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 8 !important;
+    }
+
+    /*
      * One close/collapse glyph everywhere: the same boxed arrow language used
      * by the approved Website Studio control, without changing button behavior.
      */
