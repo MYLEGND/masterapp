@@ -224,6 +224,18 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
              patch.object(self.lifecycle, 'git', side_effect=fake_git):
             self.assertIsNone(self.lifecycle.direct_release_approved_pr(Api(), head))
 
+    def test_architecture_workflow_change_is_release_control_only(self):
+        release_control_files = {
+            'Docs/releases/direct-release-request.json',
+            'scripts/approved-release-baseline.py',
+            'scripts/release-lifecycle.py',
+            'scripts/test-release-policy.py',
+            'scripts/test-release-lifecycle.py',
+            '.github/workflows/masterapp-platform-architecture-validation.yml',
+        }
+        self.assertIn('.github/workflows/masterapp-platform-architecture-validation.yml',
+                      release_control_files)
+
     def test_release_control_pr_is_skipped_in_favor_of_nearest_product_pr(self):
         head = 'a' * 40
         control_request = 'b' * 40
