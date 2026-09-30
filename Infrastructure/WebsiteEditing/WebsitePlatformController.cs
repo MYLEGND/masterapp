@@ -990,7 +990,8 @@ public class WebsitePlatformController : ControllerBase
         var protectedDocument = WebsiteSiteSource.Parse(
             source,
             current,
-            actions).Document;
+            actions,
+            validateCanonical: false).Document;
 
         await ValidateCompositionMediaOwnershipAsync(
             actor,
