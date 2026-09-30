@@ -4977,9 +4977,6 @@ body {
     align-items: center;
     justify-content: center;
     padding: 1rem;
-    background: rgba(3,8,20,.76);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
 }
 
 .wa-standalone-modal[hidden] {
