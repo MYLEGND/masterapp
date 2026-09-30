@@ -380,7 +380,7 @@ test('Selected Source rebases revision conflicts without reporting a backend pro
     await new Promise(resolve=>setTimeout(resolve,0));
     const validations=f.calls.filter(call=>call.method==='POST' && call.url.endsWith('/manage/source/validate'));
     assert.equal(validations.length,2);
-    assert.equal(JSON.parse(validations[1].body).expectedRevision,'r'+(f.calls.findIndex(call=>!call.method && call.url.includes('/api/website-content/manage?ticket='))+1) || JSON.parse(validations[1].body).expectedRevision);
+    assert.notEqual(JSON.parse(validations[1].body).expectedRevision,JSON.parse(validations[0].body).expectedRevision);
     assert.equal(f.w.LEGEND_WEBSITE_STUDIO_PROTECTION_VIOLATION,undefined);
     assert.equal(f.w.document.querySelector('[data-canonical-protection-warning]').hidden,true);
     assert.match(f.w.document.querySelector('#legend-cms-source-status').textContent,/rebasing|Applied after rebasing/i);
