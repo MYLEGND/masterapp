@@ -3154,6 +3154,11 @@ test('native experience renders declarative controls calculations and protected 
     await new Promise(resolve=>setTimeout(resolve,0));
     assert.match(experience.querySelector('[data-experience-result="estimate"]').textContent,/3[,\s]?600|3600/);
     assert.equal(experience.querySelector('iframe'),null);
+    assert.equal(experience.dataset.cmsSignalOnly,undefined);
+    experience.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate')?.disabled,false);
+    assert.equal(f.w.document.querySelector('#legend-cms-remove')?.disabled,false);
     assert.match(source,/function buildNativeExperience\(node\)/);
     assert.match(source,/evaluateExperienceExpression/);
     assert.match(publicInquirySource,/data-website-experience-form/);
