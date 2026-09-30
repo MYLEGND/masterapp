@@ -933,6 +933,17 @@ test('GPT browser workspace exposes the canonical editor without any app-side Op
   } finally { f.close(); }
 });
 
+
+test('Website Studio Content exposes canonical typography and spacing controls without a second style store',()=>{
+  for(const key of ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','color','textTransform','textDecoration','paddingLeft','paddingRight','marginTop','marginBottom'])
+    assert.ok(source.includes(`data-style-key="${key}"`),key);
+  assert.ok(source.includes('Weight / thickness'));
+  assert.ok(source.includes('canonicalMaterializationIds'));
+  assert.ok(source.includes('createMaterializationIdentityContext'));
+  assert.ok(source.includes('claimMaterializationId'));
+  assert.ok(source.includes("pageKey + '.root.' + (++index)"));
+});
+
 test('shared Website Studio contains no app-side OpenAI proposal endpoint',()=>{
   assert.equal(source.includes('/manage/ai/propose'),false);
   assert.equal(source.includes('ai_proposal_preview'),false);

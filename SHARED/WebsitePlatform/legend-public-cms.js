@@ -1551,8 +1551,58 @@
       .join(' ') || null;
   }
 
-  function materializeCompositionNode(el, fallbackId = null) {
+  function canonicalMaterializationIds(excludePageRoute = currentPageRoute(), includeShell = true) {
+    const used=new Set();
+    const addNodes=nodes=>walkComposition(nodes,node=>{const id=safeId(node?.id);if(id)used.add(id);});
+    if(includeShell){
+      addNodes(documentState.shell?.header || []);
+      addNodes(documentState.shell?.footer || []);
+    }
+    for(const [route,page] of Object.entries(documentState.pages || {}))
+      if(normalizePageRoute(route)!==normalizePageRoute(excludePageRoute)) addNodes(page?.composition || []);
+    for(const component of Object.values(documentState.reusableComponents || {}))
+      addNodes(component?.composition || []);
+    return used;
+  }
+
+  function createMaterializationIdentityContext(excludePageRoute = currentPageRoute(), includeShell = true) {
+    const pending=new Map();
+    document.querySelectorAll('[data-cms-id]').forEach(el=>{
+      const id=safeId(el.dataset.cmsId);
+      if(id) pending.set(id,(pending.get(id)||0)+1);
+    });
+    return {used:canonicalMaterializationIds(excludePageRoute,includeShell),pending};
+  }
+
+  function claimMaterializationId(preferred, identity) {
+    const base=safeId(preferred) || 'node';
+    let candidate=base, suffix=2;
+    while(identity.used.has(candidate) || (identity.pending.get(candidate)||0)>0)
+      candidate=safeId(base.slice(0,Math.max(1,154-String(suffix).length))+'.m'+suffix++);
+    identity.used.add(candidate);
+    return candidate;
+  }
+
+  function materializedNodeId(el, fallbackId, identity) {
+    const existing=safeId(el.dataset.cmsId);
+    if(existing){
+      const remaining=Math.max(0,(identity.pending.get(existing)||0)-1);
+      if(remaining) identity.pending.set(existing,remaining); else identity.pending.delete(existing);
+      if(!identity.used.has(existing)){
+        identity.used.add(existing);
+        return existing;
+      }
+    }
+    const id=claimMaterializationId(fallbackId || pageKey + '.' + safeId(el.tagName) + '.node',identity);
+    el.dataset.cmsId=id;
+    el.dataset.cmsEditable='true';
+    rememberOriginal(el);
+    return id;
+  }
+
+  function materializeCompositionNode(el, fallbackId = null, identity = null) {
     if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    identity ||= createMaterializationIdentityContext();
     // Template decoration is deliberately presentation-only. Persisting SVG/icon
     // wrappers as ordinary v3 nodes creates empty colored boxes after the SVG is
     // filtered from the safe composition grammar.
@@ -1564,12 +1614,7 @@
     const tag = el.tagName.toLowerCase();
     if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
 
-    const id = el.dataset.cmsId || fallbackId || pageKey + '.' + safeId(tag) + '.node';
-    if (!el.dataset.cmsId) {
-      el.dataset.cmsId=id;
-      el.dataset.cmsEditable='true';
-      rememberOriginal(el);
-    }
+    const id = materializedNodeId(el, fallbackId, identity);
     const model = legacyMigrationRecordForElement(el) || {};
     const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
     const extra = el.dataset.cmsExtraId ? legacyMigrationExtraById(el.dataset.cmsExtraId) : null;
@@ -1609,7 +1654,7 @@
       for(const child of [...el.children].filter(child =>
         child instanceof HTMLElement &&
         !['input','select','textarea','script','style','noscript'].includes(child.tagName.toLowerCase()))) {
-        const childNode=materializeCompositionNode(child,id+'.child.'+(++childIndex));
+        const childNode=materializeCompositionNode(child,id+'.child.'+(++childIndex),identity);
         if(childNode) runtimeNode.children.push(childNode);
       }
       return runtimeNode;
@@ -1715,7 +1760,7 @@
         .join(' ')
         .trim();
       if (directText) node.children.unshift({
-        id:id + '.text',type:'text',tag:'span',text:directText,className:null,
+        id:claimMaterializationId(id + '.text',identity),type:'text',tag:'span',text:directText,className:null,
         signals:[],style:{},breakpointStyles:{},layout:{},breakpointLayouts:{},animations:[],children:[]
       });
     } else if (!['image','video','section','container'].includes(type)) {
@@ -1725,23 +1770,23 @@
     return node;
   }
 
-  function materializeCurrentPageComposition() {
+  function materializeCurrentPageComposition(identity = createMaterializationIdentityContext()) {
     const main = document.querySelector('main');
     if (!main) return [];
     const nodes = [];
     let index = 0;
     for (const child of [...main.children]) {
-      const node = materializeCompositionNode(child, pageKey + '.root.' + (++index));
+      const node = materializeCompositionNode(child, pageKey + '.root.' + (++index), identity);
       if (node) nodes.push(node);
     }
     return nodes;
   }
 
-  function materializeCurrentShell() {
+  function materializeCurrentShell(identity = createMaterializationIdentityContext(currentPageRoute(), false)) {
     const header=document.querySelector('.site-header');
     const footer=document.querySelector('.site-footer');
-    const headerNode=header ? materializeCompositionNode(header,'shell.header') : null;
-    const footerNode=footer ? materializeCompositionNode(footer,'shell.footer') : null;
+    const headerNode=header ? materializeCompositionNode(header,'shell.header',identity) : null;
+    const footerNode=footer ? materializeCompositionNode(footer,'shell.footer',identity) : null;
     return {
       header:headerNode ? [headerNode] : [],
       footer:footerNode ? [footerNode] : []
@@ -2974,13 +3019,14 @@
   }
 
   function currentMaterializedPage() {
+    const identity=createMaterializationIdentityContext(currentPageRoute(),false);
     return {
       route:currentPageRoute(),
       title:pageState().title ?? originalTitle,
       description:pageState().description ?? originalDescription,
       systemTemplateKey:pageState().systemTemplateKey || null,
-      composition:materializeCurrentPageComposition(),
-      shell:materializeCurrentShell()
+      composition:materializeCurrentPageComposition(identity),
+      shell:materializeCurrentShell(identity)
     };
   }
 
@@ -5297,9 +5343,8 @@
       textTransform:['none','uppercase','lowercase','capitalize'],
       textDecoration:['none','underline','line-through','overline']
     };
-    const keys=['color','backgroundColor','fontFamily','fontWeight','fontSize','lineHeight','letterSpacing',
-      'paddingLeft','paddingRight','borderRadius','objectFit','marginTop','marginBottom','marginLeft','marginRight',
-      'borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','minWidthPx','maxWidthPx',
+    const keys=['backgroundColor','borderRadius','objectFit','marginLeft','marginRight',
+      'borderWidth','borderColor','borderStyle','opacity','minWidthPx','maxWidthPx',
       'minHeightPx','maxHeightPx','aspectRatio','backgroundGradient','boxShadow','objectPosition'];
     return keys.map(key => {
       const label = key.replace(/([A-Z])/g, ' $1');
@@ -5961,6 +6006,7 @@
       const style=editingStyle(ov,true);
       if(input.value==='') delete style[key]; else style[key]=value;
       applyStyle(selected,effectiveStyle(ov));
+      syncEditorControls();
       markDirty();
     }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
@@ -6074,15 +6120,16 @@
       .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;display:grid;place-items:center;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;cursor:pointer;box-shadow:0 8px 24px #0005}
       .legend-cms-panel-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
       .legend-cms-sheet-handle{display:none}
-      .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;overflow-wrap:anywhere}
-      .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
+      .legend-cms-panel h2{margin:0 0 3px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:8px;overflow-wrap:anywhere}
+      .legend-cms-control-heading{display:block;margin:7px 0 1px;color:#e6c77e;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+      .legend-cms-group{display:grid;gap:5px;margin:6px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
       .legend-cms-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
       .legend-cms-theme{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
       .legend-cms-theme label{font-size:11px;font-weight:800}.legend-cms-theme input{width:100%;height:36px;border:0;background:transparent}
       .legend-cms-favicon-preview{display:block;width:64px;height:64px;object-fit:contain;border-radius:12px;background:#fff;padding:6px;border:1px solid #50617e}.legend-cms-favicon button{width:100%;padding:10px 12px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;text-align:center}
-      .legend-cms-panel button{cursor:pointer}.legend-cms-inline-help{margin:8px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a;color:#e7eef8}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}
+      .legend-cms-panel button{cursor:pointer}.legend-cms-inline-help{margin:5px 0 8px;padding:8px 10px;border:1px solid #344766;border-radius:10px;background:#10284a;color:#e7eef8}.legend-cms-menu{display:grid;gap:5px}.legend-cms-menu button,.legend-cms-panel section>button{padding:9px 10px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}
       .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}
-      .legend-cms-navigation{margin:0 0 20px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
+      .legend-cms-navigation{margin:0 0 10px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-section-layer{align-items:stretch}.legend-cms-layer-drag{display:grid;place-items:center;width:28px;flex:0 0 28px;border:1px solid #344766;border-radius:8px;color:#d4ad45;cursor:grab;user-select:none}.legend-cms-layer-dragging{opacity:.55}.legend-cms-layer-drop{outline:1px solid #d4ad45;outline-offset:2px}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
       .legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:10px;border:1px solid #344766;border-radius:12px;background:#10284a}.legend-cms-media-card img,.legend-cms-media-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-component-list{display:grid;gap:8px;margin-top:12px}.legend-cms-component-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:7px;align-items:start;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-component-row>div{min-width:0}.legend-cms-component-row strong,.legend-cms-component-row small{display:block;overflow-wrap:anywhere}.legend-cms-component-row button{padding:7px 9px}.cms-reusable-instance{min-width:0}.legend-cms-reusable-missing{padding:12px;border:1px dashed #c98e8e;border-radius:8px;background:#2b1717;color:#f6dede}
@@ -6200,17 +6247,45 @@
         <label for="legend-cms-image">Replace image</label>
         <input id="legend-cms-image" type="file" accept="image/jpeg,image/png,image/webp">
       </div>
+      <strong class="legend-cms-control-heading">Typography</strong>
       <div class="legend-cms-row">
-        <div class="legend-cms-group"><label for="legend-cms-scale">Text scale</label><input id="legend-cms-scale" type="number" min="0" step="any" value="1"></div>
-        <div class="legend-cms-group"><label for="legend-cms-width">Width %</label><input id="legend-cms-width" type="number" min="0" step="any" value="100"></div>
+        <label class="legend-cms-group">Font family<input data-style-key="fontFamily" type="text" list="legend-cms-font-options" maxlength="160" placeholder="Inherited / system font"></label>
+        <label class="legend-cms-group">Font size px<input data-style-key="fontSize" type="number" min="1" step="any" placeholder="Inherited"></label>
+      </div>
+      <datalist id="legend-cms-font-options"><option value="Inter"><option value="Arial"><option value="Helvetica"><option value="Georgia"><option value="Times New Roman"><option value="Verdana"><option value="Trebuchet MS"><option value="Courier New"><option value="system-ui"></datalist>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Weight / thickness<select data-style-key="fontWeight"><option value="">Inherited</option><option>100</option><option>200</option><option>300</option><option>400</option><option>500</option><option>600</option><option>700</option><option>800</option><option>900</option></select></label>
+        <label class="legend-cms-group">Line height<input data-style-key="lineHeight" type="number" min="0.1" step="any" placeholder="Inherited"></label>
+      </div>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Letter spacing px<input data-style-key="letterSpacing" type="number" step="any" placeholder="Inherited"></label>
+        <label class="legend-cms-group">Text color<input data-style-key="color" type="text" maxlength="120" placeholder="#ffffff or inherited"></label>
+      </div>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Text transform<select data-style-key="textTransform"><option value="">Inherited</option><option value="none">None</option><option value="uppercase">Uppercase</option><option value="lowercase">Lowercase</option><option value="capitalize">Capitalize</option></select></label>
+        <label class="legend-cms-group">Decoration<select data-style-key="textDecoration"><option value="">Inherited</option><option value="none">None</option><option value="underline">Underline</option><option value="line-through">Line through</option><option value="overline">Overline</option></select></label>
+      </div>
+      <strong class="legend-cms-control-heading">Size & position</strong>
+      <div class="legend-cms-row">
+        <div class="legend-cms-group"><label for="legend-cms-scale">Text scale</label><input id="legend-cms-scale" type="number" min="0.05" step="any" value="1"></div>
+        <div class="legend-cms-group"><label for="legend-cms-width">Width %</label><input id="legend-cms-width" type="number" min="0" max="100" step="any" value="100"></div>
       </div>
       <div class="legend-cms-row">
         <div class="legend-cms-group"><label for="legend-cms-height">Height px</label><input id="legend-cms-height" type="number" min="0" step="any" placeholder="Auto"></div>
         <div class="legend-cms-group"><label for="legend-cms-align">Alignment</label><select id="legend-cms-align"><option value="">Default</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="start">Start</option><option value="end">End</option><option value="justify">Justify</option></select></div>
       </div>
+      <strong class="legend-cms-control-heading">Spacing</strong>
       <div class="legend-cms-row">
-        <div class="legend-cms-group"><label for="legend-cms-padding-top">Top spacing</label><input id="legend-cms-padding-top" type="number" min="0" step="any" value="0"></div>
-        <div class="legend-cms-group"><label for="legend-cms-padding-bottom">Bottom spacing</label><input id="legend-cms-padding-bottom" type="number" min="0" step="any" value="0"></div>
+        <div class="legend-cms-group"><label for="legend-cms-padding-top">Padding top</label><input id="legend-cms-padding-top" type="number" min="0" step="any" value="0"></div>
+        <div class="legend-cms-group"><label for="legend-cms-padding-bottom">Padding bottom</label><input id="legend-cms-padding-bottom" type="number" min="0" step="any" value="0"></div>
+      </div>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Padding left<input data-style-key="paddingLeft" type="number" min="0" step="any"></label>
+        <label class="legend-cms-group">Padding right<input data-style-key="paddingRight" type="number" min="0" step="any"></label>
+      </div>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Margin top<input data-style-key="marginTop" type="number" step="any"></label>
+        <label class="legend-cms-group">Margin bottom<input data-style-key="marginBottom" type="number" step="any"></label>
       </div>
       <div class="legend-cms-group"><label><input id="legend-cms-hidden" type="checkbox"> Hide selected content</label></div>
       <div class="legend-cms-group"><label>Site colors</label>

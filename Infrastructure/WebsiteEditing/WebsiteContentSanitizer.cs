@@ -45,6 +45,7 @@ public static class WebsiteContentSanitizer
             if (ContainsLegacyAuthority(root))
                 throw new InvalidOperationException("website_v3_parallel_authority_detected");
             var canonical = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(raw, options) ?? new();
+            RepairPersistedDuplicateNodeIdentities(canonical);
             return Sanitize(canonical);
         }
 
@@ -102,6 +103,60 @@ public static class WebsiteContentSanitizer
     private const int MaxImageDataUrlLength = 3500000;
     private const int MaxCompositionNodesPerPage = 1200;
     private const int MaxCompositionDepth = 16;
+
+    private static void RepairPersistedDuplicateNodeIdentities(WebsiteContentDocument document)
+    {
+        var nodes = new List<WebsiteCompositionNode>();
+
+        void Visit(IEnumerable<WebsiteCompositionNode>? values)
+        {
+            foreach (var node in values ?? [])
+            {
+                if (node is null) continue;
+                nodes.Add(node);
+                Visit(node.Children);
+            }
+        }
+
+        Visit(document.Shell?.Header);
+        Visit(document.Shell?.Footer);
+        foreach (var page in (document.Pages ?? new()).OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            Visit(page.Value?.Composition);
+        foreach (var component in (document.ReusableComponents ?? new()).OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            Visit(component.Value?.Composition);
+
+        var normalized = nodes
+            .Select(node => (Node: node, Id: SanitizeId(node.Id)))
+            .Where(entry => entry.Id.Length > 0)
+            .ToList();
+        var reserved = normalized.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var group in normalized.GroupBy(entry => entry.Id, StringComparer.Ordinal).Where(group => group.Count() > 1))
+        {
+            var entries = group.ToList();
+            var protectedEntries = entries.Where(entry => WebsiteSiteSource.HasProtectedSemantics(entry.Node)).ToList();
+            if (protectedEntries.Count > 1)
+                throw new InvalidOperationException($"website_duplicate_protected_node_identity:{group.Key}");
+
+            var keeper = protectedEntries.Count == 1 ? protectedEntries[0] : entries[0];
+            keeper.Node.Id = group.Key;
+
+            var suffix = 2;
+            foreach (var entry in entries.Where(entry => !ReferenceEquals(entry.Node, keeper.Node)))
+            {
+                string repaired;
+                do
+                {
+                    var suffixText = $".repair.{suffix++}";
+                    var prefixLength = Math.Max(1, 160 - suffixText.Length);
+                    repaired = SanitizeId(group.Key[..Math.Min(group.Key.Length, prefixLength)] + suffixText);
+                }
+                while (repaired.Length == 0 || !reserved.Add(repaired));
+
+                entry.Node.Id = repaired;
+            }
+        }
+    }
 
     public static WebsiteContentDocument Sanitize(WebsiteContentDocument source)
     {
