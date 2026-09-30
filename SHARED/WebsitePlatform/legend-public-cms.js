@@ -72,6 +72,8 @@
   let dirty = false;
   let sourceEditorDirty = false;
   let sourceEditorBaseNode = null;
+  let canonicalSourceDocument = null;
+  let canonicalSourceRevision = null;
   let templateRepairPending = false;
   let autoSaveTimer = null;
   const originals = new WeakMap();
@@ -3611,7 +3613,7 @@
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
     if (status) status.textContent = 'Saving changes…';
-    if (activeEditorPanel === 'source' && !sourceEditorDirty) refreshSiteSourceEditor();
+    if (activeEditorPanel === 'source' && !sourceEditorDirty) void refreshSiteSourceEditor();
     if (editorMode) {
       clearTimeout(autoSaveTimer);
       autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
@@ -3635,7 +3637,7 @@
     if (activeEditorPanel === 'source' && !sourceEditorDirty) {
       const scope=document.getElementById('legend-cms-source-scope');
       if(scope && el?.dataset?.cmsCompositionId) scope.value='selection';
-      refreshSiteSourceEditor();
+      void refreshSiteSourceEditor();
     }
     if (activeEditorPanel === 'gpt') refreshBrowserAgentWorkspace();
     if (openContent) showPanel('content');
@@ -4301,52 +4303,6 @@
     const dynamicStatus=document.getElementById('legend-cms-dynamic-status');
     if(dynamicStatus) dynamicStatus.textContent=dynamic ? `Dynamic route ${dynamic.routePattern || ''} from ${dynamicSource?.label || dynamic.collectionId}.` : 'This page is static.';
   }
-  function sourceProjectionNode(node) {
-    const copy=cloneCanonicalValue(node || {});
-    delete copy.signals;
-    copy.children=(node?.children || []).map(sourceProjectionNode);
-    return copy;
-  }
-
-  function siteSourceProjection(state=documentState) {
-    const pages=Object.entries(state.pages || {})
-      .sort((a,b)=>(Number(a[1]?.navigation?.order)||0)-(Number(b[1]?.navigation?.order)||0) || a[0].localeCompare(b[0]))
-      .map(([path,page])=>({
-        path,
-        title:page?.title ?? null,
-        description:page?.description ?? null,
-        navigation:cloneCanonicalValue(page?.navigation || {showInNavigation:true,order:0,isDeleted:false}),
-        dynamicBinding:cloneCanonicalValue(page?.dynamicBinding || null),
-        composition:(page?.composition || []).map(sourceProjectionNode)
-      }));
-
-    return {
-      schema:'legend-site-source/v1',
-      version:3,
-      faviconImageDataUrl:state.faviconImageDataUrl || null,
-      store:cloneCanonicalValue(state.store || {}),
-      breakpoints:cloneCanonicalValue(state.breakpoints || []),
-      theme:cloneCanonicalValue(state.theme || {}),
-      shell:{
-        header:(state.shell?.header || []).map(sourceProjectionNode),
-        footer:(state.shell?.footer || []).map(sourceProjectionNode)
-      },
-      pages,
-      reusableComponents:Object.fromEntries(
-        Object.entries(state.reusableComponents || {}).map(([id,component])=>[
-          id,
-          {
-            id,
-            name:component?.name || id,
-            kind:component?.kind === 'block' ? 'block' : 'section',
-            composition:(component?.composition || []).map(sourceProjectionNode)
-          }
-        ])
-      ),
-      collections:cloneCanonicalValue(state.collections || {})
-    };
-  }
-
   function sourceFindNode(nodes,id) {
     for(const node of nodes || []){
       if(node?.id===id) return node;
@@ -4368,6 +4324,37 @@
     return selected?.dataset?.cmsCompositionId || null;
   }
 
+  function sourceFindNodeInDocument(sourceDocument,id) {
+    if(!sourceDocument || !id) return null;
+    return sourceFindNode(sourceDocument.shell?.header,id) ||
+      sourceFindNode(sourceDocument.shell?.footer,id) ||
+      (sourceDocument.pages || []).map(page=>sourceFindNode(page?.composition,id)).find(Boolean) ||
+      Object.values(sourceDocument.reusableComponents || {}).map(component=>sourceFindNode(component?.composition,id)).find(Boolean) ||
+      null;
+  }
+
+  async function loadCanonicalSourceSnapshot() {
+    const url=new URL(`${API_BASE}/api/website-content/manage/source`);
+    url.searchParams.set('ticket',editorTicket);
+    const response=await fetch(url,{cache:'no-store'});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      if((response.status===401 || response.status===403) &&
+          showEditorAuthorizationRecovery('Website Studio authorization expired while loading canonical Source.'))
+        return null;
+      throw new Error(payload.message || payload.error || `Unable to load canonical Source (${response.status}).`);
+    }
+    if(payload.requiresMaterialization===true)
+      throw new Error('Materialize this website into canonical v3 before editing Source.');
+    if(typeof payload.text!=='string' || !payload.text.trim())
+      throw new Error('Canonical Source projection is unavailable.');
+    const sourceDocument=JSON.parse(payload.text);
+    canonicalSourceDocument=sourceDocument;
+    canonicalSourceRevision=payload.revision;
+    return {revision:payload.revision,sourceDocument,text:payload.text,sourceMap:payload.sourceMap || {}};
+  }
+
+
   function sourceToneForLine(line) {
     const key=/^\s*"([^"]+)"\s*:/.exec(String(line || ''))?.[1] || '';
     if (['text','title','alt','href','description','label'].includes(key)) return 'content';
@@ -4377,7 +4364,8 @@
     if (['layout','breakpointLayouts','mode','direction','gapPx','columns','minItemWidthPx','alignItems','justifyContent','wrap'].includes(key)) return 'layout';
     if (['mediaAssetId','mediaUrl','faviconImageDataUrl'].includes(key)) return 'media';
     if (['animations','trigger','effect','durationMs','delayMs','distancePx','easing','once','hidden','target'].includes(key)) return 'behavior';
-    if (['id','type','tag','className','actionKey','systemKey','systemBinding','signals','dataBinding','syncSourceId'].includes(key)) return 'protected';
+    if (['id','actionKey','systemKey','systemBinding','signals'].includes(key)) return 'protected';
+    if (['type','tag','className','dataBinding','syncSourceId'].includes(key)) return 'structure';
     return 'default';
   }
 
@@ -4415,62 +4403,79 @@
     return editable;
   }
 
-  function refreshSiteSourceEditor(force=false) {
+  async function refreshSiteSourceEditor(force=false) {
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
     const label=document.getElementById('legend-cms-source-location');
+    const status=document.getElementById('legend-cms-source-status');
     if(!textarea || (sourceEditorDirty && !force)) return;
+
+    if(dirty){
+      if(status) status.textContent='Saving canvas changes before refreshing canonical Source…';
+      const saved=await save(false);
+      if(!saved || dirty){
+        if(status) status.textContent='Save or reconcile canvas changes before opening Source.';
+        return;
+      }
+    }
+
+    let snapshot;
+    try{ snapshot=await loadCanonicalSourceSnapshot(); }
+    catch(error){
+      clearCanonicalProtectionViolation();
+      if(status) status.textContent=error?.message || 'Canonical Source could not be loaded.';
+      return;
+    }
+    if(!snapshot) return;
+
     const selectedId=sourceSelectedNodeId();
     if(scope && scope.value==='selection' && !selectedId) scope.value='site';
     const mode=scope?.value || 'site';
     if(mode==='selection' && selectedId){
-      const node=compositionNode(selectedId);
-      sourceEditorBaseNode=sourceProjectionNode(node);
-      textarea.value=JSON.stringify(sourceEditorBaseNode,null,2);
-      if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+      const node=sourceFindNodeInDocument(snapshot.sourceDocument,selectedId);
+      if(!node){
+        if(status) status.textContent='The selected component is not exposed in canonical Source. Select another component.';
+        scope.value='site';
+        sourceEditorBaseNode=null;
+        textarea.value=snapshot.text;
+      }else{
+        sourceEditorBaseNode=cloneCanonicalValue(node);
+        textarea.value=JSON.stringify(sourceEditorBaseNode,null,2);
+        if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+      }
     }else{
       sourceEditorBaseNode=null;
-      textarea.value=JSON.stringify(siteSourceProjection(),null,2);
+      textarea.value=snapshot.text;
       if(label) label.textContent='Master Source · entire website';
       if(selectedId){
         const marker='"id": "'+selectedId+'"';
         const index=textarea.value.indexOf(marker);
-        if(index>=0){ textarea.setSelectionRange(index,index+marker.length); }
+        if(index>=0) textarea.setSelectionRange(index,index+marker.length);
       }
     }
     sourceEditorDirty=false;
     const editable=syncSourceEditingMode();
     renderSourceHighlight();
-    const status=document.getElementById('legend-cms-source-status');
     if(status) status.textContent=editable
-      ? 'Selected Source is synchronized with the selected canonical node.'
-      : 'Master Source is synchronized and read only.';
+      ? 'Selected Source is synchronized with the server canonical projection.'
+      : 'Master Source is synchronized from the server and read only.';
     if(force) clearCanonicalProtectionViolation();
   }
 
-  function sourceSelectedNodeFromState(state, selectedNodeId) {
-    const projected=siteSourceProjection(state);
-    return sourceFindNode(projected.shell?.header,selectedNodeId) ||
-      sourceFindNode(projected.shell?.footer,selectedNodeId) ||
-      projected.pages.map(page=>sourceFindNode(page.composition,selectedNodeId)).find(Boolean) ||
-      Object.values(projected.reusableComponents || {}).map(component=>sourceFindNode(component.composition,selectedNodeId)).find(Boolean) ||
-      null;
-  }
-
-  function selectedSourceHasConcurrentChange(state, selectedNodeId) {
+  function selectedSourceHasConcurrentChange(sourceDocument, selectedNodeId) {
     if(!sourceEditorBaseNode) return false;
-    const latest=sourceSelectedNodeFromState(state,selectedNodeId);
+    const latest=sourceFindNodeInDocument(sourceDocument,selectedNodeId);
     if(!latest) return true;
     return JSON.stringify(latest)!==JSON.stringify(sourceEditorBaseNode);
   }
 
-  function selectedSourceDocument(baseDocument, selectedNodeId, replacement) {
-    const projected=siteSourceProjection(baseDocument);
+  function selectedSourceDocument(baseSourceDocument, selectedNodeId, replacement) {
+    const projected=cloneCanonicalValue(baseSourceDocument);
     let replaced=
       sourceReplaceNode(projected.shell?.header,selectedNodeId,replacement) ||
       sourceReplaceNode(projected.shell?.footer,selectedNodeId,replacement);
     if(!replaced){
-      for(const page of projected.pages){
+      for(const page of projected.pages || []){
         if(sourceReplaceNode(page.composition,selectedNodeId,replacement)){ replaced=true; break; }
       }
     }
@@ -4479,24 +4484,8 @@
         if(sourceReplaceNode(component.composition,selectedNodeId,replacement)){ replaced=true; break; }
       }
     }
-    if(!replaced) throw new Error('The selected source node is no longer present in the current canonical draft.');
+    if(!replaced) throw new Error('The selected source node is no longer present in the current canonical Source projection.');
     return JSON.stringify(projected,null,2);
-  }
-
-  async function latestCanonicalSourceBaseline() {
-    const url=new URL(`${API_BASE}/api/website-content/manage`);
-    url.searchParams.set('ticket',editorTicket);
-    const response=await fetch(url,{cache:'no-store'});
-    const payload=await response.json().catch(()=>({}));
-    if(!response.ok){
-      if((response.status===401 || response.status===403) &&
-          showEditorAuthorizationRecovery('Website Studio authorization expired while refreshing the canonical draft.'))
-        return null;
-      throw new Error(payload.message || payload.error || `Unable to refresh canonical draft (${response.status}).`);
-    }
-    if(payload.siteKey && payload.siteKey!==SITE_KEY)
-      throw new Error('The refreshed Website Studio draft belongs to a different website scope.');
-    return payload;
   }
 
   async function applySiteSource() {
@@ -4513,9 +4502,8 @@
     }
 
     let replacement;
-    try{
-      replacement=JSON.parse(textarea.value);
-    }catch(error){
+    try{ replacement=JSON.parse(textarea.value); }
+    catch(error){
       clearCanonicalProtectionViolation();
       if(status) status.textContent=error?.message || 'Selected Source syntax is invalid.';
       return;
@@ -4527,8 +4515,9 @@
       return;
     }
 
-    // Source apply must start from a saved non-source canvas state. This prevents
-    // a revision rebase from silently dropping unrelated local canvas edits.
+    let baseSourceDocument=canonicalSourceDocument ? cloneCanonicalValue(canonicalSourceDocument) : null;
+    let expectedRevision=canonicalSourceRevision ?? revision;
+
     if(dirty){
       if(status) status.textContent='Saving existing canvas edits before applying Selected Source…';
       const saved=await save(false);
@@ -4537,31 +4526,36 @@
         if(status) status.textContent='Save or reconcile the existing canvas edits before applying Selected Source.';
         return;
       }
-      if(selectedSourceHasConcurrentChange(documentState,selectedNodeId)){
+      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+      if(!latest) return;
+      if(selectedSourceHasConcurrentChange(latest.sourceDocument,selectedNodeId)){
         clearCanonicalProtectionViolation();
         if(status) status.textContent='The selected component changed after Source editing began. Your Source text is preserved; refresh Selected Source before reconciling this design edit.';
         return;
       }
+      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+      expectedRevision=latest.revision;
+    }else if(!baseSourceDocument){
+      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+      if(!latest) return;
+      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+      expectedRevision=latest.revision;
     }
 
     clearCanonicalProtectionViolation();
-    let baseDocument=documentState;
-    let expectedRevision=revision;
     let rebased=false;
-
     for(let attempt=0;attempt<3;attempt++){
       let sourceText;
-      try{
-        sourceText=selectedSourceDocument(baseDocument,selectedNodeId,replacement);
-      }catch(error){
+      try{ sourceText=selectedSourceDocument(baseSourceDocument,selectedNodeId,replacement); }
+      catch(error){
         clearCanonicalProtectionViolation();
         if(status) status.textContent=error?.message || 'The selected component is no longer available.';
         return;
       }
 
       if(status) status.textContent=rebased
-        ? 'Revalidating this design edit against the latest canonical draft…'
-        : 'Validating protected actions, media, and structure…';
+        ? 'Revalidating this design edit against the latest canonical Source…'
+        : 'Validating authorable design against protected backend authority…';
 
       const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
         method:'POST',headers:{'Content-Type':'application/json'},
@@ -4572,13 +4566,12 @@
       if(!response.ok){
         if((response.status===401 || response.status===403) &&
             showEditorAuthorizationRecovery('Website Studio authorization expired while validating this edit.')) return;
-
         if(response.status===409 && payload.error==='revision_conflict'){
-          const latest=await latestCanonicalSourceBaseline();
+          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
           if(!latest) return;
           expectedRevision=latest.revision;
-          baseDocument=normalizeDocument(latest.document || {});
-          if(selectedSourceHasConcurrentChange(baseDocument,selectedNodeId)){
+          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
             clearCanonicalProtectionViolation();
             if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
             return;
@@ -4608,13 +4601,12 @@
       if(!saveResponse.ok){
         if((saveResponse.status===401 || saveResponse.status===403) &&
             showEditorAuthorizationRecovery('Website Studio authorization expired before this design edit could be saved.')) return;
-
         if(saveResponse.status===409 && savePayload.error==='revision_conflict'){
-          const latest=await latestCanonicalSourceBaseline();
+          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
           if(!latest) return;
           expectedRevision=latest.revision;
-          baseDocument=normalizeDocument(latest.document || {});
-          if(selectedSourceHasConcurrentChange(baseDocument,selectedNodeId)){
+          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
             clearCanonicalProtectionViolation();
             if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
             return;
@@ -4634,16 +4626,18 @@
       namedDrafts=savePayload.drafts || namedDrafts;
       dirty=false;
       sourceEditorDirty=false;
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
       applyDocument(documentState);
-      refreshSiteSourceEditor(true);
+      await refreshSiteSourceEditor(true);
       if(status) status.textContent=rebased
-        ? 'Applied after rebasing the design edit onto the latest canonical draft. Protected wiring unchanged.'
-        : 'Applied to the canonical draft. Protected wiring unchanged.';
+        ? 'Applied after rebasing onto the latest canonical Source. Protected backend authority unchanged.'
+        : 'Applied to the canonical draft. Protected backend authority unchanged.';
       return;
     }
 
     clearCanonicalProtectionViolation();
-    if(status) status.textContent='The draft changed repeatedly while this edit was being applied. Refresh Selected Source and try again.';
+    if(status) status.textContent='The draft changed repeatedly while this edit was being applied. Refresh Selected Source and reconcile the latest design.';
   }
 
   function showPanel(name) {
@@ -4655,7 +4649,7 @@
     if (name === 'source') {
       const scope=document.getElementById('legend-cms-source-scope');
       if(scope && sourceSelectedNodeId()) scope.value='selection';
-      refreshSiteSourceEditor();
+      void refreshSiteSourceEditor();
     }
     if (name === 'components') renderReusableComponents();
     if (name === 'data') renderDataControls();
@@ -5549,7 +5543,7 @@
     sourceTextarea?.addEventListener('input',()=>{
       if(sourceTextarea.readOnly){
         sourceEditorDirty=false;
-        refreshSiteSourceEditor(true);
+        void refreshSiteSourceEditor(true);
         return;
       }
       sourceEditorDirty=true;
@@ -5563,12 +5557,12 @@
     });
     document.getElementById('legend-cms-source-scope')?.addEventListener('change',()=>{
       sourceEditorDirty=false;
-      refreshSiteSourceEditor(true);
+      void refreshSiteSourceEditor(true);
     });
     document.getElementById('legend-cms-source-apply')?.addEventListener('click',()=>void applySiteSource());
     document.getElementById('legend-cms-source-reload')?.addEventListener('click',()=>{
       sourceEditorDirty=false;
-      refreshSiteSourceEditor(true);
+      void refreshSiteSourceEditor(true);
     });
     document.getElementById('legend-cms-publish-save-draft')?.addEventListener('click',chooseDraft);
     document.getElementById('legend-cms-publish-now')?.addEventListener('click',()=>void save(true));
