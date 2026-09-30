@@ -4562,7 +4562,7 @@ async function noteSave(){
 async function openNoteModal(){
   if (!noteOverlay) return;
   noteOverlay.hidden = false;
-  document.body.classList.add("note-self-open");
+  
   noteSyncLeadField();
   const ctx = noteCurrentLeadContext();
   if (!ctx.leadId){
@@ -4596,7 +4596,7 @@ async function openNoteModal(){
 function closeNoteModal(){
   if (!noteOverlay) return;
   noteOverlay.hidden = true;
-  document.body.classList.remove("note-self-open");
+  
 }
 
 noteOpenBtn?.addEventListener("click", openNoteModal);
