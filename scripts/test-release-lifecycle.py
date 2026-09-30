@@ -522,6 +522,24 @@ class ExactCandidateValidation(unittest.TestCase):
         ]
         self.assertIsNone(self.validate([self.run_record()],files))
 
+    def test_all_test_roots_are_validation_neutral_for_product_scope(self):
+        for path in [
+            'tests/layout/app-navigation-contract.test.mjs',
+            'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
+            'AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs',
+            'LegendUITests/NavigationTests.swift',
+        ]:
+            with self.subTest(path=path):
+                self.assertTrue(m.validation_neutral_path(path))
+
+    def test_malformed_commit_metadata_fails_closed_without_crashing(self):
+        from unittest.mock import Mock
+        api=Mock()
+        api.api.return_value=Mock()
+        self.assertFalse(m.validation_neutral_commit(api,'a'*40))
+        api.api.return_value={'files':Mock()}
+        self.assertFalse(m.validation_neutral_commit(api,'a'*40))
+
     def test_inherited_product_validation_crosses_only_neutral_trailing_commits(self):
         from unittest.mock import Mock
         api=Mock()

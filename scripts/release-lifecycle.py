@@ -202,13 +202,35 @@ VALIDATION_NEUTRAL_PATHS = {
     'AgentPortal.Tests/WebsiteStudioV3ContractTests.cs',
 }
 
+VALIDATION_NEUTRAL_PREFIXES = (
+    'tests/',
+    'AgentPortal.Tests/',
+    'LegendUITests/',
+)
+
+
+def validation_neutral_path(path):
+    return bool(path) and (
+        path in VALIDATION_NEUTRAL_PATHS
+        or path.startswith(VALIDATION_NEUTRAL_PREFIXES)
+    )
+
 
 def validation_neutral_commit(api, sha):
     commit = api.api('commits/' + sha)
-    files = [row.get('filename') for row in (commit or {}).get('files', [])]
-    return bool(files) and all(
-        path in VALIDATION_NEUTRAL_PATHS or path.startswith('tests/')
-        for path in files if path)
+    if not isinstance(commit, dict):
+        return False
+
+    rows = commit.get('files', [])
+    if not isinstance(rows, list):
+        return False
+
+    files = [
+        row.get('filename')
+        for row in rows
+        if isinstance(row, dict) and row.get('filename')
+    ]
+    return bool(files) and all(validation_neutral_path(path) for path in files)
 
 
 def architecture_run_for_sha(api, sha, architecture):
@@ -263,8 +285,10 @@ def candidate_validation(api, pr):
     scope_neutral = VALIDATION_NEUTRAL_PATHS | {
         'scripts/deploy-approved-app.py',
     }
-    product_names = [name for name in names
-                     if name not in scope_neutral and not name.startswith('tests/')]
+    product_names = [
+        name for name in names
+        if name not in scope_neutral and not validation_neutral_path(name)
+    ]
 
     # Website Studio has its own architecture/shared-CMS validation authority.
     # Release/test-control files never convert it into a Step 5 marketing release.
@@ -295,7 +319,12 @@ def candidate_validation(api, pr):
     for path in sorted(required):
         run = latest.get(path)
         if path == architecture:
-            if run is not None and architecture_product_validation(api, run):
+            if run is not None:
+                if architecture_product_validation(api, run):
+                    continue
+                # An exact-head attempt is authoritative. Pending or failed
+                # validation must never be hidden by older inherited evidence.
+                failed.append(path)
                 continue
             if inherited_architecture_product_validation(api, pr, architecture):
                 continue

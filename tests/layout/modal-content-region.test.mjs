@@ -419,6 +419,22 @@ test('shared geometry preserves full backdrop and sizes inner Bootstrap/custom p
 });
 
 
+test('canonical modal backdrop strongly shields the page and owns all authenticated backdrop styling',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const clients=readFileSync(new URL('../../AgentPortal/wwwroot/css/clients-index.css',import.meta.url),'utf8');
+
+  assert.match(css,/--legend-modal-backdrop:\s*rgba\(2, 8, 23, 0\.88\)/);
+  assert.match(css,/\.legend-canonical-modal-backdrop \{[\s\S]*pointer-events:\s*auto;[\s\S]*backdrop-filter:\s*blur\(6px\)/);
+  assert.match(css,/body\.legend-app\.legend-modal-active,[\s\S]*overflow:\s*hidden/);
+  assert.match(script,/function syncCanonicalBackdrop\(/);
+  assert.match(script,/classList\.add\("legend-canonical-modal-backdrop"\)/);
+  assert.match(script,/body\.classList\.toggle\("legend-modal-active", openSurfaces\.length > 0\)/);
+  assert.match(script,/ensureSurfaceLayer\(surface\)/);
+
+  assert.doesNotMatch(clients,/body\.legend-bootstrap-modal-open \.modal-backdrop\.show/);
+  assert.doesNotMatch(clients,/#modalBackdrop\.modal-backdrop\s*\{[\s\S]{0,220}background:/);
+});
+
 test('mobile sheet behavior is globally owned and uses viewport-safe geometry',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(css,/@media \(max-width: 900px\)[\s\S]*\[data-legend-mobile-sheet\]/);
