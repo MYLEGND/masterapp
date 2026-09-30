@@ -335,6 +335,64 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void SiteSource_AllowsPresentationChangesOnProtectedActions_AndRestoresBackendAuthority()
+    {
+        var baseline = CanonicalDocument();
+        var quoteBaseline = baseline.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.quote");
+        quoteBaseline.Text = "Original quote";
+        quoteBaseline.Style.FontWeight = 600;
+        quoteBaseline.Style.FontScale = 1.1m;
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var quote = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero")
+            .Children.Single(node => node.Id == "home.hero.quote");
+
+        quote.Text = "Updated visible quote";
+        quote.Style.FontWeight = 800;
+        quote.Style.FontScale = 1.6m;
+
+        var proposed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var parsed = WebsiteSiteSource.Parse(proposed, baseline, BusinessActions());
+        var saved = parsed.Document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.quote");
+
+        Assert.Equal("Updated visible quote", saved.Text);
+        Assert.Equal(800, saved.Style.FontWeight);
+        Assert.Equal(1.6m, saved.Style.FontScale);
+        Assert.Equal("business_quote", saved.ActionKey);
+        Assert.Single(saved.Signals);
+        Assert.Equal("cta_click", saved.Signals[0].EventName);
+    }
+
+    [Fact]
+    public void SiteSource_UsesDedicatedProtectionExceptionOnlyForProtectedAuthorityChanges()
+    {
+        var baseline = CanonicalDocument();
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+
+        var protectedError = Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteSiteSource.Parse(
+                serialized.Replace(
+                    "\"actionKey\": \"business_quote\"",
+                    "\"actionKey\": \"business_contact\"",
+                    StringComparison.Ordinal),
+                baseline,
+                BusinessActions()));
+        Assert.Contains("canonical action identity", protectedError.Message, StringComparison.OrdinalIgnoreCase);
+
+        var ordinaryError = Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse("{ not valid json", baseline, BusinessActions()));
+        Assert.IsNotType<WebsiteSiteSourceProtectionException>(ordinaryError);
+    }
+
+    [Fact]
     public void ProtectSystemTemplateAuthority_UsesCanonicalRouteIdentityForFounderAgentAndPaidVariants()
     {
         Assert.Equal(
