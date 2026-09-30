@@ -1782,7 +1782,7 @@ test('direct canvas replaces designated drop controls and persists shared geomet
     const style=canonicalNodeById(saved,'home.h1.node.1').style;
     assert.equal(style.widthPercent,50);assert.equal(style.heightPx,240);assert.equal(style.offsetXPercent,25);assert.equal(style.offsetYPx,48);
   }finally{f.close();}
-  const loaded=await domFixture({doc:saved,search:''});try {
+  const loaded=await domFixture({doc:saved,search:'',viewportWidth:1440});try {
     const heading=loaded.w.document.querySelector('main h1');
     assert.equal(heading.style.width,'50%');assert.equal(heading.style.height,'240px');assert.equal(heading.style.left,'25%');assert.equal(heading.style.top,'48px');
     assert.equal(loaded.w.document.querySelector('.legend-cms-panel'),null);
@@ -1941,9 +1941,10 @@ test('mobile runtime contains canonical moved geometry without creating horizont
   const f=await domFixture({doc,search:'',viewportWidth:390});
   try{
     const heading=f.w.document.querySelector('main h1');
-    assert.equal(heading.style.width,'25%');
-    assert.equal(heading.style.maxWidth,'25%');
-    assert.equal(heading.style.left,'75%');
+    assert.equal(heading.style.width,'100%');
+    assert.equal(heading.style.maxWidth,'100%');
+    assert.equal(heading.style.left,'0%');
+    assert.equal(heading.dataset.legendContentRole,'heading');
     assert.match(source,/html,body\{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none\}/);
     assert.match(source,/main,main>section,[^}]*overflow-x:clip/);
     assert.match(source,/body\{touch-action:pan-y pinch-zoom\}/);
