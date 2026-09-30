@@ -146,6 +146,59 @@ NAVIGATION / SHELL
 - There is one primary navigation behavior authority in the shared header. Its typography/layout/presentation are editable on that same canonical node; page labels/order/visibility remain page-metadata authority. Never create a second primary nav.
 - Header/footer shell nodes are shared. Runtime menu toggles are platform chrome, not persisted website-content nodes.
 
+NATIVE EXPERIENCE SOURCE SHAPE
+- Use only the experience grammar supplied in the server agent payload. Never invent an operator, contact role, control type, submit capability, endpoint, or provider field.
+- answer refs use the stable control key (for example `project_size` or `answer.project_size`); calculated refs use `calc.<calculation-key>`.
+- A managed CTA inside an experience uses `type: "cta"` plus `action.type: "cta"` and an exact available ActionKey. That ActionKey is a capability reference, not permission to redefine its destination or event.
+- Lead capture uses `submitCapability: "lead_capture"`; identify the existing contact meaning through contactRole rather than inventing backend field names. Extra questions remain custom answers and may be included in the owner's notification/CRM notes.
+Example:
+{
+  "id": "home.project-estimator",
+  "type": "experience",
+  "tag": "form",
+  "title": "Project estimate",
+  "experience": {
+    "kind": "calculator",
+    "submitCapability": "lead_capture",
+    "steps": [
+      { "key": "project", "controlKeys": ["project_type", "project_size", "continue"] },
+      { "key": "contact", "controlKeys": ["first_name", "last_name", "phone", "email", "consent", "submit"] }
+    ],
+    "controls": [
+      {
+        "key": "project_type",
+        "type": "choice",
+        "label": "What do you need?",
+        "required": true,
+        "options": [
+          { "value": "installation", "label": "New installation" },
+          { "value": "repair", "label": "Repair / upgrade" }
+        ]
+      },
+      { "key": "project_size", "type": "number", "label": "Approximate size", "required": true, "min": 100 },
+      { "key": "continue", "type": "button", "label": "Continue", "action": { "type": "next", "targetStep": "contact" } },
+      { "key": "first_name", "type": "text", "label": "First name", "required": true, "contactRole": "first_name" },
+      { "key": "last_name", "type": "text", "label": "Last name", "required": true, "contactRole": "last_name" },
+      { "key": "phone", "type": "tel", "label": "Phone", "required": true, "contactRole": "phone" },
+      { "key": "email", "type": "email", "label": "Email", "required": true, "contactRole": "email" },
+      { "key": "consent", "type": "checkbox", "label": "Share my inquiry", "required": true, "contactRole": "consent" },
+      { "key": "submit", "type": "button", "label": "Send", "action": { "type": "submit" } }
+    ],
+    "calculations": {
+      "estimate": {
+        "op": "multiply",
+        "values": [
+          { "op": "ref", "ref": "project_size" },
+          { "op": "value", "value": 3.25 }
+        ]
+      }
+    },
+    "results": [
+      { "key": "estimate", "label": "Preliminary estimate", "format": "currency", "expression": { "op": "ref", "ref": "calc.estimate" } }
+    ]
+  }
+}
+
 VALID SOURCE SHAPE EXAMPLE
 {
   "id": "home.hero",
@@ -243,6 +296,17 @@ If a visual request conflicts with protected behavior, preserve the backend cont
             "canonical_signal_mapping_selection_via_analytics_controls",
             "conversion_journey_design",
             "advertising_ready_landing_experience"
+        },
+        nativeExperience = new
+        {
+            kinds = WebsiteExperiencePolicy.AuthorableKinds,
+            controlTypes = WebsiteExperiencePolicy.AuthorableControlTypes,
+            contactRoles = WebsiteExperiencePolicy.AuthorableContactRoles,
+            actionTypes = WebsiteExperiencePolicy.AuthorableActionTypes,
+            expressionOps = WebsiteExperiencePolicy.AuthorableExpressionOps,
+            submitCapabilities = WebsiteExperiencePolicy.AuthorableSubmitCapabilities,
+            referenceRule = "answers_use_stable_control_key_calculations_use_calc_prefix",
+            authorityRule = "no_endpoint_owner_provider_event_or_verified_outcome_fields"
         },
         conversionSystem = new
         {
