@@ -545,8 +545,8 @@ public static class WebsiteSiteSource
                 if (protectedBehavior && !string.IsNullOrWhiteSpace(previous.Node.ActionKey))
                 {
                     if (string.IsNullOrWhiteSpace(node.ActionKey))
-                        node.ActionKey = previous.Node.ActionKey;
-                    else if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
+                        throw new WebsiteSiteSourceProtectionException($"Protected component '{node.Id}' cannot remove its canonical action identity.");
+                    if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
                         throw new WebsiteSiteSourceProtectionException($"Protected component '{node.Id}' cannot change its canonical action identity.");
                 }
 
