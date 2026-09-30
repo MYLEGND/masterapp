@@ -891,11 +891,40 @@ public class WebsitePlatformController : ControllerBase
         WebsiteContentDocument document;
         try
         {
-            document = WebsiteContentSanitizer.Sanitize(request.Document);
-            WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+            var baseline = Read(state.DraftJson);
+            document = await NormalizeAuthorableDocumentAsync(
+                actor,
+                baseline,
+                request.Document,
+                cancellationToken);
         }
-        catch (ArgumentException ex) { return BadRequest(new { error = "invalid_website_document", message = ex.Message }); }
-        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message, message = "Materialize the website into the canonical v3 graph before saving." }); }
+        catch (WebsiteSiteSourceProtectionException ex)
+        {
+            return BadRequest(new
+            {
+                error = "website_document_protected",
+                message = ex.Message,
+                canonicalProtectionViolation = true,
+                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new
+            {
+                error = "invalid_website_document",
+                message = ex.Message,
+                canonicalProtectionViolation = false
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new
+            {
+                error = ex.Message,
+                message = "Materialize the website into the canonical v3 graph before saving."
+            });
+        }
         document.UpdatedUtc = DateTime.UtcNow;
         if (request.DraftId.HasValue || request.DraftName is not null)
         {
@@ -923,6 +952,52 @@ public class WebsitePlatformController : ControllerBase
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
+    }
+
+    private async Task<WebsiteContentDocument> NormalizeAuthorableDocumentAsync(
+        WebsiteEditorTicket actor,
+        WebsiteContentDocument baseline,
+        WebsiteContentDocument proposed,
+        CancellationToken cancellationToken)
+    {
+        var current = WebsiteContentSanitizer.Sanitize(baseline);
+        var candidate = WebsiteContentSanitizer.Sanitize(proposed);
+
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, current);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, candidate);
+
+        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business &&
+                                     actor.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(
+                _db,
+                actor.CommerceBusinessId.Value,
+                cancellationToken)
+            : null;
+
+        var actions = await BuildCallToActionCatalogAsync(
+            actor,
+            facts,
+            cancellationToken,
+            current);
+
+        // One protection authority for Canvas, Selected Source, GPT, autosave,
+        // and named drafts. Project the candidate through the same public
+        // authoring representation used by Source, then parse it against the
+        // current canonical baseline. The parser restores server-owned signals,
+        // system/form/data authority and approved action destinations by stable
+        // node ID while preserving authorable presentation and free structure.
+        var source = WebsiteSiteSource.Serialize(candidate);
+        var protectedDocument = WebsiteSiteSource.Parse(
+            source,
+            current,
+            actions).Document;
+
+        await ValidateCompositionMediaOwnershipAsync(
+            actor,
+            protectedDocument,
+            cancellationToken);
+
+        return protectedDocument;
     }
 
     private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state)
