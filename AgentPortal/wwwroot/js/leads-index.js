@@ -4150,8 +4150,24 @@ async function openDrawerForRow(row){
     if (dLender) dLender.value = row.dataset.mortgageLender || "";
     if (dLoanAmount) dLoanAmount.value = row.dataset.loanAmount || "";
 
-    btnMail.href = email ? ("mailto:" + email) : "#";
-    btnCall.href = phone ? ("tel:" + phone) : "#";
+    if (email) {
+      btnMail.href = "mailto:" + email;
+      btnMail.removeAttribute("aria-disabled");
+      btnMail.removeAttribute("tabindex");
+    } else {
+      btnMail.removeAttribute("href");
+      btnMail.setAttribute("aria-disabled", "true");
+      btnMail.setAttribute("tabindex", "-1");
+    }
+    if (phone) {
+      btnCall.href = "tel:" + phone;
+      btnCall.removeAttribute("aria-disabled");
+      btnCall.removeAttribute("tabindex");
+    } else {
+      btnCall.removeAttribute("href");
+      btnCall.setAttribute("aria-disabled", "true");
+      btnCall.setAttribute("tabindex", "-1");
+    }
     dStatus.value = row.dataset.crmStatus || "Active";
     dPipelineStage.value = currentPipelineStage(row, "MortgageProtection");
     applyQuickViewContactProfileLabels(row, null);
