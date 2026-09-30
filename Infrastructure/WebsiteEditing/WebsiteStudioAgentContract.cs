@@ -91,7 +91,8 @@ NODE SELECTION
 - cta: an action-oriented control; managed actions must use a server-provided ActionKey.
 - link: navigation/reference link; use a safe server-accepted destination.
 - image/video: use this website's media library for new media.
-- form: canonical inquiry system component only; do not synthesize form execution in Source.
+- form: protected canonical inquiry system component only; do not synthesize or rewrite its execution in Source.
+- experience: native declarative interactive experience. Author questions, options, steps, branching, calculations, results, and presentation here without arbitrary JavaScript or backend authority.
 - reusable: instance of an existing synchronized reusable component.
 - embed: sandboxed visual/custom front-end presentation only; never business logic.
 - spacer: intentional visual spacing only; prefer layout gap/padding when sufficient.
@@ -103,13 +104,16 @@ CTAS AND LINKS
 - Prefer relative routes for internal links. Free external links must use a safe destination accepted by Website Studio; external web destinations must be HTTPS.
 - Never place editor tickets, legendEdit, legendMaterialize, credentials, or backend secrets in public URLs/content.
 
-FORMS
-- Ordinary lead capture uses only the canonical inquiry component: FirstName, LastName, Phone, Email, Message, and platform-owned consent. Add it through Website Studio's canonical Form block, then customize its allowed presentation.
-- Do not invent a second inquiry endpoint or recreate the inquiry form as arbitrary HTML.
-- Protect quote/risk/recommendation/results/scheduling forms are server-template-backed runtime experiences. Keep the real runtime form mounted.
-- You may redesign visible presentation around/on protected runtime forms, including typed per-field typography, color, spacing, borders, size, responsive presentation, and approved visible labels stored in fieldPresentations/fieldLabels. Never add/remove/rename/reorder backend fields; alter validation, hidden attribution, anti-forgery, state transitions, submit endpoints, recommendation logic, scheduling handoff, owner scope, CRM persistence, or analytics/Meta/OpenAI outcomes.
-- SystemTemplateKey, SystemKey, SystemBinding, protected DataBinding, protected Signals, and backend endpoints remain server-owned.
-- Any existing node carrying a platform/custom signal mapping is identity-protected in Site Source even when it has no ActionKey/SystemKey. Preserve its stable ID and component type. If the user explicitly wants that tracked element removed, remove the mapping through the canonical Analytics controls first rather than deleting or replacing the node to bypass the mapping.
+FORMS / NATIVE EXPERIENCES
+- Existing canonical inquiry and Protect runtime forms remain protected system assets. Their server-owned fields, endpoints, validation, attribution, outcome semantics, owner routing, CRM persistence, booking/commerce handoffs, and preset signal mappings are never rewritten by GPT.
+- For a custom form, calculator, quiz, assessment, configurator, survey, intake, recommendation flow, or other interaction, use a native `experience` node instead of an embed. The experience is declarative and may freely define supported controls, questions, answer choices, steps, conditional visibility, safe calculations, result cards, button copy, responsive design, and presentation.
+- Native experience calculations use the platform expression model only. Never emit eval, Function, arbitrary scripts, network calls, endpoints, cookies, provider calls, or parent-window bridges.
+- A custom experience may select `submitCapability: "lead_capture"`. The server—not GPT—owns the submission endpoint, website owner, recipient, CRM persistence, dedupe, attribution, and verified `website_lead_submitted` outcome. Lead-capture experiences must expose one first_name, last_name, phone, email, and required consent contact role; message is optional. Additional business-specific questions are authorable and are included in the scoped owner notification without becoming new server authorities.
+- Experience controls of type `cta` may select an exact server-provided ActionKey. The selected action keeps the catalog-owned destination and automatic analytics behavior; GPT may change placement/copy/presentation but may not invent or rewrite the event, provider mapping, owner, or runtime endpoint.
+- Custom signal mappings for experience fields are added only through the canonical Analytics controls. Selected Source never writes Signals/FieldSignals. Existing preset mappings stay locked and a red canonical-protection warning must block any attempt to replace, delete, retarget, or recreate them.
+- You may redesign visible presentation around/on protected runtime forms, including typed per-field typography, color, spacing, borders, size, responsive presentation, and approved visible labels stored in fieldPresentations/fieldLabels. Never add/remove/rename/reorder their backend fields or alter their protected execution.
+- SystemTemplateKey, SystemKey, SystemBinding, protected DataBinding, protected Signals/FieldSignals, backend endpoints, owner scope, and verified outcomes remain server-owned.
+- Any existing node carrying a platform/custom signal mapping is identity-protected in Site Source even when it has no ActionKey/SystemKey. Preserve its stable ID and component type. If the user explicitly wants a removable custom mapping removed, remove it through the canonical Analytics controls first. Preset/system mappings are not removable from authoring surfaces.
 
 NAVIGATION / SHELL
 - There is one primary navigation behavior authority in the shared header. Its typography/layout/presentation are editable on that same canonical node; page labels/order/visibility remain page-metadata authority. Never create a second primary nav.
@@ -147,7 +151,7 @@ BROWSER AUTHORIZATION
 - Authentication recovery must never weaken owner scope, Founder checks, business membership checks, ticket expiry, or publish authorization.
 
 CANONICAL VIOLATION RESPONSE
-- If Website Studio displays a red canonical-protection warning, stop the rejected edit immediately.
+- If Website Studio displays a red canonical-protection warning, stop the rejected edit immediately. The warning is an authority boundary, not a suggestion; never attempt the same protected mutation through Source, Canvas, GPT, an experience, or an embed.
 - Follow this exact correction directive: {{ProtectedEditCorrection}}
 - Do not work around validation by recreating the protected control, renaming its ID, wrapping it in an embed, inventing a replacement ActionKey, or moving backend behavior into custom code.
 - Preserve the protected identity and redirect the user's visual request into allowed presentation changes.
@@ -190,7 +194,15 @@ If a visual request conflicts with protected behavior, preserve the backend cont
             "free_content_type_and_tag",
             "page_metadata",
             "approved_cta_instance_selection",
-            "protected_form_field_presentation"
+            "protected_form_field_presentation",
+            "native_experience_structure",
+            "native_experience_controls",
+            "native_experience_steps",
+            "native_experience_branching",
+            "native_experience_calculations",
+            "native_experience_results",
+            "native_experience_lead_capture_selection",
+            "native_experience_cta_selection"
         },
         protectedFields = new[]
         {
@@ -205,12 +217,12 @@ If a visual request conflicts with protected behavior, preserve the backend cont
             "owner_scope",
             "commerce_scope",
             "form_endpoint",
-            "form_field_semantics",
+            "protected_runtime_form_field_semantics",
             "system_template_key",
-            "form_step_model",
-            "form_validation",
+            "protected_runtime_form_step_model",
+            "protected_runtime_form_validation",
             "hidden_attribution_fields",
-            "result_flow",
+            "protected_runtime_result_flow",
             "booking_handoff",
             "lead_routing",
             "publish_authority"
