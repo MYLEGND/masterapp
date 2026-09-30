@@ -104,6 +104,23 @@ public sealed class WebsiteVisualStyle
     public decimal? HeightPx { get; set; }
     public decimal? OffsetXPercent { get; set; }
     public decimal? OffsetYPx { get; set; }
+    public decimal? MarginTop { get; set; }
+    public decimal? MarginBottom { get; set; }
+    public decimal? MarginLeft { get; set; }
+    public decimal? MarginRight { get; set; }
+    public decimal? BorderWidth { get; set; }
+    public string? BorderColor { get; set; }
+    public string? BorderStyle { get; set; }
+    public decimal? Opacity { get; set; }
+    public string? TextTransform { get; set; }
+    public string? TextDecoration { get; set; }
+    public decimal? MinWidthPx { get; set; }
+    public decimal? MaxWidthPx { get; set; }
+    public decimal? MinHeightPx { get; set; }
+    public decimal? MaxHeightPx { get; set; }
+    public decimal? AspectRatio { get; set; }
+    public string? BackgroundGradient { get; set; }
+    public string? BoxShadow { get; set; }
 }
 
 public sealed class WebsiteDesignTheme
@@ -295,6 +312,17 @@ public sealed class WebsiteCompositionNode
     public Dictionary<string, WebsiteCompositionLayout> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteAnimationBinding> Animations { get; set; } = new();
     public WebsiteDataBinding? DataBinding { get; set; }
+
+    // Presentation-only records keyed by the existing server/runtime field identity.
+    // These never create, rename, reorder, validate, route, or submit a form field.
+    public Dictionary<string, WebsiteControlPresentation> FieldPresentations { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, string> FieldLabels { get; set; } = new(StringComparer.Ordinal);
+
+    // Canonical Analytics-owned mappings for protected form controls. Field keys
+    // are stable presentation/runtime identities; execution semantics still
+    // belong to the server-owned form.
+    public Dictionary<string, List<WebsiteSignalBinding>> FieldSignals { get; set; } = new(StringComparer.Ordinal);
+
     public List<WebsiteCompositionNode> Children { get; set; } = new();
 }
 

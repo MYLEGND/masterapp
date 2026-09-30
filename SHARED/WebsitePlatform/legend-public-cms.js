@@ -71,12 +71,15 @@
   let activeEditorPanel = 'content';
   let dirty = false;
   let sourceEditorDirty = false;
+  let sourceEditorBaseNode = null;
+  let canonicalSourceDocument = null;
+  let canonicalSourceRevision = null;
   let templateRepairPending = false;
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'minHeight', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap', 'display', 'flexDirection', 'gap', 'gridTemplateColumns', 'alignItems', 'justifyContent', 'flexWrap'];
+  const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -289,12 +292,31 @@
       .filter(node => !isRetiredTemplateDecorationNode(node));
   }
 
+  function applyCanonicalHeaderTypographyDefaults(node) {
+    if (!node || typeof node!=='object') return node;
+    node.style ||= {};
+    const tag=String(node.tag || '').toLowerCase();
+    const isBrandTitle=
+      node.systemBinding==='business_name' ||
+      (SITE_KEY==='legend' && tag==='strong' && String(node.text || '').trim()==='LEGEND®');
+    if(isBrandTitle){
+      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=3.5;
+      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
+    }
+    if(node.systemKey==='primary_navigation'){
+      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=1.6;
+      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
+    }
+    return node;
+  }
+
   function normalizeHeaderComposition(input) {
     const roots=normalizeCompositionNodes(input);
     let primarySeen=false;
     const clean=nodes => {
       const result=[];
       for(const node of nodes || []) {
+        applyCanonicalHeaderTypographyDefaults(node);
         const classes=String(node?.className || '').split(/\s+/).filter(Boolean);
         const primary=node?.systemKey==='primary_navigation';
         const templateNav=!primary && String(node?.tag || '').toLowerCase()==='nav' && classes.includes('nav');
@@ -475,7 +497,11 @@
     const page=pageState();
     walkComposition(page.composition || [],node=>{
       const el=findEditableElement(node.id);
-      if(el) applyCompositionNode(el,node);
+      if(!el) return;
+      el.dataset.cmsCompositionId=node.id;
+      applyCompositionNode(el,node);
+      if(el.tagName==='FORM' || String(node.systemKey || '').startsWith('protect_runtime_form:'))
+        applyFormFieldPresentations(el,node);
     });
   }
 
@@ -567,6 +593,11 @@
 
   function editorSelectionTarget(node) {
     if (!node?.closest) return null;
+    const locked=node.closest('[data-cms-locked="true"]');
+    if(locked){
+      const parent=locked.parentElement?.closest?.('[data-cms-editable="true"]');
+      return parent instanceof HTMLElement ? parent : null;
+    }
     const entity = node.closest('[data-business-name][data-cms-editable="true"],[data-business-field][data-cms-editable="true"]');
     if (entity instanceof HTMLElement) return entity;
     const anchor = node.closest('a[data-cms-editable="true"]');
@@ -645,14 +676,94 @@
     document.querySelectorAll('main form, main input:not([type="hidden"]):not([type="password"]), main select, main textarea').forEach((node, index) => {
       if (node.closest('[data-cms-locked="true"]')) return;
       node.dataset.cmsId ||= `signal:${pageKey}.${safeId(node.tagName)}.${safeId(node.id || node.name || 'field')}.${index}`;
+      node.dataset.cmsFieldKey ||= safeId(node.name || node.id || ('field-'+index));
       node.dataset.cmsSignalOnly = 'true'; node.dataset.cmsEditable = 'true';
       rememberOriginal(node);
     });
   }
 
+  function selectedSignalContext() {
+    if (!selected || legacyMigration) return null;
+    const fieldKey=['INPUT','SELECT','TEXTAREA'].includes(selected.tagName) ? formFieldKey(selected) : null;
+    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id]') : null;
+    const elementId=fieldKey
+      ? form?.dataset?.cmsCompositionId
+      : (selected.dataset.cmsCompositionId || selected.dataset.cmsId || null);
+    if(!elementId) return null;
+    const model=compositionNode(elementId);
+    if(!model) return null;
+    const bindings=fieldKey
+      ? (model.fieldSignals?.[fieldKey] || [])
+      : (model.signals || []);
+    return {elementId,fieldKey,model,bindings};
+  }
+
   function selectedSignalElementId() {
-    if (!selected) return null;
-    return selected.dataset.cmsCompositionId || selected.dataset.cmsId || null;
+    return selectedSignalContext()?.elementId || null;
+  }
+
+  async function persistSelectedSignals(nextSignals) {
+    const context=selectedSignalContext();
+    if(!context) return false;
+    const status=document.getElementById('legend-cms-status');
+
+    if(dirty){
+      if(status) status.textContent='Saving design changes before updating Analytics mapping…';
+      const saved=await save(false);
+      if(!saved || dirty) return false;
+    }
+
+    const response=await fetch(`${API_BASE}/api/website-content/manage/signals`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        ticket:editorTicket,
+        expectedRevision:revision,
+        pagePath:currentPageRoute(),
+        elementId:context.elementId,
+        fieldKey:context.fieldKey,
+        signals:nextSignals
+      })
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      if((response.status===401 || response.status===403) &&
+          showEditorAuthorizationRecovery('Website Studio authorization expired while updating this Analytics mapping.'))
+        return false;
+      if(status) status.textContent=payload.message || payload.error || `Signal update failed (${response.status}).`;
+      return false;
+    }
+    if(payload.source!=='website_signal_configuration'){
+      if(status) status.textContent='Signal update response was invalid.';
+      return false;
+    }
+
+    documentState=normalizeDocument(payload.document || documentState);
+    revision=payload.revision ?? revision;
+    canonicalSourceDocument=null;
+    canonicalSourceRevision=null;
+    dirty=false;
+    applyDocument(documentState);
+
+    let refreshed=findEditableElement(context.elementId);
+    if(context.fieldKey && refreshed){
+      refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[type="submit"]')]
+        .find(control=>formFieldKey(control)===context.fieldKey) || null;
+    }
+    if(refreshed) setSelected(refreshed);
+    else setSelected(null);
+    if(status) status.textContent='Analytics mapping saved to the canonical draft.';
+    return true;
+  }
+
+  async function mutateSelectedSignals(bindingId, mutation) {
+    const context=selectedSignalContext();
+    if(!context) return false;
+    const next=cloneCanonicalValue(context.bindings || []);
+    const binding=bindingId ? next.find(value=>value.id===bindingId) : null;
+    if(bindingId && !binding) return false;
+    mutation(binding,next);
+    return persistSelectedSignals(next);
   }
 
   function signalDiagnosticHost(bindingId) {
@@ -681,8 +792,8 @@
   }
 
   async function runSignalDryRun(binding) {
-    const elementId = selectedSignalElementId();
-    if (!binding?.id || !elementId) return;
+    const context=selectedSignalContext();
+    if (!binding?.id || !context?.elementId) return;
     if (!await ensureSavedForSignalInspection(binding.id)) return;
     renderSignalDiagnosticMessage(binding.id, 'Running private dry-run validation…');
     try {
@@ -693,8 +804,9 @@
           ticket: editorTicket,
           expectedRevision: revision,
           pagePath: currentPageRoute(),
-          elementId,
-          bindingId: binding.id
+          elementId:context.elementId,
+          bindingId:binding.id,
+          fieldKey:context.fieldKey
         })
       });
       const payload = await response.json().catch(() => ({}));
@@ -720,16 +832,17 @@
   }
 
   async function loadSignalHealth(binding) {
-    const elementId = selectedSignalElementId();
-    if (!binding?.id || !elementId) return;
+    const context=selectedSignalContext();
+    if (!binding?.id || !context?.elementId) return;
     if (!await ensureSavedForSignalInspection(binding.id)) return;
     renderSignalDiagnosticMessage(binding.id, 'Loading destination health and published delivery evidence…');
     try {
       const url = new URL(`${API_BASE}/api/website-content/manage/signals/health`);
       url.searchParams.set('ticket', editorTicket);
       url.searchParams.set('pagePath', currentPageRoute());
-      url.searchParams.set('elementId', elementId);
-      url.searchParams.set('bindingId', binding.id);
+      url.searchParams.set('elementId',context.elementId);
+      url.searchParams.set('bindingId',binding.id);
+      if(context.fieldKey) url.searchParams.set('fieldKey',context.fieldKey);
       const response = await fetch(url, { cache:'no-store' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.message || payload.error || `Signal health failed (${response.status})`);
@@ -778,105 +891,145 @@
   }
 
   function renderSignalControls() {
-    const host = document.getElementById('legend-cms-signal-controls');
-    if (!host) return;
+    const host=document.getElementById('legend-cms-signal-controls');
+    if(!host) return;
     host.replaceChildren();
-    const paragraph = text => { const node = document.createElement('p'); node.textContent = text; host.appendChild(node); };
-    if (!selected) { paragraph('Select a button, form, field, or section on the page.'); return; }
-    if (!signalCatalog) { paragraph('The event catalog could not be loaded. Reopen the editor to try again.'); return; }
-    const type = selected.tagName;
-    const triggers = ['viewed'];
-    if (['A','BUTTON'].includes(type)) triggers.push('click');
-    if (type === 'FORM') triggers.push('form_started','submit_attempt','submission_saved');
-    if (['INPUT','SELECT','TEXTAREA'].includes(type)) triggers.push('field_started','validation_failed');
-    if (type === 'INPUT' && selected.type === 'tel') triggers.push('field_completed');
-    if (selected.dataset.cmsSection) triggers.push('scroll_threshold');
-    const candidates = signalCatalog.events.filter(option => !option.requiresServerOutcome && option.triggers.some(trigger => triggers.includes(trigger)));
-    const models = selectedWebsiteModel();
-    const bindings = models?.signals || [];
-    paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
-    if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
-    const managedActionKey = selected.dataset.websiteActionKey;
-    const managedAction = (managedActionKey && availableCtaOptions().find(option => option.key === managedActionKey))
+    const paragraph=text=>{const node=document.createElement('p');node.textContent=text;host.appendChild(node);};
+    if(!selected){paragraph('Select a button, form, field, or section on the page.');return;}
+    if(!signalCatalog){paragraph('The event catalog could not be loaded. Reopen the editor to try again.');return;}
 
-      || null;
-    if (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) {
-      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic form analytics';
-      host.appendChild(automaticTitle);
-      const automaticHelp = document.createElement('p');
-      automaticHelp.textContent = 'No mapping is required. The shared Protect Website runtime automatically tracks the canonical inquiry lifecycle, and the backend owns the confirmed Lead outcome.';
-      host.appendChild(automaticHelp);
-      const automatic = document.createElement('div'); automatic.className = 'legend-cms-signal-presets';
-      const names = ['LeadFormStart','ContactInputStarted','PhoneFieldCompleted','RequiredContactFieldsCompleted','SubmitAttempt','Lead'];
-      for (const name of names) {
-        const option = signalCatalog.events.find(value => value.name === name);
-        if (!option) continue;
-        const row = document.createElement('div');
-        row.textContent = `${name} · automatic · ${option.requiresServerOutcome ? 'verified server outcome' : 'analytics + eligible configured destinations'}`;
+    const context=selectedSignalContext();
+    if(!context){paragraph('This element does not expose canonical signal configuration.');return;}
+
+    const type=selected.tagName;
+    const triggers=['viewed'];
+    if(['A','BUTTON'].includes(type)) triggers.push('click');
+    if(type==='FORM') triggers.push('form_started','submit_attempt','submission_saved');
+    if(['INPUT','SELECT','TEXTAREA'].includes(type)) triggers.push('field_started','validation_failed');
+    if(type==='INPUT' && selected.type==='tel') triggers.push('field_completed');
+    if(selected.dataset.cmsSection) triggers.push('scroll_threshold');
+
+    const candidates=signalCatalog.events.filter(option=>
+      !option.requiresServerOutcome &&
+      option.triggers.some(trigger=>triggers.includes(trigger)));
+    const bindings=context.bindings || [];
+    paragraph(bindings.length
+      ? `${bindings.length} interaction mapping${bindings.length===1?'':'s'}`
+      : 'No signal. This element has no configured marketing event.');
+    if(!signalCatalog.runtimeEnabled)
+      paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
+
+    const managedActionKey=selected.dataset.websiteActionKey;
+    const managedAction=(managedActionKey && availableCtaOptions().find(option=>option.key===managedActionKey)) || null;
+    if(type==='FORM' && selected.matches?.('[data-website-inquiry]')){
+      const title=document.createElement('strong');title.textContent='Automatic form analytics';host.appendChild(title);
+      const help=document.createElement('p');
+      help.textContent='No mapping is required. The shared Protect Website runtime automatically tracks the canonical inquiry lifecycle, and the backend owns the confirmed Lead outcome.';
+      host.appendChild(help);
+      const automatic=document.createElement('div');automatic.className='legend-cms-signal-presets';
+      for(const name of ['LeadFormStart','ContactInputStarted','PhoneFieldCompleted','RequiredContactFieldsCompleted','SubmitAttempt','Lead']){
+        const option=signalCatalog.events.find(value=>value.name===name);
+        if(!option) continue;
+        const row=document.createElement('div');
+        row.textContent=`${name} · automatic · ${option.requiresServerOutcome?'verified server outcome':'analytics + eligible configured destinations'}`;
         automatic.appendChild(row);
       }
       host.appendChild(automatic);
-    } else if (managedAction) {
-      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic action analytics';
-      host.appendChild(automaticTitle);
-      const automaticHelp = document.createElement('p');
-      automaticHelp.textContent = `${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}. No manual mapping is required.`;
-      host.appendChild(automaticHelp);
+    }else if(managedAction){
+      const title=document.createElement('strong');title.textContent='Automatic action analytics';host.appendChild(title);
+      const help=document.createElement('p');
+      help.textContent=`${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}. No manual mapping is required.`;
+      host.appendChild(help);
     }
-    const addSelect = (labelText, values, value, action) => {
-      const label = document.createElement('label'); label.className = 'legend-cms-group'; label.textContent = labelText;
-      const select = document.createElement('select');
-      for (const [key, text] of values) { const option = document.createElement('option'); option.value = key; option.textContent = text; select.appendChild(option); }
-      select.value = value; select.addEventListener('change', () => { checkpoint(); action(select.value); markDirty(); renderSignalControls(); });
-      label.appendChild(select); host.appendChild(label); return select;
+
+    const addSelect=(labelText,values,value,action)=>{
+      const label=document.createElement('label');label.className='legend-cms-group';label.textContent=labelText;
+      const select=document.createElement('select');
+      for(const [key,text] of values){const option=document.createElement('option');option.value=key;option.textContent=text;select.appendChild(option);}
+      select.value=value;
+      select.addEventListener('change',()=>void action(select.value));
+      label.appendChild(select);host.appendChild(label);return select;
     };
-    for (const binding of bindings) {
-      const definition = signalCatalog.events.find(x => x.name === binding.eventName);
-      addSelect('Send', [['off','Do not send'],['analytics','Analytics only'], ['destinations','Analytics + configured destinations']], binding.deliveryMode === 'meta' ? 'destinations' : binding.deliveryMode, value => binding.deliveryMode = value);
-      const available = candidates.flatMap(option => option.triggers.filter(trigger => triggers.includes(trigger)).map(trigger => [option.name + ':' + trigger, `${option.displayLabel || option.name} · ${trigger.replaceAll('_',' ')}`]));
-      addSelect('Event and trigger', available, binding.eventName + ':' + binding.trigger, value => {
-        const [name, trigger] = value.split(':'); binding.eventName = name; binding.trigger = trigger; binding.matchingFields = [];
-        binding.actionKey = signalCatalog.events.find(x => x.name === name)?.actionKey || null;
-      });
-      const label = document.createElement('label'), once = document.createElement('input'); once.type = 'checkbox'; once.checked = binding.oncePerSession;
-      once.addEventListener('change', () => { checkpoint(); binding.oncePerSession = once.checked; markDirty(); }); label.append(once, document.createTextNode(' Once per session')); host.appendChild(label);
-      if (definition?.requiresServerOutcome) {
+
+    for(const binding of bindings){
+      const definition=signalCatalog.events.find(x=>x.name===binding.eventName);
+      addSelect('Send',
+        [['off','Do not send'],['analytics','Analytics only'],['destinations','Analytics + configured destinations']],
+        binding.deliveryMode==='meta'?'destinations':binding.deliveryMode,
+        value=>mutateSelectedSignals(binding.id,draft=>{draft.deliveryMode=value;}));
+
+      const available=candidates.flatMap(option=>
+        option.triggers.filter(trigger=>triggers.includes(trigger))
+          .map(trigger=>[option.name+':'+trigger,`${option.displayLabel || option.name} · ${trigger.replaceAll('_',' ')}`]));
+      addSelect('Event and trigger',available,binding.eventName+':'+binding.trigger,
+        value=>mutateSelectedSignals(binding.id,draft=>{
+          const [name,trigger]=value.split(':');
+          draft.eventName=name;
+          draft.trigger=trigger;
+          draft.matchingFields=[];
+          draft.actionKey=signalCatalog.events.find(x=>x.name===name)?.actionKey || null;
+        }));
+
+      const onceLabel=document.createElement('label');
+      const once=document.createElement('input');once.type='checkbox';once.checked=binding.oncePerSession;
+      once.addEventListener('change',()=>void mutateSelectedSignals(binding.id,draft=>{draft.oncePerSession=once.checked;}));
+      onceLabel.append(once,document.createTextNode(' Once per session'));host.appendChild(onceLabel);
+
+      if(definition?.requiresServerOutcome){
         paragraph('Sent only after the backend confirms this outcome. Customer matching requires advertising consent.');
-        for (const field of signalCatalog.matchingFields) {
-          const label = document.createElement('label'), input = document.createElement('input'); input.type = 'checkbox'; input.checked = binding.matchingFields?.includes(field);
-          input.addEventListener('change', () => { checkpoint(); const fields = new Set(binding.matchingFields || []); input.checked ? fields.add(field) : fields.delete(field); binding.matchingFields = [...fields]; markDirty(); });
-          label.append(input, document.createTextNode(' Match approved ' + field)); host.appendChild(label);
+        for(const field of signalCatalog.matchingFields){
+          const label=document.createElement('label'),input=document.createElement('input');
+          input.type='checkbox';input.checked=binding.matchingFields?.includes(field);
+          input.addEventListener('change',()=>void mutateSelectedSignals(binding.id,draft=>{
+            const fields=new Set(draft.matchingFields || []);
+            input.checked ? fields.add(field) : fields.delete(field);
+            draft.matchingFields=[...fields];
+          }));
+          label.append(input,document.createTextNode(' Match approved '+field));host.appendChild(label);
         }
       }
-      const diagnostics = document.createElement('div');
-      diagnostics.className = 'legend-cms-signal-diagnostics';
-      diagnostics.dataset.signalDiagnostics = binding.id;
-      const diagnosticIntro = document.createElement('p');
-      diagnosticIntro.textContent = 'Destination health and delivery evidence have not been checked for this mapping.';
-      diagnostics.appendChild(diagnosticIntro);
-      const diagnosticActions = document.createElement('div'); diagnosticActions.className = 'legend-cms-row';
-      const testButton = document.createElement('button'); testButton.type = 'button'; testButton.textContent = 'Run private test';
-      testButton.dataset.signalTest = binding.id;
-      testButton.addEventListener('click', () => void runSignalDryRun(binding));
-      const healthButton = document.createElement('button'); healthButton.type = 'button'; healthButton.textContent = 'Refresh delivery history';
-      healthButton.dataset.signalHealth = binding.id;
-      healthButton.addEventListener('click', () => void loadSignalHealth(binding));
-      diagnosticActions.append(testButton, healthButton);
-      diagnostics.appendChild(diagnosticActions);
-      host.appendChild(diagnostics);
-      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove mapping';
-      remove.addEventListener('click', () => { checkpoint(); models.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
+
+      const diagnostics=document.createElement('div');
+      diagnostics.className='legend-cms-signal-diagnostics';
+      diagnostics.dataset.signalDiagnostics=binding.id;
+      const intro=document.createElement('p');
+      intro.textContent='Destination health and delivery evidence have not been checked for this mapping.';
+      diagnostics.appendChild(intro);
+      const actions=document.createElement('div');actions.className='legend-cms-row';
+      const testButton=document.createElement('button');testButton.type='button';testButton.textContent='Run private test';
+      testButton.dataset.signalTest=binding.id;testButton.addEventListener('click',()=>void runSignalDryRun(binding));
+      const healthButton=document.createElement('button');healthButton.type='button';healthButton.textContent='Refresh delivery history';
+      healthButton.dataset.signalHealth=binding.id;healthButton.addEventListener('click',()=>void loadSignalHealth(binding));
+      actions.append(testButton,healthButton);diagnostics.appendChild(actions);host.appendChild(diagnostics);
+
+      const remove=document.createElement('button');remove.type='button';remove.textContent='Remove mapping';
+      remove.addEventListener('click',()=>void persistSelectedSignals(bindings.filter(value=>value.id!==binding.id)));
+      host.appendChild(remove);
     }
-    const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add advanced custom mapping';
-    const automaticContract = (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
-    add.hidden = automaticContract;
-    add.disabled = automaticContract || bindings.length >= 8 || !candidates.length;
-    add.addEventListener('click', () => {
-      const option = candidates.flatMap(x => x.triggers.filter(t => triggers.includes(t) && !bindings.some(b => b.trigger === t)).map(t => ({ event: x, trigger: t })))[0];
-      if (!option) { paragraph('All supported triggers for this element are already mapped.'); return; }
-      checkpoint(); models.signals ||= []; models.signals.push({ id: crypto.randomUUID().replaceAll('-',''), eventName: option.event.name, actionKey: option.event.actionKey, trigger: option.trigger, deliveryMode: 'off', oncePerSession: true, matchingFields: [] });
-      markDirty(); renderSignalControls();
-    }); host.appendChild(add);
+
+    const add=document.createElement('button');add.type='button';add.textContent='Add advanced custom mapping';
+    const automaticContract=(type==='FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
+    add.hidden=automaticContract;
+    add.disabled=automaticContract || bindings.length>=8 || !candidates.length;
+    add.addEventListener('click',()=>{
+      const option=candidates.flatMap(candidate=>
+        candidate.triggers.filter(trigger=>
+          triggers.includes(trigger) && !bindings.some(binding=>binding.trigger===trigger))
+          .map(trigger=>({event:candidate,trigger})))[0];
+      if(!option){paragraph('All supported triggers for this element are already mapped.');return;}
+      const next=cloneCanonicalValue(bindings);
+      next.push({
+        id:crypto.randomUUID().replaceAll('-',''),
+        eventName:option.event.name,
+        actionKey:option.event.actionKey,
+        trigger:option.trigger,
+        deliveryMode:'off',
+        oncePerSession:true,
+        matchingFields:[]
+      });
+      void persistSelectedSignals(next);
+    });
+    host.appendChild(add);
   }
 
   function applyTheme(theme) {
@@ -1069,12 +1222,23 @@
     }
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
-    ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
-    // A chosen solid color replaces inherited background imagery in editor and published rendering.
-    if (style.backgroundColor) el.style.backgroundImage = 'none';
-    ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius'].forEach(key => { if (spacingNumber(style[key])) el.style[key] = `${style[key]}px`; });
+    ['color','backgroundColor','fontFamily','fontWeight','objectFit','borderColor','borderStyle','textTransform','textDecoration'].forEach(key => { if (style[key] != null && style[key] !== '') el.style[key] = style[key]; });
+    if (style.backgroundGradient) el.style.backgroundImage=style.backgroundGradient;
+    else if (style.backgroundColor) el.style.backgroundImage = 'none';
+    ['fontSize','paddingLeft','paddingRight','borderRadius','borderWidth','minWidthPx','maxWidthPx','minHeightPx','maxHeightPx'].forEach(key => {
+      if (spacingNumber(style[key])) {
+        const cssKey={minWidthPx:'minWidth',maxWidthPx:'maxWidth',minHeightPx:'minHeight',maxHeightPx:'maxHeight'}[key] || key;
+        el.style[cssKey]=`${style[key]}px`;
+      }
+    });
+    if (Number.isFinite(Number(style.letterSpacing)))
+      el.style.letterSpacing=`${Number(style.letterSpacing)}px`;
+    ['marginTop','marginBottom','marginLeft','marginRight'].forEach(key => { if(Number.isFinite(Number(style[key]))) el.style[key]=`${Number(style[key])}px`; });
     if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
-    if (style.objectPosition && el instanceof HTMLImageElement) el.style.objectPosition = style.objectPosition;
+    if (style.opacity != null && Number.isFinite(Number(style.opacity))) el.style.opacity=String(style.opacity);
+    if (positiveNumber(style.aspectRatio)) el.style.aspectRatio=String(style.aspectRatio);
+    if (style.boxShadow) el.style.boxShadow=style.boxShadow;
+    if (style.objectPosition && (el instanceof HTMLImageElement || el instanceof HTMLVideoElement)) el.style.objectPosition = style.objectPosition;
   }
 
   function setContentText(el, text, preserveWhitespace = false) {
@@ -1095,6 +1259,7 @@
     if (node && create) {
       node.style ||= {};
       node.signals ||= [];
+      node.fieldSignals ||= {};
       node.children ||= [];
     }
     return node;
@@ -1110,8 +1275,31 @@
     return documentState.store[field] || null;
   }
 
+  function formFieldKey(el) {
+    if(!el) return null;
+    const raw=el.dataset?.cmsFieldKey || el.getAttribute?.('name') || el.id || '';
+    return safeId(raw);
+  }
+
+  function formFieldPresentationForElement(el, create = true) {
+    if(!el || legacyMigration) return null;
+    const form=el.closest?.('form[data-cms-composition-id]');
+    if(!form || form===el) return null;
+    const key=formFieldKey(el);
+    if(!key) return null;
+    const formNode=compositionNode(form.dataset.cmsCompositionId);
+    if(!formNode || !(formNode.type==='form' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
+    if(create){
+      formNode.fieldPresentations ||= {};
+      formNode.fieldPresentations[key] ||= normalizeControlPresentation(null);
+    }
+    return formNode.fieldPresentations?.[key] || null;
+  }
+
   function editableWebsiteModelForElement(el, create = true) {
-    return storeControlPresentationForElement(el, create) || compositionNodeForElement(el, create);
+    return formFieldPresentationForElement(el, create) ||
+      storeControlPresentationForElement(el, create) ||
+      compositionNodeForElement(el, create);
   }
 
   function editableCompositionNodeForElement(el, create = true) {
@@ -1184,14 +1372,19 @@
 
   const defaultCodeBlock = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{--navy:#102b62;--navy-deep:#081a3a;--gold:#d4ad45;--gold-strong:#f0cf78;--ink:#101a35;--muted:#5b6680;--surface:#f7f8fb;--line:rgba(16,43,98,.14)}*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#fff,var(--surface));color:var(--ink);font:500 16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:clamp(14px,4vw,28px)}main{position:relative;overflow:hidden;max-width:760px;margin:auto;background:#fff;border:1px solid var(--line);border-radius:18px;padding:clamp(22px,5vw,38px);box-shadow:0 14px 38px rgba(8,26,58,.09)}main:before{content:"";position:absolute;inset:0 auto auto 0;width:100%;height:2px;background:linear-gradient(90deg,var(--gold),transparent 78%)}small{display:block;color:var(--gold);font-size:10px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px}h2{margin:0 0 10px;color:var(--navy-deep);font-size:clamp(27px,6vw,42px);line-height:1.06;letter-spacing:-.035em;overflow-wrap:break-word}p{margin:0;color:var(--muted);overflow-wrap:break-word}</style></head><body><main><small>Custom content</small><h2>Build something distinctive.</h2><p>Edit this sandboxed block with responsive, accessible presentation that belongs to this website.</p></main></body></html>';
 
+  function secureEmbedSource(source) {
+    const policy="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: https:; media-src data: https:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'";
+    const meta='<meta http-equiv="Content-Security-Policy" content="'+policy+'">';
+    if(/<head(?:\s[^>]*)?>/i.test(source)) return source.replace(/<head(?:\s[^>]*)?>/i,match=>match+meta);
+    if(/<html(?:\s[^>]*)?>/i.test(source)) return source.replace(/<html(?:\s[^>]*)?>/i,match=>match+'<head>'+meta+'</head>');
+    return '<!doctype html><html><head>'+meta+'</head><body>'+source+'</body></html>';
+  }
+
   function renderCodePreview(el, extra) {
     const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
     if (!frame) return;
     const source = extra?.text?.trim() ? extra.text : defaultCodeBlock;
-    // A data document has an opaque origin under this sandbox and does not inherit
-    // the parent page's script policy. This keeps owner code isolated without
-    // weakening the main site's CSP with unsafe-inline/unsafe-eval.
-    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source);
+    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(secureEmbedSource(source));
   }
 
   function compositionMediaAssetId(value) {
@@ -1566,6 +1759,31 @@
     return allowed.includes(tag) ? tag : allowed[0];
   }
 
+  function applyFormFieldPresentations(form,node) {
+    if(!form || !node) return;
+    const presentations=node.fieldPresentations || {};
+    const labels=node.fieldLabels || {};
+    const controls=[...form.querySelectorAll('input[name],select[name],textarea[name],button[type="submit"]')];
+    controls.forEach((control,index)=>{
+      const key=safeId(control.dataset.cmsFieldKey || control.getAttribute('name') || control.id || (control.matches('button[type="submit"]')?'submit':'field-'+index));
+      if(!key) return;
+      control.dataset.cmsFieldKey=key;
+      control.dataset.cmsSignalOnly='true';
+      control.dataset.cmsEditable='true';
+      const presentation=presentations[key];
+      if(presentation){
+        applyStyle(control,effectiveStyle(presentation));
+        applyLayout(control,effectiveLayout(presentation));
+      }
+      if(control.matches('button[type="submit"]') && labels[key]) control.textContent=labels[key];
+      const label=control.closest('label');
+      if(label && labels[key]){
+        const textNode=[...label.childNodes].find(value=>value.nodeType===3 && String(value.textContent||'').trim());
+        if(textNode) textNode.textContent=labels[key]+' ';
+      }
+    });
+  }
+
   function buildCanonicalInquiryForm(node) {
     const el=document.createElement('form');
     el.id='website_inquiry_'+node.id;
@@ -1583,9 +1801,11 @@
     grid.className='public-form-grid';
 
     const field=(labelText,name,type='text',attrs={})=>{
+      const key=safeId(name);
       const label=document.createElement('label');
-      label.textContent=labelText;
+      label.textContent=node.fieldLabels?.[key] || labelText;
       const input=name==='Message' ? document.createElement('textarea') : document.createElement('input');
+      input.dataset.cmsFieldKey=key;
       if(name!=='Message') input.type=type;
       input.name=name;
       input.required=true;
@@ -1610,22 +1830,25 @@
     const consent=document.createElement('input');
     consent.type='checkbox';
     consent.name='consent';
+    consent.dataset.cmsFieldKey='consent';
     consent.required=true;
     const consentText=document.createElement('span');
-    consentText.textContent='I agree to share this inquiry with this website.';
+    consentText.textContent=node.fieldLabels?.consent || 'I agree to share this inquiry with this website.';
     consentLabel.append(consent,consentText);
     grid.appendChild(consentLabel);
 
     const submit=document.createElement('button');
     submit.type='submit';
+    submit.dataset.cmsFieldKey='submit';
     submit.className='btn primary';
-    submit.textContent=node.text || 'Send inquiry';
+    submit.textContent=node.fieldLabels?.submit || node.text || 'Send inquiry';
     const status=document.createElement('p');
     status.setAttribute('role','status');
     status.setAttribute('aria-live','polite');
 
     fieldset.append(legend,grid,submit);
     el.append(fieldset,status);
+    applyFormFieldPresentations(el,node);
     return el;
   }
 
@@ -1635,7 +1858,7 @@
     const frame=document.createElement('iframe');
     frame.dataset.cmsCodeFrame='true';
     frame.title='Custom code block';
-    frame.setAttribute('sandbox','allow-scripts allow-forms allow-modals allow-popups');
+    frame.setAttribute('sandbox','allow-scripts');
     frame.setAttribute('referrerpolicy','no-referrer');
     frame.setAttribute('loading','lazy');
     el.appendChild(frame);
@@ -1680,7 +1903,7 @@
         el.id='primary-nav';
         el.classList.add('nav');
         el.setAttribute('data-public-nav','');
-        el.dataset.cmsLocked='true';
+        el.dataset.cmsBehaviorLocked='true';
       }
       if (node.systemBinding === 'business_name') el.setAttribute('data-business-name','');
       else if (String(node.systemBinding || '').startsWith('business_field:'))
@@ -1705,6 +1928,7 @@
     el.dataset.cmsCompositionId=node.id;
     el.dataset.cmsId=node.id;
     el.dataset.cmsEditable='true';
+    if(el.tagName==='FORM') applyFormFieldPresentations(el,node);
     if (node.type === 'section' || node.tag === 'header' || node.tag === 'footer') el.dataset.cmsSection=node.id;
     rememberOriginal(el);
     applyCompositionNode(el,node);
@@ -2099,7 +2323,7 @@
     } else if (extra.type === 'code') {
       el = document.createElement('div'); el.className = 'legend-legacy-migration-node legend-legacy-migration-code';
       const frame = document.createElement('iframe'); frame.dataset.cmsCodeFrame = 'true'; frame.title = 'Custom code block';
-      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
+      frame.setAttribute('sandbox', 'allow-scripts');
       frame.setAttribute('referrerpolicy', 'no-referrer'); frame.setAttribute('loading', 'lazy');
       el.appendChild(frame); renderCodePreview(el, extra);
     } else {
@@ -2122,6 +2346,7 @@
     const originalId=copy.id;
     copy.id=instanceId+'.'+originalId;
     copy.signals=[];
+    copy.fieldSignals={};
     copy.children=(copy.children || []).map(child=>reusableDefinitionClone(child,instanceId));
     return copy;
   }
@@ -2170,7 +2395,9 @@
 
   function containsProtectedSystemNode(node) {
     if(!node) return false;
-    if(node.type==='form' || node.systemKey || node.systemBinding || (Array.isArray(node.signals) && node.signals.length > 0)) return true;
+    if(node.type==='form' || node.systemKey || node.systemBinding ||
+       (Array.isArray(node.signals) && node.signals.length > 0) ||
+       Object.values(node.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length > 0)) return true;
     return (node.children || []).some(containsProtectedSystemNode);
   }
 
@@ -3349,8 +3576,20 @@
     const page = pageState();
     const candidates = [];
     if (!legacyMigration) {
-      walkComposition(page.composition, node => {
-        candidates.push({ id:node.id, model:node, node:findEditableElement(node.id) });
+      walkComposition(page.composition,node=>{
+        const element=findEditableElement(node.id);
+        candidates.push({id:node.id,model:node,node:element});
+        if(element && node.fieldSignals && typeof node.fieldSignals==='object'){
+          for(const [fieldKey,signals] of Object.entries(node.fieldSignals)){
+            const control=[...element.querySelectorAll('input,select,textarea,button[type="submit"]')]
+              .find(candidate=>formFieldKey(candidate)===fieldKey);
+            if(control) candidates.push({
+              id:node.id+':field:'+fieldKey,
+              model:{signals},
+              node:control
+            });
+          }
+        }
       });
     } else {
       const legacyPage=legacyMigrationPageState();
@@ -3591,7 +3830,7 @@
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
     if (status) status.textContent = 'Saving changes…';
-    if (activeEditorPanel === 'source' && !sourceEditorDirty) refreshSiteSourceEditor();
+    if (activeEditorPanel === 'source' && !sourceEditorDirty) void refreshSiteSourceEditor();
     if (editorMode) {
       clearTimeout(autoSaveTimer);
       autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
@@ -3615,7 +3854,7 @@
     if (activeEditorPanel === 'source' && !sourceEditorDirty) {
       const scope=document.getElementById('legend-cms-source-scope');
       if(scope && el?.dataset?.cmsCompositionId) scope.value='selection';
-      refreshSiteSourceEditor();
+      void refreshSiteSourceEditor();
     }
     if (activeEditorPanel === 'gpt') refreshBrowserAgentWorkspace();
     if (openContent) showPanel('content');
@@ -3654,7 +3893,7 @@
   }
 
   function updateDirectCanvasUi() {
-    if (!selectionFrame || !editorPreview || !selected || selected.dataset.cmsSignalOnly || selected.closest('.legend-cms-editor')) {
+    if (!selectionFrame || !editorPreview || !selected || (selected.dataset.cmsSignalOnly && !formFieldPresentationForElement(selected,false)) || selected.closest('.legend-cms-editor')) {
       if (selectionFrame) selectionFrame.hidden = true;
       if (gridOverlay && !directGesture) gridOverlay.hidden = true;
       return;
@@ -3699,7 +3938,7 @@
     preview.appendChild(selectionFrame);
 
     const beginGesture = (event, mode, edge = '', captureTarget = null) => {
-      if (!selected || selected.dataset.cmsSignalOnly || inlineEditNode === selected) return false;
+      if (!selected || (selected.dataset.cmsSignalOnly && !formFieldPresentationForElement(selected,false)) || inlineEditNode === selected) return false;
       const section = selectedSection || currentSectionFor(selected);
       const parent = selected.parentElement;
       if (!section || !parent) return false;
@@ -3847,7 +4086,8 @@
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
-    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || !!selected.dataset.cmsSignalOnly; });
+    const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,true) : null;
+    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation); });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
       if (inlineHelp) inlineHelp.hidden = true;
@@ -3887,7 +4127,7 @@
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const immutableShell = isSharedShellElement(selected);
-      const protectedSemantic = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length > 0) || selected.tagName === 'FORM';
+      const protectedSemantic = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length > 0) || selected.tagName === 'FORM';
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
@@ -3941,7 +4181,7 @@
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) {
       hidden.checked = ov.hidden === true || selected.hidden;
-      hidden.disabled = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || selected.tagName === 'FORM';
+      hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length>0) || selected.tagName === 'FORM';
     }
     if (targetInput) targetInput.disabled = !!ov.actionKey;
   }
@@ -4002,6 +4242,7 @@
     }
     updateDirectCanvasUi();
     markDirty();
+    syncSelectedSourcePresentationFromCanvas();
   }
 
   async function uploadMedia(file) {
@@ -4078,7 +4319,7 @@
     const entry=compositionEntry(selected.dataset.cmsCompositionId);
     const current=entry?.node;
     if(!current) return;
-    if(current.actionKey || current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length > 0) || current.type==='form'){
+    if(current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length > 0) || current.type==='form'){
       const message='This component has protected platform wiring and cannot be deleted or replaced.';
       showCanonicalProtectionViolation(message);
       alert(message+' '+canonicalProtectedEditCorrection());
@@ -4122,6 +4363,8 @@
       const changedDuringSave = JSON.stringify(documentState) !== submitted;
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
       revision = payload.revision ?? revision;
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
       namedDrafts = payload.drafts || namedDrafts;
       dirty = changedDuringSave;
       saved = true;
@@ -4281,52 +4524,6 @@
     const dynamicStatus=document.getElementById('legend-cms-dynamic-status');
     if(dynamicStatus) dynamicStatus.textContent=dynamic ? `Dynamic route ${dynamic.routePattern || ''} from ${dynamicSource?.label || dynamic.collectionId}.` : 'This page is static.';
   }
-  function sourceProjectionNode(node) {
-    const copy=cloneCanonicalValue(node || {});
-    delete copy.signals;
-    copy.children=(node?.children || []).map(sourceProjectionNode);
-    return copy;
-  }
-
-  function siteSourceProjection() {
-    const pages=Object.entries(documentState.pages || {})
-      .sort((a,b)=>(Number(a[1]?.navigation?.order)||0)-(Number(b[1]?.navigation?.order)||0) || a[0].localeCompare(b[0]))
-      .map(([path,page])=>({
-        path,
-        title:page?.title ?? null,
-        description:page?.description ?? null,
-        navigation:cloneCanonicalValue(page?.navigation || {showInNavigation:true,order:0,isDeleted:false}),
-        dynamicBinding:cloneCanonicalValue(page?.dynamicBinding || null),
-        composition:(page?.composition || []).map(sourceProjectionNode)
-      }));
-
-    return {
-      schema:'legend-site-source/v1',
-      version:3,
-      faviconImageDataUrl:documentState.faviconImageDataUrl || null,
-      store:cloneCanonicalValue(documentState.store || {}),
-      breakpoints:cloneCanonicalValue(documentState.breakpoints || []),
-      theme:cloneCanonicalValue(documentState.theme || {}),
-      shell:{
-        header:(documentState.shell?.header || []).map(sourceProjectionNode),
-        footer:(documentState.shell?.footer || []).map(sourceProjectionNode)
-      },
-      pages,
-      reusableComponents:Object.fromEntries(
-        Object.entries(documentState.reusableComponents || {}).map(([id,component])=>[
-          id,
-          {
-            id,
-            name:component?.name || id,
-            kind:component?.kind === 'block' ? 'block' : 'section',
-            composition:(component?.composition || []).map(sourceProjectionNode)
-          }
-        ])
-      ),
-      collections:cloneCanonicalValue(documentState.collections || {})
-    };
-  }
-
   function sourceFindNode(nodes,id) {
     for(const node of nodes || []){
       if(node?.id===id) return node;
@@ -4345,19 +4542,76 @@
   }
 
   function sourceSelectedNodeId() {
-    return selected?.dataset?.cmsCompositionId || null;
+    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
   }
+
+  function sourceFindNodeInDocument(sourceDocument,id) {
+    if(!sourceDocument || !id) return null;
+    return sourceFindNode(sourceDocument.shell?.header,id) ||
+      sourceFindNode(sourceDocument.shell?.footer,id) ||
+      (sourceDocument.pages || []).map(page=>sourceFindNode(page?.composition,id)).find(Boolean) ||
+      Object.values(sourceDocument.reusableComponents || {}).map(component=>sourceFindNode(component?.composition,id)).find(Boolean) ||
+      null;
+  }
+
+  function syncSelectedSourcePresentationFromCanvas() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const selectedNodeId=sourceSelectedNodeId();
+    if(!textarea || textarea.readOnly || sourceEditorDirty || scope?.value!=='selection' || !selectedNodeId) return;
+    const current=editableCompositionNodeForElement(selected,false);
+    if(!current) return;
+    let projected;
+    try{ projected=JSON.parse(textarea.value); }
+    catch{ return; }
+    if(projected?.id!==selectedNodeId) return;
+
+    // Keep Selected Source visually synchronized with Canvas presentation while
+    // retaining the server-projected protected-authority omissions. This is a
+    // view synchronization only; persistence still flows through canonical save.
+    for(const key of ['text','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl'])
+    {
+      if(Object.hasOwn(current,key)) projected[key]=cloneCanonicalValue(current[key]);
+      else delete projected[key];
+    }
+    textarea.value=JSON.stringify(projected,null,2);
+    sourceEditorBaseNode=cloneCanonicalValue(projected);
+    renderSourceHighlight();
+  }
+
+  async function loadCanonicalSourceSnapshot() {
+    const url=new URL(`${API_BASE}/api/website-content/manage/source`);
+    url.searchParams.set('ticket',editorTicket);
+    const response=await fetch(url,{cache:'no-store'});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      if((response.status===401 || response.status===403) &&
+          showEditorAuthorizationRecovery('Website Studio authorization expired while loading canonical Source.'))
+        return null;
+      throw new Error(payload.message || payload.error || `Unable to load canonical Source (${response.status}).`);
+    }
+    if(payload.requiresMaterialization===true)
+      throw new Error('Materialize this website into canonical v3 before editing Source.');
+    if(typeof payload.text!=='string' || !payload.text.trim())
+      throw new Error('Canonical Source projection is unavailable.');
+    const sourceDocument=JSON.parse(payload.text);
+    canonicalSourceDocument=sourceDocument;
+    canonicalSourceRevision=payload.revision;
+    return {revision:payload.revision,sourceDocument,text:payload.text,sourceMap:payload.sourceMap || {}};
+  }
+
 
   function sourceToneForLine(line) {
     const key=/^\s*"([^"]+)"\s*:/.exec(String(line || ''))?.[1] || '';
     if (['text','title','alt','href','description','label'].includes(key)) return 'content';
     if (['color','backgroundColor'].includes(key)) return 'color';
-    if (['widthPercent','heightPx','fontSize','fontScale','lineHeight','letterSpacing','paddingTop','paddingBottom','paddingLeft','paddingRight','offsetXPercent','offsetYPx','borderRadius','objectPosition'].includes(key)) return 'size';
-    if (['style','breakpointStyles','fontFamily','fontWeight','textAlign','objectFit'].includes(key)) return 'style';
+    if (['widthPercent','heightPx','fontSize','fontScale','lineHeight','letterSpacing','paddingTop','paddingBottom','paddingLeft','paddingRight','offsetXPercent','offsetYPx','borderRadius','objectPosition','marginTop','marginBottom','marginLeft','marginRight','borderWidth','minWidthPx','maxWidthPx','minHeightPx','maxHeightPx','aspectRatio','opacity'].includes(key)) return 'size';
+    if (['style','breakpointStyles','fontFamily','fontWeight','textAlign','objectFit','borderColor','borderStyle','textTransform','textDecoration','backgroundGradient','boxShadow','fieldPresentations','fieldLabels'].includes(key)) return 'style';
     if (['layout','breakpointLayouts','mode','direction','gapPx','columns','minItemWidthPx','alignItems','justifyContent','wrap'].includes(key)) return 'layout';
     if (['mediaAssetId','mediaUrl','faviconImageDataUrl'].includes(key)) return 'media';
-    if (['animations','trigger','effect','durationMs','delayMs','distancePx','easing','once','hidden','target'].includes(key)) return 'behavior';
-    if (['id','type','tag','className','actionKey','systemKey','systemBinding','signals','dataBinding','syncSourceId'].includes(key)) return 'protected';
+    if (['animations','trigger','effect','durationMs','delayMs','distancePx','easing','once','hidden','target','actionKey'].includes(key)) return 'behavior';
+    if (['id','systemKey','systemBinding','signals'].includes(key)) return 'protected';
+    if (['type','tag','className','dataBinding','syncSourceId'].includes(key)) return 'structure';
     return 'default';
   }
 
@@ -4395,35 +4649,89 @@
     return editable;
   }
 
-  function refreshSiteSourceEditor(force=false) {
+  async function refreshSiteSourceEditor(force=false) {
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
     const label=document.getElementById('legend-cms-source-location');
+    const status=document.getElementById('legend-cms-source-status');
     if(!textarea || (sourceEditorDirty && !force)) return;
+
+    if(dirty){
+      if(status) status.textContent='Saving canvas changes before refreshing canonical Source…';
+      const saved=await save(false);
+      if(!saved || dirty){
+        if(status) status.textContent='Save or reconcile canvas changes before opening Source.';
+        return;
+      }
+    }
+
+    let snapshot;
+    try{ snapshot=await loadCanonicalSourceSnapshot(); }
+    catch(error){
+      clearCanonicalProtectionViolation();
+      if(status) status.textContent=error?.message || 'Canonical Source could not be loaded.';
+      return;
+    }
+    if(!snapshot) return;
+
     const selectedId=sourceSelectedNodeId();
     if(scope && scope.value==='selection' && !selectedId) scope.value='site';
     const mode=scope?.value || 'site';
     if(mode==='selection' && selectedId){
-      const node=compositionNode(selectedId);
-      textarea.value=JSON.stringify(sourceProjectionNode(node),null,2);
-      if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+      const node=sourceFindNodeInDocument(snapshot.sourceDocument,selectedId);
+      if(!node){
+        if(status) status.textContent='The selected component is not exposed in canonical Source. Select another component.';
+        scope.value='site';
+        sourceEditorBaseNode=null;
+        textarea.value=snapshot.text;
+      }else{
+        sourceEditorBaseNode=cloneCanonicalValue(node);
+        textarea.value=JSON.stringify(sourceEditorBaseNode,null,2);
+        if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+      }
     }else{
-      textarea.value=JSON.stringify(siteSourceProjection(),null,2);
+      sourceEditorBaseNode=null;
+      textarea.value=snapshot.text;
       if(label) label.textContent='Master Source · entire website';
       if(selectedId){
         const marker='"id": "'+selectedId+'"';
         const index=textarea.value.indexOf(marker);
-        if(index>=0){ textarea.setSelectionRange(index,index+marker.length); }
+        if(index>=0) textarea.setSelectionRange(index,index+marker.length);
       }
     }
     sourceEditorDirty=false;
     const editable=syncSourceEditingMode();
     renderSourceHighlight();
-    const status=document.getElementById('legend-cms-source-status');
     if(status) status.textContent=editable
-      ? 'Selected Source is synchronized with the selected canonical node.'
-      : 'Master Source is synchronized and read only.';
+      ? 'Selected Source is synchronized with the server canonical projection.'
+      : 'Master Source is synchronized from the server and read only.';
     if(force) clearCanonicalProtectionViolation();
+  }
+
+  function selectedSourceHasConcurrentChange(sourceDocument, selectedNodeId) {
+    if(!sourceEditorBaseNode) return false;
+    const latest=sourceFindNodeInDocument(sourceDocument,selectedNodeId);
+    if(!latest) return true;
+    return JSON.stringify(latest)!==JSON.stringify(sourceEditorBaseNode);
+  }
+
+  function selectedSourceDocument(baseSourceDocument, selectedNodeId, replacement) {
+    const projected=cloneCanonicalValue(baseSourceDocument);
+    let replaced=
+      sourceReplaceNode(projected.shell?.header,selectedNodeId,replacement) ||
+      sourceReplaceNode(projected.shell?.footer,selectedNodeId,replacement);
+    if(!replaced){
+      for(const page of projected.pages || []){
+        if(sourceReplaceNode(page.composition,selectedNodeId,replacement)){ replaced=true; break; }
+      }
+    }
+    if(!replaced){
+      for(const component of Object.values(projected.reusableComponents || {})){
+        if(sourceReplaceNode(component.composition,selectedNodeId,replacement)){ replaced=true; break; }
+      }
+    }
+    if(!replaced) throw new Error('The selected source node is no longer present in the current canonical Source projection.');
+    return JSON.stringify(projected,null,2);
   }
 
   async function applySiteSource() {
@@ -4438,73 +4746,144 @@
       renderSourceHighlight();
       return;
     }
-    let sourceText=textarea.value;
-    try{
-      if(scope?.value==='selection'){
-        const id=sourceSelectedNodeId();
-        if(!id) throw new Error('Select a page component before editing Selected Source.');
-        const replacement=JSON.parse(sourceText);
-        if(replacement?.id!==id) throw new Error('Selected Source must keep the stable node ID '+id+'.');
-        const projected=siteSourceProjection();
-        let replaced=
-          sourceReplaceNode(projected.shell?.header,id,replacement) ||
-          sourceReplaceNode(projected.shell?.footer,id,replacement);
-        if(!replaced){
-          for(const page of projected.pages){
-            if(sourceReplaceNode(page.composition,id,replacement)){ replaced=true; break; }
-          }
-        }
-        if(!replaced){
-          for(const component of Object.values(projected.reusableComponents || {})){
-            if(sourceReplaceNode(component.composition,id,replacement)){ replaced=true; break; }
-          }
-        }
-        if(!replaced) throw new Error('The selected source node is no longer present in this canonical draft.');
-        sourceText=JSON.stringify(projected,null,2);
-      }else{
-        JSON.parse(sourceText);
-      }
-    }catch(error){
-      const message=error?.message || 'Source syntax is invalid.';
+
+    let replacement;
+    try{ replacement=JSON.parse(textarea.value); }
+    catch(error){
+      clearCanonicalProtectionViolation();
+      if(status) status.textContent=error?.message || 'Selected Source syntax is invalid.';
+      return;
+    }
+    if(replacement?.id!==selectedNodeId){
+      const message='Selected Source must keep the stable node ID '+selectedNodeId+'.';
       if(status) status.textContent=message;
       showCanonicalProtectionViolation(message);
       return;
     }
 
+    let baseSourceDocument=canonicalSourceDocument ? cloneCanonicalValue(canonicalSourceDocument) : null;
+    let expectedRevision=canonicalSourceRevision ?? revision;
+
+    if(dirty){
+      if(status) status.textContent='Saving existing canvas edits before applying Selected Source…';
+      const saved=await save(false);
+      if(!saved || dirty){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent='Save or reconcile the existing canvas edits before applying Selected Source.';
+        return;
+      }
+      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+      if(!latest) return;
+      if(selectedSourceHasConcurrentChange(latest.sourceDocument,selectedNodeId)){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent='The selected component changed after Source editing began. Your Source text is preserved; refresh Selected Source before reconciling this design edit.';
+        return;
+      }
+      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+      expectedRevision=latest.revision;
+    }else if(!baseSourceDocument){
+      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+      if(!latest) return;
+      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+      expectedRevision=latest.revision;
+    }
+
     clearCanonicalProtectionViolation();
-    if(status) status.textContent='Validating protected actions, media, and structure…';
-    try{
+    let rebased=false;
+    for(let attempt=0;attempt<3;attempt++){
+      let sourceText;
+      try{ sourceText=selectedSourceDocument(baseSourceDocument,selectedNodeId,replacement); }
+      catch(error){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=error?.message || 'The selected component is no longer available.';
+        return;
+      }
+
+      if(status) status.textContent=rebased
+        ? 'Revalidating this design edit against the latest canonical Source…'
+        : 'Validating authorable design against protected backend authority…';
+
       const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText,selectedNodeId})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision,source:sourceText,selectedNodeId})
       });
       const payload=await response.json().catch(()=>({}));
-      if(!response.ok) {
-        if ((response.status===401 || response.status===403) &&
+
+      if(!response.ok){
+        if((response.status===401 || response.status===403) &&
             showEditorAuthorizationRecovery('Website Studio authorization expired while validating this edit.')) return;
+        if(response.status===409 && payload.error==='revision_conflict'){
+          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+          if(!latest) return;
+          expectedRevision=latest.revision;
+          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
+            clearCanonicalProtectionViolation();
+            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
+            return;
+          }
+          rebased=true;
+          continue;
+        }
+
         const message=payload.message || payload.error || 'Site Source validation failed.';
         if(payload.canonicalProtectionViolation===true)
           showCanonicalProtectionViolation(message,payload.correction);
         else
-          showCanonicalProtectionViolation(message);
+          clearCanonicalProtectionViolation();
         if(status) status.textContent=message;
         return;
       }
-      clearCanonicalProtectionViolation();
+
+      const proposedDocument=normalizeDocument(payload.proposedDocument || {});
+      const validatedRevision=payload.baseRevision ?? expectedRevision;
+      const saveResponse=await fetch(`${API_BASE}/api/website-content/manage`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ticket:editorTicket,document:proposedDocument,expectedRevision:validatedRevision})
+      });
+      const savePayload=await saveResponse.json().catch(()=>({}));
+
+      if(!saveResponse.ok){
+        if((saveResponse.status===401 || saveResponse.status===403) &&
+            showEditorAuthorizationRecovery('Website Studio authorization expired before this design edit could be saved.')) return;
+        if(saveResponse.status===409 && savePayload.error==='revision_conflict'){
+          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+          if(!latest) return;
+          expectedRevision=latest.revision;
+          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
+            clearCanonicalProtectionViolation();
+            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
+            return;
+          }
+          rebased=true;
+          continue;
+        }
+
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=savePayload.message || savePayload.error || `Source save failed (${saveResponse.status}).`;
+        return;
+      }
+
       checkpoint();
-      documentState=normalizeDocument(payload.proposedDocument || {});
+      documentState=normalizeDocument(savePayload.document || proposedDocument);
+      revision=savePayload.revision ?? validatedRevision;
+      namedDrafts=savePayload.drafts || namedDrafts;
+      dirty=false;
       sourceEditorDirty=false;
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
       applyDocument(documentState);
-      dirty=true;
-      const saved=await save(false);
-      if(!saved || dirty) throw new Error('Validated source could not be saved.');
-      refreshSiteSourceEditor(true);
-      if(status) status.textContent='Applied to the canonical draft. Protected wiring unchanged.';
-    }catch(error){
-      const message=error?.message || 'Site Source could not be applied.';
-      if(status) status.textContent=message;
-      showCanonicalProtectionViolation(message);
+      await refreshSiteSourceEditor(true);
+      if(status) status.textContent=rebased
+        ? 'Applied after rebasing onto the latest canonical Source. Protected backend authority unchanged.'
+        : 'Applied to the canonical draft. Protected backend authority unchanged.';
+      return;
     }
+
+    clearCanonicalProtectionViolation();
+    if(status) status.textContent='The draft changed repeatedly while this edit was being applied. Refresh Selected Source and reconcile the latest design.';
   }
 
   function showPanel(name) {
@@ -4516,7 +4895,7 @@
     if (name === 'source') {
       const scope=document.getElementById('legend-cms-source-scope');
       if(scope && sourceSelectedNodeId()) scope.value='selection';
-      refreshSiteSourceEditor();
+      void refreshSiteSourceEditor();
     }
     if (name === 'components') renderReusableComponents();
     if (name === 'data') renderDataControls();
@@ -4911,13 +5290,26 @@
   }
 
   function appearanceFields() {
-    const choices = { fontFamily: ['inherit','system-ui','serif','sans-serif','monospace','Georgia','Arial'], fontWeight: ['100','200','300','400','500','600','700','800','900'], objectFit: ['cover','contain','fill','none','scale-down'] };
-    return ['color','backgroundColor','fontFamily','fontWeight','fontSize','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit'].map(key => {
+    const choices = {
+      fontWeight:['100','200','300','400','500','600','700','800','900'],
+      objectFit:['cover','contain','fill','none','scale-down'],
+      borderStyle:['none','solid','dashed','dotted','double'],
+      textTransform:['none','uppercase','lowercase','capitalize'],
+      textDecoration:['none','underline','line-through','overline']
+    };
+    const keys=['color','backgroundColor','fontFamily','fontWeight','fontSize','lineHeight','letterSpacing',
+      'paddingLeft','paddingRight','borderRadius','objectFit','marginTop','marginBottom','marginLeft','marginRight',
+      'borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','minWidthPx','maxWidthPx',
+      'minHeightPx','maxHeightPx','aspectRatio','backgroundGradient','boxShadow','objectPosition'];
+    return keys.map(key => {
       const label = key.replace(/([A-Z])/g, ' $1');
-      const control = choices[key]
-        ? `<select data-style-key="${key}"><option value="">Default</option>${choices[key].map(value => `<option value="${value}">${value}</option>`).join('')}</select>`
-        : `<input data-style-key="${key}" type="${['color','backgroundColor'].includes(key) ? 'color' : 'number'}" step="any">`;
-      return `<label class="legend-cms-group">${label}${control}${['color','backgroundColor'].includes(key) ? `<input data-color-hex="${key}" type="text" maxlength="7" pattern="#[a-fA-F0-9]{6}" aria-label="${label} hex code" placeholder="#000000"><button type="button" data-color-reset="${key}">Use inherited color</button>` : ''}</label>`;
+      const isColor=['color','backgroundColor','borderColor'].includes(key);
+      let control;
+      if(choices[key]) control=`<select data-style-key="${key}"><option value="">Default</option>${choices[key].map(value => `<option value="${value}">${value}</option>`).join('')}</select>`;
+      else if(['fontFamily','backgroundGradient','boxShadow','objectPosition'].includes(key))
+        control=`<input data-style-key="${key}" type="text" maxlength="500" placeholder="${key==='fontFamily'?'system-ui, Arial, sans-serif':''}">`;
+      else control=`<input data-style-key="${key}" type="${isColor?'text':'number'}" step="any">`;
+      return `<label class="legend-cms-group">${label}${control}${isColor ? `<button type="button" data-color-reset="${key}">Use inherited color</button>` : ''}</label>`;
     }).join('');
   }
 
@@ -4933,6 +5325,7 @@
       // Duplicating presentation never duplicates hidden analytics/provider wiring.
       // New custom mappings are added only through the canonical Analytics controls.
       current.signals=[];
+      current.fieldSignals={};
       (current.children || []).forEach(rewrite);
     };
     rewrite(copy);
@@ -5060,14 +5453,6 @@
       markDirty();
     });
 
-    const fontInput = panel.querySelector('[data-theme-key="fontFamily"]');
-    if (fontInput?.replaceWith) {
-      const select = document.createElement('select'); select.dataset.themeKey = 'fontFamily';
-      for (const value of ['inherit','system-ui','serif','sans-serif','monospace','Georgia','Arial']) {
-        const option = document.createElement('option'); option.value = value; option.textContent = value; select.appendChild(option);
-      }
-      fontInput.replaceWith(select);
-    }
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && inlineEditNode) {
         event.preventDefault();
@@ -5214,14 +5599,14 @@
     const selectedOption = byKey || byHref || null;
     const hasCustomHref = currentHref && currentHref !== '#';
     select.value = selectedOption?.choiceKey || (hasCustomHref ? 'custom' : '');
-    const lockedManaged = !!key && !!byKey;
+    const lockedManaged = !!key && !!byKey && (!!model?.systemKey || !!model?.systemBinding || (Array.isArray(model?.signals) && model.signals.length>0));
     select.disabled = lockedManaged;
     if (custom) custom.hidden = lockedManaged || select.value !== 'custom';
     if (wiring) {
       wiring.textContent = lockedManaged
-        ? `Protected wiring: ${selectedOption.defaultText || selectedOption.label || key}. The visible label, style, and position remain editable; the canonical action identity cannot change.`
+        ? `Protected wiring: ${selectedOption.defaultText || selectedOption.label || key}. This system/signal-bound action identity cannot change; presentation remains editable.`
         : selectedOption?.managed
-        ? `Automatic wiring: Analytics ${selectedOption.analyticsEventName || 'cta_click'}. Every phrase in this group uses the same destination and event contract.`
+        ? `Managed action: choose any approved catalog action for this CTA instance. Destination and analytics resolve canonically from the selected action.`
         : selectedOption
           ? 'Navigation only. This links to an existing page or section and does not create a second CTA wiring contract.'
           : select.value === 'custom'
@@ -5348,7 +5733,7 @@
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
-    sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only inspection of the entire canonical v3 graph. Only Selected Source is editable. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
+    sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only inspection of the entire canonical v3 graph. Only Selected Source is editable. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="structure">Authorable structure</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
     tools.appendChild(sourceView);
 
     const publishView=document.createElement('section'); publishView.dataset.cmsView='publish'; publishView.hidden=true;
@@ -5410,7 +5795,7 @@
     sourceTextarea?.addEventListener('input',()=>{
       if(sourceTextarea.readOnly){
         sourceEditorDirty=false;
-        refreshSiteSourceEditor(true);
+        void refreshSiteSourceEditor(true);
         return;
       }
       sourceEditorDirty=true;
@@ -5424,12 +5809,12 @@
     });
     document.getElementById('legend-cms-source-scope')?.addEventListener('change',()=>{
       sourceEditorDirty=false;
-      refreshSiteSourceEditor(true);
+      void refreshSiteSourceEditor(true);
     });
     document.getElementById('legend-cms-source-apply')?.addEventListener('click',()=>void applySiteSource());
     document.getElementById('legend-cms-source-reload')?.addEventListener('click',()=>{
       sourceEditorDirty=false;
-      refreshSiteSourceEditor(true);
+      void refreshSiteSourceEditor(true);
     });
     document.getElementById('legend-cms-publish-save-draft')?.addEventListener('click',chooseDraft);
     document.getElementById('legend-cms-publish-now')?.addEventListener('click',()=>void save(true));
@@ -5521,15 +5906,18 @@
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
       const ov = selectedWebsiteModel(); if (!ov) return;
-      if (ov.actionKey) { syncEditorControls(); return; }
+      const actionIdentityLocked=!!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length>0);
+      if(actionIdentityLocked && ov.actionKey){ syncEditorControls(); return; }
       checkpoint();
       const option = availableCtaOptions().find(candidate => candidate.choiceKey === event.target.value);
       if (!option) {
-        if (event.target.value !== 'custom' && ov.actionKey) { syncEditorControls(); return; }
-        if (event.target.value === 'custom') { delete ov.actionKey; delete selected.dataset.websiteActionKey; }
         if (event.target.value === 'custom') {
+          delete ov.actionKey;
+          delete selected.dataset.websiteActionKey;
           document.getElementById('legend-cms-custom-link').hidden = false;
         } else {
+          delete ov.actionKey;
+          delete selected.dataset.websiteActionKey;
           ov.href = '';
           ov.target = '_self';
           document.getElementById('legend-cms-custom-link').hidden = true;
@@ -5537,8 +5925,13 @@
         applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
         return;
       }
-      if (!option.managed && ov.actionKey) { syncEditorControls(); return; }
-      if (option.managed) ov.actionKey = option.actionKey;
+      if (option.managed) {
+        ov.actionKey = option.actionKey;
+        selected.dataset.websiteActionKey=option.actionKey;
+      } else {
+        delete ov.actionKey;
+        delete selected.dataset.websiteActionKey;
+      }
       ov.href = option.href; ov.target = option.openInNewTab ? '_blank' : '_self';
       if (selected.dataset.cmsCompositionId) {
         ov.text = option.defaultText || option.label;
@@ -5550,7 +5943,26 @@
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-image-upload').click());
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
-    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedWebsiteModel(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
+    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => {
+      if (!selected) return;
+      const key=input.dataset.styleKey;
+      const numeric=input.type==='number' || key==='fontWeight';
+      const value=numeric ? Number(input.value) : input.value;
+      if(numeric && input.value!==''){
+        if(!Number.isFinite(value)) return;
+        const allowNegative=['letterSpacing','marginTop','marginBottom','marginLeft','marginRight'].includes(key);
+        if(!allowNegative && value<0) return;
+        if(['fontSize','lineHeight','aspectRatio'].includes(key) && value===0) return;
+        if(key==='opacity' && (value<0 || value>1)) return;
+        if(key==='fontWeight' && (value<100 || value>900)) return;
+      }
+      checkpoint();
+      const ov=selectedWebsiteModel(); if(!ov) return;
+      const style=editingStyle(ov,true);
+      if(input.value==='') delete style[key]; else style[key]=value;
+      applyStyle(selected,effectiveStyle(ov));
+      markDirty();
+    }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
       if (!selected) return;
       if (!/^#[a-f0-9]{6}$/i.test(input.value)) { input.setCustomValidity('Enter a six-digit hex color, such as #000000.'); input.reportValidity(); return; }
@@ -5679,7 +6091,7 @@
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}.legend-cms-protection-warning{white-space:pre-wrap;margin:10px 0;padding:12px 14px;border:1px solid #ff6b6b;border-left:5px solid #ff4d4d;border-radius:10px;background:#35191c;color:#ff8f8f!important;font-weight:800;line-height:1.45;overflow-wrap:anywhere}
       .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}
-      .legend-cms-source-key{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.legend-cms-source-key span{padding:4px 7px;border:1px solid currentColor;border-radius:999px;background:#07162b;font:800 9px/1.2 Inter,system-ui,sans-serif;letter-spacing:.025em}.legend-cms-source-key [data-tone="content"],.legend-cms-source-content{color:#78e2a7}.legend-cms-source-key [data-tone="style"],.legend-cms-source-style{color:#7fb5ff}.legend-cms-source-key [data-tone="color"],.legend-cms-source-color{color:#ff8fa8}.legend-cms-source-key [data-tone="size"],.legend-cms-source-size{color:#ffb86b}.legend-cms-source-key [data-tone="layout"],.legend-cms-source-layout{color:#6fdce8}.legend-cms-source-key [data-tone="media"],.legend-cms-source-media{color:#c4a7ff}.legend-cms-source-key [data-tone="behavior"],.legend-cms-source-behavior{color:#d9a6ff}.legend-cms-source-key [data-tone="protected"],.legend-cms-source-protected{color:#f0cf78}.legend-cms-source-default{color:#dce6f4}
+      .legend-cms-source-key{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.legend-cms-source-key span{padding:4px 7px;border:1px solid currentColor;border-radius:999px;background:#07162b;font:800 9px/1.2 Inter,system-ui,sans-serif;letter-spacing:.025em}.legend-cms-source-key [data-tone="content"],.legend-cms-source-content{color:#78e2a7}.legend-cms-source-key [data-tone="style"],.legend-cms-source-style{color:#7fb5ff}.legend-cms-source-key [data-tone="color"],.legend-cms-source-color{color:#ff8fa8}.legend-cms-source-key [data-tone="size"],.legend-cms-source-size{color:#ffb86b}.legend-cms-source-key [data-tone="layout"],.legend-cms-source-layout{color:#6fdce8}.legend-cms-source-key [data-tone="media"],.legend-cms-source-media{color:#c4a7ff}.legend-cms-source-key [data-tone="behavior"],.legend-cms-source-behavior{color:#d9a6ff}.legend-cms-source-key [data-tone="structure"],.legend-cms-source-structure{color:#9bd67d}.legend-cms-source-key [data-tone="protected"],.legend-cms-source-protected{color:#f0cf78}.legend-cms-source-default{color:#dce6f4}
       .legend-cms-source-editor{position:relative;width:100%;min-height:52vh;border:1px solid #3f5271;border-radius:10px;background:#07162b;overflow:hidden}.legend-cms-source-highlight,.legend-cms-site-source{width:100%;min-height:52vh;margin:0;padding:14px;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-source-highlight{position:absolute;inset:0;pointer-events:none;background:#07162b}.legend-cms-source-highlight span{display:inline}.legend-cms-site-source{position:relative;z-index:1;resize:vertical;border:0!important;border-radius:0!important;background:transparent!important;color:transparent!important;-webkit-text-fill-color:transparent;caret-color:#fff}.legend-cms-site-source::selection{background:#ffffff2e}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:-2px}.legend-cms-site-source[readonly]{cursor:default;caret-color:transparent}.legend-cms-source-editor:has(.legend-cms-site-source[readonly]){border-color:#344766}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])){border-color:#d4ad45}
       [data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
@@ -5998,7 +6410,7 @@
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected || isSharedShellElement(selected)) return;
       const current=selectedWebsiteModel(false);
-      if (current && (current.actionKey || current.systemKey || current.systemBinding || selected.tagName === 'FORM')) return;
+      if (current && (current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length>0) || selected.tagName === 'FORM')) return;
       const serviceCard=businessServiceCardFor(selected);
       if(serviceCard?.dataset?.cmsCompositionId) setSelected(serviceCard);
       removeSelected();

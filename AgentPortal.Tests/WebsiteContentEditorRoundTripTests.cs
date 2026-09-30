@@ -666,7 +666,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         fixture.Db.ChangeTracker.Clear();
 
         var result = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalHealth(
-            ticket, "/", ElementId, bindingId, CancellationToken.None));
+            ticket, "/", ElementId, bindingId, null, CancellationToken.None));
         var json = JsonSerializer.SerializeToElement(result.Value, JsonOptions);
 
         Assert.Equal("website_signal_existing_authorities", json.GetProperty("source").GetString());
@@ -685,7 +685,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.DoesNotContain(otherBindingId, serialized, StringComparison.Ordinal);
 
         Assert.IsType<UnauthorizedResult>(await fixture.CreateController().SignalHealth(
-            "invalid-ticket", "/", ElementId, bindingId, CancellationToken.None));
+            "invalid-ticket", "/", ElementId, bindingId, null, CancellationToken.None));
     }
 
 
