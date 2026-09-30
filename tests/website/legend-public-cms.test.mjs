@@ -115,6 +115,42 @@ function canonicalNodeById(document,id,path='/') {
 function canonicalNodeByType(document,type,path='/') {
   return canonicalNodes(document,path).find(node=>node.type===type) || null;
 }
+function sourceProjectionNode(node) {
+  const copy=structuredClone(node || {});
+  delete copy.signals;
+  delete copy.systemKey;
+  delete copy.systemBinding;
+  if(copy.actionKey){ delete copy.href; delete copy.target; }
+  if(node?.systemKey || node?.systemBinding || node?.type==='form' || (node?.signals || []).length) delete copy.dataBinding;
+  copy.children=(node?.children || []).map(sourceProjectionNode);
+  return copy;
+}
+
+function sourceProjectionDocument(doc) {
+  return {
+    schema:'legend-site-source/v1',
+    version:3,
+    faviconImageDataUrl:doc.faviconImageDataUrl ?? null,
+    store:structuredClone(doc.store || {}),
+    breakpoints:structuredClone(doc.breakpoints || []),
+    theme:structuredClone(doc.theme || {}),
+    shell:{
+      header:(doc.shell?.header || []).map(sourceProjectionNode),
+      footer:(doc.shell?.footer || []).map(sourceProjectionNode)
+    },
+    pages:Object.entries(doc.pages || {}).map(([path,page])=>({
+      path,title:page.title ?? null,description:page.description ?? null,
+      navigation:structuredClone(page.navigation || {}),
+      dynamicBinding:structuredClone(page.dynamicBinding || null),
+      composition:(page.composition || []).map(sourceProjectionNode)
+    })),
+    reusableComponents:Object.fromEntries(Object.entries(doc.reusableComponents || {}).map(([id,value])=>[
+      id,{...structuredClone(value),composition:(value.composition || []).map(sourceProjectionNode)}
+    ])),
+    collections:structuredClone(doc.collections || {})
+  };
+}
+
 async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,sourceValidationPayload=null,sourceValidationStatus=200,sourceValidationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
@@ -125,7 +161,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   const alerts=[]; let sourceValidationCall=0;
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=value=>alerts.push(String(value)); w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=typeof init.body==='string'?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/media') && init.method==='POST'){ const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333'; return {ok:!denied,status:denied?401:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}}; } if(parsed.pathname.endsWith('/manage/source/validate')) { const step=Array.isArray(sourceValidationSequence) && sourceValidationSequence.length ? sourceValidationSequence[Math.min(sourceValidationCall++,sourceValidationSequence.length-1)] : null; const status=denied?401:(step?.status ?? sourceValidationStatus); const payload=step?.payload ?? sourceValidationPayload ?? {source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:doc,sourceMap:{}}; return {ok:status>=200&&status<300,status,json:async()=>payload}; } if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=typeof init.body==='string'?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/media') && init.method==='POST'){ const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333'; return {ok:!denied,status:denied?401:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}}; } if(parsed.pathname.endsWith('/manage/source') && (!init.method || init.method==='GET')) { const projected=sourceProjectionDocument(doc); return {ok:!denied,status:denied?401:200,json:async()=>({source:'legend_site_source',revision:'r'+calls.length,requiresMaterialization:false,schema:'legend-site-source/v1',text:JSON.stringify(projected,null,2),sourceMap:{}})}; } if(parsed.pathname.endsWith('/manage/source/validate')) { const step=Array.isArray(sourceValidationSequence) && sourceValidationSequence.length ? sourceValidationSequence[Math.min(sourceValidationCall++,sourceValidationSequence.length-1)] : null; const status=denied?401:(step?.status ?? sourceValidationStatus); const payload=step?.payload ?? sourceValidationPayload ?? {source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:doc,sourceMap:{}}; return {ok:status>=200&&status<300,status,json:async()=>payload}; } if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -295,6 +331,7 @@ test('Master Source is read only while Selected Source is editable and semantica
   const f=await domFixture({doc});
   try{
     f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
     const scope=f.w.document.querySelector('#legend-cms-source-scope');
     const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
     const apply=f.w.document.querySelector('#legend-cms-source-apply');
@@ -307,12 +344,13 @@ test('Master Source is read only while Selected Source is editable and semantica
 
     f.click('main h1');
     f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(scope.value,'selection');
     assert.equal(sourceInput.readOnly,false);
     assert.equal(apply.hidden,false);
     const tones=[...f.w.document.querySelectorAll('#legend-cms-source-highlight [data-tone]')].map(node=>node.dataset.tone);
     for(const tone of ['content','style','color','size']) assert.ok(tones.includes(tone),tone);
-    for(const tone of ['content','style','color','size','layout','media','behavior','protected'])
+    for(const tone of ['content','style','color','size','layout','media','behavior','structure','protected'])
       assert.ok(f.w.document.querySelector(`.legend-cms-source-key [data-tone="${tone}"]`));
     assert.match(source,/\.legend-cms-source-content\{color:#78e2a7\}/);
     assert.match(source,/\.legend-cms-source-style\{color:#7fb5ff\}/);
@@ -331,6 +369,7 @@ test('v3 selected source applies only validated server projection then uses norm
   const f=await domFixture({doc:original,sourceValidationPayload:{source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:proposed,sourceMap:{}}});
   try{
     f.click('main h1'); f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
     const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
     const selected=JSON.parse(sourceInput.value); selected.text='After'; selected.style.fontWeight=700;
     sourceInput.value=JSON.stringify(selected,null,2);
@@ -369,6 +408,7 @@ test('Selected Source rebases revision conflicts without reporting a backend pro
   });
   try{
     f.click('main h1'); f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
     const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
     const selected=JSON.parse(sourceInput.value);
     selected.style.fontWeight=700;
@@ -385,6 +425,32 @@ test('Selected Source rebases revision conflicts without reporting a backend pro
     assert.equal(f.w.document.querySelector('[data-canonical-protection-warning]').hidden,true);
     assert.match(f.w.document.querySelector('#legend-cms-source-status').textContent,/rebasing|Applied after rebasing/i);
   }finally{f.close();}
+});
+
+test('Source authoring reads the server canonical projection and has no browser-owned site projection',()=>{
+  assert.match(source,/api\/website-content\/manage\/source/);
+  assert.match(source,/async function loadCanonicalSourceSnapshot\(/);
+  assert.doesNotMatch(source,/function siteSourceProjection\(/);
+  assert.doesNotMatch(source,/function sourceProjectionNode\(/);
+});
+
+test('managed CTA instances are authorable while system and signal authority stay locked',()=>{
+  assert.match(source,/const lockedManaged = !!key && !!byKey && \(!!model\?\.systemKey/);
+  assert.match(source,/Managed action: choose any approved catalog action for this CTA instance/);
+  assert.doesNotMatch(source,/if \(ov\.actionKey\) \{ syncEditorControls\(\); return; \}/);
+  assert.match(source,/const protectedSemantic = !!ov\.systemKey \|\| !!ov\.systemBinding/);
+});
+
+test('protected form fields expose typed presentation without exposing execution',()=>{
+  assert.match(source,/function formFieldPresentationForElement\(/);
+  assert.match(source,/function applyFormFieldPresentations\(/);
+  assert.match(source,/fieldPresentations/);
+  assert.match(editorContractsSource,/FieldPresentations/);
+  assert.match(editorContractsSource,/FieldLabels/);
+  assert.match(source,/sandbox','allow-scripts'/);
+  assert.doesNotMatch(source,/allow-forms/);
+  assert.match(source,/form-action 'none'/);
+  assert.match(source,/connect-src 'none'/);
 });
 
 test('source protection UI is reserved for explicit protected-authority failures',()=>{
