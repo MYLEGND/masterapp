@@ -77,10 +77,11 @@ RESPONSIVE AUTHORING
 - Do not create duplicate desktop/mobile copies to solve responsive layout. Keep one semantic node and override its presentation.
 - The shared renderer supplies one inherited responsive hierarchy when a breakpoint property is unset. Never fight it with duplicate nodes, one-off classes, arbitrary negative offsets, or per-page CSS.
 - Mobile is a first-class conversion canvas. Default decision order is: context/kicker -> headline -> concise supporting copy or proof -> primary action/form -> supporting image/video -> deeper cards/content. Keep primary actions full-width or comfortably tappable, never let button copy wrap one word per line, and never inherit desktop X/Y offsets or fixed content heights that make nodes overlap.
-- On mobile, mixed-content sections should normally become a single vertical stack; grids collapse to one column; media stays inside the viewport and follows the primary decision/action unless the user intentionally sets a Mobile breakpoint override.
+- Mobile flow safety is canonical and non-negotiable for published content: primary flow nodes stay in-frame, X/Y offsets resolve to normal document flow, fixed heights are removed from ordinary content, and free-canvas containers resolve to a vertical stack. Do not use breakpoint overrides to recreate overlapping or off-canvas mobile geometry.
+- On mobile, mixed-content sections become a single vertical stack by default; grids collapse to one column; media stays inside the viewport and follows the primary decision/action. Explicit mobile visual styling remains valid only within those safe geometry constraints.
 - Tablet should normally use no more than two grid columns and wrapping row layouts unless an explicit tablet composition is required.
 - Desktop should preserve deliberate side-by-side composition, readable line lengths, strong whitespace, visible trust context, and a clear primary action without scattering equal-priority controls across the viewport.
-- Explicit breakpoint values always outrank inherited responsive defaults for the specific property the user intentionally sets. Preserve mobile and desktop as equivalent semantic content with different presentation, never separate content sources.
+- Explicit breakpoint values outrank inherited responsive defaults only when they do not violate the canonical mobile flow-safety constraints above. Preserve mobile and desktop as equivalent semantic content with different presentation, never separate content sources.
 
 NODE SELECTION
 - section: major page region.

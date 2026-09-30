@@ -720,7 +720,7 @@ test('canonical responsive hierarchy resets inherited desktop geometry on mobile
   }finally{f.close();}
 });
 
-test('explicit mobile breakpoint properties override inherited responsive defaults property by property',async()=>{
+test('explicit mobile styling remains editable inside canonical flow-safety geometry',async()=>{
   const doc=canonicalDocument();
   const action=canonicalNodeById(doc,'home.a.node.1');
   action.type='cta';
@@ -735,12 +735,54 @@ test('explicit mobile breakpoint properties override inherited responsive defaul
     await new Promise(resolve=>setTimeout(resolve,0));
     const a=f.w.document.querySelector('main a');
     const root=f.w.document.querySelector('main section');
-    assert.equal(a.style.width,'72%');
-    assert.equal(a.style.left,'8%');
+    assert.equal(a.style.width,'100%');
+    assert.equal(a.style.left,'0%');
+    assert.equal(a.style.top,'0px');
     assert.equal(a.style.fontSize,'18px');
-    assert.equal(a.style.height,'64px');
+    assert.equal(a.style.height,'');
     assert.equal(root.style.gridTemplateColumns,'repeat(2,minmax(0,1fr))');
     assert.equal(root.style.gap,'14px');
+  }finally{f.close();}
+});
+
+test('published mobile flow neutralizes stale explicit free-canvas offsets and fixed geometry',async()=>{
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.layout={mode:'free',gapPx:8};
+  section.breakpointStyles.mobile={heightPx:980,offsetYPx:-100,marginTop:-50,minHeightPx:900,maxHeightPx:1200};
+  section.breakpointLayouts.mobile={mode:'free',gapPx:16};
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.breakpointStyles.mobile={widthPercent:36,offsetXPercent:58,offsetYPx:-180,heightPx:150,fontSize:88};
+  const action=canonicalNodeById(doc,'home.a.node.1');
+  action.type='cta';
+  action.breakpointStyles.mobile={widthPercent:24,offsetXPercent:5,offsetYPx:-260,heightPx:150,fontSize:28,borderRadius:999};
+  const media=canonicalNodeById(doc,'home.img.node.1');
+  media.breakpointStyles.mobile={widthPercent:92,offsetXPercent:12,offsetYPx:-420,heightPx:760,maxWidthPx:900};
+  const f=await domFixture({doc,viewportWidth:390});
+  try{
+    f.change('#legend-cms-breakpoint','mobile');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const root=f.w.document.querySelector('main section');
+    const h=f.w.document.querySelector('main h1');
+    const a=f.w.document.querySelector('main a');
+    const img=f.w.document.querySelector('main img');
+    assert.equal(root.style.display,'flex');
+    assert.equal(root.style.flexDirection,'column');
+    assert.equal(root.style.alignItems,'stretch');
+    assert.equal(root.style.height,'');
+    assert.equal(root.style.top,'');
+    assert.equal(root.style.marginTop,'0px');
+    assert.equal(root.style.minHeight,'');
+    assert.equal(root.style.maxHeight,'');
+    for(const el of [h,a,img]){
+      assert.equal(el.style.left,'0%');
+      assert.equal(el.style.top,'0px');
+      assert.equal(el.style.width,'100%');
+      assert.equal(el.style.height,'');
+    }
+    assert.equal(h.style.fontSize,'54px');
+    assert.equal(a.style.fontSize,'20px');
+    assert.equal(img.style.maxWidth,'560px');
   }finally{f.close();}
 });
 
@@ -783,11 +825,18 @@ test('business banner and shell typography use canonical shared responsive token
   }finally{f.close();}
 });
 
+test('mobile shell scale is bounded even when an older explicit breakpoint value is oversized',()=>{
+  assert.match(source,/if\(brand\)\{[\s\S]*const ceiling=key==='mobile' \? 1\.35 : key==='tablet' \? 1\.8 : 3\.5;[\s\S]*Math\.min\(ceiling,Number\(style\.fontScale\)\)/);
+  assert.match(source,/if\(model\?\.systemKey==='primary_navigation'\)\{[\s\S]*const ceiling=key==='mobile' \? 1 : key==='tablet' \? 1\.15 : 1\.6;[\s\S]*Math\.min\(ceiling,Number\(style\.fontScale\)\)/);
+});
+
 test('Website Studio and GPT contract expose the same canonical responsive hierarchy',()=>{
   assert.match(source,/Canonical responsive hierarchy/);
-  assert.match(source,/Mobile inherits a conversion-first stack: context → headline → supporting copy\/proof → action\/form → media → deeper content/);
+  assert.match(source,/Mobile uses a conversion-first stack: context → headline → supporting copy\/proof → action\/form → media → deeper content/);
+  assert.match(source,/mobile flow safety keeps content in-frame and prevents stored X\/Y offsets, fixed heights, or free-canvas geometry from overlapping the published page/);
   assert.match(agentContractSource,/Default decision order is: context\/kicker -> headline -> concise supporting copy or proof -> primary action\/form -> supporting image\/video -> deeper cards\/content/);
-  assert.match(agentContractSource,/Explicit breakpoint values always outrank inherited responsive defaults/);
+  assert.match(agentContractSource,/Mobile flow safety is canonical and non-negotiable for published content/);
+  assert.match(agentContractSource,/Explicit breakpoint values outrank inherited responsive defaults only when they do not violate the canonical mobile flow-safety constraints above/);
 });
 
 test('public startup styling has one responsive authority and one palette authority',()=>{

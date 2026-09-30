@@ -1132,36 +1132,61 @@
     if(role==='shell'){
       const brand=model?.systemBinding==='business_name' ||
         (SITE_KEY==='legend' && String(model?.tag || '').toLowerCase()==='strong' && String(model?.text || '').trim()==='LEGEND®');
-      if(brand && !has('fontScale')) style.fontScale=key==='mobile' ? 1.35 : key==='tablet' ? 1.8 : Math.min(Number(style.fontScale)||3.5,3.5);
-      if(model?.systemKey==='primary_navigation' && !has('fontScale')) style.fontScale=key==='mobile' ? 1 : key==='tablet' ? 1.15 : Math.min(Number(style.fontScale)||1.6,1.6);
+      if(brand){
+        const ceiling=key==='mobile' ? 1.35 : key==='tablet' ? 1.8 : 3.5;
+        style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
+      }
+      if(model?.systemKey==='primary_navigation'){
+        const ceiling=key==='mobile' ? 1 : key==='tablet' ? 1.15 : 1.6;
+        style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
+      }
       return style;
     }
 
     if(!canonicalResponsiveBodyElement(el)) return style;
 
     if(key==='mobile'){
-      if(!has('offsetXPercent')) style.offsetXPercent=0;
-      if(!has('offsetYPx')) style.offsetYPx=0;
-      if(!has('widthPercent') && ['kicker','heading','narrative','copy','proof','actions','action','form','media','collection','group','content'].includes(role))
+      const flowRole=['section','kicker','heading','narrative','copy','proof','actions','action','form','collection','group','content'].includes(role);
+      const mediaRole=role==='media';
+
+      // Mobile flow geometry is a canonical safety invariant. Historical or
+      // explicit breakpoint values may still control visual styling, but they
+      // cannot push primary content out of frame, overlap adjacent content, or
+      // turn conversion actions into fixed-size floating shapes.
+      if(flowRole || mediaRole){
+        style.offsetXPercent=0;
+        style.offsetYPx=0;
         style.widthPercent=100;
-      if(!has('heightPx') && role!=='embed') delete style.heightPx;
-      if(!has('minWidthPx')) delete style.minWidthPx;
-      if(!has('maxWidthPx') && role!=='media') delete style.maxWidthPx;
-      if(!has('marginLeft')) style.marginLeft=0;
-      if(!has('marginRight')) style.marginRight=0;
-      if(!has('paddingLeft') && spacingNumber(style.paddingLeft)) style.paddingLeft=Math.min(28,Number(style.paddingLeft));
-      if(!has('paddingRight') && spacingNumber(style.paddingRight)) style.paddingRight=Math.min(28,Number(style.paddingRight));
-      if(!has('paddingTop') && spacingNumber(style.paddingTop)) style.paddingTop=Math.min(40,Number(style.paddingTop));
-      if(!has('paddingBottom') && spacingNumber(style.paddingBottom)) style.paddingBottom=Math.min(40,Number(style.paddingBottom));
-      if(!has('fontSize') && spacingNumber(style.fontSize)){
+        if(role!=='embed') delete style.heightPx;
+        delete style.minWidthPx;
+        if(!mediaRole) delete style.maxWidthPx;
+        style.marginTop=0;
+        style.marginBottom=0;
+        style.marginLeft=0;
+        style.marginRight=0;
+        delete style.minHeightPx;
+        if(!mediaRole) delete style.maxHeightPx;
+      } else {
+        if(!has('offsetXPercent')) style.offsetXPercent=0;
+        if(!has('offsetYPx')) style.offsetYPx=0;
+      }
+      if(spacingNumber(style.paddingLeft)) style.paddingLeft=Math.min(28,Number(style.paddingLeft));
+      if(spacingNumber(style.paddingRight)) style.paddingRight=Math.min(28,Number(style.paddingRight));
+      if(spacingNumber(style.paddingTop)) style.paddingTop=Math.min(40,Number(style.paddingTop));
+      if(spacingNumber(style.paddingBottom)) style.paddingBottom=Math.min(40,Number(style.paddingBottom));
+      if(spacingNumber(style.fontSize)){
         const ceiling=role==='heading' ? 54 : role==='kicker' ? 14 : role==='action' ? 20 : 22;
         style.fontSize=Math.min(ceiling,Number(style.fontSize));
       }
-      if(!has('fontScale') && positiveNumber(style.fontScale)){
+      if(positiveNumber(style.fontScale)){
         const ceiling=role==='heading' ? 1.35 : role==='kicker' ? 1.05 : role==='action' ? 1.05 : 1.15;
         style.fontScale=Math.min(ceiling,Number(style.fontScale));
       }
-      if(role==='media' && !has('maxWidthPx')) style.maxWidthPx=560;
+      if(mediaRole){
+        const requestedMax=positiveNumber(style.maxWidthPx) ? Number(style.maxWidthPx) : 560;
+        style.maxWidthPx=Math.min(560,requestedMax);
+        if(positiveNumber(style.maxHeightPx)) style.maxHeightPx=Math.min(520,Number(style.maxHeightPx));
+      }
     } else if(key==='tablet'){
       if(!has('offsetXPercent')) style.offsetXPercent=0;
       if(!has('offsetYPx')) style.offsetYPx=0;
@@ -1199,15 +1224,21 @@
     const hasChildren=Array.isArray(model?.children) && model.children.length>0;
 
     if(key==='mobile' && hasChildren){
-      if(layout.mode==='grid'){
-        if(!has('columns')) layout.columns=1;
-      } else if(!has('mode')){
+      if(layout.mode==='free' || !layout.mode){
+        // Free-canvas positioning remains a desktop/base authoring capability.
+        // Published mobile content always participates in document flow so
+        // stored offsets cannot overlap or hide conversion content.
         layout.mode='stack';
+        layout.direction='column';
+      } else if(layout.mode==='grid'){
+        if(!has('columns')) layout.columns=1;
+      } else if(layout.mode==='stack'){
         layout.direction='column';
       } else if(layout.mode==='flex' && !has('direction')){
         layout.direction='column';
       }
       if(!has('gapPx')) layout.gapPx=Math.max(12,Math.min(28,Number(layout.gapPx)||18));
+      if((layout.mode==='stack' || (layout.mode==='flex' && layout.direction!=='row')) && !has('alignItems')) layout.alignItems='stretch';
       if(layout.mode==='flex' && !has('wrap')) layout.wrap='nowrap';
     } else if(key==='tablet' && hasChildren){
       if(layout.mode==='grid' && !has('columns')) layout.columns=Math.min(2,Math.max(1,Number(layout.columns)||2));
@@ -5995,7 +6026,7 @@
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint values inherit every unset value from the base design.</p><div class="legend-cms-inline-help" id="legend-cms-responsive-policy"><strong>Canonical responsive hierarchy</strong><br>Mobile inherits a conversion-first stack: context → headline → supporting copy/proof → action/form → media → deeper content. Desktop preserves intentional side-by-side composition. Any breakpoint value you explicitly set wins for that property.</div><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. Use X/Y offsets for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint values inherit every unset value from the base design.</p><div class="legend-cms-inline-help" id="legend-cms-responsive-policy"><strong>Canonical responsive hierarchy</strong><br>Mobile uses a conversion-first stack: context → headline → supporting copy/proof → action/form → media → deeper content. Visual breakpoint choices remain editable, while mobile flow safety keeps content in-frame and prevents stored X/Y offsets, fixed heights, or free-canvas geometry from overlapping the published page. Desktop preserves intentional side-by-side composition.</div><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. X/Y offsets remain a base/desktop composition tool; published mobile flow neutralizes them for primary content so it cannot overlap or leave the viewport.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save any non-system canonical block or section once, then insert synchronized references. Protected platform components cannot be copied into reusable content.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
