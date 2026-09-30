@@ -2202,11 +2202,20 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   wireClick('[data-cta="quote_index_disability_start"]', 'quote_index_disability_start', 'quote_click');
   wireClick('[data-cta="quote_index_health_start"]',     'quote_index_health_start',     'quote_click');
 
-  document.querySelectorAll('form[data-form-key]').forEach(f => {
-    const key = f.getAttribute('data-form-key');
-    if (!key) return;
-    wireFormStart(f, key);
-  });
+  function bindCanonicalForms(root = document) {
+    if (!root?.querySelectorAll) return 0;
+    let bound = 0;
+    root.querySelectorAll('form[data-form-key]').forEach(form => {
+      const key = form.getAttribute('data-form-key');
+      if (!key || form._legendTrackingBound) return;
+      wireFormStart(form, key);
+      bound++;
+    });
+    return bound;
+  }
+
+  bindCanonicalForms(document);
+  listen(window, 'legend:website-content-rendered', () => bindCanonicalForms(document));
 
 
   // ============================================================
@@ -2250,6 +2259,9 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     registerBinding(node, binding, elementId) {
       canonicalBindings.set(binding.id, {node, binding, elementId});
       return () => canonicalBindings.delete(binding.id);
+    },
+    bindForms(root = document) {
+      return bindCanonicalForms(root);
     },
     signalAliases: Object.freeze({ ...(ANALYTICS_CONFIG.signalAliases || {}) }),
     measurementConsent: Object.freeze({
