@@ -508,6 +508,7 @@ function dialogFixture() {
     surfaces:new WeakSet(),
     surfaceList:new Set(),
     modalOwner:surface=>{surface.dataset=surface.dataset||{};surface.dataset.legendModalOwner='fixture';return 'fixture';},
+    markLocalBackdrops:()=>{},
     normalizeCloseControl:()=>{},
     syncModalSurfaceState:()=>{},
     document:{body},
