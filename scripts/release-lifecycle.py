@@ -144,7 +144,7 @@ def ready(pr, repo, base):
 
 
 def candidate_validation(api, pr):
-    """Require the latest exact-head PR workflows, never a same-name check collision."""
+    """Require only exact-head validations that own the PR's changed subsystem."""
     head = pr['head']['sha']
     runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
     latest = {}
@@ -152,17 +152,49 @@ def candidate_validation(api, pr):
         if run.get('head_sha') != head or run.get('event') != 'pull_request':
             continue
         latest.setdefault(run['path'].split('@')[0], run)
+
     architecture = '.github/workflows/masterapp-platform-architecture-validation.yml'
-    if architecture not in latest:
-        return 'Exact-head architecture validation has not started'
+    step5 = '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
+    required = {architecture}
+
     files = api.pages(f"pulls/{pr['number']}/files")
-    if any(f['filename'].startswith(('AgentPortal.Tests/', 'AgentPortal/', 'ClientApp/', 'Protect-Website/', 'ParfaitApp/', 'SHARED/', 'Infrastructure/', 'Domain/')) or
-           f['filename'] == '.github/workflows/step5-isolated-conversion-mapping-validation.yml' for f in files):
-        if '.github/workflows/step5-isolated-conversion-mapping-validation.yml' not in latest:
-            return 'Exact-head full-suite comparison has not started'
-    failed = [path for path, run in latest.items()
-              if run.get('status') != 'completed' or run.get('conclusion') != 'success']
-    return 'Awaiting successful exact-head validation: ' + ', '.join(sorted(failed)) if failed else None
+    names = [f['filename'] for f in files]
+
+    # Website Studio has its own architecture/shared-CMS validation authority.
+    # Do not make its release depend on the conversion-mapping comparison suite
+    # merely because both workflows use broad pull_request path filters.
+    studio_exact = {
+        'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
+        'AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs',
+        'SHARED/WebsitePlatform/legend-public-cms.js',
+        'SHARED/WebsitePlatform/legend-public-web.css',
+        'Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs',
+        'Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs',
+        'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
+        'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs',
+        'Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs',
+        'tests/website/legend-public-cms.test.mjs',
+    }
+    studio_only = bool(names) and all(name in studio_exact for name in names)
+
+    broad_product_change = any(
+        name.startswith(('AgentPortal.Tests/', 'AgentPortal/', 'ClientApp/', 'Protect-Website/',
+                         'ParfaitApp/', 'SHARED/', 'Infrastructure/', 'Domain/'))
+        or name == step5.removeprefix('.github/workflows/')
+        for name in names
+    )
+    if broad_product_change and not studio_only:
+        required.add(step5)
+
+    missing = sorted(path for path in required if path not in latest)
+    if missing:
+        if architecture in missing:
+            return 'Exact-head architecture validation has not started'
+        return 'Exact-head full-suite comparison has not started'
+
+    failed = [path for path in sorted(required)
+              if latest[path].get('status') != 'completed' or latest[path].get('conclusion') != 'success']
+    return 'Awaiting successful exact-head validation: ' + ', '.join(failed) if failed else None
 
 
 def merge_validated(api, pr):
