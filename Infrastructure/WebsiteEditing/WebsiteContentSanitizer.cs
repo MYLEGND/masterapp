@@ -175,8 +175,8 @@ public static class WebsiteContentSanitizer
             Breakpoints = breakpoints,
             Shell = new WebsiteSharedShellDocument
             {
-                Header = SanitizeComposition(source.Shell?.Header, breakpointKeys),
-                Footer = SanitizeComposition(source.Shell?.Footer, breakpointKeys)
+                Header = SanitizeComposition(source.Shell?.Header, breakpointKeys, mobileFlowSafety: false),
+                Footer = SanitizeComposition(source.Shell?.Footer, breakpointKeys, mobileFlowSafety: false)
             }
         };
 
@@ -459,15 +459,17 @@ public static class WebsiteContentSanitizer
 
     private static List<WebsiteCompositionNode> SanitizeComposition(
         IEnumerable<WebsiteCompositionNode>? source,
-        HashSet<string> breakpointKeys)
+        HashSet<string> breakpointKeys,
+        bool mobileFlowSafety = true)
     {
         var remaining = MaxCompositionNodesPerPage;
-        return SanitizeCompositionChildren(source, breakpointKeys, 0, ref remaining);
+        return SanitizeCompositionChildren(source, breakpointKeys, mobileFlowSafety, 0, ref remaining);
     }
 
     private static List<WebsiteCompositionNode> SanitizeCompositionChildren(
         IEnumerable<WebsiteCompositionNode>? source,
         HashSet<string> breakpointKeys,
+        bool mobileFlowSafety,
         int depth,
         ref int remaining)
     {
@@ -529,9 +531,11 @@ public static class WebsiteContentSanitizer
                 FieldLabels = SanitizeFieldLabels(node.FieldLabels),
                 FieldSignals = SanitizeFieldSignals(node.FieldSignals)
             };
-            clean.Children = SanitizeCompositionChildren(node.Children, breakpointKeys, depth + 1, ref remaining);
+            clean.Children = SanitizeCompositionChildren(node.Children, breakpointKeys, mobileFlowSafety, depth + 1, ref remaining);
             CanonicalizePassiveLink(clean);
             CanonicalizePlatformBrandGeometry(clean);
+            if (mobileFlowSafety) CanonicalizeMobileFlowSafety(clean);
+            else CanonicalizeShellResponsiveScale(clean);
             if (IsRetiredTemplateDecoration(clean))
                 continue;
             result.Add(clean);
@@ -615,6 +619,80 @@ public static class WebsiteContentSanitizer
         ClearHorizontalGeometry(node.Style);
         foreach (var style in node.BreakpointStyles.Values)
             ClearHorizontalGeometry(style);
+    }
+
+    private static void CanonicalizeMobileFlowSafety(WebsiteCompositionNode node)
+    {
+        if (node.BreakpointStyles.TryGetValue("mobile", out var mobileStyle))
+        {
+            mobileStyle.WidthPercent = null;
+            mobileStyle.OffsetXPercent = null;
+            mobileStyle.OffsetYPx = null;
+            mobileStyle.MarginTop = null;
+            mobileStyle.MarginBottom = null;
+            mobileStyle.MarginLeft = null;
+            mobileStyle.MarginRight = null;
+            mobileStyle.MinWidthPx = null;
+            mobileStyle.MinHeightPx = null;
+
+            if (!string.Equals(node.Type, "embed", StringComparison.Ordinal))
+                mobileStyle.HeightPx = null;
+
+            if (node.Type is "image" or "video")
+            {
+                mobileStyle.MaxWidthPx = mobileStyle.MaxWidthPx.HasValue
+                    ? Math.Min(560m, mobileStyle.MaxWidthPx.Value)
+                    : null;
+                mobileStyle.MaxHeightPx = mobileStyle.MaxHeightPx.HasValue
+                    ? Math.Min(520m, mobileStyle.MaxHeightPx.Value)
+                    : null;
+            }
+            else
+            {
+                mobileStyle.MaxWidthPx = null;
+                mobileStyle.MaxHeightPx = null;
+            }
+        }
+
+        if (node.Children.Count > 0 &&
+            node.Type is "section" or "container" &&
+            node.BreakpointLayouts.TryGetValue("mobile", out var mobileLayout) &&
+            string.Equals(mobileLayout.Mode, "free", StringComparison.Ordinal))
+        {
+            mobileLayout.Mode = "stack";
+            mobileLayout.Direction = "column";
+            mobileLayout.AlignItems ??= "stretch";
+        }
+    }
+
+    private static void CanonicalizeShellResponsiveScale(WebsiteCompositionNode node)
+    {
+        var isBrandTitle =
+            string.Equals(node.SystemBinding, "business_name", StringComparison.Ordinal) ||
+            (string.Equals(node.Tag, "strong", StringComparison.Ordinal) &&
+             string.Equals(node.Text?.Trim(), "LEGEND®", StringComparison.Ordinal));
+
+        if (isBrandTitle)
+        {
+            CapBreakpointFontScale(node, "mobile", 1.35m);
+            CapBreakpointFontScale(node, "tablet", 1.8m);
+        }
+
+        if (string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal))
+        {
+            CapBreakpointFontScale(node, "mobile", 1m);
+            CapBreakpointFontScale(node, "tablet", 1.15m);
+        }
+    }
+
+    private static void CapBreakpointFontScale(
+        WebsiteCompositionNode node,
+        string breakpoint,
+        decimal ceiling)
+    {
+        if (!node.BreakpointStyles.TryGetValue(breakpoint, out var style) || !style.FontScale.HasValue)
+            return;
+        style.FontScale = Math.Min(style.FontScale.Value, ceiling);
     }
 
     private static void ClearHorizontalGeometry(WebsiteVisualStyle style)

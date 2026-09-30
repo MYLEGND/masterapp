@@ -1146,7 +1146,7 @@
     if(!canonicalResponsiveBodyElement(el)) return style;
 
     if(key==='mobile'){
-      const flowRole=['kicker','heading','narrative','copy','proof','actions','action','form','collection','group','content'].includes(role);
+      const flowRole=['section','kicker','heading','narrative','copy','proof','actions','action','form','collection','group','content'].includes(role);
       const mediaRole=role==='media';
 
       // Mobile flow geometry is a canonical safety invariant. Historical or
@@ -1160,8 +1160,12 @@
         if(role!=='embed') delete style.heightPx;
         delete style.minWidthPx;
         if(!mediaRole) delete style.maxWidthPx;
+        style.marginTop=0;
+        style.marginBottom=0;
         style.marginLeft=0;
         style.marginRight=0;
+        delete style.minHeightPx;
+        if(!mediaRole) delete style.maxHeightPx;
       } else {
         if(!has('offsetXPercent')) style.offsetXPercent=0;
         if(!has('offsetYPx')) style.offsetYPx=0;
