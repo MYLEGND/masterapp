@@ -616,6 +616,20 @@ public sealed class WebsiteSiteSourceV3Tests
                 BusinessActions()));
         Assert.Contains("canonical action identity", protectedError.Message, StringComparison.OrdinalIgnoreCase);
 
+        var removalModel = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var trackedQuote = removalModel.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero")
+            .Children.Single(node => node.Id == "home.hero.quote");
+        trackedQuote.ActionKey = null;
+        var removalSource = JsonSerializer.Serialize(
+            removalModel,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var removalError = Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteSiteSource.Parse(removalSource, baseline, BusinessActions()));
+        Assert.Contains("cannot remove", removalError.Message, StringComparison.OrdinalIgnoreCase);
+
         var ordinaryError = Assert.Throws<ArgumentException>(() =>
             WebsiteSiteSource.Parse("{ not valid json", baseline, BusinessActions()));
         Assert.IsNotType<WebsiteSiteSourceProtectionException>(ordinaryError);
