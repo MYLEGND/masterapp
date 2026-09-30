@@ -404,14 +404,23 @@ public class WebsitePlatformController : ControllerBase
                 sourceMap = parsed.SourceMap
             });
         }
+        catch (WebsiteSiteSourceProtectionException ex)
+        {
+            return BadRequest(new
+            {
+                error = "website_site_source_protected",
+                message = ex.Message,
+                canonicalProtectionViolation = true,
+                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+            });
+        }
         catch (ArgumentException ex)
         {
             return BadRequest(new
             {
                 error = "website_site_source_invalid",
                 message = ex.Message,
-                canonicalProtectionViolation = true,
-                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+                canonicalProtectionViolation = false
             });
         }
         catch (InvalidOperationException ex)
@@ -420,8 +429,7 @@ public class WebsitePlatformController : ControllerBase
             {
                 error = ex.Message,
                 message = "LEGEND Site Source could not be validated. No draft changes were saved.",
-                canonicalProtectionViolation = true,
-                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+                canonicalProtectionViolation = false
             });
         }
     }
