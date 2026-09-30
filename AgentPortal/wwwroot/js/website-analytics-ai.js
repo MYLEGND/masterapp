@@ -142,7 +142,7 @@
     d.classList.add('open');
     if (b) b.classList.add('visible');
     drawerOpen = true;
-    document.body.style.overflow = 'hidden';
+    
     // Focus close button for accessibility
     var closeBtn = d.querySelector('.ai-drawer-close');
     if (closeBtn) closeBtn.focus();
@@ -158,7 +158,7 @@
     if (priorFocus?.isConnected) priorFocus.focus();
     if (b) b.classList.remove('visible');
     drawerOpen = false;
-    document.body.style.overflow = '';
+    
     if (currentAbortController) {
       currentAbortController.abort();
       currentAbortController = null;
