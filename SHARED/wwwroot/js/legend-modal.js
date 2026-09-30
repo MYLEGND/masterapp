@@ -144,7 +144,9 @@
   }
 
   const surfaces = new WeakSet();
+  const surfaceList = new Set();
   const mobileSheets = new WeakSet();
+  let modalSurfaceSequence = 0;
   const pageScrollLockOwners = new Set();
   let pageScrollState = null;
   let header;
@@ -155,6 +157,83 @@
   function writeVariable(name, value){
     const style = document.documentElement.style;
     if (style.getPropertyValue(name) !== value) style.setProperty(name, value);
+  }
+
+  function isMobileModalViewport(){
+    return window.matchMedia?.("(max-width: 900px)")?.matches === true;
+  }
+
+  function modalOwner(surface){
+    if (!surface.dataset.legendModalOwner) {
+      modalSurfaceSequence += 1;
+      surface.dataset.legendModalOwner = `legend-modal-surface-${modalSurfaceSequence}`;
+    }
+    return surface.dataset.legendModalOwner;
+  }
+
+  function surfaceOpen(surface){
+    if (!surface || !surface.isConnected) return false;
+    if (surface.hidden || surface.hasAttribute("hidden")) return false;
+    if (surface.getAttribute("aria-hidden") === "true") return false;
+    if (surface.classList.contains("show") || surface.classList.contains("open")) return true;
+    if (surface.getAttribute("aria-hidden") === "false") return true;
+    const style = window.getComputedStyle(surface);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (style.pointerEvents === "none" && Number.parseFloat(style.opacity || "1") === 0) return false;
+    return style.position === "fixed";
+  }
+
+  function normalizeCloseControl(surface){
+    const selectors = [
+      '[aria-label="Close"]',
+      '[data-bs-dismiss="modal"]',
+      '[data-legend-modal-close]',
+      '[data-close-rev]',
+      '[data-note-self-close]',
+      '[data-close-subscriber-actions]',
+      '[data-uw-close]',
+      '[data-proposal-close]',
+      '.btn-close',
+      '.modal-close',
+      '.qv-booking-close',
+      '.finance-support-close'
+    ].join(',');
+    const controls = Array.from(surface.querySelectorAll(selectors));
+    controls.forEach(control => {
+      control.classList.add("legend-modal-close-control");
+      if (!control.getAttribute("aria-label")) control.setAttribute("aria-label", "Close");
+    });
+
+    if (controls.length || !surface.matches(".modal")) return;
+
+    const panel = surface.querySelector("[data-legend-modal-panel], .modal-content, .modal-dialog");
+    if (!panel) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "legend-modal-close-control legend-modal-generated-close";
+    button.setAttribute("aria-label", "Close");
+    button.setAttribute("data-bs-dismiss", "modal");
+    panel.prepend(button);
+  }
+
+  function syncModalSurfaceState(surface){
+    if (!surface || !surfaces.has(surface)) return;
+    const owner = modalOwner(surface);
+    const open = surfaceOpen(surface);
+    surface.dataset.legendModalOpen = open ? "true" : "false";
+    if (isMobileModalViewport() && open) lockPageScroll(owner);
+    else unlockPageScroll(owner);
+  }
+
+  function syncAllModalSurfaces(){
+    surfaceList.forEach(surface => {
+      if (!surface.isConnected) {
+        unlockPageScroll(surface.dataset.legendModalOwner || "");
+        surfaceList.delete(surface);
+        return;
+      }
+      syncModalSurfaceState(surface);
+    });
   }
 
   function registerDialog(dialog){
@@ -168,13 +247,17 @@
     if (!surface) return;
     if (!surfaces.has(surface)){
       surfaces.add(surface);
+      surfaceList.add(surface);
       surface.setAttribute('data-legend-modal-surface', '');
+      modalOwner(surface);
     }
     if (dialog !== surface) dialog.setAttribute('data-legend-modal-panel', '');
     surface.querySelectorAll(':scope > .modal-dialog, :scope > [class*="-panel"], :scope > [class*="-dialog"], :scope > [class*="-card"], :scope > [class*="-window"]').forEach(panel => {
       panel.setAttribute('data-legend-modal-panel', '');
     });
     surface.querySelectorAll('.modal-content').forEach(panel => panel.setAttribute('data-legend-modal-panel', ''));
+    normalizeCloseControl(surface);
+    syncModalSurfaceState(surface);
   }
 
   function registerDialogs(node){
@@ -379,17 +462,26 @@
           if (surfaces.has(record.target)) registerDialog(record.target);
           changed = changed || record.addedNodes.length > 0 || record.removedNodes.length > 0;
         } else {
-          if (surfaces.has(record.target)) changed = true;
+          if (surfaces.has(record.target)) {
+            syncModalSurfaceState(record.target);
+            changed = true;
+          } else {
+            const surface = record.target?.closest?.("[data-legend-modal-surface]");
+            if (surface) syncModalSurfaceState(surface);
+          }
           if (record.target?.matches?.("[data-legend-mobile-sheet]")) syncMobileSheetState(record.target);
         }
       }
       if (changed) scheduleViewportOffsets();
     });
-    mutations.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden'] });
+    mutations.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden', 'style'] });
     document.addEventListener('show.bs.modal', event => {
       registerDialogs(event.target);
       syncViewportOffsets();
+      syncModalSurfaceState(event.target);
     });
+    document.addEventListener('shown.bs.modal', event => syncModalSurfaceState(event.target));
+    document.addEventListener('hidden.bs.modal', event => syncModalSurfaceState(event.target));
   }
 
   function scheduleViewportOffsets(){
@@ -465,6 +557,7 @@
   api.lockPageScroll = lockPageScroll;
   api.unlockPageScroll = unlockPageScroll;
   api.registerMobileSheet = registerMobileSheet;
+  api.syncModalSurfaces = syncAllModalSurfaces;
   api.bind = bind;
   api.refreshViewportOffsets = syncViewportOffsets;
   api.reconcile = reconcile;
@@ -482,7 +575,11 @@
   }
   window.visualViewport?.addEventListener("resize", scheduleViewportOffsets, { passive: true });
   window.visualViewport?.addEventListener("scroll", scheduleViewportOffsets, { passive: true });
-  window.addEventListener("resize", scheduleViewportOffsets, { passive: true });
+  window.addEventListener("resize", () => {
+    scheduleViewportOffsets();
+    syncAllModalSurfaces();
+  }, { passive: true });
+  window.visualViewport?.addEventListener("resize", syncAllModalSurfaces, { passive: true });
   window.addEventListener("scroll", scheduleViewportOffsets, { passive: true });
 
   window.LegendModal = api;
