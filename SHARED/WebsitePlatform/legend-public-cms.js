@@ -4342,6 +4342,7 @@
       const payload = await response.json();
       storeContext = payload.store || null;
       legacyMigration = payload.legacyMigration || null;
+      ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : ctaCatalog;
       if (payload.businessName) {
         document.querySelectorAll('[data-business-name]').forEach(element => {
           element.textContent = payload.businessName;
@@ -4350,6 +4351,9 @@
       bindBusiness(payload);
       prepareDom();
       applyDocument(payload.document || {});
+      applyRuntimeActionContracts();
+      if (window.__legendTrackingInitialized === true)
+        installPublishedSignalBindings();
       preservePreviewNavigation();
       document.documentElement.hidden = false;
     } catch (error) {
