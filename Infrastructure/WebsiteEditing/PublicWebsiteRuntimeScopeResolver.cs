@@ -158,10 +158,12 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
             return false;
 
         if (scope.SiteKey == WebsiteEditorSiteKeys.Legend)
-            return true;
+            return PublishedDocumentContainsPath(scope.PublishedVersion, normalized, WebsiteEditorSiteKeys.Legend) ||
+                   scope.PublishedVersion is null;
 
         if (scope.SiteKey == WebsiteEditorSiteKeys.Protect)
-            return IsContactPath(normalized, allowAgentPrefix: true);
+            return IsContactPath(normalized, allowAgentPrefix: true) ||
+                   PublishedDocumentContainsPath(scope.PublishedVersion, normalized, WebsiteEditorSiteKeys.Protect);
 
         if (scope.IsCommerceApp)
             return IsContactPath(normalized, allowAgentPrefix: false);
@@ -178,6 +180,43 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
                    pages.TryGetProperty(normalized, out _);
         }
         catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool PublishedDocumentContainsPath(
+        WebsiteContentVersion? version,
+        string normalizedPath,
+        string siteKey)
+    {
+        if (version is null || string.IsNullOrWhiteSpace(version.DocumentJson))
+            return false;
+
+        var route = normalizedPath;
+        if (siteKey == WebsiteEditorSiteKeys.Protect)
+        {
+            if (route.StartsWith("/a/", StringComparison.OrdinalIgnoreCase))
+            {
+                var segments = route.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                route = segments.Length > 2 ? "/" + string.Join('/', segments.Skip(2)) : "/";
+            }
+            route = Shared.Analytics.ProtectRouteCatalog.CanonicalPath(route);
+        }
+
+        route = route.Length > 1 ? route.TrimEnd('/') : route;
+        try
+        {
+            var document = WebsiteContentSanitizer.ReadPersisted(
+                version.DocumentJson,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            return document.Pages.Keys.Any(path =>
+                string.Equals(
+                    path.Length > 1 ? path.TrimEnd('/') : path,
+                    route,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
         {
             return false;
         }
