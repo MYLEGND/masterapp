@@ -2137,18 +2137,6 @@
     margin-top: 18px;
 }
 
-/* Shared bootstrap modal stability for Leads/Clients quick-view stack */
-body.legend-bootstrap-modal-open{
-    overflow: hidden;
-}
-body.legend-bootstrap-modal-open .modal-backdrop.show{
-    background: rgba(2, 8, 23, .74);
-    opacity: 1;
-}
-body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
-    transition: opacity .14s ease;
-}
-
 @media (max-width: 900px){
     .actions-hub-modal .qv-grid-two{
         grid-template-columns: 1fr;
@@ -3784,16 +3772,6 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
     }
 
     /* ===== MODALS ===== */
-    #modalBackdrop.modal-backdrop{
-        position: fixed;
-        inset:0;
-        background: rgba(3,10,24,.54);
-        backdrop-filter: blur(6px);
-        display:none;
-        z-index:12040;
-    }
-    #modalBackdrop.modal-backdrop.open{ display:block; }
-
     .modal:not(.fade){
         position: fixed;
         left:50%;
