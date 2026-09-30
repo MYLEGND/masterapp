@@ -497,6 +497,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const url = `/resources/${r.File}`;
         openLink.href = url;
+        openLink.removeAttribute("aria-disabled");
+        openLink.removeAttribute("tabindex");
 
         const ext = (r.Extension || "").toLowerCase();
         meta.textContent = `Type: ${extTag(ext)} • File: ${r.File}`;
