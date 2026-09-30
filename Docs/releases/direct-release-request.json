@@ -1,12 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to complete the consolidated four-app release after PR #321 repaired release-control discovery. Product payload includes the validated PR #318 mobile repair, the remaining Website Studio source-authority work, the canonical duplicate-node identity repair, expanded Website Studio typography/spacing controls, and the bounded static Website deployment recovery.",
-  "purpose": "Publish all currently merged but unpublished affected product changes from legend/approved-changes in one consolidated release. Deploy AgentPortal and ClientApp with the validated canonical mobile navigation, full-width page, full-screen modal, clickability, and route authority. Deploy Protect and LEGEND Website with the canonical Website Studio source/save authority, persisted duplicate-ID repair, global materialization collision prevention, expanded direct typography/spacing controls, compact editor spacing, and static Website terminal-OneDeploy recovery. Parfait remains excluded because it has no product delta. No Cloudflare routing or database migration action is authorized.",
-  "requestId": "consolidated-mobile-website-studio-final-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged PR #317 Website Studio final repair after the current consolidated release completes.",
+  "purpose": "Deploy only the newly merged Website Studio final repair to Protect and LEGEND Website: persisted duplicate canonical node-ID repair preserving protected identity, global materialization collision prevention, expanded canonical typography/spacing controls, compact editor vertical spacing, and bounded static Website terminal-OneDeploy recovery. AgentPortal and ClientApp are excluded from this follow-up because their mobile changes are already handled by the preceding consolidated release. Parfait, Cloudflare routing, and database migration actions are excluded.",
+  "requestId": "website-studio-final-repair-20260930",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
     "masterapp-protect",
     "masterapp-website"
   ],
