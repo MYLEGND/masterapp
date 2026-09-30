@@ -398,11 +398,20 @@ public static class WebsiteSiteSource
         foreach (var (fieldKey, bindings) in node.FieldSignals)
         {
             if ((bindings?.Count ?? 0) == 0) continue;
-            var matches = node.Experience.Controls.Count(control =>
-                string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase));
-            if (matches != 1)
+            var controls = node.Experience.Controls.Where(control =>
+                string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (controls.Length != 1)
                 throw new WebsiteSiteSourceProtectionException(
                     $"Interactive experience '{node.Id}' must contain exactly one control for mapped field '{fieldKey}'.");
+            try
+            {
+                WebsiteSignalBindingPolicy.ValidateExperienceControl(controls[0], bindings!);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Interactive experience '{node.Id}' has an invalid mapping for field '{fieldKey}': {ex.Message}");
+            }
         }
     }
 
