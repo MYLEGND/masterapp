@@ -476,6 +476,32 @@ class ExactCandidateValidation(unittest.TestCase):
         runs.append(self.run_record('step5-isolated-conversion-mapping-validation.yml',id=2))
         self.assertIsNone(self.validate(runs,['Infrastructure/Analytics/example.cs']))
 
+    def test_website_studio_source_authority_uses_its_own_exact_head_gate(self):
+        files=[
+            'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
+            'AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs',
+            'Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs',
+            'Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs',
+            'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
+            'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs',
+            'Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs',
+            'SHARED/WebsitePlatform/legend-public-cms.js',
+            'SHARED/WebsitePlatform/legend-public-web.css',
+            'tests/website/legend-public-cms.test.mjs',
+        ]
+        runs=[
+            self.run_record(),
+            self.run_record('step5-isolated-conversion-mapping-validation.yml',id=2,conclusion='failure'),
+        ]
+        self.assertIsNone(self.validate(runs,files))
+
+    def test_website_studio_scope_does_not_exempt_unrelated_product_change(self):
+        files=[
+            'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
+            'Infrastructure/Analytics/example.cs',
+        ]
+        self.assertIsNotNone(self.validate([self.run_record()],files))
+
     def test_host_changes_also_require_full_suite(self):
         for path in ['Protect-Website/Models/RiskAssessmentModel.cs','ClientApp/Program.cs','Domain/Entities/Lead.cs']:
             with self.subTest(path=path):
