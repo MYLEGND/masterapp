@@ -171,7 +171,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);const edit=w.document.querySelector('#legend-cms-edit-text');if(edit&&!edit.hidden)edit.click();el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
-  return {w,calls,animations,alerts,click,input,change,editSelected,save,close:()=>w.close()};
+  return {w,calls,animations,alerts,click,input,change,editSelected,save,serverDocument:()=>structuredClone(serverDoc),close:()=>w.close()};
 }
 
 test('canonical startup fills navigation and image accessibility defaults and prevents routine width overflow',async()=>{
@@ -1091,7 +1091,7 @@ test('published business rendering activates the shared inquiry path without inj
 });
 
 test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
-  assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source)"));
+  assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(secureEmbedSource(source))"));
   assert.equal(source.includes('allow-same-origin'),false);
   assert.ok(businessMiddlewareSource.includes("frame-src 'self' data:; object-src 'none'"));
   const policy=businessMiddlewareSource.match(/default-src 'self'; script-src[^"]+/)?.[0] || '';
@@ -1983,7 +1983,11 @@ test('sandboxed code block saves source and previews without same-origin access'
   const block=f.w.document.querySelector('.legend-cms-embed');
   const frame=block.querySelector('iframe');
   assert.ok(frame.src.startsWith('data:text/html;charset=utf-8,'));
-  assert.equal(decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1)),sourceInput.value);
+  const previewSource=decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1));
+  assert.ok(previewSource.includes(sourceInput.value));
+  assert.match(previewSource,/Content-Security-Policy/);
+  assert.match(previewSource,/connect-src 'none'/);
+  assert.match(previewSource,/form-action 'none'/);
   assert.equal(frame.getAttribute('sandbox').includes('allow-same-origin'),false);
   const saved=await f.save();const embed=canonicalNodes(saved).find(x=>x.type==='embed');
   assert.ok(embed);assert.equal(embed.text,sourceInput.value);assert.equal(embed.style.widthPercent,100);assert.equal(embed.style.heightPx,320);
@@ -2812,7 +2816,7 @@ test('GPT contract is conversion-first on desktop and mobile and obeys the canon
   for(const phrase of [
     'CONVERSION-FIRST EXPERIENCE',
     'first viewport as the highest-value impression',
-    'one dominant primary action per decision moment',
+    'Prefer a clear primary action per decision moment as a default.',
     'Mobile must feel designed, not collapsed',
     'Never invent testimonials',
     'BROWSER AUTHORIZATION',
