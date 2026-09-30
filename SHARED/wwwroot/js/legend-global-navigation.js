@@ -227,7 +227,8 @@
       setAriaState(true);
       overlay.classList.remove('open');
       overlay.setAttribute('aria-hidden', 'true');
-      ownerNav.querySelector('[data-legend-mobile-nav-panel]')?.scrollTo({ top: 0, behavior: 'instant' });
+      const mobilePanel = ownerNav.querySelector('[data-legend-mobile-nav-panel]');
+      if (mobilePanel) mobilePanel.scrollTop = 0;
       return;
     }
 
