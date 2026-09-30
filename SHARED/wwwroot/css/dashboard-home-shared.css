@@ -36,7 +36,7 @@ body.legend-app.legend-bootstrap-modal-open {
     overflow: hidden;
 }
 
-body.legend-app [data-legend-modal-surface][data-legend-modal-open="true"] {
+body.legend-app [data-legend-modal-surface][data-legend-modal-open="true"]:has(> [data-legend-modal-panel]) {
     background: var(--legend-modal-backdrop);
     isolation: isolate;
     pointer-events: auto;
