@@ -1098,7 +1098,7 @@
     .legend-founder-ai-header {
         min-height: 0;
         overflow: hidden;
-        padding: 7px 10px;
+        padding: var(--app-mobile-card-pad);
         transition: opacity .16s ease, transform .18s ease;
     }
 
@@ -1130,10 +1130,7 @@
         bottom: 0;
         left: 0;
         width: min(78vw, 306px);
-        padding:
-            14px
-            13px
-            max(14px, env(safe-area-inset-bottom));
+        padding: var(--app-mobile-card-pad) var(--app-mobile-card-pad) max(var(--app-mobile-card-pad), env(safe-area-inset-bottom));
         transform: translateX(-102%);
         transition: transform .20s ease;
         box-shadow: 24px 0 64px rgba(2,7,15,.24);
@@ -1162,10 +1159,10 @@
     .legend-founder-ai-modal.is-sidebar-collapsed .legend-founder-ai-new-conversation,
     .legend-founder-ai-modal.is-sidebar-collapsed .legend-founder-ai-clear-history {
         width: auto;
-        min-height: var(--legend-ai-compact-control);
+        min-height: var(--legend-mobile-control-height);
         justify-content: center;
         align-self: stretch;
-        padding: 7px 11px;
+        padding: 5px 7px;
     }
 
     .legend-founder-ai-sidebar-scrim {
@@ -1200,14 +1197,14 @@
 
     .legend-founder-ai-mobile-controls {
         display: block;
-        margin-top: 9px;
-        padding-top: 9px;
+        margin-top: var(--legend-mobile-gap);
+        padding-top: var(--legend-mobile-gap);
         border-top: 1px solid var(--legend-ai-line);
     }
 
     .legend-founder-ai-mobile-controls .legend-founder-ai-modebar {
         display: grid;
-        gap: 6px;
+        gap: var(--legend-mobile-gap);
         padding: 0;
         border: 0;
         background: transparent;
@@ -1215,15 +1212,15 @@
 
     .legend-founder-ai-mobile-controls .legend-founder-ai-mode-tabs {
         display: grid;
-        gap: 5px;
+        gap: var(--legend-mobile-gap);
         width: 100%;
     }
 
     .legend-founder-ai-mobile-controls .legend-founder-ai-mode {
         width: 100%;
-        min-height: 34px;
+        min-height: var(--legend-mobile-control-height);
         justify-content: flex-start;
-        padding: 0 10px;
+        padding: 0 8px;
         border-color: color-mix(in srgb, var(--legend-ai-navy-900) 12%, transparent);
         background: var(--legend-ai-ivory);
         color: var(--legend-ai-text);
@@ -1238,8 +1235,8 @@
 
     .legend-founder-ai-mobile-controls .legend-founder-ai-native-only {
         width: 100%;
-        min-height: 42px;
-        padding: 6px 9px;
+        min-height: var(--legend-mobile-control-height);
+        padding: 5px 7px;
         border-color: color-mix(in srgb, var(--legend-ai-navy-900) 12%, transparent);
         background: var(--legend-ai-ivory);
         color: var(--legend-ai-text);
@@ -1257,25 +1254,25 @@
     }
 
     .legend-founder-ai-transcript {
-        padding: 9px 8px max(10px, env(safe-area-inset-bottom));
+        padding: var(--app-mobile-card-pad) var(--app-mobile-card-pad) max(var(--app-mobile-card-pad), env(safe-area-inset-bottom));
         background: #fffefa;
         -webkit-overflow-scrolling: touch;
     }
 
     .legend-founder-ai-transcript::before {
-        margin-bottom: 12px;
+        margin-bottom: var(--app-mobile-block-gap);
     }
 
     .legend-founder-ai-welcome {
         width: min(100%, 440px);
-        margin-top: 12px;
-        padding: 0 6px;
+        margin-top: var(--app-mobile-card-pad);
+        padding: 0 var(--legend-mobile-gap);
     }
 
     .legend-founder-ai-welcome-mark {
         width: 64px;
         height: 64px;
-        margin-bottom: 9px;
+        margin-bottom: var(--legend-mobile-gap);
     }
 
     .legend-founder-ai-welcome-mark img {
@@ -1294,8 +1291,8 @@
     .legend-founder-ai-message {
         width: 100%;
         grid-template-columns: 29px minmax(0,1fr);
-        gap: 8px;
-        margin-bottom: 17px;
+        gap: var(--legend-mobile-gap);
+        margin-bottom: var(--app-mobile-block-gap);
     }
 
     .legend-founder-ai-message-mark {
@@ -1314,35 +1311,35 @@
 
     .legend-founder-ai-message.is-user .legend-founder-ai-bubble {
         max-width: 88%;
-        padding: 10px 12px;
-        border-radius: 15px 15px 4px 15px;
+        padding: var(--app-mobile-card-pad);
+        border-radius: 12px 12px 4px 12px;
     }
 
     .legend-founder-ai-message.is-assistant .legend-founder-ai-bubble {
         max-width: 92%;
-        padding: 10px 12px 11px;
-        border-radius: 15px 15px 15px 4px;
+        padding: var(--app-mobile-card-pad);
+        border-radius: 12px 12px 12px 4px;
     }
 
     .legend-founder-ai-status {
-        padding-left: 12px;
-        padding-right: 12px;
+        padding-left: var(--app-mobile-card-pad);
+        padding-right: var(--app-mobile-card-pad);
         font-size: .61rem;
     }
 
     .legend-founder-ai-composer {
-        padding: 6px 6px max(6px, env(safe-area-inset-bottom));
+        padding: var(--legend-mobile-gap) var(--legend-mobile-gap) max(var(--legend-mobile-gap), env(safe-area-inset-bottom));
         background: rgba(255,254,250,.98);
         box-shadow: 0 -12px 30px rgba(10,22,46,.055);
     }
 
     .legend-founder-ai-input-wrap {
-        padding: 4px 4px 4px 9px;
-        border-radius: 12px;
+        padding: 4px 4px 4px var(--app-mobile-card-pad);
+        border-radius: 10px;
     }
 
     .legend-founder-ai-input-wrap textarea {
-        min-height: 36px;
+        min-height: var(--legend-mobile-control-height);
         max-height: min(138px, 24vh);
         font-size: 16px;
         line-height: 1.42;
