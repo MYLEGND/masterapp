@@ -49,6 +49,18 @@
   const closeControl = drawer.querySelector('[data-legend-explore-close]');
   const scrollOwner = 'legend-explore-drawer';
 
+  const isMobile = () => window.innerWidth <= breakpoint;
+
+  const syncResponsiveState = () => {
+    if (closeControl) closeControl.hidden = !isMobile();
+    if (!drawer.classList.contains('open')) {
+      window.LegendModal?.unlockPageScroll?.(scrollOwner);
+      return;
+    }
+    if (isMobile()) window.LegendModal?.lockPageScroll?.(scrollOwner);
+    else window.LegendModal?.unlockPageScroll?.(scrollOwner);
+  };
+
   const setAriaState = isOpen => {
     trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     drawer.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
@@ -60,7 +72,7 @@
     drawer.classList.remove('open');
     overlay.classList.remove('open');
     setAriaState(false);
-    if (window.innerWidth <= breakpoint) window.LegendModal?.unlockPageScroll?.(scrollOwner);
+    window.LegendModal?.unlockPageScroll?.(scrollOwner);
     if (wasOpen && restoreFocus && trigger.isConnected) {
       try { trigger.focus({ preventScroll: true }); } catch { trigger.focus(); }
     }
@@ -71,7 +83,7 @@
     drawer.classList.add('open');
     overlay.classList.add('open');
     setAriaState(true);
-    if (window.innerWidth <= breakpoint) window.LegendModal?.lockPageScroll?.(scrollOwner);
+    syncResponsiveState();
 
     // Desktop can take search focus immediately. On phones, avoid forcing the
     // virtual keyboard over the newly opened sheet.
@@ -109,13 +121,12 @@
     });
   });
 
-  window.addEventListener('resize', () => {
-    if (window.innerWidth > breakpoint) window.LegendModal?.unlockPageScroll?.(scrollOwner);
-  });
+  window.addEventListener('resize', syncResponsiveState, { passive: true });
 
   window.addEventListener('pagehide', () => {
     window.LegendModal?.unlockPageScroll?.(scrollOwner);
   });
 
   closeDrawer();
+  syncResponsiveState();
 })();
