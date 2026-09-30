@@ -601,6 +601,38 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void SiteSource_HidesAndRestoresProtectedFormFieldSignals()
+    {
+        var baseline = CanonicalDocument();
+        var form = baseline.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.form");
+        form.FieldSignals["phone"] =
+        [
+            new WebsiteSignalBinding
+            {
+                Id = "11111111111111111111111111111111",
+                EventName = "ContactInputStarted",
+                ActionKey = "contact_input_started",
+                Trigger = "field_started",
+                DeliveryMode = "analytics",
+                OncePerSession = true
+            }
+        ];
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        Assert.DoesNotContain("fieldSignals", serialized, StringComparison.OrdinalIgnoreCase);
+
+        var parsed = WebsiteSiteSource.Parse(serialized, baseline, BusinessActions());
+        var restored = parsed.Document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.form");
+
+        Assert.True(restored.FieldSignals.TryGetValue("phone", out var bindings));
+        Assert.Single(bindings!);
+        Assert.Equal("ContactInputStarted", bindings![0].EventName);
+        Assert.Equal("field_started", bindings[0].Trigger);
+    }
+
+    [Fact]
     public void SiteSource_UsesDedicatedProtectionExceptionOnlyForProtectedAuthorityChanges()
     {
         var baseline = CanonicalDocument();
