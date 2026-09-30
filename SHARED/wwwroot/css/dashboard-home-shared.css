@@ -387,8 +387,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         #rbShell .rb-hero .hero-actions,
         #mpShell .hero-actions,
         .activation-notice-actions,
-        .savings-illustration-footer,
-        .wa-modal-toggle-group
+        .savings-illustration-footer
     ) {
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -413,8 +412,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         #rbShell .rb-hero .hero-actions,
         #mpShell .hero-actions,
         .activation-notice-actions,
-        .savings-illustration-footer,
-        .wa-modal-toggle-group
+        .savings-illustration-footer
     ) > :is(button, .btn, a, form, .hero-action-group) {
         min-width: 0 !important;
         width: 100% !important;
@@ -464,6 +462,21 @@ html[data-legend-modal-region] body .modal .modal-body {
         min-width: 0 !important;
         width: 100% !important;
         margin: 0 !important;
+    }
+
+    body.legend-app .wa-modal-toggle-group {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        width: 100%;
+        gap: var(--app-mobile-control-gap);
+        padding: var(--legend-mobile-gap);
+        border-radius: 10px;
+    }
+
+    body.legend-app .wa-modal-toggle-group .btn,
+    body.legend-app .wa-modal-note-chip {
+        width: 100%;
+        min-width: 0;
     }
 
     /* Exact structural exceptions stay explicit instead of becoming global rules. */
