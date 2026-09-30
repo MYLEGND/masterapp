@@ -97,6 +97,7 @@
 }
 
 /* ── Proposal & Underwriting quick-list: centered fixed popout ─── */
+@media (min-width: 901px) {
 #rbShell .hp-proposal-menu:not([hidden]),
 #proposalMenu.hp-proposal-menu:not([hidden]),
 #rbShell .proposal-menu:not([hidden]),
@@ -122,6 +123,7 @@
         0 0 40px rgba(199,153,49,.12),
         0 36px 80px rgba(0,0,0,.78) !important;
     padding: 24px !important;
+}
 }
 
 /* Menu head ─────────────────────────────────────────────────────── */
@@ -686,13 +688,16 @@
    ══════════════════════════════════════════════════════════════════ */
 
 /* Overlay */
+@media (min-width: 901px) {
 #uwOverlay {
     background: rgba(5,10,22,.78) !important;
     backdrop-filter: blur(8px) !important;
     padding: 1.5rem 1rem !important;
 }
+}
 
 /* Dialog shell */
+@media (min-width: 901px) {
 #uwDialog {
     background:
         radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%),
@@ -701,6 +706,7 @@
     border-radius: 22px !important;
     color: #f8fafc !important;
     box-shadow: 0 40px 100px rgba(0,0,0,.58) !important;
+}
 }
 
 /* Sticky header */
@@ -730,6 +736,7 @@
 }
 
 /* Close button — matches proposal */
+@media (min-width: 901px) {
 #uwDialog .uw-close {
     border: 2px solid rgba(221,180,87,.78) !important;
     background: linear-gradient(180deg, rgba(15,26,50,.98), rgba(11,21,41,.98)) !important;
@@ -739,12 +746,14 @@
     width: 44px !important;
     height: 44px !important;
 }
+}
 #uwDialog .uw-close:hover {
     border-color: #f2cf7f !important;
     background: linear-gradient(180deg, rgba(20,35,66,.98), rgba(15,29,56,.98)) !important;
 }
 
-/* Keep workstation popouts centered in the visible workspace below the portal header. */
+/* Desktop workspace centering only; mobile geometry is globally canonical. */
+@media (min-width: 901px) {
 #proposalOverlay.hp-overlay,
 .uw-overlay,
 .proposal-overlay,
@@ -780,6 +789,7 @@
 
 #drawer.drawer[data-workstation-drawer="1"]{
     top: var(--legend-modal-safe-center, 50%) !important;
+}
 }
 
 /* Section cards */
