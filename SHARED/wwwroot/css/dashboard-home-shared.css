@@ -2945,8 +2945,6 @@ button.dashboard-tool {
 .home-focus-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(7, 12, 23, 0.72);
-    backdrop-filter: blur(7px);
 }
 
 .home-focus-dialog {
@@ -6126,8 +6124,6 @@ header .legend-global-nav .container-fluid {
 .scripture-modal {
     position: fixed;
     inset: 0;
-    background: rgba(8, 12, 24, 0.72);
-    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -6259,8 +6255,6 @@ header .legend-global-nav .container-fluid {
     display: grid;
     place-items: center;
     padding: clamp(0.8rem, 2vw, 2rem);
-    background: rgba(3, 10, 26, 0.76);
-    backdrop-filter: blur(12px);
     color: var(--dash-text);
     isolation: isolate;
 }
