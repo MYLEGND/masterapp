@@ -100,9 +100,9 @@ public static class WebsiteSiteSource
         var sourcePages = source.Pages ?? [];
         if (sourcePages.Count > 100) throw new ArgumentException("Website page limit exceeded.");
 
-        var allowedActions = ctaCatalog
-            .Select(option => option.Key)
-            .ToHashSet(StringComparer.Ordinal);
+        var actionCatalog = ctaCatalog
+            .GroupBy(option => option.Key, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         var protectedNodes = Flatten(current)
             .ToDictionary(entry => entry.Node.Id, entry => entry, StringComparer.Ordinal);
 
@@ -124,14 +124,14 @@ public static class WebsiteSiteSource
         var pagePaths = new HashSet<string>(StringComparer.Ordinal);
         var nodeIds = new HashSet<string>(StringComparer.Ordinal);
 
-        ProtectSemantics(output.Shell.Header, "@shell/header", protectedNodes, allowedActions, nodeIds);
-        ProtectSemantics(output.Shell.Footer, "@shell/footer", protectedNodes, allowedActions, nodeIds);
+        ProtectSemantics(output.Shell.Header, "@shell/header", protectedNodes, actionCatalog, nodeIds);
+        ProtectSemantics(output.Shell.Footer, "@shell/footer", protectedNodes, actionCatalog, nodeIds);
 
         output.ReusableComponents = ProtectReusableComponents(
             source.ReusableComponents,
             current.ReusableComponents,
             protectedNodes,
-            allowedActions,
+            actionCatalog,
             nodeIds);
 
         foreach (var page in sourcePages)
@@ -152,7 +152,7 @@ public static class WebsiteSiteSource
                 Composition = Clone(page.Composition ?? [])
             };
 
-            ProtectSemantics(next.Composition, path, protectedNodes, allowedActions, nodeIds);
+            ProtectSemantics(next.Composition, path, protectedNodes, actionCatalog, nodeIds);
             output.Pages[path] = next;
         }
 
@@ -391,7 +391,7 @@ public static class WebsiteSiteSource
         IReadOnlyDictionary<string, WebsiteReusableComponentDefinition>? proposed,
         IReadOnlyDictionary<string, WebsiteReusableComponentDefinition>? baseline,
         IReadOnlyDictionary<string, (string PagePath, WebsiteCompositionNode Node)> protectedNodes,
-        IReadOnlySet<string> allowedActions,
+        IReadOnlyDictionary<string, WebsiteCallToActionOption> actionCatalog,
         HashSet<string> allIds)
     {
         var result = new Dictionary<string, WebsiteReusableComponentDefinition>(StringComparer.Ordinal);
@@ -401,7 +401,7 @@ public static class WebsiteSiteSource
             if (id.Length == 0) continue;
             var next = Clone(candidate);
             next.Id = id;
-            ProtectSemantics(next.Composition, "@component/" + id, protectedNodes, allowedActions, allIds);
+            ProtectSemantics(next.Composition, "@component/" + id, protectedNodes, actionCatalog, allIds);
             result[id] = next;
         }
 
@@ -409,7 +409,7 @@ public static class WebsiteSiteSource
         {
             if (result.ContainsKey(key)) continue;
             var copy = Clone(previous);
-            ProtectSemantics(copy.Composition, "@component/" + key, protectedNodes, allowedActions, allIds);
+            ProtectSemantics(copy.Composition, "@component/" + key, protectedNodes, actionCatalog, allIds);
             result[key] = copy;
         }
 
@@ -417,9 +417,9 @@ public static class WebsiteSiteSource
     }
 
     private static bool HasProtectedSemantics(WebsiteCompositionNode node) =>
-        !string.IsNullOrWhiteSpace(node.ActionKey) ||
         !string.IsNullOrWhiteSpace(node.SystemKey) ||
         !string.IsNullOrWhiteSpace(node.SystemBinding) ||
+        string.Equals(node.Type, "form", StringComparison.Ordinal) ||
         (node.Signals?.Count ?? 0) > 0;
 
     private static WebsiteCompositionNode ProjectNode(WebsiteCompositionNode source)
@@ -427,25 +427,24 @@ public static class WebsiteSiteSource
         var copy = Clone(source);
         copy.Signals = [];
 
-        // System/runtime/data authority is not an authoring surface. Parse restores
-        // it by stable node ID from the current canonical baseline. Keep the opaque
-        // ActionKey visible so GPT can understand the selected preset action, but
-        // never expose its server-owned destination, target, data binding, form
-        // endpoint, or system binding through Site Source.
-        var protectedBackendSemantics =
-            !string.IsNullOrWhiteSpace(source.ActionKey) ||
-            !string.IsNullOrWhiteSpace(source.SystemKey) ||
-            !string.IsNullOrWhiteSpace(source.SystemBinding) ||
-            string.Equals(source.Type, "form", StringComparison.Ordinal);
-
+        // Source is the public authoring projection, not a backend wiring dump.
+        // Server-owned authority is restored by stable node ID during parse.
         copy.SystemKey = null;
         copy.SystemBinding = null;
-        if (protectedBackendSemantics)
+
+        // Managed actions expose the approved catalog identity but never the
+        // resolved destination/window behavior. Retargeting is allowed only by
+        // selecting another exact catalog ActionKey.
+        if (!string.IsNullOrWhiteSpace(source.ActionKey))
         {
             copy.Href = null;
             copy.Target = null;
-            copy.DataBinding = null;
         }
+
+        // Data binding is authorable for free content. It is hidden only when
+        // the current node's backend/system/signal contract owns that binding.
+        if (HasProtectedSemantics(source))
+            copy.DataBinding = null;
 
         copy.Children = source.Children.Select(ProjectNode).ToList();
         return copy;
@@ -455,7 +454,7 @@ public static class WebsiteSiteSource
         IEnumerable<WebsiteCompositionNode> nodes,
         string pagePath,
         IReadOnlyDictionary<string, (string PagePath, WebsiteCompositionNode Node)> baseline,
-        IReadOnlySet<string> allowedActions,
+        IReadOnlyDictionary<string, WebsiteCallToActionOption> actionCatalog,
         HashSet<string> allIds)
     {
         foreach (var node in nodes)
@@ -465,10 +464,14 @@ public static class WebsiteSiteSource
 
             if (baseline.TryGetValue(node.Id, out var previous))
             {
-                if (HasProtectedSemantics(previous.Node) &&
+                var protectedBehavior = HasProtectedSemantics(previous.Node);
+                if (protectedBehavior &&
                     !string.Equals(previous.Node.Type, node.Type, StringComparison.Ordinal))
                     throw new WebsiteSiteSourceProtectionException($"Protected component '{node.Id}' cannot change component type while platform-owned behavior is attached.");
 
+                // Signal mappings are managed only through the canonical signal/
+                // analytics controls. Source may redesign the signal-bearing node,
+                // but cannot add, remove, or rewrite its mappings.
                 node.Signals = Clone(previous.Node.Signals);
 
                 if (!string.IsNullOrWhiteSpace(previous.Node.SystemKey))
@@ -477,6 +480,10 @@ public static class WebsiteSiteSource
                         node.SystemKey = previous.Node.SystemKey;
                     else if (!string.Equals(previous.Node.SystemKey, node.SystemKey, StringComparison.Ordinal))
                         throw new WebsiteSiteSourceProtectionException($"Protected component '{node.Id}' cannot change its system authority.");
+                }
+                else if (!string.IsNullOrWhiteSpace(node.SystemKey) && node.Type != "form")
+                {
+                    throw new WebsiteSiteSourceProtectionException($"Free-content component '{node.Id}' cannot invent a platform system authority.");
                 }
 
                 if (!string.IsNullOrWhiteSpace(previous.Node.SystemBinding))
@@ -491,31 +498,19 @@ public static class WebsiteSiteSource
                     throw new WebsiteSiteSourceProtectionException($"Free-content component '{node.Id}' cannot invent a system data authority.");
                 }
 
-                if (!string.IsNullOrWhiteSpace(previous.Node.ActionKey))
+                // A signal/system-owned ActionKey is identity-protected. A normal
+                // managed CTA instance is authorable: it may select another exact
+                // server catalog action or become a safe free link.
+                if (protectedBehavior && !string.IsNullOrWhiteSpace(previous.Node.ActionKey))
                 {
                     if (string.IsNullOrWhiteSpace(node.ActionKey))
                         node.ActionKey = previous.Node.ActionKey;
                     else if (!string.Equals(previous.Node.ActionKey, node.ActionKey, StringComparison.Ordinal))
                         throw new WebsiteSiteSourceProtectionException($"Protected component '{node.Id}' cannot change its canonical action identity.");
-
-                    // A preset CTA's visible label/presentation is editable, but its
-                    // destination and window behavior belong to the server catalog.
-                    // Source/GPT cannot turn a locked action into an arbitrary link.
-                    node.Href = previous.Node.Href;
-                    node.Target = previous.Node.Target;
                 }
 
-                if (!string.IsNullOrWhiteSpace(previous.Node.ActionKey) ||
-                    !string.IsNullOrWhiteSpace(previous.Node.SystemKey) ||
-                    !string.IsNullOrWhiteSpace(previous.Node.SystemBinding) ||
-                    string.Equals(previous.Node.Type, "form", StringComparison.Ordinal))
-                {
-                    // Preserve backend-owned semantic/data wiring while allowing
-                    // copy, style, layout, motion, and other public presentation.
-                    node.Href = previous.Node.Href;
-                    node.Target = previous.Node.Target;
+                if (protectedBehavior)
                     node.DataBinding = Clone(previous.Node.DataBinding);
-                }
 
                 if (node.Type is "image" or "video" &&
                     !node.MediaAssetId.HasValue &&
@@ -527,14 +522,21 @@ public static class WebsiteSiteSource
                 node.Signals = [];
                 if (node.Type != "form" && !string.IsNullOrWhiteSpace(node.SystemKey))
                     throw new WebsiteSiteSourceProtectionException($"Free-content component '{node.Id}' cannot invent a platform system authority.");
+                if (!string.IsNullOrWhiteSpace(node.SystemBinding))
+                    throw new WebsiteSiteSourceProtectionException($"Free-content component '{node.Id}' cannot invent a system data authority.");
                 if (node.Type is "image" or "video" &&
                     !node.MediaAssetId.HasValue &&
                     !string.IsNullOrWhiteSpace(node.MediaUrl))
                     throw new ArgumentException($"New media component '{node.Id}' must use an asset from this website's media library.");
             }
 
-            if (!string.IsNullOrWhiteSpace(node.ActionKey) && !allowedActions.Contains(node.ActionKey))
-                throw new WebsiteSiteSourceProtectionException($"Action '{node.ActionKey}' is not available for this website.");
+            if (!string.IsNullOrWhiteSpace(node.ActionKey))
+            {
+                if (!actionCatalog.TryGetValue(node.ActionKey, out var action))
+                    throw new WebsiteSiteSourceProtectionException($"Action '{node.ActionKey}' is not available for this website.");
+                node.Href = action.Href;
+                node.Target = action.OpenInNewTab ? "_blank" : "_self";
+            }
 
             if (node.Type == "form")
             {
@@ -543,7 +545,7 @@ public static class WebsiteSiteSource
                     throw new WebsiteSiteSourceProtectionException("Website forms must use the canonical inquiry authority.");
             }
 
-            ProtectSemantics(node.Children, pagePath, baseline, allowedActions, allIds);
+            ProtectSemantics(node.Children, pagePath, baseline, actionCatalog, allIds);
         }
     }
 
