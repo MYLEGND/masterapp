@@ -381,8 +381,13 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class*="-action-row "],
         .button-row,
         .btn-row,
-        .d-grid
-    ):has(> :is(button, .btn, a.btn, form)) {
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form)) {
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         align-items: stretch !important;
@@ -402,9 +407,14 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class*="-action-row "],
         .button-row,
         .btn-row,
-        .d-grid
-    ):has(> :is(button, .btn, a.btn, form))
-    > :is(button, .btn, a.btn, form) {
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > :is(button, .btn, a, form) {
         min-width: 0 !important;
         width: 100% !important;
         margin: 0 !important;
@@ -423,8 +433,13 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class*="-action-row "],
         .button-row,
         .btn-row,
-        .d-grid
-    ):has(> :is(button, .btn, a.btn, form))
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
     > form > :is(button, .btn, a.btn) {
         width: 100% !important;
         margin: 0 !important;
@@ -443,8 +458,13 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class*="-action-row "],
         .button-row,
         .btn-row,
-        .d-grid
-    ):has(> :is(button, .btn, a.btn, form))
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
     > :only-child {
         grid-column: auto !important;
         width: auto !important;
@@ -464,8 +484,13 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class*="-action-row "],
         .button-row,
         .btn-row,
-        .d-grid
-    ):has(> :is(button, .btn, a.btn, form))
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
     > :last-child:nth-child(odd):not(:only-child) {
         grid-column: 1 / -1 !important;
     }
@@ -484,8 +509,13 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class$="-action-row"],
         [class*="-action-row "],
         .button-row,
-        .btn-row
-    ):has(> :is(button, .btn, a.btn, form)) {
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form)) {
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         align-items: stretch !important;
@@ -507,9 +537,14 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class$="-action-row"],
         [class*="-action-row "],
         .button-row,
-        .btn-row
-    ):has(> :is(button, .btn, a.btn, form))
-    > :is(button, .btn, a.btn, form) {
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > :is(button, .btn, a, form) {
         min-width: 0 !important;
         width: 100% !important;
         margin: 0 !important;
@@ -529,8 +564,13 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class$="-action-row"],
         [class*="-action-row "],
         .button-row,
-        .btn-row
-    ):has(> :is(button, .btn, a.btn, form))
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
     > form > :is(button, .btn, a.btn) {
         width: 100% !important;
         margin: 0 !important;
@@ -550,8 +590,13 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class$="-action-row"],
         [class*="-action-row "],
         .button-row,
-        .btn-row
-    ):has(> :is(button, .btn, a.btn, form))
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
     > :only-child {
         grid-column: auto !important;
         width: auto !important;
@@ -572,8 +617,13 @@ html[data-legend-modal-region] body .modal .modal-body {
         [class$="-action-row"],
         [class*="-action-row "],
         .button-row,
-        .btn-row
-    ):has(> :is(button, .btn, a.btn, form))
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
     > :last-child:nth-child(odd):not(:only-child) {
         grid-column: 1 / -1 !important;
     }
