@@ -498,7 +498,7 @@
       {scope:'shell.header',nodes:documentState.shell?.header || []},
       {scope:'shell.footer',nodes:documentState.shell?.footer || []}
     ];
-    for(const [id,component] of Object.entries(documentState.reusableComponents || {}))
+    for(const [id,component] of Object.entries(state.reusableComponents || {}))
       roots.push({scope:'component:'+id,nodes:component?.composition || []});
     return roots;
   }
@@ -4288,8 +4288,8 @@
     return copy;
   }
 
-  function siteSourceProjection() {
-    const pages=Object.entries(documentState.pages || {})
+  function siteSourceProjection(state=documentState) {
+    const pages=Object.entries(state.pages || {})
       .sort((a,b)=>(Number(a[1]?.navigation?.order)||0)-(Number(b[1]?.navigation?.order)||0) || a[0].localeCompare(b[0]))
       .map(([path,page])=>({
         path,
@@ -4303,17 +4303,17 @@
     return {
       schema:'legend-site-source/v1',
       version:3,
-      faviconImageDataUrl:documentState.faviconImageDataUrl || null,
-      store:cloneCanonicalValue(documentState.store || {}),
-      breakpoints:cloneCanonicalValue(documentState.breakpoints || []),
-      theme:cloneCanonicalValue(documentState.theme || {}),
+      faviconImageDataUrl:state.faviconImageDataUrl || null,
+      store:cloneCanonicalValue(state.store || {}),
+      breakpoints:cloneCanonicalValue(state.breakpoints || []),
+      theme:cloneCanonicalValue(state.theme || {}),
       shell:{
-        header:(documentState.shell?.header || []).map(sourceProjectionNode),
-        footer:(documentState.shell?.footer || []).map(sourceProjectionNode)
+        header:(state.shell?.header || []).map(sourceProjectionNode),
+        footer:(state.shell?.footer || []).map(sourceProjectionNode)
       },
       pages,
       reusableComponents:Object.fromEntries(
-        Object.entries(documentState.reusableComponents || {}).map(([id,component])=>[
+        Object.entries(state.reusableComponents || {}).map(([id,component])=>[
           id,
           {
             id,
@@ -4323,7 +4323,7 @@
           }
         ])
       ),
-      collections:cloneCanonicalValue(documentState.collections || {})
+      collections:cloneCanonicalValue(state.collections || {})
     };
   }
 
@@ -4426,6 +4426,41 @@
     if(force) clearCanonicalProtectionViolation();
   }
 
+  function selectedSourceDocument(baseDocument, selectedNodeId, replacement) {
+    const projected=siteSourceProjection(baseDocument);
+    let replaced=
+      sourceReplaceNode(projected.shell?.header,selectedNodeId,replacement) ||
+      sourceReplaceNode(projected.shell?.footer,selectedNodeId,replacement);
+    if(!replaced){
+      for(const page of projected.pages){
+        if(sourceReplaceNode(page.composition,selectedNodeId,replacement)){ replaced=true; break; }
+      }
+    }
+    if(!replaced){
+      for(const component of Object.values(projected.reusableComponents || {})){
+        if(sourceReplaceNode(component.composition,selectedNodeId,replacement)){ replaced=true; break; }
+      }
+    }
+    if(!replaced) throw new Error('The selected source node is no longer present in the current canonical draft.');
+    return JSON.stringify(projected,null,2);
+  }
+
+  async function latestCanonicalSourceBaseline() {
+    const url=new URL(`${API_BASE}/api/website-content/manage`);
+    url.searchParams.set('ticket',editorTicket);
+    const response=await fetch(url,{cache:'no-store'});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      if((response.status===401 || response.status===403) &&
+          showEditorAuthorizationRecovery('Website Studio authorization expired while refreshing the canonical draft.'))
+        return null;
+      throw new Error(payload.message || payload.error || `Unable to refresh canonical draft (${response.status}).`);
+    }
+    if(payload.siteKey && payload.siteKey!==SITE_KEY)
+      throw new Error('The refreshed Website Studio draft belongs to a different website scope.');
+    return payload;
+  }
+
   async function applySiteSource() {
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
@@ -4438,73 +4473,124 @@
       renderSourceHighlight();
       return;
     }
-    let sourceText=textarea.value;
+
+    let replacement;
     try{
-      if(scope?.value==='selection'){
-        const id=sourceSelectedNodeId();
-        if(!id) throw new Error('Select a page component before editing Selected Source.');
-        const replacement=JSON.parse(sourceText);
-        if(replacement?.id!==id) throw new Error('Selected Source must keep the stable node ID '+id+'.');
-        const projected=siteSourceProjection();
-        let replaced=
-          sourceReplaceNode(projected.shell?.header,id,replacement) ||
-          sourceReplaceNode(projected.shell?.footer,id,replacement);
-        if(!replaced){
-          for(const page of projected.pages){
-            if(sourceReplaceNode(page.composition,id,replacement)){ replaced=true; break; }
-          }
-        }
-        if(!replaced){
-          for(const component of Object.values(projected.reusableComponents || {})){
-            if(sourceReplaceNode(component.composition,id,replacement)){ replaced=true; break; }
-          }
-        }
-        if(!replaced) throw new Error('The selected source node is no longer present in this canonical draft.');
-        sourceText=JSON.stringify(projected,null,2);
-      }else{
-        JSON.parse(sourceText);
-      }
+      replacement=JSON.parse(textarea.value);
     }catch(error){
-      const message=error?.message || 'Source syntax is invalid.';
+      clearCanonicalProtectionViolation();
+      if(status) status.textContent=error?.message || 'Selected Source syntax is invalid.';
+      return;
+    }
+    if(replacement?.id!==selectedNodeId){
+      const message='Selected Source must keep the stable node ID '+selectedNodeId+'.';
       if(status) status.textContent=message;
       showCanonicalProtectionViolation(message);
       return;
     }
 
+    // Source apply must start from a saved non-source canvas state. This prevents
+    // a revision rebase from silently dropping unrelated local canvas edits.
+    if(dirty){
+      if(status) status.textContent='Saving existing canvas edits before applying Selected Source…';
+      const saved=await save(false);
+      if(!saved || dirty){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent='Save or reconcile the existing canvas edits before applying Selected Source.';
+        return;
+      }
+    }
+
     clearCanonicalProtectionViolation();
-    if(status) status.textContent='Validating protected actions, media, and structure…';
-    try{
+    let baseDocument=documentState;
+    let expectedRevision=revision;
+    let rebased=false;
+
+    for(let attempt=0;attempt<3;attempt++){
+      let sourceText;
+      try{
+        sourceText=selectedSourceDocument(baseDocument,selectedNodeId,replacement);
+      }catch(error){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=error?.message || 'The selected component is no longer available.';
+        return;
+      }
+
+      if(status) status.textContent=rebased
+        ? 'Revalidating this design edit against the latest canonical draft…'
+        : 'Validating protected actions, media, and structure…';
+
       const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText,selectedNodeId})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision,source:sourceText,selectedNodeId})
       });
       const payload=await response.json().catch(()=>({}));
-      if(!response.ok) {
-        if ((response.status===401 || response.status===403) &&
+
+      if(!response.ok){
+        if((response.status===401 || response.status===403) &&
             showEditorAuthorizationRecovery('Website Studio authorization expired while validating this edit.')) return;
+
+        if(response.status===409 && payload.error==='revision_conflict'){
+          const latest=await latestCanonicalSourceBaseline();
+          if(!latest) return;
+          expectedRevision=latest.revision;
+          baseDocument=normalizeDocument(latest.document || {});
+          rebased=true;
+          continue;
+        }
+
         const message=payload.message || payload.error || 'Site Source validation failed.';
         if(payload.canonicalProtectionViolation===true)
           showCanonicalProtectionViolation(message,payload.correction);
         else
-          showCanonicalProtectionViolation(message);
+          clearCanonicalProtectionViolation();
         if(status) status.textContent=message;
         return;
       }
-      clearCanonicalProtectionViolation();
+
+      const proposedDocument=normalizeDocument(payload.proposedDocument || {});
+      const validatedRevision=payload.baseRevision ?? expectedRevision;
+      const saveResponse=await fetch(`${API_BASE}/api/website-content/manage`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ticket:editorTicket,document:proposedDocument,expectedRevision:validatedRevision})
+      });
+      const savePayload=await saveResponse.json().catch(()=>({}));
+
+      if(!saveResponse.ok){
+        if((saveResponse.status===401 || saveResponse.status===403) &&
+            showEditorAuthorizationRecovery('Website Studio authorization expired before this design edit could be saved.')) return;
+
+        if(saveResponse.status===409 && savePayload.error==='revision_conflict'){
+          const latest=await latestCanonicalSourceBaseline();
+          if(!latest) return;
+          expectedRevision=latest.revision;
+          baseDocument=normalizeDocument(latest.document || {});
+          rebased=true;
+          continue;
+        }
+
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=savePayload.message || savePayload.error || `Source save failed (${saveResponse.status}).`;
+        return;
+      }
+
       checkpoint();
-      documentState=normalizeDocument(payload.proposedDocument || {});
+      documentState=normalizeDocument(savePayload.document || proposedDocument);
+      revision=savePayload.revision ?? validatedRevision;
+      namedDrafts=savePayload.drafts || namedDrafts;
+      dirty=false;
       sourceEditorDirty=false;
       applyDocument(documentState);
-      dirty=true;
-      const saved=await save(false);
-      if(!saved || dirty) throw new Error('Validated source could not be saved.');
       refreshSiteSourceEditor(true);
-      if(status) status.textContent='Applied to the canonical draft. Protected wiring unchanged.';
-    }catch(error){
-      const message=error?.message || 'Site Source could not be applied.';
-      if(status) status.textContent=message;
-      showCanonicalProtectionViolation(message);
+      if(status) status.textContent=rebased
+        ? 'Applied after rebasing the design edit onto the latest canonical draft. Protected wiring unchanged.'
+        : 'Applied to the canonical draft. Protected wiring unchanged.';
+      return;
     }
+
+    clearCanonicalProtectionViolation();
+    if(status) status.textContent='The draft changed repeatedly while this edit was being applied. Refresh Selected Source and try again.';
   }
 
   function showPanel(name) {
