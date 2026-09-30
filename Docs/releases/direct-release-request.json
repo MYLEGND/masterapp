@@ -1,12 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged canonical public website design hierarchy, modern Website Studio Selected Source editor, selected-node control binding, and published first-paint/cache repair after PR #328 closed the final release-validation classification gap.",
-  "purpose": "Deploy only the affected public website hosts from the current legend/approved-changes head. Protect includes shared Website Studio/public CMS, Protect public layout, Business published website middleware, selected-node control binding, modern Selected Source typing/indentation, and canonical first-paint gating. LEGEND Website includes the wider professional public design hierarchy, consistent typography/weights, crisp full-perimeter gold-accent borders, tighter vertical rhythm, modern Source editor asset, hidden-first published canonical hydration, and HTML no-store policy. AgentPortal, ClientApp, Parfait, Cloudflare routing, database migrations, CRM, analytics event authority, Meta/OpenAI delivery, payments, and unrelated product systems are excluded.",
-  "requestId": "canonical-public-design-source-cache-final-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the exact-head green canonical AgentPortal + ClientApp mobile navigation, button activation, and modal shielding repair merged in PR #329.",
+  "purpose": "Deploy only AgentPortal and ClientApp. This release contains the shared canonical authenticated navigation and modal authorities, compact primary-first mobile navigation, corrected click activation ordering, Messages/LEGEND AI/profile command presentation, Legend Connect Copy wiring, inert analytics launcher removal, and canonical non-interactive shadowed modal backdrop behavior. Protect, Parfait, LEGEND public website, Cloudflare routing, database migrations, analytics event authority, Meta/OpenAI delivery, payments, and unrelated systems are excluded.",
+  "requestId": "canonical-mobile-controls-modal-shielding-20260930",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect",
-    "masterapp-website"
+    "masterapp-portal",
+    "masterapp-client"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
