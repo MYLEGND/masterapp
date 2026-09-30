@@ -698,7 +698,9 @@
 
   function selectedSignalContext() {
     if (!selected || legacyMigration) return null;
-    const fieldKey=['INPUT','SELECT','TEXTAREA'].includes(selected.tagName) ? formFieldKey(selected) : null;
+    const fieldKey=['INPUT','SELECT','TEXTAREA','BUTTON'].includes(selected.tagName) && selected.dataset?.cmsFieldKey
+      ? formFieldKey(selected)
+      : null;
     const form=fieldKey ? selected.closest?.('form[data-cms-composition-id]') : null;
     const elementId=fieldKey
       ? form?.dataset?.cmsCompositionId
@@ -761,7 +763,7 @@
 
     let refreshed=findEditableElement(context.elementId);
     if(context.fieldKey && refreshed){
-      refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[type="submit"]')]
+      refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
         .find(control=>formFieldKey(control)===context.fieldKey) || null;
     }
     if(refreshed) setSelected(refreshed);
@@ -1969,7 +1971,7 @@
     if(!form || !node) return;
     const presentations=node.fieldPresentations || {};
     const labels=node.fieldLabels || {};
-    const controls=[...form.querySelectorAll('input[name],select[name],textarea[name],button[type="submit"]')];
+    const controls=[...form.querySelectorAll('input[name],select[name],textarea[name],button[data-cms-field-key]')];
     controls.forEach((control,index)=>{
       const key=safeId(control.dataset.cmsFieldKey || control.getAttribute('name') || control.id || (control.matches('button[type="submit"]')?'submit':'field-'+index));
       if(!key) return;
@@ -2135,6 +2137,7 @@
         element.textContent=control.label || (action.type==='submit'?'Submit':'Continue');
         element.dataset.experienceAction=action.type || (control.type==='cta'?'cta':'next');
         element.dataset.experienceControlKey=control.key;
+        element.dataset.cmsFieldKey=control.key;
         if(action.targetStep) element.dataset.experienceTargetStep=action.targetStep;
         if(action.type==='cta' && action.actionKey) element.dataset.websiteActionKey=action.actionKey;
         wrapper.appendChild(element);
@@ -4116,7 +4119,7 @@
         candidates.push({id:node.id,model:node,node:element});
         if(element && node.fieldSignals && typeof node.fieldSignals==='object'){
           for(const [fieldKey,signals] of Object.entries(node.fieldSignals)){
-            const control=[...element.querySelectorAll('input,select,textarea,button[type="submit"]')]
+            const control=[...element.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
               .find(candidate=>formFieldKey(candidate)===fieldKey);
             if(control) candidates.push({
               id:node.id+':field:'+fieldKey,
