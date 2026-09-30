@@ -389,10 +389,10 @@ html[data-legend-modal-region] body .modal .modal-body {
         .activation-notice-actions,
         .savings-illustration-footer
     ) {
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        align-items: stretch !important;
-        gap: var(--legend-mobile-gap) !important;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: stretch;
+        gap: var(--legend-mobile-gap);
         min-width: 0;
     }
 
@@ -414,9 +414,9 @@ html[data-legend-modal-region] body .modal .modal-body {
         .activation-notice-actions,
         .savings-illustration-footer
     ) > :is(button, .btn, a, form, .hero-action-group) {
-        min-width: 0 !important;
-        width: 100% !important;
-        margin: 0 !important;
+        min-width: 0;
+        width: 100%;
+        margin: 0;
     }
 
     body.legend-app :is(
@@ -433,8 +433,8 @@ html[data-legend-modal-region] body .modal .modal-body {
         .activation-notice-actions,
         .savings-illustration-footer
     ) > form > :is(button, .btn, a.btn) {
-        width: 100% !important;
-        margin: 0 !important;
+        width: 100%;
+        margin: 0;
     }
 
     body.legend-app :is(
@@ -442,9 +442,9 @@ html[data-legend-modal-region] body .modal .modal-body {
         .subscription-activation-actions,
         .preview-actions
     ) > :only-child {
-        grid-column: auto !important;
-        width: auto !important;
-        justify-self: start !important;
+        grid-column: auto;
+        width: auto;
+        justify-self: start;
     }
 
     body.legend-app :is(
@@ -452,16 +452,16 @@ html[data-legend-modal-region] body .modal .modal-body {
         #mpShell .hero-actions
     ) > .hero-action-group:last-child:nth-child(odd):not(:only-child),
     body.legend-app .savings-illustration-footer > .savings-illustration-progress {
-        grid-column: 1 / -1 !important;
+        grid-column: 1 / -1;
     }
 
     body.legend-app :is(
         #rbShell .rb-hero .hero-actions,
         #mpShell .hero-actions
     ) > .hero-action-group :is(button, .btn, a, select.btn) {
-        min-width: 0 !important;
-        width: 100% !important;
-        margin: 0 !important;
+        min-width: 0;
+        width: 100%;
+        margin: 0;
     }
 
     body.legend-app .wa-modal-toggle-group {
