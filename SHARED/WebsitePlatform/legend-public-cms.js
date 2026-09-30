@@ -589,6 +589,11 @@
 
   function editorSelectionTarget(node) {
     if (!node?.closest) return null;
+    const locked=node.closest('[data-cms-locked="true"]');
+    if(locked){
+      const parent=locked.parentElement?.closest?.('[data-cms-editable="true"]');
+      return parent instanceof HTMLElement ? parent : null;
+    }
     const entity = node.closest('[data-business-name][data-cms-editable="true"],[data-business-field][data-cms-editable="true"]');
     if (entity instanceof HTMLElement) return entity;
     const anchor = node.closest('a[data-cms-editable="true"]');
@@ -1702,7 +1707,7 @@
         el.id='primary-nav';
         el.classList.add('nav');
         el.setAttribute('data-public-nav','');
-        el.dataset.cmsLocked='true';
+        el.dataset.cmsBehaviorLocked='true';
       }
       if (node.systemBinding === 'business_name') el.setAttribute('data-business-name','');
       else if (String(node.systemBinding || '').startsWith('business_field:'))
@@ -3909,7 +3914,7 @@
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const immutableShell = isSharedShellElement(selected);
-      const protectedSemantic = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length > 0) || selected.tagName === 'FORM';
+      const protectedSemantic = !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length > 0) || selected.tagName === 'FORM';
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
@@ -3963,7 +3968,7 @@
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) {
       hidden.checked = ov.hidden === true || selected.hidden;
-      hidden.disabled = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || selected.tagName === 'FORM';
+      hidden.disabled = !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length>0) || selected.tagName === 'FORM';
     }
     if (targetInput) targetInput.disabled = !!ov.actionKey;
   }
@@ -4100,7 +4105,7 @@
     const entry=compositionEntry(selected.dataset.cmsCompositionId);
     const current=entry?.node;
     if(!current) return;
-    if(current.actionKey || current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length > 0) || current.type==='form'){
+    if(current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length > 0) || current.type==='form'){
       const message='This component has protected platform wiring and cannot be deleted or replaced.';
       showCanonicalProtectionViolation(message);
       alert(message+' '+canonicalProtectedEditCorrection());
@@ -4144,6 +4149,8 @@
       const changedDuringSave = JSON.stringify(documentState) !== submitted;
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
       revision = payload.revision ?? revision;
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
       namedDrafts = payload.drafts || namedDrafts;
       dirty = changedDuringSave;
       saved = true;
@@ -5347,14 +5354,14 @@
     const selectedOption = byKey || byHref || null;
     const hasCustomHref = currentHref && currentHref !== '#';
     select.value = selectedOption?.choiceKey || (hasCustomHref ? 'custom' : '');
-    const lockedManaged = !!key && !!byKey;
+    const lockedManaged = !!key && !!byKey && (!!model?.systemKey || !!model?.systemBinding || (Array.isArray(model?.signals) && model.signals.length>0));
     select.disabled = lockedManaged;
     if (custom) custom.hidden = lockedManaged || select.value !== 'custom';
     if (wiring) {
       wiring.textContent = lockedManaged
-        ? `Protected wiring: ${selectedOption.defaultText || selectedOption.label || key}. The visible label, style, and position remain editable; the canonical action identity cannot change.`
+        ? `Protected wiring: ${selectedOption.defaultText || selectedOption.label || key}. This system/signal-bound action identity cannot change; presentation remains editable.`
         : selectedOption?.managed
-        ? `Automatic wiring: Analytics ${selectedOption.analyticsEventName || 'cta_click'}. Every phrase in this group uses the same destination and event contract.`
+        ? `Managed action: choose any approved catalog action for this CTA instance. Destination and analytics resolve canonically from the selected action.`
         : selectedOption
           ? 'Navigation only. This links to an existing page or section and does not create a second CTA wiring contract.'
           : select.value === 'custom'
@@ -5654,15 +5661,18 @@
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
       const ov = selectedWebsiteModel(); if (!ov) return;
-      if (ov.actionKey) { syncEditorControls(); return; }
+      const actionIdentityLocked=!!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length>0);
+      if(actionIdentityLocked && ov.actionKey){ syncEditorControls(); return; }
       checkpoint();
       const option = availableCtaOptions().find(candidate => candidate.choiceKey === event.target.value);
       if (!option) {
-        if (event.target.value !== 'custom' && ov.actionKey) { syncEditorControls(); return; }
-        if (event.target.value === 'custom') { delete ov.actionKey; delete selected.dataset.websiteActionKey; }
         if (event.target.value === 'custom') {
+          delete ov.actionKey;
+          delete selected.dataset.websiteActionKey;
           document.getElementById('legend-cms-custom-link').hidden = false;
         } else {
+          delete ov.actionKey;
+          delete selected.dataset.websiteActionKey;
           ov.href = '';
           ov.target = '_self';
           document.getElementById('legend-cms-custom-link').hidden = true;
@@ -5670,8 +5680,13 @@
         applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
         return;
       }
-      if (!option.managed && ov.actionKey) { syncEditorControls(); return; }
-      if (option.managed) ov.actionKey = option.actionKey;
+      if (option.managed) {
+        ov.actionKey = option.actionKey;
+        selected.dataset.websiteActionKey=option.actionKey;
+      } else {
+        delete ov.actionKey;
+        delete selected.dataset.websiteActionKey;
+      }
       ov.href = option.href; ov.target = option.openInNewTab ? '_blank' : '_self';
       if (selected.dataset.cmsCompositionId) {
         ov.text = option.defaultText || option.label;
@@ -6131,7 +6146,7 @@
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected || isSharedShellElement(selected)) return;
       const current=selectedWebsiteModel(false);
-      if (current && (current.actionKey || current.systemKey || current.systemBinding || selected.tagName === 'FORM')) return;
+      if (current && (current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length>0) || selected.tagName === 'FORM')) return;
       const serviceCard=businessServiceCardFor(selected);
       if(serviceCard?.dataset?.cmsCompositionId) setSelected(serviceCard);
       removeSelected();
