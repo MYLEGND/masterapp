@@ -4352,7 +4352,7 @@
       prepareDom();
       applyDocument(payload.document || {});
       applyRuntimeActionContracts();
-      if (window.__legendTrackingInitialized === true)
+      if (SITE_KEY === 'protect' && window.__legendTrackingInitialized === true)
         installPublishedSignalBindings();
       preservePreviewNavigation();
       document.documentElement.hidden = false;
