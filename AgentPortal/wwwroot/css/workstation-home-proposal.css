@@ -91,7 +91,7 @@
         position:sticky;
         top:0;
         z-index:5;
-        margin:0 0 .45rem;
+        margin:0 0 var(--app-mobile-control-gap);
         backdrop-filter:blur(4px);
     }
 }
@@ -638,13 +638,13 @@
     .ws-client-picker-toolbar,
     .ws-client-picker-status,
     .ws-client-picker-results {
-        padding-left: 10px;
-        padding-right: 10px;
+        padding-left: var(--app-mobile-card-pad);
+        padding-right: var(--app-mobile-card-pad);
     }
 
     .ws-client-picker-results {
         grid-template-columns: 1fr;
-        padding-bottom: 18px;
+        padding-bottom: var(--app-mobile-card-pad);
     }
 }
 
@@ -998,6 +998,6 @@
         position: sticky !important;
         top: 0 !important;
         z-index: 5 !important;
-        margin: 0 0 .45rem !important;
+        margin: 0 0 var(--app-mobile-control-gap) !important;
     }
 }
