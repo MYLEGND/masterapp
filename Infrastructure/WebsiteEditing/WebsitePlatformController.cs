@@ -152,6 +152,14 @@ public class WebsitePlatformController : ControllerBase
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
             : await new WebsiteCollectionProjectionService(_db).LoadAsync(document, business.Id, cancellationToken);
         var publicStoreScope = await PublishedStoreScopeAsync(ownerKey, siteKey, document, cancellationToken);
+        var publicActions = await BuildCallToActionCatalogAsync(
+            siteKey,
+            ownerKey,
+            agentSlug,
+            business?.Id,
+            publicFacts,
+            cancellationToken,
+            document);
         return Ok(new
         {
             siteKey,
@@ -160,6 +168,7 @@ public class WebsitePlatformController : ControllerBase
             facts = publicFacts,
             collections = publicCollections.Values,
             store = await StorePayloadAsync(siteKey, document, publicStoreScope, ticket: null, cancellationToken),
+            ctaCatalog = new { options = publicActions },
             document,
             legacyMigration = document.LegacyMigration
         });
