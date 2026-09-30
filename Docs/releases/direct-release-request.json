@@ -1,12 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to release the validated canonical authenticated-mobile full-width repair from PR #308 after exact-head architecture and Step 5 validation passed, and after the direct-release PR resolution repair in PR #310 was merged.",
-  "purpose": "Deploy the validated canonical authenticated-mobile full-width repair to AgentPortal and ClientApp only. This removes mobile horizontal clipping, makes every authenticated page root and canonical page shell consume the available phone width, preserves local horizontal scrolling for genuinely wide legacy or desktop structures, and retains the shared canonical mobile action/layout authority. No Protect, Parfait, public Website, Cloudflare routing, backend/business logic, database, analytics, advertising, CRM, authentication, payment, or unrelated application deployment is authorized.",
-  "requestId": "agent-client-mobile-full-width-release-20260929",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to publish all remaining merged-but-unpublished product changes after successful AgentPortal + ClientApp mobile release #295 and cancellation of the redundant successor release.",
+  "purpose": "One consolidated catch-up release from the current legend/approved-changes head for every remaining merged unpublished product change after the successful mobile deployment. The remaining tree delta is the validated PR #302 canonical Website Studio source-authority and shared WebsiteEditing/CMS work, plus the merged PR #310 release-control repair. Publish the affected product hosts Protect and LEGEND Website together in this single run. AgentPortal and ClientApp are already live from release #295 and must not be redundantly redeployed; Parfait has no remaining product delta in this catch-up scope.",
+  "requestId": "consolidated-unpublished-catchup-20260929",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client"
+    "masterapp-protect",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
