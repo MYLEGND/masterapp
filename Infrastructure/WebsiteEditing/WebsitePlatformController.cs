@@ -1880,7 +1880,7 @@ public class WebsitePlatformController : ControllerBase
         if (found is null) return false;
 
         if (normalizedFieldKey is not null &&
-            found.Type != "form" &&
+            found.Type is not ("form" or "experience") &&
             !WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(found.SystemKey))
             return false;
 
