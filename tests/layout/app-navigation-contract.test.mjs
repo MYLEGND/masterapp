@@ -173,7 +173,8 @@ test('mobile Quick Find uses compact two-column rows and puts primary app destin
 
   assert.match(mobile,/\.explore-header \{[\s\S]*order:\s*-40/);
   assert.match(mobile,/\.explore-search \{[\s\S]*order:\s*-39/);
-  assert.match(mobile,/\.navbar-left \.nav-link \{[\s\S]*order:\s*-30/);
+  assert.match(mobile,/\.navbar-left \.nav-link \{[\s\S]*order:\s*-60/);
+  assert.match(mobile,/\.navbar-right > \* \{[\s\S]*order:\s*-59/);
   assert.match(mobile,/\.explore-item \{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
   assert.match(mobile,/\.explore-item small \{[\s\S]*font-size:\s*\.56rem/);
 });
