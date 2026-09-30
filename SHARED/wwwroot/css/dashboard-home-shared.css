@@ -6208,18 +6208,6 @@ header .legend-global-nav .container-fluid {
     .messaging-journey-panel {
         overflow-y: auto;
     }
-
-    .messaging-journey-content {
-        grid-template-columns: 1fr;
-        overflow: visible;
-        scrollbar-width: none;
-}
-
-    .messaging-journey-profile-form,
-    .messaging-journey-results {
-        overflow: visible;
-        padding-right: 0;
-    }
 }
 
 @media (max-width: 680px) {
@@ -6972,12 +6960,14 @@ header .legend-global-nav .container-fluid {
     .messaging-journey-content {
         grid-template-columns: 1fr;
         overflow-y: auto;
+        scrollbar-width: none;
         -ms-overflow-style: none;
     }
 
     .messaging-journey-profile-form,
     .messaging-journey-results {
         overflow: visible;
+        padding-right: 0;
     }
 }
 
