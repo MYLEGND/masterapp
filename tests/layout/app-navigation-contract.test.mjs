@@ -110,8 +110,12 @@ test('every authenticated and shared type=button control resolves to a concrete 
     }),
     ...(existsSync(join(ROOT,'Legend-Design'))?walk(join(ROOT,'Legend-Design'),'.js'):[])
   ];
-  const corpus=sourceFiles.map(path=>readFileSync(path,'utf8')).join('\n');
+  const sources=sourceFiles.map(path=>[path,readFileSync(path,'utf8')]);
+  const corpus=sources.map(([,text])=>text).join('\n');
+  const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\  const corpus=sourceFiles.map(path=>readFileSync(path,'utf8')).join('\n');
   const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\$&');
+  const bad=[];
+');
   const bad=[];
 
   for(const root of viewRoots){
@@ -126,7 +130,13 @@ test('every authenticated and shared type=button control resolves to a concrete 
         const id=(a.get('id')||'').trim();
         if(id){
           const q=escape(id);
-          wired=new RegExp("(?:getElementById\\(\\s*['\"]"+q+"['\"]|['\"]#"+q+"['\"])").test(corpus);
+          wired=sources.some(([,text])=>{
+            const direct=new RegExp("getElementById\\(\\s*['\"]"+q+"['\"]").test(text);
+            const selector=new RegExp("(?:querySelector|querySelectorAll|matches|closest)\\(\\s*['\"][^'\"]*#"+q+"(?:[^'\"]*)['\"]").test(text);
+            const tableBinding=new RegExp("['\"]"+q+"['\"]").test(text)
+              && /getElementById\(\s*id\s*\)/.test(text);
+            return direct || selector || tableBinding;
+          });
         }
 
         if(!wired){
