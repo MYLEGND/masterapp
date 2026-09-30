@@ -6459,9 +6459,6 @@ details.section{
     }
 
     @media (max-width: 760px){
-        #rbShell .prosper-body .side-actions{
-            grid-template-columns: 1fr;
-        }
     }
 
     #rbShell mark.hit{
