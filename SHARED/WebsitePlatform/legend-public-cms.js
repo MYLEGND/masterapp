@@ -517,7 +517,7 @@
       {scope:'shell.header',nodes:documentState.shell?.header || []},
       {scope:'shell.footer',nodes:documentState.shell?.footer || []}
     ];
-    for(const [id,component] of Object.entries(state.reusableComponents || {}))
+    for(const [id,component] of Object.entries(documentState.reusableComponents || {}))
       roots.push({scope:'component:'+id,nodes:component?.composition || []});
     return roots;
   }
