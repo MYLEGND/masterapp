@@ -3513,7 +3513,13 @@
   }
 
   function unavailable(error) {
-    if (SITE_KEY === 'business') { document.body.replaceChildren(); const main = document.createElement('main'); main.textContent = error.message || 'This website is unavailable.'; document.body.appendChild(main); document.documentElement.hidden = false; }
+    if (SITE_KEY === 'business') {
+      document.body.replaceChildren();
+      const main = document.createElement('main');
+      main.textContent = error.message || 'This website is unavailable.';
+      document.body.appendChild(main);
+    }
+    document.documentElement.hidden = false;
   }
 
   let publicRuntimeStarted = false;
@@ -3842,7 +3848,11 @@
     if (BUSINESS_ID) url.searchParams.set('businessId', BUSINESS_ID);
     try {
       const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) { if (SITE_KEY === 'business') throw new Error('This business website is unavailable.'); return; }
+      if (!response.ok) {
+        if (SITE_KEY === 'business') throw new Error('This business website is unavailable.');
+        document.documentElement.hidden = false;
+        return;
+      }
       const payload = await response.json();
       storeContext = payload.store || null;
       legacyMigration = payload.legacyMigration || null;
@@ -4678,6 +4688,81 @@
     });
     highlight.scrollTop=textarea.scrollTop;
     highlight.scrollLeft=textarea.scrollLeft;
+  }
+
+  function sourceEditorDispatchInput(textarea) {
+    textarea.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+
+  function sourceEditorIndentSelection(textarea, outdent=false) {
+    const value=textarea.value;
+    const start=textarea.selectionStart ?? 0;
+    const end=textarea.selectionEnd ?? start;
+    const lineStart=value.lastIndexOf('\n',Math.max(0,start-1))+1;
+    const nextBreak=value.indexOf('\n',end);
+    const lineEnd=nextBreak<0 ? value.length : nextBreak;
+    const block=value.slice(lineStart,lineEnd);
+    const lines=block.split('\n');
+    const transformed=lines.map(line=>{
+      if(!outdent) return '  '+line;
+      if(line.startsWith('  ')) return line.slice(2);
+      if(line.startsWith('\t') || line.startsWith(' ')) return line.slice(1);
+      return line;
+    }).join('\n');
+    textarea.setRangeText(transformed,lineStart,lineEnd,'select');
+    const removedStart=outdent ? Math.min(2,(block.match(/^\s{1,2}/)?.[0] || '').length) : 0;
+    const delta=transformed.length-block.length;
+    textarea.setSelectionRange(
+      Math.max(lineStart,start+(outdent?-removedStart:2)),
+      Math.max(lineStart,end+delta));
+    sourceEditorDispatchInput(textarea);
+  }
+
+  function handleSourceEditorKeydown(event) {
+    const textarea=event.currentTarget;
+    if(!(textarea instanceof HTMLTextAreaElement) || textarea.readOnly) return;
+
+    if(event.key==='Tab'){
+      event.preventDefault();
+      const start=textarea.selectionStart ?? 0;
+      const end=textarea.selectionEnd ?? start;
+      const selected=textarea.value.slice(start,end);
+      if(start!==end && selected.includes('\n')){
+        sourceEditorIndentSelection(textarea,event.shiftKey);
+        return;
+      }
+
+      if(event.shiftKey){
+        const lineStart=textarea.value.lastIndexOf('\n',Math.max(0,start-1))+1;
+        const before=textarea.value.slice(lineStart,start);
+        const removable=/^(?:  |\t| )/.exec(before)?.[0] || '';
+        if(removable){
+          textarea.setRangeText('',lineStart,lineStart+removable.length,'preserve');
+          textarea.setSelectionRange(
+            Math.max(lineStart,start-removable.length),
+            Math.max(lineStart,end-removable.length));
+          sourceEditorDispatchInput(textarea);
+        }
+        return;
+      }
+
+      textarea.setRangeText('  ',start,end,'end');
+      sourceEditorDispatchInput(textarea);
+      return;
+    }
+
+    if(event.key==='Enter'){
+      event.preventDefault();
+      const start=textarea.selectionStart ?? 0;
+      const end=textarea.selectionEnd ?? start;
+      const value=textarea.value;
+      const lineStart=value.lastIndexOf('\n',Math.max(0,start-1))+1;
+      const before=value.slice(lineStart,start);
+      const indent=/^\s*/.exec(before)?.[0] || '';
+      const extra=/[\{\[]\s*$/.test(before) ? '  ' : '';
+      textarea.setRangeText('\n'+indent+extra,start,end,'end');
+      sourceEditorDispatchInput(textarea);
+    }
   }
 
   function syncSourceEditingMode() {
@@ -5778,7 +5863,7 @@
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
-    sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only inspection of the entire canonical v3 graph. Only Selected Source is editable. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="structure">Authorable structure</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
+    sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only, color-guided inspection of the canonical v3 graph. Selected Source is the normal editable code surface: click, select, type, paste, use Tab / Shift+Tab to indent or outdent, and Enter to keep indentation. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="structure">Authorable structure</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="soft" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
     tools.appendChild(sourceView);
 
     const publishView=document.createElement('section'); publishView.dataset.cmsView='publish'; publishView.hidden=true;
@@ -5837,6 +5922,7 @@
     document.getElementById('legend-cms-agent-publish')?.addEventListener('click',()=>showPanel('publish'));
 
     const sourceTextarea=document.getElementById('legend-cms-site-source');
+    sourceTextarea?.addEventListener('keydown',handleSourceEditorKeydown);
     sourceTextarea?.addEventListener('input',()=>{
       if(sourceTextarea.readOnly){
         sourceEditorDirty=false;
@@ -6006,6 +6092,8 @@
       const style=editingStyle(ov,true);
       if(input.value==='') delete style[key]; else style[key]=value;
       applyStyle(selected,effectiveStyle(ov));
+      updateDirectCanvasUi();
+      syncSelectedSourcePresentationFromCanvas();
       syncEditorControls();
       markDirty();
     }));
@@ -6139,7 +6227,7 @@
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}.legend-cms-protection-warning{white-space:pre-wrap;margin:10px 0;padding:12px 14px;border:1px solid #ff6b6b;border-left:5px solid #ff4d4d;border-radius:10px;background:#35191c;color:#ff8f8f!important;font-weight:800;line-height:1.45;overflow-wrap:anywhere}
       .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}
       .legend-cms-source-key{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.legend-cms-source-key span{padding:4px 7px;border:1px solid currentColor;border-radius:999px;background:#07162b;font:800 9px/1.2 Inter,system-ui,sans-serif;letter-spacing:.025em}.legend-cms-source-key [data-tone="content"],.legend-cms-source-content{color:#78e2a7}.legend-cms-source-key [data-tone="style"],.legend-cms-source-style{color:#7fb5ff}.legend-cms-source-key [data-tone="color"],.legend-cms-source-color{color:#ff8fa8}.legend-cms-source-key [data-tone="size"],.legend-cms-source-size{color:#ffb86b}.legend-cms-source-key [data-tone="layout"],.legend-cms-source-layout{color:#6fdce8}.legend-cms-source-key [data-tone="media"],.legend-cms-source-media{color:#c4a7ff}.legend-cms-source-key [data-tone="behavior"],.legend-cms-source-behavior{color:#d9a6ff}.legend-cms-source-key [data-tone="structure"],.legend-cms-source-structure{color:#9bd67d}.legend-cms-source-key [data-tone="protected"],.legend-cms-source-protected{color:#f0cf78}.legend-cms-source-default{color:#dce6f4}
-      .legend-cms-source-editor{position:relative;width:100%;min-height:52vh;border:1px solid #3f5271;border-radius:10px;background:#07162b;overflow:hidden}.legend-cms-source-highlight,.legend-cms-site-source{width:100%;min-height:52vh;margin:0;padding:14px;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-source-highlight{position:absolute;inset:0;pointer-events:none;background:#07162b}.legend-cms-source-highlight span{display:inline}.legend-cms-site-source{position:relative;z-index:1;resize:vertical;border:0!important;border-radius:0!important;background:transparent!important;color:transparent!important;-webkit-text-fill-color:transparent;caret-color:#fff}.legend-cms-site-source::selection{background:#ffffff2e}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:-2px}.legend-cms-site-source[readonly]{cursor:default;caret-color:transparent}.legend-cms-source-editor:has(.legend-cms-site-source[readonly]){border-color:#344766}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])){border-color:#d4ad45}
+      .legend-cms-source-editor{position:relative;width:100%;min-height:52vh;border:1px solid #3f5271;border-radius:10px;background:#07162b;overflow:hidden}.legend-cms-source-highlight,.legend-cms-site-source{width:100%;min-height:52vh;margin:0;padding:14px;font:500 13px/1.6 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre-wrap;overflow:auto;overflow-wrap:anywhere;word-break:normal}.legend-cms-source-highlight{position:absolute;inset:0;pointer-events:none;background:#07162b}.legend-cms-source-highlight span{display:inline}.legend-cms-site-source{position:relative;z-index:1;resize:vertical;border:0!important;border-radius:0!important;background:#07162b!important;color:#dce6f4!important;-webkit-text-fill-color:currentColor;caret-color:#fff;line-height:1.6}.legend-cms-site-source::selection{background:#4f77aa66}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:-2px}.legend-cms-site-source[readonly]{cursor:default;caret-color:transparent;background:transparent!important;color:transparent!important;-webkit-text-fill-color:transparent}.legend-cms-source-editor:has(.legend-cms-site-source[readonly]){border-color:#344766}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])){border-color:#d4ad45;box-shadow:inset 0 0 0 1px color-mix(in srgb,#d4ad45 22%,transparent)}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])) .legend-cms-source-highlight{display:none}
       [data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}

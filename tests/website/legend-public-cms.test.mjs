@@ -328,7 +328,7 @@ test('v3 canonical composition renders natively and canvas/source share the same
   }finally{f.close();}
 });
 
-test('Master Source is read only while Selected Source is editable and semantically color guided',async()=>{
+test('Master Source stays color guided while Selected Source is a normal editable code surface',async()=>{
   const doc=canonicalDocument();
   const heading=canonicalNodeById(doc,'home.h1.node.1');
   heading.style={fontFamily:'Georgia',widthPercent:64,color:'#123456'};
@@ -362,6 +362,41 @@ test('Master Source is read only while Selected Source is editable and semantica
     assert.match(source,/\.legend-cms-source-size\{color:#ffb86b\}/);
     assert.match(source,/\.legend-cms-source-structure\{color:#9bd67d\}/);
   }finally{f.close();}
+});
+
+test('Selected Source supports modern typing, indentation, wrapping, and visible caret text',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const input=f.w.document.querySelector('#legend-cms-site-source');
+    assert.equal(input.readOnly,false);
+    assert.equal(input.getAttribute('spellcheck'),'false');
+    assert.equal(input.getAttribute('autocapitalize'),'off');
+    assert.equal(input.getAttribute('autocomplete'),'off');
+    assert.equal(input.getAttribute('autocorrect'),'off');
+    assert.equal(input.getAttribute('wrap'),'soft');
+
+    input.value='{"style": {\n"fontWeight": 800\n}}';
+    input.setSelectionRange(12,12);
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
+    assert.match(input.value,/\n  "fontWeight"/);
+
+    const open=input.value.indexOf('{',1)+1;
+    input.setSelectionRange(open,open);
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+    assert.ok(input.value.includes('\n  '));
+    assert.equal(f.w.document.querySelector('#legend-cms-source-highlight').hidden,false);
+  }finally{f.close();}
+});
+
+test('Selected Source CSS uses the textarea as the visible editable surface and hides the overlay only while editing',()=>{
+  assert.match(source,/\.legend-cms-site-source\{[^}]*background:#07162b!important[^}]*color:#dce6f4!important[^}]*-webkit-text-fill-color:currentColor/);
+  assert.match(source,/\.legend-cms-site-source\[readonly\]\{[^}]*color:transparent!important[^}]*-webkit-text-fill-color:transparent/);
+  assert.match(source,/:has\(\.legend-cms-site-source:not\(\[readonly\]\)\) \.legend-cms-source-highlight\{display:none\}/);
+  assert.match(source,/white-space:pre-wrap/);
+  assert.match(source,/sourceTextarea\?\.addEventListener\('keydown',handleSourceEditorKeydown\)/);
 });
 
 test('v3 selected source applies only validated server projection then uses normal save authority',async()=>{
@@ -641,9 +676,10 @@ test('public startup styling has one responsive authority and one palette author
   assert.equal((publicCss.match(/@media\(max-width:650px\)/g)||[]).length,1);
   assert.doesNotMatch(publicCss,/:root\[data-legend-site="business"\]/);
   assert.match(foundationCss,/:root\[data-legend-site="business"\]\{/);
-  assert.match(publicCss,/\.card::before\{[^}]*background:linear-gradient\(90deg,var\(--gold\)/);
+  assert.match(publicCss,/\.card::before\{content:none\}/);
   assert.match(publicCss,/\.card \.icon:empty,\.contact-card \.icon:empty\{display:none\}/);
-  assert.match(publicCss,/\.section\{padding:clamp\(64px,7\.5vw,104px\)/);
+  assert.match(publicCss,/\.section\{padding:var\(--public-section-y\) var\(--public-page-pad\)\}/);
+  assert.match(publicCss,/--public-page-pad:var\(--web-public-page-pad,var\(--page-pad\)\)/);
   assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.section\{padding-top:52px;padding-bottom:52px\}/);
   assert.doesNotMatch(source,/--accent:#b8955a/);
   assert.match(source,/const defaultCodeBlock = '[\s\S]*--navy-deep:#081a3a;--gold:#d4ad45/);
@@ -2360,6 +2396,53 @@ test('duplicate canonical link has independent stable identity and history resto
   } finally { f.close(); }
 });
 
+test('public publication renders without stale-template flash and HTML is never cached',()=>{
+  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\\$\{siteKey\}" hidden>/);
+  assert.match(protectLayoutSource,/<html lang="en" hidden>/);
+  assert.match(protectLayoutSource,/<noscript><style>html\[hidden\]\{display:block!important\}<\/style><\/noscript>/);
+  assert.match(source,/function unavailable\(error\) \{[\s\S]*document\.documentElement\.hidden = false;/);
+  assert.match(source,/fetch\(url, \{ cache: 'no-store' \}\)/);
+  assert.match(businessMiddlewareSource,/CacheControl = "no-store,no-cache,must-revalidate,max-age=0"/);
+  assert.match(legendWebConfigSource,/name="Do not cache published HTML"/);
+  assert.match(legendWebConfigSource,/RESPONSE_Cache_Control/);
+  assert.match(legendWebConfigSource,/no-store, no-cache, must-revalidate, max-age=0/);
+});
+
+test('canonical public design authority uses wider canvas, tighter rhythm, and crisp perimeter accents',()=>{
+  assert.match(foundationCss,/--web-public-page-pad:clamp\(24px,4\.25vw,72px\)/);
+  assert.match(foundationCss,/--web-public-section-y:clamp\(52px,6vw,88px\)/);
+  assert.match(foundationCss,/--web-public-body-weight:500/);
+  assert.match(foundationCss,/--web-public-heading-weight:800/);
+  assert.match(publicCss,/\.section\{padding:var\(--public-section-y\) var\(--public-page-pad\)\}/);
+  assert.match(publicCss,/\.card-grid\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,280px\),1fr\)\)/);
+  assert.match(publicCss,/border:1px solid var\(--public-card-border\)/);
+  assert.match(publicCss,/\.card::before\{content:none\}/);
+  assert.doesNotMatch(publicCss,/height:2px;background:linear-gradient\(90deg,var\(--gold\)/);
+});
+
+test('Website Studio style controls mutate only the selected canonical node and survive save', async () => {
+  const f=await domFixture();
+  try {
+    f.click('main h1');
+    f.input('[data-style-key="fontFamily"]','Georgia');
+    f.input('[data-style-key="fontSize"]','54');
+    f.input('[data-style-key="fontWeight"]','800');
+    f.click('main h2');
+    f.input('[data-style-key="fontFamily"]','Inter');
+    f.input('[data-style-key="fontSize"]','36');
+    f.input('[data-style-key="fontWeight"]','600');
+    const saved=await f.save();
+    const first=canonicalNodeById(saved,'home.h1.node.1').style;
+    const second=canonicalNodeById(saved,'home.h2.node.1').style;
+    assert.equal(first.fontFamily,'Georgia');
+    assert.equal(first.fontSize,54);
+    assert.equal(first.fontWeight,800);
+    assert.equal(second.fontFamily,'Inter');
+    assert.equal(second.fontSize,36);
+    assert.equal(second.fontWeight,600);
+  } finally { f.close(); }
+});
+
 test('canonical visual style preserves numeric font weight and signed letter spacing', async () => {
   const f=await domFixture();
   try {
@@ -2635,7 +2718,7 @@ test('canonical sections duplicate directly in composition while shared shell re
 });
 
 test('shared public stylesheet keeps footer at viewport bottom without fixing it over content',()=>{
-  assert.match(publicCss,/body\{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip\}/);
+  assert.match(publicCss,/body\{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip;[^}]*font-family:var\(--font\);[^}]*font-weight:var\(--web-public-body-weight,500\)/);
   assert.match(publicCss,/main,\.public-main,\.layout-content\{flex:1 0 auto;min-height:0\}/);
   assert.match(publicCss,/\.site-footer\{flex:0 0 auto;margin-top:auto\}/);
   assert.doesNotMatch(publicCss,/\.site-footer\{[^}]*position:fixed/);

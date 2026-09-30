@@ -449,7 +449,13 @@ class ExactCandidateValidation(unittest.TestCase):
     def api(self, runs, files=()):
         from unittest.mock import Mock
         api=Mock()
-        api.pages.side_effect=lambda path, *args: runs if path.startswith('actions/runs') else [{'filename':f} for f in files]
+        api.pages.side_effect=lambda path, *args: (
+            runs if path.startswith('actions/runs') else
+            [] if path.startswith('pulls/1/commits') else
+            [{'filename':f} for f in files])
+        api.api.side_effect=lambda path, *args, **kwargs: (
+            {'files':[{'filename':'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs'}]}
+            if path.startswith('commits/') else {})
         return api
 
     def validate(self, runs, files=()):
@@ -485,6 +491,7 @@ class ExactCandidateValidation(unittest.TestCase):
             'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
             'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs',
             'Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs',
+            'Legend-Design/legend-web-foundation.css',
             'SHARED/WebsitePlatform/legend-public-cms.js',
             'SHARED/WebsitePlatform/legend-public-web.css',
             'tests/website/legend-public-cms.test.mjs',
@@ -548,7 +555,8 @@ class ExactCandidateValidation(unittest.TestCase):
         api=self.api([self.run_record(status='in_progress',conclusion=None)])
         result=m.merge_validated(api,{'number':1,'head':{'sha':'a'*40}})
         self.assertIn('retained',result)
-        api.api.assert_not_called();api.dispatch.assert_not_called()
+        self.assertTrue(all(call.args[0].startswith('commits/') for call in api.api.call_args_list))
+        api.dispatch.assert_not_called()
 
     def test_pending_retained_branch_correction_is_not_auto_merged(self):
         from unittest.mock import Mock
