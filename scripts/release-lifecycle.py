@@ -387,6 +387,7 @@ def direct_release_approved_pr(api, sha):
         'scripts/approved-release-baseline.py',
         'scripts/release-lifecycle.py',
         'scripts/test-release-policy.py',
+        'scripts/test-release-lifecycle.py',
     }
 
     for _ in range(16):

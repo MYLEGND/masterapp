@@ -201,6 +201,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
                     return [
                         {'filename': 'scripts/release-lifecycle.py'},
                         {'filename': 'scripts/test-release-policy.py'},
+                        {'filename': 'scripts/test-release-lifecycle.py'},
                     ]
                 if path == 'commits/' + product_merge + '/pulls':
                     return [product_pr]
