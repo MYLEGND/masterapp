@@ -55,7 +55,7 @@
 #rbShell .hp-proposal-empty,
 #proposalMenu .hp-proposal-empty{font-weight:800;color:#b9c5d8;padding:8px 4px;}
 
-#proposalOverlay.hp-overlay{position:fixed;inset:0;z-index:3000;background:rgba(7,14,28,.72);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:1.5rem 1rem;}
+#proposalOverlay.hp-overlay{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:1.5rem 1rem;}
 #proposalOverlay.hp-overlay[hidden]{display:none !important;}
 #proposalDialog.hp-dialog{border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:#f8fafc;box-shadow:0 40px 100px rgba(0,0,0,.52);}
 @media (min-width:901px){#proposalDialog.hp-dialog{width:min(1380px,97vw);max-height:92vh;overflow:auto;padding:1rem 1.1rem;}}
@@ -332,8 +332,6 @@
     align-items: center;
     justify-content: center;
     padding: 28px;
-    background: rgba(3, 9, 20, .62);
-    backdrop-filter: blur(12px);
 }
 
 .ws-client-picker-dialog {
@@ -680,8 +678,6 @@
 /* Overlay */
 @media (min-width: 901px) {
 #uwOverlay {
-    background: rgba(5,10,22,.78) !important;
-    backdrop-filter: blur(8px) !important;
     padding: 1.5rem 1rem !important;
 }
 }
