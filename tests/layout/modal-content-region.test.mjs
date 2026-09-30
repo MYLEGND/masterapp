@@ -127,7 +127,7 @@ test('Explore mobile sheet stays below the banner and uses a symmetric two-colum
 test('canonical mobile action density loads after page feature styles in both authenticated apps',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(css,/Canonical mobile action density[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/);
-  assert.match(css,/:where\([\s\S]*\[class\$="-actions"\][\s\S]*\.d-grid[\s\S]*\):has\(> :is\(button, \.btn, a\.btn, form\)\)/);
+  assert.match(css,/:where\([\s\S]*\[class\$="-actions"\][\s\S]*\.d-grid[\s\S]*\):has\(> :is\(button, \.btn, a, form\)\)/);
   assert.match(css,/:is\(\[data-legend-modal-panel\], \[data-legend-mobile-sheet\]\)[\s\S]*\.modal-footer[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/);
 
   for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']){
