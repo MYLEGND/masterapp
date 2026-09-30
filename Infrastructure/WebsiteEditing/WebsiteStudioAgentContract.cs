@@ -50,6 +50,7 @@ SIGNAL / INTENT ARCHITECTURE
 - For new native experience controls, intentionally attach existing catalog behaviors through the canonical Analytics controls when the interaction carries real business meaning. Selected Source must never write Signals or FieldSignals directly.
 - Recommended signal ladder for a lead-oriented experience is: meaningful page/CTA entry -> form_started -> field_started on high-intent/contact controls -> field_completed on meaningful answers -> validation_failed when the platform observes friction -> submit_attempt -> server-confirmed outcome. Use only behaviors actually exposed by the current signal catalog.
 - Use field-level mapping selectively. High-value intent questions, contact inputs, completion checkpoints, and final actions are useful; mapping every decorative toggle or low-value interaction creates noisy analytics and should be avoided.
+- Semantic truth outranks destination eligibility. Never choose a behavior merely because it can project to Meta/OpenAI. For example, project_size may use a generic field-completion behavior; PhoneFieldCompleted belongs only on the canonical phone-role control; ContactInputStarted belongs only on contact-role inputs; progress/continue buttons use a legitimate click behavior when that click is meaningful. The server enforces these target semantics.
 - Preserve stable control keys so reporting remains comparable when visible labels or designs change. Copy is presentation; field/control identity is measurement lineage.
 - Once-per-session should be used for one-time milestones such as first form start or first contact-start intent. Repeatable progress signals may remain repeatable when the catalog/Analytics control supports them.
 - Never map a browser interaction to a server-authority outcome. Lead, Purchase, AppointmentBooked, policy/payment outcomes, and other verified conversions remain server-confirmed even when the browser experience visually reaches a success screen.
@@ -235,7 +236,7 @@ EDITING ALGORITHM
 4. Preserve page paths, stable IDs, protected nodes, existing preset signal mappings, managed action identity where protected, and runtime forms.
 5. Make the structural/design changes needed to fully achieve the user's intent. Use native nodes and native experiences freely for authorable content, questions, calculations, conditional logic, and results.
 6. Choose exact available ActionKeys for meaningful CTAs and experience CTA controls. Do not invent destinations or behavior identities.
-7. Review measurement coverage. Keep automatic signals automatic; for genuinely new meaningful interactions, use the canonical Analytics controls to attach only existing catalog behaviors. Never write Signals/FieldSignals in Source and never create a browser mapping for a server-confirmed outcome.
+7. Run the canonical connection pass after building the front end. Bind exact available ActionKeys, select approved native capabilities such as lead_capture when appropriate, then review measurement coverage. Keep automatic signals automatic; for genuinely new meaningful interactions, use the canonical Analytics controls to attach only existing catalog behaviors whose semantics match the control. Never write Signals/FieldSignals in Source and never create a browser mapping for a server-confirmed outcome. Do not stop at visual completion when an obvious approved conversion/intent connection is still missing.
 8. Validate Selected Source when source code was edited. Fix only the offending authorable structure/presentation. Never solve validation by deleting protected semantics, inventing backend wiring, or replacing a system component.
 9. Review desktop and mobile conversion flow, form/experience usability, signal placement, CTA routing, attribution preservation, and owner notification usefulness.
 10. Save the draft and run canonical quality/signal checks. Publish only through the normal explicit publish authority when the user has authorized publishing.
@@ -363,7 +364,9 @@ If a visual request conflicts with protected behavior, preserve the backend cont
                 "form_submit_attempt",
                 "server_confirmed_outcomes"
             },
-            customSignalRule = "attach_only_existing_catalog_behaviors_through_canonical_analytics_controls",
+            customSignalRule = "attach_only_semantically_matching_existing_catalog_behaviors_through_canonical_analytics_controls",
+            semanticRule = "behavior_meaning_must_match_control_role_even_when_destination_eligible",
+            completionRule = "front_end_build_is_incomplete_until_applicable_canonical_connections_are_reviewed",
             providerRule = "canonical_event_first_provider_projection_second",
             attributionRule = "never_rewrite_runtime_attribution_or_owner_lineage",
             adReadinessRule = "align_message_offer_cta_experience_and_canonical_conversion_path"
