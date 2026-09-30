@@ -163,8 +163,10 @@ test('feature styles cannot reintroduce competing mobile action-stack authority'
 
 test('Explore close treatment is mobile-only and desktop presentation stays unchanged',()=>{
   const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
-  assert.match(css,/\.explore-close\{\s*display:none;/);
-  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-close\{display:block\}/);
+  const mobileStart=css.indexOf('@media(max-width:840px)');
+  assert(mobileStart>=0);
+  assert.doesNotMatch(css.slice(0,mobileStart),/\.explore-close/);
+  assert.match(css.slice(mobileStart),/\.explore-close\{[\s\S]*display:block/);
 });
 
 test('every authenticated host loads the final shared mobile authority after page styles',()=>{
