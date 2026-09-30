@@ -65,7 +65,7 @@
   --legend-mobile-gap:6px;
 }
 html{font-size:16px}
-body.legend-app{display:flex;flex-direction:column;overflow-x:clip}
+body.legend-app{display:flex;flex-direction:column}
 .legend-app-content{width:100%;min-width:0;flex:1;padding:var(--app-section-gap) max(var(--app-shell-gutter),env(safe-area-inset-right)) var(--app-section-gap) max(var(--app-shell-gutter),env(safe-area-inset-left))}
 .legend-app-content>main{min-width:0;width:100%}
 /* Shared horizontal workspace for analytics and business CRM in every app host. */
@@ -567,7 +567,16 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
   text-overflow:ellipsis;
  }
 }
+@media(min-width:769px){
+ body.legend-app{overflow-x:clip}
+}
 @media(max-width:768px){
+ body.legend-app{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:visible;
+ }
  :root{
   --app-shell-gutter:0px;
   --app-section-gap:.42rem;
