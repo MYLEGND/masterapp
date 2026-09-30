@@ -125,7 +125,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
                 returncode=0, stdout=path + '\nAgentPortal/Program.cs\n')):
             self.assertFalse(self.lifecycle.direct_only_request('c' * 40))
 
-    def test_direct_release_resolution_rejects_merge_authorization_commit(self):
+    def test_direct_release_resolution_rejects_octopus_authorization_commit(self):
         head = 'd' * 40
 
         class Api:
@@ -134,7 +134,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
 
         with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
              patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
-                 returncode=0, stdout=head + ' ' + ('e' * 40) + ' ' + ('f' * 40) + '\n')):
+                 returncode=0, stdout=head + ' ' + ('e' * 40) + ' ' + ('f' * 40) + ' ' + ('9' * 40) + '\n')):
             self.assertIsNone(self.lifecycle.direct_release_approved_pr(Api(), head))
 
 
