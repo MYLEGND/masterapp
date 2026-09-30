@@ -12,7 +12,7 @@ public static class WebsiteStudioAgentContract
         "Do not remove, replace, retarget, rebind, or invent platform-owned signals, forms, owner scope, protected data bindings, analytics, Meta/OpenAI wiring, commerce execution, or backend endpoints. " +
         "Ordinary free-content structure and ordinary CTA instances may change through the canonical authoring/catalog controls. " +
         "Restore only the protected backend semantics from the current canonical draft and achieve the requested presentation through authorable copy, styling, layout, placement, responsive presentation, media, motion, or field presentation. " +
-        "If the user explicitly wants a tracked mapping removed, remove that mapping through the canonical Analytics controls first.";
+        "If the user explicitly wants a removable custom mapping removed, use the canonical Analytics controls. Platform preset/automatic mappings and server-confirmed outcome authority are not removable authoring assets.";
 
     public static string PromptTemplate { get; } = BuildPromptTemplate();
 
