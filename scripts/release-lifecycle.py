@@ -310,13 +310,25 @@ def successful_release(api, run, app=None):
 
 
 def direct_only_request(sha):
-    # A one-release exception, bound to a control-only commit which changes the
-    # request. Application changes must arrive through the validated merged PR,
-    # never be smuggled into the release-authorization commit itself.
+    # A one-release exception bound to the exact commit that changes the request.
+    # Two authorized shapes exist:
+    # 1) a validated PR merge that carries the request in the merge itself; or
+    # 2) a single-parent control-only authorization immediately after that merge.
     path = 'Docs/releases/direct-release-request.json'
-    changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, check=False)
-    if changed.returncode or changed.stdout.splitlines() != [path]:
+    lineage = git('rev-list', '--parents', '-n', '1', sha, check=False)
+    parts = lineage.stdout.strip().split() if not lineage.returncode else []
+    if not parts or parts[0] != sha or len(parts) not in {2, 3}:
         return False
+
+    changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, check=False)
+    if changed.returncode:
+        return False
+    names = changed.stdout.splitlines()
+    if path not in names:
+        return False
+    if len(parts) == 2 and names != [path]:
+        return False
+
     result = git('show', sha + ':' + path, check=False)
     if result.returncode:
         return False
@@ -324,19 +336,24 @@ def direct_only_request(sha):
 
 
 def direct_release_approved_pr(api, sha):
-    """Resolve a control-only release commit to its immediately preceding merged PR.
+    """Resolve an exact approved-only release revision to its validated merged PR.
 
-    The authorization commit is intentionally created after the validated PR merge,
-    so it is not itself a pull-request merge commit. Fail closed unless it has one
-    parent and that parent is exactly one merged PR into the approved branch.
+    A request may be carried by the merge commit itself, or by one control-only
+    single-parent authorization commit immediately after the merge. Any other
+    lineage shape fails closed.
     """
     if not direct_only_request(sha):
         return None
     lineage = git('rev-list', '--parents', '-n', '1', sha, check=False)
     parts = lineage.stdout.strip().split() if not lineage.returncode else []
-    if len(parts) != 2 or parts[0] != sha:
+    if not parts or parts[0] != sha:
         return None
-    merged = parts[1]
+    if len(parts) == 3:
+        merged = sha
+    elif len(parts) == 2:
+        merged = parts[1]
+    else:
+        return None
     pulls = api.pages('commits/' + merged + '/pulls')
     matches = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == merged
                and p.get('base', {}).get('ref') == APPROVED]
