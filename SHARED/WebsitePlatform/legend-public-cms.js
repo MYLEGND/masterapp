@@ -497,7 +497,11 @@
     const page=pageState();
     walkComposition(page.composition || [],node=>{
       const el=findEditableElement(node.id);
-      if(el) applyCompositionNode(el,node);
+      if(!el) return;
+      el.dataset.cmsCompositionId=node.id;
+      applyCompositionNode(el,node);
+      if(el.tagName==='FORM' || String(node.systemKey || '').startsWith('protect_runtime_form:'))
+        applyFormFieldPresentations(el,node);
     });
   }
 
@@ -672,6 +676,7 @@
     document.querySelectorAll('main form, main input:not([type="hidden"]):not([type="password"]), main select, main textarea').forEach((node, index) => {
       if (node.closest('[data-cms-locked="true"]')) return;
       node.dataset.cmsId ||= `signal:${pageKey}.${safeId(node.tagName)}.${safeId(node.id || node.name || 'field')}.${index}`;
+      node.dataset.cmsFieldKey ||= safeId(node.name || node.id || ('field-'+index));
       node.dataset.cmsSignalOnly = 'true'; node.dataset.cmsEditable = 'true';
       rememberOriginal(node);
     });
@@ -1630,6 +1635,31 @@
     return allowed.includes(tag) ? tag : allowed[0];
   }
 
+  function applyFormFieldPresentations(form,node) {
+    if(!form || !node) return;
+    const presentations=node.fieldPresentations || {};
+    const labels=node.fieldLabels || {};
+    const controls=[...form.querySelectorAll('input[name],select[name],textarea[name],button[type="submit"]')];
+    controls.forEach((control,index)=>{
+      const key=safeId(control.dataset.cmsFieldKey || control.getAttribute('name') || control.id || (control.matches('button[type="submit"]')?'submit':'field-'+index));
+      if(!key) return;
+      control.dataset.cmsFieldKey=key;
+      control.dataset.cmsSignalOnly='true';
+      control.dataset.cmsEditable='true';
+      const presentation=presentations[key];
+      if(presentation){
+        applyStyle(control,effectiveStyle(presentation));
+        applyLayout(control,effectiveLayout(presentation));
+      }
+      if(control.matches('button[type="submit"]') && labels[key]) control.textContent=labels[key];
+      const label=control.closest('label');
+      if(label && labels[key]){
+        const textNode=[...label.childNodes].find(value=>value.nodeType===3 && String(value.textContent||'').trim());
+        if(textNode) textNode.textContent=labels[key]+' ';
+      }
+    });
+  }
+
   function buildCanonicalInquiryForm(node) {
     const el=document.createElement('form');
     el.id='website_inquiry_'+node.id;
@@ -1647,9 +1677,11 @@
     grid.className='public-form-grid';
 
     const field=(labelText,name,type='text',attrs={})=>{
+      const key=safeId(name);
       const label=document.createElement('label');
-      label.textContent=labelText;
+      label.textContent=node.fieldLabels?.[key] || labelText;
       const input=name==='Message' ? document.createElement('textarea') : document.createElement('input');
+      input.dataset.cmsFieldKey=key;
       if(name!=='Message') input.type=type;
       input.name=name;
       input.required=true;
@@ -1674,22 +1706,25 @@
     const consent=document.createElement('input');
     consent.type='checkbox';
     consent.name='consent';
+    consent.dataset.cmsFieldKey='consent';
     consent.required=true;
     const consentText=document.createElement('span');
-    consentText.textContent='I agree to share this inquiry with this website.';
+    consentText.textContent=node.fieldLabels?.consent || 'I agree to share this inquiry with this website.';
     consentLabel.append(consent,consentText);
     grid.appendChild(consentLabel);
 
     const submit=document.createElement('button');
     submit.type='submit';
+    submit.dataset.cmsFieldKey='submit';
     submit.className='btn primary';
-    submit.textContent=node.text || 'Send inquiry';
+    submit.textContent=node.fieldLabels?.submit || node.text || 'Send inquiry';
     const status=document.createElement('p');
     status.setAttribute('role','status');
     status.setAttribute('aria-live','polite');
 
     fieldset.append(legend,grid,submit);
     el.append(fieldset,status);
+    applyFormFieldPresentations(el,node);
     return el;
   }
 
@@ -1769,6 +1804,7 @@
     el.dataset.cmsCompositionId=node.id;
     el.dataset.cmsId=node.id;
     el.dataset.cmsEditable='true';
+    if(el.tagName==='FORM') applyFormFieldPresentations(el,node);
     if (node.type === 'section' || node.tag === 'header' || node.tag === 'footer') el.dataset.cmsSection=node.id;
     rememberOriginal(el);
     applyCompositionNode(el,node);
@@ -3911,7 +3947,7 @@
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
-    const selectedFieldPresentation=selected ? formFieldPresentationForElement(selected,false) : null;
+    const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,true) : null;
     document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation); });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
