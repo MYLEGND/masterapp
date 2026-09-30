@@ -1194,13 +1194,13 @@ button.qv-booking-launch:focus-visible,
         display:grid;
         grid-template-columns:minmax(0,1fr) auto;
         align-items:start;
-        gap:6px;
-        padding:7px 10px;
+        gap:var(--legend-mobile-gap);
+        padding:var(--app-mobile-card-pad);
     }
 
     .qv-booking-head:after{
-        left:14px;
-        right:14px;
+        left:var(--app-mobile-card-pad);
+        right:var(--app-mobile-card-pad);
     }
 
     .qv-booking-title{
@@ -1217,16 +1217,16 @@ button.qv-booking-launch:focus-visible,
     .qv-booking-body{
         height:auto;
         display:block;
-        padding:9px 10px max(10px, env(safe-area-inset-bottom));
+        padding:var(--app-mobile-card-pad) var(--app-mobile-card-pad) max(var(--app-mobile-card-pad), env(safe-area-inset-bottom));
     }
 
     .qv-booking-record{
         grid-template-columns:38px minmax(0,1fr);
-        column-gap:8px;
+        column-gap:var(--legend-mobile-gap);
         min-height:52px;
-        padding:7px 8px;
-        margin-bottom:7px;
-        border-radius:10px;
+        padding:var(--legend-mobile-gap) 8px;
+        margin-bottom:var(--legend-mobile-gap);
+        border-radius:8px;
     }
 
     .qv-booking-record:before{
@@ -1248,22 +1248,22 @@ button.qv-booking-launch:focus-visible,
 
     .qv-booking-layout{
         height:auto;
-        gap:6px;
+        gap:var(--legend-mobile-gap);
     }
 
     .qv-booking-panel,
     .qv-booking-slot-card{
-        padding:9px;
-        border-radius:10px;
+        padding:var(--app-mobile-card-pad);
+        border-radius:var(--legend-mobile-radius);
     }
 
     .qv-booking-panel-head,
     .qv-booking-slot-head{
-        margin-bottom:6px;
+        margin-bottom:var(--legend-mobile-gap);
     }
 
     .qv-booking-field{
-        margin:7px 0;
+        margin:var(--legend-mobile-gap) 0;
     }
 
     .qv-booking-field select{
@@ -1273,8 +1273,8 @@ button.qv-booking-launch:focus-visible,
     }
 
     .qv-booking-calendar-head{
-        gap:8px;
-        margin:8px 0 10px;
+        gap:var(--legend-mobile-gap);
+        margin:var(--legend-mobile-gap) 0 var(--app-mobile-card-pad);
     }
 
     .qv-booking-calendar-nav.btn,
@@ -1285,7 +1285,7 @@ button.qv-booking-launch:focus-visible,
     }
 
     .qv-booking-calendar-label{
-        font-size:18px;
+        font-size:1rem;
     }
 
     .qv-booking-calendar-weekdays,
@@ -1311,13 +1311,13 @@ button.qv-booking-launch:focus-visible,
     .qv-booking-slot-head{
         display:grid;
         grid-template-columns:minmax(0,1fr);
-        gap:8px;
+        gap:var(--legend-mobile-gap);
     }
 
     .qv-booking-slot-focus{
         justify-self:start;
-        min-height:38px;
-        padding:0 12px;
+        min-height:var(--legend-mobile-control-height);
+        padding:0 8px;
     }
 
     .qv-book-slots{
@@ -1332,7 +1332,7 @@ button.qv-booking-launch:focus-visible,
     .qv-slot-btn.btn-ghost,
     .qv-slot-btn{
         height:auto !important;
-        min-height:36px !important;
+        min-height:var(--legend-mobile-control-height) !important;
         padding:6px 7px !important;
         white-space:normal;
     }
@@ -1344,37 +1344,17 @@ button.qv-booking-launch:focus-visible,
     }
 
     .qv-booking-status{
-        min-height:40px;
-        padding:8px 9px;
+        min-height:var(--legend-mobile-control-height);
+        padding:var(--legend-mobile-gap) 8px;
     }
 
     .qv-booking-submit.btn,
     .qv-booking-submit.btn-gold{
-        min-height:38px;
-        font-size:14px;
+        min-height:var(--legend-mobile-control-height);
+        font-size:.78rem;
     }
 }
 
-@media (max-width:380px){
-    .qv-booking-head{
-        padding-left:10px;
-        padding-right:10px;
-    }
-
-    .qv-booking-body{
-        padding-left:10px;
-        padding-right:10px;
-    }
-
-    .qv-booking-panel,
-    .qv-booking-slot-card{
-        padding:12px;
-    }
-
-    .qv-booking-calendar-label{
-        font-size:17px;
-    }
-}
 
 /* Standalone mobile booking reuses the same geometry and components. */
 .mobile-client-booking{
