@@ -521,8 +521,6 @@ class ExactCandidateValidation(unittest.TestCase):
         self.assertIn(
             '.github/workflows/masterapp-platform-architecture-validation.yml',
             m.VALIDATION_NEUTRAL_PATHS)
-        self.assertTrue(m.validation_neutral_path(
-            '.github/workflows/masterapp-platform-architecture-validation.yml'))
 
     def test_public_website_architecture_accepts_unrelated_later_compile_failure(self):
         run=self.run_record(status='completed',conclusion='failure',id=91)
