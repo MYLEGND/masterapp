@@ -71,6 +71,7 @@
   let activeEditorPanel = 'content';
   let dirty = false;
   let sourceEditorDirty = false;
+  let sourceEditorBaseNode = null;
   let templateRepairPending = false;
   let autoSaveTimer = null;
   const originals = new WeakMap();
@@ -4424,9 +4425,11 @@
     const mode=scope?.value || 'site';
     if(mode==='selection' && selectedId){
       const node=compositionNode(selectedId);
-      textarea.value=JSON.stringify(sourceProjectionNode(node),null,2);
+      sourceEditorBaseNode=sourceProjectionNode(node);
+      textarea.value=JSON.stringify(sourceEditorBaseNode,null,2);
       if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
     }else{
+      sourceEditorBaseNode=null;
       textarea.value=JSON.stringify(siteSourceProjection(),null,2);
       if(label) label.textContent='Master Source · entire website';
       if(selectedId){
@@ -4443,6 +4446,22 @@
       ? 'Selected Source is synchronized with the selected canonical node.'
       : 'Master Source is synchronized and read only.';
     if(force) clearCanonicalProtectionViolation();
+  }
+
+  function sourceSelectedNodeFromState(state, selectedNodeId) {
+    const projected=siteSourceProjection(state);
+    return sourceFindNode(projected.shell?.header,selectedNodeId) ||
+      sourceFindNode(projected.shell?.footer,selectedNodeId) ||
+      projected.pages.map(page=>sourceFindNode(page.composition,selectedNodeId)).find(Boolean) ||
+      Object.values(projected.reusableComponents || {}).map(component=>sourceFindNode(component.composition,selectedNodeId)).find(Boolean) ||
+      null;
+  }
+
+  function selectedSourceHasConcurrentChange(state, selectedNodeId) {
+    if(!sourceEditorBaseNode) return false;
+    const latest=sourceSelectedNodeFromState(state,selectedNodeId);
+    if(!latest) return true;
+    return JSON.stringify(latest)!==JSON.stringify(sourceEditorBaseNode);
   }
 
   function selectedSourceDocument(baseDocument, selectedNodeId, replacement) {
@@ -4518,6 +4537,11 @@
         if(status) status.textContent='Save or reconcile the existing canvas edits before applying Selected Source.';
         return;
       }
+      if(selectedSourceHasConcurrentChange(documentState,selectedNodeId)){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent='The selected component changed after Source editing began. Your Source text is preserved; refresh Selected Source before reconciling this design edit.';
+        return;
+      }
     }
 
     clearCanonicalProtectionViolation();
@@ -4554,6 +4578,11 @@
           if(!latest) return;
           expectedRevision=latest.revision;
           baseDocument=normalizeDocument(latest.document || {});
+          if(selectedSourceHasConcurrentChange(baseDocument,selectedNodeId)){
+            clearCanonicalProtectionViolation();
+            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
+            return;
+          }
           rebased=true;
           continue;
         }
@@ -4585,6 +4614,11 @@
           if(!latest) return;
           expectedRevision=latest.revision;
           baseDocument=normalizeDocument(latest.document || {});
+          if(selectedSourceHasConcurrentChange(baseDocument,selectedNodeId)){
+            clearCanonicalProtectionViolation();
+            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
+            return;
+          }
           rebased=true;
           continue;
         }
