@@ -1011,7 +1011,8 @@ public sealed class WebsiteSiteSourceV3Tests
     [Fact]
     public void PublishedBindingResolver_UsesImmutablePublishedLineageAndRejectsServerOutcomeForgery()
     {
-        const string bindingId = "binding-shared";
+        const string bindingId = "11111111111111111111111111111111";
+        const string forgedBindingId = "22222222222222222222222222222222";
         var document = CanonicalDocument();
         var first = document.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.quote");
         first.Signals =
@@ -1075,7 +1076,7 @@ public sealed class WebsiteSiteSourceV3Tests
             [
                 new WebsiteSignalBinding
                 {
-                    Id = "forged-lead",
+                    Id = forgedBindingId,
                     Trigger = "click",
                     EventName = "Lead",
                     ActionKey = "lead_created",
@@ -1089,11 +1090,11 @@ public sealed class WebsiteSiteSourceV3Tests
             version,
             WebsiteEditorSiteKeys.Business,
             "/",
-            "forged-lead",
+            forgedBindingId,
             JsonSerializer.Serialize(new
             {
                 configuredWebsiteSignal = true,
-                configuredSignalBindings = new[] { new { id = "forged-lead", elementId = "home.forged" } }
+                configuredSignalBindings = new[] { new { id = forgedBindingId, elementId = "home.forged" } }
             })));
     }
 
