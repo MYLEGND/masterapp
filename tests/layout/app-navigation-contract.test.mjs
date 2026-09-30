@@ -50,9 +50,41 @@ test('AgentPortal and ClientApp views contain no placeholder navigation targets'
         const a=attrs(m[0]);
         const href=(a.get('href')||'').trim();
         if(href==='#' || /^javascript:\s*(?:void\s*\(\s*0\s*\)|;?)$/i.test(href)) bad.push(file+': '+m[0]);
+        const dynamic=a.has('data-dynamic-destination');
+        if(dynamic){
+          if(!a.get('id') || a.get('aria-disabled')!=='true' || a.get('tabindex')!=='-1')
+            bad.push(file+': dynamic destination must start disabled with a stable id: '+m[0]);
+          continue;
+        }
         if(!href && !a.get('asp-controller') && !a.get('asp-action') && !a.get('asp-page') && !a.get('data-bs-toggle') && !a.get('data-bs-dismiss') && !a.get('role')) {
           bad.push(file+': anchor has no destination or explicit UI role: '+m[0]);
         }
+      }
+    }
+  }
+  assert.deepEqual(bad,[]);
+});
+
+test('dynamic destinations are backed by code that assigns a real href',()=>{
+  const sourceFiles=[];
+  for(const app of apps){
+    for(const dir of ['Views','wwwroot/js']){
+      const root=join(ROOT,app,dir);
+      if(existsSync(root)) sourceFiles.push(...walk(root,dir==='Views'?'.cshtml':'.js'));
+    }
+  }
+  const corpus=sourceFiles.map(file=>[file,readFileSync(file,'utf8')]);
+  const bad=[];
+  for(const app of apps){
+    for(const file of walk(join(ROOT,app,'Views'),'.cshtml')){
+      const src=readFileSync(file,'utf8');
+      for(const m of src.matchAll(/<a\b[^>]*data-dynamic-destination[^>]*>/gi)){
+        const a=attrs(m[0]);
+        const id=a.get('id');
+        if(!id) continue;
+        const refs=corpus.filter(([,text])=>text.includes(id));
+        const wired=refs.some(([,text])=>/\.href\s*=|setAttribute\(\s*['"]href['"]/.test(text));
+        if(!wired) bad.push(file+': dynamic destination #'+id+' has no href assignment');
       }
     }
   }
