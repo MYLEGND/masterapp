@@ -527,7 +527,7 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
  body.legend-app .legend-app-content .legend-hero-body{
   padding:var(--app-mobile-card-pad);
  }
- body.legend-app .legend-app-content .legend-title{
+ body.legend-app .legend-app-content :where(.legend-title,.hero-title,.training-hero-title){
   font-size:1.45rem;
   line-height:1.05;
  }
