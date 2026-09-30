@@ -118,6 +118,7 @@ function canonicalNodeByType(document,type,path='/') {
 function sourceProjectionNode(node) {
   const copy=structuredClone(node || {});
   delete copy.signals;
+  delete copy.fieldSignals;
   delete copy.systemKey;
   delete copy.systemBinding;
   if(copy.actionKey){ delete copy.href; delete copy.target; }
@@ -161,7 +162,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   const alerts=[]; let sourceValidationCall=0; let serverDoc=structuredClone(doc); let serverRevision=1;
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=value=>alerts.push(String(value)); w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=typeof init.body==='string'?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/media') && init.method==='POST'){ const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333'; return {ok:!denied,status:denied?401:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}}; } if(parsed.pathname.endsWith('/manage/source') && (!init.method || init.method==='GET')) { const projected=sourceProjectionDocument(serverDoc); return {ok:!denied,status:denied?401:200,json:async()=>({source:'legend_site_source',revision:'r'+serverRevision,requiresMaterialization:false,schema:'legend-site-source/v1',text:JSON.stringify(projected,null,2),sourceMap:{}})}; } if(parsed.pathname.endsWith('/manage/source/validate')) { const step=Array.isArray(sourceValidationSequence) && sourceValidationSequence.length ? sourceValidationSequence[Math.min(sourceValidationCall++,sourceValidationSequence.length-1)] : null; const status=denied?401:(step?.status ?? sourceValidationStatus); const payload=step?.payload ?? sourceValidationPayload ?? {source:'legend_site_source_validation',baseRevision:'r'+serverRevision,persisted:false,published:false,proposedDocument:serverDoc,sourceMap:{}}; if(status===409 && payload?.error==='revision_conflict') serverRevision++; return {ok:status>=200&&status<300,status,json:async()=>payload}; } if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; if(parsed.pathname.endsWith('/manage') && init.method==='POST' && body?.document){ serverDoc=structuredClone(body.document); serverRevision++; } return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+serverRevision,document:parsed.pathname.endsWith('/manage')?serverDoc:(body?.document || serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=typeof init.body==='string'?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/media') && init.method==='POST'){ const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333'; return {ok:!denied,status:denied?401:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}}; } if(parsed.pathname.endsWith('/manage/source') && (!init.method || init.method==='GET')) { const projected=sourceProjectionDocument(serverDoc); return {ok:!denied,status:denied?401:200,json:async()=>({source:'legend_site_source',revision:'r'+serverRevision,requiresMaterialization:false,schema:'legend-site-source/v1',text:JSON.stringify(projected,null,2),sourceMap:{}})}; } if(parsed.pathname.endsWith('/manage/source/validate')) { const step=Array.isArray(sourceValidationSequence) && sourceValidationSequence.length ? sourceValidationSequence[Math.min(sourceValidationCall++,sourceValidationSequence.length-1)] : null; const status=denied?401:(step?.status ?? sourceValidationStatus); const payload=step?.payload ?? sourceValidationPayload ?? {source:'legend_site_source_validation',baseRevision:'r'+serverRevision,persisted:false,published:false,proposedDocument:serverDoc,sourceMap:{}}; if(status===409 && payload?.error==='revision_conflict') serverRevision++; return {ok:status>=200&&status<300,status,json:async()=>payload}; } if(parsed.pathname.endsWith('/manage/signals') && init.method==='POST') { const target=canonicalNodeById(serverDoc,body?.elementId,body?.pagePath || '/'); if(!target) return {ok:false,status:404,json:async()=>({error:'website_signal_target_not_found'})}; const signals=structuredClone(body?.signals || []); const fieldKey=body?.fieldKey ? String(body.fieldKey).toLowerCase() : null; if(fieldKey){ target.fieldSignals ||= {}; if(signals.length) target.fieldSignals[fieldKey]=signals; else delete target.fieldSignals[fieldKey]; } else target.signals=signals; serverRevision++; return {ok:true,status:200,json:async()=>({source:'website_signal_configuration',revision:'r'+serverRevision,document:structuredClone(serverDoc),elementId:body.elementId,fieldKey,signals})}; } if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; if(parsed.pathname.endsWith('/manage') && init.method==='POST' && body?.document){ serverDoc=structuredClone(body.document); serverRevision++; } return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+serverRevision,document:parsed.pathname.endsWith('/manage')?serverDoc:(body?.document || serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -456,6 +457,16 @@ test('protected form fields expose typed presentation without exposing execution
   assert.match(source,/connect-src 'none'/);
 });
 
+test('Analytics mappings use a dedicated canonical mutation path and generic save never owns signals',()=>{
+  assert.match(source,/api\/website-content\/manage\/signals/);
+  assert.match(source,/async function persistSelectedSignals\(/);
+  assert.match(source,/fieldKey:context\.fieldKey/);
+  assert.doesNotMatch(source,/binding\.deliveryMode = value; markDirty\(\)/);
+  assert.match(websitePlatformControllerSource,/\[HttpPost\("manage\/signals"\)\]/);
+  assert.match(websitePlatformControllerSource,/WebsiteSignalBindingPolicy\.Validate\(request\.Signals\)/);
+  assert.match(editorContractsSource,/FieldSignals/);
+});
+
 test('normal Canvas saves use the same server protection authority as Selected Source',()=>{
   assert.match(websitePlatformControllerSource,/NormalizeAuthorableDocumentAsync\(/);
   assert.match(websitePlatformControllerSource,/var source = WebsiteSiteSource\.Serialize\(candidate\)/);
@@ -744,8 +755,8 @@ test('canonical v3 runtime inherits base style and switches breakpoint style and
 
 
 
-test('signal editor private test saves draft first but sends no production signal and shows dry-run result',async()=>{
-  const catalog={events:[{name:'ViewContent',category:'page',metaEligible:true,requiresServerOutcome:false,triggers:['viewed']}],matchingFields:[],runtimeEnabled:true};
+test('signal editor persists through canonical signal authority and private test sends no production signal',async()=>{
+  const catalog={events:[{name:'ViewContent',actionKey:'page_view',category:'page',metaEligible:true,requiresServerOutcome:false,triggers:['viewed']}],matchingFields:[],runtimeEnabled:true};
   const f=await domFixture({
     signalCatalog:catalog,
     signalTestPayload:{
@@ -759,21 +770,31 @@ test('signal editor private test saves draft first but sends no production signa
     f.click('[data-open="signals"]');
     const add=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')].find(button=>button.textContent==='Add advanced custom mapping');
     assert.ok(add); add.click();
-    const send=f.w.document.querySelector('#legend-cms-signal-controls select');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    let send=f.w.document.querySelector('#legend-cms-signal-controls select');
+    assert.ok(send);
     send.value='analytics'; send.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const signalCalls=f.calls.filter(call=>call.method==='POST' && new URL(call.url).pathname.endsWith('/manage/signals'));
+    assert.ok(signalCalls.length>=2);
+    assert.equal(f.calls.some(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage'),false);
+
     const testButton=f.w.document.querySelector('[data-signal-test]');
     assert.ok(testButton);
     testButton.click();
     await new Promise(resolve=>setTimeout(resolve,0));
     await new Promise(resolve=>setTimeout(resolve,0));
 
-    const saveCall=f.calls.find(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage');
     const testCall=f.calls.find(call=>new URL(call.url).pathname.endsWith('/manage/signals/test'));
-    assert.ok(saveCall);
     assert.ok(testCall);
     const request=JSON.parse(testCall.body);
     assert.equal(request.pagePath,'/');
     assert.equal(request.elementId,'home.h1.node.1');
+    assert.equal(request.fieldKey,null);
     assert.equal(request.bindingId,testButton.dataset.signalTest);
     assert.equal(f.calls.some(call=>new URL(call.url).pathname==='/analytics/meta-signal'),false);
     const status=f.w.document.querySelector(`[data-signal-diagnostics="${testButton.dataset.signalTest}"]`).textContent;
@@ -781,6 +802,39 @@ test('signal editor private test saves draft first but sends no production signa
     assert.match(status,/no analytics or Meta event sent/);
     assert.match(status,/Analytics ingest: would accept/);
   } finally { f.close(); }
+});
+
+test('form-field signals persist on the owning canonical form node through fieldKey authority',async()=>{
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.section.1').children.push(canonicalNode('home.form','form','form',{
+    systemKey:'canonical_inquiry',
+    fieldSignals:{}
+  }));
+  const catalog={events:[{name:'ContactInputStarted',actionKey:'contact_input_started',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['field_started']}],matchingFields:[],runtimeEnabled:true};
+  const f=await domFixture({doc,signalCatalog:catalog});
+  try{
+    const phone=f.w.document.querySelector('form[data-cms-id="home.form"] input[name="Phone"]');
+    assert.ok(phone);
+    phone.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    f.click('[data-open="signals"]');
+    const add=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')].find(button=>button.textContent==='Add advanced custom mapping');
+    assert.ok(add); add.click();
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const call=f.calls.find(call=>call.method==='POST' && new URL(call.url).pathname.endsWith('/manage/signals'));
+    assert.ok(call);
+    const request=JSON.parse(call.body);
+    assert.equal(request.elementId,'home.form');
+    assert.equal(request.fieldKey,'phone');
+
+    const savedForm=canonicalNodeById(f.serverDocument(),'home.form');
+    assert.ok(savedForm?.fieldSignals?.phone);
+    const current=JSON.parse(call.body).signals;
+    assert.equal(current.length,1);
+    assert.equal(current[0].trigger,'field_started');
+    assert.equal(f.calls.some(entry=>entry.method==='POST' && new URL(entry.url).pathname==='/api/website-content/manage'),false);
+  }finally{f.close();}
 });
 
 test('signal editor delivery health renders existing authoritative evidence without credential material',async()=>{
