@@ -542,7 +542,7 @@ test('canonical header defaults use one weight with 3.5 brand and 1.6 navigation
     assert.equal(nav.breakpointStyles.mobile.fontScale,1);
     assert.equal(nav.breakpointStyles.tablet.fontScale,1.15);
     assert.match(publicCss,/\.brand-wordmark strong\{[^}]*font-weight:800/);
-    assert.match(publicCss,/\.business-brand-banner strong\{[^}]*font-weight:800/);
+    assert.match(publicCss,/\.business-brand-banner strong\{[^}]*font-weight:var\(--public-banner-title-weight\)/);
     assert.match(publicCss,/\.nav\{[^}]*font-weight:800/);
   }finally{f.close();}
 });
@@ -694,6 +694,8 @@ test('canonical responsive hierarchy resets inherited desktop geometry on mobile
   media.style={widthPercent:44,offsetXPercent:48,heightPx:900};
   const f=await domFixture({doc,viewportWidth:390});
   try{
+    f.change('#legend-cms-breakpoint','mobile');
+    await new Promise(resolve=>setTimeout(resolve,0));
     const h=f.w.document.querySelector('main h1');
     const a=f.w.document.querySelector('main a');
     const img=f.w.document.querySelector('main img');
@@ -729,6 +731,8 @@ test('explicit mobile breakpoint properties override inherited responsive defaul
   section.breakpointLayouts.mobile={mode:'grid',columns:2,gapPx:14};
   const f=await domFixture({doc,viewportWidth:390});
   try{
+    f.change('#legend-cms-breakpoint','mobile');
+    await new Promise(resolve=>setTimeout(resolve,0));
     const a=f.w.document.querySelector('main a');
     const root=f.w.document.querySelector('main section');
     assert.equal(a.style.width,'72%');
@@ -738,6 +742,10 @@ test('explicit mobile breakpoint properties override inherited responsive defaul
     assert.equal(root.style.gridTemplateColumns,'repeat(2,minmax(0,1fr))');
     assert.equal(root.style.gap,'14px');
   }finally{f.close();}
+});
+
+test('canonical page first paint reapplies responsive hierarchy after the page graph is mounted',()=>{
+  assert.match(source,/function renderCanonicalCompositionPage\(\)[\s\S]*for\(const root of roots\)[\s\S]*walkComposition\(\[root\],node=>applyCompositionNode\(findEditableElement\(node\.id\),node\)\)/);
 });
 
 test('desktop preserves authored geometry while mobile uses conversion-first semantic roles',async()=>{
@@ -2007,7 +2015,7 @@ test('business entity name remains profile-owned while canonical shell typograph
     assert.match(publicCss,/\.brand\{[^}]*min-width:0[^}]*max-width:min\(58vw,38rem\)/);
     assert.match(businessBuildSource,/brand-wordmark business-brand-banner/);
     assert.match(publicCss,/\.business-brand-banner\{[\s\S]*border:1px solid color-mix\(in srgb,var\(--gold\) 42%,transparent\)[\s\S]*background:linear-gradient\(110deg/);
-    assert.match(publicCss,/\.business-brand-banner strong\{[\s\S]*font-family:var\(--font\)[\s\S]*font-weight:800[\s\S]*letter-spacing:-\.035em/);
+    assert.match(publicCss,/\.business-brand-banner strong\{[\s\S]*font-family:var\(--font\)[\s\S]*font-weight:var\(--public-banner-title-weight\)[\s\S]*letter-spacing:var\(--public-banner-title-tracking\)/);
     assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.business-brand-banner\{max-width:calc\(100vw - 92px\)/);
   }finally{f.close();}
 });

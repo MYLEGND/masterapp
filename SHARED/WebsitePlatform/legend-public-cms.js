@@ -2114,10 +2114,17 @@
     const main=document.querySelector('main');
     if(!main) return;
     main.replaceChildren();
-    for(const node of pageState().composition || []){
+    const roots=pageState().composition || [];
+    for(const node of roots){
       const element=buildCompositionNode(node);
       if(element) main.appendChild(element);
     }
+    // buildCompositionNode constructs descendants before the root is mounted.
+    // Reapply the same canonical presentation once the page graph is attached
+    // so responsive role/flow detection is correct on first paint, not only
+    // after a resize or editor breakpoint refresh.
+    for(const root of roots)
+      walkComposition([root],node=>applyCompositionNode(findEditableElement(node.id),node));
   }
 
   function ensureCanonicalNavigationToggle() {
