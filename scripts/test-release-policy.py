@@ -134,7 +134,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
 
         with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
              patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
-                 returncode=0, stdout=f'{head} {'e' * 40} {'f' * 40}\n')):
+                 returncode=0, stdout=head + ' ' + ('e' * 40) + ' ' + ('f' * 40) + '\n')):
             self.assertIsNone(self.lifecycle.direct_release_approved_pr(Api(), head))
 
 
