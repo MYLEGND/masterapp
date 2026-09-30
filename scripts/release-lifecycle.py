@@ -338,27 +338,44 @@ def direct_only_request(sha):
 def direct_release_approved_pr(api, sha):
     """Resolve an exact approved-only release revision to its validated merged PR.
 
-    A request may be carried by the merge commit itself, or by one control-only
-    single-parent authorization commit immediately after the merge. The resolved
-    PR is always the one whose merge commit introduced the validated application
-    candidate; any other lineage shape fails closed.
+    Release authorization can legitimately be rewritten several times while prior
+    deployments are cancelled or superseded. Walk backward through a bounded chain
+    of single-parent, request-only approved release commits until the nearest merged
+    approved PR is reached. Any product-code commit, malformed lineage, excessive
+    chain, or ambiguous PR mapping fails closed.
     """
     if not direct_only_request(sha):
         return None
-    lineage = git('rev-list', '--parents', '-n', '1', sha, check=False)
-    parts = lineage.stdout.strip().split() if not lineage.returncode else []
-    if not parts or parts[0] != sha:
-        return None
-    if len(parts) == 3:
-        merged = sha
-    elif len(parts) == 2:
-        merged = parts[1]
-    else:
-        return None
-    pulls = api.pages('commits/' + merged + '/pulls')
-    matches = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == merged
-               and p.get('base', {}).get('ref') == APPROVED]
-    return matches[0] if len(matches) == 1 else None
+
+    current = sha
+    path = 'Docs/releases/direct-release-request.json'
+    for _ in range(8):
+        lineage = git('rev-list', '--parents', '-n', '1', current, check=False)
+        parts = lineage.stdout.strip().split() if not lineage.returncode else []
+        if not parts or parts[0] != current:
+            return None
+
+        if len(parts) == 3:
+            merged = current
+        elif len(parts) == 2:
+            parent = parts[1]
+            changed = git('diff-tree', '--no-commit-id', '--name-only', '-r',
+                          current + '^1', current, check=False)
+            if changed.returncode or changed.stdout.splitlines() != [path]:
+                return None
+            if direct_only_request(parent):
+                current = parent
+                continue
+            merged = parent
+        else:
+            return None
+
+        pulls = api.pages('commits/' + merged + '/pulls')
+        matches = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == merged
+                   and p.get('base', {}).get('ref') == APPROVED]
+        return matches[0] if len(matches) == 1 else None
+
+    return None
 
 
 def reconcile_history_only(api, production=None, approved=None):
