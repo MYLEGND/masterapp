@@ -585,20 +585,3 @@
     }
 }
 
-@media (max-width: 640px) {
-    .factfinder-page-shell {
-        padding: 1rem 0.72rem 2rem;
-    }
-
-    .factfinder-page-shell .wizard-actions,
-    .factfinder-page-shell .repeater-actions,
-    .factfinder-page-shell .ff-card-actions {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .factfinder-page-shell .btn {
-        width: 100%;
-        justify-content: center;
-    }
-}
