@@ -55,22 +55,24 @@ test('layout notifications coalesce into one scheduled geometry update',()=>{
   const context={viewportSyncFrame:0,window:{requestAnimationFrame:callback=>{frames++;scheduled=callback;return 1;}},syncViewportOffsets:()=>updates++};vm.createContext(context);vm.runInContext(implementation('scheduleViewportOffsets'),context);
   context.scheduleViewportOffsets();context.scheduleViewportOffsets();context.scheduleViewportOffsets();assert.equal(frames,1);scheduled();assert.equal(updates,1);assert.equal(context.viewportSyncFrame,0);
 });
-test('shared mobile navigation keeps the motto in the permanent top row and compacts menu actions',()=>{
+test('shared mobile navigation is one full-height internally scrolling command surface',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
-  assert.match(css,/@media \(max-width: 840px\)[\s\S]*grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"left left left"[\s\S]*"right right right"/);
-  assert.match(css,/\.legend-global-nav \.header-psalms \{[\s\S]*grid-area: motto/);
-  assert.match(css,/\.legend-global-nav \.nav-toggle \{[\s\S]*grid-area: toggle/);
-  assert.match(css,/grid-template-columns: repeat\(auto-fit, minmax\(64px, 1fr\)\)/);
-  assert.doesNotMatch(css,/@media \(max-width: 840px\)[\s\S]*\.legend-global-nav \.navbar-left \.nav-row \{[\s\S]*flex-direction: column/);
+  assert.match(css,/@media \(max-width: 840px\)[\s\S]*grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"panel panel panel"/);
+  assert.match(css,/\.legend-global-nav\.mobile-open \{[\s\S]*position: fixed;[\s\S]*height: 100dvh;[\s\S]*overflow: hidden;/);
+  assert.match(css,/\.legend-global-nav\.mobile-open \.legend-mobile-nav-panel \{[\s\S]*overflow-y: auto;[\s\S]*overscroll-behavior: contain;[\s\S]*touch-action: pan-y;/);
+  assert.match(css,/\.legend-global-nav\[data-legend-mobile-nav-integrated\] \.navbar-left,[\s\S]*\.explore-list \{[\s\S]*display: contents !important;/);
+  assert.match(css,/\.legend-global-nav\[data-legend-mobile-nav-integrated\] \.nav-item-explore,[\s\S]*display: none !important;/);
 });
 
-test('Explore drawer has one shared mobile owner with explicit dismissal and scroll locking',()=>{
+test('global nav owns mobile page locking and integrates Explore without a nested sheet',()=>{
   const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
-  assert.match(navScript,/data-legend-explore-close/);
-  assert.match(navScript,/LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
-  assert.match(navScript,/LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
-  assert.match(navScript,/event\.target\.closest\('\.explore-item'\)/);
-  assert.match(navScript,/drawer\.setAttribute\('aria-hidden', isOpen \? 'false' : 'true'\)/);
+  assert.match(navScript,/panel\.className = 'legend-mobile-nav-panel'/);
+  assert.match(navScript,/\[drawer, left, right\]\.filter\(Boolean\)\.forEach\(node => panel\.appendChild\(node\)\)/);
+  assert.match(navScript,/const scrollOwner = 'legend-global-navigation'/);
+  assert.match(navScript,/window\.LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/window\.LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/if \(isMobile\(\)\) \{[\s\S]*ownerNav\?\.__legendOpenNavigation\?\.\(\);[\s\S]*return;/);
+  assert.match(navScript,/ownerNav\.__legendCloseNavigation\?\.\(\{ restoreFocus \}\)/);
 
   for(const file of [
     'AgentPortal/Views/Shared/_Layout.cshtml',
@@ -79,21 +81,16 @@ test('Explore drawer has one shared mobile owner with explicit dismissal and scr
   ]){
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
     assert.equal(source.split('data-legend-explore-close').length-1,1,file);
-    assert.equal(source.includes("const trigger = document.getElementById('exploreTrigger');"),false,file);
     assert.match(source,/id="exploreDrawer"[^>]*aria-hidden="true"/);
   }
 });
 
-test('Explore preserves scrolling and link navigation across every dismissal path',()=>{
+test('mobile navigation dismissal restores page scroll and preserves link navigation',()=>{
   const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
-  assert.match(navScript,/const syncResponsiveState = \(\) =>/);
-  assert.match(navScript,/closeControl\.hidden = !isMobile\(\)/);
-  assert.match(navScript,/if \(isMobile\(\)\) window\.LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
-  assert.match(navScript,/else window\.LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
   assert.match(navScript,/window\.addEventListener\('resize', syncResponsiveState/);
+  assert.match(navScript,/window\.visualViewport\?\.addEventListener\('resize', syncResponsiveState/);
   assert.match(navScript,/window\.addEventListener\('pagehide'[\s\S]*unlockPageScroll/);
-  assert.match(navScript,/const closeAllNavigation = \(\) =>/);
-  assert.match(navScript,/const openDrawer = \(\) => \{[\s\S]*closeAllNavigation\(\);[\s\S]*refreshViewportOffsets/);
+  assert.match(navScript,/panel\.addEventListener\('click'[\s\S]*close\(\)/);
 
   const listHandler=navScript.slice(
     navScript.indexOf("list.addEventListener('click'"),
@@ -116,14 +113,12 @@ test('Explore preserves scrolling and link navigation across every dismissal pat
   }
 });
 
-
-test('Explore mobile sheet stays below the banner and uses a symmetric two-column action grid',()=>{
-  const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
-  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-overlay\{[\s\S]*top:var\(--legend-modal-clearance-top,0px\)/);
-  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-drawer\{[\s\S]*top:max\(var\(--legend-modal-area-start,8px\),env\(safe-area-inset-top\)\)/);
-  assert.match(css,/\.explore-list\{[\s\S]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(css,/\.explore-group-label\{[\s\S]*grid-column:1 \/ -1/);
-  assert.match(css,/\.explore-close::before\{[\s\S]*border:1\.5px solid var\(--legend-mobile-text/);
+test('legacy design shell no longer owns a competing mobile Explore drawer',()=>{
+  const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  const mobile=shell.match(/@media\(max-width:840px\)\{[\s\S]*?\n\}/g)?.join('\n') || '';
+  assert.doesNotMatch(mobile,/\.explore-drawer/);
+  assert.doesNotMatch(mobile,/\.explore-list/);
+  assert.doesNotMatch(mobile,/\.explore-close/);
 });
 
 test('every authenticated mobile page consumes the full width and retains an overflow escape hatch',()=>{
@@ -197,6 +192,29 @@ test('shared mobile structure defeats desktop Home grids without restoring per-p
   assert.doesNotMatch(clientMobile,/\.client-portal \.dashboard-command-center-top[\s\S]*grid-template-columns/);
 });
 
+test('authenticated mobile pages use full width and explicit compact action grids',()=>{
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const mobile=shared.slice(shared.indexOf('@media (max-width: 768px)'));
+
+  assert.match(mobile,/\.legend-app-content :where\(\.container,\.container-fluid\) \{[\s\S]*max-width: none;[\s\S]*padding-inline: 2px;/);
+  assert.match(mobile,/\.legend-app-content :where\(\.row\) \{[\s\S]*margin-inline: 0;/);
+  assert.match(mobile,/\.client-create-actions,[\s\S]*\.wa-modal-toggle-group,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(mobile,/\.dashboard-hero-stats,[\s\S]*\.membership-billing-summary[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(mobile,/\[class\$="-actions"\]/);
+  assert.doesNotMatch(mobile,/\[class\*="-actions"\]/);
+});
+
+test('finance mobile source uses horizontal space before adding vertical scroll',()=>{
+  const finance=readFileSync(new URL('../../SHARED/wwwroot/css/legend-finance-shared.css',import.meta.url),'utf8');
+
+  assert.match(finance,/@media \(max-width: 991\.98px\)[\s\S]*\.finance-selector-row,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(finance,/@media \(max-width: 760px\)[\s\S]*\.el-top-controls--personal,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(finance,/@media \(max-width: 760px\)[\s\S]*\.ft-kpi-grid\.ft-kpi-grid--four[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(finance,/@media \(max-width: 620px\)[\s\S]*\.llbs-philosophy-grid,[\s\S]*\.llbs-tax-grid[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(finance,/\.networth-tool\.el-shell\.legend-finance-tool-card--narrow,[\s\S]*width: 100%;[\s\S]*max-width: none;/);
+  assert.match(finance,/\.llbs-status > :is\(\.llbs-save-state, \.llbs-growth-calculator-btn, \.llbs-print-btn, \.llbs-clear\)[\s\S]*min-width: 0;/);
+});
+
 test('feature styles cannot reintroduce competing mobile action-stack authority',()=>{
   const mediaBlocks=source=>{
     const out=[];let pos=0;
@@ -249,6 +267,66 @@ test('feature styles cannot reintroduce competing mobile action-stack authority'
   }
 });
 
+test('all discovered authenticated mobile modals use one full-screen shared authority',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const modal=readFileSync(new URL('../../SHARED/wwwroot/js/legend-modal.js',import.meta.url),'utf8');
+
+  const mobile=css.slice(css.indexOf('@media (max-width: 900px)'));
+  assert.match(mobile,/\[data-legend-modal-surface\] \{[\s\S]*position: fixed !important;[\s\S]*inset: 0 !important;[\s\S]*width: 100vw !important;[\s\S]*height: 100dvh !important;[\s\S]*max-height: 100dvh !important;/);
+  assert.match(mobile,/\.modal > \.modal-dialog\[data-legend-modal-panel\] \{[\s\S]*height: 100% !important;[\s\S]*max-height: none !important;/);
+  assert.match(mobile,/\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\],[\s\S]*height: 100% !important;[\s\S]*overflow: hidden !important;/);
+  assert.match(mobile,/\.modal \.modal-body \{[\s\S]*overflow-y: auto;/);
+  assert.match(mobile,/\.legend-modal-close-control \{[\s\S]*width: 38px !important;[\s\S]*border-radius: 999px !important;/);
+  assert.match(mobile,/\.legend-modal-close-control::before,[\s\S]*\.legend-modal-close-control::after/);
+
+  assert.match(modal,/function surfaceOpen\(surface\)/);
+  assert.match(modal,/function syncModalSurfaceState\(surface\)/);
+  assert.match(modal,/if \(isMobileModalViewport\(\) && open\) lockPageScroll\(owner\)/);
+  assert.match(modal,/else unlockPageScroll\(owner\)/);
+  assert.match(modal,/normalizeCloseControl\(surface\)/);
+  assert.match(modal,/data-legend-generated-modal-close/);
+  assert.match(modal,/attributeFilter: \['class', 'hidden', 'aria-hidden', 'style'\]/);
+});
+
+test('feature scripts cannot own modal page scrolling anymore',()=>{
+  const files=[
+    'AgentPortal/wwwroot/js/home-zoom-hub.js',
+    'AgentPortal/wwwroot/js/home-clients-hub.js',
+    'AgentPortal/wwwroot/js/zoom-quick-popup.js',
+    'AgentPortal/wwwroot/js/website-analytics-ai.js',
+    'AgentPortal/wwwroot/js/website-analytics-kpi-modal.js',
+    'AgentPortal/wwwroot/js/leads-index.js',
+    'AgentPortal/wwwroot/js/clients-index.js',
+    'AgentPortal/wwwroot/js/uw-intake.js',
+    'AgentPortal/wwwroot/js/proposal-uw.js',
+    'AgentPortal/Views/AgencyCommand/Index.cshtml',
+    'ClientApp/Views/Home/Index.cshtml'
+  ];
+  for(const file of files){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.doesNotMatch(source,/document\.body\.style\.overflow\s*=/,file);
+    assert.doesNotMatch(source,/body\.classList\.(?:add|remove)\(['"]overflow-hidden['"]\)/,file);
+    assert.doesNotMatch(source,/document\.body\.classList\.(?:add|remove)\(["'](?:note-self-open|uw-open)["']\)/,file);
+  }
+});
+
+test('feature modal sizing is desktop-only and cannot compete on phones',()=>{
+  const checks=[
+    ['AgentPortal/wwwroot/css/qv-booking.css',/\@media \(min-width:901px\)\{[\s\S]*\.qv-booking-modal-shell \.modal-dialog/],
+    ['AgentPortal/wwwroot/css/legend-connect.css',/@media \(min-width:901px\) \{[\s\S]*\.lc-section-modal \.modal-dialog/],
+    ['AgentPortal/wwwroot/css/website-analytics.css',/@media \(min-width:901px\) \{[\s\S]*\.wa-modal-dialog/],
+    ['AgentPortal/wwwroot/css/home-command-page.css',/@media \(min-width:901px\) \{[\s\S]*\.home-clients-dialog/],
+    ['AgentPortal/wwwroot/css/clients-index.css',/@media \(min-width:901px\)\{[\s\S]*\.actions-hub-modal \.modal-dialog/],
+    ['AgentPortal/wwwroot/css/workstation-home-proposal.css',/@media \(min-width:901px\)\{#proposalDialog\.hp-dialog/],
+    ['AgentPortal/wwwroot/css/scripts-rebuttals.css',/@media \(min-width:901px\)\{[\s\S]*\.note-self-modal/],
+    ['SHARED/wwwroot/css/legend-finance-shared.css',/@media \(min-width:901px\) \{[\s\S]*\.finance-support-modal/]
+  ];
+  for(const [file,pattern] of checks){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.match(source,pattern,file);
+  }
+});
+
 test('feature styles cannot reintroduce mobile modal scroll or sticky-shell authority',()=>{
   const mediaBlocks=source=>{
     const out=[];let pos=0;
@@ -289,12 +367,11 @@ test('feature styles cannot reintroduce mobile modal scroll or sticky-shell auth
   assert.match(sharedMobile,/\.modal \.modal-header,[\s\S]*position:\s*sticky !important/);
 });
 
-test('Explore close treatment is mobile-only and desktop presentation stays unchanged',()=>{
-  const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
-  const mobileStart=css.indexOf('@media(max-width:840px)');
-  assert(mobileStart>=0);
-  assert.doesNotMatch(css.slice(0,mobileStart),/\.explore-close/);
-  assert.match(css.slice(mobileStart),/\.explore-close\{[\s\S]*display:block/);
+test('Explore mobile close treatment is owned only by the integrated navigation sheet',()=>{
+  const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  assert.doesNotMatch(shell,/@media\(max-width:840px\)[\s\S]*\.explore-close/);
+  assert.match(shared,/\.legend-global-nav\[data-legend-mobile-nav-integrated\][\s\S]*\.explore-close[\s\S]*display: none !important/);
 });
 
 test('every authenticated host loads the final shared mobile authority after page styles',()=>{
@@ -333,11 +410,10 @@ test('all three host layouts load the single shared owner before page scripts',(
 });
 test('shared geometry preserves full backdrop and sizes inner Bootstrap/custom panels',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
-  assert.match(css,/\[data-legend-modal-panel\] \{\s+min-height: 0;\s+max-height: var\(--legend-modal-safe-height\)/);
-  assert.match(css,/\.modal > \.modal-dialog-scrollable \{\s+height: var\(--legend-modal-safe-height\)/);
+  assert.match(css,/\[data-legend-modal-panel\] \{\s+min-height: 0;\s+max-height: 100dvh/);
+  assert.match(css,/\.modal > \.modal-dialog-scrollable \{\s+height: 100dvh/);
   assert.match(script,/new ResizeObserver\(scheduleViewportOffsets\)/);
-  assert.match(script,/attributeFilter: \['class', 'hidden'\]/);
-  assert.doesNotMatch(script,/attributeFilter:[^\n]*'style'/);
+  assert.match(script,/attributeFilter: \['class', 'hidden', 'aria-hidden', 'style'\]/);
   assert.match(script,/visualViewport\?\.addEventListener\("resize"/);
   assert.match(script,/document.addEventListener\('show.bs.modal'/);
 });
@@ -346,7 +422,7 @@ test('shared geometry preserves full backdrop and sizes inner Bootstrap/custom p
 test('mobile sheet behavior is globally owned and uses viewport-safe geometry',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(css,/@media \(max-width: 900px\)[\s\S]*\[data-legend-mobile-sheet\]/);
-  assert.match(css,/bottom: var\(--legend-modal-area-end\)/);
+  assert.match(css,/\[data-legend-mobile-sheet\][\s\S]*bottom: 0px;[\s\S]*height: 100dvh;/);
   assert.match(css,/data-legend-sheet-snap="half"[\s\S]*46%/);
   assert.match(script,/function registerMobileSheet\(/);
   assert.match(script,/addEventListener\("pointerdown"/);
@@ -372,7 +448,15 @@ test('CRM scripts delegate page scroll locking to shared modal owner',()=>{
 
 function dialogFixture() {
   const body={};
-  const context={surfaces:new WeakSet(),document:{body},window:{getComputedStyle:node=>({position:node.position||'static'})}};
+  const context={
+    surfaces:new WeakSet(),
+    surfaceList:new Set(),
+    modalOwner:surface=>{surface.dataset=surface.dataset||{};surface.dataset.legendModalOwner='fixture';return 'fixture';},
+    normalizeCloseControl:()=>{},
+    syncModalSurfaceState:()=>{},
+    document:{body},
+    window:{getComputedStyle:node=>({position:node.position||'static'})}
+  };
   vm.createContext(context);vm.runInContext(implementation('registerDialog'),context);
   const node=(classes='',parent=body,role=null,position='static')=>({nodeType:1,parentElement:parent,position,attributes:{},panels:[],contents:[],
     matches:selector=>selector==='.modal'&&classes.split(' ').includes('modal'),

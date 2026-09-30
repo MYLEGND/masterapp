@@ -57,6 +57,9 @@ jobs:
       - name: Run branch lifecycle safety contracts
         run: python3 scripts/test-release-lifecycle.py
 
+      - name: Run authenticated mobile authority tests
+        run: node --test tests/layout/modal-content-region.test.mjs tests/layout/app-navigation-contract.test.mjs
+
       - name: Restore .NET graph
         run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
 
@@ -152,9 +155,6 @@ jobs:
       - name: Run canonical shared CMS tests
         working-directory: tests/website
         run: npm test
-
-      - name: Run authenticated mobile authority tests
-        run: node --test tests/layout/modal-content-region.test.mjs
 
       - name: Run canonical form tracking tests
         run: node --test tests/analytics/form-tracker.test.cjs

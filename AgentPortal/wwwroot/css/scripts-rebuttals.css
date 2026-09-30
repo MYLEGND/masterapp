@@ -98,14 +98,6 @@ body{
     width: 100%;
 }
 
-body.uw-open{
-    overflow: hidden;
-}
-
-body.note-self-open{
-    overflow: hidden;
-}
-
 .note-self-overlay{
     position: fixed;
     inset: 0;
@@ -122,8 +114,6 @@ body.note-self-open{
 }
 
 .note-self-modal{
-    width: min(1180px, 96vw);
-    max-height: 92vh;
     display: flex;
     flex-direction: column;
     background: #0c1220;
@@ -131,6 +121,9 @@ body.note-self-open{
     border-radius: 16px;
     box-shadow: 0 26px 80px rgba(0,0,0,.52);
     overflow: hidden;
+}
+@media (min-width:901px){
+    .note-self-modal{width:min(1180px,96vw);max-height:92vh;}
 }
 
 .note-self-head{
@@ -388,15 +381,14 @@ body.note-self-open{
 }
 
 .uw-dialog{
-    width: min(1180px, 96vw);
-    max-height: 92vh;
-    overflow: auto;
     background: #ffffff;
     border: 1px solid #d9dde6;
     border-radius: 16px;
     box-shadow: 0 26px 80px rgba(16,24,40,.26);
-    padding: 20px 22px 26px 22px;
     color: #0f172a;
+}
+@media (min-width:901px){
+    .uw-dialog{width:min(1180px,96vw);max-height:92vh;overflow:auto;padding:20px 22px 26px;}
 }
 
 .uw-head{

@@ -273,6 +273,7 @@
     backdrop-filter: blur(7px);
 }
 
+@media (min-width:901px) {
 .home-clients-dialog,
 .home-zoom-dialog {
     position: relative;
@@ -282,6 +283,7 @@
     align-items: center;
     justify-content: center;
     padding: 2rem 1rem;
+}
 }
 
 .home-clients-shell,
@@ -299,6 +301,7 @@
         0 20px 40px rgba(13, 24, 49, 0.34);
 }
 
+@media (min-width:901px) {
 .home-clients-shell {
     width: min(1160px, 100%);
     max-height: min(88vh, 980px);
@@ -311,6 +314,7 @@
     max-height: min(88vh, 820px);
     overflow: auto;
     padding: 2rem;
+}
 }
 
 .home-clients-head,

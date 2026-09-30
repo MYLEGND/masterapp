@@ -24,11 +24,11 @@
    the existing Bootstrap/custom dialog controller. No fixed banner heights. */
 html[data-legend-modal-region] body [data-legend-modal-surface] {
     box-sizing: border-box;
-    padding: var(--legend-modal-area-start) var(--legend-modal-safe-margin) var(--legend-modal-area-end);
+    padding: 0px var(--legend-modal-safe-margin) 0px;
 }
 html[data-legend-modal-region] body [data-legend-modal-panel] {
     min-height: 0;
-    max-height: var(--legend-modal-safe-height);
+    max-height: 100dvh;
     overflow: auto;
 }
 html[data-legend-modal-region] body [data-legend-modal-panel]:not(.modal-dialog) {
@@ -37,13 +37,13 @@ html[data-legend-modal-region] body [data-legend-modal-panel]:not(.modal-dialog)
 html[data-legend-modal-region] body .modal > .modal-dialog {
     margin: 0 auto;
     min-height: 0;
-    max-height: var(--legend-modal-safe-height);
+    max-height: 100dvh;
 }
 html[data-legend-modal-region] body .modal > .modal-dialog-scrollable {
-    height: var(--legend-modal-safe-height);
+    height: 100dvh;
 }
 html[data-legend-modal-region] body .modal > .modal-dialog-centered {
-    min-height: var(--legend-modal-safe-height);
+    min-height: 100dvh;
 }
 html[data-legend-modal-region] body .modal .modal-body {
     min-height: 0;
@@ -139,6 +139,104 @@ html[data-legend-modal-region] body .modal .modal-body {
         overscroll-behavior-x: contain;
         -webkit-overflow-scrolling: touch;
     }
+
+
+    /*
+     * Canonical authenticated mobile content density.
+     * Use the phone's horizontal space before adding vertical scroll. This is
+     * intentionally explicit: no wildcard *-actions selectors may own geometry.
+     */
+    body.legend-app .legend-app-content :where(.container,.container-fluid) {
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+        padding-inline: 2px;
+    }
+
+    body.legend-app .legend-app-content :where(.row) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        margin-inline: 0;
+    }
+
+    body.legend-app .legend-app-content :where(.row) > [class*="col-"] {
+        min-width: 0;
+        padding-inline: 3px;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .legend-mobile-action-grid,
+        .dashboard-command-actions,
+        .dashboard-hero-actions,
+        .home-command-actions,
+        .home-hero-actions,
+        .client-create-actions,
+        .preview-actions,
+        .activation-actions,
+        .activation-notice-actions,
+        .pipeline-head-actions,
+        .drawer-top-actions,
+        .queue-record-actions,
+        .hero-link-meta-actions,
+        .wa-modal-toggle-group,
+        .uw-actions,
+        .side-actions,
+        .llbs-action-buttons,
+        .savings-illustration-footer
+    ) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: stretch;
+        gap: 6px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .legend-mobile-action-grid,
+        .dashboard-command-actions,
+        .dashboard-hero-actions,
+        .home-command-actions,
+        .home-hero-actions,
+        .client-create-actions,
+        .preview-actions,
+        .activation-actions,
+        .activation-notice-actions,
+        .pipeline-head-actions,
+        .drawer-top-actions,
+        .queue-record-actions,
+        .hero-link-meta-actions,
+        .wa-modal-toggle-group,
+        .uw-actions,
+        .side-actions,
+        .llbs-action-buttons,
+        .savings-illustration-footer
+    ) > :is(button,.btn,a,[role="button"]) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        min-height: 38px;
+        margin: 0;
+        padding: 6px 8px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .dashboard-hero-stats,
+        .dashboard-kpi-grid,
+        .home-tools-grid,
+        .home-hero-summary,
+        .membership-billing-summary
+    ) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
 }
 
 /* Shared native-style mobile sheet. Feature CSS owns desktop presentation. */
@@ -148,61 +246,43 @@ html[data-legend-modal-region] body .modal .modal-body {
 
 @media (max-width: 900px) {
     /*
-     * Canonical compact modal chrome. Behavior, IDs, data hooks and feature
-     * content stay untouched; this block owns only authenticated mobile UI.
+     * Canonical authenticated mobile modal authority.
+     *
+     * Every discovered user-facing modal/overlay owns the full phone viewport.
+     * Desktop dialog widths/heights are discarded on mobile. The page behind is
+     * locked by legend-modal.js; modal content scrolls internally.
      */
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface] {
-        padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end);
-    }
-
-    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] {
-        display: flex !important;
-        align-items: flex-start;
-        justify-content: center;
-    }
-
-    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) {
-        align-items: flex-start !important;
-        justify-content: center !important;
-        padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end) !important;
-    }
-
-    /*
-     * Legacy fixed drawers that are themselves the dialog surface consume the
-     * same top-sheet geometry on phones. Desktop presentation remains feature-owned.
-     */
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] {
-        top: var(--legend-modal-area-start) !important;
-        right: 8px !important;
-        bottom: auto !important;
-        left: 8px !important;
-        width: auto !important;
+        position: fixed !important;
+        inset: 0 !important;
+        top: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        box-sizing: border-box !important;
+        width: 100vw !important;
+        max-width: 100vw !important;
         min-width: 0 !important;
-        max-width: none !important;
-        height: min(72dvh, var(--legend-modal-safe-height)) !important;
-        min-height: 0 !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
-        border: 1px solid var(--legend-mobile-gold) !important;
-        border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius) !important;
-        background: var(--legend-mobile-surface) !important;
-        box-shadow: 0 14px 32px #0007 !important;
-        transform: translate3d(0, -130%, 0) !important;
-        transform-origin: top center;
-        transition: transform .24s cubic-bezier(.22,.78,.22,1) !important;
+        height: 100dvh !important;
+        min-height: 100dvh !important;
+        max-height: 100dvh !important;
+        margin: 0 !important;
+        padding:
+            env(safe-area-inset-top)
+            env(safe-area-inset-right)
+            env(safe-area-inset-bottom)
+            env(safe-area-inset-left) !important;
+        overflow: hidden !important;
+        overscroll-behavior: none !important;
+        background: color-mix(in srgb, var(--legend-mobile-surface-deep) 96%, #000 4%) !important;
+        z-index: 5200 !important;
     }
 
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface].open {
-        transform: translate3d(0, 0, 0) !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] .ai-drawer-header,
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] .ai-drawer-footer {
-        padding: 7px 10px !important;
-        border-color: #344766 !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] .ai-drawer-body {
-        padding: 9px 10px 10px !important;
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface],
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal)[data-legend-modal-open="true"] {
+        display: flex !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
     }
 
     /*
@@ -213,7 +293,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     html[data-legend-modal-region] body.legend-app
     :is(#proposalMenu.hp-proposal-menu, #uwMenu.proposal-menu, #rbShell .hp-proposal-menu, #rbShell .proposal-menu):not([hidden]) {
         position: fixed !important;
-        top: var(--legend-modal-area-start) !important;
+        top: 0px !important;
         right: 8px !important;
         bottom: auto !important;
         left: 8px !important;
@@ -221,7 +301,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         min-width: 0 !important;
         max-width: none !important;
         height: auto !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        max-height: 100dvh !important;
         margin: 0 !important;
         padding: 7px 10px 10px !important;
         overflow: hidden !important;
@@ -312,7 +392,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     html[data-legend-modal-region] body.legend-app .expense-lens-week-panel-backdrop {
         align-items: flex-start !important;
         justify-content: center !important;
-        padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end) !important;
+        padding: 0px 8px 0px !important;
     }
 
     html[data-legend-modal-region] body.legend-app .expense-lens-week-panel {
@@ -320,7 +400,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         max-width: 100% !important;
         min-height: 0 !important;
         height: auto !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        max-height: 100dvh !important;
         margin: 0 !important;
         padding: 0 !important;
         overflow-x: hidden !important;
@@ -349,14 +429,14 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)) {
-        top: var(--legend-modal-area-start) !important;
+        top: 0px !important;
         right: 8px !important;
         bottom: auto !important;
         left: 8px !important;
         width: auto !important;
         max-width: none !important;
         height: auto !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        max-height: 100dvh !important;
         margin: 0 !important;
         transform: none !important;
         overflow: hidden !important;
@@ -368,42 +448,52 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app .modal > .modal-dialog[data-legend-modal-panel] {
+        display: flex !important;
+        flex: 1 1 auto !important;
+        flex-direction: column !important;
         width: 100% !important;
         max-width: 100% !important;
+        min-width: 0 !important;
         min-height: 0 !important;
-        height: auto !important;
-        max-height: var(--legend-modal-safe-height) !important;
+        height: 100% !important;
+        max-height: none !important;
         margin: 0 !important;
         padding: 0 !important;
-        transform: none;
+        transform: none !important;
     }
 
     html[data-legend-modal-region] body.legend-app .modal > .modal-dialog > .modal-content[data-legend-modal-panel],
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] {
+        position: relative !important;
+        display: flex !important;
+        flex: 1 1 auto !important;
+        flex-direction: column !important;
         width: 100% !important;
         max-width: 100% !important;
+        min-width: 0 !important;
         min-height: 0 !important;
-        height: auto !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        height: 100% !important;
+        max-height: none !important;
         margin: 0 !important;
         padding: 0 !important;
         overflow: hidden !important;
-        border: 1px solid var(--legend-mobile-gold) !important;
-        border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius) !important;
+        border: 0 !important;
+        border-radius: 0 !important;
         background: var(--legend-mobile-surface) !important;
         color: var(--legend-mobile-text) !important;
-        box-shadow: 0 14px 32px #0007 !important;
+        box-shadow: none !important;
     }
 
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] {
         overflow-x: hidden !important;
         overflow-y: auto !important;
+        overscroll-behavior: contain !important;
+        touch-action: pan-y;
         -webkit-overflow-scrolling: touch;
-        overscroll-behavior: contain;
     }
 
     html[data-legend-modal-region] body.legend-app .messaging-command-center-window[data-legend-modal-panel] {
-        height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        height: 100dvh !important;
     }
 
     html[data-legend-modal-region] body.legend-app .modal .modal-header,
@@ -451,6 +541,54 @@ html[data-legend-modal-region] body .modal .modal-body {
         padding: 7px 8px;
         border-radius: 8px;
         font-size: 16px;
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control {
+        position: relative;
+        display: inline-grid !important;
+        flex: 0 0 38px !important;
+        width: 38px !important;
+        max-width: 38px !important;
+        min-width: 38px !important;
+        height: 38px !important;
+        min-height: 38px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        place-items: center;
+        border: 1px solid var(--legend-mobile-gold) !important;
+        border-radius: 999px !important;
+        background: var(--legend-mobile-surface-deep) !important;
+        background-image: none !important;
+        box-shadow: 0 8px 22px #0005 !important;
+        color: transparent !important;
+        font-size: 0 !important;
+        opacity: 1 !important;
+        cursor: pointer;
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control::before,
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control::after {
+        position: absolute;
+        width: 17px;
+        height: 2px;
+        border-radius: 999px;
+        background: var(--legend-mobile-text);
+        content: "";
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control::before {
+        transform: rotate(45deg);
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control::after {
+        transform: rotate(-45deg);
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-generated-close {
+        position: absolute !important;
+        top: max(8px, env(safe-area-inset-top)) !important;
+        right: max(8px, env(safe-area-inset-right)) !important;
+        z-index: 8 !important;
     }
 
     /*
@@ -790,12 +928,12 @@ html[data-legend-modal-region] body .modal .modal-body {
     html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet] {
         top: auto;
         right: 0;
-        bottom: var(--legend-modal-area-end);
+        bottom: 0px;
         left: 0;
         width: 100%;
         max-width: none;
-        height: var(--legend-modal-safe-height);
-        max-height: var(--legend-modal-safe-height);
+        height: 100dvh;
+        max-height: 100dvh;
         margin: 0;
         border: 1px solid var(--legend-mobile-gold);
         border-radius: var(--legend-mobile-radius) var(--legend-mobile-radius) 0 0;
@@ -5166,29 +5304,57 @@ header .legend-global-nav .container-fluid {
     }
 
     /*
-     * Canonical mobile header: one tiny permanent row plus one compact command
-     * tray, using the approved Website Studio open/close visual language.
+     * Canonical authenticated mobile navigation.
+     *
+     * The open/close icon owns one full-height command sheet. The existing
+     * Explore, left-nav, and right-nav content is moved into one internal
+     * scroll region by legend-global-navigation.js so there is no nested menu,
+     * no second control tier, and no page-scroll bleed while the sheet is open.
      */
     header .legend-global-nav .container-fluid {
         display: grid !important;
         grid-template-columns: minmax(40px, 48px) minmax(0, 1fr) 38px;
         grid-template-areas:
             "brand motto toggle"
-            "left left left"
-            "right right right";
+            "panel panel panel";
+        grid-template-rows: auto minmax(0, 1fr);
         align-items: center !important;
         gap: 5px 7px;
         width: 100%;
+        min-width: 0;
         padding: 0;
-        overflow: hidden;
+        overflow: visible;
         border: 1px solid transparent;
         border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius);
-        transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+    }
+
+    .legend-global-nav.mobile-open {
+        position: fixed;
+        inset: 0;
+        z-index: 5180;
+        width: 100vw;
+        height: 100dvh;
+        max-width: 100vw;
+        max-height: 100dvh;
+        padding:
+            max(6px, env(safe-area-inset-top))
+            max(8px, env(safe-area-inset-right))
+            max(8px, env(safe-area-inset-bottom))
+            max(8px, env(safe-area-inset-left));
+        overflow: hidden;
+        overscroll-behavior: none;
+        background: color-mix(in srgb, var(--legend-mobile-surface-deep) 97%, transparent);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
     }
 
     header .legend-global-nav.mobile-open .container-fluid {
+        height: 100%;
+        max-height: 100%;
+        min-height: 0;
+        padding: 0;
+        overflow: hidden;
         border-color: var(--legend-mobile-gold);
-        border-top-color: transparent;
         background: var(--legend-mobile-surface);
         box-shadow: 0 14px 32px #0007;
     }
@@ -5209,8 +5375,12 @@ header .legend-global-nav .container-fluid {
 
     .legend-global-nav .header-psalms {
         grid-area: motto;
+        position: static;
+        inset: auto;
         justify-self: stretch;
         align-self: center;
+        max-width: 100%;
+        margin: 0;
     }
 
     .legend-global-nav .nav-toggle {
@@ -5279,124 +5449,168 @@ header .legend-global-nav .container-fluid {
         opacity: 1;
     }
 
-    .legend-global-nav .navbar-left { grid-area: left; }
-    .legend-global-nav .navbar-right { grid-area: right; }
-
-    .legend-global-nav .navbar-left,
-    .legend-global-nav .navbar-right {
+    .legend-mobile-nav-panel {
         display: none;
-        width: 100%;
+        grid-area: panel;
         min-width: 0;
-        margin: 0;
-        padding: 2px 6px 4px;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        box-shadow: none;
+        min-height: 0;
     }
 
-    .legend-global-nav.mobile-open .navbar-left,
-    .legend-global-nav.mobile-open .navbar-right {
+    .legend-global-nav.mobile-open .legend-mobile-nav-panel {
         display: grid;
-    }
-
-    .legend-global-nav .navbar-left .nav-rows-grid {
-        display: grid;
-        gap: var(--legend-mobile-gap);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-content: start;
+        gap: 6px;
         width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        padding: 6px 8px calc(10px + env(safe-area-inset-bottom));
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    /* Flatten the former independent tiers into the one canonical command grid. */
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-rows-grid,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-row,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-drawer,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-card,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-list {
+        display: contents !important;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-item {
+        display: contents;
+    }
+
+    /* Explore is content, not a second mobile surface. */
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-item-explore,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-close,
+    .legend-global-nav[data-legend-mobile-nav-integrated] + .explore-overlay,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-overlay {
+        display: none !important;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-header,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-group-label,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-row {
+        grid-column: 1 / -1;
         min-width: 0;
     }
 
-    .legend-global-nav .navbar-left .nav-row,
-    .legend-global-nav .navbar-right {
-        grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
-        align-items: stretch;
-        gap: 5px;
-    }
-
-    .legend-global-nav .navbar-left .nav-item,
-    .legend-global-nav .navbar-left .nav-item-explore,
-    .legend-global-nav .navbar-right > * {
-        min-width: 0;
-        margin: 0;
-    }
-
-    .legend-global-nav .navbar-left .nav-link,
-    .legend-global-nav .navbar-right .nav-link,
-    .legend-global-nav .navbar-right .btn-link,
-    .legend-global-nav .navbar-left .explore-trigger,
-    .legend-global-nav .legend-founder-ai-nav-button,
-    .legend-global-nav .messaging-nav-button {
-        width: 100%;
-        min-width: 0;
-        min-height: var(--legend-mobile-control-height);
-        height: var(--legend-mobile-control-height);
-        margin: 0;
-        padding: 5px 6px;
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        margin: 0 -2px;
+        padding: 6px 8px;
         border: 1px solid var(--legend-mobile-control-line);
         border-radius: 8px;
+        background: var(--legend-mobile-surface);
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search {
+        padding: 0;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search input {
+        width: 100%;
+        min-width: 0;
+        min-height: 38px;
+        padding: 7px 10px;
+        font-size: 16px;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-group-label {
+        margin: 8px 2px 2px;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] :is(
+        .nav-link,
+        .btn-link,
+        .legend-founder-ai-nav-button,
+        .messaging-nav-button,
+        .profile-chip,
+        .explore-item
+    ) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        height: auto;
+        margin: 0;
+        padding: 7px 8px;
+        border: 1px solid var(--legend-mobile-control-line);
+        border-radius: 9px;
         background: var(--legend-mobile-control);
         color: var(--legend-mobile-text);
         justify-content: center;
         text-align: center;
-        font-size: clamp(0.68rem, 2.9vw, 0.78rem);
-        line-height: 1.05;
+        font-size: clamp(.72rem, 3vw, .82rem);
+        line-height: 1.08;
         white-space: normal;
         overflow-wrap: anywhere;
         box-shadow: none;
     }
 
-    .legend-global-nav .navbar-left .explore-trigger { min-width: 0; }
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-content: center;
+        justify-items: start;
+        gap: 4px;
+        text-align: left;
+    }
 
-    .legend-global-nav .nav-context-row {
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item span,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item small {
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
-        gap: 5px;
+        gap: 6px;
         width: 100%;
     }
 
-    .legend-global-nav .nav-context-pill,
-    .legend-global-nav .nav-context-exit {
-        width: 100%;
-        max-width: 100%;
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-pill,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-exit {
         min-width: 0;
-        min-height: var(--legend-mobile-control-height);
-        padding: 5px 7px;
+        min-height: 40px;
+        padding: 6px 8px;
         border-radius: 8px;
-        font-size: 0.72rem;
     }
 
-    .legend-global-nav .navbar-right .dropdown,
-    .legend-global-nav .navbar-right > .dropdown:last-child {
-        width: 100%;
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right > .dropdown,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right > .dropdown:last-child {
         min-width: 0;
-        max-width: 100%;
-        grid-column: auto;
-        justify-self: stretch;
-    }
-
-    .legend-global-nav .profile-chip {
         width: 100%;
         max-width: 100%;
-        min-width: 0;
-        min-height: var(--legend-mobile-control-height);
-        height: var(--legend-mobile-control-height);
-        padding: 3px 5px;
-        border-radius: 8px;
-        justify-content: center;
-        gap: 0;
+        margin: 0;
     }
 
-    .legend-global-nav .profile-avatar {
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-avatar {
         width: 26px;
         height: 26px;
         flex: 0 0 26px;
     }
 
-    .legend-global-nav .profile-meta { display: none; }
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-meta {
+        display: none;
+    }
 
-    .legend-global-nav .dropdown-menu-centered,
-    .legend-global-nav .dropdown-menu {
+    .legend-global-nav[data-legend-mobile-nav-integrated] .dropdown-menu-centered,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .dropdown-menu {
         position: static;
         width: 100%;
         max-width: 100%;
@@ -5405,7 +5619,7 @@ header .legend-global-nav .container-fluid {
         border: 1px solid var(--legend-mobile-control-line);
         border-radius: 8px;
         background: var(--legend-mobile-surface-deep);
-        font-size: 0.75rem;
+        font-size: .75rem;
     }
 }
 

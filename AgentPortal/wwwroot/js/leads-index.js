@@ -3353,7 +3353,7 @@ document.addEventListener("click", (e) => {
     return;
   }
 
-  const openDrawerEl = e.target.closest(".open-drawer");
+  const openDrawerEl = e.target.closest("[data-open-drawer]");
   if (openDrawerEl){
     const row = openDrawerEl.closest(".client-row");
     if (row) openQuickViewForRow(row);
@@ -4150,8 +4150,24 @@ async function openDrawerForRow(row){
     if (dLender) dLender.value = row.dataset.mortgageLender || "";
     if (dLoanAmount) dLoanAmount.value = row.dataset.loanAmount || "";
 
-    btnMail.href = email ? ("mailto:" + email) : "#";
-    btnCall.href = phone ? ("tel:" + phone) : "#";
+    if (email) {
+      btnMail.href = "mailto:" + email;
+      btnMail.removeAttribute("aria-disabled");
+      btnMail.removeAttribute("tabindex");
+    } else {
+      btnMail.removeAttribute("href");
+      btnMail.setAttribute("aria-disabled", "true");
+      btnMail.setAttribute("tabindex", "-1");
+    }
+    if (phone) {
+      btnCall.href = "tel:" + phone;
+      btnCall.removeAttribute("aria-disabled");
+      btnCall.removeAttribute("tabindex");
+    } else {
+      btnCall.removeAttribute("href");
+      btnCall.setAttribute("aria-disabled", "true");
+      btnCall.setAttribute("tabindex", "-1");
+    }
     dStatus.value = row.dataset.crmStatus || "Active";
     dPipelineStage.value = currentPipelineStage(row, "MortgageProtection");
     applyQuickViewContactProfileLabels(row, null);
@@ -4846,7 +4862,7 @@ async function noteSave(){
 async function openNoteModal(){
   if (!noteOverlay) return;
   noteOverlay.hidden = false;
-  document.body.classList.add("note-self-open");
+  
   noteSyncLeadField();
   const ctx = noteCurrentLeadContext();
   if (!ctx.leadId){
@@ -4883,7 +4899,7 @@ async function openNoteModal(){
 function closeNoteModal(){
   if (!noteOverlay) return;
   noteOverlay.hidden = true;
-  document.body.classList.remove("note-self-open");
+  
 }
 
 noteOpenBtn?.addEventListener("click", openNoteModal);
@@ -5859,7 +5875,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     });
   }
 
-  const nameCell = $(".name.open-drawer", row);
+  const nameCell = $("[data-open-drawer].name", row);
   if (nameCell) nameCell.textContent = `${row.dataset.first || ""} ${row.dataset.last || ""}`.trim();
   if (dName) dName.textContent = `${row.dataset.first || ""} ${row.dataset.last || ""}`.trim() || "Lead";
   syncDrawerEmailDisplay(row.dataset.email);

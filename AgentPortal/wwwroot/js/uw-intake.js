@@ -474,13 +474,13 @@
         overlay.scrollTop = 0;
         if (dialog) dialog.scrollTop = 0;
         overlay.hidden = false;
-        document.body.classList.add("uw-open");
+        
         dialog?.focus();
         syncContextLabel();
         return;
       }
       overlay.hidden = true;
-      document.body.classList.remove("uw-open");
+      
       editingId = null;
     }
 

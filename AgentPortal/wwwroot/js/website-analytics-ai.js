@@ -142,9 +142,9 @@
     d.classList.add('open');
     if (b) b.classList.add('visible');
     drawerOpen = true;
-    document.body.style.overflow = 'hidden';
+    
     // Focus close button for accessibility
-    var closeBtn = d.querySelector('.ai-drawer-close');
+    var closeBtn = d.querySelector('[data-ai-drawer-close]');
     if (closeBtn) closeBtn.focus();
   }
 
@@ -158,7 +158,7 @@
     if (priorFocus?.isConnected) priorFocus.focus();
     if (b) b.classList.remove('visible');
     drawerOpen = false;
-    document.body.style.overflow = '';
+    
     if (currentAbortController) {
       currentAbortController.abort();
       currentAbortController = null;
@@ -432,7 +432,7 @@
       }
 
       // Close button inside drawer
-      var closeBtn = e.target.closest('.ai-drawer-close');
+      var closeBtn = e.target.closest('[data-ai-drawer-close]');
       if (closeBtn) {
         closeDrawer();
         return;
@@ -465,7 +465,7 @@
 
     // Retry button
     document.addEventListener('click', function (e) {
-      var retryBtn = e.target.closest('.ai-retry-btn');
+      var retryBtn = e.target.closest('[data-ai-retry]');
       if (retryBtn) {
         e.preventDefault();
         runReview();
