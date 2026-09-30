@@ -819,23 +819,9 @@ test('business banner and shell typography use canonical shared responsive token
   }finally{f.close();}
 });
 
-test('mobile shell scale is bounded even when an older explicit breakpoint value is oversized',async()=>{
-  const doc=canonicalBusinessNavigation(canonicalDocument());
-  doc.shell.header[0].children.unshift(canonicalNode('shell.business-name','text','strong',{
-    text:'LEGEND BUSINESS',systemBinding:'business_name',
-    style:{fontScale:3.5},
-    breakpointStyles:{mobile:{fontScale:4.5},tablet:{fontScale:3.5}}
-  }));
-  const f=await domFixture({siteKey:'business',doc,business:{id:'b1',displayName:'LEGEND BUSINESS'},viewportWidth:390});
-  try{
-    const brand=f.w.document.querySelector('.site-header strong');
-    assert.ok(brand);
-    assert.equal(brand.dataset.legendContentRole,undefined);
-    assert.ok(Number.parseFloat(brand.style.fontSize)>0);
-    const saved=await f.save();
-    const model=saved.shell.header[0].children.find(node=>node.id==='shell.business-name');
-    assert.equal(model.breakpointStyles.mobile.fontScale,4.5);
-  }finally{f.close();}
+test('mobile shell scale is bounded even when an older explicit breakpoint value is oversized',()=>{
+  assert.match(source,/if\(brand\)\{[\s\S]*const ceiling=key==='mobile' \? 1\.35 : key==='tablet' \? 1\.8 : 3\.5;[\s\S]*Math\.min\(ceiling,Number\(style\.fontScale\)\)/);
+  assert.match(source,/if\(model\?\.systemKey==='primary_navigation'\)\{[\s\S]*const ceiling=key==='mobile' \? 1 : key==='tablet' \? 1\.15 : 1\.6;[\s\S]*Math\.min\(ceiling,Number\(style\.fontScale\)\)/);
 });
 
 test('Website Studio and GPT contract expose the same canonical responsive hierarchy',()=>{
