@@ -24,8 +24,6 @@
 .zoom-qp-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(7,12,23,.72);
-    backdrop-filter: blur(7px);
 }
 
 /* ── Centered dialog shell ───────────────────────────── */

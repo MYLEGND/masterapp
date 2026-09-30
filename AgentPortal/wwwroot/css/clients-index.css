@@ -1552,11 +1552,6 @@
 }
 
 /* Actions + Commitments hub modal system */
-.actions-hub-modal,
-.quick-entry-shell{
-    backdrop-filter: blur(8px);
-}
-
 .actions-hub-modal.modal,
 .quick-entry-shell.modal{
     left: 0 !important;
@@ -1565,7 +1560,6 @@
     width: 100vw !important;
     max-width: none !important;
     height: 100vh !important;
-    background: rgba(4, 10, 24, .74) !important;
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
