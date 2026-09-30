@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged PR #325 canonical public website design and first-paint publication repair.",
-  "purpose": "Deploy only the merged canonical public website repair to Protect and LEGEND Website. This release widens the shared public content canvas, improves default visual hierarchy and section rhythm, normalizes font family and heading/body weights, replaces weak card-top smears with crisp full-perimeter gold-accent borders, keeps Website Studio side-panel style controls synchronized to the selected canonical node, and eliminates stale/default-site flashes on refresh by hiding template markup until canonical publication hydration and preventing published HTML reuse. Protect serves Protect/Agent and Business custom-domain website scopes; LEGEND Website serves the main LEGEND public site. AgentPortal, ClientApp, Parfait, Cloudflare routing, analytics/Meta/OpenAI, CRM, payments, and database migration actions are excluded.",
-  "requestId": "canonical-public-design-first-paint-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the canonical public website design hierarchy, Website Studio Source editor UX, selected-node control binding, and published first-paint/cache repair after PR #325 and PR #326 merged and exact-head Website Studio/public validation passed.",
+  "purpose": "Deploy only the affected public website hosts from the current legend/approved-changes head. Protect includes shared Website Studio/public CMS, Protect public layout, Business published website middleware, selected-node control binding, modern Selected Source typing/indentation, and canonical first-paint gating. LEGEND Website includes the wider professional public design hierarchy, consistent typography/weights, crisp full-perimeter gold-accent borders, tighter vertical rhythm, modern Source editor asset, hidden-first published canonical hydration, and HTML no-store policy. AgentPortal, ClientApp, Parfait, Cloudflare routing, database migrations, CRM, analytics event authority, Meta/OpenAI delivery, payments, and unrelated product systems are excluded.",
+  "requestId": "canonical-public-design-source-cache-20260930",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",

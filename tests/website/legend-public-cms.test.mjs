@@ -671,6 +671,12 @@ test('business header navigation projects one canonical page catalog without pre
   }finally{f.close();}
 });
 
+test('Protect hides only canonical published-document pages before hydration',()=>{
+  assert.match(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding \? "hidden" : null\)"/);
+  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
+  assert.match(protectLayoutSource,/@if \(!isStandaloneQuoteLanding\)[\s\S]*html\[hidden\]\{display:block!important\}/);
+});
+
 test('public startup styling has one responsive authority and one palette authority',()=>{
   assert.equal((publicCss.match(/@media\(max-width:980px\)/g)||[]).length,1);
   assert.equal((publicCss.match(/@media\(max-width:650px\)/g)||[]).length,1);
@@ -2397,8 +2403,9 @@ test('duplicate canonical link has independent stable identity and history resto
 });
 
 test('public publication renders without stale-template flash and HTML is never cached',()=>{
-  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\\$\{siteKey\}" hidden>/);
-  assert.match(protectLayoutSource,/<html lang="en" hidden>/);
+  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\$\{siteKey\}" hidden>/);
+  assert.match(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding \? "hidden" : null\)"/);
+  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
   assert.match(protectLayoutSource,/<noscript><style>html\[hidden\]\{display:block!important\}<\/style><\/noscript>/);
   assert.match(source,/function unavailable\(error\) \{[\s\S]*document\.documentElement\.hidden = false;/);
   assert.match(source,/fetch\(url, \{ cache: 'no-store' \}\)/);
