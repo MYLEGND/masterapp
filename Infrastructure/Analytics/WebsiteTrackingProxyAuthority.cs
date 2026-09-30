@@ -189,7 +189,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             scope.PublishedVersion,
             scope.SiteKey,
             request.Path,
-            request.WebsiteBindingId);
+            request.WebsiteBindingId,
+            request.MetadataJson);
 
         if (resolution is null)
             return claimsConfiguredBinding
