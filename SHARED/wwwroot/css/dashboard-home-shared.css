@@ -51,6 +51,96 @@ html[data-legend-modal-region] body .modal .modal-body {
     overscroll-behavior: contain;
 }
 
+/*
+ * Canonical authenticated mobile width contract.
+ *
+ * Every rendered page gets the full available phone width. Page-specific CSS
+ * may still define its own internal composition, but it cannot make the root
+ * content region narrower than the viewport or make overflow unreachable.
+ * Truly wide content remains accessible through a local horizontal scroll
+ * fallback instead of being clipped off-screen.
+ */
+@media (max-width: 768px) {
+    body.legend-app .legend-app-content {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    body.legend-app .legend-app-content > main {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: visible;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    body.legend-app .legend-app-content > main > :not(script):not(style):not(link) {
+        box-sizing: border-box;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    body.legend-app .legend-app-content > main > :not(script):not(style):not(link):not(.modal):not([data-legend-modal-surface]) {
+        width: 100%;
+        margin-inline: 0;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .dashboard-page-shell,
+        .home-container,
+        .legend-workspace-page,
+        .client-create-page,
+        .resources-page,
+        .training-page,
+        .snapshot-page,
+        .finance-shell,
+        .factfinder-page-shell,
+        .legend-connect-page
+    ) {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        margin-inline: 0;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .dashboard-command-center-panel,
+        .dashboard-analytics-panel,
+        .dashboard-page-shell .category-container,
+        .dashboard-surface-panel
+    ) {
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    body.legend-app .legend-app-content :where(.row) > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    body.legend-app .legend-app-content :where(img, video, iframe, canvas) {
+        max-width: 100%;
+    }
+
+    body.legend-app .legend-app-content :where(.table-responsive) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
 /* Shared native-style mobile sheet. Feature CSS owns desktop presentation. */
 .legend-mobile-sheet-handle {
     display: none;
