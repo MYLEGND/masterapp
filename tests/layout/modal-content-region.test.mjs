@@ -411,11 +411,10 @@ test('all three host layouts load the single shared owner before page scripts',(
 });
 test('shared geometry preserves full backdrop and sizes inner Bootstrap/custom panels',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
-  assert.match(css,/\[data-legend-modal-panel\] \{\s+min-height: 0;\s+max-height: var\(--legend-modal-safe-height\)/);
-  assert.match(css,/\.modal > \.modal-dialog-scrollable \{\s+height: var\(--legend-modal-safe-height\)/);
+  assert.match(css,/\[data-legend-modal-panel\] \{\s+min-height: 0;\s+max-height: 100dvh/);
+  assert.match(css,/\.modal > \.modal-dialog-scrollable \{\s+height: 100dvh/);
   assert.match(script,/new ResizeObserver\(scheduleViewportOffsets\)/);
-  assert.match(script,/attributeFilter: \['class', 'hidden'\]/);
-  assert.doesNotMatch(script,/attributeFilter:[^\n]*'style'/);
+  assert.match(script,/attributeFilter: \['class', 'hidden', 'aria-hidden', 'style'\]/);
   assert.match(script,/visualViewport\?\.addEventListener\("resize"/);
   assert.match(script,/document.addEventListener\('show.bs.modal'/);
 });
@@ -424,7 +423,7 @@ test('shared geometry preserves full backdrop and sizes inner Bootstrap/custom p
 test('mobile sheet behavior is globally owned and uses viewport-safe geometry',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(css,/@media \(max-width: 900px\)[\s\S]*\[data-legend-mobile-sheet\]/);
-  assert.match(css,/bottom: var\(--legend-modal-area-end\)/);
+  assert.match(css,/\[data-legend-mobile-sheet\][\s\S]*bottom: 0px;[\s\S]*height: 100dvh;/);
   assert.match(css,/data-legend-sheet-snap="half"[\s\S]*46%/);
   assert.match(script,/function registerMobileSheet\(/);
   assert.match(script,/addEventListener\("pointerdown"/);
@@ -450,7 +449,15 @@ test('CRM scripts delegate page scroll locking to shared modal owner',()=>{
 
 function dialogFixture() {
   const body={};
-  const context={surfaces:new WeakSet(),document:{body},window:{getComputedStyle:node=>({position:node.position||'static'})}};
+  const context={
+    surfaces:new WeakSet(),
+    surfaceList:new Set(),
+    modalOwner:surface=>{surface.dataset=surface.dataset||{};surface.dataset.legendModalOwner='fixture';return 'fixture';},
+    normalizeCloseControl:()=>{},
+    syncModalSurfaceState:()=>{},
+    document:{body},
+    window:{getComputedStyle:node=>({position:node.position||'static'})}
+  };
   vm.createContext(context);vm.runInContext(implementation('registerDialog'),context);
   const node=(classes='',parent=body,role=null,position='static')=>({nodeType:1,parentElement:parent,position,attributes:{},panels:[],contents:[],
     matches:selector=>selector==='.modal'&&classes.split(' ').includes('modal'),
