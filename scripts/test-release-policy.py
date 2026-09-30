@@ -174,6 +174,61 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
              patch.object(self.lifecycle, 'git', side_effect=fake_git):
             self.assertIsNone(self.lifecycle.direct_release_approved_pr(Api(), head))
 
+    def test_release_control_pr_is_skipped_in_favor_of_nearest_product_pr(self):
+        head = 'a' * 40
+        control_request = 'b' * 40
+        control_merge = 'c' * 40
+        before_control = 'd' * 40
+        product_merge = 'e' * 40
+        product_pr = {
+            'number': 302,
+            'merged_at': '2026-09-30T06:14:36Z',
+            'merge_commit_sha': product_merge,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+        control_pr = {
+            'number': 311,
+            'merged_at': '2026-09-30T06:36:22Z',
+            'merge_commit_sha': control_merge,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == 'commits/' + control_merge + '/pulls':
+                    return [control_pr]
+                if path == 'pulls/311/files':
+                    return [
+                        {'filename': 'scripts/release-lifecycle.py'},
+                        {'filename': 'scripts/test-release-policy.py'},
+                    ]
+                if path == 'commits/' + product_merge + '/pulls':
+                    return [product_pr]
+                if path == 'pulls/302/files':
+                    return [{'filename': 'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs'}]
+                raise AssertionError(path)
+
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                current = args[4]
+                mapping = {
+                    head: head + ' ' + control_request + '\n',
+                    control_request: control_request + ' ' + control_merge + '\n',
+                    control_merge: control_merge + ' ' + before_control + ' ' + ('9' * 40) + '\n',
+                    before_control: before_control + ' ' + product_merge + '\n',
+                    product_merge: product_merge + ' ' + ('8' * 40) + ' ' + ('7' * 40) + '\n',
+                }
+                return SimpleNamespace(returncode=0, stdout=mapping[current])
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
+        with patch.object(self.lifecycle, 'direct_only_request',
+                          side_effect=lambda sha: sha in {head, control_request, before_control}), \
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
+            resolved = self.lifecycle.direct_release_approved_pr(Api(), head)
+
+        self.assertEqual(resolved['number'], 302)
     def test_direct_release_authorization_rejects_extra_changed_files(self):
         path = 'Docs/releases/direct-release-request.json'
         with patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(

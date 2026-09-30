@@ -336,20 +336,28 @@ def direct_only_request(sha):
 
 
 def direct_release_approved_pr(api, sha):
-    """Resolve an exact approved-only release revision to its validated merged PR.
+    """Resolve an exact approved-only release revision to its validated product PR.
 
-    Release authorization can legitimately be rewritten several times while prior
-    deployments are cancelled or superseded. Walk backward through a bounded chain
-    of single-parent, request-only approved release commits until the nearest merged
-    approved PR is reached. Any product-code commit, malformed lineage, excessive
-    chain, or ambiguous PR mapping fails closed.
+    Release authorization may be rewritten several times, and release-control-only
+    PRs may be merged between the last product PR and the final authorization.
+    Walk backward through a bounded chain of request-only commits and release-control
+    PR merges until the nearest product-changing merged PR is reached. Any malformed
+    lineage, non-control single-parent commit, excessive chain, or ambiguous PR map
+    fails closed.
     """
     if not direct_only_request(sha):
         return None
 
     current = sha
-    path = 'Docs/releases/direct-release-request.json'
-    for _ in range(8):
+    request_path = 'Docs/releases/direct-release-request.json'
+    release_control_files = {
+        request_path,
+        'scripts/approved-release-baseline.py',
+        'scripts/release-lifecycle.py',
+        'scripts/test-release-policy.py',
+    }
+
+    for _ in range(16):
         lineage = git('rev-list', '--parents', '-n', '1', current, check=False)
         parts = lineage.stdout.strip().split() if not lineage.returncode else []
         if not parts or parts[0] != current:
@@ -361,7 +369,7 @@ def direct_release_approved_pr(api, sha):
             parent = parts[1]
             changed = git('diff-tree', '--no-commit-id', '--name-only', '-r',
                           current + '^1', current, check=False)
-            if changed.returncode or changed.stdout.splitlines() != [path]:
+            if changed.returncode or changed.stdout.splitlines() != [request_path]:
                 return None
             if direct_only_request(parent):
                 current = parent
@@ -373,7 +381,19 @@ def direct_release_approved_pr(api, sha):
         pulls = api.pages('commits/' + merged + '/pulls')
         matches = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == merged
                    and p.get('base', {}).get('ref') == APPROVED]
-        return matches[0] if len(matches) == 1 else None
+        if len(matches) != 1:
+            return None
+        pr = matches[0]
+        files = api.pages(f"pulls/{pr['number']}/files")
+        names = {row.get('filename') for row in files}
+        if names and names <= release_control_files:
+            merge_lineage = git('rev-list', '--parents', '-n', '1', merged, check=False)
+            merge_parts = merge_lineage.stdout.strip().split() if not merge_lineage.returncode else []
+            if len(merge_parts) != 3 or merge_parts[0] != merged:
+                return None
+            current = merge_parts[1]
+            continue
+        return pr
 
     return None
 
