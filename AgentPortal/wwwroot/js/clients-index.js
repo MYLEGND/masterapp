@@ -3825,19 +3825,47 @@ async function openDrawerForRow(row){
     if (dLender) dLender.value = row.dataset.mortgageLender || "";
     if (dLoanAmount) dLoanAmount.value = row.dataset.loanAmount || "";
 
-    btnMail.href = email ? ("mailto:" + email) : "#";
-    btnCall.href = phone ? ("tel:" + phone) : "#";
+    if (email) {
+      btnMail.href = "mailto:" + email;
+      btnMail.removeAttribute("aria-disabled");
+      btnMail.removeAttribute("tabindex");
+    } else {
+      btnMail.removeAttribute("href");
+      btnMail.setAttribute("aria-disabled", "true");
+      btnMail.setAttribute("tabindex", "-1");
+    }
+    if (phone) {
+      btnCall.href = "tel:" + phone;
+      btnCall.removeAttribute("aria-disabled");
+      btnCall.removeAttribute("tabindex");
+    } else {
+      btnCall.removeAttribute("href");
+      btnCall.setAttribute("aria-disabled", "true");
+      btnCall.setAttribute("tabindex", "-1");
+    }
     const ts = Date.now();
     if (btnOpenProfile){
       const isSelfManaged = norm(row.dataset.accountManagementMode).toLowerCase() === "selfmanaged";
       btnOpenProfile.hidden = isSelfManaged;
       btnOpenProfile.setAttribute("aria-hidden", isSelfManaged ? "true" : "false");
       if (isSelfManaged) {
-        btnOpenProfile.href = "#";
+        btnOpenProfile.removeAttribute("href");
+        btnOpenProfile.setAttribute("aria-disabled", "true");
+        btnOpenProfile.setAttribute("tabindex", "-1");
       } else if (row.dataset.isguid === "true" && row.dataset.clientId){
         btnOpenProfile.href = `/ClientWorkspace/Profile?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`;
+        btnOpenProfile.removeAttribute("aria-disabled");
+        btnOpenProfile.removeAttribute("tabindex");
       }else{
-        btnOpenProfile.href = row.dataset.clientId ? crmRoute(`/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`) : "#";
+        if (row.dataset.clientId) {
+          btnOpenProfile.href = crmRoute(`/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`);
+          btnOpenProfile.removeAttribute("aria-disabled");
+          btnOpenProfile.removeAttribute("tabindex");
+        } else {
+          btnOpenProfile.removeAttribute("href");
+          btnOpenProfile.setAttribute("aria-disabled", "true");
+          btnOpenProfile.setAttribute("tabindex", "-1");
+        }
       }
       btnOpenProfile.textContent = "View / Edit Profile";
     }
@@ -3930,7 +3958,9 @@ async function openDrawerForRow(row){
         norm(row.dataset.accountManagementMode).toLowerCase() === "selfmanaged";
       btnOpenProfile.hidden = isSelfManaged;
       btnOpenProfile.setAttribute("aria-hidden", isSelfManaged ? "true" : "false");
-      if (isSelfManaged) btnOpenProfile.href = "#";
+      if (isSelfManaged) btnOpenProfile.removeAttribute("href");
+        btnOpenProfile.setAttribute("aria-disabled", "true");
+        btnOpenProfile.setAttribute("tabindex", "-1");
     }
     storeRowLatestAppointment(row, detail.latestAppointment || rowLatestAppointment(row));
     dStatus.value = detail.crmStatus || row.dataset.crmStatus || "Active";
