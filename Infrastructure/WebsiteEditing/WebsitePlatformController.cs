@@ -1900,11 +1900,14 @@ public class WebsitePlatformController : ControllerBase
             return false;
 
         if (normalizedFieldKey is not null &&
-            found.Type == "experience" &&
-            (found.Experience is null ||
-             found.Experience.Controls.Count(control =>
-                 string.Equals(control.Key, normalizedFieldKey, StringComparison.OrdinalIgnoreCase)) != 1))
-            return false;
+            found.Type == "experience")
+        {
+            var signalFieldKey = normalizedFieldKey;
+            if (found.Experience is null ||
+                found.Experience.Controls.Count(control =>
+                    string.Equals(control.Key, signalFieldKey, StringComparison.OrdinalIgnoreCase)) != 1)
+                return false;
+        }
 
         target = found;
         return true;
