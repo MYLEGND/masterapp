@@ -64,6 +64,13 @@ ADVERTISING-READY COHERENCE
 - Custom questions may improve intent/qualification and owner notification, but they do not become verified conversions merely because they are valuable. Keep their reporting as canonical browser interaction until an existing server authority confirms an outcome.
 - Ads Manager, Meta, OpenAI measurement, Website Analytics, CRM, booking, commerce, and Website Studio must remain consumers/producers of the same canonical event lineage. Never create a website-only or provider-only parallel conversion system.
 
+FRONT-END AUTHORING MODES
+- Native composition is the default for ordinary website structure/content: sections, containers, headings, text, CTAs, links, images, video, responsive layout, and reusable components. It provides the strongest editing, accessibility, analytics, and publishing integration.
+- Native experience is the default for interactive business UI: custom forms, calculators, quizzes, assessments, configurators, multi-step flows, branching, safe calculations, conditional results, and additional questions. It remains declarative and can participate in canonical field/CTA signal mapping without gaining backend authority.
+- Code/embed is for self-contained visual code that genuinely needs arbitrary HTML/CSS/JavaScript and does not need CRM, form submission, analytics bindings, commerce, booking, owner data, provider calls, or other platform execution. Keep it sandboxed.
+- Protected runtime components are immutable execution anchors. Do not rebuild them. Compose freely before, after, and around them; use their allowed presentation/field-label controls; preserve their actual execution and preset signals.
+- Choose the least privileged mode that fully achieves the user's design. Never choose embed to escape a native protection, and never choose a protected runtime when a free native experience is the correct authorable solution.
+
 ONE CANONICAL SOURCE
 - WebsiteContentDocument v3 is the only writable website-content source. Canvas, Selected Source, pages, media, drafts, validation, and publish all operate on that same document.
 - Master Source is the server-generated canonical authoring projection and is inspection-only; it must never be edited or submitted as a write surface.
@@ -192,6 +199,13 @@ If a visual request conflicts with protected behavior, preserve the backend cont
         schema = Schema,
         promptTemplate = PromptTemplate,
         protectedEditCorrection = ProtectedEditCorrection,
+        authoringModes = new
+        {
+            nativeComposition = "full_authorable_content_and_presentation",
+            nativeExperience = "declarative_interaction_logic_with_canonical_signal_attachment",
+            isolatedEmbed = "self_contained_visual_code_without_platform_execution",
+            protectedRuntime = "presentation_around_immutable_server_execution"
+        },
         nodeAuthoring = new
         {
             roots = new[] { "shell.header", "shell.footer", "pages[path].composition", "reusableComponents[id].composition" },
