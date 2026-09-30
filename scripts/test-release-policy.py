@@ -135,6 +135,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
         product_merge = 'c' * 40
         control_side = 'd' * 40
         product_side = 'e' * 40
+        product_base = 'f' * 40
         control_pr = {
             'number': 319,
             'merged_at': '2026-09-30T07:40:42Z',
