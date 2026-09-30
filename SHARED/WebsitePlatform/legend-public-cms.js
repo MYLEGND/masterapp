@@ -682,9 +682,88 @@
     });
   }
 
+  function selectedSignalContext() {
+    if (!selected || legacyMigration) return null;
+    const fieldKey=['INPUT','SELECT','TEXTAREA'].includes(selected.tagName) ? formFieldKey(selected) : null;
+    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id]') : null;
+    const elementId=fieldKey
+      ? form?.dataset?.cmsCompositionId
+      : (selected.dataset.cmsCompositionId || selected.dataset.cmsId || null);
+    if(!elementId) return null;
+    const model=compositionNode(elementId);
+    if(!model) return null;
+    const bindings=fieldKey
+      ? (model.fieldSignals?.[fieldKey] || [])
+      : (model.signals || []);
+    return {elementId,fieldKey,model,bindings};
+  }
+
   function selectedSignalElementId() {
-    if (!selected) return null;
-    return selected.dataset.cmsCompositionId || selected.dataset.cmsId || null;
+    return selectedSignalContext()?.elementId || null;
+  }
+
+  async function persistSelectedSignals(nextSignals) {
+    const context=selectedSignalContext();
+    if(!context) return false;
+    const status=document.getElementById('legend-cms-status');
+
+    if(dirty){
+      if(status) status.textContent='Saving design changes before updating Analytics mapping…';
+      const saved=await save(false);
+      if(!saved || dirty) return false;
+    }
+
+    const response=await fetch(`${API_BASE}/api/website-content/manage/signals`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        ticket:editorTicket,
+        expectedRevision:revision,
+        pagePath:currentPageRoute(),
+        elementId:context.elementId,
+        fieldKey:context.fieldKey,
+        signals:nextSignals
+      })
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      if((response.status===401 || response.status===403) &&
+          showEditorAuthorizationRecovery('Website Studio authorization expired while updating this Analytics mapping.'))
+        return false;
+      if(status) status.textContent=payload.message || payload.error || `Signal update failed (${response.status}).`;
+      return false;
+    }
+    if(payload.source!=='website_signal_configuration'){
+      if(status) status.textContent='Signal update response was invalid.';
+      return false;
+    }
+
+    documentState=normalizeDocument(payload.document || documentState);
+    revision=payload.revision ?? revision;
+    canonicalSourceDocument=null;
+    canonicalSourceRevision=null;
+    dirty=false;
+    applyDocument(documentState);
+
+    let refreshed=findEditableElement(context.elementId);
+    if(context.fieldKey && refreshed){
+      refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[type="submit"]')]
+        .find(control=>formFieldKey(control)===context.fieldKey) || null;
+    }
+    if(refreshed) setSelected(refreshed);
+    else setSelected(null);
+    if(status) status.textContent='Analytics mapping saved to the canonical draft.';
+    return true;
+  }
+
+  async function mutateSelectedSignals(bindingId, mutation) {
+    const context=selectedSignalContext();
+    if(!context) return false;
+    const next=cloneCanonicalValue(context.bindings || []);
+    const binding=bindingId ? next.find(value=>value.id===bindingId) : null;
+    if(bindingId && !binding) return false;
+    mutation(binding,next);
+    return persistSelectedSignals(next);
   }
 
   function signalDiagnosticHost(bindingId) {
@@ -713,8 +792,8 @@
   }
 
   async function runSignalDryRun(binding) {
-    const elementId = selectedSignalElementId();
-    if (!binding?.id || !elementId) return;
+    const context=selectedSignalContext();
+    if (!binding?.id || !context?.elementId) return;
     if (!await ensureSavedForSignalInspection(binding.id)) return;
     renderSignalDiagnosticMessage(binding.id, 'Running private dry-run validation…');
     try {
@@ -725,8 +804,9 @@
           ticket: editorTicket,
           expectedRevision: revision,
           pagePath: currentPageRoute(),
-          elementId,
-          bindingId: binding.id
+          elementId:context.elementId,
+          bindingId:binding.id,
+          fieldKey:context.fieldKey
         })
       });
       const payload = await response.json().catch(() => ({}));
@@ -752,16 +832,17 @@
   }
 
   async function loadSignalHealth(binding) {
-    const elementId = selectedSignalElementId();
-    if (!binding?.id || !elementId) return;
+    const context=selectedSignalContext();
+    if (!binding?.id || !context?.elementId) return;
     if (!await ensureSavedForSignalInspection(binding.id)) return;
     renderSignalDiagnosticMessage(binding.id, 'Loading destination health and published delivery evidence…');
     try {
       const url = new URL(`${API_BASE}/api/website-content/manage/signals/health`);
       url.searchParams.set('ticket', editorTicket);
       url.searchParams.set('pagePath', currentPageRoute());
-      url.searchParams.set('elementId', elementId);
-      url.searchParams.set('bindingId', binding.id);
+      url.searchParams.set('elementId',context.elementId);
+      url.searchParams.set('bindingId',binding.id);
+      if(context.fieldKey) url.searchParams.set('fieldKey',context.fieldKey);
       const response = await fetch(url, { cache:'no-store' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.message || payload.error || `Signal health failed (${response.status})`);
@@ -810,105 +891,145 @@
   }
 
   function renderSignalControls() {
-    const host = document.getElementById('legend-cms-signal-controls');
-    if (!host) return;
+    const host=document.getElementById('legend-cms-signal-controls');
+    if(!host) return;
     host.replaceChildren();
-    const paragraph = text => { const node = document.createElement('p'); node.textContent = text; host.appendChild(node); };
-    if (!selected) { paragraph('Select a button, form, field, or section on the page.'); return; }
-    if (!signalCatalog) { paragraph('The event catalog could not be loaded. Reopen the editor to try again.'); return; }
-    const type = selected.tagName;
-    const triggers = ['viewed'];
-    if (['A','BUTTON'].includes(type)) triggers.push('click');
-    if (type === 'FORM') triggers.push('form_started','submit_attempt','submission_saved');
-    if (['INPUT','SELECT','TEXTAREA'].includes(type)) triggers.push('field_started','validation_failed');
-    if (type === 'INPUT' && selected.type === 'tel') triggers.push('field_completed');
-    if (selected.dataset.cmsSection) triggers.push('scroll_threshold');
-    const candidates = signalCatalog.events.filter(option => !option.requiresServerOutcome && option.triggers.some(trigger => triggers.includes(trigger)));
-    const models = selectedWebsiteModel();
-    const bindings = models?.signals || [];
-    paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
-    if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
-    const managedActionKey = selected.dataset.websiteActionKey;
-    const managedAction = (managedActionKey && availableCtaOptions().find(option => option.key === managedActionKey))
+    const paragraph=text=>{const node=document.createElement('p');node.textContent=text;host.appendChild(node);};
+    if(!selected){paragraph('Select a button, form, field, or section on the page.');return;}
+    if(!signalCatalog){paragraph('The event catalog could not be loaded. Reopen the editor to try again.');return;}
 
-      || null;
-    if (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) {
-      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic form analytics';
-      host.appendChild(automaticTitle);
-      const automaticHelp = document.createElement('p');
-      automaticHelp.textContent = 'No mapping is required. The shared Protect Website runtime automatically tracks the canonical inquiry lifecycle, and the backend owns the confirmed Lead outcome.';
-      host.appendChild(automaticHelp);
-      const automatic = document.createElement('div'); automatic.className = 'legend-cms-signal-presets';
-      const names = ['LeadFormStart','ContactInputStarted','PhoneFieldCompleted','RequiredContactFieldsCompleted','SubmitAttempt','Lead'];
-      for (const name of names) {
-        const option = signalCatalog.events.find(value => value.name === name);
-        if (!option) continue;
-        const row = document.createElement('div');
-        row.textContent = `${name} · automatic · ${option.requiresServerOutcome ? 'verified server outcome' : 'analytics + eligible configured destinations'}`;
+    const context=selectedSignalContext();
+    if(!context){paragraph('This element does not expose canonical signal configuration.');return;}
+
+    const type=selected.tagName;
+    const triggers=['viewed'];
+    if(['A','BUTTON'].includes(type)) triggers.push('click');
+    if(type==='FORM') triggers.push('form_started','submit_attempt','submission_saved');
+    if(['INPUT','SELECT','TEXTAREA'].includes(type)) triggers.push('field_started','validation_failed');
+    if(type==='INPUT' && selected.type==='tel') triggers.push('field_completed');
+    if(selected.dataset.cmsSection) triggers.push('scroll_threshold');
+
+    const candidates=signalCatalog.events.filter(option=>
+      !option.requiresServerOutcome &&
+      option.triggers.some(trigger=>triggers.includes(trigger)));
+    const bindings=context.bindings || [];
+    paragraph(bindings.length
+      ? `${bindings.length} interaction mapping${bindings.length===1?'':'s'}`
+      : 'No signal. This element has no configured marketing event.');
+    if(!signalCatalog.runtimeEnabled)
+      paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
+
+    const managedActionKey=selected.dataset.websiteActionKey;
+    const managedAction=(managedActionKey && availableCtaOptions().find(option=>option.key===managedActionKey)) || null;
+    if(type==='FORM' && selected.matches?.('[data-website-inquiry]')){
+      const title=document.createElement('strong');title.textContent='Automatic form analytics';host.appendChild(title);
+      const help=document.createElement('p');
+      help.textContent='No mapping is required. The shared Protect Website runtime automatically tracks the canonical inquiry lifecycle, and the backend owns the confirmed Lead outcome.';
+      host.appendChild(help);
+      const automatic=document.createElement('div');automatic.className='legend-cms-signal-presets';
+      for(const name of ['LeadFormStart','ContactInputStarted','PhoneFieldCompleted','RequiredContactFieldsCompleted','SubmitAttempt','Lead']){
+        const option=signalCatalog.events.find(value=>value.name===name);
+        if(!option) continue;
+        const row=document.createElement('div');
+        row.textContent=`${name} · automatic · ${option.requiresServerOutcome?'verified server outcome':'analytics + eligible configured destinations'}`;
         automatic.appendChild(row);
       }
       host.appendChild(automatic);
-    } else if (managedAction) {
-      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic action analytics';
-      host.appendChild(automaticTitle);
-      const automaticHelp = document.createElement('p');
-      automaticHelp.textContent = `${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}. No manual mapping is required.`;
-      host.appendChild(automaticHelp);
+    }else if(managedAction){
+      const title=document.createElement('strong');title.textContent='Automatic action analytics';host.appendChild(title);
+      const help=document.createElement('p');
+      help.textContent=`${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}. No manual mapping is required.`;
+      host.appendChild(help);
     }
-    const addSelect = (labelText, values, value, action) => {
-      const label = document.createElement('label'); label.className = 'legend-cms-group'; label.textContent = labelText;
-      const select = document.createElement('select');
-      for (const [key, text] of values) { const option = document.createElement('option'); option.value = key; option.textContent = text; select.appendChild(option); }
-      select.value = value; select.addEventListener('change', () => { checkpoint(); action(select.value); markDirty(); renderSignalControls(); });
-      label.appendChild(select); host.appendChild(label); return select;
+
+    const addSelect=(labelText,values,value,action)=>{
+      const label=document.createElement('label');label.className='legend-cms-group';label.textContent=labelText;
+      const select=document.createElement('select');
+      for(const [key,text] of values){const option=document.createElement('option');option.value=key;option.textContent=text;select.appendChild(option);}
+      select.value=value;
+      select.addEventListener('change',()=>void action(select.value));
+      label.appendChild(select);host.appendChild(label);return select;
     };
-    for (const binding of bindings) {
-      const definition = signalCatalog.events.find(x => x.name === binding.eventName);
-      addSelect('Send', [['off','Do not send'],['analytics','Analytics only'], ['destinations','Analytics + configured destinations']], binding.deliveryMode === 'meta' ? 'destinations' : binding.deliveryMode, value => binding.deliveryMode = value);
-      const available = candidates.flatMap(option => option.triggers.filter(trigger => triggers.includes(trigger)).map(trigger => [option.name + ':' + trigger, `${option.displayLabel || option.name} · ${trigger.replaceAll('_',' ')}`]));
-      addSelect('Event and trigger', available, binding.eventName + ':' + binding.trigger, value => {
-        const [name, trigger] = value.split(':'); binding.eventName = name; binding.trigger = trigger; binding.matchingFields = [];
-        binding.actionKey = signalCatalog.events.find(x => x.name === name)?.actionKey || null;
-      });
-      const label = document.createElement('label'), once = document.createElement('input'); once.type = 'checkbox'; once.checked = binding.oncePerSession;
-      once.addEventListener('change', () => { checkpoint(); binding.oncePerSession = once.checked; markDirty(); }); label.append(once, document.createTextNode(' Once per session')); host.appendChild(label);
-      if (definition?.requiresServerOutcome) {
+
+    for(const binding of bindings){
+      const definition=signalCatalog.events.find(x=>x.name===binding.eventName);
+      addSelect('Send',
+        [['off','Do not send'],['analytics','Analytics only'],['destinations','Analytics + configured destinations']],
+        binding.deliveryMode==='meta'?'destinations':binding.deliveryMode,
+        value=>mutateSelectedSignals(binding.id,draft=>{draft.deliveryMode=value;}));
+
+      const available=candidates.flatMap(option=>
+        option.triggers.filter(trigger=>triggers.includes(trigger))
+          .map(trigger=>[option.name+':'+trigger,`${option.displayLabel || option.name} · ${trigger.replaceAll('_',' ')}`]));
+      addSelect('Event and trigger',available,binding.eventName+':'+binding.trigger,
+        value=>mutateSelectedSignals(binding.id,draft=>{
+          const [name,trigger]=value.split(':');
+          draft.eventName=name;
+          draft.trigger=trigger;
+          draft.matchingFields=[];
+          draft.actionKey=signalCatalog.events.find(x=>x.name===name)?.actionKey || null;
+        }));
+
+      const onceLabel=document.createElement('label');
+      const once=document.createElement('input');once.type='checkbox';once.checked=binding.oncePerSession;
+      once.addEventListener('change',()=>void mutateSelectedSignals(binding.id,draft=>{draft.oncePerSession=once.checked;}));
+      onceLabel.append(once,document.createTextNode(' Once per session'));host.appendChild(onceLabel);
+
+      if(definition?.requiresServerOutcome){
         paragraph('Sent only after the backend confirms this outcome. Customer matching requires advertising consent.');
-        for (const field of signalCatalog.matchingFields) {
-          const label = document.createElement('label'), input = document.createElement('input'); input.type = 'checkbox'; input.checked = binding.matchingFields?.includes(field);
-          input.addEventListener('change', () => { checkpoint(); const fields = new Set(binding.matchingFields || []); input.checked ? fields.add(field) : fields.delete(field); binding.matchingFields = [...fields]; markDirty(); });
-          label.append(input, document.createTextNode(' Match approved ' + field)); host.appendChild(label);
+        for(const field of signalCatalog.matchingFields){
+          const label=document.createElement('label'),input=document.createElement('input');
+          input.type='checkbox';input.checked=binding.matchingFields?.includes(field);
+          input.addEventListener('change',()=>void mutateSelectedSignals(binding.id,draft=>{
+            const fields=new Set(draft.matchingFields || []);
+            input.checked ? fields.add(field) : fields.delete(field);
+            draft.matchingFields=[...fields];
+          }));
+          label.append(input,document.createTextNode(' Match approved '+field));host.appendChild(label);
         }
       }
-      const diagnostics = document.createElement('div');
-      diagnostics.className = 'legend-cms-signal-diagnostics';
-      diagnostics.dataset.signalDiagnostics = binding.id;
-      const diagnosticIntro = document.createElement('p');
-      diagnosticIntro.textContent = 'Destination health and delivery evidence have not been checked for this mapping.';
-      diagnostics.appendChild(diagnosticIntro);
-      const diagnosticActions = document.createElement('div'); diagnosticActions.className = 'legend-cms-row';
-      const testButton = document.createElement('button'); testButton.type = 'button'; testButton.textContent = 'Run private test';
-      testButton.dataset.signalTest = binding.id;
-      testButton.addEventListener('click', () => void runSignalDryRun(binding));
-      const healthButton = document.createElement('button'); healthButton.type = 'button'; healthButton.textContent = 'Refresh delivery history';
-      healthButton.dataset.signalHealth = binding.id;
-      healthButton.addEventListener('click', () => void loadSignalHealth(binding));
-      diagnosticActions.append(testButton, healthButton);
-      diagnostics.appendChild(diagnosticActions);
-      host.appendChild(diagnostics);
-      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove mapping';
-      remove.addEventListener('click', () => { checkpoint(); models.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
+
+      const diagnostics=document.createElement('div');
+      diagnostics.className='legend-cms-signal-diagnostics';
+      diagnostics.dataset.signalDiagnostics=binding.id;
+      const intro=document.createElement('p');
+      intro.textContent='Destination health and delivery evidence have not been checked for this mapping.';
+      diagnostics.appendChild(intro);
+      const actions=document.createElement('div');actions.className='legend-cms-row';
+      const testButton=document.createElement('button');testButton.type='button';testButton.textContent='Run private test';
+      testButton.dataset.signalTest=binding.id;testButton.addEventListener('click',()=>void runSignalDryRun(binding));
+      const healthButton=document.createElement('button');healthButton.type='button';healthButton.textContent='Refresh delivery history';
+      healthButton.dataset.signalHealth=binding.id;healthButton.addEventListener('click',()=>void loadSignalHealth(binding));
+      actions.append(testButton,healthButton);diagnostics.appendChild(actions);host.appendChild(diagnostics);
+
+      const remove=document.createElement('button');remove.type='button';remove.textContent='Remove mapping';
+      remove.addEventListener('click',()=>void persistSelectedSignals(bindings.filter(value=>value.id!==binding.id)));
+      host.appendChild(remove);
     }
-    const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add advanced custom mapping';
-    const automaticContract = (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
-    add.hidden = automaticContract;
-    add.disabled = automaticContract || bindings.length >= 8 || !candidates.length;
-    add.addEventListener('click', () => {
-      const option = candidates.flatMap(x => x.triggers.filter(t => triggers.includes(t) && !bindings.some(b => b.trigger === t)).map(t => ({ event: x, trigger: t })))[0];
-      if (!option) { paragraph('All supported triggers for this element are already mapped.'); return; }
-      checkpoint(); models.signals ||= []; models.signals.push({ id: crypto.randomUUID().replaceAll('-',''), eventName: option.event.name, actionKey: option.event.actionKey, trigger: option.trigger, deliveryMode: 'off', oncePerSession: true, matchingFields: [] });
-      markDirty(); renderSignalControls();
-    }); host.appendChild(add);
+
+    const add=document.createElement('button');add.type='button';add.textContent='Add advanced custom mapping';
+    const automaticContract=(type==='FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
+    add.hidden=automaticContract;
+    add.disabled=automaticContract || bindings.length>=8 || !candidates.length;
+    add.addEventListener('click',()=>{
+      const option=candidates.flatMap(candidate=>
+        candidate.triggers.filter(trigger=>
+          triggers.includes(trigger) && !bindings.some(binding=>binding.trigger===trigger))
+          .map(trigger=>({event:candidate,trigger})))[0];
+      if(!option){paragraph('All supported triggers for this element are already mapped.');return;}
+      const next=cloneCanonicalValue(bindings);
+      next.push({
+        id:crypto.randomUUID().replaceAll('-',''),
+        eventName:option.event.name,
+        actionKey:option.event.actionKey,
+        trigger:option.trigger,
+        deliveryMode:'off',
+        oncePerSession:true,
+        matchingFields:[]
+      });
+      void persistSelectedSignals(next);
+    });
+    host.appendChild(add);
   }
 
   function applyTheme(theme) {
@@ -3449,8 +3570,20 @@
     const page = pageState();
     const candidates = [];
     if (!legacyMigration) {
-      walkComposition(page.composition, node => {
-        candidates.push({ id:node.id, model:node, node:findEditableElement(node.id) });
+      walkComposition(page.composition,node=>{
+        const element=findEditableElement(node.id);
+        candidates.push({id:node.id,model:node,node:element});
+        if(element && node.fieldSignals && typeof node.fieldSignals==='object'){
+          for(const [fieldKey,signals] of Object.entries(node.fieldSignals)){
+            const control=[...element.querySelectorAll('input,select,textarea,button[type="submit"]')]
+              .find(candidate=>formFieldKey(candidate)===fieldKey);
+            if(control) candidates.push({
+              id:node.id+':field:'+fieldKey,
+              model:{signals},
+              node:control
+            });
+          }
+        }
       });
     } else {
       const legacyPage=legacyMigrationPageState();
