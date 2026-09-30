@@ -60,7 +60,7 @@ test('shared mobile navigation keeps the motto in the permanent top row and comp
   assert.match(css,/@media \(max-width: 840px\)[\s\S]*grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"left left left"[\s\S]*"right right right"/);
   assert.match(css,/\.legend-global-nav \.header-psalms \{[\s\S]*grid-area: motto/);
   assert.match(css,/\.legend-global-nav \.nav-toggle \{[\s\S]*grid-area: toggle/);
-  assert.match(css,/grid-template-columns: repeat\(auto-fit, minmax\(min\(125px, 100%\), 1fr\)\)/);
+  assert.match(css,/grid-template-columns: repeat\(auto-fit, minmax\(64px, 1fr\)\)/);
   assert.doesNotMatch(css,/@media \(max-width: 840px\)[\s\S]*\.legend-global-nav \.navbar-left \.nav-row \{[\s\S]*flex-direction: column/);
 });
 
@@ -193,21 +193,43 @@ test('feature styles cannot reintroduce competing mobile action-stack authority'
 });
 
 test('feature styles cannot reintroduce mobile modal scroll or sticky-shell authority',()=>{
+  const mediaBlocks=source=>{
+    const out=[];let pos=0;
+    while(true){
+      const start=source.indexOf('@media',pos);if(start<0) break;
+      const open=source.indexOf('{',start);if(open<0) break;
+      let depth=1,i=open+1;
+      for(;i<source.length&&depth;i++){
+        if(source[i]==='{') depth++;
+        else if(source[i]==='}') depth--;
+      }
+      out.push(source.slice(start,i));
+      pos=i;
+    }
+    return out;
+  };
+  const mobileBlocks=source=>mediaBlocks(source).filter(block=>/max-width/i.test(block));
   const booking=readFileSync(new URL('../../AgentPortal/wwwroot/css/qv-booking.css',import.meta.url),'utf8');
   const scripts=readFileSync(new URL('../../AgentPortal/wwwroot/css/scripts-rebuttals.css',import.meta.url),'utf8');
   const proposal=readFileSync(new URL('../../AgentPortal/wwwroot/css/workstation-home-proposal.css',import.meta.url),'utf8');
   const founderAi=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
 
-  assert.doesNotMatch(booking,/@media \(max-width:1100px\)[\s\S]*\.qv-booking-modal-shell \.modal-content\s*\{[^}]*overflow-y:\s*auto/);
-  assert.doesNotMatch(scripts,/@media \(max-width: 900px\)[\s\S]*\.proposal-dialog \.uw-head[^\{]*\{[^}]*position:\s*sticky/);
-  assert.doesNotMatch(proposal,/@media \(max-width: 900px\)[\s\S]*#proposalDialog \.hp-dialog-head\s*\{[^}]*position:\s*sticky/);
-  assert.doesNotMatch(proposal,/@media \(max-width: 900px\)[\s\S]*#uwDialog \.uw-head\s*\{[^}]*position:\s*sticky/);
+  for(const block of mobileBlocks(booking))
+    assert.doesNotMatch(block,/\.qv-booking-modal-shell \.modal-content\s*\{[^}]*overflow-y:\s*auto/);
+  for(const block of mobileBlocks(scripts))
+    assert.doesNotMatch(block,/\.proposal-dialog \.uw-head[^\{]*\{[^}]*position:\s*sticky/);
+  for(const block of mobileBlocks(proposal)){
+    assert.doesNotMatch(block,/#proposalDialog \.hp-dialog-head\s*\{[^}]*position:\s*sticky/);
+    assert.doesNotMatch(block,/#uwDialog \.uw-head\s*\{[^}]*position:\s*sticky/);
+  }
   assert.doesNotMatch(founderAi,/@media \(min-width: 821px\) and \(max-width: 1100px\)/);
 
-  assert.match(shared,/@media \(max-width: 900px\)[\s\S]*\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\][\s\S]*overflow:\s*hidden !important/);
-  assert.match(shared,/@media \(max-width: 900px\)[\s\S]*\.modal \.modal-body\s*\{[\s\S]*overflow-y:\s*auto/);
-  assert.match(shared,/@media \(max-width: 900px\)[\s\S]*\.modal \.modal-header,[\s\S]*position:\s*sticky !important/);
+  const sharedMobile=mobileBlocks(shared).find(block=>/^@media \(max-width: 900px\)/.test(block));
+  assert(sharedMobile);
+  assert.match(sharedMobile,/\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\][\s\S]*overflow:\s*hidden !important/);
+  assert.match(sharedMobile,/\.modal \.modal-body\s*\{[\s\S]*overflow-y:\s*auto/);
+  assert.match(sharedMobile,/\.modal \.modal-header,[\s\S]*position:\s*sticky !important/);
 });
 
 test('Explore close treatment is mobile-only and desktop presentation stays unchanged',()=>{
