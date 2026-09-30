@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy the remaining merged Website Studio product changes after the consolidated release resolver and subsystem-owned validation authority were repaired.",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy the remaining merged Website Studio product changes after the consolidated release resolver and release-control classification were repaired.",
   "purpose": "Publish the remaining validated PR #302 canonical Website Studio source-authority and shared WebsiteEditing/CMS product changes from the current legend/approved-changes head to Protect and LEGEND Website only. AgentPortal and ClientApp are already live from their mobile release and must not be redundantly redeployed. Parfait, Cloudflare routing, database migrations, CRM, payments, and unrelated applications are excluded.",
-  "requestId": "website-studio-consolidated-production-20260929",
+  "requestId": "website-studio-consolidated-production-retry-20260929",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
