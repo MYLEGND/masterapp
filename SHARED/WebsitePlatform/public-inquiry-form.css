@@ -135,3 +135,49 @@
   .public-form input,.public-form textarea,.public-form .btn.primary{transition:none}
   .public-form .btn.primary:hover{transform:none}
 }
+
+
+/* Canonical native interactive experiences. Presentation is intentionally broad;
+   execution remains declarative and server-authorized. */
+.legend-native-experience{
+  width:min(100%,780px);
+  margin-inline:auto;
+  padding:clamp(16px,3vw,30px);
+  border:1px solid color-mix(in srgb,var(--navy,#102b62) 14%,transparent);
+  border-radius:clamp(14px,2vw,22px);
+  background:var(--surface,#fff);
+  box-shadow:0 16px 44px rgba(16,43,98,.10)
+}
+.legend-experience-header{margin-bottom:16px}
+.legend-experience-header h2,.legend-experience-step h3{margin:0 0 6px;color:var(--navy,#102b62);line-height:1.08}
+.legend-experience-header p,.legend-experience-step-copy{margin:0;color:var(--muted,#607086)}
+.legend-experience-progress{height:4px;margin:0 0 18px;border-radius:999px;background:rgba(16,43,98,.10);overflow:hidden}
+.legend-experience-progress>span{display:block;height:100%;width:0;background:var(--gold,#d9b44a);transition:width .22s ease}
+.legend-experience-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.legend-experience-control{min-width:0}
+.legend-experience-field{display:grid;gap:6px;min-width:0}
+.legend-experience-label{font-size:.84rem;font-weight:800;color:var(--navy,#102b62)}
+.legend-experience-help{font-size:.76rem;color:var(--muted,#607086)}
+.legend-experience-field>input,
+.legend-experience-field>textarea,
+.legend-experience-field>select{
+  width:100%;min-width:0;min-height:46px;padding:10px 12px;
+  border:1px solid rgba(16,43,98,.20);border-radius:10px;background:#fff;color:var(--ink,#152638);font:inherit
+}
+.legend-experience-field>textarea{resize:vertical;min-height:96px}
+.legend-experience-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.legend-experience-option{display:flex;align-items:center;gap:8px;min-height:48px;padding:10px 12px;border:1px solid rgba(16,43,98,.16);border-radius:11px;background:#fff;cursor:pointer}
+.legend-experience-option:has(input:checked){border-color:var(--gold,#d9b44a);box-shadow:0 0 0 2px color-mix(in srgb,var(--gold,#d9b44a) 22%,transparent)}
+.legend-experience-option input{margin:0}
+.legend-experience-control>.btn{width:100%}
+.legend-experience-results{display:grid;gap:8px;margin-top:16px;padding:14px;border-radius:12px;background:color-mix(in srgb,var(--navy,#102b62) 4%,#fff)}
+.legend-experience-result{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.legend-experience-result span{color:var(--muted,#607086);font-size:.84rem}
+.legend-experience-result strong{color:var(--navy,#102b62);font-size:1.05rem}
+.legend-experience-status{min-height:1.25em;margin:10px 0 0;color:var(--muted,#607086);font-size:.82rem}
+@media(max-width:767px){
+  .legend-native-experience{width:100%;padding:14px 12px;border-radius:14px}
+  .legend-experience-grid,.legend-experience-options{grid-template-columns:1fr;gap:8px}
+  .legend-experience-field>input,.legend-experience-field>textarea,.legend-experience-field>select{font-size:16px}
+  .legend-experience-option{min-height:46px}
+}
