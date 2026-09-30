@@ -1246,27 +1246,34 @@ public sealed class WebsiteSiteSourceV3Tests
                 }
             ]);
 
-        Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.ValidateExperienceSignalTarget(
-            target, "project_size", Map("form_field_complete", "field_completed"));
+        WebsiteSignalBindingPolicy.ValidateExperienceControl(
+            target.Experience!.Controls.Single(control => control.Key == "project_size"),
+            Map("form_field_complete", "field_completed"));
 
         Assert.Throws<ArgumentException>(() =>
-            Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.ValidateExperienceSignalTarget(
-                target, "project_size", Map("PhoneFieldCompleted", "field_completed")));
+            WebsiteSignalBindingPolicy.ValidateExperienceControl(
+                target.Experience!.Controls.Single(control => control.Key == "project_size"),
+                Map("PhoneFieldCompleted", "field_completed")));
 
-        Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.ValidateExperienceSignalTarget(
-            target, "phone", Map("PhoneFieldCompleted", "field_completed"));
-        Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.ValidateExperienceSignalTarget(
-            target, "email", Map("ContactInputStarted", "field_started"));
+        WebsiteSignalBindingPolicy.ValidateExperienceControl(
+            target.Experience!.Controls.Single(control => control.Key == "phone"),
+            Map("PhoneFieldCompleted", "field_completed"));
+        WebsiteSignalBindingPolicy.ValidateExperienceControl(
+            target.Experience!.Controls.Single(control => control.Key == "email"),
+            Map("ContactInputStarted", "field_started"));
 
         Assert.Throws<ArgumentException>(() =>
-            Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.ValidateExperienceSignalTarget(
-                target, "project_size", Map("ContactInputStarted", "field_started")));
+            WebsiteSignalBindingPolicy.ValidateExperienceControl(
+                target.Experience!.Controls.Single(control => control.Key == "project_size"),
+                Map("ContactInputStarted", "field_started")));
 
-        Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.ValidateExperienceSignalTarget(
-            target, "continue", Map("cta_click", "click"));
+        WebsiteSignalBindingPolicy.ValidateExperienceControl(
+            target.Experience!.Controls.Single(control => control.Key == "continue"),
+            Map("cta_click", "click"));
         Assert.Throws<ArgumentException>(() =>
-            Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.ValidateExperienceSignalTarget(
-                target, "continue", Map("form_field_complete", "field_completed")));
+            WebsiteSignalBindingPolicy.ValidateExperienceControl(
+                target.Experience!.Controls.Single(control => control.Key == "continue"),
+                Map("form_field_complete", "field_completed")));
     }
 
     [Fact]
