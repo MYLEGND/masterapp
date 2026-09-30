@@ -60,9 +60,200 @@ test('shared mobile navigation keeps the motto in the permanent top row and comp
   assert.match(css,/@media \(max-width: 840px\)[\s\S]*grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"left left left"[\s\S]*"right right right"/);
   assert.match(css,/\.legend-global-nav \.header-psalms \{[\s\S]*grid-area: motto/);
   assert.match(css,/\.legend-global-nav \.nav-toggle \{[\s\S]*grid-area: toggle/);
-  assert.match(css,/grid-template-columns: repeat\(auto-fit, minmax\(min\(125px, 100%\), 1fr\)\)/);
+  assert.match(css,/grid-template-columns: repeat\(auto-fit, minmax\(64px, 1fr\)\)/);
   assert.doesNotMatch(css,/@media \(max-width: 840px\)[\s\S]*\.legend-global-nav \.navbar-left \.nav-row \{[\s\S]*flex-direction: column/);
 });
+
+test('Explore drawer has one shared mobile owner with explicit dismissal and scroll locking',()=>{
+  const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
+  assert.match(navScript,/data-legend-explore-close/);
+  assert.match(navScript,/LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/event\.target\.closest\('\.explore-item'\)/);
+  assert.match(navScript,/drawer\.setAttribute\('aria-hidden', isOpen \? 'false' : 'true'\)/);
+
+  for(const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml'
+  ]){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.equal(source.split('data-legend-explore-close').length-1,1,file);
+    assert.equal(source.includes("const trigger = document.getElementById('exploreTrigger');"),false,file);
+    assert.match(source,/id="exploreDrawer"[^>]*aria-hidden="true"/);
+  }
+});
+
+test('Explore preserves scrolling and link navigation across every dismissal path',()=>{
+  const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
+  assert.match(navScript,/const syncResponsiveState = \(\) =>/);
+  assert.match(navScript,/closeControl\.hidden = !isMobile\(\)/);
+  assert.match(navScript,/if \(isMobile\(\)\) window\.LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/else window\.LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/window\.addEventListener\('resize', syncResponsiveState/);
+  assert.match(navScript,/window\.addEventListener\('pagehide'[\s\S]*unlockPageScroll/);
+
+  const listHandler=navScript.slice(
+    navScript.indexOf("list.addEventListener('click'"),
+    navScript.indexOf("search?.addEventListener('input'")
+  );
+  assert.match(listHandler,/event\.target\.closest\('\.explore-item'\)[\s\S]*closeDrawer\(\)/);
+  assert.doesNotMatch(listHandler,/preventDefault\(/);
+
+  for(const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml'
+  ]){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const exploreLinks=[...source.matchAll(/<a\b[^>]*class="[^"]*explore-item[^"]*"[^>]*>/g)].map(match=>match[0]);
+    assert(exploreLinks.length>0,file);
+    for(const tag of exploreLinks){
+      assert.match(tag,/(?:href\s*=|asp-controller\s*=)/,file+': '+tag);
+    }
+  }
+});
+
+
+test('Explore mobile sheet stays below the banner and uses a symmetric two-column action grid',()=>{
+  const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-overlay\{[\s\S]*top:var\(--legend-modal-clearance-top,0px\)/);
+  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-drawer\{[\s\S]*top:max\(var\(--legend-modal-area-start,8px\),env\(safe-area-inset-top\)\)/);
+  assert.match(css,/\.explore-list\{[\s\S]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.explore-group-label\{[\s\S]*grid-column:1 \/ -1/);
+  assert.match(css,/\.explore-close::before\{[\s\S]*border:1\.5px solid var\(--legend-mobile-text/);
+});
+
+test('canonical mobile action density loads after page feature styles in both authenticated apps',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  assert.match(css,/Canonical mobile action density[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/);
+  assert.match(css,/:where\([\s\S]*\[class\$="-actions"\][\s\S]*\.d-grid[\s\S]*\):has\(> :is\(button, \.btn, a, form\)\)/);
+  assert.match(css,/:is\(\[data-legend-modal-panel\], \[data-legend-mobile-sheet\]\)[\s\S]*\.modal-footer[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/);
+
+  for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const featureBoundary=source.indexOf('RenderSection("Styles"');
+    const shared=source.indexOf('~/_content/Shared/css/dashboard-home-shared.css');
+    const booking=source.indexOf('~/css/qv-booking.css');
+    assert(featureBoundary>=0 && shared>featureBoundary,file+': shared mobile authority must follow page styles');
+    assert(booking>=0 && shared>booking,file+': shared mobile authority must follow booking feature CSS');
+  }
+});
+
+test('feature styles cannot reintroduce competing mobile action-stack authority',()=>{
+  const mediaBlocks=source=>{
+    const out=[];let pos=0;
+    while(true){
+      const start=source.indexOf('@media',pos);if(start<0) break;
+      const open=source.indexOf('{',start);if(open<0) break;
+      let depth=1,i=open+1;
+      for(;i<source.length&&depth;i++){
+        if(source[i]==='{') depth++;
+        else if(source[i]==='}') depth--;
+      }
+      out.push(source.slice(start,i));
+      pos=i;
+    }
+    return out;
+  };
+  const checks=[
+    ['ClientApp/wwwroot/css/client-mobile.css',[
+      /\.client-create-actions[^\{]*\{[^}]*grid-template-columns:/,
+      /\.preview-actions\s*\{[^}]*grid-template-columns:/
+    ]],
+    ['ClientApp/wwwroot/css/subscription-activation.css',[
+      /\.activation-actions\s*\{[^}]*width:\s*100%/,
+      /\.activation-notice-actions\s*\{[^}]*grid-template-columns:/
+    ]],
+    ['AgentPortal/wwwroot/css/clients-index.css',[
+      /\.pipeline-head-actions\s*\{[^}]*width:\s*100%/,
+      /\.drawer[^\{]*\.drawer-top-actions\s*\{[^}]*grid-template-columns:/,
+      /\.queue-record-actions[^\{]*\{[^}]*flex-direction:\s*column/
+    ]],
+    ['AgentPortal/wwwroot/css/website-analytics.css',[
+      /\.hero-link-meta-actions[^\{]*\{[^}]*flex-direction:\s*column/,
+      /\.wa-modal-toggle-group\s*\{[^}]*grid-template-columns:\s*1fr/
+    ]],
+    ['AgentPortal/wwwroot/css/scripts-rebuttals.css',[
+      /\.uw-actions\s*\{[^}]*grid-template-columns:/,
+      /\.side-actions\s*\{[^}]*grid-template-columns:\s*1fr/
+    ]],
+    ['SHARED/wwwroot/css/legend-finance-shared.css',[
+      /\.llbs-action-buttons[^\{]*\{[^}]*grid-template-columns:\s*1fr/,
+      /\.savings-illustration-footer\s*\{[^}]*grid-template-columns:/
+    ]]
+  ];
+  for(const [file,patterns] of checks){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const mobile=mediaBlocks(source).filter(block=>/max-width/i.test(block));
+    for(const pattern of patterns){
+      for(const block of mobile) assert.doesNotMatch(block,pattern,file+': '+pattern);
+    }
+  }
+});
+
+test('feature styles cannot reintroduce mobile modal scroll or sticky-shell authority',()=>{
+  const mediaBlocks=source=>{
+    const out=[];let pos=0;
+    while(true){
+      const start=source.indexOf('@media',pos);if(start<0) break;
+      const open=source.indexOf('{',start);if(open<0) break;
+      let depth=1,i=open+1;
+      for(;i<source.length&&depth;i++){
+        if(source[i]==='{') depth++;
+        else if(source[i]==='}') depth--;
+      }
+      out.push(source.slice(start,i));
+      pos=i;
+    }
+    return out;
+  };
+  const mobileBlocks=source=>mediaBlocks(source).filter(block=>/max-width/i.test(block));
+  const booking=readFileSync(new URL('../../AgentPortal/wwwroot/css/qv-booking.css',import.meta.url),'utf8');
+  const scripts=readFileSync(new URL('../../AgentPortal/wwwroot/css/scripts-rebuttals.css',import.meta.url),'utf8');
+  const proposal=readFileSync(new URL('../../AgentPortal/wwwroot/css/workstation-home-proposal.css',import.meta.url),'utf8');
+  const founderAi=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+
+  for(const block of mobileBlocks(booking))
+    assert.doesNotMatch(block,/\.qv-booking-modal-shell \.modal-content\s*\{[^}]*overflow-y:\s*auto/);
+  for(const block of mobileBlocks(scripts))
+    assert.doesNotMatch(block,/\.proposal-dialog \.uw-head[^\{]*\{[^}]*position:\s*sticky/);
+  for(const block of mobileBlocks(proposal)){
+    assert.doesNotMatch(block,/#proposalDialog \.hp-dialog-head\s*\{[^}]*position:\s*sticky/);
+    assert.doesNotMatch(block,/#uwDialog \.uw-head\s*\{[^}]*position:\s*sticky/);
+  }
+  assert.doesNotMatch(founderAi,/@media \(min-width: 821px\) and \(max-width: 1100px\)/);
+
+  const sharedMobile=mobileBlocks(shared).find(block=>/^@media \(max-width: 900px\)/.test(block));
+  assert(sharedMobile);
+  assert.match(sharedMobile,/\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\][\s\S]*overflow:\s*hidden !important/);
+  assert.match(sharedMobile,/\.modal \.modal-body\s*\{[\s\S]*overflow-y:\s*auto/);
+  assert.match(sharedMobile,/\.modal \.modal-header,[\s\S]*position:\s*sticky !important/);
+});
+
+test('Explore close treatment is mobile-only and desktop presentation stays unchanged',()=>{
+  const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  const mobileStart=css.indexOf('@media(max-width:840px)');
+  assert(mobileStart>=0);
+  assert.doesNotMatch(css.slice(0,mobileStart),/\.explore-close/);
+  assert.match(css.slice(mobileStart),/\.explore-close\{[\s\S]*display:block/);
+});
+
+test('every authenticated host loads the final shared mobile authority after page styles',()=>{
+  for(const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml'
+  ]){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const section=Math.max(source.indexOf('RenderSection("Styles"'),source.indexOf('RenderSectionAsync("Styles"'));
+    const shared=source.indexOf('~/_content/Shared/css/dashboard-home-shared.css');
+    assert(section>=0 && shared>section,file);
+    assert.equal(source.split('~/_content/Shared/css/dashboard-home-shared.css').length-1,1,file);
+  }
+});
+
 
 test('AgentPortal and ClientApp consume the same authenticated CSS authorities exactly once',()=>{
   const files=['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml'];

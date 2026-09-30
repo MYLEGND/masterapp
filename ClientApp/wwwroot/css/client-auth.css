@@ -240,9 +240,12 @@ body.client-auth-page {
         line-height: 1.4;
     }
 
-    .client-auth-form,
-    .client-auth-actions {
+    .client-auth-form {
         gap: var(--app-mobile-control-gap);
+        margin-top: var(--app-mobile-block-gap);
+    }
+
+    .client-auth-actions {
         margin-top: var(--app-mobile-block-gap);
     }
 

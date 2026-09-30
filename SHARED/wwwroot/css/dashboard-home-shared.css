@@ -364,6 +364,309 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     /*
+     * Canonical mobile action density. Use horizontal space before adding
+     * vertical scroll: action clusters become a symmetric two-column grid.
+     * Feature behavior and button wiring remain untouched.
+     */
+    body.legend-app .legend-app-content
+    :where(
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form)) {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        align-items: stretch !important;
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    body.legend-app .legend-app-content
+    :where(
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > :is(button, .btn, a, form) {
+        min-width: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    body.legend-app .legend-app-content
+    :where(
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > form > :is(button, .btn, a.btn) {
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    body.legend-app .legend-app-content
+    :where(
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > :only-child {
+        grid-column: auto !important;
+        width: auto !important;
+        justify-self: start !important;
+    }
+
+    body.legend-app .legend-app-content
+    :where(
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .d-grid,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > :last-child:nth-child(odd):not(:only-child) {
+        grid-column: 1 / -1 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
+    :where(
+        .modal-footer,
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form)) {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
+    :where(
+        .modal-footer,
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > :is(button, .btn, a, form) {
+        min-width: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
+    :where(
+        .modal-footer,
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > form > :is(button, .btn, a.btn) {
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
+    :where(
+        .modal-footer,
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > :only-child {
+        grid-column: auto !important;
+        width: auto !important;
+        justify-self: start !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet])
+    :where(
+        .modal-footer,
+        .actions,
+        [class$="-actions"],
+        [class*="-actions "],
+        [class$="__actions"],
+        [class*="__actions "],
+        [class$="-buttons"],
+        [class*="-buttons "],
+        [class$="-action-row"],
+        [class*="-action-row "],
+        .button-row,
+        .btn-row,
+        .btn-group,
+        .legend-connect-focus-footer,
+        .savings-illustration-footer,
+        .queue-record-footer,
+        .wa-modal-toggle-group
+    ):has(> :is(button, .btn, a, form))
+    > :last-child:nth-child(odd):not(:only-child) {
+        grid-column: 1 / -1 !important;
+    }
+
+    /* Nested action groups that cannot be expressed as direct-button containers. */
+    body.legend-app .legend-app-content .hero-actions {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        align-items: stretch !important;
+        gap: var(--legend-mobile-gap) !important;
+        width: 100% !important;
+    }
+
+    body.legend-app .legend-app-content .hero-actions > .hero-action-group {
+        min-width: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    body.legend-app .legend-app-content .hero-actions > .hero-action-group :is(button, .btn, a, select.btn) {
+        min-width: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    body.legend-app .legend-app-content .hero-actions > .hero-action-group:last-child:nth-child(odd):not(:only-child) {
+        grid-column: 1 / -1 !important;
+    }
+
+    body.legend-app .legend-app-content .savings-illustration-footer > .savings-illustration-progress {
+        grid-column: 1 / -1 !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal .modal-header,
+    html[data-legend-modal-region] body.legend-app
+    :is([data-legend-modal-panel], [data-legend-mobile-sheet]) >
+    :is(.dhead, [class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], [class$="__head"], [class*="__head "], [class$="__header"], [class*="__header "], header) {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 8 !important;
+    }
+
+    /*
      * One close/collapse glyph everywhere: the same boxed arrow language used
      * by the approved Website Studio control, without changing button behavior.
      */
@@ -3193,9 +3496,6 @@ textarea.client-create-notes {
         padding: 0.9rem;
     }
 
-    .client-create-actions .client-create-button {
-        width: 100%;
-    }
 }
 
 /* Clients/Edit — household and dependent composition */
@@ -3504,9 +3804,6 @@ textarea.client-create-notes {
 
 @media (max-width: 720px) {
     .dashboard-detail-modal .modal-header {
-        position: sticky;
-        top: 0;
-        z-index: 2;
         gap: 0.65rem;
     }
 
@@ -4091,7 +4388,6 @@ textarea.client-create-notes {
     .founder-subscribers-page .dashboard-analytics-grid,
     .founder-subscriber-filter-grid,
     .founder-subscriber-distribution-grid,
-    .founder-subscriber-summary-actions,
     .founder-subscriber-modal-metrics {
         grid-template-columns: 1fr;
     }
@@ -4217,17 +4513,6 @@ textarea.client-create-notes {
         gap: 0.75rem;
     }
 
-    .dashboard-page-shell .search-actions {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-auto-flow: initial;
-        grid-auto-columns: initial;
-        width: 100%;
-    }
-
-    .dashboard-page-shell .dashboard-command-action {
-        width: 100%;
-    }
-
     .dashboard-page-shell .search-input-wrap {
         flex-basis: 100%;
         min-width: 0;
@@ -4324,19 +4609,6 @@ textarea.client-create-notes {
         line-height: 1.08;
     }
 
-    .factfinder-page-shell :is(.wizard-actions, .repeater-actions, .ff-card-actions) {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--legend-mobile-gap);
-        align-items: stretch;
-    }
-
-    .factfinder-page-shell :is(.wizard-actions, .repeater-actions, .ff-card-actions) .btn {
-        width: 100%;
-        min-width: 0;
-        justify-content: center;
-    }
-
     .legend-connect-page .legend-connect-metrics--three,
     .legend-connect-page .legend-connect-metrics--four,
     .legend-connect-page .legend-connect-metrics--five,
@@ -4365,10 +4637,6 @@ textarea.client-create-notes {
         font-size: 0.68rem;
     }
 
-    .legend-connect-modal-actions {
-        gap: 0.4rem;
-    }
-
     .legend-connect-acquisition-focus {
         gap: 0.72rem;
         padding: 0.82rem;
@@ -4392,15 +4660,6 @@ textarea.client-create-notes {
     .legend-connect-language-options {
         grid-template-columns: 1fr;
         max-height: min(280px, 42vh);
-    }
-
-    .legend-connect-focus-footer {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .legend-connect-focus-footer .dashboard-command-action {
-        width: 100%;
     }
 
     .legend-connect-production-control {
@@ -4431,16 +4690,6 @@ textarea.client-create-notes {
         font-size: 0.64rem;
     }
 
-    .legend-connect-composition-modal .modal-footer {
-        align-items: stretch;
-        flex-direction: column-reverse;
-    }
-
-    .legend-connect-composition-modal .modal-footer form,
-    .legend-connect-modal-cancel,
-    .legend-connect-modal-confirm {
-        width: 100%;
-    }
 }
 
 /* Messaging command center: intentionally scoped to the shared dashboard design system. */
@@ -7111,12 +7360,6 @@ header .legend-global-nav .container-fluid {
         align-items: flex-start;
     }
 
-    .messaging-thread-actions {
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 0.1rem;
-    }
-
     .messaging-command-center-journey {
         padding: 0.36rem 0.52rem;
         font-size: 0.67rem;
@@ -7139,13 +7382,8 @@ header .legend-global-nav .container-fluid {
         max-width: 91%;
     }
 
-    .messaging-send-actions {
-        align-items: stretch;
-    }
-
     .messaging-file-label,
     .messaging-primary-button {
-        flex: 1;
         text-align: center;
     }
 }

@@ -89,13 +89,6 @@
 #proposalDialog .hp-currency-input:focus{outline:none;}
 
 @media (max-width: 900px){
-    #proposalDialog .hp-dialog-head{
-        position:sticky;
-        top:0;
-        z-index:5;
-        margin:0 0 var(--app-mobile-control-gap);
-        backdrop-filter:blur(4px);
-    }
 }
 
 /* ── Proposal & Underwriting quick-list: centered fixed popout ─── */
@@ -633,12 +626,6 @@
         align-items: flex-start;
     }
 
-    .hp-builder-context-actions,
-    .uw-context-actions {
-        width: 100%;
-        justify-content: flex-start;
-    }
-
     .ws-client-picker-toolbar,
     .ws-client-picker-status,
     .ws-client-picker-results {
@@ -1006,10 +993,4 @@
 
 /* Mobile */
 @media (max-width: 900px) {
-    #uwDialog .uw-head {
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 5 !important;
-        margin: 0 0 var(--app-mobile-control-gap) !important;
-    }
 }

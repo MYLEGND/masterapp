@@ -709,23 +709,13 @@
 }
 
 @media (max-width: 576px) {
-    .legend-modal.carrier-settings-modal .dashboard-search-shell,
-    .legend-modal.carrier-settings-modal .search-actions {
+    .legend-modal.carrier-settings-modal .dashboard-search-shell {
         width: 100%;
     }
 
     .legend-modal.carrier-settings-modal .search-input-wrap {
         flex-basis: 100%;
         max-width: none;
-    }
-
-    .legend-modal.carrier-settings-modal .search-actions {
-        gap: var(--app-mobile-control-gap);
-    }
-
-    .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-clear-search,
-    .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings {
-        width: 100%;
     }
 
     .carrier-category-block {
