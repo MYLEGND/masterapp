@@ -96,6 +96,84 @@ test('dynamic destinations are backed by code that assigns a real href',()=>{
   assert.deepEqual(bad,[]);
 });
 
+test('every authenticated and shared type=button control resolves to a concrete handler',()=>{
+  const viewRoots=[
+    join(ROOT,'AgentPortal','Views'),
+    join(ROOT,'ClientApp','Views'),
+    join(ROOT,'SHARED','Views')
+  ].filter(existsSync);
+  const sourceFiles=[
+    ...viewRoots.flatMap(root=>walk(root,'.cshtml')),
+    ...['AgentPortal','ClientApp','SHARED'].flatMap(app=>{
+      const root=join(ROOT,app,'wwwroot/js');
+      return existsSync(root)?walk(root,'.js'):[];
+    }),
+    ...(existsSync(join(ROOT,'Legend-Design'))?walk(join(ROOT,'Legend-Design'),'.js'):[])
+  ];
+  const sources=sourceFiles.map(path=>[path,readFileSync(path,'utf8')]);
+  const corpus=sources.map(([,text])=>text).join('\n');
+  const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\\\]/g,'\\$&');
+  const bad=[];
+
+  for(const root of viewRoots){
+    for(const file of walk(root,'.cshtml')){
+      const source=readFileSync(file,'utf8');
+      for(const match of source.matchAll(/<button\b[^>]*>/gi)){
+        const tag=match[0], a=attrs(tag);
+        if((a.get('type')||'submit').toLowerCase()!=='button') continue;
+        if(a.has('onclick')||a.has('form')||a.has('data-bs-toggle')||a.has('data-bs-dismiss')) continue;
+
+        let wired=false;
+        const id=(a.get('id')||'').trim();
+        if(id){
+          const q=escape(id);
+          wired=sources.some(([,text])=>{
+            const direct=new RegExp("getElementById\\(\\s*['\"]"+q+"['\"]").test(text);
+            const selector=new RegExp("(?:querySelector|querySelectorAll|matches|closest)\\(\\s*['\"][^'\"]*#"+q+"(?:[^'\"]*)['\"]").test(text);
+            const tableBinding=new RegExp("['\"]"+q+"['\"]").test(text)
+              && /getElementById\(\s*id\s*\)/.test(text);
+            return direct || selector || tableBinding;
+          });
+        }
+
+        if(!wired){
+          for(const key of [...a.keys()].filter(key=>key.startsWith('data-'))){
+            const camel=key.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());
+            const q=escape(key);
+            const cq=escape(camel);
+            if(new RegExp("(?:\\["+q+"(?:[=\\]])|dataset\\."+cq+"\\b|getAttribute\\(\\s*['\"]"+q+"['\"])").test(corpus)){
+              wired=true;
+              break;
+            }
+          }
+        }
+
+        if(!wired){
+          for(const className of (a.get('class')||'').split(/\s+/).filter(Boolean)){
+            const q=escape(className);
+            if(new RegExp("['\"][^'\"]*\\."+q+"(?:[.#:[\\s'\"]|$)").test(corpus)){
+              wired=true;
+              break;
+            }
+          }
+        }
+
+        if(!wired){
+          const controls=(a.get('aria-controls')||'').trim();
+          if(controls){
+            const q=escape(controls);
+            wired=new RegExp("(?:getElementById\\(\\s*['\"]"+q+"['\"]|['\"]#"+q+"['\"])").test(corpus);
+          }
+        }
+
+        if(!wired) bad.push(file+': unresolved button handler: '+tag);
+      }
+    }
+  }
+
+  assert.deepEqual(bad,[]);
+});
+
 test('Razor controller/action links resolve to real controller action source',()=>{
   const bad=[];
   for(const app of apps) {
@@ -148,5 +226,45 @@ test('mobile shared authority keeps controls clickable and modal content reachab
   assert.match(mobile,/\.modal \.modal-body\s*\{[\s\S]*overflow-y:\s*auto/);
   assert.match(mobile,/\.legend-modal-close-control\s*\{[\s\S]*cursor:\s*pointer/);
   assert.match(nav,/panel\.addEventListener\('click'/);
+  assert.match(nav,/const dismissAfterActivation = callback =>/);
+  assert.match(nav,/queueMicrotask\(callback\)/);
   assert.match(modal,/button\.addEventListener\("click"/);
+});
+
+test('mobile utility controls use their real canonical selectors and visible command labels',()=>{
+  const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
+  const messages=readFileSync(join(ROOT,'SHARED/Views/Messaging/_NavButton.cshtml'),'utf8');
+  const agentLayout=readFileSync(join(ROOT,'AgentPortal/Views/Shared/_Layout.cshtml'),'utf8');
+
+  assert.doesNotMatch(css,/\.messaging-nav-button\b/);
+  assert.match(css,/\.messaging-nav-trigger/);
+  assert.match(messages,/class="messaging-nav-label"[^>]*>Messages<\/span>/);
+  assert.match(agentLayout,/class="legend-founder-ai-nav-label"[^>]*>LEGEND® AI<\/span>/);
+  assert.match(css,/\[data-legend-mobile-nav-integrated\] \.profile-meta \{[\s\S]*display:\s*grid/);
+});
+
+test('mobile navigation never dismisses before delegated and default button activation completes',()=>{
+  const nav=readFileSync(join(ROOT,'SHARED/wwwroot/js/legend-global-navigation.js'),'utf8');
+  const handler=nav.slice(
+    nav.indexOf("panel.addEventListener('click'"),
+    nav.indexOf("document.addEventListener('click'",nav.indexOf("panel.addEventListener('click'"))
+  );
+
+  assert.match(handler,/event\.target\.closest\?\.\('a, \.explore-item, button'\)/);
+  assert.match(handler,/control\.matches\('\[data-bs-toggle\]'\)/);
+  assert.match(handler,/dismissAfterActivation\(\(\) =>/);
+  assert.doesNotMatch(handler,/event\.preventDefault\(/);
+});
+
+test('mobile Quick Find uses compact two-column rows and puts primary app destinations first',()=>{
+  const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
+  const start=css.indexOf('@media (max-width: 840px)');
+  const mobile=css.slice(start,css.indexOf('@media (min-width: 841px)',start));
+
+  assert.match(mobile,/\.explore-header \{[\s\S]*order:\s*-40/);
+  assert.match(mobile,/\.explore-search \{[\s\S]*order:\s*-39/);
+  assert.match(mobile,/\.navbar-left \.nav-link \{[\s\S]*order:\s*-60/);
+  assert.match(mobile,/\.navbar-right > \* \{[\s\S]*order:\s*-59/);
+  assert.match(mobile,/\.explore-item \{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(mobile,/\.explore-item small \{[\s\S]*font-size:\s*\.56rem/);
 });

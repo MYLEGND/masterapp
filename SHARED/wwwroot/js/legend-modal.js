@@ -148,7 +148,9 @@
   const mobileSheets = new WeakSet();
   let modalSurfaceSequence = 0;
   const pageScrollLockOwners = new Set();
+  const surfaceLayerState = new WeakMap();
   let pageScrollState = null;
+  let canonicalExternalBackdrop = null;
   let header;
   let footer;
   let content;
@@ -169,6 +171,89 @@
       surface.dataset.legendModalOwner = `legend-modal-surface-${modalSurfaceSequence}`;
     }
     return surface.dataset.legendModalOwner;
+  }
+
+  function canonicalBackdropChild(surface){
+    if (!surface?.children) return null;
+    return Array.from(surface.children).find(node => {
+      if (node.nodeType !== 1) return false;
+      const name = String(node.className || "");
+      return /(?:^|[-_\s])backdrop(?:$|[-_\s])/i.test(name);
+    }) || null;
+  }
+
+  function ensureSurfaceLayer(surface){
+    if (!surface || surfaceLayerState.has(surface)) return;
+    const computed = Number.parseInt(window.getComputedStyle(surface).zIndex || "", 10);
+    if (Number.isFinite(computed) && computed >= 5200) return;
+    surfaceLayerState.set(surface, surface.style.zIndex);
+    surface.style.zIndex = "5200";
+  }
+
+  function restoreSurfaceLayer(surface){
+    if (!surface || !surfaceLayerState.has(surface)) return;
+    const previous = surfaceLayerState.get(surface);
+    surfaceLayerState.delete(surface);
+    if (previous) surface.style.zIndex = previous;
+    else surface.style.removeProperty("z-index");
+  }
+
+  function ensureExternalBackdrop(){
+    if (canonicalExternalBackdrop?.isConnected) return canonicalExternalBackdrop;
+    const node = document.createElement("div");
+    node.className = "legend-canonical-modal-backdrop legend-external-modal-backdrop";
+    node.setAttribute("aria-hidden", "true");
+    node.hidden = true;
+    document.body?.appendChild(node);
+    canonicalExternalBackdrop = node;
+    return node;
+  }
+
+  function syncCanonicalBackdrop(){
+    const body = document.body;
+    if (!body) return;
+
+    const openSurfaces = Array.from(surfaceList).filter(surfaceOpen);
+    const bootstrapBackdrops = Array.from(document.querySelectorAll(".modal-backdrop.show"));
+    const legacyBackdrop = document.querySelector("#modalBackdrop.modal-backdrop.open");
+
+    bootstrapBackdrops.forEach(node => node.classList.add("legend-canonical-modal-backdrop"));
+    legacyBackdrop?.classList.add("legend-canonical-modal-backdrop");
+
+    let needsExternalBackdrop = false;
+    for (const surface of openSurfaces){
+      ensureSurfaceLayer(surface);
+
+      const localBackdrop = canonicalBackdropChild(surface);
+      if (localBackdrop){
+        localBackdrop.classList.add("legend-canonical-modal-backdrop");
+        continue;
+      }
+
+      if (surface.matches(".modal") && (bootstrapBackdrops.length || legacyBackdrop)) continue;
+
+      const rect = surface.getBoundingClientRect();
+      const viewportWidth = window.visualViewport?.width || window.innerWidth || 0;
+      const viewportHeight = window.visualViewport?.height || window.innerHeight || 0;
+      const ownsViewport = viewportWidth > 0 && viewportHeight > 0
+        && rect.width >= viewportWidth * 0.9
+        && rect.height >= viewportHeight * 0.9;
+
+      if (ownsViewport) surface.classList.add("legend-canonical-modal-overlay");
+      else needsExternalBackdrop = true;
+    }
+
+    surfaceList.forEach(surface => {
+      if (!openSurfaces.includes(surface)){
+        surface.classList.remove("legend-canonical-modal-overlay");
+        restoreSurfaceLayer(surface);
+      }
+    });
+
+    const external = canonicalExternalBackdrop || (needsExternalBackdrop ? ensureExternalBackdrop() : null);
+    if (external) external.hidden = !needsExternalBackdrop;
+
+    body.classList.toggle("legend-modal-active", openSurfaces.length > 0);
   }
 
   function surfaceOpen(surface){
@@ -245,17 +330,20 @@
     surface.dataset.legendModalOpen = open ? "true" : "false";
     if (isMobileModalViewport() && open) lockPageScroll(owner);
     else unlockPageScroll(owner);
+    syncCanonicalBackdrop();
   }
 
   function syncAllModalSurfaces(){
     surfaceList.forEach(surface => {
       if (!surface.isConnected) {
         unlockPageScroll(surface.dataset.legendModalOwner || "");
+        restoreSurfaceLayer(surface);
         surfaceList.delete(surface);
         return;
       }
       syncModalSurfaceState(surface);
     });
+    syncCanonicalBackdrop();
   }
 
   function registerDialog(dialog){
@@ -524,11 +612,15 @@
   }
 
   function reconcile(){
-    if (document.querySelector(".modal.show")) return;
+    if (document.querySelector(".modal.show")) {
+      syncCanonicalBackdrop();
+      return;
+    }
     document.body.classList.remove("legend-bootstrap-modal-open");
     document.body.classList.remove("modal-open");
     document.body.style.removeProperty("padding-right");
     managedBackdrops().forEach((node) => node.remove());
+    syncAllModalSurfaces();
   }
 
   function bind(modalId, options = {}){
