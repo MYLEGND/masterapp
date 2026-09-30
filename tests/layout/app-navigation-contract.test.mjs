@@ -96,6 +96,77 @@ test('dynamic destinations are backed by code that assigns a real href',()=>{
   assert.deepEqual(bad,[]);
 });
 
+test('every authenticated and shared type=button control resolves to a concrete handler',()=>{
+  const viewRoots=[
+    join(ROOT,'AgentPortal','Views'),
+    join(ROOT,'ClientApp','Views'),
+    join(ROOT,'SHARED','Views')
+  ].filter(existsSync);
+  const sourceFiles=[
+    ...viewRoots.flatMap(root=>walk(root,'.cshtml')),
+    ...['AgentPortal','ClientApp','SHARED'].flatMap(app=>{
+      const root=join(ROOT,app,'wwwroot/js');
+      return existsSync(root)?walk(root,'.js'):[];
+    }),
+    ...(existsSync(join(ROOT,'Legend-Design'))?walk(join(ROOT,'Legend-Design'),'.js'):[])
+  ];
+  const corpus=sourceFiles.map(path=>readFileSync(path,'utf8')).join('\n');
+  const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\test('Razor controller/action links resolve to real controller action source',()=>{');
+  const bad=[];
+
+  for(const root of viewRoots){
+    for(const file of walk(root,'.cshtml')){
+      const source=readFileSync(file,'utf8');
+      for(const match of source.matchAll(/<button\b[^>]*>/gi)){
+        const tag=match[0], a=attrs(tag);
+        if((a.get('type')||'submit').toLowerCase()!=='button') continue;
+        if(a.has('onclick')||a.has('form')||a.has('data-bs-toggle')||a.has('data-bs-dismiss')) continue;
+
+        let wired=false;
+        const id=(a.get('id')||'').trim();
+        if(id){
+          const q=escape(id);
+          wired=new RegExp("(?:getElementById\\(\\s*['\"]"+q+"['\"]|['\"]#"+q+"['\"])").test(corpus);
+        }
+
+        if(!wired){
+          for(const key of [...a.keys()].filter(key=>key.startsWith('data-'))){
+            const camel=key.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());
+            const q=escape(key);
+            const cq=escape(camel);
+            if(new RegExp("(?:\\["+q+"(?:[=\\]])|dataset\\."+cq+"\\b|getAttribute\\(\\s*['\"]"+q+"['\"])").test(corpus)){
+              wired=true;
+              break;
+            }
+          }
+        }
+
+        if(!wired){
+          for(const className of (a.get('class')||'').split(/\s+/).filter(Boolean)){
+            const q=escape(className);
+            if(new RegExp("['\"][^'\"]*\\."+q+"(?:[.#:[\\s'\"]|$)").test(corpus)){
+              wired=true;
+              break;
+            }
+          }
+        }
+
+        if(!wired){
+          const controls=(a.get('aria-controls')||'').trim();
+          if(controls){
+            const q=escape(controls);
+            wired=new RegExp("(?:getElementById\\(\\s*['\"]"+q+"['\"]|['\"]#"+q+"['\"])").test(corpus);
+          }
+        }
+
+        if(!wired) bad.push(file+': unresolved button handler: '+tag);
+      }
+    }
+  }
+
+  assert.deepEqual(bad,[]);
+});
+
 test('Razor controller/action links resolve to real controller action source',()=>{
   const bad=[];
   for(const app of apps) {
