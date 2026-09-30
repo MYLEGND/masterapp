@@ -55,22 +55,24 @@ test('layout notifications coalesce into one scheduled geometry update',()=>{
   const context={viewportSyncFrame:0,window:{requestAnimationFrame:callback=>{frames++;scheduled=callback;return 1;}},syncViewportOffsets:()=>updates++};vm.createContext(context);vm.runInContext(implementation('scheduleViewportOffsets'),context);
   context.scheduleViewportOffsets();context.scheduleViewportOffsets();context.scheduleViewportOffsets();assert.equal(frames,1);scheduled();assert.equal(updates,1);assert.equal(context.viewportSyncFrame,0);
 });
-test('shared mobile navigation keeps the motto in the permanent top row and compacts menu actions',()=>{
+test('shared mobile navigation is one full-height internally scrolling command surface',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
-  assert.match(css,/@media \(max-width: 840px\)[\s\S]*grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"left left left"[\s\S]*"right right right"/);
-  assert.match(css,/\.legend-global-nav \.header-psalms \{[\s\S]*grid-area: motto/);
-  assert.match(css,/\.legend-global-nav \.nav-toggle \{[\s\S]*grid-area: toggle/);
-  assert.match(css,/grid-template-columns: repeat\(auto-fit, minmax\(64px, 1fr\)\)/);
-  assert.doesNotMatch(css,/@media \(max-width: 840px\)[\s\S]*\.legend-global-nav \.navbar-left \.nav-row \{[\s\S]*flex-direction: column/);
+  assert.match(css,/@media \(max-width: 840px\)[\s\S]*grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"panel panel panel"/);
+  assert.match(css,/\.legend-global-nav\.mobile-open \{[\s\S]*position: fixed;[\s\S]*height: 100dvh;[\s\S]*overflow: hidden;/);
+  assert.match(css,/\.legend-global-nav\.mobile-open \.legend-mobile-nav-panel \{[\s\S]*overflow-y: auto;[\s\S]*overscroll-behavior: contain;[\s\S]*touch-action: pan-y;/);
+  assert.match(css,/\.legend-global-nav\[data-legend-mobile-nav-integrated\] \.navbar-left,[\s\S]*\.explore-list \{[\s\S]*display: contents !important;/);
+  assert.match(css,/\.legend-global-nav\[data-legend-mobile-nav-integrated\] \.nav-item-explore,[\s\S]*display: none !important;/);
 });
 
-test('Explore drawer has one shared mobile owner with explicit dismissal and scroll locking',()=>{
+test('global nav owns mobile page locking and integrates Explore without a nested sheet',()=>{
   const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
-  assert.match(navScript,/data-legend-explore-close/);
-  assert.match(navScript,/LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
-  assert.match(navScript,/LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
-  assert.match(navScript,/event\.target\.closest\('\.explore-item'\)/);
-  assert.match(navScript,/drawer\.setAttribute\('aria-hidden', isOpen \? 'false' : 'true'\)/);
+  assert.match(navScript,/panel\.className = 'legend-mobile-nav-panel'/);
+  assert.match(navScript,/\[drawer, left, right\]\.filter\(Boolean\)\.forEach\(node => panel\.appendChild\(node\)\)/);
+  assert.match(navScript,/const scrollOwner = 'legend-global-navigation'/);
+  assert.match(navScript,/window\.LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/window\.LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/if \(isMobile\(\)\) \{[\s\S]*ownerNav\?\.__legendOpenNavigation\?\.\(\);[\s\S]*return;/);
+  assert.match(navScript,/ownerNav\.__legendCloseNavigation\?\.\(\{ restoreFocus \}\)/);
 
   for(const file of [
     'AgentPortal/Views/Shared/_Layout.cshtml',
@@ -79,21 +81,16 @@ test('Explore drawer has one shared mobile owner with explicit dismissal and scr
   ]){
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
     assert.equal(source.split('data-legend-explore-close').length-1,1,file);
-    assert.equal(source.includes("const trigger = document.getElementById('exploreTrigger');"),false,file);
     assert.match(source,/id="exploreDrawer"[^>]*aria-hidden="true"/);
   }
 });
 
-test('Explore preserves scrolling and link navigation across every dismissal path',()=>{
+test('mobile navigation dismissal restores page scroll and preserves link navigation',()=>{
   const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
-  assert.match(navScript,/const syncResponsiveState = \(\) =>/);
-  assert.match(navScript,/closeControl\.hidden = !isMobile\(\)/);
-  assert.match(navScript,/if \(isMobile\(\)\) window\.LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
-  assert.match(navScript,/else window\.LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
   assert.match(navScript,/window\.addEventListener\('resize', syncResponsiveState/);
+  assert.match(navScript,/window\.visualViewport\?\.addEventListener\('resize', syncResponsiveState/);
   assert.match(navScript,/window\.addEventListener\('pagehide'[\s\S]*unlockPageScroll/);
-  assert.match(navScript,/const closeAllNavigation = \(\) =>/);
-  assert.match(navScript,/const openDrawer = \(\) => \{[\s\S]*closeAllNavigation\(\);[\s\S]*refreshViewportOffsets/);
+  assert.match(navScript,/panel\.addEventListener\('click'[\s\S]*close\(\)/);
 
   const listHandler=navScript.slice(
     navScript.indexOf("list.addEventListener('click'"),
@@ -116,14 +113,12 @@ test('Explore preserves scrolling and link navigation across every dismissal pat
   }
 });
 
-
-test('Explore mobile sheet stays below the banner and uses a symmetric two-column action grid',()=>{
-  const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
-  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-overlay\{[\s\S]*top:var\(--legend-modal-clearance-top,0px\)/);
-  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-drawer\{[\s\S]*top:max\(var\(--legend-modal-area-start,8px\),env\(safe-area-inset-top\)\)/);
-  assert.match(css,/\.explore-list\{[\s\S]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(css,/\.explore-group-label\{[\s\S]*grid-column:1 \/ -1/);
-  assert.match(css,/\.explore-close::before\{[\s\S]*border:1\.5px solid var\(--legend-mobile-text/);
+test('legacy design shell no longer owns a competing mobile Explore drawer',()=>{
+  const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  const mobile=shell.match(/@media\(max-width:840px\)\{[\s\S]*?\n\}/g)?.join('\n') || '';
+  assert.doesNotMatch(mobile,/\.explore-drawer/);
+  assert.doesNotMatch(mobile,/\.explore-list/);
+  assert.doesNotMatch(mobile,/\.explore-close/);
 });
 
 test('every authenticated mobile page consumes the full width and retains an overflow escape hatch',()=>{
