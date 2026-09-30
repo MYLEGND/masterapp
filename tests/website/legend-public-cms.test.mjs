@@ -115,7 +115,7 @@ function canonicalNodeById(document,id,path='/') {
 function canonicalNodeByType(document,type,path='/') {
   return canonicalNodes(document,path).find(node=>node.type===type) || null;
 }
-async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,sourceValidationPayload=null,sourceValidationStatus=200,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,sourceValidationPayload=null,sourceValidationStatus=200,sourceValidationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -123,9 +123,9 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   w.HTMLElement.prototype.animate=function(keyframes,options){ const record={element:this,keyframes,options,cancelled:false}; animations.push(record); return {cancel(){record.cancelled=true;}}; };
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase,businessId: business?.id || '',pages,agentSlug,pagePrefix,editorAuthorizationUrl};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
-  const alerts=[];
+  const alerts=[]; let sourceValidationCall=0;
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=value=>alerts.push(String(value)); w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=typeof init.body==='string'?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/media') && init.method==='POST'){ const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333'; return {ok:!denied,status:denied?401:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}}; } if(parsed.pathname.endsWith('/manage/source/validate')) { const status=denied?401:sourceValidationStatus; return {ok:status>=200&&status<300,status,json:async()=>sourceValidationPayload || {source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:doc,sourceMap:{}}}; } if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=typeof init.body==='string'?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/media') && init.method==='POST'){ const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333'; return {ok:!denied,status:denied?401:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}}; } if(parsed.pathname.endsWith('/manage/source/validate')) { const step=Array.isArray(sourceValidationSequence) && sourceValidationSequence.length ? sourceValidationSequence[Math.min(sourceValidationCall++,sourceValidationSequence.length-1)] : null; const status=denied?401:(step?.status ?? sourceValidationStatus); const payload=step?.payload ?? sourceValidationPayload ?? {source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:doc,sourceMap:{}}; return {ok:status>=200&&status<300,status,json:async()=>payload}; } if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -327,18 +327,19 @@ test('v3 selected source applies only validated server projection then uses norm
       {id:'hero.title',type:'heading',tag:'h1',text:'Before',signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]}
     ]}
   ]}},breakpoints:[],theme:{},reusableComponents:{},collections:{},store:{enabled:false}};
-  const proposed=structuredClone(original); proposed.pages['/'].composition[0].children[0].text='After';
+  const proposed=structuredClone(original); proposed.pages['/'].composition[0].children[0].text='After'; proposed.pages['/'].composition[0].children[0].style.fontWeight=700;
   const f=await domFixture({doc:original,sourceValidationPayload:{source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:proposed,sourceMap:{}}});
   try{
     f.click('main h1'); f.click('[data-open="source"]');
     const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
-    const selected=JSON.parse(sourceInput.value); selected.text='After';
+    const selected=JSON.parse(sourceInput.value); selected.text='After'; selected.style.fontWeight=700;
     sourceInput.value=JSON.stringify(selected,null,2);
     sourceInput.dispatchEvent(new f.w.Event('input',{bubbles:true}));
     f.click('#legend-cms-source-apply');
     await new Promise(resolve=>setTimeout(resolve,0));
     await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.w.document.querySelector('main h1').textContent,'After');
+    assert.equal(f.w.document.querySelector('main h1').style.fontWeight,'700');
     const validation=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/source/validate'));
     assert.ok(validation);
     assert.equal(JSON.parse(validation.body).selectedNodeId,'hero.title');
@@ -352,6 +353,67 @@ test('v3 selected source applies only validated server projection then uses norm
         !Object.hasOwn(persisted.pages['/'],'sectionOrder');
     });
     assert.ok(save);
+  }finally{f.close();}
+});
+
+test('Selected Source rebases revision conflicts without reporting a backend protection violation',async()=>{
+  const original=canonicalDocument();
+  const proposed=structuredClone(original);
+  canonicalNodeById(proposed,'home.h1.node.1').style.fontWeight=700;
+  const f=await domFixture({
+    doc:original,
+    sourceValidationSequence:[
+      {status:409,payload:{error:'revision_conflict',revision:'r-latest'}},
+      {status:200,payload:{source:'legend_site_source_validation',baseRevision:'r-latest',persisted:false,published:false,proposedDocument:proposed,sourceMap:{}}}
+    ]
+  });
+  try{
+    f.click('main h1'); f.click('[data-open="source"]');
+    const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
+    const selected=JSON.parse(sourceInput.value);
+    selected.style.fontWeight=700;
+    sourceInput.value=JSON.stringify(selected,null,2);
+    sourceInput.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    f.click('#legend-cms-source-apply');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const validations=f.calls.filter(call=>call.method==='POST' && call.url.endsWith('/manage/source/validate'));
+    assert.equal(validations.length,2);
+    assert.equal(JSON.parse(validations[1].body).expectedRevision,'r'+(f.calls.findIndex(call=>!call.method && call.url.includes('/api/website-content/manage?ticket='))+1) || JSON.parse(validations[1].body).expectedRevision);
+    assert.equal(f.w.LEGEND_WEBSITE_STUDIO_PROTECTION_VIOLATION,undefined);
+    assert.equal(f.w.document.querySelector('[data-canonical-protection-warning]').hidden,true);
+    assert.match(f.w.document.querySelector('#legend-cms-source-status').textContent,/rebasing|Applied after rebasing/i);
+  }finally{f.close();}
+});
+
+test('source protection UI is reserved for explicit protected-authority failures',()=>{
+  assert.match(source,/response\.status===409 && payload\.error==='revision_conflict'/);
+  assert.match(source,/if\(payload\.canonicalProtectionViolation===true\)[\s\S]*showCanonicalProtectionViolation/);
+  assert.match(websitePlatformControllerSource,/catch \(WebsiteSiteSourceProtectionException ex\)[\s\S]*canonicalProtectionViolation = true/);
+  assert.match(websitePlatformControllerSource,/catch \(ArgumentException ex\)[\s\S]*canonicalProtectionViolation = false/);
+  assert.match(websitePlatformControllerSource,/catch \(InvalidOperationException ex\)[\s\S]*canonicalProtectionViolation = false/);
+});
+
+test('canonical header defaults use one weight with 3.5 brand and 1.6 navigation scale',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.shell.header[0].children.unshift(canonicalNode('shell.business-name','text','strong',{
+    text:'LEGEND BUSINESS',
+    systemBinding:'business_name'
+  }));
+  const f=await domFixture({siteKey:'business',doc,business:{id:'b1',displayName:'LEGEND BUSINESS'}});
+  try{
+    const saved=await f.save();
+    const header=saved.shell.header[0];
+    const brand=header.children.find(node=>node.id==='shell.business-name');
+    const nav=header.children.find(node=>node.id==='shell.primary-nav');
+    assert.equal(brand.style.fontScale,3.5);
+    assert.equal(brand.style.fontWeight,800);
+    assert.equal(nav.style.fontScale,1.6);
+    assert.equal(nav.style.fontWeight,800);
+    assert.match(publicCss,/\.brand-wordmark strong\{[^}]*font-weight:800/);
+    assert.match(publicCss,/\.business-brand-banner strong\{[^}]*font-weight:800/);
+    assert.match(publicCss,/\.nav\{[^}]*font-weight:800/);
   }finally{f.close();}
 });
 
