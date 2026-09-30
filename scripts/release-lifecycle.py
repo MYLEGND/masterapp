@@ -443,6 +443,7 @@ def direct_release_approved_pr(api, sha):
         'scripts/release-lifecycle.py',
         'scripts/test-release-policy.py',
         'scripts/test-release-lifecycle.py',
+        '.github/workflows/masterapp-platform-architecture-validation.yml',
     }
 
     for _ in range(16):

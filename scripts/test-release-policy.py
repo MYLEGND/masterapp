@@ -106,7 +106,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
         }
 
         def fake_git(*args, **kwargs):
-            if args[:4] == ('rev-list', '--parents', '-n', '1') and args[4] == head:
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
                 return SimpleNamespace(returncode=0, stdout=f'{head} {merged}\n')
             if args and args[0] == 'diff-tree':
                 return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
@@ -122,13 +122,67 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
                 return []
 
         api = Api()
-        with patch.object(self.lifecycle, 'direct_only_request',
-                          side_effect=lambda sha: sha == head), \
+        with patch.object(self.lifecycle, 'direct_only_request', side_effect=lambda sha: sha == head), \
              patch.object(self.lifecycle, 'git', side_effect=fake_git):
             resolved = self.lifecycle.direct_release_approved_pr(api, head)
 
         self.assertEqual(resolved['number'], 308)
         self.assertEqual(api.path, 'pulls/308/files')
+
+    def test_release_control_merge_with_architecture_workflow_resolves_product_pr(self):
+        head = 'a' * 40
+        control_merge = 'b' * 40
+        product_merge = 'c' * 40
+        control_side = 'd' * 40
+        product_side = 'e' * 40
+        product_base = 'f' * 40
+        control_pr = {
+            'number': 319,
+            'merged_at': '2026-09-30T07:40:42Z',
+            'merge_commit_sha': control_merge,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+        product_pr = {
+            'number': 318,
+            'merged_at': '2026-09-30T07:34:36Z',
+            'merge_commit_sha': product_merge,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == 'commits/' + control_merge + '/pulls':
+                    return [control_pr]
+                if path == 'pulls/319/files':
+                    return [
+                        {'filename': '.github/workflows/masterapp-platform-architecture-validation.yml'},
+                        {'filename': 'scripts/release-lifecycle.py'},
+                        {'filename': 'scripts/test-release-policy.py'},
+                    ]
+                if path == 'commits/' + product_merge + '/pulls':
+                    return [product_pr]
+                if path == 'pulls/318/files':
+                    return [{'filename': 'AgentPortal/wwwroot/css/legend-app-shell.css'}]
+                return []
+
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                current = args[4]
+                if current == head:
+                    return SimpleNamespace(returncode=0, stdout=f'{head} {control_merge}\n')
+                if current == control_merge:
+                    return SimpleNamespace(returncode=0, stdout=f'{control_merge} {product_merge} {control_side}\n')
+                if current == product_merge:
+                    return SimpleNamespace(returncode=0, stdout=f'{product_merge} {product_base} {product_side}\n')
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
+        with patch.object(self.lifecycle, 'direct_only_request', side_effect=lambda sha: sha == head), \
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
+            resolved = self.lifecycle.direct_release_approved_pr(Api(), head)
+
+        self.assertEqual(resolved['number'], 318)
 
     def test_chained_control_only_authorizations_resolve_nearest_merged_pr(self):
         head = 'a' * 40
