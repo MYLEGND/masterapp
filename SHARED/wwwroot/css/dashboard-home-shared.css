@@ -18,18 +18,6 @@
     --legend-modal-area-end: 24px;
     --legend-modal-safe-height: calc(100dvh - 48px);
 
-    /* Approved Website Studio mobile contract, reused by authenticated apps. */
-    --legend-mobile-surface: #081a3a;
-    --legend-mobile-surface-deep: #07152d;
-    --legend-mobile-control: #142c50;
-    --legend-mobile-control-line: #50617e;
-    --legend-mobile-gold: #d4ad45;
-    --legend-mobile-gold-bright: #f0cf78;
-    --legend-mobile-text: #f7f6f2;
-    --legend-mobile-muted: #b8c6dc;
-    --legend-mobile-radius: 14px;
-    --legend-mobile-control-height: 34px;
-    --legend-mobile-gap: 6px;
 }
 
 /* One shared content-region boundary; backdrop and focus ownership stay with
