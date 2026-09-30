@@ -249,6 +249,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
                     return [control_pr]
                 if path == 'pulls/311/files':
                     return [
+                        {'filename': '.github/workflows/masterapp-platform-architecture-validation.yml'},
                         {'filename': 'scripts/release-lifecycle.py'},
                         {'filename': 'scripts/test-release-policy.py'},
                         {'filename': 'scripts/test-release-lifecycle.py'},
