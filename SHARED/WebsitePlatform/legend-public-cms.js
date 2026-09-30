@@ -79,7 +79,7 @@
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
-  const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
+  const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -1225,12 +1225,14 @@
     ['color','backgroundColor','fontFamily','fontWeight','objectFit','borderColor','borderStyle','textTransform','textDecoration'].forEach(key => { if (style[key] != null && style[key] !== '') el.style[key] = style[key]; });
     if (style.backgroundGradient) el.style.backgroundImage=style.backgroundGradient;
     else if (style.backgroundColor) el.style.backgroundImage = 'none';
-    ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius','borderWidth','minWidthPx','maxWidthPx','minHeightPx','maxHeightPx'].forEach(key => {
+    ['fontSize','paddingLeft','paddingRight','borderRadius','borderWidth','minWidthPx','maxWidthPx','minHeightPx','maxHeightPx'].forEach(key => {
       if (spacingNumber(style[key])) {
         const cssKey={minWidthPx:'minWidth',maxWidthPx:'maxWidth',minHeightPx:'minHeight',maxHeightPx:'maxHeight'}[key] || key;
         el.style[cssKey]=`${style[key]}px`;
       }
     });
+    if (Number.isFinite(Number(style.letterSpacing)))
+      el.style.letterSpacing=`${Number(style.letterSpacing)}px`;
     ['marginTop','marginBottom','marginLeft','marginRight'].forEach(key => { if(Number.isFinite(Number(style[key]))) el.style[key]=`${Number(style[key])}px`; });
     if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
     if (style.opacity != null && Number.isFinite(Number(style.opacity))) el.style.opacity=String(style.opacity);
@@ -1257,6 +1259,7 @@
     if (node && create) {
       node.style ||= {};
       node.signals ||= [];
+      node.fieldSignals ||= {};
       node.children ||= [];
     }
     return node;
@@ -2343,6 +2346,7 @@
     const originalId=copy.id;
     copy.id=instanceId+'.'+originalId;
     copy.signals=[];
+    copy.fieldSignals={};
     copy.children=(copy.children || []).map(child=>reusableDefinitionClone(child,instanceId));
     return copy;
   }
@@ -2391,7 +2395,9 @@
 
   function containsProtectedSystemNode(node) {
     if(!node) return false;
-    if(node.type==='form' || node.systemKey || node.systemBinding || (Array.isArray(node.signals) && node.signals.length > 0)) return true;
+    if(node.type==='form' || node.systemKey || node.systemBinding ||
+       (Array.isArray(node.signals) && node.signals.length > 0) ||
+       Object.values(node.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length > 0)) return true;
     return (node.children || []).some(containsProtectedSystemNode);
   }
 
@@ -5293,6 +5299,7 @@
       // Duplicating presentation never duplicates hidden analytics/provider wiring.
       // New custom mappings are added only through the canonical Analytics controls.
       current.signals=[];
+      current.fieldSignals={};
       (current.children || []).forEach(rewrite);
     };
     rewrite(copy);
