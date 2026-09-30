@@ -530,7 +530,7 @@
     function open() {
         getOrCreatePopup();
         popup.classList.add('open');
-        document.body.style.overflow = 'hidden';
+        
         loadAndRender();
     }
 
@@ -538,7 +538,7 @@
         if (!popup) return;
         closeActionsMenu();
         popup.classList.remove('open');
-        document.body.style.overflow = '';
+        
     }
 
     // ─── Global event delegation ────────────────────────────────────────────
