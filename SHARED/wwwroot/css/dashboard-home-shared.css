@@ -286,44 +286,6 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     /*
-     * Legacy fixed drawers that are themselves the dialog surface consume the
-     * same top-sheet geometry on phones. Desktop presentation remains feature-owned.
-     */
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] {
-        top: 0px !important;
-        right: 8px !important;
-        bottom: auto !important;
-        left: 8px !important;
-        width: auto !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        height: 100dvh !important;
-        min-height: 0 !important;
-        max-height: 100dvh !important;
-        border: 1px solid var(--legend-mobile-gold) !important;
-        border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius) !important;
-        background: var(--legend-mobile-surface) !important;
-        box-shadow: 0 14px 32px #0007 !important;
-        transform: translate3d(0, -130%, 0) !important;
-        transform-origin: top center;
-        transition: transform .24s cubic-bezier(.22,.78,.22,1) !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface].open {
-        transform: translate3d(0, 0, 0) !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] .ai-drawer-header,
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] .ai-drawer-footer {
-        padding: 7px 10px !important;
-        border-color: #344766 !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] .ai-drawer-body {
-        padding: 9px 10px 10px !important;
-    }
-
-    /*
      * Proposal/underwriting saved-item launchers are not role=dialog elements,
      * so they explicitly consume the same canonical mobile top-sheet contract.
      * Their JS/open-close behavior remains feature-owned.
