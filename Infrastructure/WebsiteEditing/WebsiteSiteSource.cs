@@ -278,6 +278,7 @@ public static class WebsiteSiteSource
 
         var validActions = ctaCatalog.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
         var ids = new HashSet<string>(StringComparer.Ordinal);
+        var bindingIds = new HashSet<string>(StringComparer.Ordinal);
         var primaryNavigationCount = 0;
 
         foreach (var (pagePath, node) in Flatten(document))
@@ -287,6 +288,22 @@ public static class WebsiteSiteSource
 
             if (!string.IsNullOrWhiteSpace(node.ActionKey) && !validActions.Contains(node.ActionKey))
                 throw new WebsiteSiteSourceProtectionException($"Website action '{node.ActionKey}' is not available for this website.");
+
+            foreach (var binding in (node.Signals ?? [])
+                         .Concat((node.FieldSignals ?? new Dictionary<string, List<WebsiteSignalBinding>>())
+                             .Values.SelectMany(value => value ?? [])))
+            {
+                if (!bindingIds.Add(binding.Id))
+                    throw new WebsiteSiteSourceProtectionException(
+                        $"Website signal binding '{binding.Id}' must be globally unique in the canonical website.");
+            }
+
+            if (node.Type == "experience")
+            {
+                if (node.Experience is null)
+                    throw new ArgumentException($"Website experience '{node.Id}' requires a native experience definition.");
+                WebsiteExperiencePolicy.ValidateForPublish(node.Experience, validActions);
+            }
 
             if (node.Type == "form" &&
                 !string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
