@@ -5027,7 +5027,7 @@ body {
 
 @media (max-width: 767.98px) {
     .wa-modal-header-main {
-        gap: .6rem;
+        gap: var(--legend-mobile-gap);
     }
 
     .wa-modal-header-actions {
@@ -5040,7 +5040,39 @@ body {
     }
 
     .wa-modal-body {
-        gap: .5rem;
+        gap: var(--legend-mobile-gap);
+    }
+
+    .wa-modal-section {
+        padding: var(--app-mobile-card-pad);
+        border-radius: var(--legend-mobile-radius);
+    }
+
+    .wa-modal-toolbar {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .wa-modal-toggle-group {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--app-mobile-control-gap);
+        padding: var(--legend-mobile-gap);
+        border-radius: 10px;
+    }
+
+    .wa-modal-toggle-group .btn,
+    .wa-modal-mode-badge,
+    .wa-modal-range-chip,
+    .wa-modal-note-chip {
+        width: 100%;
+    }
+
+    .wa-modal-meta-item {
+        min-width: 0;
+        flex: 1 1 100%;
     }
 }
 
@@ -6073,37 +6105,6 @@ body {
         min-width: 980px;
     }
 
-    .wa-modal-section {
-        padding: .55rem;
-        border-radius: 10px;
-    }
-
-    .wa-modal-toolbar {
-        width: 100%;
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .wa-modal-toggle-group {
-        width: 100%;
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: .35rem;
-        border-radius: 16px;
-        padding: .45rem;
-    }
-
-    .wa-modal-toggle-group .btn,
-    .wa-modal-mode-badge,
-    .wa-modal-range-chip,
-    .wa-modal-note-chip {
-        width: 100%;
-    }
-
-    .wa-modal-meta-item {
-        min-width: 0;
-        flex: 1 1 100%;
-    }
 }
 
 
