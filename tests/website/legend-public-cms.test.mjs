@@ -328,7 +328,7 @@ test('v3 canonical composition renders natively and canvas/source share the same
   }finally{f.close();}
 });
 
-test('Master Source is read only while Selected Source is editable and semantically color guided',async()=>{
+test('Master Source stays color guided while Selected Source is a normal editable code surface',async()=>{
   const doc=canonicalDocument();
   const heading=canonicalNodeById(doc,'home.h1.node.1');
   heading.style={fontFamily:'Georgia',widthPercent:64,color:'#123456'};
@@ -362,6 +362,41 @@ test('Master Source is read only while Selected Source is editable and semantica
     assert.match(source,/\.legend-cms-source-size\{color:#ffb86b\}/);
     assert.match(source,/\.legend-cms-source-structure\{color:#9bd67d\}/);
   }finally{f.close();}
+});
+
+test('Selected Source supports modern typing, indentation, wrapping, and visible caret text',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const input=f.w.document.querySelector('#legend-cms-site-source');
+    assert.equal(input.readOnly,false);
+    assert.equal(input.getAttribute('spellcheck'),'false');
+    assert.equal(input.getAttribute('autocapitalize'),'off');
+    assert.equal(input.getAttribute('autocomplete'),'off');
+    assert.equal(input.getAttribute('autocorrect'),'off');
+    assert.equal(input.getAttribute('wrap'),'soft');
+
+    input.value='{"style": {\n"fontWeight": 800\n}}';
+    input.setSelectionRange(12,12);
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
+    assert.match(input.value,/\n  "fontWeight"/);
+
+    const open=input.value.indexOf('{',1)+1;
+    input.setSelectionRange(open,open);
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+    assert.ok(input.value.includes('\n  '));
+    assert.equal(f.w.document.querySelector('#legend-cms-source-highlight').hidden,false);
+  }finally{f.close();}
+});
+
+test('Selected Source CSS uses the textarea as the visible editable surface and hides the overlay only while editing',()=>{
+  assert.match(source,/\.legend-cms-site-source\{[^}]*background:#07162b!important[^}]*color:#dce6f4!important[^}]*-webkit-text-fill-color:currentColor/);
+  assert.match(source,/\.legend-cms-site-source\[readonly\]\{[^}]*color:transparent!important[^}]*-webkit-text-fill-color:transparent/);
+  assert.match(source,/:has\(\.legend-cms-site-source:not\(\[readonly\]\)\) \.legend-cms-source-highlight\{display:none\}/);
+  assert.match(source,/white-space:pre-wrap/);
+  assert.match(source,/sourceTextarea\?\.addEventListener\('keydown',handleSourceEditorKeydown\)/);
 });
 
 test('v3 selected source applies only validated server projection then uses normal save authority',async()=>{
