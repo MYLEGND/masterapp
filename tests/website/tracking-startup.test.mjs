@@ -207,6 +207,45 @@ test('late provider projections share one accepted page event and unique signals
   } finally {f.dom.window.close();}
 });
 
+test('generic forms emit canonical field completion and validation friction for mapped experience fields',async()=>{
+  const f=fixture();
+  try {
+    const w=f.window;
+    w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('form_field_focus','form_field_complete','form_field_error');
+    w.eval(source);
+    const form=w.document.querySelector('form');
+    const field=form.querySelector('input');
+    field.dataset.cmsFieldKey='project_size';
+
+    w.LegendAnalytics.registerBinding(
+      field,
+      {id:'project-size-complete',eventName:'form_field_complete',actionKey:'form_field_complete',trigger:'field_completed',deliveryMode:'analytics',oncePerSession:false},
+      'project_size'
+    );
+
+    field.value='1500';
+    field.dispatchEvent(new w.Event('change',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const completes=f.events.filter(event=>event.EventType==='form_field_complete');
+    assert.equal(completes.length,1);
+    assert.equal(completes[0].FieldName,'FirstName');
+    assert.equal(completes[0].WebsiteBindingId,'project-size-complete');
+    const configured=JSON.parse(completes[0].MetadataJson).configuredSignalBindings[0];
+    assert.equal(configured.trigger,'field_completed');
+    assert.equal(configured.elementId,'project_size');
+
+    field.required=true;
+    field.value='';
+    field.dispatchEvent(new w.Event('invalid',{bubbles:false,cancelable:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const errors=f.events.filter(event=>event.EventType==='form_field_error');
+    assert.equal(errors.length,1);
+    assert.equal(errors[0].FieldName,'FirstName');
+    assert.match(errors[0].MetadataJson,/required|invalid/);
+  } finally {f.dom.window.close();}
+});
+
 test('managed form bindings enrich the one canonical envelope and preserve delivery policy',async()=>{
   const f=fixture();
   try {
