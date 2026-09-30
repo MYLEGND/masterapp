@@ -106,7 +106,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
         }
 
         def fake_git(*args, **kwargs):
-            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+            if args[:4] == ('rev-list', '--parents', '-n', '1') and args[4] == head:
                 return SimpleNamespace(returncode=0, stdout=f'{head} {merged}\n')
             if args and args[0] == 'diff-tree':
                 return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
@@ -122,7 +122,8 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
                 return []
 
         api = Api()
-        with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
+        with patch.object(self.lifecycle, 'direct_only_request',
+                          side_effect=lambda sha: sha == head), \
              patch.object(self.lifecycle, 'git', side_effect=fake_git):
             resolved = self.lifecycle.direct_release_approved_pr(api, head)
 
