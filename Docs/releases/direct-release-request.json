@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to publish all remaining merged-but-unpublished product changes after successful AgentPortal + ClientApp mobile release #295, cancellation of the redundant successor release, and merge of PR #311 fixing consolidated release-request chain resolution.",
-  "purpose": "One consolidated catch-up release from the current legend/approved-changes head for every remaining merged unpublished product change after the successful mobile deployment. The remaining product delta is the validated PR #302 canonical Website Studio source-authority and shared WebsiteEditing/CMS work. The release-control repairs from PR #310 and PR #311 are included in the release machinery. Publish the affected product hosts Protect and LEGEND Website together in this single run. AgentPortal and ClientApp are already live from release #295 and must not be redundantly redeployed; Parfait has no remaining product delta in this catch-up scope.",
-  "requestId": "consolidated-unpublished-catchup-20260929-r2",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to publish all remaining merged-but-unpublished product changes after successful AgentPortal + ClientApp mobile release #295, cancellation of the redundant successor release, and merge of PR #312 resolving consolidated releases to the nearest validated product-changing PR.",
+  "purpose": "One consolidated catch-up release from the current legend/approved-changes head for every remaining merged unpublished product change after the successful mobile deployment. The remaining product delta is the validated PR #302 canonical Website Studio source-authority and shared WebsiteEditing/CMS work. The release-control repairs from PR #310, PR #311, and PR #312 are included only as release machinery. Publish the affected product hosts Protect and LEGEND Website together in this single run. AgentPortal and ClientApp are already live from release #295 and must not be redundantly redeployed; Parfait has no remaining product delta in this catch-up scope.",
+  "requestId": "consolidated-unpublished-catchup-20260929-r3",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
