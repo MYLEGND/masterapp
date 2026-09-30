@@ -822,7 +822,7 @@ public static class WebsiteContentSanitizer
         var result = new Dictionary<string, WebsiteControlPresentation>(StringComparer.Ordinal);
         foreach (var pair in (source ?? new Dictionary<string, WebsiteControlPresentation>()).Take(64))
         {
-            var key = SanitizeId(pair.Key);
+            var key = SanitizeId(pair.Key).ToLowerInvariant();
             if (key.Length == 0 || pair.Value is null) continue;
             result[key] = SanitizeControlPresentation(pair.Value, breakpointKeys);
         }
@@ -834,7 +834,7 @@ public static class WebsiteContentSanitizer
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var pair in (source ?? new Dictionary<string, string>()).Take(64))
         {
-            var key = SanitizeId(pair.Key);
+            var key = SanitizeId(pair.Key).ToLowerInvariant();
             var value = ClampText(pair.Value);
             if (key.Length == 0 || string.IsNullOrWhiteSpace(value)) continue;
             result[key] = value[..Math.Min(value.Length, 160)];
