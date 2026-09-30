@@ -122,34 +122,33 @@ public static class WebsiteExperiencePolicy
 {
     public const string LeadCaptureCapability = "lead_capture";
 
-    private static readonly HashSet<string> Kinds = new(StringComparer.Ordinal)
-    {
-        "form", "calculator", "quiz", "assessment", "configurator", "survey"
-    };
+    public static readonly IReadOnlyList<string> AuthorableKinds = Array.AsReadOnly(
+        new[] { "form", "calculator", "quiz", "assessment", "configurator", "survey" });
 
-    private static readonly HashSet<string> ControlTypes = new(StringComparer.Ordinal)
-    {
-        "text", "textarea", "email", "tel", "number", "currency", "range",
-        "select", "radio", "choice", "checkbox", "date", "button", "cta"
-    };
+    public static readonly IReadOnlyList<string> AuthorableControlTypes = Array.AsReadOnly(
+        new[] { "text", "textarea", "email", "tel", "number", "currency", "range",
+            "select", "radio", "choice", "checkbox", "date", "button", "cta" });
 
-    private static readonly HashSet<string> ContactRoles = new(StringComparer.Ordinal)
-    {
-        "first_name", "last_name", "phone", "email", "message", "consent"
-    };
+    public static readonly IReadOnlyList<string> AuthorableContactRoles = Array.AsReadOnly(
+        new[] { "first_name", "last_name", "phone", "email", "message", "consent" });
 
-    private static readonly HashSet<string> ActionTypes = new(StringComparer.Ordinal)
-    {
-        "next", "back", "submit", "reset", "cta"
-    };
+    public static readonly IReadOnlyList<string> AuthorableActionTypes = Array.AsReadOnly(
+        new[] { "next", "back", "submit", "reset", "cta" });
 
-    private static readonly HashSet<string> ExpressionOps = new(StringComparer.Ordinal)
-    {
-        "value", "ref", "add", "subtract", "multiply", "divide", "min", "max",
-        "round", "percent", "equals", "not_equals", "greater_than", "less_than",
-        "greater_or_equal", "less_or_equal", "and", "or", "not", "if",
-        "coalesce", "concat", "lookup"
-    };
+    public static readonly IReadOnlyList<string> AuthorableExpressionOps = Array.AsReadOnly(
+        new[] { "value", "ref", "add", "subtract", "multiply", "divide", "min", "max",
+            "round", "percent", "equals", "not_equals", "greater_than", "less_than",
+            "greater_or_equal", "less_or_equal", "and", "or", "not", "if",
+            "coalesce", "concat", "lookup" });
+
+    public static readonly IReadOnlyList<string> AuthorableSubmitCapabilities = Array.AsReadOnly(
+        new[] { LeadCaptureCapability });
+
+    private static readonly HashSet<string> Kinds = new(AuthorableKinds, StringComparer.Ordinal);
+    private static readonly HashSet<string> ControlTypes = new(AuthorableControlTypes, StringComparer.Ordinal);
+    private static readonly HashSet<string> ContactRoles = new(AuthorableContactRoles, StringComparer.Ordinal);
+    private static readonly HashSet<string> ActionTypes = new(AuthorableActionTypes, StringComparer.Ordinal);
+    private static readonly HashSet<string> ExpressionOps = new(AuthorableExpressionOps, StringComparer.Ordinal);
 
     public static WebsiteExperienceDefinition? Sanitize(WebsiteExperienceDefinition? source)
     {
