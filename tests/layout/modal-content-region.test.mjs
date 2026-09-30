@@ -109,6 +109,61 @@ test('canonical mobile action density loads after page feature styles in both au
   }
 });
 
+test('feature styles cannot reintroduce competing mobile action-stack authority',()=>{
+  const checks=[
+    ['ClientApp/wwwroot/css/client-mobile.css',[
+      /\.client-create-actions[\s\S]*grid-template-columns:\s*repeat\(2/,
+      /\.preview-actions\s*\{[\s\S]*grid-template-columns/
+    ]],
+    ['ClientApp/wwwroot/css/subscription-activation.css',[
+      /@media \(max-width: 760px\)[\s\S]*\.activation-actions\s*\{[\s\S]*width:\s*100%/,
+      /@media \(max-width: 760px\)[\s\S]*\.activation-notice-actions\s*\{[\s\S]*grid-template-columns/
+    ]],
+    ['AgentPortal/wwwroot/css/clients-index.css',[
+      /@media[^}]+\{[\s\S]*\.pipeline-head-actions\s*\{[\s\S]*width:\s*100%/,
+      /@media[^}]+\{[\s\S]*\.drawer-top-actions\s*\{[\s\S]*grid-template-columns/,
+      /@media[^}]+\{[\s\S]*\.queue-record-actions[\s\S]*flex-direction:\s*column/
+    ]],
+    ['AgentPortal/wwwroot/css/website-analytics.css',[
+      /@media[^}]+\{[\s\S]*\.hero-link-meta-actions[^\{]*\{[\s\S]*flex-direction:\s*column/,
+      /@media[^}]+\{[\s\S]*\.wa-modal-toggle-group\s*\{[\s\S]*grid-template-columns:\s*1fr/
+    ]],
+    ['AgentPortal/wwwroot/css/scripts-rebuttals.css',[
+      /@media[^}]+\{[\s\S]*\.uw-actions\s*\{[\s\S]*grid-template-columns/,
+      /@media[^}]+\{[\s\S]*\.side-actions\s*\{[\s\S]*grid-template-columns:\s*1fr/
+    ]],
+    ['SHARED/wwwroot/css/legend-finance-shared.css',[
+      /@media \(max-width: 620px\)[\s\S]*\.llbs-action-buttons[\s\S]*grid-template-columns:\s*1fr/,
+      /@media \(max-width: 760px\)[\s\S]*\.savings-illustration-footer\s*\{[\s\S]*grid-template-columns/
+    ]]
+  ];
+  for(const [file,patterns] of checks){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    for(const pattern of patterns) assert.doesNotMatch(source,pattern,file+': '+pattern);
+  }
+});
+
+test('Explore close treatment is mobile-only and desktop presentation stays unchanged',()=>{
+  const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  assert.match(css,/\.explore-close\{\s*display:none;/);
+  assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-close\{display:block\}/);
+});
+
+test('every authenticated host loads the final shared mobile authority after page styles',()=>{
+  for(const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml'
+  ]){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const section=Math.max(source.indexOf('RenderSection("Styles"'),source.indexOf('RenderSectionAsync("Styles"'));
+    const shared=source.indexOf('~/_content/Shared/css/dashboard-home-shared.css');
+    assert(section>=0 && shared>section,file);
+    assert.equal(source.split('~/_content/Shared/css/dashboard-home-shared.css').length-1,1,file);
+  }
+});
+
+
 test('AgentPortal and ClientApp consume the same authenticated CSS authorities exactly once',()=>{
   const files=['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml'];
   for(const file of files){
