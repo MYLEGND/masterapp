@@ -153,5 +153,8 @@ jobs:
         working-directory: tests/website
         run: npm test
 
+      - name: Run authenticated mobile authority tests
+        run: node --test tests/layout/modal-content-region.test.mjs
+
       - name: Run canonical form tracking tests
         run: node --test tests/analytics/form-tracker.test.cjs
