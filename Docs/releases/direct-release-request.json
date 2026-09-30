@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged PR #317 Website Studio final repair after the current consolidated release completes.",
-  "purpose": "Deploy only the newly merged Website Studio final repair to Protect and LEGEND Website: persisted duplicate canonical node-ID repair preserving protected identity, global materialization collision prevention, expanded canonical typography/spacing controls, compact editor vertical spacing, and bounded static Website terminal-OneDeploy recovery. AgentPortal and ClientApp are excluded from this follow-up because their mobile changes are already handled by the preceding consolidated release. Parfait, Cloudflare routing, and database migration actions are excluded.",
-  "requestId": "website-studio-final-repair-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy merged PR #317 after the canonical Website Studio ID repair, expanded text controls, compact editor spacing, and static Website terminal-OneDeploy recovery were merged to legend/approved-changes.",
+  "purpose": "Deploy PR #317 to Protect and LEGEND Website only. This release repairs persisted duplicate canonical Website Studio node identities such as quote_dvh.root.1 while preserving protected system/form/signal identity, prevents future materialization ID collisions, expands the existing canonical WebsiteVisualStyle controls for typography and spacing, compacts Website Studio vertical controls, and adds one bounded static Website recovery after a proven terminal OneDeploy failure using the same verified immutable ZIP. AgentPortal, ClientApp, Parfait, Cloudflare routing, database migrations, CRM, payments, analytics provider wiring, and unrelated applications are excluded.",
+  "requestId": "website-studio-id-controls-static-recovery-20260930",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
