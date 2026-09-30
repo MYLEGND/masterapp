@@ -746,12 +746,22 @@
 
     .policy-actions,
     .preview-actions,
-    .upload-actions{ width:100%; justify-content:stretch; }
+    .upload-actions{
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:var(--app-mobile-control-gap);
+        width:100%;
+    }
 
     .policy-action-link,
     .policy-delete-button,
     .upload-submit,
     .preview-open{ width:100%; text-align:center; display:block; }
+
+    :is(.policy-actions,.preview-actions,.upload-actions) > :only-child{
+        width:auto;
+        justify-self:start;
+    }
 }
 </style>
 
