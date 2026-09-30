@@ -55,7 +55,7 @@
     }
 
     .client-portal .training-preview-frame {
-        padding: 0.62rem;
+        padding: var(--app-mobile-card-pad);
     }
 
     .client-portal .training-frame {
