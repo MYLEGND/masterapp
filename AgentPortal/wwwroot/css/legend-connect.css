@@ -50,10 +50,12 @@
 .lc-section-launch .lc-status { white-space: normal; font-size: .6rem; }
 .lc-section-blue { --lc-command-color: #8bc7fa; }
 .lc-section-green { --lc-command-color: var(--lc-green); }
+@media (min-width:901px) {
 .lc-section-modal .modal-dialog { width: calc(100% - 2rem); max-width: var(--lc-dialog-max-width, 1380px); margin: 1rem auto; }
 .lc-limits-modal { --lc-dialog-max-width: 1760px; }
 .lc-section-modal[data-limit-editor] .modal-dialog { max-width: 640px; }
 .lc-section-modal .modal-dialog-scrollable { height: calc(100% - 2rem); }
+}
 .lc-section-modal .modal-title { font-size: clamp(1.1rem, 2vw, 1.55rem); }
 .lc-section-modal .modal-footer { border-color: var(--lc-border); }
 .lc-section-modal .modal-body { padding: 1rem; }
