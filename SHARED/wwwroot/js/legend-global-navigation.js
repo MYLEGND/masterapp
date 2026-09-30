@@ -63,6 +63,8 @@
       const wasOpen = nav.classList.contains('mobile-open');
       nav.classList.remove('mobile-open');
       toggle.setAttribute('aria-expanded', 'false');
+      drawer?.setAttribute('aria-hidden', 'true');
+      overlay?.setAttribute('aria-hidden', 'true');
       window.LegendModal?.unlockPageScroll?.(scrollOwner);
       if (wasOpen && restoreFocus) {
         try { toggle.focus({ preventScroll: true }); } catch { toggle.focus(); }
@@ -75,6 +77,8 @@
       window.LegendModal?.refreshViewportOffsets?.();
       nav.classList.add('mobile-open');
       toggle.setAttribute('aria-expanded', 'true');
+      drawer?.setAttribute('aria-hidden', 'false');
+      overlay?.setAttribute('aria-hidden', 'true');
       panel.scrollTop = 0;
       window.LegendModal?.lockPageScroll?.(scrollOwner);
     };
