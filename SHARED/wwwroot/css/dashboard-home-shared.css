@@ -139,6 +139,104 @@ html[data-legend-modal-region] body .modal .modal-body {
         overscroll-behavior-x: contain;
         -webkit-overflow-scrolling: touch;
     }
+
+
+    /*
+     * Canonical authenticated mobile content density.
+     * Use the phone's horizontal space before adding vertical scroll. This is
+     * intentionally explicit: no wildcard *-actions selectors may own geometry.
+     */
+    body.legend-app .legend-app-content :where(.container,.container-fluid) {
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+        padding-inline: 2px;
+    }
+
+    body.legend-app .legend-app-content :where(.row) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        margin-inline: 0;
+    }
+
+    body.legend-app .legend-app-content :where(.row) > [class*="col-"] {
+        min-width: 0;
+        padding-inline: 3px;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .legend-mobile-action-grid,
+        .dashboard-command-actions,
+        .dashboard-hero-actions,
+        .home-command-actions,
+        .home-hero-actions,
+        .client-create-actions,
+        .preview-actions,
+        .activation-actions,
+        .activation-notice-actions,
+        .pipeline-head-actions,
+        .drawer-top-actions,
+        .queue-record-actions,
+        .hero-link-meta-actions,
+        .wa-modal-toggle-group,
+        .uw-actions,
+        .side-actions,
+        .llbs-action-buttons,
+        .savings-illustration-footer
+    ) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: stretch;
+        gap: 6px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .legend-mobile-action-grid,
+        .dashboard-command-actions,
+        .dashboard-hero-actions,
+        .home-command-actions,
+        .home-hero-actions,
+        .client-create-actions,
+        .preview-actions,
+        .activation-actions,
+        .activation-notice-actions,
+        .pipeline-head-actions,
+        .drawer-top-actions,
+        .queue-record-actions,
+        .hero-link-meta-actions,
+        .wa-modal-toggle-group,
+        .uw-actions,
+        .side-actions,
+        .llbs-action-buttons,
+        .savings-illustration-footer
+    ) > :is(button,.btn,a,[role="button"]) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        min-height: 38px;
+        margin: 0;
+        padding: 6px 8px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .dashboard-hero-stats,
+        .dashboard-kpi-grid,
+        .home-tools-grid,
+        .home-hero-summary,
+        .membership-billing-summary
+    ) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
 }
 
 /* Shared native-style mobile sheet. Feature CSS owns desktop presentation. */
