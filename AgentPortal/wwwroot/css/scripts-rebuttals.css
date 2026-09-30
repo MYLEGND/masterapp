@@ -7333,6 +7333,7 @@ details.section{
     box-shadow: 0 12px 26px rgba(0,0,0,.34) !important;
 }
 
+@media (min-width: 901px) {
 #rbShell .proposal-dialog{
     border: 1.8px solid rgba(166,128,35,.48) !important;
     border-radius: 22px !important;
@@ -7348,6 +7349,8 @@ details.section{
     border-bottom: 1px solid rgba(166,128,35,.22) !important;
     padding-bottom: .7rem !important;
     margin-bottom: .8rem !important;
+}
+
 }
 #rbShell .proposal-dialog .uw-name{ color:#f4d890 !important; }
 #rbShell .proposal-dialog .uw-sub{ color:#b9c5d8 !important; }
