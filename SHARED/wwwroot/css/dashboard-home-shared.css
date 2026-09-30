@@ -628,6 +628,35 @@ html[data-legend-modal-region] body .modal .modal-body {
         grid-column: 1 / -1 !important;
     }
 
+    /* Nested action groups that cannot be expressed as direct-button containers. */
+    body.legend-app .legend-app-content .hero-actions {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        align-items: stretch !important;
+        gap: var(--legend-mobile-gap) !important;
+        width: 100% !important;
+    }
+
+    body.legend-app .legend-app-content .hero-actions > .hero-action-group {
+        min-width: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    body.legend-app .legend-app-content .hero-actions > .hero-action-group :is(button, .btn, a, select.btn) {
+        min-width: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    body.legend-app .legend-app-content .hero-actions > .hero-action-group:last-child:nth-child(odd):not(:only-child) {
+        grid-column: 1 / -1 !important;
+    }
+
+    body.legend-app .legend-app-content .savings-illustration-footer > .savings-illustration-progress {
+        grid-column: 1 / -1 !important;
+    }
+
     html[data-legend-modal-region] body.legend-app .modal .modal-header,
     html[data-legend-modal-region] body.legend-app
     :is([data-legend-modal-panel], [data-legend-mobile-sheet]) >
