@@ -1,12 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to restore AgentPortal + ClientApp live usability after the exact deployed revision reproduced iOS Safari tab failures, using the exact-head green PR #333 canonical runtime repair.",
-  "purpose": "Deploy only AgentPortal and ClientApp from the current legend/approved-changes head. This release preserves the newer approved compact authenticated mobile navigation and applies the canonical Safari-safe modal runtime repair: hidden-ancestor-aware modal state detection, one lightweight shared shadow scrim, no stacked full-screen backdrop-filter blur, preserved modal z-order/page lock/background interaction shielding, and existing button/navigation authority. Protect, Parfait, LEGEND public website, Cloudflare routing, database migrations, analytics/Meta/OpenAI authority, payments, CRM backend behavior, and unrelated public-site changes are excluded from deployment.",
-  "requestId": "ios-runtime-mobile-nav-modal-recovery-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged PR #332 canonical published mobile flow-safety repair after exact-head green architecture validation, full-suite comparison, and canonical drift/duplicate-authority audit.",
+  "purpose": "Deploy only Protect and LEGEND Website from the current legend/approved-changes head. This release replaces the remaining unsafe published-mobile geometry path at the canonical shared Website Studio/runtime and server sanitizer authorities: persisted mobile X/Y offsets, fixed/minimum geometry, negative margins, oversized media bounds, and free-canvas section/container layouts are normalized before publication and again at runtime, while desktop/base composition and safe visual breakpoint styling remain intact. The same shared runtime remains the sole public website renderer for LEGEND, Protect, and Business sites. AgentPortal, ClientApp, Parfait, Cloudflare routing, database migrations, analytics/Meta/OpenAI delivery, CRM, payments, owner scope, and unrelated systems are excluded.",
+  "requestId": "canonical-mobile-live-flow-safety-20260930",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client"
+    "masterapp-protect",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
