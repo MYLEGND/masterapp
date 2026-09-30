@@ -148,5 +148,33 @@ test('mobile shared authority keeps controls clickable and modal content reachab
   assert.match(mobile,/\.modal \.modal-body\s*\{[\s\S]*overflow-y:\s*auto/);
   assert.match(mobile,/\.legend-modal-close-control\s*\{[\s\S]*cursor:\s*pointer/);
   assert.match(nav,/panel\.addEventListener\('click'/);
+  assert.match(nav,/const dismissAfterActivation = callback =>/);
+  assert.match(nav,/queueMicrotask\(callback\)/);
   assert.match(modal,/button\.addEventListener\("click"/);
+});
+
+test('mobile navigation never dismisses before delegated and default button activation completes',()=>{
+  const nav=readFileSync(join(ROOT,'SHARED/wwwroot/js/legend-global-navigation.js'),'utf8');
+  const handler=nav.slice(
+    nav.indexOf("panel.addEventListener('click'"),
+    nav.indexOf("document.addEventListener('click'",nav.indexOf("panel.addEventListener('click'"))
+  );
+
+  assert.match(handler,/event\.target\.closest\?\.\('a, \.explore-item, button'\)/);
+  assert.match(handler,/control\.matches\('\[data-bs-toggle\]'\)/);
+  assert.match(handler,/dismissAfterActivation\(\(\) =>/);
+  assert.doesNotMatch(handler,/event\.preventDefault\(/);
+});
+
+test('mobile Quick Find uses compact two-column rows and puts primary app destinations first',()=>{
+  const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
+  const start=css.indexOf('@media (max-width: 840px)');
+  const mobile=css.slice(start,css.indexOf('@media (min-width: 841px)',start));
+
+  assert.match(mobile,/\.explore-header \{[\s\S]*order:\s*-40/);
+  assert.match(mobile,/\.explore-search \{[\s\S]*order:\s*-39/);
+  assert.match(mobile,/\.navbar-left \.nav-link \{[\s\S]*order:\s*-60/);
+  assert.match(mobile,/\.navbar-right > \* \{[\s\S]*order:\s*-59/);
+  assert.match(mobile,/\.explore-item \{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(mobile,/\.explore-item small \{[\s\S]*font-size:\s*\.56rem/);
 });
