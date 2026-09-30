@@ -7653,16 +7653,6 @@ details.section{
    Shared app/modal tokens own visual density; this block retains only the
    Workstation-specific layout needed to keep lead context and actions usable. */
 @media (max-width: 900px){
-    .uw-head,
-    .proposal-dialog .uw-head,
-    #proposalDialog .hp-dialog-head,
-    .note-self-head,
-    #captureDecisionModal.legend-popout-modal .modal-header{
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 20 !important;
-    }
-
     #rbShell .nav-rail-arrow,
     #rbShell #rbNavArrow,
     #rbShell #prosperNavArrow{
