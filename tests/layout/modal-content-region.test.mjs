@@ -130,7 +130,7 @@ test('every authenticated mobile page consumes the full width and retains an ove
   const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
 
-  assert.doesNotMatch(shell,/body\.legend-app\{[^}]*overflow-x:clip/);
+  const mobileShell=shell.slice(shell.indexOf('@media(max-width:768px)'));\n  assert.doesNotMatch(mobileShell,/body\.legend-app\{[^}]*overflow-x:clip/);
   assert.match(shell,/@media\(min-width:769px\)\{[\s\S]*body\.legend-app\{overflow-x:clip\}/);
   assert.match(shell,/@media\(max-width:768px\)\{[\s\S]*body\.legend-app\{[\s\S]*overflow-x:visible/);
 
