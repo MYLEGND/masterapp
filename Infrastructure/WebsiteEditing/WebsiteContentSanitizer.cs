@@ -471,7 +471,8 @@ public static class WebsiteContentSanitizer
                 Animations = SanitizeAnimations(node.Animations),
                 DataBinding = SanitizeDataBinding(node.DataBinding),
                 FieldPresentations = SanitizeFieldPresentations(node.FieldPresentations, breakpointKeys),
-                FieldLabels = SanitizeFieldLabels(node.FieldLabels)
+                FieldLabels = SanitizeFieldLabels(node.FieldLabels),
+                FieldSignals = SanitizeFieldSignals(node.FieldSignals)
             };
             clean.Children = SanitizeCompositionChildren(node.Children, breakpointKeys, depth + 1, ref remaining);
             CanonicalizePassiveLink(clean);
@@ -838,6 +839,20 @@ public static class WebsiteContentSanitizer
             var value = ClampText(pair.Value);
             if (key.Length == 0 || string.IsNullOrWhiteSpace(value)) continue;
             result[key] = value[..Math.Min(value.Length, 160)];
+        }
+        return result;
+    }
+
+    private static Dictionary<string, List<WebsiteSignalBinding>> SanitizeFieldSignals(
+        IDictionary<string, List<WebsiteSignalBinding>>? source)
+    {
+        var result = new Dictionary<string, List<WebsiteSignalBinding>>(StringComparer.Ordinal);
+        foreach (var pair in (source ?? new Dictionary<string, List<WebsiteSignalBinding>>()).Take(64))
+        {
+            var key = SanitizeId(pair.Key).ToLowerInvariant();
+            if (key.Length == 0) continue;
+            var signals = WebsiteSignalBindingPolicy.Validate(pair.Value);
+            if (signals.Count > 0) result[key] = signals;
         }
         return result;
     }
