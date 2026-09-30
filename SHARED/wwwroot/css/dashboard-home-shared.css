@@ -4991,6 +4991,239 @@ body.messaging-command-center-open {
 
 /*
  * Global navigation source of truth.
+ * This file owns authenticated navigation AND Explore in both apps. Do not
+ * re-declare these selectors in app-specific or Legend-Design stylesheets.
+ */
+.onboarding-public-only .explore-trigger,
+.onboarding-public-only #exploreDrawer,
+.onboarding-public-only #exploreOverlay {
+    display: none;
+}
+
+.explore-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1098;
+    display: none;
+    background: transparent;
+}
+
+.explore-overlay.open {
+    display: block;
+}
+
+.explore-trigger {
+    position: static;
+    z-index: auto;
+    display: flex;
+    width: 42px;
+    height: 42px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1.6px solid rgba(166, 128, 35, 0.72);
+    border-radius: 13px;
+    background: var(--web-navy-deep, #091225);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.10);
+    cursor: pointer;
+    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.explore-trigger:hover,
+.explore-trigger:focus-visible {
+    border-color: rgba(199, 153, 49, 0.95);
+    box-shadow: 0 14px 24px rgba(0, 0, 0, 0.26), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    transform: translateY(-1px);
+}
+
+.explore-bars {
+    display: flex;
+    width: 16px;
+    height: 14px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+}
+
+.explore-bars span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #f8fafc, var(--web-gold, #d4aa47));
+}
+
+.explore-drawer {
+    position: fixed;
+    z-index: 1099;
+    top: 16px;
+    bottom: 16px;
+    left: 18px;
+    width: min(360px, calc(100vw - 36px));
+    max-width: calc(100vw - 36px);
+    pointer-events: none;
+    transform: translateX(-140%);
+    transition: transform .25s ease;
+}
+
+.explore-drawer.open {
+    pointer-events: auto;
+    transform: translateX(0);
+}
+
+.explore-card {
+    position: relative;
+    display: flex;
+    max-height: 100%;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1.5px solid rgba(166, 128, 35, .86);
+    border-radius: 18px;
+    background: var(--web-navy-deep, #091225);
+    box-shadow: 0 22px 48px rgba(0, 0, 0, .30), inset 0 0 0 1px rgba(255, 255, 255, .08);
+}
+
+.explore-drawer:not(.open) .explore-card {
+    box-shadow: none;
+}
+
+.explore-card::before {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 4px;
+    content: "";
+    background: linear-gradient(90deg, #a68023, #c79931 26%, var(--web-gold, #d4aa47) 54%, #c79931 80%, #a68023);
+}
+
+.explore-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 18px 18px 12px;
+    border-bottom: 1px solid rgba(166, 128, 35, .32);
+    background: var(--web-navy-deep, #091225);
+}
+
+.explore-title {
+    color: var(--legend-mobile-gold-bright, #f0cf78);
+    font-size: 1rem;
+    font-weight: 900;
+    letter-spacing: 1.2px;
+    white-space: nowrap;
+}
+
+.explore-pill {
+    padding: 5px 9px;
+    border: 1px solid rgba(166, 128, 35, .42);
+    border-radius: 999px;
+    background: var(--web-navy, #10254c);
+    color: var(--legend-mobile-gold-bright, #f0cf78);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .02em;
+    white-space: nowrap;
+}
+
+.explore-search {
+    padding: 14px 18px 10px;
+}
+
+.explore-search input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid rgba(166, 128, 35, .42);
+    border-radius: 999px;
+    outline: none;
+    background: var(--web-navy, #10254c);
+    color: #f8fafc;
+    font-weight: 700;
+}
+
+.explore-search input:focus {
+    border-color: rgba(199, 153, 49, .94);
+    box-shadow: 0 0 0 3px rgba(166, 128, 35, .14);
+}
+
+.explore-list {
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 12px 16px;
+}
+
+.explore-group-label {
+    margin: 10px 8px 6px;
+    color: var(--web-gold, #d4aa47);
+    font-size: .66rem;
+    font-weight: 900;
+    letter-spacing: .14em;
+    opacity: .9;
+    text-transform: uppercase;
+}
+
+.explore-item {
+    display: flex;
+    width: calc(100% - 12px);
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 5px 6px;
+    padding: 9px 11px;
+    border: 1px solid rgba(166, 128, 35, .38);
+    border-radius: 11px;
+    background: var(--web-navy, #10254c);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+    color: #f8fafc;
+    font-weight: 800;
+    text-align: left;
+    text-decoration: none;
+    transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+
+.explore-item:hover,
+.explore-item:focus-visible {
+    border-color: rgba(199, 153, 49, .72);
+    background: rgba(166, 128, 35, .14);
+    color: var(--legend-mobile-gold-bright, #f0cf78);
+    transform: translateY(-1px);
+}
+
+.explore-item span {
+    display: block;
+    min-width: 0;
+    font-size: .92rem;
+    letter-spacing: .1px;
+}
+
+.explore-item small {
+    flex: 0 0 auto;
+    padding: 3px 7px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .06);
+    color: #e2e8f0;
+    font-size: .58rem;
+    font-weight: 800;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.explore-item[data-tone="crm"] small { color:#6f9dff; border-color:rgba(111,157,255,.35); background:rgba(36,87,197,.14); }
+.explore-item[data-tone="prospect"] small { color:#ffc078; border-color:rgba(255,192,120,.32); background:rgba(160,93,18,.14); }
+.explore-item[data-tone="forms"] small { color:#6fe0d5; border-color:rgba(111,224,213,.30); background:rgba(13,125,115,.14); }
+.explore-item[data-tone="ops"] small { color:#7fe3a6; border-color:rgba(127,227,166,.30); background:rgba(31,139,73,.14); }
+.explore-item[data-tone="network"] small { color:#c1a2ff; border-color:rgba(193,162,255,.30); background:rgba(122,63,224,.14); }
+.explore-item[data-tone="library"] small { color:#ffc078; border-color:rgba(255,192,120,.30); background:rgba(160,93,18,.14); }
+.explore-item[data-tone="growth"] small { color:#e0a6ff; border-color:rgba(224,166,255,.30); background:rgba(157,78,221,.14); }
+.explore-item[data-tone="utility"] small { color:#b9d97a; border-color:rgba(185,217,122,.30); background:rgba(79,107,27,.14); }
+
+/*
+ * Global navigation source of truth.
  * Tabs, logo, motto, and messaging icon follow the ClientApp design;
  * the account pill follows the AgentPortal design.
  */
@@ -5527,14 +5760,13 @@ header .legend-global-nav .container-fluid {
     }
 
     .legend-global-nav.mobile-open .legend-mobile-nav-panel {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        align-content: start;
-        gap: 6px;
+        display: flex;
         width: 100%;
         height: 100%;
         min-width: 0;
         min-height: 0;
+        flex-direction: column;
+        gap: 8px;
         padding: 6px 8px calc(10px + env(safe-area-inset-bottom));
         overflow-x: hidden;
         overflow-y: auto;
@@ -5544,22 +5776,53 @@ header .legend-global-nav .container-fluid {
         scrollbar-width: thin;
     }
 
-    /* Flatten the former independent tiers into the one canonical command grid. */
+    /*
+     * Integrated mobile navigation stays sectioned. Primary destinations,
+     * account utilities, and Quick Find remain distinct regions; none of them
+     * are flattened into one competing grid.
+     */
     .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left,
     .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right,
-    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-rows-grid,
-    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-row,
-    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-drawer,
-    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-card,
-    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-list {
-        display: contents !important;
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-drawer {
+        position: static;
+        display: block !important;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        margin: 0;
+        transform: none;
+        pointer-events: auto;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left {
+        order: -60;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right {
+        order: -59;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-rows-grid {
+        display: grid;
+        gap: 6px;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        margin: 0;
+        padding: 0;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-item {
-        display: contents;
+        display: block;
+        min-width: 0;
     }
 
-    /* Explore is content, not a second mobile surface. */
     .legend-global-nav[data-legend-mobile-nav-integrated] .nav-item-explore,
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-close,
     .legend-global-nav[data-legend-mobile-nav-integrated] + .explore-overlay,
@@ -5567,69 +5830,86 @@ header .legend-global-nav .container-fluid {
         display: none !important;
     }
 
-    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-header,
-    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search,
-    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-group-label,
-    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-row {
-        grid-column: 1 / -1;
-        min-width: 0;
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-drawer {
+        order: 0;
+        inset: auto;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-card {
+        display: flex;
+        width: 100%;
+        max-height: none;
+        flex-direction: column;
+        overflow: visible;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-card::before {
+        display: none;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-header {
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        order: -40;
-        margin: 0 -2px;
-        padding: 5px 7px;
+        position: static;
+        display: flex;
+        order: 0;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin: 2px 0 0;
+        padding: 7px 8px;
         border: 1px solid var(--legend-mobile-control-line);
-        border-radius: 8px;
+        border-radius: 9px;
         background: var(--legend-mobile-surface);
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-title {
-        font-size: .82rem;
+        font-size: .76rem;
+        font-weight: 900;
         line-height: 1;
         letter-spacing: .08em;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-pill {
-        padding: 4px 8px;
-        font-size: .6rem;
+        padding: 3px 6px;
+        border-radius: 999px;
+        font-size: .52rem;
+        font-weight: 800;
         line-height: 1;
         letter-spacing: .02em;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search {
-        order: -39;
-        padding: 0;
+        order: 1;
+        padding: 6px 0 3px;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search input {
         width: 100%;
         min-width: 0;
-        min-height: 38px;
+        min-height: 36px;
         padding: 7px 10px;
+        border-radius: 9px;
         font-size: 16px;
     }
 
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-list {
+        display: grid;
+        order: 2;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 5px;
+        width: 100%;
+        padding: 0;
+        overflow: visible;
+    }
+
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-group-label {
-        margin: 7px 2px 1px;
-        font-size: .6rem;
+        margin: 8px 2px 1px;
+        font-size: .55rem;
         line-height: 1;
         letter-spacing: .12em;
-    }
-
-    /* Primary app destinations are the first command tier. Explore/Quick Find
-       follows as discovery, rather than burying Home/Finance/Store/profile
-       beneath the full catalog. All right-side command roots move together so
-       messaging, AI, and profile controls do not drift back to the bottom. */
-    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-link {
-        order: -60;
-    }
-
-    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right > * {
-        order: -59;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] :is(
@@ -5637,58 +5917,58 @@ header .legend-global-nav .container-fluid {
         .btn-link,
         .legend-founder-ai-nav-button,
         .messaging-nav-trigger,
-        .profile-chip,
-        .explore-item
+        .profile-chip
     ) {
         width: 100%;
         max-width: 100%;
         min-width: 0;
-        min-height: 40px;
+        min-height: 36px;
         height: auto;
         margin: 0;
         padding: 6px 8px;
         border: 1px solid var(--legend-mobile-control-line);
         border-radius: 8px;
         background: var(--legend-mobile-control);
+        box-shadow: none;
         color: var(--legend-mobile-text);
-        justify-content: center;
+        font-size: clamp(.64rem, 2.55vw, .74rem);
+        font-weight: 800;
+        line-height: 1.05;
         text-align: center;
-        font-size: clamp(.68rem, 2.7vw, .78rem);
-        line-height: 1.04;
         white-space: normal;
         overflow-wrap: anywhere;
-        box-shadow: none;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item {
         display: grid;
+        width: 100%;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
-        align-content: center;
-        justify-items: stretch;
-        column-gap: 7px;
-        row-gap: 3px;
+        gap: 8px;
+        margin: 0;
+        padding: 7px 9px;
+        border-radius: 8px;
         text-align: left;
+        transform: none;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item span {
         min-width: 0;
         max-width: 100%;
-        font-size: clamp(.74rem, 2.8vw, .84rem);
-        line-height: 1.05;
+        font-size: clamp(.70rem, 2.7vw, .80rem);
         font-weight: 800;
+        line-height: 1.1;
         overflow-wrap: anywhere;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item small {
         min-width: 0;
         max-width: 100%;
-        padding: 3px 6px;
-        font-size: .56rem;
+        padding: 2px 5px;
+        font-size: .48rem;
         line-height: 1;
-        letter-spacing: .03em;
+        letter-spacing: .02em;
         white-space: nowrap;
-        overflow-wrap: normal;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-row {
@@ -5701,7 +5981,7 @@ header .legend-global-nav .container-fluid {
     .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-pill,
     .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-exit {
         min-width: 0;
-        min-height: 40px;
+        min-height: 36px;
         padding: 6px 8px;
         border-radius: 8px;
     }
@@ -5715,16 +5995,17 @@ header .legend-global-nav .container-fluid {
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .profile-avatar {
-        width: 26px;
-        height: 26px;
-        flex: 0 0 26px;
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .profile-chip {
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        gap: 7px;
+        gap: 6px;
+        text-align: left;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .profile-meta {
@@ -5737,14 +6018,18 @@ header .legend-global-nav .container-fluid {
     .legend-global-nav[data-legend-mobile-nav-integrated] .profile-name {
         max-width: 100%;
         overflow: hidden;
-        font-size: .68rem;
+        font-size: .64rem;
         line-height: 1;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .profile-role-pill {
-        font-size: .52rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        font-size: .46rem;
         line-height: 1;
     }
 
@@ -5758,20 +6043,20 @@ header .legend-global-nav .container-fluid {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
+        gap: 5px;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .legend-founder-ai-nav-button .legend-founder-ai-logo-image {
-        width: 24px;
-        height: 24px;
-        flex: 0 0 24px;
+        width: 21px;
+        height: 21px;
+        flex: 0 0 21px;
         object-fit: cover;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] :is(.legend-founder-ai-nav-label, .messaging-nav-label) {
         display: inline;
         min-width: 0;
-        font-size: .64rem;
+        font-size: .58rem;
         font-weight: 800;
         line-height: 1;
         white-space: nowrap;
@@ -5787,7 +6072,7 @@ header .legend-global-nav .container-fluid {
         border: 1px solid var(--legend-mobile-control-line);
         border-radius: 8px;
         background: var(--legend-mobile-surface-deep);
-        font-size: .75rem;
+        font-size: .72rem;
     }
 }
 
