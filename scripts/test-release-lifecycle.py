@@ -504,6 +504,7 @@ class ExactCandidateValidation(unittest.TestCase):
 
     def test_public_website_runtime_scope_does_not_require_step5(self):
         files=[
+            '.github/workflows/masterapp-platform-architecture-validation.yml',
             'Legend-Design/legend-web-foundation.css',
             'Legend-Website/scripts/build.mjs',
             'Legend-Website/public/web.config',
@@ -511,8 +512,15 @@ class ExactCandidateValidation(unittest.TestCase):
             'SHARED/WebsitePlatform/legend-public-cms.js',
             'SHARED/WebsitePlatform/legend-public-web.css',
             'Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs',
+            'scripts/release-lifecycle.py',
+            'scripts/test-release-lifecycle.py',
         ]
         self.assertIsNone(self.validate([self.run_record()],files))
+
+    def test_architecture_workflow_is_validation_neutral_control_authority(self):
+        self.assertIn(
+            '.github/workflows/masterapp-platform-architecture-validation.yml',
+            m.VALIDATION_NEUTRAL_PATHS)
 
     def test_public_website_architecture_accepts_unrelated_later_compile_failure(self):
         run=self.run_record(status='completed',conclusion='failure',id=91)
