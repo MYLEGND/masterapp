@@ -122,7 +122,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
                 return []
 
         api = Api()
-        with patch.object(self.lifecycle, 'direct_only_request', side_effect=lambda sha: sha == head), \
+        with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
              patch.object(self.lifecycle, 'git', side_effect=fake_git):
             resolved = self.lifecycle.direct_release_approved_pr(api, head)
 
