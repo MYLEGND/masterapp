@@ -1,15 +1,22 @@
 (() => {
   const breakpoint = 840;
 
+  const closeNavigation = nav => {
+    if (!nav) return;
+    nav.classList.remove('mobile-open');
+    nav.querySelector('[data-legend-nav-toggle]')?.setAttribute('aria-expanded', 'false');
+  };
+
+  const closeAllNavigation = () => {
+    document.querySelectorAll('[data-legend-global-nav].mobile-open').forEach(closeNavigation);
+  };
+
   document.querySelectorAll('[data-legend-global-nav]').forEach(nav => {
     const toggle = nav.querySelector('[data-legend-nav-toggle]');
     const groups = Array.from(nav.querySelectorAll('.navbar-left, .navbar-right'));
     if (!toggle) return;
 
-    const close = () => {
-      nav.classList.remove('mobile-open');
-      toggle.setAttribute('aria-expanded', 'false');
-    };
+    const close = () => closeNavigation(nav);
 
     toggle.addEventListener('click', () => {
       const isOpen = nav.classList.toggle('mobile-open');
@@ -79,6 +86,9 @@
   };
 
   const openDrawer = () => {
+    // Mobile navigation and Explore are mutually exclusive surfaces. Close the
+    // compact nav first so its command rows can never remain beneath the sheet.
+    closeAllNavigation();
     window.LegendModal?.refreshViewportOffsets?.();
     drawer.classList.add('open');
     overlay.classList.add('open');
