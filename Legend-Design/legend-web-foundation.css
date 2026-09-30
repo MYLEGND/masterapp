@@ -24,6 +24,17 @@
   --web-public-body-weight:500;
   --web-public-heading-weight:800;
   --web-public-card-border:color-mix(in srgb,var(--web-gold) 58%,var(--web-navy) 16%);
+  --web-public-flow-gap:clamp(16px,2vw,28px);
+  --web-public-mobile-page-pad:clamp(18px,5vw,24px);
+  --web-public-mobile-section-y:clamp(44px,10vw,64px);
+  --web-public-mobile-media-max:560px;
+  --web-public-action-min:180px;
+  --web-public-banner-pad-block:10px;
+  --web-public-banner-pad-inline:14px;
+  --web-public-banner-title-size:clamp(21px,2.25vw,31px);
+  --web-public-banner-title-weight:800;
+  --web-public-banner-title-line:1;
+  --web-public-banner-title-tracking:-.025em;
   --web-header-height:88px;
   --navy:var(--web-navy);
   --navy-deep:var(--web-navy-deep);

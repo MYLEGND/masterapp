@@ -535,8 +535,12 @@ test('canonical header defaults use one weight with 3.5 brand and 1.6 navigation
     const nav=header.children.find(node=>node.id==='shell.primary-nav');
     assert.equal(brand.style.fontScale,3.5);
     assert.equal(brand.style.fontWeight,800);
+    assert.equal(brand.breakpointStyles.mobile.fontScale,1.35);
+    assert.equal(brand.breakpointStyles.tablet.fontScale,1.8);
     assert.equal(nav.style.fontScale,1.6);
     assert.equal(nav.style.fontWeight,800);
+    assert.equal(nav.breakpointStyles.mobile.fontScale,1);
+    assert.equal(nav.breakpointStyles.tablet.fontScale,1.15);
     assert.match(publicCss,/\.brand-wordmark strong\{[^}]*font-weight:800/);
     assert.match(publicCss,/\.business-brand-banner strong\{[^}]*font-weight:800/);
     assert.match(publicCss,/\.nav\{[^}]*font-weight:800/);
@@ -675,6 +679,107 @@ test('Protect hides only canonical published-document pages before hydration',()
   assert.match(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding \? "hidden" : null\)"/);
   assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
   assert.match(protectLayoutSource,/@if \(!isStandaloneQuoteLanding\)[\s\S]*html\[hidden\]\{display:block!important\}/);
+});
+
+test('canonical responsive hierarchy resets inherited desktop geometry on mobile but preserves explicit mobile intent',async()=>{
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.layout={mode:'grid',columns:4,gapPx:32,direction:'row'};
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={widthPercent:38,offsetXPercent:48,offsetYPx:80,heightPx:120,fontSize:70};
+  const action=canonicalNodeById(doc,'home.a.node.1');
+  action.type='cta';
+  action.style={widthPercent:18,offsetXPercent:62,heightPx:88,fontSize:34};
+  const media=canonicalNodeById(doc,'home.img.node.1');
+  media.style={widthPercent:44,offsetXPercent:48,heightPx:900};
+  const f=await domFixture({doc,viewportWidth:390});
+  try{
+    const h=f.w.document.querySelector('main h1');
+    const a=f.w.document.querySelector('main a');
+    const img=f.w.document.querySelector('main img');
+    const root=f.w.document.querySelector('main section');
+    assert.equal(root.style.display,'grid');
+    assert.equal(root.style.gridTemplateColumns,'repeat(1,minmax(0,1fr))');
+    assert.equal(h.style.width,'100%');
+    assert.equal(h.style.left,'0%');
+    assert.equal(h.style.top,'0px');
+    assert.equal(h.style.height,'');
+    assert.equal(h.style.fontSize,'54px');
+    assert.equal(a.style.width,'100%');
+    assert.equal(a.style.left,'0%');
+    assert.equal(a.style.height,'');
+    assert.equal(a.style.fontSize,'20px');
+    assert.equal(a.dataset.legendContentRole,'action');
+    assert.equal(img.style.width,'100%');
+    assert.equal(img.style.left,'0%');
+    assert.equal(img.style.height,'');
+    assert.equal(img.style.maxWidth,'560px');
+    assert.equal(root.dataset.legendResponsiveFlow,'true');
+  }finally{f.close();}
+});
+
+test('explicit mobile breakpoint properties override inherited responsive defaults property by property',async()=>{
+  const doc=canonicalDocument();
+  const action=canonicalNodeById(doc,'home.a.node.1');
+  action.type='cta';
+  action.style={widthPercent:18,offsetXPercent:62,heightPx:88,fontSize:34};
+  action.breakpointStyles.mobile={widthPercent:72,offsetXPercent:8,fontSize:18,heightPx:64};
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.layout={mode:'grid',columns:4,gapPx:32};
+  section.breakpointLayouts.mobile={mode:'grid',columns:2,gapPx:14};
+  const f=await domFixture({doc,viewportWidth:390});
+  try{
+    const a=f.w.document.querySelector('main a');
+    const root=f.w.document.querySelector('main section');
+    assert.equal(a.style.width,'72%');
+    assert.equal(a.style.left,'8%');
+    assert.equal(a.style.fontSize,'18px');
+    assert.equal(a.style.height,'64px');
+    assert.equal(root.style.gridTemplateColumns,'repeat(2,minmax(0,1fr))');
+    assert.equal(root.style.gap,'14px');
+  }finally{f.close();}
+});
+
+test('desktop preserves authored geometry while mobile uses conversion-first semantic roles',async()=>{
+  const doc=canonicalDocument();
+  const action=canonicalNodeById(doc,'home.a.node.1');
+  action.type='cta';
+  action.style={widthPercent:38,offsetXPercent:12};
+  const desktop=await domFixture({doc,viewportWidth:1440});
+  try{
+    const a=desktop.w.document.querySelector('main a');
+    assert.equal(a.style.width,'38%');
+    assert.equal(a.style.left,'12%');
+    assert.equal(a.dataset.legendContentRole,'action');
+  }finally{desktop.close();}
+  assert.match(publicCss,/\[data-legend-content-role="action"\][\s\S]*min-inline-size:min\(100%,var\(--public-action-min\)\)/);
+  assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\[data-legend-content-role="heading"\]\{order:20\}[\s\S]*\[data-legend-content-role="action"\][\s\S]*order:40[\s\S]*\[data-legend-content-role="media"\]\{order:50\}/);
+});
+
+test('business banner and shell typography use canonical shared responsive tokens instead of one-off geometry',async()=>{
+  assert.match(foundationCss,/--web-public-banner-pad-block:10px/);
+  assert.match(foundationCss,/--web-public-banner-title-weight:800/);
+  assert.match(publicCss,/\.business-brand-banner\{[\s\S]*padding:var\(--public-banner-pad-block\) var\(--public-banner-pad-inline\)/);
+  assert.match(publicCss,/\.business-brand-banner strong\{[\s\S]*font-size:var\(--public-banner-title-size\)[\s\S]*font-weight:var\(--public-banner-title-weight\)/);
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.shell.header[0].children.unshift(canonicalNode('shell.business-name','text','strong',{
+    text:'LEGEND BUSINESS',systemBinding:'business_name'
+  }));
+  const f=await domFixture({siteKey:'business',doc,business:{id:'b1',displayName:'LEGEND BUSINESS'},viewportWidth:390});
+  try{
+    const saved=await f.save();
+    const brand=saved.shell.header[0].children.find(node=>node.id==='shell.business-name');
+    assert.equal(brand.style.fontScale,3.5);
+    assert.equal(brand.breakpointStyles.mobile.fontScale,1.35);
+    assert.equal(brand.breakpointStyles.tablet.fontScale,1.8);
+  }finally{f.close();}
+});
+
+test('Website Studio and GPT contract expose the same canonical responsive hierarchy',()=>{
+  assert.match(source,/Canonical responsive hierarchy/);
+  assert.match(source,/Mobile inherits a conversion-first stack: context → headline → supporting copy\/proof → action\/form → media → deeper content/);
+  assert.match(agentContractSource,/Default decision order is: context\/kicker -> headline -> concise supporting copy or proof -> primary action\/form -> supporting image\/video -> deeper cards\/content/);
+  assert.match(agentContractSource,/Explicit breakpoint values always outrank inherited responsive defaults/);
 });
 
 test('public startup styling has one responsive authority and one palette authority',()=>{
