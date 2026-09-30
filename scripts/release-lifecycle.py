@@ -269,6 +269,9 @@ def candidate_validation(api, pr):
     # Website Studio has its own architecture/shared-CMS validation authority.
     # Release/test-control files never convert it into a Step 5 marketing release.
     studio_exact = {
+        'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
+        'AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs',
+        'Legend-Design/legend-web-foundation.css',
         'SHARED/WebsitePlatform/legend-public-cms.js',
         'SHARED/WebsitePlatform/legend-public-web.css',
         'Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs',
