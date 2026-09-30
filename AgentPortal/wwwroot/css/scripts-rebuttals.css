@@ -615,12 +615,6 @@ body.note-self-open{
         display:none !important;
     }
 
-    #rbShell .proposal-menu{
-        left:0;
-        right:0;
-        width:100%;
-        max-width:none;
-    }
 }
 
 @media (max-width: 720px){
@@ -2221,6 +2215,7 @@ details.section{
     white-space: nowrap;
 }
 
+@media (min-width: 901px) {
 .proposal-menu{
     position:absolute;
     top: 110%;
@@ -2233,6 +2228,7 @@ details.section{
     padding:14px;
     z-index:999;
     overflow: visible;
+}
 }
 
 .proposal-menu-head{
