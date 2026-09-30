@@ -460,12 +460,14 @@ public static class WebsiteSiteSource
         !string.IsNullOrWhiteSpace(node.SystemKey) ||
         !string.IsNullOrWhiteSpace(node.SystemBinding) ||
         string.Equals(node.Type, "form", StringComparison.Ordinal) ||
-        (node.Signals?.Count ?? 0) > 0;
+        (node.Signals?.Count ?? 0) > 0 ||
+        (node.FieldSignals?.Values.Sum(value => value?.Count ?? 0) ?? 0) > 0;
 
     private static WebsiteCompositionNode ProjectNode(WebsiteCompositionNode source)
     {
         var copy = Clone(source);
         copy.Signals = [];
+        copy.FieldSignals = new Dictionary<string, List<WebsiteSignalBinding>>(StringComparer.Ordinal);
 
         // Source is the public authoring projection, not a backend wiring dump.
         // Server-owned authority is restored by stable node ID during parse.
@@ -514,6 +516,7 @@ public static class WebsiteSiteSource
                 // analytics controls. Source may redesign the signal-bearing node,
                 // but cannot add, remove, or rewrite its mappings.
                 node.Signals = Clone(previous.Node.Signals);
+                node.FieldSignals = Clone(previous.Node.FieldSignals);
 
                 if (!string.IsNullOrWhiteSpace(previous.Node.SystemKey))
                 {
@@ -562,6 +565,7 @@ public static class WebsiteSiteSource
             {
                 ProtectRuntimeClasses(node, null);
                 node.Signals = [];
+                node.FieldSignals = new Dictionary<string, List<WebsiteSignalBinding>>(StringComparer.Ordinal);
                 if (node.Type != "form" && !string.IsNullOrWhiteSpace(node.SystemKey))
                     throw new WebsiteSiteSourceProtectionException($"Free-content component '{node.Id}' cannot invent a platform system authority.");
                 if (!string.IsNullOrWhiteSpace(node.SystemBinding))
