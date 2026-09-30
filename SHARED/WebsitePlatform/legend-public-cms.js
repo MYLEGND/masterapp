@@ -687,7 +687,7 @@
         }
       });
     });
-    document.querySelectorAll('main form, main input:not([type="hidden"]):not([type="password"]), main select, main textarea').forEach((node, index) => {
+    document.querySelectorAll('main form:not([data-cms-composition-id]), main input:not([type="hidden"]):not([type="password"]), main select, main textarea').forEach((node, index) => {
       if (node.closest('[data-cms-locked="true"]')) return;
       node.dataset.cmsId ||= `signal:${pageKey}.${safeId(node.tagName)}.${safeId(node.id || node.name || 'field')}.${index}`;
       node.dataset.cmsFieldKey ||= safeId(node.name || node.id || ('field-'+index));
@@ -4655,24 +4655,28 @@
     const displayNumber = value => String(Math.round(value * 1000) / 1000);
     const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
     const serviceCard = businessServiceCardFor(selected);
+    const canonicalForm = ov.type === 'form' || String(ov.systemKey || '').startsWith('protect_runtime_form:');
+    const protectedMappings = (Array.isArray(ov.signals) && ov.signals.length > 0) ||
+      Object.values(ov.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length > 0);
     const duplicateButton = document.getElementById('legend-cms-duplicate');
     if (duplicateButton) {
       const immutableShell = selected.matches?.('.site-header,.site-footer');
       duplicateButton.textContent = serviceCard ? 'Duplicate service' : selected.dataset.cmsSection ? 'Duplicate section' : 'Duplicate selected';
-      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM' || immutableShell;
+      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || canonicalForm || immutableShell;
       duplicateButton.title = immutableShell ? 'The website banner and footer are shared shell authorities and cannot be duplicated.'
-        : selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
+        : canonicalForm ? 'Protected runtime forms cannot be duplicated.' : '';
     }
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const immutableShell = isSharedShellElement(selected);
-      const protectedSemantic = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length > 0) || selected.tagName === 'FORM';
+      const protectedSemantic = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || protectedMappings || canonicalForm;
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
         : selected.tagName === 'IMG' ? 'image'
         : selected.tagName === 'VIDEO' ? 'video'
-        : selected.tagName === 'FORM' ? 'form'
+        : ov.type === 'experience' ? 'interactive experience'
+        : canonicalForm ? 'form'
         : ['INPUT','SELECT','TEXTAREA'].includes(selected.tagName) ? 'field'
         : ['A','BUTTON'].includes(selected.tagName) ? 'button'
         : ['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName) ? 'block'
@@ -4720,7 +4724,7 @@
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) {
       hidden.checked = ov.hidden === true || selected.hidden;
-      hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length>0) || selected.tagName === 'FORM';
+      hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || protectedMappings || canonicalForm;
     }
     if (targetInput) targetInput.disabled = !!ov.actionKey;
   }
@@ -7063,7 +7067,10 @@
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected || isSharedShellElement(selected)) return;
       const current=selectedWebsiteModel(false);
-      if (current && (current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length>0) || selected.tagName === 'FORM')) return;
+      if (current && (current.systemKey || current.systemBinding ||
+          (Array.isArray(current.signals) && current.signals.length>0) ||
+          Object.values(current.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length>0) ||
+          current.type === 'form')) return;
       const serviceCard=businessServiceCardFor(selected);
       if(serviceCard?.dataset?.cmsCompositionId) setSelected(serviceCard);
       removeSelected();
