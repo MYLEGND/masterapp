@@ -3109,3 +3109,63 @@ test('mobile Website Studio is a draggable compact-to-expanded top sheet with an
   assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;height:100dvh;overflow-y:auto/);
   assert.match(source,/\.legend-cms-bar button\{[\s\S]*min-height:32px[\s\S]*font-size:11px/);
 });
+
+
+test('native experience renders declarative controls calculations and protected CTA references without embed execution',async()=>{
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.section.1').children.push(
+    canonicalNode('home.experience','experience','form',{
+      title:'Project estimator',
+      text:'A native interactive flow',
+      experience:{
+        kind:'calculator',
+        submitCapability:null,
+        steps:[{key:'main',title:'Project',description:'Choose details',controlKeys:['project_type','project_size','schedule']}],
+        controls:[
+          {key:'project_type',type:'choice',label:'Project type',required:true,options:[
+            {value:'installation',label:'New installation'},
+            {value:'repair',label:'Repair / upgrade'}
+          ]},
+          {key:'project_size',type:'number',label:'Project size',required:true,min:100,max:10000,defaultValue:1500},
+          {key:'schedule',type:'cta',label:'Schedule',action:{type:'cta',actionKey:'legend_contact'}}
+        ],
+        calculations:{
+          estimate:{op:'multiply',values:[{op:'ref',ref:'project_size'},{op:'value',value:2}]}
+        },
+        results:[
+          {key:'estimate',label:'Preliminary estimate',format:'currency',expression:{op:'ref',ref:'calc.estimate'}}
+        ]
+      }
+    })
+  );
+
+  const f=await domFixture({
+    doc,
+    ctaCatalog:[{key:'legend_contact',group:'Contact',label:'Contact',defaultText:'Contact',href:'/contact',analyticsEventName:'cta_click',behaviorKey:'cta_click'}]
+  });
+  try{
+    const experience=f.w.document.querySelector('form.legend-native-experience[data-website-experience-id="home.experience"]');
+    assert.ok(experience);
+    assert.equal(experience.querySelectorAll('[data-experience-control]').length,3);
+    assert.equal(experience.querySelector('[data-website-action-key="legend_contact"]')?.textContent,'Schedule');
+    const size=experience.querySelector('[data-cms-field-key="project_size"]');
+    size.value='1800';
+    size.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.match(experience.querySelector('[data-experience-result="estimate"]').textContent,/3[,\s]?600|3600/);
+    assert.equal(experience.querySelector('iframe'),null);
+    assert.match(source,/function buildNativeExperience\(node\)/);
+    assert.match(source,/evaluateExperienceExpression/);
+    assert.match(publicInquirySource,/data-website-experience-form/);
+    assert.match(publicInquiryFormCss,/\.legend-native-experience/);
+  }finally{f.close();}
+});
+
+test('native experience authoring exposes broad declarative freedom while backend authority remains absent',()=>{
+  assert.match(editorContractsSource,/\["experience"\] = \["form"\]/);
+  assert.match(agentContractSource,/native declarative interactive experience/i);
+  assert.match(agentContractSource,/questions, options, steps, branching, calculations, results/i);
+  assert.match(agentContractSource,/Selected Source never writes Signals\/FieldSignals/i);
+  assert.doesNotMatch(source,/eval\(.*experience/i);
+  assert.doesNotMatch(source,/new Function\(/);
+});
