@@ -4175,7 +4175,7 @@
         const managedForm = candidate.node.matches?.('form') ? candidate.node : candidate.node.closest?.('form');
         const managedAction = candidate.node.matches?.('[data-website-action-key],[data-cta]');
         if (window.LegendAnalytics?.registerBinding &&
-            ((managedForm && ['form_started','submit_attempt','field_started','validation_failed'].includes(binding.trigger)) ||
+            ((managedForm && ['form_started','submit_attempt','field_started','validation_failed','field_completed'].includes(binding.trigger)) ||
              (managedAction && binding.trigger === 'click'))) {
           cleanups.push(window.LegendAnalytics.registerBinding(candidate.node, binding, candidate.id));
           continue;
