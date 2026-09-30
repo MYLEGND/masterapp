@@ -367,12 +367,11 @@ test('feature styles cannot reintroduce mobile modal scroll or sticky-shell auth
   assert.match(sharedMobile,/\.modal \.modal-header,[\s\S]*position:\s*sticky !important/);
 });
 
-test('Explore close treatment is mobile-only and desktop presentation stays unchanged',()=>{
-  const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
-  const mobileStart=css.indexOf('@media(max-width:840px)');
-  assert(mobileStart>=0);
-  assert.doesNotMatch(css.slice(0,mobileStart),/\.explore-close/);
-  assert.match(css.slice(mobileStart),/\.explore-close\{[\s\S]*display:block/);
+test('Explore mobile close treatment is owned only by the integrated navigation sheet',()=>{
+  const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  assert.doesNotMatch(shell,/@media\(max-width:840px\)[\s\S]*\.explore-close/);
+  assert.match(shared,/\.legend-global-nav\[data-legend-mobile-nav-integrated\][\s\S]*\.explore-close[\s\S]*display: none !important/);
 });
 
 test('every authenticated host loads the final shared mobile authority after page styles',()=>{
