@@ -60,7 +60,8 @@ test('shared mobile navigation is one full-height internally scrolling command s
   assert.match(css,/@media \(max-width: 840px\)[\s\S]*grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"panel panel panel"/);
   assert.match(css,/\.legend-global-nav\.mobile-open \{[\s\S]*position: fixed;[\s\S]*height: 100dvh;[\s\S]*overflow: hidden;/);
   assert.match(css,/\.legend-global-nav\.mobile-open \.legend-mobile-nav-panel \{[\s\S]*overflow-y: auto;[\s\S]*overscroll-behavior: contain;[\s\S]*touch-action: pan-y;/);
-  assert.match(css,/\.legend-global-nav\[data-legend-mobile-nav-integrated\] \.navbar-left,[\s\S]*\.explore-list \{[\s\S]*display: contents !important;/);
+  assert.doesNotMatch(css,/\.legend-global-nav\[data-legend-mobile-nav-integrated\][\s\S]*display: contents !important/);
+  assert.match(css,/\.legend-global-nav\[data-legend-mobile-nav-integrated\] \.navbar-left,[\s\S]*\.explore-drawer \{[\s\S]*display: block !important;/);
   assert.match(css,/\.legend-global-nav\[data-legend-mobile-nav-integrated\] \.nav-item-explore,[\s\S]*display: none !important;/);
 });
 
@@ -115,6 +116,7 @@ test('mobile navigation dismissal restores page scroll and preserves link naviga
 
 test('legacy design shell no longer owns a competing mobile Explore drawer',()=>{
   const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  assert.doesNotMatch(shell,/\.explore-(?:overlay|trigger|drawer|card|header|title|pill|search|list|group-label|item)\b/);
   const mobile=shell.match(/@media\(max-width:840px\)\{[\s\S]*?\n\}/g)?.join('\n') || '';
   assert.doesNotMatch(mobile,/\.explore-drawer/);
   assert.doesNotMatch(mobile,/\.explore-list/);
