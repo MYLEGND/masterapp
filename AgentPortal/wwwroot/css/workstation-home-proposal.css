@@ -633,12 +633,6 @@
         align-items: flex-start;
     }
 
-    .hp-builder-context-actions,
-    .uw-context-actions {
-        width: 100%;
-        justify-content: flex-start;
-    }
-
     .ws-client-picker-toolbar,
     .ws-client-picker-status,
     .ws-client-picker-results {
