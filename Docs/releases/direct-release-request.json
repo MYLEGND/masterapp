@@ -1,12 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to repair and redeploy the broken AgentPortal + ClientApp release with the exact-head green canonical compact navigation and native URL activation replacement merged in PR #330.",
-  "purpose": "Deploy only AgentPortal and ClientApp from the current legend/approved-changes head. This release replaces the released full-screen/flattened mobile navigation at its canonical shared source, removes competing Bootstrap layout utilities from authenticated host layouts, deletes the stale duplicate Explore presentation authority, restores the compact Logo + LIFE HAC + menu top row with compact command/profile rows and same-panel Quick Find, and preserves browser-native URL activation before menu teardown. Protect, Parfait, LEGEND public website, Cloudflare routing, database migrations, analytics event authority, Meta/OpenAI delivery, payments, and unrelated systems are excluded.",
-  "requestId": "canonical-compact-mobile-nav-url-hotfix-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged PR #331 canonical responsive conversion hierarchy after its exact merge-candidate public Website Studio/runtime validation passed.",
+  "purpose": "Deploy only the affected public website hosts from the current legend/approved-changes head. Protect and LEGEND Website receive the shared canonical responsive hierarchy used by every existing and future LEGEND/Protect/Business page: mobile conversion-first stacking and safe geometry, tablet two-column/wrap limits, desktop intentional authored composition, bounded mobile header brand/navigation scale, shared business-name banner typography/padding tokens, responsive first-paint application, and matching Website Studio side-panel/GPT design guidance. Protected forms, lead routing, analytics, Meta/OpenAI delivery, CRM, payments, owner scope, and backend route authority remain unchanged. AgentPortal, ClientApp, Parfait, Cloudflare routing, and database migrations are excluded.",
+  "requestId": "canonical-responsive-conversion-hierarchy-20260930",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client"
+    "masterapp-protect",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
