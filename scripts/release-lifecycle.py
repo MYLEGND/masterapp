@@ -438,6 +438,7 @@ def direct_release_approved_pr(api, sha):
     request_path = 'Docs/releases/direct-release-request.json'
     release_control_files = {
         request_path,
+        '.github/workflows/masterapp-platform-architecture-validation.yml',
         'scripts/approved-release-baseline.py',
         'scripts/release-lifecycle.py',
         'scripts/test-release-policy.py',
