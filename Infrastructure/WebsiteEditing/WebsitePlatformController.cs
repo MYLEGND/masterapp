@@ -1884,6 +1884,13 @@ public class WebsitePlatformController : ControllerBase
             !WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(found.SystemKey))
             return false;
 
+        if (normalizedFieldKey is not null &&
+            found.Type == "experience" &&
+            (found.Experience is null ||
+             found.Experience.Controls.Count(control =>
+                 string.Equals(control.Key, normalizedFieldKey, StringComparison.OrdinalIgnoreCase)) != 1))
+            return false;
+
         target = found;
         return true;
     }
