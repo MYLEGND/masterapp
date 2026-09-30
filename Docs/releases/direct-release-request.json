@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to retry the consolidated four-app release after PR #319 repaired the release-validation boundary. Product payload remains the validated PR #318 mobile repair plus the remaining merged PR #302 Website Studio work.",
-  "purpose": "Publish all currently merged but unpublished affected product changes from legend/approved-changes in one consolidated release. Deploy AgentPortal and ClientApp with the validated PR #318 canonical mobile navigation, full-width page, full-screen modal, clickability, and route authority; deploy Protect and LEGEND Website with the remaining merged Website Studio source-authority and shared WebsiteEditing/CMS changes. Parfait remains excluded because it has no product delta. No Cloudflare routing or database migration action is authorized.",
-  "requestId": "consolidated-mobile-website-studio-retry-20260929",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to complete the consolidated four-app release after PR #321 repaired release-control discovery. Product payload includes the validated PR #318 mobile repair, the remaining Website Studio source-authority work, the canonical duplicate-node identity repair, expanded Website Studio typography/spacing controls, and the bounded static Website deployment recovery.",
+  "purpose": "Publish all currently merged but unpublished affected product changes from legend/approved-changes in one consolidated release. Deploy AgentPortal and ClientApp with the validated canonical mobile navigation, full-width page, full-screen modal, clickability, and route authority. Deploy Protect and LEGEND Website with the canonical Website Studio source/save authority, persisted duplicate-ID repair, global materialization collision prevention, expanded direct typography/spacing controls, compact editor spacing, and static Website terminal-OneDeploy recovery. Parfait remains excluded because it has no product delta. No Cloudflare routing or database migration action is authorized.",
+  "requestId": "consolidated-mobile-website-studio-final-20260930",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
