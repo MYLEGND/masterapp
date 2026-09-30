@@ -5550,14 +5550,16 @@ header .legend-global-nav .container-fluid {
         letter-spacing: .12em;
     }
 
-    /* Primary app destinations stay immediately below Quick Find. The catalog
-       remains grouped beneath them in its existing server-defined order. */
+    /* Primary app destinations are the first command tier. Explore/Quick Find
+       follows as discovery, rather than burying Home/Finance/Store/profile
+       beneath the full catalog. All right-side command roots move together so
+       messaging, AI, and profile controls do not drift back to the bottom. */
     .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-link {
-        order: -30;
+        order: -60;
     }
 
-    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right > :is(.nav-link, .btn-link) {
-        order: -29;
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right > * {
+        order: -59;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] :is(
