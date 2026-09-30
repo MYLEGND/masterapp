@@ -3470,7 +3470,7 @@
       warning.hidden = false;
       warning.textContent = text;
     }
-    document.documentElement.hidden = false;
+    revealCanonicalPublicDocument();
     return text;
   }
 
@@ -3508,12 +3508,25 @@
     }
     host.querySelector('p').textContent = message + ' Continue through the normal Agent Portal sign-in/approval flow; the portal will mint a new scoped editor ticket.';
     host.querySelector('[data-legend-editor-reauthorize]').href = href;
-    document.documentElement.hidden = false;
+    revealCanonicalPublicDocument();
     return true;
   }
 
+  function revealCanonicalPublicDocument() {
+    revealCanonicalPublicDocument();
+    document.documentElement.removeAttribute('data-legend-canonical-pending');
+  }
+
   function unavailable(error) {
-    if (SITE_KEY === 'business') { document.body.replaceChildren(); const main = document.createElement('main'); main.textContent = error.message || 'This website is unavailable.'; document.body.appendChild(main); document.documentElement.hidden = false; }
+    if (SITE_KEY === 'business') {
+      document.body.replaceChildren();
+      const main = document.createElement('main');
+      main.textContent = error.message || 'This website is unavailable.';
+      document.body.appendChild(main);
+    }
+    // LEGEND and Protect retain the server/static fallback only when the
+    // canonical published projection is unavailable. Never leave a blank page.
+    revealCanonicalPublicDocument();
   }
 
   let publicRuntimeStarted = false;
@@ -3842,7 +3855,11 @@
     if (BUSINESS_ID) url.searchParams.set('businessId', BUSINESS_ID);
     try {
       const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) { if (SITE_KEY === 'business') throw new Error('This business website is unavailable.'); return; }
+      if (!response.ok) {
+        if (SITE_KEY === 'business') throw new Error('This business website is unavailable.');
+        revealCanonicalPublicDocument();
+        return;
+      }
       const payload = await response.json();
       storeContext = payload.store || null;
       legacyMigration = payload.legacyMigration || null;
@@ -3855,7 +3872,7 @@
       prepareDom();
       applyDocument(payload.document || {});
       preservePreviewNavigation();
-      document.documentElement.hidden = false;
+      revealCanonicalPublicDocument();
     } catch (error) {
       unavailable(error);
       // Public content remains fully usable from canonical defaults.
@@ -6610,7 +6627,7 @@
       if(materializeMode){
         const snapshot=currentMaterializedPage();
         window.parent?.postMessage({type:'legend-site-materialized-page',...snapshot},location.origin);
-        document.documentElement.hidden=false;
+        revealCanonicalPublicDocument();
         return;
       }
 
@@ -6631,7 +6648,7 @@
       installPageSelector();
       renderSignalControls();
       const publishButton = document.getElementById('legend-cms-publish'); if (publishButton && payload.capabilities?.canPublish === false) { publishButton.disabled = true; publishButton.title = 'An owner must publish this draft.'; }
-      document.documentElement.hidden = false;
+      revealCanonicalPublicDocument();
     } catch (error) {
       unavailable(error);
       console.error('[legend-cms]', error);
@@ -6653,7 +6670,7 @@
     prepareDom();
     injectContentStyles();
     applyDocument(renderInput.document || {});
-    document.documentElement.hidden = false;
+    revealCanonicalPublicDocument();
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
       if (!editorMode) void startPublicRuntime();

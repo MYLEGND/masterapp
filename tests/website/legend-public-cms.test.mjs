@@ -671,6 +671,24 @@ test('business header navigation projects one canonical page catalog without pre
   }finally{f.close();}
 });
 
+test('canonical public first paint waits for the published v3 document without stale-template flash',()=>{
+  assert.match(businessBuildSource,/data-legend-site="${siteKey}" hidden data-legend-canonical-pending="true"/);
+  assert.match(businessBuildSource,/<noscript><style>html\[hidden\]\{display:block!important\}<\/style><\/noscript>/);
+  assert.match(protectLayoutSource,/data-legend-canonical-pending/);
+  assert.match(source,/function revealCanonicalPublicDocument\(\)/);
+  assert.match(source,/applyDocument\(payload\.document \|\| \{\}\);[\s\S]*revealCanonicalPublicDocument\(\)/);
+  assert.match(source,/if \(!response\.ok\)[\s\S]*revealCanonicalPublicDocument\(\);[\s\S]*return;/);
+  assert.match(source,/function unavailable\(error\)[\s\S]*revealCanonicalPublicDocument\(\)/);
+});
+
+test('static LEGEND HTML explicitly disables stale document caching while assets keep byte-versioned URLs',()=>{
+  assert.match(legendWebConfigSource,/Canonical published HTML is never served from stale cache/);
+  assert.match(legendWebConfigSource,/RESPONSE_Cache_Control/);
+  assert.match(legendWebConfigSource,/no-store, no-cache, must-revalidate/);
+  assert.match(businessBuildSource,/site\.css\?v=\$\{cssVersion\}/);
+  assert.match(businessBuildSource,/legend-public-cms\.js\?v=\$\{cmsVersion\}/);
+});
+
 test('public startup styling has one responsive authority and one palette authority',()=>{
   assert.equal((publicCss.match(/@media\(max-width:980px\)/g)||[]).length,1);
   assert.equal((publicCss.match(/@media\(max-width:650px\)/g)||[]).length,1);
