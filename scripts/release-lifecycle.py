@@ -316,7 +316,12 @@ def candidate_validation(api, pr):
     for path in sorted(required):
         run = latest.get(path)
         if path == architecture:
-            if run is not None and architecture_product_validation(api, run):
+            if run is not None:
+                if architecture_product_validation(api, run):
+                    continue
+                # An exact-head attempt is authoritative. Pending or failed
+                # validation must never be hidden by older inherited evidence.
+                failed.append(path)
                 continue
             if inherited_architecture_product_validation(api, pr, architecture):
                 continue
