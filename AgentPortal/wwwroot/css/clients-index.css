@@ -1573,6 +1573,7 @@
     overflow-y: auto !important;
 }
 
+@media (min-width:901px){
 .actions-hub-modal .modal-dialog{
     width: min(96vw, 1100px);
     max-width: min(96vw, 1100px);
@@ -1591,6 +1592,7 @@
         linear-gradient(180deg, rgba(14, 28, 60, .99), rgba(8, 18, 39, .99)) !important;
     box-shadow: 0 38px 90px rgba(2, 6, 23, .56), inset 0 1px 0 rgba(255,255,255,.05);
     color: #eff5ff;
+}
 }
 
 .actions-hub-header{
@@ -2067,6 +2069,7 @@
     text-transform: uppercase;
 }
 
+@media (min-width:901px){
 .quick-entry-shell .modal-dialog{
     margin: clamp(18px, 6vh, 64px) auto !important;
     max-width: min(92vw, 640px) !important;
@@ -2085,6 +2088,7 @@
         linear-gradient(180deg, rgba(14, 28, 60, .99), rgba(8, 18, 39, .99)) !important;
     box-shadow: 0 34px 82px rgba(2, 6, 23, .48), inset 0 1px 0 rgba(255,255,255,.05);
     color: #eff5ff !important;
+}
 }
 
 .quick-entry-shell .modal-header{
@@ -4488,10 +4492,6 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 }
 
 /* ===== Note to Self (exact Workstation modal/layout rules) ===== */
-body.note-self-open{
-    overflow: hidden;
-}
-
 .note-self-overlay{
     position: fixed;
     inset: 0;
@@ -4508,8 +4508,6 @@ body.note-self-open{
 }
 
 .note-self-modal{
-    width: min(1180px, 96vw);
-    max-height: 92vh;
     display: flex;
     flex-direction: column;
     background: #0c1220;
@@ -4517,6 +4515,9 @@ body.note-self-open{
     border-radius: 16px;
     box-shadow: 0 26px 80px rgba(0,0,0,.52);
     overflow: hidden;
+}
+@media (min-width:901px){
+    .note-self-modal{width:min(1180px,96vw);max-height:92vh;}
 }
 
 .note-self-head{

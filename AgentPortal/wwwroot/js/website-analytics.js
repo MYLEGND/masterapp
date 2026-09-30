@@ -3918,6 +3918,8 @@ function escapeHtml(value) {
     const params = currentMetaScopeParams();
     params.returnUrl = `${window.location.pathname}${window.location.search}`;
     connectBtn.href = buildUrlWithParams(endpoints.metaConnect, params);
+    connectBtn.removeAttribute('aria-disabled');
+    connectBtn.removeAttribute('tabindex');
   }
 
   function setMetaConnectState(enabled, label, title = '') {
@@ -3933,7 +3935,9 @@ function escapeHtml(value) {
     if (enabled) {
       updateMetaConnectHref();
     } else {
-      connectBtn.href = '#';
+      connectBtn.removeAttribute('href');
+      connectBtn.setAttribute('aria-disabled', 'true');
+      connectBtn.setAttribute('tabindex', '-1');
     }
   }
 
@@ -5054,9 +5058,17 @@ function escapeHtml(value) {
     setMarketingSetupStatus('Select Founder Personal or an individual owner to manage provider connections.', 'error');
     marketingSetupModal?.querySelectorAll('input,button[type="submit"],#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect,#marketing-setup-calendar-disconnect').forEach(el => { el.disabled = true; });
     const calendarConnect = document.getElementById('marketing-setup-calendar-connect');
-    if (calendarConnect) { calendarConnect.removeAttribute('href'); calendarConnect.setAttribute('aria-disabled', 'true'); }
+    if (calendarConnect) {
+      calendarConnect.removeAttribute('href');
+      calendarConnect.setAttribute('aria-disabled', 'true');
+      calendarConnect.setAttribute('tabindex', '-1');
+    }
     const connect = document.getElementById('marketing-setup-meta-connect');
-    if (connect) { connect.removeAttribute('href'); connect.setAttribute('aria-disabled', 'true'); }
+    if (connect) {
+      connect.removeAttribute('href');
+      connect.setAttribute('aria-disabled', 'true');
+      connect.setAttribute('tabindex', '-1');
+    }
     return false;
   }
 
@@ -5151,6 +5163,8 @@ function escapeHtml(value) {
     if (calendarConnect) {
       calendarConnect.href = marketingSetupCalendarConnectUrl(profileId);
       calendarConnect.removeAttribute('aria-disabled');
+      calendarConnect.removeAttribute('tabindex');
+      calendarConnect.removeAttribute('aria-disabled');
       calendarConnect.textContent = calendarConnection.connected ? 'Reconnect Microsoft Calendar' : 'Connect Microsoft Calendar';
     }
     const calendarDisconnect = document.getElementById('marketing-setup-calendar-disconnect');
@@ -5173,6 +5187,8 @@ function escapeHtml(value) {
     const connect = document.getElementById('marketing-setup-meta-connect');
     if (connect) {
       connect.href = marketingSetupConnectUrl(profileId);
+      connect.removeAttribute('aria-disabled');
+      connect.removeAttribute('tabindex');
       connect.textContent = marketing.metaAdsConnected ? 'Reconnect Meta Ads' : 'Connect Meta Ads';
     }
 

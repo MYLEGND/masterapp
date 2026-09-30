@@ -217,8 +217,8 @@
             </div>
 
             <div class="preview-actions">
-                <a id="resourceDownload" class="preview-open preview-download" href="#" style="display:none;">Download</a>
-                <a id="resourceOpen" class="preview-open" href="#" target="_blank" rel="noopener">Open in new tab →</a>
+                <a id="resourceDownload" class="preview-open preview-download" href="" data-dynamic-destination aria-disabled="true" tabindex="-1" style="display:none;">Download</a>
+                <a id="resourceOpen" class="preview-open" href="" data-dynamic-destination aria-disabled="true" tabindex="-1" target="_blank" rel="noopener">Open in new tab →</a>
             </div>
         </div>
 
@@ -858,10 +858,14 @@ document.addEventListener("DOMContentLoaded", function () {
         title.textContent = name;
         meta.textContent = metaText || `Type: ${extTag(extension)}`;
         openLink.href = viewUrl;
+        openLink.removeAttribute("aria-disabled");
+        openLink.removeAttribute("tabindex");
 
         if (downloadUrl) {
             downloadLink.style.display = "inline-flex";
             downloadLink.href = downloadUrl;
+            downloadLink.removeAttribute("aria-disabled");
+            downloadLink.removeAttribute("tabindex");
         } else {
             downloadLink.style.display = "none";
             downloadLink.removeAttribute("href");

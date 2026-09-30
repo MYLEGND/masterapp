@@ -391,7 +391,7 @@ else
                                 }
                             </div>
                             <div class="crm-contact-name-row">
-                                <span class="name open-drawer" title="Quick View">@accountDisplayName</span>
+                                <span class="name open-drawer" data-open-drawer title="Quick View">@accountDisplayName</span>
                                 @if (hasPortalAccess)
                                 {
                                     <span class="crm-account-management-pill @(isSelfManaged ? "is-self-managed" : "is-shared")">@(isSelfManaged ? "Self managed" : "Managed")</span>
@@ -497,7 +497,7 @@ else
                     </td>
 
                     <td class="actions" data-label="Actions" data-col="actions">
-                        <button type="button" class="btn btn-gold open-drawer">Quick View</button>
+                        <button type="button" class="btn btn-gold open-drawer" data-open-drawer>Quick View</button>
                         @if (!string.IsNullOrWhiteSpace(clientUrl))
                         {
                             <a class="btn btn-ghost" href="@clientUrl" target="_blank" rel="noopener">Edit</a>

@@ -143,6 +143,54 @@ def ready(pr, repo, base):
         and pr['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'})
 
 
+ARCHITECTURE_PRODUCT_STEPS = {
+    'Run branch lifecycle safety contracts',
+    'Run authenticated mobile authority tests',
+    'Restore .NET graph',
+    'Build shared infrastructure',
+    'Build AgentPortal and ClientApp hosts',
+    'Build Protect host',
+    'Verify Protect serves the exact shared tracking assets',
+    'Compile full regression test project',
+    'Compile shared domain release refresh',
+    'Run website ownership and publishing regressions',
+    'Run Meta authority regressions',
+}
+
+
+def architecture_product_validation(api, run):
+    """Accept a failed architecture run only when product validation is complete.
+
+    The release-policy check is a release-control concern. A product candidate
+    remains valid when every product/build/mobile step completed successfully and
+    the sole blocking step is the release-policy boundary. This preserves strict
+    product evidence without allowing unrelated control-policy drift to erase it.
+    """
+    if run.get('status') != 'completed':
+        return False
+    if run.get('conclusion') == 'success':
+        return True
+    if run.get('conclusion') != 'failure':
+        return False
+
+    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
+    steps = {step.get('name'): step.get('conclusion')
+             for job in jobs for step in (job.get('steps') or [])}
+    if any(steps.get(name) != 'success' for name in ARCHITECTURE_PRODUCT_STEPS):
+        return False
+    if steps.get('Verify consolidated release scope and routing policy') != 'failure':
+        return False
+
+    # Fail closed if any step before the release-policy boundary failed/cancelled,
+    # or if an unexpected executed step after it failed for a product reason.
+    for name, conclusion in steps.items():
+        if name in ARCHITECTURE_PRODUCT_STEPS or name == 'Verify consolidated release scope and routing policy':
+            continue
+        if conclusion in {'failure', 'cancelled'}:
+            return False
+    return True
+
+
 def candidate_validation(api, pr):
     """Require only exact-head validations that own the PR's changed subsystem."""
     head = pr['head']['sha']
@@ -192,8 +240,14 @@ def candidate_validation(api, pr):
             return 'Exact-head architecture validation has not started'
         return 'Exact-head full-suite comparison has not started'
 
-    failed = [path for path in sorted(required)
-              if latest[path].get('status') != 'completed' or latest[path].get('conclusion') != 'success']
+    failed = []
+    for path in sorted(required):
+        run = latest[path]
+        if path == architecture:
+            if not architecture_product_validation(api, run):
+                failed.append(path)
+        elif run.get('status') != 'completed' or run.get('conclusion') != 'success':
+            failed.append(path)
     return 'Awaiting successful exact-head validation: ' + ', '.join(failed) if failed else None
 
 

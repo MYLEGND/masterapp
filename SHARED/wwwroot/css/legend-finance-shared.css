@@ -1605,7 +1605,7 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     .llbs-cash-grid,
     .llbs-advisor-grid,
     .llbs-tax-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .llbs-advisor-toggle {
@@ -1631,6 +1631,29 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     .llbs-readonly-value,
     .llbs-edit-input {
         width: 100%;
+    }
+}
+
+@media (max-width: 620px) {
+    .llbs-status > :is(.llbs-save-state, .llbs-growth-calculator-btn, .llbs-print-btn, .llbs-clear) {
+        width: 100%;
+        min-width: 0;
+        justify-content: center;
+        text-align: center;
+        white-space: normal;
+    }
+
+    .llbs-hero {
+        gap: 8px;
+    }
+
+    .llbs-title {
+        font-size: clamp(1.18rem, 6vw, 1.5rem);
+    }
+
+    .llbs-subtitle {
+        font-size: .78rem;
+        line-height: 1.28;
     }
 }
 
@@ -2012,15 +2035,6 @@ body {
     z-index: 3000;
     display: grid;
     place-items: center;
-    padding: 2rem 1rem;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-}
-
-.finance-support-overlay--dense {
-    padding: 1rem;
 }
 
 .finance-support-backdrop {
@@ -2032,8 +2046,6 @@ body {
 
 .finance-support-modal {
     position: relative;
-    width: min(1750px, 96vw);
-    max-height: min(90dvh, 90vh);
     overflow: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -2043,6 +2055,22 @@ body {
     background: var(--navy-panel);
     box-shadow: 0 24px 80px rgba(0, 0, 0, .22);
     padding: 1rem;
+}
+
+@media (min-width:901px) {
+    .finance-support-overlay {
+        padding: 2rem 1rem;
+        overflow-y: auto;
+    }
+
+    .finance-support-overlay--dense {
+        padding: 1rem;
+    }
+
+    .finance-support-modal {
+        width: min(1750px, 96vw);
+        max-height: min(90dvh, 90vh);
+    }
 }
 
 .finance-support-modal-head {
@@ -10541,7 +10569,7 @@ body.finance-dual-tools-open .layout-content {
     }
 }
 
-@media (max-height: 980px) {
+@media (min-width:901px) and (max-height: 980px) {
     .finance-support-overlay--dense {
         padding: .75rem;
     }
@@ -10572,7 +10600,7 @@ body.finance-dual-tools-open .layout-content {
     }
 }
 
-@media (max-height: 860px) {
+@media (min-width:901px) and (max-height: 860px) {
     .finance-support-overlay--dense {
         padding: .5rem;
     }
@@ -10773,7 +10801,11 @@ body.finance-dual-tools-open .layout-content {
 
     .finance-selector-row,
     .finance-support-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .finance-selector-row > .finance-select-wrap:first-child {
+        grid-column: 1 / -1;
     }
 
     .finance-side-card {
@@ -10799,12 +10831,12 @@ body.finance-dual-tools-open .layout-content {
 
     .networth-tool.el-shell .el-top-controls--personal,
     .networth-tool.el-shell .el-top-controls--business {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 10px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
     }
 
     .networth-tool.el-shell .el-top-field__tracker-controls {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .networth-tool.el-shell .el-top-field__tracker-controls .el-week-btn,
@@ -10820,9 +10852,12 @@ body.finance-dual-tools-open .layout-content {
     .networth-tool.el-shell .ft-sync-grid,
     .networth-tool.el-shell .ft-kpi-grid,
     .networth-tool.el-shell .ft-kpi-grid.ft-kpi-grid--two,
-    .networth-tool.el-shell .ft-kpi-grid.ft-kpi-grid--four,
+    .networth-tool.el-shell .ft-kpi-grid.ft-kpi-grid--four {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .networth-tool.el-shell .ft-panel-row {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .el-projection-shell {
@@ -10836,7 +10871,7 @@ body.finance-dual-tools-open .layout-content {
     .el-projection-metric-grid--debt-summary,
     .el-projection-week-values,
     .el-projection-month-rollup-values {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .el-projection-metric--summary-emphasis {
@@ -10876,19 +10911,23 @@ body.finance-dual-tools-open .layout-content {
 
 @media (max-width: 575.98px) {
     .finance-shell {
-        margin-top: 0.75rem;
-        padding-left: 8px;
-        padding-right: 8px;
+        margin-top: 0.35rem;
+        padding-left: 2px;
+        padding-right: 2px;
     }
 
     .finance-header {
-        padding: 16px 12px;
-        border-radius: 16px;
+        padding: 10px 8px;
+        border-radius: 14px;
     }
 
     .finance-toolbar-shell {
-        padding: 10px;
-        border-radius: 18px;
+        padding: 7px;
+        border-radius: 14px;
+    }
+
+    .finance-selector-row {
+        gap: 6px;
     }
 
     .finance-subtitle {
@@ -10899,7 +10938,9 @@ body.finance-dual-tools-open .layout-content {
     .finance-select,
     .finance-toolbar-btn {
         min-width: 0;
-        min-height: 48px;
+        min-height: 40px;
+        padding-top: 7px;
+        padding-bottom: 7px;
         font-size: 16px;
     }
 
@@ -10909,13 +10950,23 @@ body.finance-dual-tools-open .layout-content {
     }
 
     .finance-main {
+        width: 100%;
+        max-width: 100%;
         min-width: 0;
-        padding: 10px;
-        border-radius: 16px;
+        padding: 4px;
+        border-radius: 12px;
     }
 
-    .networth-tool.el-shell {
-        padding: 12px;
+    .networth-tool.el-shell,
+    .networth-tool.el-shell.legend-finance-tool-card--wide,
+    .networth-tool.el-shell.legend-finance-tool-card--narrow,
+    .networth-tool.el-shell.legend-finance-tool-card--xl,
+    .networth-tool.el-shell.legend-finance-tool-card--fallback {
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+        margin-inline: 0;
+        padding: 8px;
     }
 
     #budget-embed .networth-tool {

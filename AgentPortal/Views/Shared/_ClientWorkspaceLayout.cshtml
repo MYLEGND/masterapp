@@ -272,7 +272,10 @@
                         </li>
 
                         <li class="nav-item dropdown">
-                            <a class="nav-link @(ActiveWorkspace("Resources") == "active" || ActiveWorkspace("Training") == "active" ? "active" : "")">Explore More</a>
+                            <a class="nav-link @(ActiveWorkspace("Resources") == "active" || ActiveWorkspace("Training") == "active" ? "active" : "")"
+                               asp-controller="ClientWorkspace"
+                               asp-action="Resources"
+                               asp-route-clientUserId="@clientUserId">Explore More</a>
                             <div class="dropdown-menu-centered">
                                 <a class="dropdown-item"
                                    asp-controller="ClientWorkspace"

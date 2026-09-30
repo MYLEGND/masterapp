@@ -104,7 +104,7 @@
                                 <span class="marketing-setup-secure-label">Meta CAPI</span>
                                 <strong id="marketing-setup-capi-status">Checking secure connection…</strong>
                             </div>
-                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="#">Connect Meta Ads</a>
+                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Meta Ads</a>
                         </div>
                     </section>
 
@@ -195,7 +195,7 @@
                                 <div class="marketing-setup-help" id="marketing-setup-calendar-auth-detail">Connect the calendar account that owns this workspace.</div>
                             </div>
                             <div class="d-flex gap-2 flex-wrap">
-                                <a class="btn btn-outline-light btn-sm" id="marketing-setup-calendar-connect" href="#">Connect Microsoft Calendar</a>
+                                <a class="btn btn-outline-light btn-sm" id="marketing-setup-calendar-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Microsoft Calendar</a>
                                 <button type="button" class="btn btn-outline-danger btn-sm" id="marketing-setup-calendar-disconnect" hidden>Disconnect</button>
                             </div>
                         </div>
@@ -2650,7 +2650,7 @@
             <div class="ai-drawer-subtitle">Website Analytics · Aggregate insights only</div>
             <div class="small text-muted" id="ai-drawer-scope-label">AI reviewing: All Traffic · Last 30 Days · Global</div>
         </div>
-        <button type="button" class="ai-drawer-close" aria-label="Close AI Review panel">&times;</button>
+        <button type="button" class="ai-drawer-close" data-ai-drawer-close aria-label="Close AI Review panel">&times;</button>
     </div>
 
     <div class="ai-drawer-body">
@@ -2671,7 +2671,7 @@
         <div class="ai-drawer-error" hidden aria-live="assertive">
             <div class="ai-error-icon">&#9888;</div>
             <div class="ai-error-message">Unable to load AI review.</div>
-            <button type="button" class="btn btn-sm ai-retry-btn"
+            <button type="button" class="btn btn-sm ai-retry-btn" data-ai-retry
                     style="background:rgba(199,153,49,0.15);color:#c79931;border:1px solid #a68023;font-weight:700;">
                 Try Again
             </button>

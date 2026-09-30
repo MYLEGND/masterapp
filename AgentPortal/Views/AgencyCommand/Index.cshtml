@@ -531,8 +531,8 @@
             const closeEls = modal.querySelectorAll('[data-close-rev]');
             const body = document.body;
 
-            const open = () => { modal.setAttribute('aria-hidden','false'); body.classList.add('overflow-hidden'); };
-            const close = () => { modal.setAttribute('aria-hidden','true'); body.classList.remove('overflow-hidden'); };
+            const open = () => { modal.setAttribute('aria-hidden','false');  };
+            const close = () => { modal.setAttribute('aria-hidden','true');  };
 
             openBtn?.addEventListener('click', open);
             closeEls.forEach(el => el.addEventListener('click', close));
