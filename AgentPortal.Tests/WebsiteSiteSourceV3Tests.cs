@@ -1309,4 +1309,24 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.Contains("telephone input type", phoneError.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+
+    [Fact]
+    public void PublishedBindingResolver_PreservesObservedEventAndValidatesTriggerCompatibility()
+    {
+        var binding = new WebsiteSignalBinding
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Trigger = "field_completed",
+            EventName = "PhoneFieldCompleted",
+            ActionKey = "phone_field_completed",
+            DeliveryMode = "destinations",
+            OncePerSession = false
+        };
+
+        Assert.True(PublishedWebsiteBindingResolver.ObservedEventMatches("form_field_complete", binding));
+        Assert.True(PublishedWebsiteBindingResolver.ObservedEventMatches("PhoneFieldCompleted", binding));
+        Assert.False(PublishedWebsiteBindingResolver.ObservedEventMatches("cta_click", binding));
+        Assert.False(PublishedWebsiteBindingResolver.ObservedEventMatches("website_lead_submitted", binding));
+    }
+
 }
