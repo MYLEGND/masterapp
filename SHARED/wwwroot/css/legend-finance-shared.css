@@ -10767,17 +10767,6 @@ body.finance-dual-tools-open .layout-content {
         grid-template-columns: 1fr;
     }
 
-    .networth-tool.el-shell .el-income-summary-actions {
-        width: 100%;
-        margin-left: 0;
-        justify-content: stretch;
-    }
-
-    .networth-tool.el-shell .el-income-summary-actions .el-toolbar-btn,
-    .networth-tool.el-shell .el-income-summary-actions .el-income-toggle {
-        flex: 1 1 180px;
-    }
-
     .finance-toolbar-shell {
         padding: 12px;
     }
