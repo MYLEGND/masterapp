@@ -339,8 +339,9 @@ def direct_release_approved_pr(api, sha):
     """Resolve an exact approved-only release revision to its validated merged PR.
 
     A request may be carried by the merge commit itself, or by one control-only
-    single-parent authorization commit immediately after the merge. Any other
-    lineage shape fails closed.
+    single-parent authorization commit immediately after the merge. The resolved
+    PR is always the one whose merge commit introduced the validated application
+    candidate; any other lineage shape fails closed.
     """
     if not direct_only_request(sha):
         return None
