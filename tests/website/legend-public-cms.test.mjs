@@ -1281,7 +1281,8 @@ test('Founder and business websites use one shared inquiry runtime with no hard-
   assert.ok(protectContactSource.includes('data-legend-public-inquiry-form'));
   assert.ok(parfaitContactSource.includes('data-legend-public-inquiry-form'));
   assert.ok(publicInquiryFormSource.includes("window.addEventListener('legend:website-content-rendered', start)"));
-  assert.ok(publicInquiryFormSource.includes("document.querySelector('[data-website-inquiry]:not([data-preview])')"));
+  assert.ok(publicInquiryFormSource.includes('[data-website-inquiry]:not([data-preview])'));
+  assert.ok(publicInquiryFormSource.includes('[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'));
   assert.ok(protectLayoutSource.includes('~/js/public-inquiry-form.mjs'));
   assert.ok(protectLayoutSource.includes('~/css/public-inquiry-form.css'));
   assert.ok(parfaitLayoutSource.includes('~/js/public-inquiry-form.mjs'));
