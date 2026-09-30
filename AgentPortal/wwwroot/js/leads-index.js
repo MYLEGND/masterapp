@@ -3353,7 +3353,7 @@ document.addEventListener("click", (e) => {
     return;
   }
 
-  const openDrawerEl = e.target.closest(".open-drawer");
+  const openDrawerEl = e.target.closest("[data-open-drawer]");
   if (openDrawerEl){
     const row = openDrawerEl.closest(".client-row");
     if (row) openQuickViewForRow(row);
@@ -5875,7 +5875,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     });
   }
 
-  const nameCell = $(".name.open-drawer", row);
+  const nameCell = $("[data-open-drawer].name", row);
   if (nameCell) nameCell.textContent = `${row.dataset.first || ""} ${row.dataset.last || ""}`.trim();
   if (dName) dName.textContent = `${row.dataset.first || ""} ${row.dataset.last || ""}`.trim() || "Lead";
   syncDrawerEmailDisplay(row.dataset.email);
