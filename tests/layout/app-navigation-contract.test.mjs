@@ -226,8 +226,9 @@ test('mobile shared authority keeps controls clickable and modal content reachab
   assert.match(mobile,/\.modal \.modal-body\s*\{[\s\S]*overflow-y:\s*auto/);
   assert.match(mobile,/\.legend-modal-close-control\s*\{[\s\S]*cursor:\s*pointer/);
   assert.match(nav,/panel\.addEventListener\('click'/);
-  assert.match(nav,/const dismissAfterActivation = callback =>/);
-  assert.match(nav,/queueMicrotask\(callback\)/);
+  assert.match(nav,/const leavesCurrentDocument = control =>/);
+  assert.match(nav,/const dismissAfterActivation = callback => window\.setTimeout\(callback, 0\)/);
+  assert.doesNotMatch(nav,/queueMicrotask/);
   assert.match(modal,/button\.addEventListener\("click"/);
 });
 
@@ -243,16 +244,26 @@ test('mobile utility controls use their real canonical selectors and visible com
   assert.match(css,/\[data-legend-mobile-nav-integrated\] \.profile-meta \{[\s\S]*display:\s*grid/);
 });
 
-test('mobile navigation never dismisses before delegated and default button activation completes',()=>{
+test('mobile navigation preserves real URL activation before any command-surface teardown',()=>{
   const nav=readFileSync(join(ROOT,'SHARED/wwwroot/js/legend-global-navigation.js'),'utf8');
   const handler=nav.slice(
     nav.indexOf("panel.addEventListener('click'"),
     nav.indexOf("document.addEventListener('click'",nav.indexOf("panel.addEventListener('click'"))
   );
+  const exploreHandler=nav.slice(
+    nav.indexOf("list.addEventListener('click'"),
+    nav.indexOf("search?.addEventListener('input'",nav.indexOf("list.addEventListener('click'"))
+  );
 
+  assert.match(nav,/const leavesCurrentDocument = control =>/);
+  assert.match(nav,/return !target \|\| target === '_self'/);
   assert.match(handler,/event\.target\.closest\?\.\('a, \.explore-item, button'\)/);
   assert.match(handler,/control\.matches\('\[data-bs-toggle\]'\)/);
+  assert.match(handler,/if \(leavesCurrentDocument\(control\)\) return;/);
   assert.match(handler,/dismissAfterActivation\(\(\) =>/);
+  assert.match(exploreHandler,/const item = event\.target\.closest\('\.explore-item'\)/);
+  assert.match(exploreHandler,/if \(leavesCurrentDocument\(item\)\) return;/);
+  assert.doesNotMatch(nav,/queueMicrotask/);
   assert.doesNotMatch(handler,/event\.preventDefault\(/);
 });
 
