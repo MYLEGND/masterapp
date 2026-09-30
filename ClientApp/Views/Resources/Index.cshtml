@@ -858,10 +858,14 @@ document.addEventListener("DOMContentLoaded", function () {
         title.textContent = name;
         meta.textContent = metaText || `Type: ${extTag(extension)}`;
         openLink.href = viewUrl;
+        openLink.removeAttribute("aria-disabled");
+        openLink.removeAttribute("tabindex");
 
         if (downloadUrl) {
             downloadLink.style.display = "inline-flex";
             downloadLink.href = downloadUrl;
+            downloadLink.removeAttribute("aria-disabled");
+            downloadLink.removeAttribute("tabindex");
         } else {
             downloadLink.style.display = "none";
             downloadLink.removeAttribute("href");
