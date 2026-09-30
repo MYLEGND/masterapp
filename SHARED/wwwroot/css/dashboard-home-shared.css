@@ -277,11 +277,11 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] >
-    :is([class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], header),
+    :is([class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], [class$="__head"], [class*="__head "], [class$="__header"], [class*="__header "], header),
     html[data-legend-modal-region] body.legend-app .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)) >
-    :is(.modal-head, [class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], header),
+    :is(.modal-head, [class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], [class$="__head"], [class*="__head "], [class$="__header"], [class*="__header "], header),
     html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet] >
-    :is(.dhead, [class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], header) {
+    :is(.dhead, [class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], [class$="__head"], [class*="__head "], [class$="__header"], [class*="__header "], header) {
         min-height: 0;
         padding: 7px 10px !important;
         border-bottom-color: #344766 !important;
@@ -289,7 +289,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] >
-    :is([class$="-shell"], [class*="-shell "]) {
+    :is([class$="-shell"], [class*="-shell "], [class$="__shell"], [class*="__shell "]) {
         width: 100% !important;
         max-width: 100% !important;
         min-width: 0 !important;
@@ -304,12 +304,12 @@ html[data-legend-modal-region] body .modal .modal-body {
         box-shadow: none !important;
     }
 
-    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel]:not(:has(> :is([class$="-shell"], [class*="-shell "]))) {
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel]:not(:has(> :is([class$="-shell"], [class*="-shell "], [class$="__shell"], [class*="__shell "]))) {
         padding: 9px 10px 10px !important;
     }
 
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] >
-    :is([class$="-body"], [class*="-body "]) {
+    :is([class$="-body"], [class*="-body "], [class$="__body"], [class*="__body "]) {
         min-height: 0;
         padding: 9px 10px 10px !important;
         overflow-x: hidden;
@@ -317,7 +317,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] >
-    :is([class$="-foot"], [class*="-foot "], [class$="-footer"], [class*="-footer "], footer) {
+    :is([class$="-foot"], [class*="-foot "], [class$="-footer"], [class*="-footer "], [class$="__foot"], [class*="__foot "], [class$="__footer"], [class*="__footer "], footer) {
         min-height: 0;
         padding: 7px 10px !important;
         border-top-color: #344766 !important;
