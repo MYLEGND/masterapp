@@ -2200,6 +2200,7 @@ test('canonical block becomes one composition reusable definition and inserted i
     assert.equal(definition.composition.length,1);
     assert.equal(definition.composition[0].text,'Reusable promise');
     assert.deepEqual(definition.composition[0].signals,[]);
+    assert.deepEqual(definition.composition[0].fieldSignals || {},{});
     const instances=canonicalNodes(saved).filter(node=>node.type==='reusable');
     assert.equal(instances.length,1);
     assert.equal(instances[0].syncSourceId,definition.id);
@@ -2347,10 +2348,13 @@ test('canonical visual style preserves numeric font weight and signed letter spa
     f.click('main h1');
     f.input('[data-style-key="fontWeight"]','700');
     f.input('[data-style-key="letterSpacing"]','-1.25');
+    const heading=f.w.document.querySelector('main h1');
+    assert.equal(heading.style.letterSpacing,'-1.25px');
     const saved=await f.save();
     const style=canonicalNodeById(saved,'home.h1.node.1').style;
     assert.equal(style.fontWeight,700);
     assert.equal(style.letterSpacing,-1.25);
+    assert.match(source,/['"]maxHeight['"]/);
   } finally { f.close(); }
 });
 
@@ -2733,6 +2737,12 @@ test('signal-bound managed action identity remains locked while presentation sta
   }finally{f.close();}
 });
 
+
+test('duplicate and reusable presentation cloning strips node and field signal mappings',()=>{
+  assert.match(source,/current\.signals=\[\];[\s\S]*current\.fieldSignals=\{\}/);
+  assert.match(source,/copy\.signals=\[\];[\s\S]*copy\.fieldSignals=\{\}/);
+  assert.match(source,/containsProtectedSystemNode[\s\S]*fieldSignals/);
+});
 
 test('signal-only nodes are protected in the editor and presentation duplication never clones hidden mappings',async()=>{
   const doc=canonicalDocument();
