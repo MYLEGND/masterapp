@@ -112,10 +112,7 @@ test('every authenticated and shared type=button control resolves to a concrete 
   ];
   const sources=sourceFiles.map(path=>[path,readFileSync(path,'utf8')]);
   const corpus=sources.map(([,text])=>text).join('\n');
-  const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\  const corpus=sourceFiles.map(path=>readFileSync(path,'utf8')).join('\n');
-  const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\$&');
-  const bad=[];
-');
+  const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\\\]/g,'\\$&');
   const bad=[];
 
   for(const root of viewRoots){
