@@ -5119,10 +5119,6 @@ body {
 }
 
 @media (max-width: 991.98px) {
-    .wa-modal-header-main {
-        grid-template-columns: 1fr;
-    }
-
     .wa-modal-header-actions,
     .wa-modal-toolbar {
         justify-content: flex-start;
@@ -5147,11 +5143,6 @@ body {
         gap: .5rem;
     }
 
-    .wa-modal-section {
-        padding: .55rem;
-        border-radius: 10px;
-    }
-
     .wa-modal-toolbar {
         width: 100%;
         align-items: stretch;
@@ -5170,12 +5161,7 @@ body {
         width: 100%;
     }
 
-    .wa-modal-meta-item {
-        min-width: 0;
-        flex: 1 1 100%;
     }
-
-}
 
 .wa-kpi-band-health {
     position: relative;
