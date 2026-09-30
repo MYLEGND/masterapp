@@ -79,7 +79,7 @@
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'minHeight', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap', 'display', 'flexDirection', 'gap', 'gridTemplateColumns', 'alignItems', 'justifyContent', 'flexWrap'];
+  const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -1096,12 +1096,21 @@
     }
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
-    ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
-    // A chosen solid color replaces inherited background imagery in editor and published rendering.
-    if (style.backgroundColor) el.style.backgroundImage = 'none';
-    ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius'].forEach(key => { if (spacingNumber(style[key])) el.style[key] = `${style[key]}px`; });
+    ['color','backgroundColor','fontFamily','fontWeight','objectFit','borderColor','borderStyle','textTransform','textDecoration'].forEach(key => { if (style[key] != null && style[key] !== '') el.style[key] = style[key]; });
+    if (style.backgroundGradient) el.style.backgroundImage=style.backgroundGradient;
+    else if (style.backgroundColor) el.style.backgroundImage = 'none';
+    ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius','borderWidth','minWidthPx','maxWidthPx','minHeightPx','maxHeightPx'].forEach(key => {
+      if (spacingNumber(style[key])) {
+        const cssKey={minWidthPx:'minWidth',maxWidthPx:'maxWidth',minHeightPx:'minHeight',maxHeightPx:'maxHeight'}[key] || key;
+        el.style[cssKey]=`${style[key]}px`;
+      }
+    });
+    ['marginTop','marginBottom','marginLeft','marginRight'].forEach(key => { if(Number.isFinite(Number(style[key]))) el.style[key]=`${Number(style[key])}px`; });
     if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
-    if (style.objectPosition && el instanceof HTMLImageElement) el.style.objectPosition = style.objectPosition;
+    if (style.opacity != null && Number.isFinite(Number(style.opacity))) el.style.opacity=String(style.opacity);
+    if (positiveNumber(style.aspectRatio)) el.style.aspectRatio=String(style.aspectRatio);
+    if (style.boxShadow) el.style.boxShadow=style.boxShadow;
+    if (style.objectPosition && (el instanceof HTMLImageElement || el instanceof HTMLVideoElement)) el.style.objectPosition = style.objectPosition;
   }
 
   function setContentText(el, text, preserveWhitespace = false) {
@@ -1137,8 +1146,31 @@
     return documentState.store[field] || null;
   }
 
+  function formFieldKey(el) {
+    if(!el) return null;
+    const raw=el.dataset?.cmsFieldKey || el.getAttribute?.('name') || el.id || '';
+    return safeId(raw);
+  }
+
+  function formFieldPresentationForElement(el, create = true) {
+    if(!el || legacyMigration) return null;
+    const form=el.closest?.('form[data-cms-composition-id]');
+    if(!form || form===el) return null;
+    const key=formFieldKey(el);
+    if(!key) return null;
+    const formNode=compositionNode(form.dataset.cmsCompositionId);
+    if(!formNode || !(formNode.type==='form' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
+    if(create){
+      formNode.fieldPresentations ||= {};
+      formNode.fieldPresentations[key] ||= normalizeControlPresentation(null);
+    }
+    return formNode.fieldPresentations?.[key] || null;
+  }
+
   function editableWebsiteModelForElement(el, create = true) {
-    return storeControlPresentationForElement(el, create) || compositionNodeForElement(el, create);
+    return formFieldPresentationForElement(el, create) ||
+      storeControlPresentationForElement(el, create) ||
+      compositionNodeForElement(el, create);
   }
 
   function editableCompositionNodeForElement(el, create = true) {
@@ -1211,14 +1243,19 @@
 
   const defaultCodeBlock = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{--navy:#102b62;--navy-deep:#081a3a;--gold:#d4ad45;--gold-strong:#f0cf78;--ink:#101a35;--muted:#5b6680;--surface:#f7f8fb;--line:rgba(16,43,98,.14)}*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#fff,var(--surface));color:var(--ink);font:500 16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:clamp(14px,4vw,28px)}main{position:relative;overflow:hidden;max-width:760px;margin:auto;background:#fff;border:1px solid var(--line);border-radius:18px;padding:clamp(22px,5vw,38px);box-shadow:0 14px 38px rgba(8,26,58,.09)}main:before{content:"";position:absolute;inset:0 auto auto 0;width:100%;height:2px;background:linear-gradient(90deg,var(--gold),transparent 78%)}small{display:block;color:var(--gold);font-size:10px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px}h2{margin:0 0 10px;color:var(--navy-deep);font-size:clamp(27px,6vw,42px);line-height:1.06;letter-spacing:-.035em;overflow-wrap:break-word}p{margin:0;color:var(--muted);overflow-wrap:break-word}</style></head><body><main><small>Custom content</small><h2>Build something distinctive.</h2><p>Edit this sandboxed block with responsive, accessible presentation that belongs to this website.</p></main></body></html>';
 
+  function secureEmbedSource(source) {
+    const policy="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: https:; media-src data: https:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'";
+    const meta='<meta http-equiv="Content-Security-Policy" content="'+policy+'">';
+    if(/<head(?:\s[^>]*)?>/i.test(source)) return source.replace(/<head(?:\s[^>]*)?>/i,match=>match+meta);
+    if(/<html(?:\s[^>]*)?>/i.test(source)) return source.replace(/<html(?:\s[^>]*)?>/i,match=>match+'<head>'+meta+'</head>');
+    return '<!doctype html><html><head>'+meta+'</head><body>'+source+'</body></html>';
+  }
+
   function renderCodePreview(el, extra) {
     const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
     if (!frame) return;
     const source = extra?.text?.trim() ? extra.text : defaultCodeBlock;
-    // A data document has an opaque origin under this sandbox and does not inherit
-    // the parent page's script policy. This keeps owner code isolated without
-    // weakening the main site's CSP with unsafe-inline/unsafe-eval.
-    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source);
+    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(secureEmbedSource(source));
   }
 
   function compositionMediaAssetId(value) {
@@ -1662,7 +1699,7 @@
     const frame=document.createElement('iframe');
     frame.dataset.cmsCodeFrame='true';
     frame.title='Custom code block';
-    frame.setAttribute('sandbox','allow-scripts allow-forms allow-modals allow-popups');
+    frame.setAttribute('sandbox','allow-scripts');
     frame.setAttribute('referrerpolicy','no-referrer');
     frame.setAttribute('loading','lazy');
     el.appendChild(frame);
@@ -3681,7 +3718,7 @@
   }
 
   function updateDirectCanvasUi() {
-    if (!selectionFrame || !editorPreview || !selected || selected.dataset.cmsSignalOnly || selected.closest('.legend-cms-editor')) {
+    if (!selectionFrame || !editorPreview || !selected || (selected.dataset.cmsSignalOnly && !formFieldPresentationForElement(selected,false)) || selected.closest('.legend-cms-editor')) {
       if (selectionFrame) selectionFrame.hidden = true;
       if (gridOverlay && !directGesture) gridOverlay.hidden = true;
       return;
@@ -3874,7 +3911,8 @@
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
-    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || !!selected.dataset.cmsSignalOnly; });
+    const selectedFieldPresentation=selected ? formFieldPresentationForElement(selected,false) : null;
+    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation); });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
       if (inlineHelp) inlineHelp.hidden = true;
@@ -4328,7 +4366,7 @@
   }
 
   function sourceSelectedNodeId() {
-    return selected?.dataset?.cmsCompositionId || null;
+    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
   }
 
   function sourceFindNodeInDocument(sourceDocument,id) {
@@ -4366,8 +4404,8 @@
     const key=/^\s*"([^"]+)"\s*:/.exec(String(line || ''))?.[1] || '';
     if (['text','title','alt','href','description','label'].includes(key)) return 'content';
     if (['color','backgroundColor'].includes(key)) return 'color';
-    if (['widthPercent','heightPx','fontSize','fontScale','lineHeight','letterSpacing','paddingTop','paddingBottom','paddingLeft','paddingRight','offsetXPercent','offsetYPx','borderRadius','objectPosition'].includes(key)) return 'size';
-    if (['style','breakpointStyles','fontFamily','fontWeight','textAlign','objectFit'].includes(key)) return 'style';
+    if (['widthPercent','heightPx','fontSize','fontScale','lineHeight','letterSpacing','paddingTop','paddingBottom','paddingLeft','paddingRight','offsetXPercent','offsetYPx','borderRadius','objectPosition','marginTop','marginBottom','marginLeft','marginRight','borderWidth','minWidthPx','maxWidthPx','minHeightPx','maxHeightPx','aspectRatio','opacity'].includes(key)) return 'size';
+    if (['style','breakpointStyles','fontFamily','fontWeight','textAlign','objectFit','borderColor','borderStyle','textTransform','textDecoration','backgroundGradient','boxShadow','fieldPresentations','fieldLabels'].includes(key)) return 'style';
     if (['layout','breakpointLayouts','mode','direction','gapPx','columns','minItemWidthPx','alignItems','justifyContent','wrap'].includes(key)) return 'layout';
     if (['mediaAssetId','mediaUrl','faviconImageDataUrl'].includes(key)) return 'media';
     if (['animations','trigger','effect','durationMs','delayMs','distancePx','easing','once','hidden','target'].includes(key)) return 'behavior';
@@ -5051,13 +5089,26 @@
   }
 
   function appearanceFields() {
-    const choices = { fontFamily: ['inherit','system-ui','serif','sans-serif','monospace','Georgia','Arial'], fontWeight: ['100','200','300','400','500','600','700','800','900'], objectFit: ['cover','contain','fill','none','scale-down'] };
-    return ['color','backgroundColor','fontFamily','fontWeight','fontSize','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit'].map(key => {
+    const choices = {
+      fontWeight:['100','200','300','400','500','600','700','800','900'],
+      objectFit:['cover','contain','fill','none','scale-down'],
+      borderStyle:['none','solid','dashed','dotted','double'],
+      textTransform:['none','uppercase','lowercase','capitalize'],
+      textDecoration:['none','underline','line-through','overline']
+    };
+    const keys=['color','backgroundColor','fontFamily','fontWeight','fontSize','lineHeight','letterSpacing',
+      'paddingLeft','paddingRight','borderRadius','objectFit','marginTop','marginBottom','marginLeft','marginRight',
+      'borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','minWidthPx','maxWidthPx',
+      'minHeightPx','maxHeightPx','aspectRatio','backgroundGradient','boxShadow','objectPosition'];
+    return keys.map(key => {
       const label = key.replace(/([A-Z])/g, ' $1');
-      const control = choices[key]
-        ? `<select data-style-key="${key}"><option value="">Default</option>${choices[key].map(value => `<option value="${value}">${value}</option>`).join('')}</select>`
-        : `<input data-style-key="${key}" type="${['color','backgroundColor'].includes(key) ? 'color' : 'number'}" step="any">`;
-      return `<label class="legend-cms-group">${label}${control}${['color','backgroundColor'].includes(key) ? `<input data-color-hex="${key}" type="text" maxlength="7" pattern="#[a-fA-F0-9]{6}" aria-label="${label} hex code" placeholder="#000000"><button type="button" data-color-reset="${key}">Use inherited color</button>` : ''}</label>`;
+      const isColor=['color','backgroundColor','borderColor'].includes(key);
+      let control;
+      if(choices[key]) control=`<select data-style-key="${key}"><option value="">Default</option>${choices[key].map(value => `<option value="${value}">${value}</option>`).join('')}</select>`;
+      else if(['fontFamily','backgroundGradient','boxShadow','objectPosition'].includes(key))
+        control=`<input data-style-key="${key}" type="text" maxlength="500" placeholder="${key==='fontFamily'?'system-ui, Arial, sans-serif':''}">`;
+      else control=`<input data-style-key="${key}" type="${isColor?'text':'number'}" step="any">`;
+      return `<label class="legend-cms-group">${label}${control}${isColor ? `<button type="button" data-color-reset="${key}">Use inherited color</button>` : ''}</label>`;
     }).join('');
   }
 
