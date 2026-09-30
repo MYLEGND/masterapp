@@ -25,6 +25,51 @@
             : String(input);
     };
 
+    async function writeClipboardText(value) {
+        if (navigator.clipboard?.writeText && window.isSecureContext) {
+            await navigator.clipboard.writeText(value);
+            return;
+        }
+
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        textarea.style.pointerEvents = "none";
+        document.body.append(textarea);
+        textarea.select();
+        const copied = document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("Clipboard copy was not accepted.");
+    }
+
+    document.addEventListener("click", event => {
+        const button = event.target.closest?.("[data-legend-copy-button]");
+        if (!button || button.disabled) return;
+
+        const value = button.dataset.legendCopyTarget || "";
+        if (!value) return;
+
+        const label = button.querySelector("[data-legend-copy-label]");
+        const originalLabel = label?.textContent || "Copy";
+        button.disabled = true;
+
+        void writeClipboardText(value)
+            .then(() => {
+                if (label) label.textContent = "Copied";
+            })
+            .catch(() => {
+                if (label) label.textContent = "Copy failed";
+            })
+            .finally(() => {
+                window.setTimeout(() => {
+                    if (label?.isConnected) label.textContent = originalLabel;
+                    if (button.isConnected) button.disabled = false;
+                }, 1400);
+            });
+    });
+
     const copyPanel = document.querySelector("[data-application-copy-panel]");
     if (copyPanel) {
         const status = copyPanel.querySelector("[data-copy-status]");
