@@ -5612,8 +5612,8 @@ header .legend-global-nav .container-fluid {
      * Permanent row: logo | LIFE HAC | GOD ABOVE ALL | menu control.
      * Open state: compact command rows, then the profile row. Quick Find is a
      * subview of the same panel and replaces those rows only when requested.
-     * The nav never becomes a full-screen sheet and never flattens descendants
-     * with display:contents/!important.
+     * The nav never becomes a full-screen sheet, never flattens descendants
+     * into anonymous grid boxes, and never needs cascade-forcing importance.
      */
     header .legend-global-nav .container-fluid {
         display: grid;
