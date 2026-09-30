@@ -60,7 +60,7 @@
     drawer.classList.remove('open');
     overlay.classList.remove('open');
     setAriaState(false);
-    window.LegendModal?.unlockPageScroll?.(scrollOwner);
+    if (window.innerWidth <= breakpoint) window.LegendModal?.unlockPageScroll?.(scrollOwner);
     if (wasOpen && restoreFocus && trigger.isConnected) {
       try { trigger.focus({ preventScroll: true }); } catch { trigger.focus(); }
     }
@@ -71,7 +71,7 @@
     drawer.classList.add('open');
     overlay.classList.add('open');
     setAriaState(true);
-    window.LegendModal?.lockPageScroll?.(scrollOwner);
+    if (window.innerWidth <= breakpoint) window.LegendModal?.lockPageScroll?.(scrollOwner);
 
     // Desktop can take search focus immediately. On phones, avoid forcing the
     // virtual keyboard over the newly opened sheet.
@@ -110,7 +110,7 @@
   });
 
   window.addEventListener('resize', () => {
-    if (window.innerWidth > breakpoint && drawer.classList.contains('open')) closeDrawer();
+    if (window.innerWidth > breakpoint) window.LegendModal?.unlockPageScroll?.(scrollOwner);
   });
 
   window.addEventListener('pagehide', () => {
