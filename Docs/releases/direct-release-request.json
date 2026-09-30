@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to merge and deploy the validated canonical mobile navigation, modal, scrolling, and action-density repair from PR #303 after all exact-head gates passed.",
-  "purpose": "Deploy the validated presentation/client-side canonical mobile repair from PR #303 to AgentPortal and ClientApp only. The release centralizes authenticated navigation and Explore behavior, canonical mobile modal scrolling and dismissal, compact action density, and deletes stale competing mobile CSS paths while preserving desktop behavior and all existing route destinations. No Protect, Parfait, public Website, Cloudflare routing, backend/business logic, database, analytics, advertising, CRM, authentication, payment, or unrelated application deployment is authorized.",
-  "requestId": "agent-client-mobile-nav-modal-density-20260929",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to continue, merge, and deploy the validated canonical full-width mobile repair from PR #308 after exact-head architecture and Step 5 gates passed.",
+  "purpose": "Deploy the validated canonical authenticated-mobile full-width repair from PR #308 to AgentPortal and ClientApp only. This removes mobile horizontal clipping, makes every authenticated page root and canonical page shell consume the available phone width, and preserves local horizontal scrolling for genuinely wide legacy/desktop structures. No Protect, Parfait, public Website, Cloudflare routing, backend/business logic, database, analytics, advertising, CRM, authentication, payment, or unrelated application deployment is authorized.",
+  "requestId": "agent-client-mobile-full-width-20260929",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
