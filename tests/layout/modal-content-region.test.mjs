@@ -92,6 +92,8 @@ test('Explore preserves scrolling and link navigation across every dismissal pat
   assert.match(navScript,/else window\.LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
   assert.match(navScript,/window\.addEventListener\('resize', syncResponsiveState/);
   assert.match(navScript,/window\.addEventListener\('pagehide'[\s\S]*unlockPageScroll/);
+  assert.match(navScript,/const closeAllNavigation = \(\) =>/);
+  assert.match(navScript,/const openDrawer = \(\) => \{[\s\S]*closeAllNavigation\(\);[\s\S]*refreshViewportOffsets/);
 
   const listHandler=navScript.slice(
     navScript.indexOf("list.addEventListener('click'"),
@@ -124,20 +126,54 @@ test('Explore mobile sheet stays below the banner and uses a symmetric two-colum
   assert.match(css,/\.explore-close::before\{[\s\S]*border:1\.5px solid var\(--legend-mobile-text/);
 });
 
-test('canonical mobile action density loads after page feature styles in both authenticated apps',()=>{
+test('canonical mobile action authority is explicit and cannot capture unrelated page controls',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
-  assert.match(css,/Canonical mobile action density[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/);
-  assert.match(css,/:where\([\s\S]*\[class\$="-actions"\][\s\S]*\.d-grid[\s\S]*\):has\(> :is\(button, \.btn, a, form\)\)/);
-  assert.match(css,/:is\(\[data-legend-modal-panel\], \[data-legend-mobile-sheet\]\)[\s\S]*\.modal-footer[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/);
+  const authorityStart=css.indexOf('Canonical authenticated-mobile action authority');
+  const authorityEnd=css.indexOf('One close/collapse glyph everywhere',authorityStart);
+  assert(authorityStart>=0 && authorityEnd>authorityStart);
+  const authority=css.slice(authorityStart,authorityEnd);
+  const actionAuthorityEnd=css.indexOf('html[data-legend-modal-region] body.legend-app .modal .modal-header',authorityStart);
+  const actionAuthority=css.slice(authorityStart,actionAuthorityEnd);
+
+  assert.doesNotMatch(actionAuthority,/!important/);
+  assert.match(authority,/\.client-create-actions/);
+  assert.match(authority,/\.dashboard-page-shell \.search-actions/);
+  assert.match(authority,/\.drawer\.crm-qv-shell \.drawer-top-actions/);
+  assert.match(authority,/#rbShell \.rb-hero \.hero-actions/);
+  assert.match(authority,/\.savings-illustration-footer/);
+
+  assert.doesNotMatch(authority,/\[class\$="-actions"\]/);
+  assert.doesNotMatch(authority,/\[class\*="-actions "\]/);
+  assert.doesNotMatch(authority,/\[class\$="__actions"\]/);
+  assert.doesNotMatch(authority,/\[class\$="-buttons"\]/);
+  assert.doesNotMatch(authority,/\[class\$="-action-row"\]/);
+  assert.doesNotMatch(authority,/\.d-grid/);
+  assert.doesNotMatch(authority,/\.btn-group/);
 
   for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']){
-    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
-    const featureBoundary=source.indexOf('RenderSection("Styles"');
-    const shared=source.indexOf('~/_content/Shared/css/dashboard-home-shared.css');
-    const booking=source.indexOf('~/css/qv-booking.css');
+    const layout=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const featureBoundary=layout.indexOf('RenderSection("Styles"');
+    const shared=layout.indexOf('~/_content/Shared/css/dashboard-home-shared.css');
+    const booking=layout.indexOf('~/css/qv-booking.css');
     assert(featureBoundary>=0 && shared>featureBoundary,file+': shared mobile authority must follow page styles');
     assert(booking>=0 && shared>booking,file+': shared mobile authority must follow booking feature CSS');
   }
+});
+
+test('shared mobile structure defeats desktop Home grids without restoring per-page mobile CSS',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+
+  assert.match(css,/@media \(max-width: 1180px\) \{[\s\S]*\.home-command-page \.home-hero-panel \.dashboard-command-center-top,[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css,/@media \(max-width: 767\.98px\) \{[\s\S]*\.home-command-page \.home-hero-summary \{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css,/\.client-portal \.home-command-page \.home-hero-summary \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css,/\.client-portal \.home-command-page \.home-hero-summary \.dashboard-stat-card:last-child \{[\s\S]*grid-column: 1 \/ -1/);
+  assert.match(css,/\.home-command-page \.dashboard-hero-title,[\s\S]*white-space: normal/);
+
+  const agentHome=readFileSync(new URL('../../AgentPortal/wwwroot/css/home-command-page.css',import.meta.url),'utf8');
+  assert.doesNotMatch(agentHome,/@media \(max-width: 1180px\)[\s\S]*\.home-command-page \.home-hero-panel \.dashboard-command-center-top/);
+
+  const clientMobile=readFileSync(new URL('../../ClientApp/wwwroot/css/client-mobile.css',import.meta.url),'utf8');
+  assert.doesNotMatch(clientMobile,/\.client-portal \.dashboard-command-center-top[\s\S]*grid-template-columns/);
 });
 
 test('feature styles cannot reintroduce competing mobile action-stack authority',()=>{
