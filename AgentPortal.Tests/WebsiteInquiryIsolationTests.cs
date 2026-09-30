@@ -841,7 +841,7 @@ public sealed class WebsiteInquiryIsolationTests
         var row = Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
         Assert.Equal("form_field_complete", row.EventType);
         Assert.Equal(binding.Id, row.WebsiteBindingId);
-        Assert.Equal("phone_field_completed", row.ActionKey);
+        Assert.Contains("\\\"ActionKey\\\":\\\"phone_field_completed\\\"", row.MetadataJson ?? "", StringComparison.Ordinal);
         Assert.Equal("phone", row.FieldName);
         Assert.Equal(elementId, row.ElementKey);
         Assert.Contains("\"EventName\":\"PhoneFieldCompleted\"", row.MetadataJson ?? "", StringComparison.Ordinal);
