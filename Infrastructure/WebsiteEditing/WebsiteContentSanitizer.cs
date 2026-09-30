@@ -469,7 +469,9 @@ public static class WebsiteContentSanitizer
                 Layout = SanitizeLayout(node.Layout),
                 BreakpointLayouts = SanitizeLayoutMap(node.BreakpointLayouts, breakpointKeys),
                 Animations = SanitizeAnimations(node.Animations),
-                DataBinding = SanitizeDataBinding(node.DataBinding)
+                DataBinding = SanitizeDataBinding(node.DataBinding),
+                FieldPresentations = SanitizeFieldPresentations(node.FieldPresentations, breakpointKeys),
+                FieldLabels = SanitizeFieldLabels(node.FieldLabels)
             };
             clean.Children = SanitizeCompositionChildren(node.Children, breakpointKeys, depth + 1, ref remaining);
             CanonicalizePassiveLink(clean);
@@ -813,6 +815,33 @@ public static class WebsiteContentSanitizer
         return new WebsiteCollectionDefinition { Id = id, Name = name, Source = sourceKey, Fields = fields };
     }
 
+    private static Dictionary<string, WebsiteControlPresentation> SanitizeFieldPresentations(
+        IDictionary<string, WebsiteControlPresentation>? source,
+        HashSet<string> breakpointKeys)
+    {
+        var result = new Dictionary<string, WebsiteControlPresentation>(StringComparer.Ordinal);
+        foreach (var pair in (source ?? new Dictionary<string, WebsiteControlPresentation>()).Take(64))
+        {
+            var key = SanitizeId(pair.Key);
+            if (key.Length == 0 || pair.Value is null) continue;
+            result[key] = SanitizeControlPresentation(pair.Value, breakpointKeys);
+        }
+        return result;
+    }
+
+    private static Dictionary<string, string> SanitizeFieldLabels(IDictionary<string, string>? source)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pair in (source ?? new Dictionary<string, string>()).Take(64))
+        {
+            var key = SanitizeId(pair.Key);
+            var value = ClampText(pair.Value);
+            if (key.Length == 0 || string.IsNullOrWhiteSpace(value)) continue;
+            result[key] = value[..Math.Min(value.Length, 160)];
+        }
+        return result;
+    }
+
     private static WebsiteDataBinding? SanitizeDataBinding(WebsiteDataBinding? source)
     {
         if (source is null) return null;
@@ -899,9 +928,7 @@ public static class WebsiteContentSanitizer
         source ??= new WebsiteVisualStyle();
         var align = (source.TextAlign ?? string.Empty).Trim().ToLowerInvariant();
         if (align is not ("left" or "center" or "right" or "start" or "end" or "justify")) align = string.Empty;
-        var objectPosition = (source.ObjectPosition ?? string.Empty).Trim().ToLowerInvariant();
-        if (objectPosition is not ("left" or "center" or "right" or "top" or "bottom"))
-            objectPosition = string.Empty;
+        var objectPosition = SanitizeObjectPosition(source.ObjectPosition);
 
         return new WebsiteVisualStyle
         {
@@ -910,8 +937,8 @@ public static class WebsiteContentSanitizer
             WidthPercent = source.WidthPercent > 0 ? source.WidthPercent : null,
             PaddingTop = source.PaddingTop >= 0 ? source.PaddingTop : null,
             PaddingBottom = source.PaddingBottom >= 0 ? source.PaddingBottom : null,
-            ObjectPosition = objectPosition.Length == 0 ? null : objectPosition,
-            Color = SanitizeHex(source.Color), BackgroundColor = SanitizeHex(source.BackgroundColor),
+            ObjectPosition = objectPosition,
+            Color = SanitizeColor(source.Color), BackgroundColor = SanitizeColor(source.BackgroundColor),
             FontFamily = SanitizeFont(source.FontFamily),
             FontWeight = source.FontWeight is >= 100 and <= 900 ? source.FontWeight : null,
             FontSize = source.FontSize > 0 ? source.FontSize : null,
@@ -923,7 +950,28 @@ public static class WebsiteContentSanitizer
             ObjectFit = source.ObjectFit is "cover" or "contain" or "fill" or "none" or "scale-down" ? source.ObjectFit : null,
             HeightPx = source.HeightPx > 0 ? source.HeightPx : null,
             OffsetXPercent = source.OffsetXPercent,
-            OffsetYPx = source.OffsetYPx
+            OffsetYPx = source.OffsetYPx,
+            MarginTop = source.MarginTop,
+            MarginBottom = source.MarginBottom,
+            MarginLeft = source.MarginLeft,
+            MarginRight = source.MarginRight,
+            BorderWidth = source.BorderWidth is >= 0 and <= 64 ? source.BorderWidth : null,
+            BorderColor = SanitizeColor(source.BorderColor),
+            BorderStyle = source.BorderStyle is "none" or "solid" or "dashed" or "dotted" or "double" ? source.BorderStyle : null,
+            Opacity = source.Opacity is >= 0 and <= 1 ? source.Opacity : null,
+            TextTransform = source.TextTransform is "none" or "uppercase" or "lowercase" or "capitalize" ? source.TextTransform : null,
+            TextDecoration = source.TextDecoration is "none" or "underline" or "line-through" or "overline" ? source.TextDecoration : null,
+            MinWidthPx = source.MinWidthPx is >= 0 and <= 10000 ? source.MinWidthPx : null,
+            MaxWidthPx = source.MaxWidthPx is >= 0 and <= 10000 ? source.MaxWidthPx : null,
+            MinHeightPx = source.MinHeightPx is >= 0 and <= 10000 ? source.MinHeightPx : null,
+            MaxHeightPx = source.MaxHeightPx is >= 0 and <= 10000 ? source.MaxHeightPx : null,
+            AspectRatio = source.AspectRatio is > 0 and <= 20 ? source.AspectRatio : null,
+            BackgroundGradient = source.BackgroundGradient is not null &&
+                                 (source.BackgroundGradient.TrimStart().StartsWith("linear-gradient(", StringComparison.OrdinalIgnoreCase) ||
+                                  source.BackgroundGradient.TrimStart().StartsWith("radial-gradient(", StringComparison.OrdinalIgnoreCase))
+                ? SanitizeCssValue(source.BackgroundGradient, 500)
+                : null,
+            BoxShadow = SanitizeCssValue(source.BoxShadow, 300)
         };
     }
 
@@ -984,7 +1032,57 @@ public static class WebsiteContentSanitizer
         return new string(chars);
     }
     private static string? SanitizeTarget(string? value) => value is "_blank" or "_self" ? value : null;
-    private static string? SanitizeFont(string? value) => value is "inherit" or "system-ui" or "serif" or "sans-serif" or "monospace" or "Georgia" or "Arial" ? value : null;
+    private static string? SanitizeFont(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var candidate = value.Trim();
+        if (candidate.Length > 160 || candidate.Any(char.IsControl) ||
+            candidate.IndexOfAny([';', '{', '}', '<', '>', '\\']) >= 0 ||
+            candidate.Contains("url(", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return candidate;
+    }
+
+    private static string? SanitizeCssValue(string? value, int maxLength = 240)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var candidate = value.Trim();
+        if (candidate.Length > maxLength || candidate.Any(char.IsControl) ||
+            candidate.IndexOfAny([';', '{', '}', '<', '>', '\\']) >= 0 ||
+            candidate.Contains("url(", StringComparison.OrdinalIgnoreCase) ||
+            candidate.Contains("expression(", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return candidate;
+    }
+
+    private static string? SanitizeColor(string? value)
+    {
+        var hex = SanitizeHex(value);
+        if (hex is not null) return hex;
+        var candidate = SanitizeCssValue(value, 120);
+        if (candidate is null) return null;
+        if (candidate.StartsWith("rgb(", StringComparison.OrdinalIgnoreCase) ||
+            candidate.StartsWith("rgba(", StringComparison.OrdinalIgnoreCase) ||
+            candidate.StartsWith("hsl(", StringComparison.OrdinalIgnoreCase) ||
+            candidate.StartsWith("hsla(", StringComparison.OrdinalIgnoreCase) ||
+            candidate.StartsWith("var(--web-", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(candidate, "transparent", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(candidate, "currentColor", StringComparison.OrdinalIgnoreCase))
+            return candidate;
+        return null;
+    }
+
+    private static string? SanitizeObjectPosition(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var candidate = value.Trim().ToLowerInvariant();
+        if (candidate is "left" or "center" or "right" or "top" or "bottom") return candidate;
+        return System.Text.RegularExpressions.Regex.IsMatch(
+            candidate,
+            @"^(?:100|\d{1,2})(?:\.\d+)?%\s+(?:100|\d{1,2})(?:\.\d+)?%$")
+            ? candidate
+            : null;
+    }
     private static string? SanitizeCompositionMediaUrl(string? value, string type)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
