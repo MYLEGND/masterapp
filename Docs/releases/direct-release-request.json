@@ -1,12 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged PR #331 canonical responsive conversion hierarchy after its exact merge-candidate public Website Studio/runtime validation passed.",
-  "purpose": "Deploy only the affected public website hosts from the current legend/approved-changes head. Protect and LEGEND Website receive the shared canonical responsive hierarchy used by every existing and future LEGEND/Protect/Business page: mobile conversion-first stacking and safe geometry, tablet two-column/wrap limits, desktop intentional authored composition, bounded mobile header brand/navigation scale, shared business-name banner typography/padding tokens, responsive first-paint application, and matching Website Studio side-panel/GPT design guidance. Protected forms, lead routing, analytics, Meta/OpenAI delivery, CRM, payments, owner scope, and backend route authority remain unchanged. AgentPortal, ClientApp, Parfait, Cloudflare routing, and database migrations are excluded.",
-  "requestId": "canonical-responsive-conversion-hierarchy-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to restore AgentPortal + ClientApp live usability after the exact deployed revision reproduced iOS Safari tab failures, using the exact-head green PR #333 canonical runtime repair.",
+  "purpose": "Deploy only AgentPortal and ClientApp from the current legend/approved-changes head. This release preserves the newer approved compact authenticated mobile navigation and applies the canonical Safari-safe modal runtime repair: hidden-ancestor-aware modal state detection, one lightweight shared shadow scrim, no stacked full-screen backdrop-filter blur, preserved modal z-order/page lock/background interaction shielding, and existing button/navigation authority. Protect, Parfait, LEGEND public website, Cloudflare routing, database migrations, analytics/Meta/OpenAI authority, payments, CRM backend behavior, and unrelated public-site changes are excluded from deployment.",
+  "requestId": "ios-runtime-mobile-nav-modal-recovery-20260930",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect",
-    "masterapp-website"
+    "masterapp-portal",
+    "masterapp-client"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
