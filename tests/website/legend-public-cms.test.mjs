@@ -671,24 +671,6 @@ test('business header navigation projects one canonical page catalog without pre
   }finally{f.close();}
 });
 
-test('canonical public first paint waits for the published v3 document without stale-template flash',()=>{
-  assert.match(businessBuildSource,/data-legend-site="${siteKey}" hidden data-legend-canonical-pending="true"/);
-  assert.match(businessBuildSource,/<noscript><style>html\[hidden\]\{display:block!important\}<\/style><\/noscript>/);
-  assert.match(protectLayoutSource,/data-legend-canonical-pending/);
-  assert.match(source,/function revealCanonicalPublicDocument\(\)/);
-  assert.match(source,/applyDocument\(payload\.document \|\| \{\}\);[\s\S]*revealCanonicalPublicDocument\(\)/);
-  assert.match(source,/if \(!response\.ok\)[\s\S]*revealCanonicalPublicDocument\(\);[\s\S]*return;/);
-  assert.match(source,/function unavailable\(error\)[\s\S]*revealCanonicalPublicDocument\(\)/);
-});
-
-test('static LEGEND HTML explicitly disables stale document caching while assets keep byte-versioned URLs',()=>{
-  assert.match(legendWebConfigSource,/Canonical published HTML is never served from stale cache/);
-  assert.match(legendWebConfigSource,/RESPONSE_Cache_Control/);
-  assert.match(legendWebConfigSource,/no-store, no-cache, must-revalidate/);
-  assert.match(businessBuildSource,/site\.css\?v=\$\{cssVersion\}/);
-  assert.match(businessBuildSource,/legend-public-cms\.js\?v=\$\{cmsVersion\}/);
-});
-
 test('public startup styling has one responsive authority and one palette authority',()=>{
   assert.equal((publicCss.match(/@media\(max-width:980px\)/g)||[]).length,1);
   assert.equal((publicCss.match(/@media\(max-width:650px\)/g)||[]).length,1);
@@ -2412,6 +2394,18 @@ test('duplicate canonical link has independent stable identity and history resto
     f.click('#legend-cms-undo');
     assert.equal(f.w.document.querySelectorAll('main a').length,1);
   } finally { f.close(); }
+});
+
+test('public publication renders without stale-template flash and HTML is never cached',()=>{
+  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\\$\{siteKey\}" hidden>/);
+  assert.match(protectLayoutSource,/<html lang="en" hidden>/);
+  assert.match(protectLayoutSource,/<noscript><style>html\[hidden\]\{display:block!important\}<\/style><\/noscript>/);
+  assert.match(source,/function unavailable\(error\) \{[\s\S]*document\.documentElement\.hidden = false;/);
+  assert.match(source,/fetch\(url, \{ cache: 'no-store' \}\)/);
+  assert.match(businessMiddlewareSource,/CacheControl = "no-store,no-cache,must-revalidate,max-age=0"/);
+  assert.match(legendWebConfigSource,/name="Do not cache published HTML"/);
+  assert.match(legendWebConfigSource,/RESPONSE_Cache_Control/);
+  assert.match(legendWebConfigSource,/no-store, no-cache, must-revalidate, max-age=0/);
 });
 
 test('canonical public design authority uses wider canvas, tighter rhythm, and crisp perimeter accents',()=>{

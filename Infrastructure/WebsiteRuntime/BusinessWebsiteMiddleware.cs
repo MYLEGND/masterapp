@@ -45,7 +45,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
             return;
         }
         if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method)) { context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed; return; }
-        context.Response.Headers.CacheControl = "public,max-age=0,must-revalidate";
+        context.Response.Headers.CacheControl = "no-store,no-cache,must-revalidate,max-age=0";
         context.Response.Headers.XContentTypeOptions = "nosniff";
         context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
         var publicApiBase = (configuration["WebsiteContentApiBaseUrl"] ?? "https://masterapp-protect.azurewebsites.net").TrimEnd('/');

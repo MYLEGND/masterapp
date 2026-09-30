@@ -3470,7 +3470,7 @@
       warning.hidden = false;
       warning.textContent = text;
     }
-    revealCanonicalPublicDocument();
+    document.documentElement.hidden = false;
     return text;
   }
 
@@ -3508,13 +3508,8 @@
     }
     host.querySelector('p').textContent = message + ' Continue through the normal Agent Portal sign-in/approval flow; the portal will mint a new scoped editor ticket.';
     host.querySelector('[data-legend-editor-reauthorize]').href = href;
-    revealCanonicalPublicDocument();
+    document.documentElement.hidden = false;
     return true;
-  }
-
-  function revealCanonicalPublicDocument() {
-    revealCanonicalPublicDocument();
-    document.documentElement.removeAttribute('data-legend-canonical-pending');
   }
 
   function unavailable(error) {
@@ -3524,9 +3519,7 @@
       main.textContent = error.message || 'This website is unavailable.';
       document.body.appendChild(main);
     }
-    // LEGEND and Protect retain the server/static fallback only when the
-    // canonical published projection is unavailable. Never leave a blank page.
-    revealCanonicalPublicDocument();
+    document.documentElement.hidden = false;
   }
 
   let publicRuntimeStarted = false;
@@ -3857,7 +3850,7 @@
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) {
         if (SITE_KEY === 'business') throw new Error('This business website is unavailable.');
-        revealCanonicalPublicDocument();
+        document.documentElement.hidden = false;
         return;
       }
       const payload = await response.json();
@@ -3872,7 +3865,7 @@
       prepareDom();
       applyDocument(payload.document || {});
       preservePreviewNavigation();
-      revealCanonicalPublicDocument();
+      document.documentElement.hidden = false;
     } catch (error) {
       unavailable(error);
       // Public content remains fully usable from canonical defaults.
@@ -6627,7 +6620,7 @@
       if(materializeMode){
         const snapshot=currentMaterializedPage();
         window.parent?.postMessage({type:'legend-site-materialized-page',...snapshot},location.origin);
-        revealCanonicalPublicDocument();
+        document.documentElement.hidden=false;
         return;
       }
 
@@ -6648,7 +6641,7 @@
       installPageSelector();
       renderSignalControls();
       const publishButton = document.getElementById('legend-cms-publish'); if (publishButton && payload.capabilities?.canPublish === false) { publishButton.disabled = true; publishButton.title = 'An owner must publish this draft.'; }
-      revealCanonicalPublicDocument();
+      document.documentElement.hidden = false;
     } catch (error) {
       unavailable(error);
       console.error('[legend-cms]', error);
@@ -6670,7 +6663,7 @@
     prepareDom();
     injectContentStyles();
     applyDocument(renderInput.document || {});
-    revealCanonicalPublicDocument();
+    document.documentElement.hidden = false;
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
       if (!editorMode) void startPublicRuntime();
