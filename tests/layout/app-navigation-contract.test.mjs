@@ -111,7 +111,7 @@ test('every authenticated and shared type=button control resolves to a concrete 
     ...(existsSync(join(ROOT,'Legend-Design'))?walk(join(ROOT,'Legend-Design'),'.js'):[])
   ];
   const corpus=sourceFiles.map(path=>readFileSync(path,'utf8')).join('\n');
-  const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\test('Razor controller/action links resolve to real controller action source',()=>{');
+  const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\]/g,'\\$&');
   const bad=[];
 
   for(const root of viewRoots){
