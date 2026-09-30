@@ -84,6 +84,37 @@ test('Explore drawer has one shared mobile owner with explicit dismissal and scr
   }
 });
 
+test('Explore preserves scrolling and link navigation across every dismissal path',()=>{
+  const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
+  assert.match(navScript,/const syncResponsiveState = \(\) =>/);
+  assert.match(navScript,/closeControl\.hidden = !isMobile\(\)/);
+  assert.match(navScript,/if \(isMobile\(\)\) window\.LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/else window\.LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
+  assert.match(navScript,/window\.addEventListener\('resize', syncResponsiveState/);
+  assert.match(navScript,/window\.addEventListener\('pagehide'[\s\S]*unlockPageScroll/);
+
+  const listHandler=navScript.slice(
+    navScript.indexOf("list.addEventListener('click'"),
+    navScript.indexOf("search?.addEventListener('input'")
+  );
+  assert.match(listHandler,/event\.target\.closest\('\.explore-item'\)[\s\S]*closeDrawer\(\)/);
+  assert.doesNotMatch(listHandler,/preventDefault\(/);
+
+  for(const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml'
+  ]){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const exploreLinks=[...source.matchAll(/<a\b[^>]*class="[^"]*explore-item[^"]*"[^>]*>/g)].map(match=>match[0]);
+    assert(exploreLinks.length>0,file);
+    for(const tag of exploreLinks){
+      assert.match(tag,/(?:href\s*=|asp-controller\s*=)/,file+': '+tag);
+    }
+  }
+});
+
+
 test('Explore mobile sheet stays below the banner and uses a symmetric two-column action grid',()=>{
   const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
   assert.match(css,/@media\(max-width:840px\)[\s\S]*\.explore-overlay\{[\s\S]*top:var\(--legend-modal-clearance-top,0px\)/);
