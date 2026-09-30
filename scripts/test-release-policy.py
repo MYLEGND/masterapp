@@ -108,7 +108,11 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
         class Api:
             def pages(self, path, key=None):
                 self.path = path
-                return [pr]
+                if path == 'commits/' + merged + '/pulls':
+                    return [pr]
+                if path == 'pulls/308/files':
+                    return [{'filename': 'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs'}]
+                raise AssertionError(path)
 
         api = Api()
         with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
@@ -117,7 +121,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
             resolved = self.lifecycle.direct_release_approved_pr(api, head)
 
         self.assertEqual(resolved['number'], 308)
-        self.assertEqual(api.path, 'commits/' + merged + '/pulls')
+        self.assertEqual(api.path, 'pulls/308/files')
 
     def test_chained_control_only_authorizations_resolve_nearest_merged_pr(self):
         head = 'a' * 40
@@ -133,7 +137,11 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
         class Api:
             def pages(self, path, key=None):
                 self.path = path
-                return [pr]
+                if path == 'commits/' + merged + '/pulls':
+                    return [pr]
+                if path == 'pulls/310/files':
+                    return [{'filename': 'Infrastructure/WebsiteEditing/WebsitePlatformController.cs'}]
+                raise AssertionError(path)
 
         def fake_git(*args, **kwargs):
             if args[:4] == ('rev-list', '--parents', '-n', '1'):
@@ -153,7 +161,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
             resolved = self.lifecycle.direct_release_approved_pr(api, head)
 
         self.assertEqual(resolved['number'], 310)
-        self.assertEqual(api.path, 'commits/' + merged + '/pulls')
+        self.assertEqual(api.path, 'pulls/310/files')
 
     def test_chained_release_resolution_rejects_intervening_product_commit(self):
         head = 'a' * 40
