@@ -627,18 +627,6 @@ body.note-self-open{
         grid-column:span 2;
     }
 
-    .uw-actions{
-        display:grid;
-        grid-template-columns:repeat(2,minmax(0,1fr));
-        gap:var(--app-mobile-control-gap);
-        align-items:stretch;
-    }
-
-    .uw-actions .btn{
-        width:100%;
-        min-width:0;
-    }
-
     .lb-filterbar,
     .lb-next-wrap{
         width:100%;
@@ -1359,7 +1347,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 }
 
 @media (max-width: 900px){
-    .lb-row-actions{ grid-template-columns: 1fr; }
     .lb-next-wrap{ justify-content: center; }
 }
 
@@ -1520,19 +1507,6 @@ details.section{
     }
 
     @media (max-width: 900px){
-        #mpShell .hero-actions{
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            width: 100%;
-        }
-
-        #mpShell .hero-action-group{
-            width: 100%;
-        }
-
-        #mpShell .hero-action-group .btn{
-            width: 100%;
-            justify-content: center;
-        }
     }
 
     #mpShell .hero-underwrite{
@@ -1917,9 +1891,6 @@ details.section{
 }
 
 @media (max-width: 720px){
-    .hero-action-group.script-switcher select.btn{
-        width: 100%;
-    }
 }
 
 /* Script switcher label + enhanced affordance */
@@ -7743,40 +7714,6 @@ details.section{
         gap: var(--legend-mobile-gap) !important;
     }
 
-    #rbShell .rb-hero .hero-actions,
-    html.lead-bridge-mobile #rbShell .rb-hero .hero-actions{
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--legend-mobile-gap) !important;
-        width: 100%;
-    }
-
-    #rbShell .hero-action-group,
-    html.lead-bridge-mobile #rbShell .hero-action-group{
-        width: 100%;
-        min-width: 0;
-    }
-
-    #rbShell .hero-action-group.script-switcher,
-    html.lead-bridge-mobile #rbShell .hero-action-group.script-switcher,
-    #rbShell .script-switcher,
-    html.lead-bridge-mobile #rbShell .script-switcher{
-        min-width: 0 !important;
-    }
-
-    #rbShell .script-switcher select.btn,
-    html.lead-bridge-mobile #rbShell .script-switcher select.btn{
-        width: 100% !important;
-        min-width: 0 !important;
-    }
-
-    #rbShell .hero-actions .btn,
-    #rbShell .hero-actions select.btn{
-        min-height: var(--legend-mobile-control-height) !important;
-        padding: 6px 8px !important;
-        font-size: .72rem !important;
-    }
-
     #rbShell .lead-bridge,
     html.lead-bridge-mobile #rbShell .lead-bridge{
         flex: 1 1 auto;
@@ -7837,16 +7774,6 @@ details.section{
 
     #rbShell .lead-field.mobile-allowed .lf-sub{
         font-size: .66rem !important;
-    }
-
-    #rbShell .lb-actions{
-        gap: var(--legend-mobile-gap) !important;
-    }
-
-    #rbShell .lb-actions .btn{
-        min-height: var(--legend-mobile-control-height) !important;
-        padding: 6px 8px !important;
-        font-size: .72rem !important;
     }
 
     #rbShell .lb-actions .lb-dials{
