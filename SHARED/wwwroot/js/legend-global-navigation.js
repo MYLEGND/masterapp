@@ -1,43 +1,123 @@
 (() => {
   const breakpoint = 840;
+  const navigationClosers = new Set();
 
-  const closeNavigation = nav => {
-    if (!nav) return;
-    nav.classList.remove('mobile-open');
-    nav.querySelector('[data-legend-nav-toggle]')?.setAttribute('aria-expanded', 'false');
-  };
+  const isMobileViewport = () => window.innerWidth <= breakpoint;
 
-  const closeAllNavigation = () => {
-    document.querySelectorAll('[data-legend-global-nav].mobile-open').forEach(closeNavigation);
+  const closeAllNavigation = except => {
+    navigationClosers.forEach(entry => {
+      if (entry.nav !== except) entry.close();
+    });
   };
 
   document.querySelectorAll('[data-legend-global-nav]').forEach(nav => {
     const toggle = nav.querySelector('[data-legend-nav-toggle]');
-    const groups = Array.from(nav.querySelectorAll('.navbar-left, .navbar-right'));
-    if (!toggle) return;
+    const container = nav.querySelector(':scope > .container-fluid');
+    const left = nav.querySelector('.navbar-left');
+    const right = nav.querySelector('.navbar-right');
+    const drawer = document.getElementById('exploreDrawer');
+    const overlay = document.getElementById('exploreOverlay');
+    if (!toggle || !container) return;
 
-    const close = () => closeNavigation(nav);
+    const panel = document.createElement('div');
+    panel.className = 'legend-mobile-nav-panel';
+    panel.setAttribute('data-legend-mobile-nav-panel', '');
+    panel.setAttribute('aria-label', 'Navigation commands');
+    container.appendChild(panel);
 
-    toggle.addEventListener('click', () => {
-      const isOpen = nav.classList.toggle('mobile-open');
-      toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    const movable = [drawer, left, right].filter(Boolean);
+    const origins = new Map(movable.map(node => [node, {
+      parent: node.parentNode,
+      next: node.nextSibling
+    }]));
+    let mounted = false;
+    const scrollOwner = 'legend-global-navigation';
+
+    const restoreNode = node => {
+      const origin = origins.get(node);
+      if (!origin?.parent) return;
+      if (origin.next && origin.next.parentNode === origin.parent) origin.parent.insertBefore(node, origin.next);
+      else origin.parent.appendChild(node);
+    };
+
+    const mountMobilePanel = () => {
+      if (mounted) return;
+      // The mobile menu has one owner and one scroll region. Explore content is
+      // moved into the same panel rather than opening a second sheet on top.
+      [drawer, left, right].filter(Boolean).forEach(node => panel.appendChild(node));
+      mounted = true;
+      nav.setAttribute('data-legend-mobile-nav-integrated', '');
+      overlay?.classList.remove('open');
+      drawer?.classList.remove('open');
+    };
+
+    const restoreDesktopNavigation = () => {
+      if (!mounted) return;
+      movable.slice().reverse().forEach(restoreNode);
+      mounted = false;
+      nav.removeAttribute('data-legend-mobile-nav-integrated');
+      panel.replaceChildren();
+    };
+
+    const close = ({ restoreFocus = false } = {}) => {
+      const wasOpen = nav.classList.contains('mobile-open');
+      nav.classList.remove('mobile-open');
+      toggle.setAttribute('aria-expanded', 'false');
+      window.LegendModal?.unlockPageScroll?.(scrollOwner);
+      if (wasOpen && restoreFocus) {
+        try { toggle.focus({ preventScroll: true }); } catch { toggle.focus(); }
+      }
+    };
+
+    const open = () => {
+      closeAllNavigation(nav);
+      mountMobilePanel();
+      window.LegendModal?.refreshViewportOffsets?.();
+      nav.classList.add('mobile-open');
+      toggle.setAttribute('aria-expanded', 'true');
+      panel.scrollTop = 0;
+      window.LegendModal?.lockPageScroll?.(scrollOwner);
+    };
+
+    const syncResponsiveState = () => {
+      if (isMobileViewport()) {
+        mountMobilePanel();
+        if (nav.classList.contains('mobile-open')) window.LegendModal?.lockPageScroll?.(scrollOwner);
+      } else {
+        close();
+        restoreDesktopNavigation();
+      }
+    };
+
+    toggle.addEventListener('click', event => {
+      event.preventDefault();
+      if (nav.classList.contains('mobile-open')) close({ restoreFocus: true });
+      else open();
     });
 
-    groups.forEach(group => {
-      group.querySelectorAll('a, button:not([data-bs-toggle])').forEach(control => {
-        control.addEventListener('click', close);
-      });
+    panel.addEventListener('click', event => {
+      const control = event.target.closest?.('a, .explore-item, button:not([data-bs-toggle])');
+      if (!control || control === toggle) return;
+      // Keep dropdown toggles interactive inside the command sheet; navigation
+      // actions dismiss the sheet and restore page scrolling.
+      close();
     });
 
     document.addEventListener('click', event => {
-      if (nav.classList.contains('mobile-open') && !nav.contains(event.target)) close();
+      if (!nav.classList.contains('mobile-open')) return;
+      if (nav.contains(event.target)) return;
+      close();
     });
 
-    window.addEventListener('resize', () => {
-      if (window.innerWidth > breakpoint) close();
-    });
+    window.addEventListener('resize', syncResponsiveState, { passive: true });
+    window.visualViewport?.addEventListener('resize', syncResponsiveState, { passive: true });
+    window.addEventListener('pagehide', () => window.LegendModal?.unlockPageScroll?.(scrollOwner));
 
+    nav.__legendOpenNavigation = open;
+    nav.__legendCloseNavigation = close;
+    navigationClosers.add({ nav, close });
     close();
+    syncResponsiveState();
   });
 
   /*
@@ -75,6 +155,11 @@
   };
 
   const closeDrawer = ({ restoreFocus = false } = {}) => {
+    const ownerNav = trigger.closest('[data-legend-global-nav]');
+    if (isMobile() && ownerNav?.hasAttribute('data-legend-mobile-nav-integrated')) {
+      ownerNav.__legendCloseNavigation?.({ restoreFocus });
+      return;
+    }
     const wasOpen = drawer.classList.contains('open');
     drawer.classList.remove('open');
     overlay.classList.remove('open');
@@ -86,9 +171,12 @@
   };
 
   const openDrawer = () => {
-    // Mobile navigation and Explore are mutually exclusive surfaces. Close the
-    // compact nav first so its command rows can never remain beneath the sheet.
-    closeAllNavigation();
+    const ownerNav = trigger.closest('[data-legend-global-nav]');
+    if (isMobile()) {
+      ownerNav?.__legendOpenNavigation?.();
+      return;
+    }
+    closeAllNavigation(ownerNav);
     window.LegendModal?.refreshViewportOffsets?.();
     drawer.classList.add('open');
     overlay.classList.add('open');
