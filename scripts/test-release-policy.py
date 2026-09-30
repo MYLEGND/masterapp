@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 from release_policy import read_request, staging_only
 
 ROOT = Path(__file__).resolve().parent
@@ -86,6 +87,55 @@ class ReleaseScopeSelection(unittest.TestCase):
             values = output.read_text()
             self.assertIn('website_routing=true', values)
             self.assertIn('"masterapp-website"', values)
+
+
+class DirectReleaseAuthorizationResolution(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('release_lifecycle', ROOT / 'release-lifecycle.py')
+        self.lifecycle = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.lifecycle)
+
+    def test_control_only_authorization_resolves_immediately_preceding_merged_pr(self):
+        head = 'a' * 40
+        merged = 'b' * 40
+        pr = {
+            'number': 308,
+            'merged_at': '2026-09-30T06:01:03Z',
+            'merge_commit_sha': merged,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+
+        class Api:
+            def pages(self, path, key=None):
+                self.path = path
+                return [pr]
+
+        api = Api()
+        with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
+             patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
+                 returncode=0, stdout=f'{head} {merged}\n')):
+            resolved = self.lifecycle.direct_release_approved_pr(api, head)
+
+        self.assertEqual(resolved['number'], 308)
+        self.assertEqual(api.path, 'commits/' + merged + '/pulls')
+
+    def test_direct_release_authorization_rejects_extra_changed_files(self):
+        path = 'Docs/releases/direct-release-request.json'
+        with patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
+                returncode=0, stdout=path + '\nAgentPortal/Program.cs\n')):
+            self.assertFalse(self.lifecycle.direct_only_request('c' * 40))
+
+    def test_direct_release_resolution_rejects_merge_authorization_commit(self):
+        head = 'd' * 40
+
+        class Api:
+            def pages(self, path, key=None):
+                raise AssertionError('ambiguous authorization lineage must fail before GitHub lookup')
+
+        with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
+             patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
+                 returncode=0, stdout=f'{head} {'e' * 40} {'f' * 40}\n')):
+            self.assertIsNone(self.lifecycle.direct_release_approved_pr(Api(), head))
 
 
 class ApprovedReleaseResumePolicy(unittest.TestCase):
