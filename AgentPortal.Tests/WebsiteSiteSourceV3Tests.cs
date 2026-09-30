@@ -564,6 +564,43 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void SiteSource_DraftProtectionAllowsIncompleteFreeCtaUntilPublishReadiness()
+    {
+        var baseline = CanonicalDocument();
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var hero = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
+        hero.Children.Add(new WebsiteCompositionNode
+        {
+            Id = "home.hero.unfinished",
+            Type = "cta",
+            Tag = "a",
+            Text = "Choose action",
+            Href = null,
+            ActionKey = null
+        });
+
+        var proposed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+
+        var draft = WebsiteSiteSource.Parse(
+            proposed,
+            baseline,
+            BusinessActions(),
+            validateCanonical: false);
+        Assert.Contains(
+            draft.Document.Pages["/"].Composition[0].Children,
+            node => node.Id == "home.hero.unfinished");
+
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSiteSource.Parse(proposed, baseline, BusinessActions()));
+    }
+
+    [Fact]
     public void SiteSource_UsesDedicatedProtectionExceptionOnlyForProtectedAuthorityChanges()
     {
         var baseline = CanonicalDocument();
