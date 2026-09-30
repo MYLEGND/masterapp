@@ -71,7 +71,8 @@ public static class WebsiteSiteSource
     public static WebsiteSiteSourceParseResult Parse(
         string sourceText,
         WebsiteContentDocument baseline,
-        IReadOnlyList<WebsiteCallToActionOption> ctaCatalog)
+        IReadOnlyList<WebsiteCallToActionOption> ctaCatalog,
+        bool validateCanonical = true)
     {
         if (string.IsNullOrWhiteSpace(sourceText) || sourceText.Length > MaxSourceCharacters)
             throw new ArgumentException("LEGEND Site Source must contain 1-2,000,000 characters.");
@@ -167,7 +168,8 @@ public static class WebsiteSiteSource
         }
 
         output = WebsiteContentSanitizer.Sanitize(output);
-        ValidateCanonical(output, ctaCatalog);
+        if (validateCanonical)
+            ValidateCanonical(output, ctaCatalog);
 
         var serialized = Serialize(output);
         var reparsed = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(serialized, SourceOptions)
