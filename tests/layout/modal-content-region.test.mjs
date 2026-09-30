@@ -435,7 +435,7 @@ test('canonical modal surface owns shielding and can never be covered by a body-
   const clients=readFileSync(new URL('../../AgentPortal/wwwroot/css/clients-index.css',import.meta.url),'utf8');
 
   assert.match(css,/--legend-modal-backdrop:\s*rgba\(2, 8, 23, 0\.88\)/);
-  assert.match(css,/\[data-legend-modal-surface\]\[data-legend-modal-open="true"\] \{[\s\S]*background:\s*var\(--legend-modal-backdrop\)[\s\S]*isolation:\s*isolate/);
+  assert.match(css,/\[data-legend-modal-surface\]\[data-legend-modal-open="true"\]:has\(> \[data-legend-modal-panel\]\) \{[\s\S]*background:\s*var\(--legend-modal-backdrop\)[\s\S]*isolation:\s*isolate/);
   assert.match(css,/\[data-legend-modal-surface\] > \[data-legend-modal-panel\] \{[\s\S]*z-index:\s*1/);
   assert.match(css,/\[data-legend-modal-surface\] > \[data-legend-modal-backdrop\] \{[\s\S]*z-index:\s*0[\s\S]*background:\s*transparent/);
   assert.match(css,/legend-modal-active > \.modal-backdrop \{[\s\S]*opacity:\s*0 !important[\s\S]*pointer-events:\s*none !important/);
