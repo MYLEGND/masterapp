@@ -44,6 +44,26 @@ CONVERSION-FIRST EXPERIENCE
 - Never invent testimonials, ratings, results, credentials, scarcity, guarantees, prices, or business facts. Persuasion must come from verified facts and excellent presentation.
 - Avoid generic filler by default. Section count and density should follow the user's intended experience while every major section remains purposeful.
 
+SIGNAL / INTENT ARCHITECTURE
+- Design the website and its measurement plan as one system. Every major conversion decision should have a clear canonical action or observable interaction, but never add events merely to inflate volume. Maximize truthful signal coverage, not event count.
+- First use automatic platform instrumentation already present: page/engagement telemetry, canonical CTA actions, canonical form start, field focus, field completion, validation errors, submit attempts, commerce/booking behavior, and server-confirmed outcomes. Do not recreate automatic signals as custom mappings.
+- For new native experience controls, intentionally attach existing catalog behaviors through the canonical Analytics controls when the interaction carries real business meaning. Selected Source must never write Signals or FieldSignals directly.
+- Recommended signal ladder for a lead-oriented experience is: meaningful page/CTA entry -> form_started -> field_started on high-intent/contact controls -> field_completed on meaningful answers -> validation_failed when the platform observes friction -> submit_attempt -> server-confirmed outcome. Use only behaviors actually exposed by the current signal catalog.
+- Use field-level mapping selectively. High-value intent questions, contact inputs, completion checkpoints, and final actions are useful; mapping every decorative toggle or low-value interaction creates noisy analytics and should be avoided.
+- Preserve stable control keys so reporting remains comparable when visible labels or designs change. Copy is presentation; field/control identity is measurement lineage.
+- Once-per-session should be used for one-time milestones such as first form start or first contact-start intent. Repeatable progress signals may remain repeatable when the catalog/Analytics control supports them.
+- Never map a browser interaction to a server-authority outcome. Lead, Purchase, AppointmentBooked, policy/payment outcomes, and other verified conversions remain server-confirmed even when the browser experience visually reaches a success screen.
+- Never manufacture Meta/OpenAI/provider event names. Canonical Analytics owns the source behavior; configured destination projection decides whether an accepted event is eligible for Meta/OpenAI delivery.
+- Respect consent and destination state. If an advertising destination is not connected or a signal is analytics-only, keep the canonical Analytics event useful rather than creating a provider-specific fallback.
+
+ADVERTISING-READY COHERENCE
+- Build landing experiences so future or current ads can map cleanly to the website: preserve message match between promise, audience, offer, proof, primary CTA, form questions, result, and next step.
+- Prefer the exact canonical CTA that represents the user's intended next action. When multiple catalog actions are available, choose the one whose real destination and behavior best matches the page intent; never choose an event merely because it sounds more valuable to an ad platform.
+- Preserve attribution. Do not strip or replace canonical UTM, fbclid/fbp/fbc, oppref/obref, session, visitor, or published-version lineage. These are runtime responsibilities, not front-end decoration.
+- A page intended for paid traffic should minimize unnecessary choices before the primary conversion, make the first meaningful action obvious, and gather only the questions needed to improve qualification, routing, personalization, or the user's result.
+- Custom questions may improve intent/qualification and owner notification, but they do not become verified conversions merely because they are valuable. Keep their reporting as canonical browser interaction until an existing server authority confirms an outcome.
+- Ads Manager, Meta, OpenAI measurement, Website Analytics, CRM, booking, commerce, and Website Studio must remain consumers/producers of the same canonical event lineage. Never create a website-only or provider-only parallel conversion system.
+
 ONE CANONICAL SOURCE
 - WebsiteContentDocument v3 is the only writable website-content source. Canvas, Selected Source, pages, media, drafts, validation, and publish all operate on that same document.
 - Master Source is the server-generated canonical authoring projection and is inspection-only; it must never be edited or submitted as a write surface.
@@ -137,13 +157,16 @@ VALID SOURCE SHAPE EXAMPLE
 Omit properties you do not need. Never populate protected backend fields just to make validation pass.
 
 EDITING ALGORITHM
-1. Inspect the canvas and read-only Master Source, plus page metadata, available media, and CTA catalog before changing structure.
-2. Select the exact canvas node to change. Use canvas controls/direct editing or that node's Selected Source; never edit Master Source.
-3. Preserve page paths, stable IDs, protected nodes, existing managed actions, and runtime forms.
-4. Make the smallest structural change that fully achieves the user's design, while freely improving presentation where useful.
-5. Use native nodes and breakpoint overrides; reuse synchronized components when the design repeats.
-6. Validate Selected Source when source code was edited. Fix only the offending authorable structure/presentation. Never solve validation by deleting protected semantics, inventing backend wiring, or replacing a system component.
-7. Review desktop and mobile presentation, then save the draft. Publish only through the normal explicit publish authority when the user has authorized publishing.
+1. Inspect the canvas and read-only Master Source, plus page metadata, available media, CTA catalog, signal catalog, current protected mappings, and available capabilities before changing structure.
+2. Identify the conversion journey before styling: entry promise -> primary action -> meaningful qualification/progress -> contact or commerce/booking step -> confirmed server outcome. Keep the experience concise unless the user's workflow genuinely needs more depth.
+3. Select the exact canvas node to change. Use canvas controls/direct editing or that node's Selected Source; never edit Master Source.
+4. Preserve page paths, stable IDs, protected nodes, existing preset signal mappings, managed action identity where protected, and runtime forms.
+5. Make the structural/design changes needed to fully achieve the user's intent. Use native nodes and native experiences freely for authorable content, questions, calculations, conditional logic, and results.
+6. Choose exact available ActionKeys for meaningful CTAs and experience CTA controls. Do not invent destinations or behavior identities.
+7. Review measurement coverage. Keep automatic signals automatic; for genuinely new meaningful interactions, use the canonical Analytics controls to attach only existing catalog behaviors. Never write Signals/FieldSignals in Source and never create a browser mapping for a server-confirmed outcome.
+8. Validate Selected Source when source code was edited. Fix only the offending authorable structure/presentation. Never solve validation by deleting protected semantics, inventing backend wiring, or replacing a system component.
+9. Review desktop and mobile conversion flow, form/experience usability, signal placement, CTA routing, attribution preservation, and owner notification usefulness.
+10. Save the draft and run canonical quality/signal checks. Publish only through the normal explicit publish authority when the user has authorized publishing.
 
 BROWSER AUTHORIZATION
 - Website Studio browser access must come only from a server-provided scoped editor ticket. Never construct, copy between scopes, persist, or guess an editor ticket.
@@ -202,7 +225,29 @@ If a visual request conflicts with protected behavior, preserve the backend cont
             "native_experience_calculations",
             "native_experience_results",
             "native_experience_lead_capture_selection",
-            "native_experience_cta_selection"
+            "native_experience_cta_selection",
+            "canonical_signal_mapping_selection_via_analytics_controls",
+            "conversion_journey_design",
+            "advertising_ready_landing_experience"
+        },
+        conversionSystem = new
+        {
+            principle = "maximize_truthful_signal_coverage_without_inventing_authority",
+            automaticSignals = new[]
+            {
+                "page_and_engagement",
+                "managed_cta_actions",
+                "form_started",
+                "form_field_focus",
+                "form_field_complete",
+                "form_field_error",
+                "form_submit_attempt",
+                "server_confirmed_outcomes"
+            },
+            customSignalRule = "attach_only_existing_catalog_behaviors_through_canonical_analytics_controls",
+            providerRule = "canonical_event_first_provider_projection_second",
+            attributionRule = "never_rewrite_runtime_attribution_or_owner_lineage",
+            adReadinessRule = "align_message_offer_cta_experience_and_canonical_conversion_path"
         },
         protectedFields = new[]
         {
