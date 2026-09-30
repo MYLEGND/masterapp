@@ -289,12 +289,31 @@
       .filter(node => !isRetiredTemplateDecorationNode(node));
   }
 
+  function applyCanonicalHeaderTypographyDefaults(node) {
+    if (!node || typeof node!=='object') return node;
+    node.style ||= {};
+    const tag=String(node.tag || '').toLowerCase();
+    const isBrandTitle=
+      node.systemBinding==='business_name' ||
+      (SITE_KEY==='legend' && tag==='strong' && String(node.text || '').trim()==='LEGEND®');
+    if(isBrandTitle){
+      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=3.5;
+      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
+    }
+    if(node.systemKey==='primary_navigation'){
+      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=1.6;
+      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
+    }
+    return node;
+  }
+
   function normalizeHeaderComposition(input) {
     const roots=normalizeCompositionNodes(input);
     let primarySeen=false;
     const clean=nodes => {
       const result=[];
       for(const node of nodes || []) {
+        applyCanonicalHeaderTypographyDefaults(node);
         const classes=String(node?.className || '').split(/\s+/).filter(Boolean);
         const primary=node?.systemKey==='primary_navigation';
         const templateNav=!primary && String(node?.tag || '').toLowerCase()==='nav' && classes.includes('nav');
