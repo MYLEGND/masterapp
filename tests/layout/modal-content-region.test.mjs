@@ -132,7 +132,10 @@ test('canonical mobile action authority is explicit and cannot capture unrelated
   const authorityEnd=css.indexOf('One close/collapse glyph everywhere',authorityStart);
   assert(authorityStart>=0 && authorityEnd>authorityStart);
   const authority=css.slice(authorityStart,authorityEnd);
+  const actionAuthorityEnd=css.indexOf('html[data-legend-modal-region] body.legend-app .modal .modal-header',authorityStart);
+  const actionAuthority=css.slice(authorityStart,actionAuthorityEnd);
 
+  assert.doesNotMatch(actionAuthority,/!important/);
   assert.match(authority,/\.client-create-actions/);
   assert.match(authority,/\.dashboard-page-shell \.search-actions/);
   assert.match(authority,/\.drawer\.crm-qv-shell \.drawer-top-actions/);
