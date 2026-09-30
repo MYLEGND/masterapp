@@ -192,6 +192,24 @@ test('feature styles cannot reintroduce competing mobile action-stack authority'
   }
 });
 
+test('feature styles cannot reintroduce mobile modal scroll or sticky-shell authority',()=>{
+  const booking=readFileSync(new URL('../../AgentPortal/wwwroot/css/qv-booking.css',import.meta.url),'utf8');
+  const scripts=readFileSync(new URL('../../AgentPortal/wwwroot/css/scripts-rebuttals.css',import.meta.url),'utf8');
+  const proposal=readFileSync(new URL('../../AgentPortal/wwwroot/css/workstation-home-proposal.css',import.meta.url),'utf8');
+  const founderAi=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+
+  assert.doesNotMatch(booking,/@media \(max-width:1100px\)[\s\S]*\.qv-booking-modal-shell \.modal-content\s*\{[^}]*overflow-y:\s*auto/);
+  assert.doesNotMatch(scripts,/@media \(max-width: 900px\)[\s\S]*\.proposal-dialog \.uw-head[^\{]*\{[^}]*position:\s*sticky/);
+  assert.doesNotMatch(proposal,/@media \(max-width: 900px\)[\s\S]*#proposalDialog \.hp-dialog-head\s*\{[^}]*position:\s*sticky/);
+  assert.doesNotMatch(proposal,/@media \(max-width: 900px\)[\s\S]*#uwDialog \.uw-head\s*\{[^}]*position:\s*sticky/);
+  assert.doesNotMatch(founderAi,/@media \(min-width: 821px\) and \(max-width: 1100px\)/);
+
+  assert.match(shared,/@media \(max-width: 900px\)[\s\S]*\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\][\s\S]*overflow:\s*hidden !important/);
+  assert.match(shared,/@media \(max-width: 900px\)[\s\S]*\.modal \.modal-body\s*\{[\s\S]*overflow-y:\s*auto/);
+  assert.match(shared,/@media \(max-width: 900px\)[\s\S]*\.modal \.modal-header,[\s\S]*position:\s*sticky !important/);
+});
+
 test('Explore close treatment is mobile-only and desktop presentation stays unchanged',()=>{
   const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
   const mobileStart=css.indexOf('@media(max-width:840px)');
