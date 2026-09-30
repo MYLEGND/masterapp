@@ -99,12 +99,23 @@
       else open();
     });
 
+    const dismissAfterActivation = callback => {
+      if (typeof queueMicrotask === 'function') queueMicrotask(callback);
+      else Promise.resolve().then(callback);
+    };
+
     panel.addEventListener('click', event => {
-      const control = event.target.closest?.('a, .explore-item, button:not([data-bs-toggle])');
-      if (!control || control === toggle) return;
-      // Keep dropdown toggles interactive inside the command sheet; navigation
-      // actions dismiss the sheet and restore page scrolling.
-      close();
+      const control = event.target.closest?.('a, .explore-item, button');
+      if (!control || control === toggle || control.matches('[data-bs-toggle]')) return;
+
+      // Never hide the command surface in the middle of the same click dispatch.
+      // Several canonical actions (website management, messaging, modal launchers,
+      // and other delegated controls) bind above this panel at document level.
+      // Dismiss only after the activation has fully propagated so the intended
+      // route/default action or delegated handler always receives the click.
+      dismissAfterActivation(() => {
+        if (nav.isConnected) close();
+      });
     });
 
     document.addEventListener('click', event => {
@@ -213,7 +224,16 @@
   });
 
   list.addEventListener('click', event => {
-    if (event.target.closest('.explore-item')) closeDrawer();
+    if (!event.target.closest('.explore-item')) return;
+
+    const ownerNav = trigger.closest('[data-legend-global-nav]');
+    if (isMobile() && ownerNav?.hasAttribute('data-legend-mobile-nav-integrated')) {
+      // The integrated mobile panel owns dismissal after the click finishes.
+      return;
+    }
+
+    if (typeof queueMicrotask === 'function') queueMicrotask(() => closeDrawer());
+    else Promise.resolve().then(() => closeDrawer());
   });
 
   search?.addEventListener('input', () => {
