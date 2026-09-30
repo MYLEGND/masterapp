@@ -601,366 +601,92 @@ body.note-self-open{
 .uw-actions .btn.btn-ghost{
     color:inherit;
 }
-/* =========================
-   Mobile polish (≤ 720px)
-   ========================= */
+/* Workstation mobile structural rules only.
+   Visual density and chrome are owned later by the canonical mobile block. */
 @media (max-width: 900px){
-    /* Keep mobile minimal for fast dialing */
     #rbShell .rb-link-bar,
     #rbShell .nav-card,
-    #rbShell .content-card{
-        display: none !important;
-    }
-    /* Header controls: Proposal + Underwriting side-by-side, Rebuttals full width */
-    #rbShell .rb-hero .hero-actions{
-        display:grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap:10px;
-        width:100%;
-        align-items: stretch;
-    }
-    #rbShell .rb-hero .hero-action-group{
-        width:100%;
-    }
-    #rbShell .hero-action-group .btn{
-        width:100%;
-        justify-content:center;
-    }
-    #rbShell .hero-action-group.script-switcher{
-        grid-column: 1 / -1;
-    }
-    #rbShell .hero-action-group.script-switcher select.btn{
-        min-width: unset;
-        width:100%;
-    }
-    #rbShell .proposal-menu{
-        left: 0;
-        right: 0;
-        width: 100%;
-        max-width: none;
-    }
-    /* Contact card mobile compaction and horizontal actions */
-    #rbShell .lb-row.lb-row-fields{
-        gap: 8px;
-    }
-    #rbShell .lead-field.mobile-allowed{
-        padding: 10px 12px;
-        gap: 4px;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-label{
-        font-size: 0.78rem;
-        letter-spacing: 0.2px;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-value{
-        font-size: 0.98rem;
-        font-weight: 800;
-    }
-    #rbShell .lb-row.lb-row-actions{
-        gap: 8px;
-    }
-    #rbShell .lb-actions{
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        width: 100%;
-        align-items: center;
-    }
-    #rbShell .lb-actions [data-lb-call],
-    #rbShell .lb-actions [data-lb-text],
-    #rbShell .lb-actions [data-lb-next]{
-        flex: 1 1 auto;
-        min-width: 80px;
-    }
-    #rbShell .lb-actions .btn{
-        width: 100%;
-        justify-content: center;
-        padding: 10px 12px;
-    }
-    #rbShell .lb-meta.mobile-allowed{
-        margin-top: 2px;
-        justify-content: space-between;
-        gap: 6px;
-    }
-    /* Contact fields 2x2 grid on mobile */
-    #rbShell .lb-row.lb-row-fields{
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-    }
-    #rbShell .lead-field.mobile-allowed{
-        padding: 10px 12px;
-        gap: 4px;
-        min-height: 82px;
-        border-radius: 10px;
-        text-overflow: ellipsis;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-label{
-        font-size: 0.76rem;
-        letter-spacing: 0.15px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-value{
-        font-size: 0.96rem;
-        font-weight: 800;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-sub{
-        font-size: 0.78rem;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    /* Mobile dial buttons: reuse main buttons, show in grid */
-    #rbShell .lb-actions{
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-        gap: 8px;
-        width: 100%;
-    }
-    #rbShell .lb-actions .lb-dials{
-        background: #0f172a;
-        color: #f9fafb;
-        border: 1px solid rgba(217,179,90,.35);
-        border-radius: 10px;
-        flex-direction: column;
-        gap: 2px;
-        text-align: center;
-        padding: 8px 10px;
-    }
-    #rbShell .lb-actions .lb-dials .lb-dials-label{
-        font-size: 0.78rem;
-        letter-spacing: 0.2px;
-        color: #d1d5db;
-        white-space: nowrap;
-    }
-    #rbShell .lb-actions .lb-dials .lb-dials-count{
-        font-size: 1rem;
-        font-weight: 900;
-        color: #fef08a;
-    }
-    /* Hide helper/description line on mobile */
-    #rbShell .rb-hero .hero-sub{
-        display: none !important;
-    }
-    #rbShell .rb-hero{
-        padding: 12px 12px;
-    }
-    .rb-wrap{
-        padding-top: 10px;
-    }
-    /* Contact card mobile allowlist */
+    #rbShell .content-card,
     #rbShell .mobile-hidden{
-        display: none !important;
+        display:none !important;
+    }
+
+    #rbShell .rb-hero .hero-sub{
+        display:none !important;
+    }
+
+    #rbShell .proposal-menu{
+        left:0;
+        right:0;
+        width:100%;
+        max-width:none;
     }
 }
 
 @media (max-width: 720px){
-    /* Minimal mobile: hide heavy panels, keep contact controls */
     .uw-grid{
-        grid-template-columns: repeat(1, minmax(0, 1fr));
-        gap:8px 10px;
-    }
-    .uw-span-2{
-        grid-column: 1 / -1;
-    }
-    #rbShell .rb-link-bar,
-    #rbShell .nav-card,
-    #rbShell .content-card{
-        display: none !important;
-    }
-
-    #rbShell .lead-bridge{
-        margin-top: 4px;
-    }
-
-    .lb-row-actions{
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-    }
-
-    .lb-actions{
-        width: 100%;
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 8px;
-    }
-
-    .lb-actions .btn{
-        width: 100%;
-    }
-
-    /* Show filter + next on mobile (single column) */
-    .lb-filterbar{
-        display: flex !important;
-        width: 100%;
-        justify-content: space-between;
-        gap: 8px;
-    }
-    .lb-next-wrap{
-        display: block !important;
-        width: 100%;
-    }
-    .lb-next-wrap .btn{
-        width: 100%;
-    }
-    .lb-btn.next{
-        display: inline-flex !important;
-    }
-
-    /* Mobile allowlist enforcement */
-    #rbShell .mobile-hidden{
-        display: none !important;
-    }
-
-    .rb-wrap, .mp-shell, .scripts-shell{
-        padding: 12px 10px 40px 10px;
-    }
-
-    #rbShell .rb-hero,
-    #mpShell .mp-hero{
-        padding: 14px 14px;
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    #rbShell .rb-hero-top,
-    #mpShell .mp-hero-top{
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-    }
-
-    #rbShell .hero-actions,
-    #mpShell .hero-actions{
-        width: 100%;
-    }
-
-    #rbShell .hero-underwrite,
-    #mpShell .hero-underwrite{
-        width: 100%;
-        justify-content: center;
-    }
-
-    .hero-action-group{
-        width: 100%;
-    }
-
-    .proposal-menu{
-        left: 0;
-        right: auto;
-    }
-
-    #lbStateFilter{
-        border-color: var(--brand);
-    }
-
-    #lbStateFilter option[value=""]{
-        color:#b91c1c;
-        font-weight:900;
-    }
-
-    .lead-bridge{
-        padding: 12px 12px;
-        gap: 10px;
-    }
-
-    .lb-row-fields{
-        display:flex;
-        flex-wrap:wrap;
-        gap:10px;
-    }
-
-    .lead-field{
-        flex: 1 1 calc(50% - 10px);
-        min-width: 160px;
-    }
-
-    .lb-actions{
-        gap:8px;
-    }
-
-    .lb-actions .btn{
-        flex:1 1 calc(50% - 8px);
-        min-width:140px;
-    }
-
-    /* Ultra-small screens: stack action buttons cleanly */
-    @media (max-width: 540px){
-        .lb-actions{
-            flex-direction: column;
-            align-items: stretch;
-        }
-        .lb-actions .btn{
-            flex:1 1 100%;
-            width:100%;
-            min-width:0;
-        }
-        .lb-row-actions{
-            align-items: stretch;
-        }
-        .lb-row-actions .lb-meta{
-            width:100%;
-            display:flex;
-            flex-wrap:wrap;
-            gap:6px 12px;
-        }
-        .rb-link-bar{
-            flex-direction: column;
-            align-items: stretch;
-            gap:8px;
-        }
-        .rb-link-bar .rb-link{
-            width:100%;
-            text-align:center;
-        }
-    }
-
-    .uw-grid{
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap:8px 10px;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:var(--app-mobile-control-gap);
     }
 
     .uw-span-2{
-        grid-column: span 2;
+        grid-column:span 2;
     }
 
     .uw-actions{
-        flex-direction: column;
-        align-items: stretch;
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:var(--app-mobile-control-gap);
+        align-items:stretch;
     }
 
     .uw-actions .btn{
-        width: 100%;
-        min-width: 0;
+        width:100%;
+        min-width:0;
     }
 
-    /* Scripts index: keep list lightweight on phones */
+    .lb-filterbar,
+    .lb-next-wrap{
+        width:100%;
+    }
+
+    .lb-next-wrap{
+        display:block !important;
+    }
+
+    .lb-next-wrap .btn{
+        width:100%;
+    }
+
+    .lb-btn.next{
+        display:inline-flex !important;
+    }
+
     .scripts-hero,
-    .section-head .section-note{ display: none !important; }
-    .library-section .grid{
-        grid-template-columns: 1fr;
-        gap: 12px;
+    .section-head .section-note{
+        display:none !important;
     }
-    .rebuttal-card{
-        padding: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    .rebuttal-card .desc,
-    .rebuttal-card .tag{ display: none; }
-    .rebuttal-card .btn-legend{ width: 100%; text-align: center; }
 
-    .nav-card,
-    .content-card,
-    .prosper-nav-card{
-        width: 100%;
+    .library-section .grid{
+        grid-template-columns:1fr;
+        gap:var(--app-mobile-block-gap);
+    }
+
+    .rebuttal-card{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        padding:var(--app-mobile-card-pad);
+    }
+
+    .rebuttal-card .desc,
+    .rebuttal-card .tag{
+        display:none;
+    }
+
+    .rebuttal-card .btn-legend{
+        width:100%;
+        text-align:center;
     }
 }
 
@@ -972,12 +698,6 @@ body.note-self-open{
     display: none !important;
 }
 
-@media (max-width: 900px){
-    /* Hide helper nav arrows on mobile */
-    #rbShell .nav-rail-arrow{
-        display:none !important;
-    }
-}
 .lead-bridge-mobile #rbShell .lb-meta{
     display: none !important;
 }
