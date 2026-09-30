@@ -430,29 +430,49 @@ test('shared geometry preserves full backdrop and sizes inner Bootstrap/custom p
 });
 
 
-test('canonical modal backdrop shields the page without stacked WebKit blur surfaces',()=>{
+test('canonical modal surface owns shielding and can never be covered by a body-level scrim',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   const clients=readFileSync(new URL('../../AgentPortal/wwwroot/css/clients-index.css',import.meta.url),'utf8');
 
   assert.match(css,/--legend-modal-backdrop:\s*rgba\(2, 8, 23, 0\.88\)/);
-  assert.match(css,/body\.legend-app > \.legend-external-modal-backdrop \{[\s\S]*pointer-events:\s*auto/);
-  assert.match(css,/body\.legend-app\.legend-modal-active,[\s\S]*overflow:\s*hidden/);
-  assert.match(css,/body\.legend-app\.legend-modal-active :is\([\s\S]*backdrop-filter:\s*none !important/);
-  assert.doesNotMatch(css,/\.legend-external-modal-backdrop[\s\S]{0,260}backdrop-filter:\s*blur/);
+  assert.match(css,/\[data-legend-modal-surface\]\[data-legend-modal-open="true"\] \{[\s\S]*background:\s*var\(--legend-modal-backdrop\)[\s\S]*isolation:\s*isolate/);
+  assert.match(css,/\[data-legend-modal-surface\] > \[data-legend-modal-panel\] \{[\s\S]*z-index:\s*1/);
+  assert.match(css,/\[data-legend-modal-surface\] > \[data-legend-modal-backdrop\] \{[\s\S]*z-index:\s*0[\s\S]*background:\s*transparent/);
+  assert.match(css,/legend-modal-active > \.modal-backdrop \{[\s\S]*opacity:\s*0 !important[\s\S]*pointer-events:\s*none !important/);
+  assert.doesNotMatch(css,/legend-external-modal-backdrop/);
 
   assert.match(script,/function hasHiddenAncestor\(/);
-  assert.match(script,/if \(!surface \|\| !surface\.isConnected \|\| hasHiddenAncestor\(surface\)\) return false/);
+  assert.match(script,/function markLocalBackdrops\(/);
+  assert.match(script,/node\.setAttribute\("data-legend-modal-backdrop", ""\)/);
   assert.match(script,/function syncCanonicalBackdrop\(/);
-  assert.match(script,/body\.classList\.toggle\("legend-modal-active", openSurfaces\.length > 0\)/);
+  assert.match(script,/body\.classList\.toggle\("legend-modal-active", openCount > 0\)/);
   assert.match(script,/ensureSurfaceLayer\(surface\)/);
-  const backdropOwner=script.slice(
-    script.indexOf('function syncCanonicalBackdrop'),
-    script.indexOf('function normalizeCloseControl',script.indexOf('function syncCanonicalBackdrop'))
-  );
-  assert.doesNotMatch(backdropOwner,/getBoundingClientRect\(\)/);
+  assert.doesNotMatch(script,/ensureExternalBackdrop|canonicalExternalBackdrop|legend-external-modal-backdrop/);
 
   assert.doesNotMatch(clients,/body\.legend-bootstrap-modal-open \.modal-backdrop\.show/);
   assert.doesNotMatch(clients,/#modalBackdrop\.modal-backdrop\s*\{[\s\S]{0,220}background:/);
+});
+
+test('feature styles no longer own modal dimming or full-screen backdrop blur',()=>{
+  const checks=[
+    ['AgentPortal/wwwroot/css/website-analytics.css',/\.wa-standalone-modal\s*\{[^}]*background:|\.wa-standalone-modal\s*\{[^}]*backdrop-filter:/],
+    ['AgentPortal/wwwroot/css/clients-index.css',/\.actions-hub-modal,[\s\S]*?backdrop-filter:|\.actions-hub-modal\.modal,[\s\S]{0,280}?background:\s*rgba\(4, 10, 24/],
+    ['AgentPortal/wwwroot/css/home-command-page.css',/\.home-clients-backdrop,[\s\S]{0,220}?(?:background:|backdrop-filter:)/],
+    ['AgentPortal/wwwroot/css/scripts-rebuttals.css',/\.proposal-overlay\s*\{[^}]*background:|\.proposal-overlay\s*\{[^}]*backdrop-filter:|#captureDecisionModal\.legend-popout-modal\s*\{[^}]*backdrop-filter:/],
+    ['AgentPortal/wwwroot/css/workstation-home-proposal.css',/#proposalOverlay\.hp-overlay\{[^}]*background:|#proposalOverlay\.hp-overlay\{[^}]*backdrop-filter:|\.ws-client-picker-overlay\s*\{[^}]*backdrop-filter:|#uwOverlay\s*\{[^}]*backdrop-filter:/],
+    ['SHARED/wwwroot/css/legend-finance-shared.css',/\.finance-support-backdrop\s*\{[^}]*background:|\.expense-lens-week-panel-backdrop\s*\{[^}]*backdrop-filter:|\.wf-chart-modal-backdrop\s*\{[^}]*background:|\.savings-illustration-backdrop\s*\{[^}]*backdrop-filter:/]
+  ];
+  for(const [path,pattern] of checks){
+    const source=readFileSync(new URL('../../'+path,import.meta.url),'utf8');
+    assert.doesNotMatch(source,pattern,path);
+  }
+
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  for(const pattern of [
+    /\.home-focus-backdrop\s*\{[^}]*background:/,
+    /\.scripture-modal\s*\{[^}]*backdrop-filter:/,
+    /\.messaging-command-center-modal\s*\{[^}]*backdrop-filter:/
+  ]) assert.doesNotMatch(shared,pattern);
 });
 
 test('mobile sheet behavior is globally owned and uses viewport-safe geometry',()=>{
