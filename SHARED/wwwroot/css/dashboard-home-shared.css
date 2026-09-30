@@ -4186,6 +4186,19 @@ textarea.client-create-notes {
         line-height: 1.08;
     }
 
+    .factfinder-page-shell :is(.wizard-actions, .repeater-actions, .ff-card-actions) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--legend-mobile-gap);
+        align-items: stretch;
+    }
+
+    .factfinder-page-shell :is(.wizard-actions, .repeater-actions, .ff-card-actions) .btn {
+        width: 100%;
+        min-width: 0;
+        justify-content: center;
+    }
+
     .legend-connect-page .legend-connect-metrics--three,
     .legend-connect-page .legend-connect-metrics--four,
     .legend-connect-page .legend-connect-metrics--five,
