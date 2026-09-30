@@ -24,11 +24,11 @@
    the existing Bootstrap/custom dialog controller. No fixed banner heights. */
 html[data-legend-modal-region] body [data-legend-modal-surface] {
     box-sizing: border-box;
-    padding: var(--legend-modal-area-start) var(--legend-modal-safe-margin) var(--legend-modal-area-end);
+    padding: 0px var(--legend-modal-safe-margin) 0px;
 }
 html[data-legend-modal-region] body [data-legend-modal-panel] {
     min-height: 0;
-    max-height: var(--legend-modal-safe-height);
+    max-height: 100dvh;
     overflow: auto;
 }
 html[data-legend-modal-region] body [data-legend-modal-panel]:not(.modal-dialog) {
@@ -37,13 +37,13 @@ html[data-legend-modal-region] body [data-legend-modal-panel]:not(.modal-dialog)
 html[data-legend-modal-region] body .modal > .modal-dialog {
     margin: 0 auto;
     min-height: 0;
-    max-height: var(--legend-modal-safe-height);
+    max-height: 100dvh;
 }
 html[data-legend-modal-region] body .modal > .modal-dialog-scrollable {
-    height: var(--legend-modal-safe-height);
+    height: 100dvh;
 }
 html[data-legend-modal-region] body .modal > .modal-dialog-centered {
-    min-height: var(--legend-modal-safe-height);
+    min-height: 100dvh;
 }
 html[data-legend-modal-region] body .modal .modal-body {
     min-height: 0;
@@ -246,23 +246,43 @@ html[data-legend-modal-region] body .modal .modal-body {
 
 @media (max-width: 900px) {
     /*
-     * Canonical compact modal chrome. Behavior, IDs, data hooks and feature
-     * content stay untouched; this block owns only authenticated mobile UI.
+     * Canonical authenticated mobile modal authority.
+     *
+     * Every discovered user-facing modal/overlay owns the full phone viewport.
+     * Desktop dialog widths/heights are discarded on mobile. The page behind is
+     * locked by legend-modal.js; modal content scrolls internally.
      */
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface] {
-        padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end);
+        position: fixed !important;
+        inset: 0 !important;
+        top: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        box-sizing: border-box !important;
+        width: 100vw !important;
+        max-width: 100vw !important;
+        min-width: 0 !important;
+        height: 100dvh !important;
+        min-height: 100dvh !important;
+        max-height: 100dvh !important;
+        margin: 0 !important;
+        padding:
+            env(safe-area-inset-top)
+            env(safe-area-inset-right)
+            env(safe-area-inset-bottom)
+            env(safe-area-inset-left) !important;
+        overflow: hidden !important;
+        overscroll-behavior: none !important;
+        background: color-mix(in srgb, var(--legend-mobile-surface-deep) 96%, #000 4%) !important;
+        z-index: 5200 !important;
     }
 
-    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] {
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface],
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal)[data-legend-modal-open="true"] {
         display: flex !important;
-        align-items: flex-start;
-        justify-content: center;
-    }
-
-    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) {
-        align-items: flex-start !important;
-        justify-content: center !important;
-        padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end) !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
     }
 
     /*
@@ -270,16 +290,16 @@ html[data-legend-modal-region] body .modal .modal-body {
      * same top-sheet geometry on phones. Desktop presentation remains feature-owned.
      */
     html[data-legend-modal-region] body.legend-app .ai-drawer[data-legend-modal-surface] {
-        top: var(--legend-modal-area-start) !important;
+        top: 0px !important;
         right: 8px !important;
         bottom: auto !important;
         left: 8px !important;
         width: auto !important;
         min-width: 0 !important;
         max-width: none !important;
-        height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        height: 100dvh !important;
         min-height: 0 !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        max-height: 100dvh !important;
         border: 1px solid var(--legend-mobile-gold) !important;
         border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius) !important;
         background: var(--legend-mobile-surface) !important;
@@ -311,7 +331,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     html[data-legend-modal-region] body.legend-app
     :is(#proposalMenu.hp-proposal-menu, #uwMenu.proposal-menu, #rbShell .hp-proposal-menu, #rbShell .proposal-menu):not([hidden]) {
         position: fixed !important;
-        top: var(--legend-modal-area-start) !important;
+        top: 0px !important;
         right: 8px !important;
         bottom: auto !important;
         left: 8px !important;
@@ -319,7 +339,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         min-width: 0 !important;
         max-width: none !important;
         height: auto !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        max-height: 100dvh !important;
         margin: 0 !important;
         padding: 7px 10px 10px !important;
         overflow: hidden !important;
@@ -410,7 +430,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     html[data-legend-modal-region] body.legend-app .expense-lens-week-panel-backdrop {
         align-items: flex-start !important;
         justify-content: center !important;
-        padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end) !important;
+        padding: 0px 8px 0px !important;
     }
 
     html[data-legend-modal-region] body.legend-app .expense-lens-week-panel {
@@ -418,7 +438,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         max-width: 100% !important;
         min-height: 0 !important;
         height: auto !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        max-height: 100dvh !important;
         margin: 0 !important;
         padding: 0 !important;
         overflow-x: hidden !important;
@@ -447,14 +467,14 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)) {
-        top: var(--legend-modal-area-start) !important;
+        top: 0px !important;
         right: 8px !important;
         bottom: auto !important;
         left: 8px !important;
         width: auto !important;
         max-width: none !important;
         height: auto !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        max-height: 100dvh !important;
         margin: 0 !important;
         transform: none !important;
         overflow: hidden !important;
@@ -466,42 +486,52 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app .modal > .modal-dialog[data-legend-modal-panel] {
+        display: flex !important;
+        flex: 1 1 auto !important;
+        flex-direction: column !important;
         width: 100% !important;
         max-width: 100% !important;
+        min-width: 0 !important;
         min-height: 0 !important;
-        height: auto !important;
-        max-height: var(--legend-modal-safe-height) !important;
+        height: 100% !important;
+        max-height: none !important;
         margin: 0 !important;
         padding: 0 !important;
-        transform: none;
+        transform: none !important;
     }
 
     html[data-legend-modal-region] body.legend-app .modal > .modal-dialog > .modal-content[data-legend-modal-panel],
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] {
+        position: relative !important;
+        display: flex !important;
+        flex: 1 1 auto !important;
+        flex-direction: column !important;
         width: 100% !important;
         max-width: 100% !important;
+        min-width: 0 !important;
         min-height: 0 !important;
-        height: auto !important;
-        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        height: 100% !important;
+        max-height: none !important;
         margin: 0 !important;
         padding: 0 !important;
         overflow: hidden !important;
-        border: 1px solid var(--legend-mobile-gold) !important;
-        border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius) !important;
+        border: 0 !important;
+        border-radius: 0 !important;
         background: var(--legend-mobile-surface) !important;
         color: var(--legend-mobile-text) !important;
-        box-shadow: 0 14px 32px #0007 !important;
+        box-shadow: none !important;
     }
 
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] {
         overflow-x: hidden !important;
         overflow-y: auto !important;
+        overscroll-behavior: contain !important;
+        touch-action: pan-y;
         -webkit-overflow-scrolling: touch;
-        overscroll-behavior: contain;
     }
 
     html[data-legend-modal-region] body.legend-app .messaging-command-center-window[data-legend-modal-panel] {
-        height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        height: 100dvh !important;
     }
 
     html[data-legend-modal-region] body.legend-app .modal .modal-header,
@@ -549,6 +579,54 @@ html[data-legend-modal-region] body .modal .modal-body {
         padding: 7px 8px;
         border-radius: 8px;
         font-size: 16px;
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control {
+        position: relative;
+        display: inline-grid !important;
+        flex: 0 0 38px !important;
+        width: 38px !important;
+        max-width: 38px !important;
+        min-width: 38px !important;
+        height: 38px !important;
+        min-height: 38px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        place-items: center;
+        border: 1px solid var(--legend-mobile-gold) !important;
+        border-radius: 999px !important;
+        background: var(--legend-mobile-surface-deep) !important;
+        background-image: none !important;
+        box-shadow: 0 8px 22px #0005 !important;
+        color: transparent !important;
+        font-size: 0 !important;
+        opacity: 1 !important;
+        cursor: pointer;
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control::before,
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control::after {
+        position: absolute;
+        width: 17px;
+        height: 2px;
+        border-radius: 999px;
+        background: var(--legend-mobile-text);
+        content: "";
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control::before {
+        transform: rotate(45deg);
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-close-control::after {
+        transform: rotate(-45deg);
+    }
+
+    html[data-legend-modal-region] body.legend-app .legend-modal-generated-close {
+        position: absolute !important;
+        top: max(8px, env(safe-area-inset-top)) !important;
+        right: max(8px, env(safe-area-inset-right)) !important;
+        z-index: 8 !important;
     }
 
     /*
@@ -888,12 +966,12 @@ html[data-legend-modal-region] body .modal .modal-body {
     html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet] {
         top: auto;
         right: 0;
-        bottom: var(--legend-modal-area-end);
+        bottom: 0px;
         left: 0;
         width: 100%;
         max-width: none;
-        height: var(--legend-modal-safe-height);
-        max-height: var(--legend-modal-safe-height);
+        height: 100dvh;
+        max-height: 100dvh;
         margin: 0;
         border: 1px solid var(--legend-mobile-gold);
         border-radius: var(--legend-mobile-radius) var(--legend-mobile-radius) 0 0;
