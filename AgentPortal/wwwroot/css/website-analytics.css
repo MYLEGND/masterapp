@@ -4541,6 +4541,7 @@ body {
 
 /* Canonical Website Analytics modal system.
    Event Map visual language is the single shell authority for every modal. */
+@media (min-width:901px) {
 .wa-modal-dialog {
     width: min(1280px, calc(100vw - 2rem));
     max-width: 1280px;
@@ -4551,6 +4552,7 @@ body {
 .wa-modal-dialog.wa-modal-dialog-compact {
     width: min(720px, calc(100vw - 2rem));
     max-width: 720px;
+}
 }
 
 .wa-modal-shell {
@@ -4984,6 +4986,7 @@ body {
     display: none !important;
 }
 
+@media (min-width:901px) {
 .wa-standalone-modal > .wa-modal-dialog {
     width: min(1180px, 100%);
     margin: 0;
@@ -4993,6 +4996,7 @@ body {
     display: flex;
     flex-direction: column;
     max-height: calc(100dvh - 2rem);
+}
 }
 
 .wa-standalone-modal .wa-modal-body {
