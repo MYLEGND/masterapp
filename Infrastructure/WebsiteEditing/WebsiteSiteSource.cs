@@ -469,7 +469,7 @@ public static class WebsiteSiteSource
     {
         var copy = Clone(source);
         copy.Signals = [];
-        copy.FieldSignals = new Dictionary<string, List<WebsiteSignalBinding>>(StringComparer.Ordinal);
+        copy.FieldSignals = null!;
 
         // Source is the public authoring projection, not a backend wiring dump.
         // Server-owned authority is restored by stable node ID during parse.
