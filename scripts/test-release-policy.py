@@ -105,19 +105,29 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
             'base': {'ref': self.lifecycle.APPROVED},
         }
 
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                return SimpleNamespace(returncode=0, stdout=f'{head} {merged}\n')
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
         class Api:
             def pages(self, path, key=None):
                 self.path = path
-                return [pr]
+                if path == 'commits/' + merged + '/pulls':
+                    return [pr]
+                if path == 'pulls/308/files':
+                    return [{'filename': 'SHARED/wwwroot/css/dashboard-home-shared.css'}]
+                return []
 
         api = Api()
         with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
-             patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
-                 returncode=0, stdout=f'{head} {merged}\n')):
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
             resolved = self.lifecycle.direct_release_approved_pr(api, head)
 
         self.assertEqual(resolved['number'], 308)
-        self.assertEqual(api.path, 'commits/' + merged + '/pulls')
+        self.assertEqual(api.path, 'pulls/308/files')
 
     def test_chained_control_only_authorizations_resolve_nearest_merged_pr(self):
         head = 'a' * 40
@@ -133,7 +143,11 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
         class Api:
             def pages(self, path, key=None):
                 self.path = path
-                return [pr]
+                if path == 'commits/' + merged + '/pulls':
+                    return [pr]
+                if path == 'pulls/310/files':
+                    return [{'filename': 'AgentPortal/wwwroot/css/clients-index.css'}]
+                return []
 
         def fake_git(*args, **kwargs):
             if args[:4] == ('rev-list', '--parents', '-n', '1'):
@@ -153,7 +167,43 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
             resolved = self.lifecycle.direct_release_approved_pr(api, head)
 
         self.assertEqual(resolved['number'], 310)
-        self.assertEqual(api.path, 'commits/' + merged + '/pulls')
+        self.assertEqual(api.path, 'pulls/310/files')
+
+    def test_architecture_product_validation_accepts_only_release_policy_failure(self):
+        run = {'id': 77, 'status': 'completed', 'conclusion': 'failure'}
+        steps = [
+            {'name': name, 'conclusion': 'success'}
+            for name in self.lifecycle.ARCHITECTURE_PRODUCT_STEPS
+        ]
+        steps.append({
+            'name': 'Verify consolidated release scope and routing policy',
+            'conclusion': 'failure',
+        })
+
+        class Api:
+            def pages(self, path, key=None):
+                self.path = path
+                return [{'name': 'validate', 'steps': steps}]
+
+        self.assertTrue(self.lifecycle.architecture_product_validation(Api(), run))
+
+    def test_architecture_product_validation_rejects_failed_product_step(self):
+        run = {'id': 78, 'status': 'completed', 'conclusion': 'failure'}
+        steps = [
+            {'name': name, 'conclusion': 'success'}
+            for name in self.lifecycle.ARCHITECTURE_PRODUCT_STEPS
+        ]
+        steps[0]['conclusion'] = 'failure'
+        steps.append({
+            'name': 'Verify consolidated release scope and routing policy',
+            'conclusion': 'failure',
+        })
+
+        class Api:
+            def pages(self, path, key=None):
+                return [{'name': 'validate', 'steps': steps}]
+
+        self.assertFalse(self.lifecycle.architecture_product_validation(Api(), run))
 
     def test_chained_release_resolution_rejects_intervening_product_commit(self):
         head = 'a' * 40
