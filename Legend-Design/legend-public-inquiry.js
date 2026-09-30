@@ -146,8 +146,8 @@
   }
 
   function bindInquiryForms() {
+    document.querySelectorAll('[data-website-inquiry]:not([data-preview])').forEach(bindInquiryForm);
     document.querySelectorAll(
-      '[data-website-inquiry]:not([data-preview]),' +
       '[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'
     ).forEach(bindInquiryForm);
   }
