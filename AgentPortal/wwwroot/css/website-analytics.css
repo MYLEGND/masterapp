@@ -5023,8 +5023,7 @@ body {
 }
 
 @media (max-width: 991.98px) {
-    .wa-modal-header-actions,
-    .wa-modal-toolbar {
+    .wa-modal-header-actions {
         justify-content: flex-start;
     }
 }
@@ -5046,26 +5045,7 @@ body {
     .wa-modal-body {
         gap: .5rem;
     }
-
-    .wa-modal-toolbar {
-        width: 100%;
-        align-items: stretch;
-    }
-
-    .wa-modal-toggle-group {
-        width: 100%;
-        display: grid;
-        grid-template-columns: 1fr;
-        border-radius: 12px;
-    }
-
-    .wa-modal-mode-badge,
-    .wa-modal-range-chip,
-    .wa-modal-note-chip {
-        width: 100%;
-    }
-
-    }
+}
 
 .wa-kpi-band-health {
     position: relative;
