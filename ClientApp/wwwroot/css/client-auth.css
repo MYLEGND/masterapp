@@ -1,3 +1,6 @@
+@import url('/design/legend-web-foundation.css');
+@import url('/design/legend-app-shell.css');
+
 :root {
     --client-auth-navy: #0d2145;
     --client-auth-navy-strong: #091832;
@@ -194,47 +197,68 @@ body.client-auth-page {
 @media (max-width: 520px) {
     .client-auth-shell {
         align-items: start;
-        padding: 12px 10px;
+        padding: var(--app-mobile-card-pad);
     }
 
     .client-auth-card {
-        border-radius: 14px;
+        border-radius: var(--legend-mobile-radius);
     }
 
     .client-auth-brand {
-        gap: 14px;
-        padding: 20px;
+        gap: var(--legend-mobile-gap);
+        padding: var(--app-mobile-card-pad);
     }
 
     .client-auth-brand img {
-        width: 88px;
-        height: 88px;
-        flex: 0 0 88px;
+        width: 52px;
+        height: 52px;
+        flex: 0 0 52px;
     }
 
     .client-auth-brand-name {
-        font-size: 1.08rem;
-        letter-spacing: 0.06em;
+        font-size: .92rem;
+        letter-spacing: .05em;
     }
 
     .client-auth-brand-label {
-        font-size: 0.78rem;
-        letter-spacing: 0.09em;
+        font-size: .68rem;
+        letter-spacing: .07em;
     }
 
     .client-auth-content {
-        padding: 26px 20px 28px;
+        padding: var(--app-mobile-card-pad);
     }
 
     .client-auth-content h1 {
-        font-size: clamp(1.7rem, 9vw, 2rem);
+        font-size: 1.45rem;
+        line-height: 1.05;
     }
 
     .client-auth-intro {
-        font-size: 0.96rem;
+        margin-top: var(--legend-mobile-gap);
+        font-size: .82rem;
+        line-height: 1.4;
+    }
+
+    .client-auth-form,
+    .client-auth-actions {
+        gap: var(--app-mobile-control-gap);
+        margin-top: var(--app-mobile-block-gap);
     }
 
     .client-auth-field input {
+        min-height: 38px;
         font-size: 16px;
+    }
+
+    .client-auth-primary {
+        min-height: var(--legend-mobile-control-height);
+        padding: 6px 9px;
+        border-radius: 8px;
+        font-size: .78rem;
+    }
+
+    .client-auth-help {
+        margin-top: var(--app-mobile-block-gap);
     }
 }

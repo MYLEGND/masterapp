@@ -750,28 +750,10 @@
 }
 
 @media (max-width: 680px) {
-    .legend-connect-page {
-        gap: .65rem;
-    }
-
-    .lc-hero,
-    .lc-panel {
-        border-radius: 17px;
-        padding: .78rem;
-    }
-
-    .lc-panel-body {
-        padding: .78rem;
-    }
-
     .lc-title-line,
     .lc-panel-header,
     .lc-capacity-head {
         display: grid;
-    }
-
-    .lc-title-line h1 {
-        font-size: 2rem;
     }
 
     .lc-metric-grid,
@@ -783,10 +765,6 @@
     .lc-hero-metric-primary,
     .lc-field-wide {
         grid-column: auto;
-    }
-
-    .lc-metric {
-        min-height: 94px;
     }
 
     .lc-disclosure > summary {

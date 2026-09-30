@@ -374,7 +374,7 @@
 
 .call-metrics .cm-card{
         padding:14px 16px;
-        border-radius:14px;
+        border-radius:var(--legend-mobile-radius);
         border:1px solid rgba(166,128,35,.65);
         background: linear-gradient(180deg,#1b1d23,#14161c);
         box-shadow: 0 14px 32px rgba(0,0,0,.44);
@@ -2146,11 +2146,6 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 }
 
 @media (max-width: 900px){
-    .actions-hub-modal .modal-dialog{
-        width: min(96vw, 1100px);
-        max-width: min(96vw, 1100px);
-    }
-
     .actions-hub-modal .qv-grid-two{
         grid-template-columns: 1fr;
     }
@@ -4225,8 +4220,8 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
     }
 
     @media (max-width: 720px){
-        #legendWrap{ padding: 10px 10px 42px 10px; }
-        .head{ padding:16px; }
+        #legendWrap{ padding:var(--app-mobile-card-pad); }
+        .head{ padding:var(--app-mobile-card-pad); }
         .kpis{ grid-template-columns: repeat(2, minmax(0,1fr)); }
         .pipeline-status-stack,
         .pipeline-action-stack,
@@ -4249,13 +4244,13 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
             justify-content:center;
         }
         .pipeline-nav-btn{ min-width:160px; max-width:100%; flex:1 1 160px; }
-        .pipeline-board{ padding:12px; }
-        .pipeline-head{ padding:14px; }
+        .pipeline-board{ padding:var(--app-mobile-card-pad); }
+        .pipeline-head{ padding:var(--app-mobile-card-pad); }
         .client-card-metrics{ grid-template-columns: 1fr; }
         thead{ display:none; }
         table, tbody, tr, td{ display:block; width:100%; }
         tbody tr{
-            padding: 12px 14px;
+            padding: var(--app-mobile-card-pad);
             border-bottom:1px solid rgba(0,0,0,.08);
         }
         tbody td{
@@ -5367,8 +5362,8 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 @media (max-width: 640px){
     .leads-crm .pipeline-command-dock,
     .clients-crm .pipeline-command-dock{
-        padding:12px;
-        gap:10px;
+        padding:var(--app-mobile-card-pad);
+        gap:var(--app-mobile-control-gap);
     }
 
     .pipeline-command-row{
@@ -6218,7 +6213,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 @media (max-width: 640px){
     .leads-crm .pipeline-head,
     .clients-crm .pipeline-head{
-        padding:14px 14px 12px;
+        padding:var(--app-mobile-card-pad);
     }
 
     .leads-crm .pipeline-head-actions,
@@ -7594,8 +7589,8 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     }
 
     .drawer.crm-qv-shell .ph-actions .btn{
-        min-height:58px;
-        height:58px;
+        min-height:var(--legend-mobile-control-height,34px);
+        height:var(--legend-mobile-control-height,34px);
     }
 }
 
@@ -7609,13 +7604,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         flex-direction:column;
     }
 
-    .drawer.crm-qv-shell .dhead{
-        padding:18px 16px 14px;
-    }
-
-    .drawer.crm-qv-shell .dbody{
-        padding:14px 16px 18px;
-    }
 }
 
 /* ===== Shared CRM Command Hub ===== */
@@ -8191,15 +8179,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         justify-content:flex-start;
     }
 
-    .modal.crm-command-modal{
-        width:min(96vw, 1040px);
-        max-height:90vh;
-    }
-
-    .modal.crm-command-modal .modal-body{
-        max-height:calc(90vh - 92px);
-    }
-
     .crm-command-modal-queues .myday-grid{
         grid-template-columns:repeat(2, minmax(0, 1fr));
     }
@@ -8220,31 +8199,11 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         grid-template-columns:1fr;
     }
 
-    .modal.crm-command-modal{
-        top:50%;
-        width:min(96vw, 1040px);
-        border-radius:24px;
-    }
-
-    .modal.crm-command-modal .modal-head{
-        padding:16px 16px 14px;
-    }
-
-    .modal.crm-command-modal .modal-body{
-        padding:14px 16px 18px;
-    }
 
     .crm-command-modal-section{
-        padding:14px;
+        padding:var(--app-mobile-card-pad);
     }
 
-    .crm-command-modal-queues .modal-head{
-        padding:16px 18px 14px;
-    }
-
-    .crm-command-modal-queues .modal-body{
-        padding:16px 18px 20px;
-    }
 
     .crm-command-modal-queues .myday-grid{
         grid-template-columns:1fr;
@@ -8566,18 +8525,18 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 
 @media (max-width: 720px){
     .queue-workspace-hero{
-        padding:20px 18px;
+        padding:var(--app-mobile-card-pad);
     }
 
     .queue-workspace-panel .crm-card-head{
-        padding:16px 18px 12px;
+        padding:var(--app-mobile-card-pad);
     }
 
     .queue-workspace-toolbar,
     .queue-workspace-page .queue-record-form,
     .queue-workspace-page .queue-record-head{
-        padding-left:18px !important;
-        padding-right:18px !important;
+        padding-left:var(--app-mobile-card-pad) !important;
+        padding-right:var(--app-mobile-card-pad) !important;
     }
 
     .queue-workspace-toolbar{

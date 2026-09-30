@@ -303,7 +303,6 @@ body.note-self-open{
 }
 
 @media (max-width: 900px){
-    .note-self-overlay,
 
 /* ========================================================================
    Term vs Whole special treatment
@@ -371,37 +370,6 @@ body.note-self-open{
 #mpShell #sideNav .nav-item[data-target="#sec-termwhole"] .nav-badge{
     color: #1d4ed8 !important;
 }
-    .uw-overlay,
-    .proposal-overlay{
-        align-items: center;
-        justify-content: center;
-        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px;
-    }
-    .note-self-modal,
-    .uw-dialog,
-    .proposal-dialog{
-        width: min(98vw, 1400px);
-        max-height: calc(100dvh - 20px);
-    }
-    .note-self-head{
-        position: sticky;
-        top: 0;
-        z-index: 7;
-    }
-    .note-self-close,
-    .uw-close,
-    .proposal-dialog .uw-close{
-        width: 46px;
-        height: 46px;
-        font-size: 2rem;
-    }
-    #captureDecisionModal.legend-popout-modal .modal-dialog{
-        margin: auto;
-        max-width: min(96vw, 760px);
-    }
-    #captureDecisionModal.legend-popout-modal .modal-content{
-        max-height: calc(100dvh - 20px);
-    }
 }
 
 .uw-overlay{
@@ -633,377 +601,82 @@ body.note-self-open{
 .uw-actions .btn.btn-ghost{
     color:inherit;
 }
-/* =========================
-   Mobile polish (≤ 720px)
-   ========================= */
+/* Workstation mobile structural rules only.
+   Visual density and chrome are owned later by the canonical mobile block. */
 @media (max-width: 900px){
-    /* Align CSS fallback to JS threshold to avoid first-paint flicker */
-    
-}
-
-@media (max-width: 900px){
-    /* Keep mobile minimal for fast dialing */
     #rbShell .rb-link-bar,
     #rbShell .nav-card,
-    #rbShell .content-card{
-        display: none !important;
-    }
-    /* Header controls: Proposal + Underwriting side-by-side, Rebuttals full width */
-    #rbShell .rb-hero .hero-actions{
-        display:grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap:10px;
-        width:100%;
-        align-items: stretch;
-    }
-    #rbShell .rb-hero .hero-action-group{
-        width:100%;
-    }
-    #rbShell .hero-action-group .btn{
-        width:100%;
-        justify-content:center;
-    }
-    #rbShell .hero-action-group.script-switcher{
-        grid-column: 1 / -1;
-    }
-    #rbShell .hero-action-group.script-switcher select.btn{
-        min-width: unset;
-        width:100%;
-    }
-    #rbShell .proposal-menu{
-        left: 0;
-        right: 0;
-        width: 100%;
-        max-width: none;
-    }
-    /* Contact card mobile compaction and horizontal actions */
-    #rbShell .lb-row.lb-row-fields{
-        gap: 8px;
-    }
-    #rbShell .lead-field.mobile-allowed{
-        padding: 10px 12px;
-        gap: 4px;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-label{
-        font-size: 0.78rem;
-        letter-spacing: 0.2px;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-value{
-        font-size: 0.98rem;
-        font-weight: 800;
-    }
-    #rbShell .lb-row.lb-row-actions{
-        gap: 8px;
-    }
-    #rbShell .lb-actions{
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        width: 100%;
-        align-items: center;
-    }
-    #rbShell .lb-actions [data-lb-call],
-    #rbShell .lb-actions [data-lb-text],
-    #rbShell .lb-actions [data-lb-next]{
-        flex: 1 1 auto;
-        min-width: 80px;
-    }
-    #rbShell .lb-actions .btn{
-        width: 100%;
-        justify-content: center;
-        padding: 10px 12px;
-    }
-    #rbShell .lb-meta.mobile-allowed{
-        margin-top: 2px;
-        justify-content: space-between;
-        gap: 6px;
-    }
-    /* Contact fields 2x2 grid on mobile */
-    #rbShell .lb-row.lb-row-fields{
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-    }
-    #rbShell .lead-field.mobile-allowed{
-        padding: 10px 12px;
-        gap: 4px;
-        min-height: 82px;
-        border-radius: 10px;
-        text-overflow: ellipsis;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-label{
-        font-size: 0.76rem;
-        letter-spacing: 0.15px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-value{
-        font-size: 0.96rem;
-        font-weight: 800;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    #rbShell .lead-field.mobile-allowed .lf-sub{
-        font-size: 0.78rem;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    /* Mobile dial buttons: reuse main buttons, show in grid */
-    #rbShell .lb-actions{
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-        gap: 8px;
-        width: 100%;
-    }
-    #rbShell .lb-actions .lb-dials{
-        background: #0f172a;
-        color: #f9fafb;
-        border: 1px solid rgba(217,179,90,.35);
-        border-radius: 10px;
-        flex-direction: column;
-        gap: 2px;
-        text-align: center;
-        padding: 8px 10px;
-    }
-    #rbShell .lb-actions .lb-dials .lb-dials-label{
-        font-size: 0.78rem;
-        letter-spacing: 0.2px;
-        color: #d1d5db;
-        white-space: nowrap;
-    }
-    #rbShell .lb-actions .lb-dials .lb-dials-count{
-        font-size: 1rem;
-        font-weight: 900;
-        color: #fef08a;
-    }
-    /* Hide helper/description line on mobile */
-    #rbShell .rb-hero .hero-sub{
-        display: none !important;
-    }
-    #rbShell .rb-hero{
-        padding: 12px 12px;
-    }
-    .rb-wrap{
-        padding-top: 10px;
-    }
-    /* Contact card mobile allowlist */
+    #rbShell .content-card,
     #rbShell .mobile-hidden{
-        display: none !important;
+        display:none !important;
     }
+
+    #rbShell .rb-hero .hero-sub{
+        display:none !important;
+    }
+
 }
 
 @media (max-width: 720px){
-    /* Minimal mobile: hide heavy panels, keep contact controls */
     .uw-grid{
-        grid-template-columns: repeat(1, minmax(0, 1fr));
-        gap:8px 10px;
-    }
-    .uw-span-2{
-        grid-column: 1 / -1;
-    }
-    #rbShell .rb-link-bar,
-    #rbShell .nav-card,
-    #rbShell .content-card{
-        display: none !important;
-    }
-
-    #rbShell .lead-bridge{
-        margin-top: 4px;
-    }
-
-    .lb-row-actions{
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-    }
-
-    .lb-actions{
-        width: 100%;
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 8px;
-    }
-
-    .lb-actions .btn{
-        width: 100%;
-    }
-
-    /* Show filter + next on mobile (single column) */
-    .lb-filterbar{
-        display: flex !important;
-        width: 100%;
-        justify-content: space-between;
-        gap: 8px;
-    }
-    .lb-next-wrap{
-        display: block !important;
-        width: 100%;
-    }
-    .lb-next-wrap .btn{
-        width: 100%;
-    }
-    .lb-btn.next{
-        display: inline-flex !important;
-    }
-
-    /* Mobile allowlist enforcement */
-    #rbShell .mobile-hidden{
-        display: none !important;
-    }
-
-    .rb-wrap, .mp-shell, .scripts-shell{
-        padding: 12px 10px 40px 10px;
-    }
-
-    #rbShell .rb-hero,
-    #mpShell .mp-hero{
-        padding: 14px 14px;
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    #rbShell .rb-hero-top,
-    #mpShell .mp-hero-top{
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-    }
-
-    #rbShell .hero-actions,
-    #mpShell .hero-actions{
-        width: 100%;
-    }
-
-    #rbShell .hero-underwrite,
-    #mpShell .hero-underwrite{
-        width: 100%;
-        justify-content: center;
-    }
-
-    .hero-action-group{
-        width: 100%;
-    }
-
-    .proposal-menu{
-        left: 0;
-        right: auto;
-    }
-
-    #lbStateFilter{
-        border-color: var(--brand);
-    }
-
-    #lbStateFilter option[value=""]{
-        color:#b91c1c;
-        font-weight:900;
-    }
-
-    .lead-bridge{
-        padding: 12px 12px;
-        gap: 10px;
-    }
-
-    .lb-row-fields{
-        display:flex;
-        flex-wrap:wrap;
-        gap:10px;
-    }
-
-    .lead-field{
-        flex: 1 1 calc(50% - 10px);
-        min-width: 160px;
-    }
-
-    .lb-actions{
-        gap:8px;
-    }
-
-    .lb-actions .btn{
-        flex:1 1 calc(50% - 8px);
-        min-width:140px;
-    }
-
-    /* Ultra-small screens: stack action buttons cleanly */
-    @media (max-width: 540px){
-        .lb-actions{
-            flex-direction: column;
-            align-items: stretch;
-        }
-        .lb-actions .btn{
-            flex:1 1 100%;
-            width:100%;
-            min-width:0;
-        }
-        .lb-row-actions{
-            align-items: stretch;
-        }
-        .lb-row-actions .lb-meta{
-            width:100%;
-            display:flex;
-            flex-wrap:wrap;
-            gap:6px 12px;
-        }
-        .rb-link-bar{
-            flex-direction: column;
-            align-items: stretch;
-            gap:8px;
-        }
-        .rb-link-bar .rb-link{
-            width:100%;
-            text-align:center;
-        }
-    }
-
-    .uw-dialog{
-        width: 95vw;
-        max-height: 92vh;
-        padding: 14px;
-    }
-
-    .uw-grid{
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap:8px 10px;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:var(--app-mobile-control-gap);
     }
 
     .uw-span-2{
-        grid-column: span 2;
+        grid-column:span 2;
     }
 
     .uw-actions{
-        flex-direction: column;
-        align-items: stretch;
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:var(--app-mobile-control-gap);
+        align-items:stretch;
     }
 
     .uw-actions .btn{
-        width: 100%;
-        min-width: 0;
+        width:100%;
+        min-width:0;
     }
 
-    /* Scripts index: keep list lightweight on phones */
+    .lb-filterbar,
+    .lb-next-wrap{
+        width:100%;
+    }
+
+    .lb-next-wrap .btn{
+        width:100%;
+    }
+
+    .lb-btn.next{
+        display:inline-flex !important;
+    }
+
     .scripts-hero,
-    .section-head .section-note{ display: none !important; }
-    .library-section .grid{
-        grid-template-columns: 1fr;
-        gap: 12px;
+    .section-head .section-note{
+        display:none !important;
     }
-    .rebuttal-card{
-        padding: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    .rebuttal-card .desc,
-    .rebuttal-card .tag{ display: none; }
-    .rebuttal-card .btn-legend{ width: 100%; text-align: center; }
 
-    .nav-card,
-    .content-card,
-    .prosper-nav-card{
-        width: 100%;
+    .library-section .grid{
+        grid-template-columns:1fr;
+        gap:var(--app-mobile-block-gap);
+    }
+
+    .rebuttal-card{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        padding:var(--app-mobile-card-pad);
+    }
+
+    .rebuttal-card .desc,
+    .rebuttal-card .tag{
+        display:none;
+    }
+
+    .rebuttal-card .btn-legend{
+        width:100%;
+        text-align:center;
     }
 }
 
@@ -1015,12 +688,6 @@ body.note-self-open{
     display: none !important;
 }
 
-@media (max-width: 900px){
-    /* Hide helper nav arrows on mobile */
-    #rbShell .nav-rail-arrow{
-        display:none !important;
-    }
-}
 .lead-bridge-mobile #rbShell .lb-meta{
     display: none !important;
 }
@@ -1540,20 +1207,7 @@ body.note-self-open{
     color: #1f2937;
 }
 
-/* Make Note-to-Self CTA stand out from all other filter buttons */
-[data-note-self-open].lb-btn,
-.lb-filter [data-note-self-open]{
-    background: linear-gradient(180deg, #fef08a 0%, #f59e0b 55%, #d97706 100%) !important;
-    border-color: #92400e !important;
-    color: #1f1300 !important;
-    font-weight: 900;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.55),
-        0 0 0 2px rgba(245,158,11,.22),
-        0 10px 24px rgba(217,119,6,.42) !important;
-}
-
-/* Hard override: make Note-to-Self button green and unmistakable */
+/* Canonical Note-to-Self CTA presentation */
 .lb-filter .note-self-cta,
 button.note-self-cta[data-note-self-open]{
     background: linear-gradient(180deg, #34d399 0%, #10b981 48%, #059669 100%) !important;
@@ -1584,25 +1238,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         0 0 0 3px rgba(255,255,255,.9),
         0 0 0 6px rgba(16,185,129,.62),
         0 16px 30px rgba(4,120,87,.50) !important;
-}
-
-[data-note-self-open].lb-btn:hover,
-.lb-filter [data-note-self-open]:hover{
-    filter: brightness(1.06);
-    transform: translateY(-1px);
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.68),
-        0 0 0 3px rgba(245,158,11,.30),
-        0 14px 28px rgba(180,83,9,.48) !important;
-}
-
-[data-note-self-open].lb-btn:focus-visible,
-.lb-filter [data-note-self-open]:focus-visible{
-    outline: 0;
-    box-shadow:
-        0 0 0 3px rgba(255,255,255,.85),
-        0 0 0 6px rgba(245,158,11,.55),
-        0 14px 28px rgba(180,83,9,.48) !important;
 }
 
 /* Dial color accents */
@@ -1850,19 +1485,6 @@ details.section{
     border-color: rgba(166,128,35,.9);
     box-shadow: 0 0 0 4px rgba(166,128,35,.12), 0 14px 28px rgba(166,128,35,.10);
 }
-    
-
-    
-
-    @media (max-width: 980px){
-        
-        
-    }
-
-    
-
-    
-
     
 
     
@@ -2593,6 +2215,7 @@ details.section{
     white-space: nowrap;
 }
 
+@media (min-width: 901px) {
 .proposal-menu{
     position:absolute;
     top: 110%;
@@ -2605,6 +2228,7 @@ details.section{
     padding:14px;
     z-index:999;
     overflow: visible;
+}
 }
 
 .proposal-menu-head{
@@ -3142,38 +2766,6 @@ details.section{
 
 
 
-    @media (max-width: 980px){
-        
-    }
-
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    @media (max-width: 1760px){
-        
-    }
-
-    @media (max-width: 1420px){
-        
-    }
-
-    @media (max-width: 1180px){
-        
-    }
-
     #rbShell .nav-card,
     #rbShell .content-card{
         background: var(--surface);
@@ -3488,74 +3080,7 @@ details.section{
 
     
 
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-/* === FinalExpense.cshtml === */
-
-    
-
-    
-
-    @media (max-width: 980px){
-        
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
+    /* === FinalExpense.cshtml === */
 
     
 
@@ -3807,81 +3332,6 @@ details.section{
     
     
 
-    @media (max-width: 980px){
-    }
-
-    @media (max-width: 760px){
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    @media (max-width: 1760px){
-        
-    }
-
-    @media (max-width: 1420px){
-        
-    }
-
-    @media (max-width: 1180px){
-        
-    }
-
-    
-
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     @keyframes rbArrowPulse{
         0%, 100%{
             box-shadow:
@@ -4098,13 +3548,7 @@ details.section{
 
     
 
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-/* === Index.cshtml === */
+    /* === Index.cshtml === */
 
     body{
         background:
@@ -4661,67 +4105,6 @@ details.section{
 
     
 
-    @media (max-width: 980px){
-        
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     /* ===== LEFT NAV — SAME COLOR LOGIC STRUCTURE AS REBUTTALS ===== */
     
 
@@ -4958,82 +4341,6 @@ details.section{
 
     
 
-    @media (max-width: 980px){
-        
-    }
-
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    @media (max-width: 1760px){
-        
-    }
-
-    @media (max-width: 1420px){
-        
-    }
-
-    @media (max-width: 1180px){
-        
-    }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     @keyframes rbArrowPulse{
         0%, 100%{
             box-shadow:
@@ -5264,13 +4571,7 @@ details.section{
 
     
 
-    @media (max-width: 760px){
-        
-    }
-
-    
-
-/* === ProsperAgedMortgageProtection.cshtml === */
+    /* === ProsperAgedMortgageProtection.cshtml === */
 
     #mpShell{
         background:
@@ -8032,6 +7333,7 @@ details.section{
     box-shadow: 0 12px 26px rgba(0,0,0,.34) !important;
 }
 
+@media (min-width: 901px) {
 #rbShell .proposal-dialog{
     border: 1.8px solid rgba(166,128,35,.48) !important;
     border-radius: 22px !important;
@@ -8047,6 +7349,8 @@ details.section{
     border-bottom: 1px solid rgba(166,128,35,.22) !important;
     padding-bottom: .7rem !important;
     margin-bottom: .8rem !important;
+}
+
 }
 #rbShell .proposal-dialog .uw-name{ color:#f4d890 !important; }
 #rbShell .proposal-dialog .uw-sub{ color:#b9c5d8 !important; }
@@ -8377,27 +7681,10 @@ details.section{
     transform: translateY(-1px);
 }
 
-/* Mobile popout safety lock */
+/* Canonical mobile Workstation presentation.
+   Shared app/modal tokens own visual density; this block retains only the
+   Workstation-specific layout needed to keep lead context and actions usable. */
 @media (max-width: 900px){
-    .note-self-overlay,
-    .uw-overlay,
-    .proposal-overlay,
-    #proposalOverlay.hp-overlay{
-        align-items: center !important;
-        justify-content: center !important;
-        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px !important;
-    }
-    .note-self-modal,
-    .uw-dialog,
-    .proposal-dialog,
-    #proposalDialog.hp-dialog,
-    #captureDecisionModal.legend-popout-modal .modal-content,
-    .zoom-qp-dialog{
-        max-height: calc(100dvh - 20px) !important;
-    }
-    #captureDecisionModal.legend-popout-modal .modal-dialog{
-        margin: auto !important;
-    }
     .uw-head,
     .proposal-dialog .uw-head,
     #proposalDialog .hp-dialog-head,
@@ -8407,279 +7694,7 @@ details.section{
         top: 0 !important;
         z-index: 20 !important;
     }
-    .note-self-close,
-    .uw-close,
-    .proposal-dialog .uw-close,
-    #proposalDialog .hp-dialog-close,
-    #captureDecisionModal.legend-popout-modal .btn-close,
-    .zoom-qp-close{
-        width: 46px !important;
-        height: 46px !important;
-        font-size: 2rem !important;
-        border: 2px solid rgba(244,216,144,.72) !important;
-        border-radius: 999px !important;
-        background: rgba(8,16,33,.9) !important;
-        color: #f8fafc !important;
-        line-height: 1 !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
 
-    #rbShell #rbNavArrow.nav-rail-arrow{
-        display: flex !important;
-        position: fixed !important;
-        top: calc(max(10px, env(safe-area-inset-top)) + 2px) !important;
-        left: 8px !important;
-        opacity: 1 !important;
-        z-index: 1300 !important;
-        transition: none !important;
-        animation: none !important;
-        transform: none !important;
-    }
-
-    #rbShell #prosperNavArrow.nav-rail-arrow{
-        display: none !important;
-        opacity: 0 !important;
-    }
-}
-
-/* Ultra-compact phone fit for Workstation mobile */
-@media (max-width: 900px){
-    html.lead-bridge-mobile,
-    html.lead-bridge-mobile body{
-        height: 100%;
-        overflow: hidden;
-    }
-
-    html.lead-bridge-mobile #rbShell{
-        height: 100dvh;
-        overflow: hidden;
-    }
-
-    html.lead-bridge-mobile #rbShell .rb-wrap{
-        height: 100%;
-        max-height: 100%;
-        overflow: hidden;
-        padding: 6px 7px !important;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    html.lead-bridge-mobile #rbShell .rb-hero{
-        padding: 8px !important;
-        margin: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .hero-left h1{
-        display: none !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .rb-hero .hero-actions{
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px !important;
-        width: 100%;
-    }
-
-    html.lead-bridge-mobile #rbShell .hero-action-group{
-        width: 100%;
-        min-width: 0;
-    }
-
-    html.lead-bridge-mobile #rbShell .hero-action-group.script-switcher{
-        grid-column: auto !important;
-        min-width: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .script-switcher{
-        min-width: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .script-switcher select.btn{
-        width: 100% !important;
-        min-width: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .hero-actions .btn,
-    html.lead-bridge-mobile #rbShell .hero-actions select.btn{
-        min-height: 36px;
-        padding: 7px 10px !important;
-        font-size: 12px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-bridge{
-        flex: 1 1 auto;
-        min-height: 0;
-        margin: 0 !important;
-        padding: 8px !important;
-        gap: 6px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-filterbar{
-        gap: 6px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-filterbar select,
-    html.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-search],
-    html.lead-bridge-mobile #rbShell .lb-filterbar .lb-btn{
-        min-height: 34px;
-        padding: 6px 8px !important;
-        font-size: 12px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-row.lb-row-fields{
-        gap: 6px !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-field.mobile-allowed{
-        min-height: 62px !important;
-        padding: 7px 9px !important;
-        gap: 2px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-field.mobile-allowed .lf-label{
-        font-size: .66rem !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-field.mobile-allowed .lf-value{
-        font-size: .88rem !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-field.mobile-allowed .lf-sub{
-        font-size: .68rem !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions{
-        gap: 6px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions .btn{
-        min-height: 34px;
-        padding: 7px 8px !important;
-        font-size: 12px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions .lb-dials{
-        padding: 6px 8px !important;
-        gap: 2px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions .lb-dials .lb-dials-label{
-        font-size: .70rem !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions .lb-dials .lb-dials-count{
-        font-size: .92rem !important;
-        padding: 1px 8px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-meta.mobile-allowed{
-        display: flex !important;
-        flex-direction: row !important;
-        align-items: center !important;
-        justify-content: space-between !important;
-        gap: 6px !important;
-        margin-top: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-meta.mobile-allowed .lb-pos{
-        font-size: 12px !important;
-        white-space: nowrap;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-meta.mobile-allowed .lb-status{
-        font-size: 11.5px !important;
-        line-height: 1.1 !important;
-        max-width: 56%;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-}
-
-/* Final mobile fit lock: enforce compact banner + 2-card contact row */
-@media (max-width: 900px){
-    #rbShell{
-        height: 100dvh;
-        overflow: hidden;
-    }
-
-    #rbShell .rb-wrap{
-        height: 100%;
-        max-height: 100%;
-        overflow: hidden;
-        padding: 4px 6px !important;
-        gap: 5px !important;
-    }
-
-    #rbShell .rb-hero{
-        padding: 6px 8px !important;
-        margin: 0 !important;
-        min-height: 0 !important;
-    }
-
-    #rbShell .hero-left h1{
-        display: none !important;
-    }
-
-    #rbShell .hero-actions .btn,
-    #rbShell .hero-actions select.btn{
-        min-height: 34px !important;
-        padding: 6px 9px !important;
-        font-size: 11.5px !important;
-    }
-
-    
-
-    #rbShell [data-lf="name"]{
-        grid-column: 1 / -1;
-        grid-row: 1;
-    }
-
-    #rbShell [data-lf="phone"]{
-        grid-column: 1;
-        grid-row: 2;
-    }
-
-    #rbShell [data-lf="location"]{
-        grid-column: 2;
-        grid-row: 2;
-    }
-
-    #rbShell .lead-field.mobile-allowed{
-        min-height: 56px !important;
-        padding: 6px 8px !important;
-        gap: 2px !important;
-    }
-
-    #rbShell .lead-field.mobile-allowed .lf-label{
-        font-size: .64rem !important;
-    }
-
-    #rbShell .lead-field.mobile-allowed .lf-value{
-        font-size: .84rem !important;
-    }
-
-    #rbShell .lead-field.mobile-allowed .lf-sub{
-        font-size: .66rem !important;
-    }
-
-    #rbShell .lb-actions .btn{
-        min-height: 32px !important;
-        padding: 6px 8px !important;
-        font-size: 11.5px !important;
-    }
-
-    #rbShell .lb-actions .lb-dials{
-        padding: 5px 7px !important;
-    }
-}
-
-/* Mobile sanity hotfix: remove floating rail arrows + prevent header clipping */
-@media (max-width: 900px){
     #rbShell .nav-rail-arrow,
     #rbShell #rbNavArrow,
     #rbShell #prosperNavArrow{
@@ -8709,27 +7724,86 @@ details.section{
         height: auto !important;
         max-height: none !important;
         overflow: visible !important;
-        padding: max(6px, env(safe-area-inset-top)) 6px max(8px, env(safe-area-inset-bottom)) 6px !important;
-        gap: 6px !important;
+        padding: var(--app-mobile-card-pad) !important;
+        gap: var(--legend-mobile-gap) !important;
     }
 
     #rbShell .rb-hero{
-        padding: 6px 8px !important;
+        min-height: 0 !important;
         margin: 0 !important;
+        padding: var(--legend-mobile-gap) 8px !important;
     }
 
-    #rbShell .hero-left{
+    #rbShell .hero-left,
+    html.lead-bridge-mobile #rbShell .hero-left h1{
         display: none !important;
     }
 
     #rbShell .rb-hero-top{
-        gap: 6px !important;
+        gap: var(--legend-mobile-gap) !important;
     }
 
-    #rbShell .lb-row.lb-row-fields{
+    #rbShell .rb-hero .hero-actions,
+    html.lead-bridge-mobile #rbShell .rb-hero .hero-actions{
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--legend-mobile-gap) !important;
+        width: 100%;
+    }
+
+    #rbShell .hero-action-group,
+    html.lead-bridge-mobile #rbShell .hero-action-group{
+        width: 100%;
+        min-width: 0;
+    }
+
+    #rbShell .hero-action-group.script-switcher,
+    html.lead-bridge-mobile #rbShell .hero-action-group.script-switcher,
+    #rbShell .script-switcher,
+    html.lead-bridge-mobile #rbShell .script-switcher{
+        min-width: 0 !important;
+    }
+
+    #rbShell .script-switcher select.btn,
+    html.lead-bridge-mobile #rbShell .script-switcher select.btn{
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    #rbShell .hero-actions .btn,
+    #rbShell .hero-actions select.btn{
+        min-height: var(--legend-mobile-control-height) !important;
+        padding: 6px 8px !important;
+        font-size: .72rem !important;
+    }
+
+    #rbShell .lead-bridge,
+    html.lead-bridge-mobile #rbShell .lead-bridge{
+        flex: 1 1 auto;
+        min-height: 0;
+        margin: 0 !important;
+        padding: var(--app-mobile-card-pad) !important;
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    #rbShell .lb-filterbar,
+    html.lead-bridge-mobile #rbShell .lb-filterbar{
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    #rbShell .lb-filterbar select,
+    #rbShell .lb-filterbar [data-lb-search],
+    #rbShell .lb-filterbar .lb-btn{
+        min-height: var(--legend-mobile-control-height) !important;
+        padding: 6px 8px !important;
+        font-size: .72rem !important;
+    }
+
+    #rbShell .lb-row.lb-row-fields,
+    html.lead-bridge-mobile #rbShell .lb-row.lb-row-fields{
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 6px !important;
+        gap: var(--legend-mobile-gap) !important;
     }
 
     #rbShell .lead-field.mobile-allowed[data-lf="name"]{
@@ -8745,6 +7819,71 @@ details.section{
     #rbShell .lead-field.mobile-allowed[data-lf="location"]{
         grid-column: 2 !important;
         grid-row: 2 !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed{
+        min-height: 56px !important;
+        padding: 6px 8px !important;
+        gap: 2px !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed .lf-label{
+        font-size: .64rem !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed .lf-value{
+        font-size: .84rem !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed .lf-sub{
+        font-size: .66rem !important;
+    }
+
+    #rbShell .lb-actions{
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    #rbShell .lb-actions .btn{
+        min-height: var(--legend-mobile-control-height) !important;
+        padding: 6px 8px !important;
+        font-size: .72rem !important;
+    }
+
+    #rbShell .lb-actions .lb-dials{
+        padding: 5px 7px !important;
+        gap: 2px !important;
+    }
+
+    #rbShell .lb-actions .lb-dials .lb-dials-label{
+        font-size: .68rem !important;
+    }
+
+    #rbShell .lb-actions .lb-dials .lb-dials-count{
+        font-size: .88rem !important;
+        padding: 1px 7px !important;
+    }
+
+    #rbShell .lb-meta.mobile-allowed{
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: var(--legend-mobile-gap) !important;
+        margin-top: 0 !important;
+    }
+
+    #rbShell .lb-meta.mobile-allowed .lb-pos{
+        font-size: .72rem !important;
+        white-space: nowrap;
+    }
+
+    #rbShell .lb-meta.mobile-allowed .lb-status{
+        max-width: 56%;
+        overflow: hidden;
+        font-size: .7rem !important;
+        line-height: 1.1 !important;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 }
 
@@ -9047,28 +8186,6 @@ details.section{
     margin-top: 10px;
 }
 
-@media (max-width: 1200px){
-    #rbShell .content-card .content-body{
-        padding: 18px !important;
-    }
-
-    #rbShell .content-card .card-head{
-        padding: 18px 18px 16px !important;
-    }
-
-    #rbShell .section-head,
-    #rbShell .objection-body,
-    #rbShell .prosper-body{
-        padding-left: 18px !important;
-        padding-right: 18px !important;
-    }
-
-    #rbShell .objection-head,
-    #rbShell .prosper-stage-head{
-        padding: 17px 18px 13px 18px !important;
-    }
-}
-
 /* ========================================================================
    Rebuttals category rail refresh
    ======================================================================== */
@@ -9206,22 +8323,6 @@ details.section{
 #rbShell .cat-btn.warn .cat-name{ color: #fff7ed !important; }
 #rbShell .cat-btn.bad .cat-name{ color: #fff1f2 !important; }
 #rbShell .cat-btn.info .cat-name{ color: #eff6ff !important; }
-
-@media (max-width: 1200px){
-    #rbShell .nav-card .nav-body,
-    #rbShell .prosper-nav-card .nav-body{
-        gap: 8px;
-        padding: 12px !important;
-    }
-
-    #rbShell .cat-btn{
-        padding: 10px 11px 9px !important;
-    }
-
-    #rbShell .cat-note{
-        margin-left: 36px;
-    }
-}
 
 /* ========================================================================
    Rebuttals compact density pass
@@ -9373,8 +8474,30 @@ details.section{
 }
 
 @media (max-width: 1200px){
+    #rbShell .content-card .content-body{
+        padding: 12px !important;
+        gap: 8px;
+    }
+
+    #rbShell .content-card .card-head{
+        padding: 18px 18px 16px !important;
+    }
+
+    #rbShell .section-head,
+    #rbShell .objection-body,
+    #rbShell .prosper-body{
+        padding-left: 18px !important;
+        padding-right: 18px !important;
+    }
+
+    #rbShell .objection-head,
+    #rbShell .prosper-stage-head{
+        padding: 17px 18px 13px 18px !important;
+    }
+
     #rbShell .nav-card .nav-body,
     #rbShell .prosper-nav-card .nav-body{
+        gap: 8px;
         padding: 9px !important;
     }
 
@@ -9382,9 +8505,8 @@ details.section{
         padding: 7px 9px 6px !important;
     }
 
-    #rbShell .content-card .content-body{
-        padding: 12px !important;
-        gap: 8px;
+    #rbShell .cat-note{
+        margin-left: 36px;
     }
 }
 
@@ -10363,356 +9485,6 @@ details.section{
     gap: 4px;
 }
 
-#rbShell .lb-edit-overlay{
-    position: fixed;
-    inset: 0;
-    z-index: 2200;
-    display: flex;
-    justify-content: flex-end;
-    background: rgba(3, 10, 24, .42);
-    backdrop-filter: blur(3px);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .18s ease;
-}
-
-#rbShell .lb-edit-overlay[data-open="1"]{
-    opacity: 1;
-    pointer-events: auto;
-}
-
-#rbShell .lb-edit-drawer{
-    width: min(75vw, 960px);
-    max-width: calc(100vw - 24px);
-    height: 100%;
-    background:
-        linear-gradient(180deg, rgba(8,18,35,.985), rgba(6,15,30,.99));
-    border-left: 1px solid rgba(212,175,55,.42);
-    box-shadow: -24px 0 48px rgba(0,0,0,.30);
-    transform: translateX(100%);
-    transition: transform .2s ease;
-    display: flex;
-    flex-direction: column;
-    color: #f8fafc;
-}
-
-#rbShell .lb-edit-overlay[data-open="1"] .lb-edit-drawer{
-    transform: translateX(0);
-}
-
-#rbShell .lb-edit-head{
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 14px;
-    padding: 18px 22px 14px;
-    border-bottom: 1px solid rgba(212,175,55,.18);
-    background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0));
-}
-
-#rbShell .lb-edit-head-copy{
-    min-width: 0;
-}
-
-#rbShell .lb-edit-kicker{
-    font-size: .72rem;
-    font-weight: 900;
-    letter-spacing: .16em;
-    text-transform: uppercase;
-    color: #f4d890;
-    margin-bottom: 4px;
-}
-
-#rbShell .lb-edit-title{
-    margin: 0;
-    font-size: 1.4rem;
-    line-height: 1.15;
-    color: #f8fafc;
-}
-
-#rbShell .lb-edit-sub{
-    margin-top: 4px;
-    font-size: .92rem;
-    color: #a9b6cc;
-}
-
-#rbShell .lb-edit-close{
-    width: 42px;
-    height: 42px;
-    border-radius: 999px;
-    border: 1px solid rgba(212,175,55,.38);
-    background: rgba(10,20,38,.72);
-    color: #f8fafc;
-    font-size: 1.8rem;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
-}
-
-#rbShell .lb-edit-close:hover{
-    transform: translateY(-1px);
-    border-color: rgba(212,175,55,.72);
-    box-shadow: 0 0 0 3px rgba(212,175,55,.12);
-}
-
-#rbShell .lb-edit-body{
-    flex: 1 1 auto;
-    overflow-y: auto;
-    padding: 18px 22px;
-}
-
-#rbShell .lb-edit-grid{
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px 14px;
-}
-
-#rbShell .lb-edit-section{
-    margin-top: 16px;
-    border-radius: 16px;
-    border: 1px solid rgba(212,175,55,.18);
-    background: rgba(255,255,255,.03);
-    overflow: hidden;
-}
-
-#rbShell .lb-edit-section > summary{
-    list-style: none;
-    cursor: pointer;
-    padding: 14px 16px;
-    font-size: .92rem;
-    font-weight: 900;
-    letter-spacing: .03em;
-    color: #f4d890;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-#rbShell .lb-edit-section > summary::-webkit-details-marker{
-    display: none;
-}
-
-#rbShell .lb-edit-section > summary::after{
-    content: '+';
-    font-size: 1.1rem;
-    line-height: 1;
-    color: #f8fafc;
-}
-
-#rbShell .lb-edit-section[open] > summary::after{
-    content: '−';
-}
-
-#rbShell .lb-edit-section-body{
-    padding: 0 16px 16px;
-}
-
-#rbShell .lb-edit-field{
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-}
-
-#rbShell .lb-edit-field-span-2{
-    grid-column: 1 / -1;
-}
-
-#rbShell .lb-edit-field > span{
-    font-size: .79rem;
-    font-weight: 800;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    color: #d7e0ef;
-}
-
-#rbShell .lb-edit-field input,
-#rbShell .lb-edit-field select,
-#rbShell .lb-edit-field textarea{
-    width: 100%;
-    min-width: 0;
-    min-height: 44px;
-    border-radius: 12px;
-    border: 1px solid rgba(212,175,55,.26);
-    background: rgba(248,250,252,.97);
-    color: #122033;
-    padding: 10px 12px;
-    font-size: .98rem;
-    font-weight: 700;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.82);
-}
-
-#rbShell .lb-edit-field textarea{
-    min-height: 96px;
-    resize: vertical;
-    font-weight: 600;
-}
-
-#rbShell .lb-edit-field input:focus,
-#rbShell .lb-edit-field select:focus,
-#rbShell .lb-edit-field textarea:focus{
-    outline: none;
-    border-color: rgba(212,175,55,.7);
-    box-shadow: 0 0 0 3px rgba(212,175,55,.12);
-}
-
-#rbShell .lb-edit-checks{
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 10px 14px;
-}
-
-#rbShell .lb-edit-checks label{
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    font-size: .92rem;
-    font-weight: 700;
-    color: #e5edf8;
-}
-
-#rbShell .lb-edit-checks input[type="checkbox"]{
-    width: 18px;
-    height: 18px;
-    accent-color: #d4af37;
-}
-
-#rbShell .lb-edit-foot{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    padding: 14px 22px 18px;
-    border-top: 1px solid rgba(212,175,55,.18);
-}
-
-#rbShell .lb-edit-status{
-    font-size: .9rem;
-    font-weight: 700;
-    color: #c9d5e6;
-}
-
-#rbShell .lb-edit-status[data-tone="good"]{
-    color: #86efac;
-}
-
-#rbShell .lb-edit-status[data-tone="bad"]{
-    color: #fca5a5;
-}
-
-#rbShell .lb-edit-actions{
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-
-@media (max-width: 900px){
-    #rbShell .lb-edit-drawer{
-        width: 100vw;
-        max-width: 100vw;
-    }
-
-    #rbShell .lb-edit-head,
-    #rbShell .lb-edit-body,
-    #rbShell .lb-edit-foot{
-        padding-left: 16px;
-        padding-right: 16px;
-    }
-
-    #rbShell .lb-edit-grid{
-        grid-template-columns: 1fr;
-    }
-
-    #rbShell .lb-edit-field-span-2{
-        grid-column: auto;
-    }
-
-    #rbShell .lb-edit-foot{
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    #rbShell .lb-edit-actions{
-        width: 100%;
-        justify-content: stretch;
-    }
-
-    #rbShell .lb-edit-actions .btn{
-        flex: 1 1 0;
-    }
-}
-
-#drawerBackdrop.backdrop[data-workstation-drawer="1"]{
-    position: fixed !important;
-    inset: 0 !important;
-    background: rgba(0,0,0,.42) !important;
-    display: none;
-    z-index: 80 !important;
-}
-
-#drawerBackdrop.backdrop[data-workstation-drawer="1"].open{
-    display: block !important;
-}
-
-#drawer.drawer[data-workstation-drawer="1"]{
-    position: fixed !important;
-    inset: auto !important;
-    top: 50% !important;
-    left: 50% !important;
-    right: auto !important;
-    bottom: auto !important;
-    width: clamp(900px, 90vw, 1280px) !important;
-    max-height: 92vh !important;
-    height: auto !important;
-    transform: translate(-50%, -50%) scale(.97) !important;
-    border-radius: 26px !important;
-    transition: transform .18s ease, opacity .18s ease !important;
-    z-index: 90 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-}
-
-#drawer.drawer[data-workstation-drawer="1"].open{
-    transform: translate(-50%, -50%) scale(1) !important;
-    opacity: 1 !important;
-    pointer-events: auto !important;
-}
-
-#drawer.drawer[data-workstation-drawer="1"] .dbody{
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-}
-
-#drawer.drawer[data-workstation-drawer="1"] #dPortalWrap[hidden]{
-    display: none !important;
-}
-
-@media (max-width: 980px){
-    #drawer.drawer[data-workstation-drawer="1"]{
-        width: min(94vw, 960px) !important;
-    }
-}
-
-@media (max-width: 700px){
-    #drawer.drawer[data-workstation-drawer="1"]{
-        width: 100vw !important;
-        max-height: 100dvh !important;
-        border-radius: 0 !important;
-    }
-}
-
 /* Re-assert the real Leads Quick View styling inside workstation.
    The rebuttals shell has broader #rbShell rules that would otherwise override
    the shared lead quick-view theme. */
@@ -10729,7 +9501,6 @@ details.section{
     position: sticky;
     top: 0;
     z-index: 5;
-    padding: 14px 15px 13px !important;
     border-bottom: 1px solid rgba(244,208,121,.2) !important;
     background: linear-gradient(180deg, rgba(8,15,28,.96), rgba(11,19,35,.88)) !important;
     backdrop-filter: blur(18px) saturate(120%);
@@ -10844,7 +9615,6 @@ details.section{
 }
 
 #rbShell #drawer.crm-qv-shell .dbody{
-    padding: 14px 15px 20px !important;
     background:
         radial-gradient(720px 300px at 100% 0%, rgba(56,189,248,.06), transparent 54%),
         radial-gradient(660px 260px at 0% 18%, rgba(168,85,247,.08), transparent 52%),

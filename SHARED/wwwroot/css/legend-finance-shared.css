@@ -10311,9 +10311,6 @@ body.finance-dual-tools-open .layout-content {
 @media (max-width: 980px) {
     .savings-illustration-modal {
         display: block;
-        height: auto;
-        max-height: 90vh;
-        overflow: auto;
     }
 
     .savings-illustration-content {
@@ -10367,7 +10364,7 @@ body.finance-dual-tools-open .layout-content {
     .savings-illustration-bucket-list {
         justify-content: flex-start;
         min-height: 0;
-        gap: 10px;
+        gap: var(--legend-mobile-gap);
         padding-top: 22px;
     }
 
@@ -10414,31 +10411,17 @@ body.finance-dual-tools-open .layout-content {
         grid-template-columns: 1fr;
     }
 
-    .savings-illustration-backdrop {
-        padding: 10px;
-    }
-
-    .savings-illustration-modal {
-        max-height: 90vh;
-        padding: 14px 12px 12px;
-    }
-
     .savings-illustration-modal-head {
         grid-template-columns: 1fr auto;
-        gap: 12px;
-    }
-
-    .savings-illustration-modal-copy h4 {
-        font-size: 1.3rem;
+        gap: var(--legend-mobile-gap);
     }
 
     .savings-illustration-modal-copy p {
         display: block;
-        font-size: .92rem;
     }
 
     .savings-illustration-step-counter {
-        margin-bottom: 12px;
+        margin-bottom: var(--legend-mobile-gap);
     }
 
     .savings-illustration-summary-bar {
@@ -10446,8 +10429,8 @@ body.finance-dual-tools-open .layout-content {
     }
 
     .savings-illustration-summary-metric {
-        min-height: 76px;
-        padding: 14px 12px;
+        min-height: 0;
+        padding: var(--app-mobile-card-pad);
         border-top: 1px solid rgba(148, 163, 184, .14);
         border-left: none;
     }
@@ -10457,29 +10440,29 @@ body.finance-dual-tools-open .layout-content {
     }
 
     .savings-illustration-board {
-        padding: 12px;
+        padding: var(--app-mobile-card-pad);
     }
 
     .savings-illustration-card {
         width: 100%;
-        padding: 16px;
+        padding: var(--app-mobile-card-pad);
     }
 
     .savings-illustration-card__body {
-        grid-template-columns: 64px minmax(0, 1fr);
-        gap: 14px;
+        grid-template-columns: 44px minmax(0, 1fr);
+        gap: var(--legend-mobile-gap);
     }
 
     .savings-illustration-card__icon,
     .savings-illustration-bucket-card__icon {
-        width: 64px;
-        height: 64px;
-        border-radius: 18px;
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
     }
 
     .savings-illustration-card__icon svg {
-        width: 34px;
-        height: 34px;
+        width: 26px;
+        height: 26px;
     }
 
     .savings-illustration-account-flow,
@@ -10498,8 +10481,8 @@ body.finance-dual-tools-open .layout-content {
     }
 
     .savings-illustration-bucket-list {
-        gap: 12px;
-        padding-top: 18px;
+        gap: var(--legend-mobile-gap);
+        padding-top: var(--app-mobile-card-pad);
     }
 
     .savings-illustration-bucket-list.has-buckets::after {
@@ -10513,18 +10496,18 @@ body.finance-dual-tools-open .layout-content {
     }
 
     .savings-illustration-bucket-card {
-        min-height: 90px;
-        padding: 14px 14px 12px;
+        min-height: 0;
+        padding: var(--app-mobile-card-pad);
     }
 
     .savings-illustration-bucket-card__grid {
         grid-template-columns: 1fr;
-        gap: 12px;
+        gap: var(--legend-mobile-gap);
     }
 
     .savings-illustration-bucket-card__icon svg {
-        width: 32px;
-        height: 32px;
+        width: 24px;
+        height: 24px;
     }
 
     .savings-illustration-bucket-card__amount,
@@ -10537,8 +10520,8 @@ body.finance-dual-tools-open .layout-content {
     }
 
     .savings-illustration-footer {
-        grid-template-columns: 1fr;
-        gap: 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--legend-mobile-gap);
     }
 
     .savings-illustration-progress {
@@ -10547,6 +10530,7 @@ body.finance-dual-tools-open .layout-content {
 
     .savings-illustration-nav-btn {
         width: 100%;
+        min-height: var(--legend-mobile-control-height);
     }
 }
 
@@ -10646,7 +10630,7 @@ body.finance-dual-tools-open .layout-content {
     }
 
     .finance-support-modal--dense .wf-actions {
-        gap: 8px;
+        gap: var(--app-mobile-control-gap);
     }
 
     .finance-support-modal--dense .wf-actions > button,
@@ -10749,12 +10733,6 @@ body.finance-dual-tools-open .layout-content {
     }
 }
 
-@media (max-width: 1199.98px) {
-    .finance-support-modal {
-        width: min(1500px, 97vw);
-    }
-}
-
 @media (max-width: 1120px) {
     .finance-main.finance-main--dual {
         width: 100%;
@@ -10849,7 +10827,7 @@ body.finance-dual-tools-open .layout-content {
 
 @media (max-width: 760px) {
     .networth-tool.el-shell {
-        padding: 16px;
+        padding: var(--app-mobile-card-pad);
     }
 
     .networth-tool.el-shell .el-title {
@@ -10894,18 +10872,8 @@ body.finance-dual-tools-open .layout-content {
         grid-template-columns: 1fr;
     }
 
-    .expense-lens-week-panel-backdrop {
-        padding: 10px;
-    }
-
-    .expense-lens-week-panel {
-        width: 100%;
-        max-height: calc(100vh - 20px);
-        border-radius: 18px;
-    }
-
     .el-projection-shell {
-        padding: 14px;
+        padding: var(--app-mobile-card-pad);
     }
 
     .el-projection-setup-metrics,
@@ -10933,22 +10901,22 @@ body.finance-dual-tools-open .layout-content {
     }
 
     .el-projection-ledger-bar {
-        padding-left: 12px;
-        padding-right: 12px;
+        padding-left: var(--app-mobile-card-pad);
+        padding-right: var(--app-mobile-card-pad);
     }
 
     .el-projection-ledger-head,
     .el-projection-event {
         min-width: 700px;
-        gap: 12px;
-        padding-left: 12px;
-        padding-right: 12px;
+        gap: var(--legend-mobile-gap);
+        padding-left: var(--app-mobile-card-pad);
+        padding-right: var(--app-mobile-card-pad);
     }
 
     .el-projection-collapse-meta {
         align-items: flex-start;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--legend-mobile-gap);
     }
 
 }

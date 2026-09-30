@@ -49,6 +49,20 @@
   --app-mobile-block-gap:.72rem;
   --app-mobile-control-gap:.5rem;
   --app-mobile-card-pad:.78rem;
+
+  /* One authenticated-mobile visual contract, derived from the approved
+     Website Studio mobile sheet. Feature CSS consumes these tokens only. */
+  --legend-mobile-surface:#081a3a;
+  --legend-mobile-surface-deep:#07152d;
+  --legend-mobile-control:#142c50;
+  --legend-mobile-control-line:#50617e;
+  --legend-mobile-gold:#d4ad45;
+  --legend-mobile-gold-bright:#f0cf78;
+  --legend-mobile-text:#f7f6f2;
+  --legend-mobile-muted:#b8c6dc;
+  --legend-mobile-radius:14px;
+  --legend-mobile-control-height:34px;
+  --legend-mobile-gap:6px;
 }
 html{font-size:16px}
 body.legend-app{display:flex;flex-direction:column;overflow-x:clip}
@@ -430,12 +444,92 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
 
 
 @media(max-width:840px){
- .explore-drawer{top:12px;bottom:12px;left:12px;width:calc(100vw - 24px);max-width:360px}
+ .explore-drawer{
+  top:var(--legend-modal-area-start,8px);
+  right:8px;
+  bottom:auto;
+  left:8px;
+  width:auto;
+  max-width:none;
+  max-height:min(72dvh,var(--legend-modal-safe-height,72dvh));
+  transform:translateY(-130%);
+  transform-origin:top center;
+ }
+ .explore-drawer.open{transform:translateY(0)}
+ .explore-card{
+  max-height:min(72dvh,var(--legend-modal-safe-height,72dvh));
+  border-radius:0 0 var(--legend-mobile-radius,14px) var(--legend-mobile-radius,14px);
+  border-color:var(--legend-mobile-gold,#d4ad45);
+  background:var(--legend-mobile-surface,#081a3a);
+  box-shadow:0 14px 32px #0007;
+ }
+ .explore-header{padding:7px 10px}
+ .explore-search{padding:6px 10px 4px}
+ .explore-search input{padding:7px 10px;font-size:16px}
+ .explore-list{padding:4px 6px 8px}
+ .explore-item{
+  width:calc(100% - 8px);
+  min-height:34px;
+  margin:3px 4px;
+  padding:6px 8px;
+  border-radius:8px;
+  font-size:.76rem;
+ }
+ .explore-item span{font-size:.78rem}
+ .explore-item small{padding:3px 6px;font-size:.58rem}
 }
 @media(max-width:768px){
  :root{
   --app-shell-gutter:0px;
-  --app-section-gap:.78rem;
+  --app-section-gap:.42rem;
+  --app-mobile-block-gap:.48rem;
+  --app-mobile-control-gap:.35rem;
+  --app-mobile-card-pad:.62rem;
+ }
+ body.legend-app .legend-app-content{
+  padding:.42rem max(.32rem,env(safe-area-inset-right)) .7rem max(.32rem,env(safe-area-inset-left));
+ }
+ body.legend-app .legend-app-content>main{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+ }
+ body.legend-app .legend-app-content :where(.container,.container-fluid){
+  --bs-gutter-x:.7rem;
+ }
+ body.legend-app .legend-app-content :where(.row){
+  --bs-gutter-x:.7rem;
+  --bs-gutter-y:.5rem;
+ }
+ body.legend-app .legend-app-content :where(.card){
+  border-radius:var(--legend-mobile-radius,14px);
+ }
+ body.legend-app .legend-app-content :where(.card-body){
+  padding:var(--app-mobile-card-pad);
+ }
+ body.legend-app .legend-app-content :where(.btn){
+  min-height:var(--legend-mobile-control-height,34px);
+  padding:.38rem .62rem;
+  border-radius:8px;
+  font-size:.78rem;
+  line-height:1.1;
+ }
+ body.legend-app .legend-app-content :where(.form-control,.form-select){
+  min-height:38px;
+  padding:.42rem .56rem;
+  border-radius:8px;
+  font-size:16px;
+ }
+ body.legend-app .legend-app-content :where(.table)>:not(caption)>*>*{
+  padding:.42rem .48rem;
+  font-size:.75rem;
+ }
+ body.legend-app .legend-app-content .legend-hero-body{
+  padding:var(--app-mobile-card-pad);
+ }
+ body.legend-app .legend-app-content :where(.legend-title,.hero-title,.training-hero-title){
+  font-size:1.45rem;
+  line-height:1.05;
  }
  .legend-app-content :where(.legend-mobile-compact){
   margin-block:0;
@@ -464,6 +558,6 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
  }
  .footer-shell{grid-template-columns:1fr;justify-items:center}
  .footer-left,.footer-center,.footer-right{justify-self:center;text-align:center}
- .footer-support{flex-direction:column;justify-content:center;gap:.45rem}
- .footer-meta{flex-direction:column}
+ .footer-support{flex-direction:column;justify-content:center;gap:.35rem}
+ .footer-meta{flex-direction:column;gap:.2rem}
 }

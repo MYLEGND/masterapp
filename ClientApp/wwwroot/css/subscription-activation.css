@@ -1,3 +1,6 @@
+@import url('/design/legend-web-foundation.css');
+@import url('/design/legend-app-shell.css');
+
 :root {
     --activation-navy: #0d2145;
     --activation-navy-strong: #091832;
@@ -323,8 +326,13 @@ body.subscription-activation-standalone {
 
 @media (max-width: 760px) {
     .activation-page {
-        width: min(100% - 16px, 1040px);
-        padding: 8px 0;
+        width: calc(100% - 8px);
+        padding: 4px 0;
+    }
+
+    .activation-card,
+    .activation-notice-card {
+        border-radius: var(--legend-mobile-radius);
     }
 
     .activation-header,
@@ -335,15 +343,26 @@ body.subscription-activation-standalone {
     .activation-header,
     .activation-body,
     .activation-confirmation-body {
-        padding: 16px;
+        padding: var(--app-mobile-card-pad);
+    }
+
+    .activation-header {
+        gap: var(--app-mobile-block-gap);
     }
 
     .activation-summary {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--legend-mobile-gap);
+    }
+
+    .activation-summary-item {
+        padding: 7px 6px;
+        border-radius: 8px;
     }
 
     .activation-summary-value {
         overflow: visible;
+        font-size: .72rem;
         text-overflow: clip;
         white-space: normal;
         overflow-wrap: anywhere;
@@ -351,6 +370,7 @@ body.subscription-activation-standalone {
 
     .activation-field input,
     .activation-field select {
+        min-height: 38px;
         font-size: 16px;
     }
 
@@ -360,23 +380,30 @@ body.subscription-activation-standalone {
 
     .activation-actions .activation-button {
         width: 100%;
+        min-height: var(--legend-mobile-control-height);
+        padding: 6px 9px;
+        border-radius: 8px;
+        font-size: .78rem;
     }
 
     .activation-notice-card {
-        margin-top: 36px;
+        margin-top: var(--app-mobile-block-gap);
     }
 
     .activation-notice-card header,
     .activation-notice-actions {
-        padding: 18px;
+        padding: var(--app-mobile-card-pad);
     }
 
     .activation-notice-actions {
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--app-mobile-control-gap);
     }
 
     .activation-notice-actions .activation-link {
         width: 100%;
+        min-height: var(--legend-mobile-control-height);
         justify-content: center;
         text-align: center;
     }

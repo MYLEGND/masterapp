@@ -124,9 +124,3 @@
     max-width: 340px;
 }
 
-@media(max-width:720px){
- .home-container:not(.dashboard-page-shell) .category-container h3{display:flex;align-items:center;justify-content:space-between;cursor:pointer}
- .home-container:not(.dashboard-page-shell) .category-container h3::after{content:attr(data-mobile-state);color:var(--legend-gold);padding-left:8px}
- .home-container:not(.dashboard-page-shell) .category-container .centered-tools{display:none;gap:.65rem;justify-content:flex-start}
- .home-container:not(.dashboard-page-shell) .category-container.is-open .centered-tools{display:flex}
-}
