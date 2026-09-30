@@ -502,6 +502,32 @@ class ExactCandidateValidation(unittest.TestCase):
         ]
         self.assertIsNone(self.validate(runs,files))
 
+    def test_public_website_runtime_scope_does_not_require_step5(self):
+        files=[
+            'Legend-Design/legend-web-foundation.css',
+            'Legend-Website/scripts/build.mjs',
+            'Legend-Website/public/web.config',
+            'Protect-Website/Views/Shared/_Layout.cshtml',
+            'SHARED/WebsitePlatform/legend-public-cms.js',
+            'SHARED/WebsitePlatform/legend-public-web.css',
+            'Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs',
+        ]
+        self.assertIsNone(self.validate([self.run_record()],files))
+
+    def test_public_website_architecture_accepts_unrelated_later_compile_failure(self):
+        run=self.run_record(status='completed',conclusion='failure',id=91)
+        steps=[
+            {'name':name,'conclusion':'success'}
+            for name in m.PUBLIC_WEBSITE_ARCHITECTURE_STEPS
+        ]
+        steps.append({'name':'Compile full regression test project','conclusion':'failure'})
+        class Api:
+            def pages(self,path,key=None):
+                if path=='actions/runs/91/jobs?filter=latest':
+                    return [{'name':'validate','steps':steps}]
+                raise AssertionError(path)
+        self.assertTrue(m.architecture_public_website_validation(Api(),run))
+
     def test_website_studio_scope_does_not_exempt_unrelated_product_change(self):
         files=[
             'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',

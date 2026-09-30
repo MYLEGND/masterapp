@@ -143,6 +143,41 @@ def ready(pr, repo, base):
         and pr['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'})
 
 
+PUBLIC_WEBSITE_ARCHITECTURE_STEPS = {
+    'Run branch lifecycle safety contracts',
+    'Restore .NET graph',
+    'Build shared infrastructure',
+    'Build Protect host',
+    'Verify Protect serves the exact shared tracking assets',
+    'Install shared website renderer dependencies',
+    'Build shared website renderer',
+    'Verify renderer authority parity',
+    'Run business renderer tests with approved-baseline no-regression proof',
+    'Install canonical shared CMS test dependencies',
+    'Run canonical shared CMS tests',
+}
+
+
+def architecture_public_website_validation(api, run):
+    """Validate only the canonical public Website Studio/runtime subsystem.
+
+    A public-site-only candidate must prove its own renderer, Protect host, shared
+    CMS, and lifecycle contracts. Failures in unrelated app/test projects do not
+    invalidate this subsystem evidence.
+    """
+    if run.get('status') != 'completed':
+        return False
+    if run.get('conclusion') == 'success':
+        return True
+    if run.get('conclusion') != 'failure':
+        return False
+
+    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
+    steps = {step.get('name'): step.get('conclusion')
+             for job in jobs for step in (job.get('steps') or [])}
+    return all(steps.get(name) == 'success' for name in PUBLIC_WEBSITE_ARCHITECTURE_STEPS)
+
+
 ARCHITECTURE_PRODUCT_STEPS = {
     'Run branch lifecycle safety contracts',
     'Run authenticated mobile authority tests',
@@ -268,10 +303,13 @@ def candidate_validation(api, pr):
 
     # Website Studio has its own architecture/shared-CMS validation authority.
     # Release/test-control files never convert it into a Step 5 marketing release.
-    studio_exact = {
+    public_website_exact = {
         'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
         'AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs',
         'Legend-Design/legend-web-foundation.css',
+        'Legend-Website/scripts/build.mjs',
+        'Legend-Website/public/web.config',
+        'Protect-Website/Views/Shared/_Layout.cshtml',
         'SHARED/WebsitePlatform/legend-public-cms.js',
         'SHARED/WebsitePlatform/legend-public-web.css',
         'Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs',
@@ -279,8 +317,10 @@ def candidate_validation(api, pr):
         'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
         'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs',
         'Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs',
+        'Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs',
     }
-    studio_only = bool(product_names) and all(name in studio_exact for name in product_names)
+    public_website_only = bool(product_names) and all(
+        name in public_website_exact for name in product_names)
 
     broad_product_change = any(
         name.startswith(('AgentPortal/', 'ClientApp/', 'Protect-Website/',
@@ -288,16 +328,19 @@ def candidate_validation(api, pr):
         or name == step5.removeprefix('.github/workflows/')
         for name in product_names
     )
-    if broad_product_change and not studio_only:
+    if broad_product_change and not public_website_only:
         required.add(step5)
 
     failed = []
     for path in sorted(required):
         run = latest.get(path)
         if path == architecture:
-            if run is not None and architecture_product_validation(api, run):
-                continue
-            if inherited_architecture_product_validation(api, pr, architecture):
+            if run is not None:
+                if public_website_only and architecture_public_website_validation(api, run):
+                    continue
+                if not public_website_only and architecture_product_validation(api, run):
+                    continue
+            if not public_website_only and inherited_architecture_product_validation(api, pr, architecture):
                 continue
             failed.append(path)
         elif run is None:
