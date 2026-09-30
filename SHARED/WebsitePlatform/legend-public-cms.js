@@ -2199,7 +2199,7 @@
     } else if (extra.type === 'code') {
       el = document.createElement('div'); el.className = 'legend-legacy-migration-node legend-legacy-migration-code';
       const frame = document.createElement('iframe'); frame.dataset.cmsCodeFrame = 'true'; frame.title = 'Custom code block';
-      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
+      frame.setAttribute('sandbox', 'allow-scripts');
       frame.setAttribute('referrerpolicy', 'no-referrer'); frame.setAttribute('loading', 'lazy');
       el.appendChild(frame); renderCodePreview(el, extra);
     } else {
