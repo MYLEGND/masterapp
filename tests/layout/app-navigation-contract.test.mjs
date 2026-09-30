@@ -258,7 +258,7 @@ test('mobile navigation preserves real URL activation before any command-surface
   assert.match(nav,/const leavesCurrentDocument = control =>/);
   assert.match(nav,/return !target \|\| target === '_self'/);
   assert.match(handler,/event\.target\.closest\?\.\('a, \.explore-item, button'\)/);
-  assert.match(handler,/control\.matches\('\[data-bs-toggle\]'\)/);
+  assert.match(handler,/control\.matches\('\[data-bs-toggle\], \[aria-controls="exploreDrawer"\], \[data-legend-explore-close\]'\)/);
   assert.match(handler,/if \(leavesCurrentDocument\(control\)\) return;/);
   assert.match(handler,/dismissAfterActivation\(\(\) =>/);
   assert.match(exploreHandler,/const item = event\.target\.closest\('\.explore-item'\)/);
@@ -267,17 +267,32 @@ test('mobile navigation preserves real URL activation before any command-surface
   assert.doesNotMatch(handler,/event\.preventDefault\(/);
 });
 
-test('mobile navigation keeps primary, utility, and Quick Find regions distinct and compact',()=>{
+test('mobile navigation keeps approved compact rows and Quick Find as a same-panel subview',()=>{
   const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
-  const start=css.indexOf('@media (max-width: 840px)');
-  const mobile=css.slice(start,css.indexOf('@media (min-width: 841px)',start));
+  const start=css.indexOf('@media (max-width: 840px) {\n    .legend-global-nav {');
+  const end=css.indexOf('/* Global navigation motto:',start);
+  const mobile=css.slice(start,end);
 
-  assert.match(mobile,/\.legend-mobile-nav-panel \{[\s\S]*display:\s*flex/);
-  assert.match(mobile,/\.navbar-left \{[\s\S]*order:\s*-60/);
-  assert.match(mobile,/\.navbar-right \{[\s\S]*order:\s*-59[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(mobile,/\.navbar-left \.nav-row \{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(mobile,/\.explore-list \{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
-  assert.match(mobile,/\.explore-item \{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
-  assert.match(mobile,/\.explore-item small \{[\s\S]*font-size:\s*\.48rem/);
-  assert.doesNotMatch(mobile,/display:\s*contents\s*!important/);
+  assert.match(mobile,/grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"panel panel panel"/);
+  assert.match(mobile,/\.legend-global-nav\.mobile-open \.legend-mobile-nav-panel \{[\s\S]*display:\s*grid[\s\S]*max-height:\s*min\(72dvh, 540px\)/);
+  assert.match(mobile,/\.navbar-left \.nav-row \{[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(mobile,/\.navbar-right \{[\s\S]*grid-template-columns:\s*repeat\(auto-fit, minmax\(88px, 1fr\)\)/);
+  assert.match(mobile,/\.navbar-right > \.dropdown \{[\s\S]*grid-column:\s*1 \/ -1/);
+  assert.match(mobile,/\.legend-mobile-nav-panel > \.explore-drawer \{[\s\S]*display:\s*none/);
+  assert.match(mobile,/\.mobile-explore-open \.legend-mobile-nav-panel > \.explore-drawer \{[\s\S]*display:\s*block/);
+  assert.match(mobile,/\.explore-list \{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(mobile,/\.explore-item small \{[\s\S]*font-size:\s*\.44rem/);
+  assert.doesNotMatch(mobile,/display:\s*contents/);
+  assert.doesNotMatch(mobile,/position:\s*fixed/);
+  assert.doesNotMatch(mobile,/height:\s*100dvh/);
+
+  for(const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml'
+  ]){
+    const source=readFileSync(join(ROOT,file),'utf8');
+    assert.match(source,/class="container-fluid legend-global-nav-shell"/,file);
+    assert.doesNotMatch(source,/container-fluid d-flex flex-wrap align-items-start justify-content-between/,file);
+  }
 });
