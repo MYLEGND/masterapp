@@ -10311,9 +10311,6 @@ body.finance-dual-tools-open .layout-content {
 @media (max-width: 980px) {
     .savings-illustration-modal {
         display: block;
-        height: auto;
-        max-height: 90vh;
-        overflow: auto;
     }
 
     .savings-illustration-content {
