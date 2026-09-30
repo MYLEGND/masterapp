@@ -227,6 +227,7 @@ def architecture_product_validation(api, run):
 
 
 VALIDATION_NEUTRAL_PATHS = {
+    '.github/workflows/masterapp-platform-architecture-validation.yml',
     'Docs/releases/direct-release-request.json',
     'scripts/approved-release-baseline.py',
     'scripts/release-lifecycle.py',
