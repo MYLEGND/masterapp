@@ -293,6 +293,7 @@ public static class WebsiteSiteSource
                 if (node.Experience is null)
                     throw new ArgumentException($"Website experience '{node.Id}' requires a native experience definition.");
                 WebsiteExperiencePolicy.ValidateForPublish(node.Experience, validActions);
+                ValidateExperienceFieldSignalTargets(node);
             }
 
             if (node.Type == "form" &&
@@ -341,6 +342,68 @@ public static class WebsiteSiteSource
 
         if (primaryNavigationCount > 1)
             throw new WebsiteSiteSourceProtectionException("Website v3 may contain only one primary navigation authority.");
+    }
+
+    private static void ProtectMappedExperienceControls(
+        WebsiteCompositionNode proposed,
+        WebsiteCompositionNode previous)
+    {
+        if (previous.Experience is null) return;
+
+        var mappedKeys = (previous.FieldSignals ?? new Dictionary<string, List<WebsiteSignalBinding>>(StringComparer.Ordinal))
+            .Where(pair => (pair.Value?.Count ?? 0) > 0)
+            .Select(pair => pair.Key)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (mappedKeys.Length == 0) return;
+
+        if (proposed.Experience is null)
+            throw new WebsiteSiteSourceProtectionException(
+                $"Interactive experience '{previous.Id}' cannot remove its definition while mapped controls are attached.");
+
+        foreach (var mappedKey in mappedKeys)
+        {
+            var before = previous.Experience.Controls
+                .SingleOrDefault(control => string.Equals(control.Key, mappedKey, StringComparison.OrdinalIgnoreCase));
+            if (before is null)
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Interactive experience '{previous.Id}' contains an orphan protected mapping for control '{mappedKey}'.");
+
+            var after = proposed.Experience.Controls
+                .SingleOrDefault(control => string.Equals(control.Key, mappedKey, StringComparison.OrdinalIgnoreCase));
+            if (after is null)
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Mapped control '{mappedKey}' cannot be removed or renamed while its Analytics mapping is attached. Remove the custom mapping through Analytics first.");
+
+            if (!string.Equals(before.Type, after.Type, StringComparison.Ordinal))
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Mapped control '{mappedKey}' cannot change control type while its Analytics mapping is attached. Remove the custom mapping through Analytics first.");
+
+            var beforeAction = before.Action?.ActionKey;
+            if (!string.IsNullOrWhiteSpace(beforeAction) &&
+                !string.Equals(beforeAction, after.Action?.ActionKey, StringComparison.Ordinal))
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Mapped control '{mappedKey}' cannot retarget its canonical action while its Analytics mapping is attached.");
+        }
+    }
+
+    private static void ValidateExperienceFieldSignalTargets(WebsiteCompositionNode node)
+    {
+        if (!string.Equals(node.Type, "experience", StringComparison.Ordinal) ||
+            node.Experience is null ||
+            node.FieldSignals is null ||
+            node.FieldSignals.Count == 0)
+            return;
+
+        foreach (var (fieldKey, bindings) in node.FieldSignals)
+        {
+            if ((bindings?.Count ?? 0) == 0) continue;
+            var matches = node.Experience.Controls.Count(control =>
+                string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase));
+            if (matches != 1)
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Interactive experience '{node.Id}' must contain exactly one control for mapped field '{fieldKey}'.");
+        }
     }
 
     private static string InferSiteKey(string actionKey) =>
@@ -524,6 +587,9 @@ public static class WebsiteSiteSource
                 // Signal mappings are managed only through the canonical signal/
                 // analytics controls. Source may redesign the signal-bearing node,
                 // but cannot add, remove, or rewrite its mappings.
+                if (string.Equals(previous.Node.Type, "experience", StringComparison.Ordinal))
+                    ProtectMappedExperienceControls(node, previous.Node);
+
                 node.Signals = Clone(previous.Node.Signals);
                 node.FieldSignals = Clone(previous.Node.FieldSignals);
 
