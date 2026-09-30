@@ -1196,10 +1196,6 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
         align-items: stretch;
         gap: 8px;
     }
-    .product-link-actions {
-        width: 100%;
-        flex-wrap: wrap;
-    }
     .landing-routes-footer {
         align-items: stretch;
     }
