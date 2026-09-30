@@ -341,7 +341,8 @@ html[data-legend-modal-region] body .modal .modal-body {
         line-height: 1.15;
     }
 
-    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel] :is(h2, h3, h4),
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel]
+    :is(h2, h3, h4, .hp-dialog-title, .uw-name, .note-self-title, .qv-booking-title, .ws-client-picker-title, .scripture-reference),
     html[data-legend-modal-region] body.legend-app .expense-lens-week-panel :is(h2, h3, h4) {
         font-size: 1rem !important;
         line-height: 1.15 !important;
