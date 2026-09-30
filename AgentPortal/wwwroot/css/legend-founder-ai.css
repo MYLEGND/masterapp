@@ -1088,12 +1088,9 @@
         width: 100%;
         min-height: 0;
         max-height: 100%;
+        grid-template-rows: auto minmax(0, 1fr);
         border: 0;
         border-radius: 0;
-    }
-
-    .legend-founder-ai-shell {
-        grid-template-rows: auto minmax(0, 1fr);
         background: var(--legend-ai-paper);
         transition: grid-template-rows .20s ease;
     }
