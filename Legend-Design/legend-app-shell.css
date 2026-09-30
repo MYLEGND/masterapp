@@ -49,6 +49,20 @@
   --app-mobile-block-gap:.72rem;
   --app-mobile-control-gap:.5rem;
   --app-mobile-card-pad:.78rem;
+
+  /* One authenticated-mobile visual contract, derived from the approved
+     Website Studio mobile sheet. Feature CSS consumes these tokens only. */
+  --legend-mobile-surface:#081a3a;
+  --legend-mobile-surface-deep:#07152d;
+  --legend-mobile-control:#142c50;
+  --legend-mobile-control-line:#50617e;
+  --legend-mobile-gold:#d4ad45;
+  --legend-mobile-gold-bright:#f0cf78;
+  --legend-mobile-text:#f7f6f2;
+  --legend-mobile-muted:#b8c6dc;
+  --legend-mobile-radius:14px;
+  --legend-mobile-control-height:34px;
+  --legend-mobile-gap:6px;
 }
 html{font-size:16px}
 body.legend-app{display:flex;flex-direction:column;overflow-x:clip}
