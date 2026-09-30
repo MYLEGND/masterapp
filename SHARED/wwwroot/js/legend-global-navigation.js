@@ -4,6 +4,29 @@
 
   const isMobileViewport = () => window.innerWidth <= breakpoint;
 
+  // Native same-tab navigation must keep its source control connected until the
+  // browser completes the anchor/form activation. Reparenting or hiding the
+  // command surface from a microtask can run before that default action.
+  const leavesCurrentDocument = control => {
+    if (!control) return false;
+
+    if (control.tagName === 'A') {
+      const href = (control.getAttribute('href') || '').trim();
+      const target = (control.getAttribute('target') || '').trim().toLowerCase();
+      if (!href || href.startsWith('#') || href.toLowerCase().startsWith('javascript:')) return false;
+      if (control.hasAttribute('download')) return false;
+      return !target || target === '_self';
+    }
+
+    if (control.tagName === 'BUTTON') {
+      return control.type === 'submit' && Boolean(control.form);
+    }
+
+    return false;
+  };
+
+  const dismissAfterActivation = callback => window.setTimeout(callback, 0);
+
   const closeAllNavigation = except => {
     navigationClosers.forEach(entry => {
       if (entry.nav !== except) entry.close();
@@ -31,8 +54,6 @@
       next: node.nextSibling
     }]));
     let mounted = false;
-    const scrollOwner = 'legend-global-navigation';
-
     const restoreNode = node => {
       const origin = origins.get(node);
       if (!origin?.parent) return;
@@ -42,13 +63,16 @@
 
     const mountMobilePanel = () => {
       if (mounted) return;
-      // The mobile menu has one owner and one scroll region. Explore content is
-      // moved into the same panel rather than opening a second sheet on top.
-      [drawer, left, right].filter(Boolean).forEach(node => panel.appendChild(node));
+      // The compact mobile menu owns both command rows and the Quick Find
+      // subview. Nothing is flattened or duplicated; the canonical nodes move
+      // into one panel and return to their exact desktop origins at breakpoint.
+      [left, right, drawer].filter(Boolean).forEach(node => panel.appendChild(node));
       mounted = true;
       nav.setAttribute('data-legend-mobile-nav-integrated', '');
+      nav.classList.remove('mobile-explore-open');
       overlay?.classList.remove('open');
       drawer?.classList.remove('open');
+      drawer?.setAttribute('aria-hidden', 'true');
     };
 
     const restoreDesktopNavigation = () => {
@@ -61,11 +85,12 @@
 
     const close = ({ restoreFocus = false } = {}) => {
       const wasOpen = nav.classList.contains('mobile-open');
-      nav.classList.remove('mobile-open');
+      nav.classList.remove('mobile-open', 'mobile-explore-open');
       toggle.setAttribute('aria-expanded', 'false');
+      drawer?.classList.remove('open');
       drawer?.setAttribute('aria-hidden', 'true');
+      overlay?.classList.remove('open');
       overlay?.setAttribute('aria-hidden', 'true');
-      window.LegendModal?.unlockPageScroll?.(scrollOwner);
       if (wasOpen && restoreFocus) {
         try { toggle.focus({ preventScroll: true }); } catch { toggle.focus(); }
       }
@@ -76,18 +101,18 @@
       mountMobilePanel();
       window.LegendModal?.refreshViewportOffsets?.();
       nav.classList.add('mobile-open');
+      nav.classList.remove('mobile-explore-open');
       toggle.setAttribute('aria-expanded', 'true');
-      drawer?.setAttribute('aria-hidden', 'false');
+      drawer?.classList.remove('open');
+      drawer?.setAttribute('aria-hidden', 'true');
+      overlay?.classList.remove('open');
       overlay?.setAttribute('aria-hidden', 'true');
       panel.scrollTop = 0;
-      window.LegendModal?.lockPageScroll?.(scrollOwner);
     };
 
     const syncResponsiveState = () => {
-      if (isMobileViewport()) {
-        mountMobilePanel();
-        if (nav.classList.contains('mobile-open')) window.LegendModal?.lockPageScroll?.(scrollOwner);
-      } else {
+      if (isMobileViewport()) mountMobilePanel();
+      else {
         close();
         restoreDesktopNavigation();
       }
@@ -99,20 +124,16 @@
       else open();
     });
 
-    const dismissAfterActivation = callback => {
-      if (typeof queueMicrotask === 'function') queueMicrotask(callback);
-      else Promise.resolve().then(callback);
-    };
-
     panel.addEventListener('click', event => {
       const control = event.target.closest?.('a, .explore-item, button');
-      if (!control || control === toggle || control.matches('[data-bs-toggle]')) return;
+      if (!control || control === toggle || control.matches('[data-bs-toggle], [aria-controls="exploreDrawer"], [data-legend-explore-close]')) return;
 
-      // Never hide the command surface in the middle of the same click dispatch.
-      // Several canonical actions (website management, messaging, modal launchers,
-      // and other delegated controls) bind above this panel at document level.
-      // Dismiss only after the activation has fully propagated so the intended
-      // route/default action or delegated handler always receives the click.
+      // Same-tab links and form submissions own their own teardown through page
+      // navigation/pagehide. Do not touch their DOM before native activation.
+      if (leavesCurrentDocument(control)) return;
+
+      // Delegated modal/action controls stay in the current document, so dismiss
+      // only on the next task after every click handler/default action has run.
       dismissAfterActivation(() => {
         if (nav.isConnected) close();
       });
@@ -126,8 +147,6 @@
 
     window.addEventListener('resize', syncResponsiveState, { passive: true });
     window.visualViewport?.addEventListener('resize', syncResponsiveState, { passive: true });
-    window.addEventListener('pagehide', () => window.LegendModal?.unlockPageScroll?.(scrollOwner));
-
     nav.__legendOpenNavigation = open;
     nav.__legendCloseNavigation = close;
     navigationClosers.add({ nav, close });
@@ -155,12 +174,17 @@
 
   const syncResponsiveState = () => {
     if (closeControl) closeControl.hidden = !isMobile();
+    if (isMobile()) {
+      window.LegendModal?.unlockPageScroll?.(scrollOwner);
+      overlay.classList.remove('open');
+      overlay.setAttribute('aria-hidden', 'true');
+      return;
+    }
     if (!drawer.classList.contains('open')) {
       window.LegendModal?.unlockPageScroll?.(scrollOwner);
       return;
     }
-    if (isMobile()) window.LegendModal?.lockPageScroll?.(scrollOwner);
-    else window.LegendModal?.unlockPageScroll?.(scrollOwner);
+    window.LegendModal?.unlockPageScroll?.(scrollOwner);
   };
 
   const setAriaState = isOpen => {
@@ -171,11 +195,20 @@
 
   const closeDrawer = ({ restoreFocus = false } = {}) => {
     const ownerNav = trigger.closest('[data-legend-global-nav]');
+    const wasOpen = drawer.classList.contains('open');
+
     if (isMobile() && ownerNav?.hasAttribute('data-legend-mobile-nav-integrated')) {
-      ownerNav.__legendCloseNavigation?.({ restoreFocus });
+      ownerNav.classList.remove('mobile-explore-open');
+      drawer.classList.remove('open');
+      setAriaState(false);
+      overlay.classList.remove('open');
+      overlay.setAttribute('aria-hidden', 'true');
+      if (wasOpen && restoreFocus && trigger.isConnected) {
+        try { trigger.focus({ preventScroll: true }); } catch { trigger.focus(); }
+      }
       return;
     }
-    const wasOpen = drawer.classList.contains('open');
+
     drawer.classList.remove('open');
     overlay.classList.remove('open');
     setAriaState(false);
@@ -187,10 +220,18 @@
 
   const openDrawer = () => {
     const ownerNav = trigger.closest('[data-legend-global-nav]');
-    if (isMobile()) {
-      ownerNav?.__legendOpenNavigation?.();
+    if (isMobile() && ownerNav?.hasAttribute('data-legend-mobile-nav-integrated')) {
+      ownerNav.__legendOpenNavigation?.();
+      ownerNav.classList.add('mobile-explore-open');
+      drawer.classList.add('open');
+      setAriaState(true);
+      overlay.classList.remove('open');
+      overlay.setAttribute('aria-hidden', 'true');
+      const mobilePanel = ownerNav.querySelector('[data-legend-mobile-nav-panel]');
+      if (mobilePanel) mobilePanel.scrollTop = 0;
       return;
     }
+
     closeAllNavigation(ownerNav);
     window.LegendModal?.refreshViewportOffsets?.();
     drawer.classList.add('open');
@@ -198,8 +239,6 @@
     setAriaState(true);
     syncResponsiveState();
 
-    // Desktop can take search focus immediately. On phones, avoid forcing the
-    // virtual keyboard over the newly opened sheet.
     if (search && window.innerWidth > breakpoint) {
       window.setTimeout(() => {
         try { search.focus({ preventScroll: true }); } catch { search.focus(); }
@@ -224,16 +263,18 @@
   });
 
   list.addEventListener('click', event => {
-    if (!event.target.closest('.explore-item')) return;
+    const item = event.target.closest('.explore-item');
+    if (!item) return;
 
     const ownerNav = trigger.closest('[data-legend-global-nav]');
+    if (leavesCurrentDocument(item)) return;
+
     if (isMobile() && ownerNav?.hasAttribute('data-legend-mobile-nav-integrated')) {
-      // The integrated mobile panel owns dismissal after the click finishes.
+      dismissAfterActivation(() => ownerNav.__legendCloseNavigation?.());
       return;
     }
 
-    if (typeof queueMicrotask === 'function') queueMicrotask(() => closeDrawer());
-    else Promise.resolve().then(() => closeDrawer());
+    dismissAfterActivation(() => closeDrawer());
   });
 
   search?.addEventListener('input', () => {
