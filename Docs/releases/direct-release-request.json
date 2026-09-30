@@ -1,12 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged PR #334 canonical modal surface authority repair after exact-head green architecture validation, Step 5 approved-baseline comparison, and governed advertising validation.",
-  "purpose": "Deploy only AgentPortal and ClientApp from the current legend/approved-changes head. This release publishes the canonical modal surface authority repair: the shared modal owner keeps shielding inside the modal stacking context, direct modal panels remain above their backdrop, and stale feature-level dim/blur/backdrop ownership has been removed without changing the working global navigation. Protect, Parfait, LEGEND Website, Cloudflare routing, database migrations, analytics/Meta/OpenAI delivery, CRM data logic, payments, authentication, and unrelated systems are excluded.",
-  "requestId": "canonical-modal-authority-pr334-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy merged PR #336 after exact-head green MasterApp architecture validation, Step 5 approved-baseline comparison, and governed advertising validation.",
+  "purpose": "Deploy the canonical native experience authority with locked backend signals from the current legend/approved-changes head to every affected web application. This release publishes the native declarative experience runtime, canonical lead-capture bridge, published signal binding lineage enforcement, form field completion and validation-friction tracking, updated Website Studio GPT operating contract, and the shared public inquiry/CMS runtime. AgentPortal, ClientApp, Protect, Parfait, and the LEGEND Website are affected through Infrastructure, SHARED WebsitePlatform assets, or the LEGEND public inquiry bundle. Cloudflare routing, database migrations, mobile native applications, unrelated CRM/payment/authentication behavior, and unrelated infrastructure are excluded.",
+  "requestId": "canonical-native-experience-pr336-20260930",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
-    "masterapp-client"
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
