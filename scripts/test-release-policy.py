@@ -119,6 +119,61 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
         self.assertEqual(resolved['number'], 308)
         self.assertEqual(api.path, 'commits/' + merged + '/pulls')
 
+    def test_chained_control_only_authorizations_resolve_nearest_merged_pr(self):
+        head = 'a' * 40
+        prior = 'b' * 40
+        merged = 'c' * 40
+        pr = {
+            'number': 310,
+            'merged_at': '2026-09-30T06:20:00Z',
+            'merge_commit_sha': merged,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+
+        class Api:
+            def pages(self, path, key=None):
+                self.path = path
+                return [pr]
+
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                current = args[4]
+                if current == head:
+                    return SimpleNamespace(returncode=0, stdout=f'{head} {prior}\n')
+                if current == prior:
+                    return SimpleNamespace(returncode=0, stdout=f'{prior} {merged}\n')
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
+        api = Api()
+        with patch.object(self.lifecycle, 'direct_only_request',
+                          side_effect=lambda sha: sha in {head, prior}), \
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
+            resolved = self.lifecycle.direct_release_approved_pr(api, head)
+
+        self.assertEqual(resolved['number'], 310)
+        self.assertEqual(api.path, 'commits/' + merged + '/pulls')
+
+    def test_chained_release_resolution_rejects_intervening_product_commit(self):
+        head = 'a' * 40
+        parent = 'b' * 40
+
+        class Api:
+            def pages(self, path, key=None):
+                raise AssertionError('product-bearing control ancestry must fail before GitHub lookup')
+
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                return SimpleNamespace(returncode=0, stdout=f'{head} {parent}\n')
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\nInfrastructure/WebsiteEditing/WebsiteSiteSource.cs\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
+        with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
+            self.assertIsNone(self.lifecycle.direct_release_approved_pr(Api(), head))
+
     def test_direct_release_authorization_rejects_extra_changed_files(self):
         path = 'Docs/releases/direct-release-request.json'
         with patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
