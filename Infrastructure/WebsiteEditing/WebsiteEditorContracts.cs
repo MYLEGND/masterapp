@@ -318,6 +318,11 @@ public sealed class WebsiteCompositionNode
     public Dictionary<string, WebsiteControlPresentation> FieldPresentations { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, string> FieldLabels { get; set; } = new(StringComparer.Ordinal);
 
+    // Canonical Analytics-owned mappings for protected form controls. Field keys
+    // are stable presentation/runtime identities; execution semantics still
+    // belong to the server-owned form.
+    public Dictionary<string, List<WebsiteSignalBinding>> FieldSignals { get; set; } = new(StringComparer.Ordinal);
+
     public List<WebsiteCompositionNode> Children { get; set; } = new();
 }
 
