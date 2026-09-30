@@ -319,6 +319,7 @@ test('v3 canonical composition renders natively and canvas/source share the same
     f.input('#legend-cms-width','55');
     parsed=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
     assert.equal(parsed.style.widthPercent,55);
+    await new Promise(resolve=>setTimeout(resolve,0));
     const saved=await f.save();
     assert.equal(saved.pages['/'].composition[0].children[0].style.widthPercent,55);
     assert.equal(Object.hasOwn(saved.pages['/'],'elements'),false);
@@ -470,7 +471,7 @@ test('Analytics mappings use a dedicated canonical mutation path and generic sav
 test('normal Canvas saves use the same server protection authority as Selected Source',()=>{
   assert.match(websitePlatformControllerSource,/NormalizeAuthorableDocumentAsync\(/);
   assert.match(websitePlatformControllerSource,/var source = WebsiteSiteSource\.Serialize\(candidate\)/);
-  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.Parse\([\s\S]*source,[\s\S]*current,[\s\S]*actions,[\s\S]*validateCanonical: false\)/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.Parse\([\s\S]*source,[\s\S]*current,[\s\S]*actions,[\s\S]*validateCanonical: false,[\s\S]*requireActiveHomePage: false\)/);
   assert.match(websitePlatformControllerSource,/ValidateCompositionMediaOwnershipAsync\([\s\S]*protectedDocument/);
   assert.match(websitePlatformControllerSource,/catch \(WebsiteSiteSourceProtectionException ex\)[\s\S]*website_document_protected/);
 });

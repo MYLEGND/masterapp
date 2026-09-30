@@ -1091,7 +1091,8 @@ public class WebsitePlatformController : ControllerBase
             source,
             current,
             actions,
-            validateCanonical: false).Document;
+            validateCanonical: false,
+            requireActiveHomePage: false).Document;
 
         await ValidateCompositionMediaOwnershipAsync(
             actor,

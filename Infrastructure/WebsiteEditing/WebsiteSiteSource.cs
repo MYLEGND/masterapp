@@ -72,7 +72,8 @@ public static class WebsiteSiteSource
         string sourceText,
         WebsiteContentDocument baseline,
         IReadOnlyList<WebsiteCallToActionOption> ctaCatalog,
-        bool validateCanonical = true)
+        bool validateCanonical = true,
+        bool requireActiveHomePage = true)
     {
         if (string.IsNullOrWhiteSpace(sourceText) || sourceText.Length > MaxSourceCharacters)
             throw new ArgumentException("LEGEND Site Source must contain 1-2,000,000 characters.");
@@ -157,7 +158,8 @@ public static class WebsiteSiteSource
             output.Pages[path] = next;
         }
 
-        if (!output.Pages.TryGetValue("/", out var home) || home.Navigation.IsDeleted)
+        if (requireActiveHomePage &&
+            (!output.Pages.TryGetValue("/", out var home) || home.Navigation.IsDeleted))
             throw new ArgumentException("LEGEND Site Source must keep one active home page.");
 
         var proposedNodeIds = Flatten(output).Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
