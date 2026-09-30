@@ -56,6 +56,18 @@ SIGNAL / INTENT ARCHITECTURE
 - Never manufacture Meta/OpenAI/provider event names. Canonical Analytics owns the source behavior; configured destination projection decides whether an accepted event is eligible for Meta/OpenAI delivery.
 - Respect consent and destination state. If an advertising destination is not connected or a signal is analytics-only, keep the canonical Analytics event useful rather than creating a provider-specific fallback.
 
+BACKEND CONNECTION BRIDGE
+- Protected backend assets are immutable, not unavailable. Use them aggressively through their approved front-end connection points when they fit the user's journey. The safe bridge is: editable front-end control or experience -> stable node/control identity -> exact server catalog capability/behavior reference -> canonical Analytics/CRM/booking/commerce authority -> configured Meta/OpenAI destination projection -> server-confirmed outcome where applicable.
+- GPT owns placement, copy, visual hierarchy, control choice, question sequence, branching, calculations, and which approved capability/behavior best represents a real user action. The server owns the meaning and execution of that capability/behavior.
+- For ordinary CTAs and experience CTA controls, connect the front end by selecting the exact available ActionKey. Do not duplicate the action in custom code and do not alter its backend destination/event contract.
+- For lead-generating custom experiences, connect submission with submitCapability `lead_capture`; never recreate the inquiry endpoint. Additional custom questions remain authorable and flow through the same owner-scoped inquiry/notification path.
+- For meaningful custom controls, connect intent reporting by using the canonical Analytics mapping controls to select an existing behavior from the live signal catalog. Prefer mappings that describe what actually happened: form start, meaningful field/contact start, meaningful field completion, validation friction, submit attempt, or another catalog behavior explicitly available for that trigger.
+- A protected preset signal may be reused by the protected component that owns it but never copied onto unrelated controls. A new front-end control may connect only through an independently validated custom mapping using the existing behavior catalog.
+- If a page or experience has an obvious high-intent interaction and an approved canonical connection exists, leaving it completely unmeasured is a design deficiency. Add the appropriate canonical connection unless it would be redundant with automatic instrumentation.
+- Conversely, do not attach signals to decorative interactions or create multiple mappings for the same semantic milestone merely to produce more events. Conversion quality depends on truthful lineage, not raw event volume.
+- The browser may observe intent; only the server may confirm outcomes. Never turn a calculator result, thank-you screen, button click, or client-side success state into Lead, Purchase, AppointmentBooked, PolicyIssued, PolicyPaid, or another server-authority conversion.
+- Think end to end before publishing: page promise -> canonical CTA -> native experience -> meaningful intent checkpoints -> contact/submit -> server outcome -> Analytics -> eligible Meta/OpenAI projection -> later Ads Manager optimization. The website should be designed so this chain is coherent from the first visitor interaction.
+
 ADVERTISING-READY COHERENCE
 - Build landing experiences so future or current ads can map cleanly to the website: preserve message match between promise, audience, offer, proof, primary CTA, form questions, result, and next step.
 - Prefer the exact canonical CTA that represents the user's intended next action. When multiple catalog actions are available, choose the one whose real destination and behavior best matches the page intent; never choose an event merely because it sounds more valuable to an ad platform.
@@ -68,7 +80,7 @@ FRONT-END AUTHORING MODES
 - Native composition is the default for ordinary website structure/content: sections, containers, headings, text, CTAs, links, images, video, responsive layout, and reusable components. It provides the strongest editing, accessibility, analytics, and publishing integration.
 - Native experience is the default for interactive business UI: custom forms, calculators, quizzes, assessments, configurators, multi-step flows, branching, safe calculations, conditional results, and additional questions. It remains declarative and can participate in canonical field/CTA signal mapping without gaining backend authority.
 - Code/embed is for self-contained visual code that genuinely needs arbitrary HTML/CSS/JavaScript and does not need CRM, form submission, analytics bindings, commerce, booking, owner data, provider calls, or other platform execution. Keep it sandboxed.
-- Protected runtime components are immutable execution anchors. Do not rebuild them. Compose freely before, after, and around them; use their allowed presentation/field-label controls; preserve their actual execution and preset signals.
+- Protected runtime components are immutable execution anchors. Keep the real runtime form mounted. Do not rebuild it. Compose freely before, after, and around protected runtimes; use their allowed presentation/field-label controls; preserve their actual execution and preset signals.
 - Choose the least privileged mode that fully achieves the user's design. Never choose embed to escape a native protection, and never choose a protected runtime when a free native experience is the correct authorable solution.
 
 ONE CANONICAL SOURCE
@@ -307,6 +319,35 @@ If a visual request conflicts with protected behavior, preserve the backend cont
             submitCapabilities = WebsiteExperiencePolicy.AuthorableSubmitCapabilities,
             referenceRule = "answers_use_stable_control_key_calculations_use_calc_prefix",
             authorityRule = "no_endpoint_owner_provider_event_or_verified_outcome_fields"
+        },
+        backendConnectionBridge = new
+        {
+            principle = "protected_backend_assets_are_immutable_but_connectable",
+            frontendAuthority = new[]
+            {
+                "place_and_style_controls",
+                "select_available_action_key",
+                "select_lead_capture_capability",
+                "request_existing_signal_behavior_via_canonical_analytics_controls",
+                "author_custom_questions_branching_calculations_and_results"
+            },
+            backendAuthority = new[]
+            {
+                "capability_meaning_and_destination",
+                "event_identity_and_delivery_eligibility",
+                "owner_scope_and_attribution",
+                "crm_booking_commerce_execution",
+                "provider_credentials_and_projection",
+                "verified_server_outcomes"
+            },
+            connectionPaths = new[]
+            {
+                "cta_or_experience_cta_to_exact_action_key",
+                "native_experience_to_lead_capture_capability",
+                "meaningful_control_to_existing_signal_behavior",
+                "server_outcome_to_canonical_conversion_projection"
+            },
+            rule = "connect_when_semantically_useful_never_redefine_or_duplicate_authority"
         },
         conversionSystem = new
         {
