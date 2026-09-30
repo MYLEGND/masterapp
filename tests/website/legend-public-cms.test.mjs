@@ -925,6 +925,8 @@ test('GPT browser workspace exposes the canonical editor without any app-side Op
     assert.ok(f.w.document.querySelector('[data-agent-action="quality-preflight"]'));
     assert.ok(f.w.document.querySelector('[data-agent-action="publish-workspace"]'));
     f.click('#legend-cms-agent-master-source');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.w.document.querySelector('[data-cms-view="source"]').hidden,false);
     assert.equal(f.w.document.querySelector('#legend-cms-source-scope').value,'site');
     assert.equal(f.calls.some(call=>new URL(call.url).pathname.includes('/manage/ai/')),false);
