@@ -315,6 +315,20 @@ public static class WebsiteExperiencePolicy
                 throw new ArgumentException($"Website experience step '{step.Key}' references an unavailable control.");
         }
 
+        if (definition.Steps.Count > 0)
+        {
+            var placements = definition.Steps
+                .SelectMany(step => step.ControlKeys)
+                .GroupBy(key => key, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+            foreach (var control in definition.Controls)
+            {
+                if (!placements.TryGetValue(control.Key, out var count) || count != 1)
+                    throw new ArgumentException(
+                        $"Website experience control '{control.Key}' must appear exactly once across explicit steps.");
+            }
+        }
+
         foreach (var control in definition.Controls.Where(control => control.Action is not null))
         {
             var action = control.Action!;
@@ -339,9 +353,27 @@ public static class WebsiteExperiencePolicy
                         $"Lead capture experiences require exactly one '{role}' contact-role control.");
             }
 
+            var firstName = definition.Controls.Single(control => control.ContactRole == "first_name");
+            var lastName = definition.Controls.Single(control => control.ContactRole == "last_name");
+            var phone = definition.Controls.Single(control => control.ContactRole == "phone");
+            var email = definition.Controls.Single(control => control.ContactRole == "email");
             var consent = definition.Controls.Single(control => control.ContactRole == "consent");
+
+            if (firstName.Type != "text" || lastName.Type != "text")
+                throw new ArgumentException("Lead capture first and last name controls must use text inputs.");
+            if (phone.Type != "tel")
+                throw new ArgumentException("Lead capture phone controls must use the telephone input type.");
+            if (email.Type != "email")
+                throw new ArgumentException("Lead capture email controls must use the email input type.");
             if (consent.Type != "checkbox" || !consent.Required)
                 throw new ArgumentException("Lead capture consent must be a required checkbox.");
+            if (consent.DefaultValue is JsonElement consentDefault &&
+                consentDefault.ValueKind == JsonValueKind.True)
+                throw new ArgumentException("Lead capture consent cannot be preselected.");
+
+            var message = definition.Controls.SingleOrDefault(control => control.ContactRole == "message");
+            if (message is not null && message.Type is not ("text" or "textarea"))
+                throw new ArgumentException("Lead capture message controls must use text or textarea.");
 
             if (!definition.Controls.Any(control => control.Action?.Type == "submit"))
                 throw new ArgumentException("Lead capture experiences require a submit action.");
@@ -424,7 +456,7 @@ public static class WebsiteExperiencePolicy
         var email = ToText(roleValues.GetValueOrDefault("email"));
         var message = ToText(roleValues.GetValueOrDefault("message"));
 
-        var summary = BuildNotificationSummary(definition, normalized, supplied);
+        var summary = BuildNotificationSummary(definition, normalized);
         if (!string.IsNullOrWhiteSpace(summary))
             message = string.IsNullOrWhiteSpace(message)
                 ? summary
@@ -447,8 +479,7 @@ public static class WebsiteExperiencePolicy
 
     private static string BuildNotificationSummary(
         WebsiteExperienceDefinition definition,
-        IReadOnlyDictionary<string, object?> normalized,
-        IReadOnlyDictionary<string, JsonElement> supplied)
+        IReadOnlyDictionary<string, object?> normalized)
     {
         var lines = new List<string>();
         foreach (var control in definition.Controls)
@@ -466,7 +497,12 @@ public static class WebsiteExperiencePolicy
         var calculationStack = new HashSet<string>(StringComparer.Ordinal);
         foreach (var result in definition.Results)
         {
-            var value = Evaluate(result.Expression, normalized, supplied, definition.Calculations, calculationStack);
+            var value = Evaluate(
+                result.Expression,
+                normalized,
+                EmptySuppliedAnswers,
+                definition.Calculations,
+                calculationStack);
             if (IsEmpty(value)) continue;
             lines.Add($"{result.Label}: {FormatResult(value, result.Format)}");
         }
@@ -576,6 +612,9 @@ public static class WebsiteExperiencePolicy
 
         return clean;
     }
+
+    private static readonly IReadOnlyDictionary<string, JsonElement> EmptySuppliedAnswers =
+        new Dictionary<string, JsonElement>(StringComparer.Ordinal);
 
     private static object? Evaluate(
         WebsiteExperienceExpression expression,
