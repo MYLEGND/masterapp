@@ -4,6 +4,29 @@
 
   const isMobileViewport = () => window.innerWidth <= breakpoint;
 
+  // Native same-tab navigation must keep its source control connected until the
+  // browser completes the anchor/form activation. Reparenting or hiding the
+  // command surface from a microtask can run before that default action.
+  const leavesCurrentDocument = control => {
+    if (!control) return false;
+
+    if (control.tagName === 'A') {
+      const href = (control.getAttribute('href') || '').trim();
+      const target = (control.getAttribute('target') || '').trim().toLowerCase();
+      if (!href || href.startsWith('#') || href.toLowerCase().startsWith('javascript:')) return false;
+      if (control.hasAttribute('download')) return false;
+      return !target || target === '_self';
+    }
+
+    if (control.tagName === 'BUTTON') {
+      return control.type === 'submit' && Boolean(control.form);
+    }
+
+    return false;
+  };
+
+  const dismissAfterActivation = callback => window.setTimeout(callback, 0);
+
   const closeAllNavigation = except => {
     navigationClosers.forEach(entry => {
       if (entry.nav !== except) entry.close();
@@ -99,20 +122,16 @@
       else open();
     });
 
-    const dismissAfterActivation = callback => {
-      if (typeof queueMicrotask === 'function') queueMicrotask(callback);
-      else Promise.resolve().then(callback);
-    };
-
     panel.addEventListener('click', event => {
       const control = event.target.closest?.('a, .explore-item, button');
       if (!control || control === toggle || control.matches('[data-bs-toggle]')) return;
 
-      // Never hide the command surface in the middle of the same click dispatch.
-      // Several canonical actions (website management, messaging, modal launchers,
-      // and other delegated controls) bind above this panel at document level.
-      // Dismiss only after the activation has fully propagated so the intended
-      // route/default action or delegated handler always receives the click.
+      // Same-tab links and form submissions own their own teardown through page
+      // navigation/pagehide. Do not touch their DOM before native activation.
+      if (leavesCurrentDocument(control)) return;
+
+      // Delegated modal/action controls stay in the current document, so dismiss
+      // only on the next task after every click handler/default action has run.
       dismissAfterActivation(() => {
         if (nav.isConnected) close();
       });
@@ -224,7 +243,8 @@
   });
 
   list.addEventListener('click', event => {
-    if (!event.target.closest('.explore-item')) return;
+    const item = event.target.closest('.explore-item');
+    if (!item) return;
 
     const ownerNav = trigger.closest('[data-legend-global-nav]');
     if (isMobile() && ownerNav?.hasAttribute('data-legend-mobile-nav-integrated')) {
@@ -232,8 +252,8 @@
       return;
     }
 
-    if (typeof queueMicrotask === 'function') queueMicrotask(() => closeDrawer());
-    else Promise.resolve().then(() => closeDrawer());
+    if (leavesCurrentDocument(item)) return;
+    dismissAfterActivation(() => closeDrawer());
   });
 
   search?.addEventListener('input', () => {
