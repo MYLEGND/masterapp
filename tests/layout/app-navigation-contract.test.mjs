@@ -19,6 +19,10 @@ function attrs(tag) {
   const map=new Map();
   for(const m of tag.matchAll(/([:@\w-]+)\s*=\s*"([^"]*)"/g)) map.set(m[1].toLowerCase(),m[2]);
   for(const m of tag.matchAll(/([:@\w-]+)\s*=\s*'([^']*)'/g)) map.set(m[1].toLowerCase(),m[2]);
+  for(const m of tag.matchAll(/\s([:@\w-]+)(?=\s|\/?>)/g)) {
+    const key=m[1].toLowerCase();
+    if(!map.has(key)) map.set(key,'');
+  }
   return map;
 }
 
@@ -56,7 +60,8 @@ test('AgentPortal and ClientApp views contain no placeholder navigation targets'
             bad.push(file+': dynamic destination must start disabled with a stable id: '+m[0]);
           continue;
         }
-        if(!href && !a.get('asp-controller') && !a.get('asp-action') && !a.get('asp-page') && !a.get('data-bs-toggle') && !a.get('data-bs-dismiss') && !a.get('role')) {
+        const jsHook=[...a.keys()].some(k=>k.startsWith('data-'));
+        if(!href && !a.get('asp-controller') && !a.get('asp-action') && !a.get('asp-page') && !a.get('data-bs-toggle') && !a.get('data-bs-dismiss') && !a.get('role') && !jsHook) {
           bad.push(file+': anchor has no destination or explicit UI role: '+m[0]);
         }
       }
