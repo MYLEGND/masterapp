@@ -7,7 +7,8 @@ namespace Infrastructure.WebsiteEditing;
 public sealed record PublishedWebsiteBindingResolution(
     WebsiteSignalBinding Binding,
     string ElementId,
-    string? FieldKey);
+    string? FieldKey,
+    string? SourceActionKey);
 
 /// <summary>
 /// Re-resolves browser-supplied binding identity against the immutable published
@@ -46,9 +47,9 @@ public static class PublishedWebsiteBindingResolver
                 string.Equals(NormalizeRoute(siteKey, pair.Key), route, StringComparison.OrdinalIgnoreCase)).Value;
             if (page is null) return null;
             foreach (var (elementId, element) in page.Elements)
-                Add(matches, elementId, null, element.Signals, bindingId);
+                Add(matches, elementId, null, element.ActionKey, element.Signals, bindingId);
             foreach (var extra in page.Extras)
-                Add(matches, "extra:" + extra.Id, null, extra.Signals, bindingId);
+                Add(matches, "extra:" + extra.Id, null, extra.ActionKey, extra.Signals, bindingId);
         }
         else
         {
@@ -57,9 +58,15 @@ public static class PublishedWebsiteBindingResolver
             if (page is null) return null;
             Walk(page.Composition, node =>
             {
-                Add(matches, node.Id, null, node.Signals, bindingId);
+                Add(matches, node.Id, null, node.ActionKey, node.Signals, bindingId);
                 foreach (var (fieldKey, bindings) in node.FieldSignals ?? new())
-                    Add(matches, node.Id, fieldKey, bindings, bindingId);
+                {
+                    var controlAction = node.Experience?.Controls
+                        .SingleOrDefault(control =>
+                            string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase))
+                        ?.Action?.ActionKey;
+                    Add(matches, node.Id, fieldKey, controlAction, bindings, bindingId);
+                }
             });
         }
 
@@ -113,6 +120,22 @@ public static class PublishedWebsiteBindingResolver
         return null;
     }
 
+    public static bool ObservedEventMatches(
+        string? observedEventName,
+        WebsiteSignalBinding binding)
+    {
+        if (string.IsNullOrWhiteSpace(observedEventName) ||
+            !AnalyticsEventCatalog.TryGet(observedEventName, out var definition) ||
+            !definition.AllowBrowser)
+            return false;
+
+        if (string.Equals(observedEventName, binding.EventName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return AnalyticsEventCatalog.TryGetBehavior(observedEventName, out var observed) &&
+               observed.EditorTriggers.Contains(binding.Trigger, StringComparer.Ordinal);
+    }
+
     public static bool ClaimsConfiguredBinding(string? metadataJson)
     {
         if (string.IsNullOrWhiteSpace(metadataJson)) return false;
@@ -135,12 +158,13 @@ public static class PublishedWebsiteBindingResolver
         List<PublishedWebsiteBindingResolution> matches,
         string elementId,
         string? fieldKey,
+        string? sourceActionKey,
         IEnumerable<WebsiteSignalBinding>? bindings,
         string bindingId)
     {
         foreach (var binding in bindings ?? [])
             if (string.Equals(binding.Id, bindingId, StringComparison.Ordinal))
-                matches.Add(new(binding, elementId, fieldKey));
+                matches.Add(new(binding, elementId, fieldKey, sourceActionKey));
     }
 
     private static void Walk(
