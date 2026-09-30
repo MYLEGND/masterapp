@@ -3799,7 +3799,7 @@
     preview.appendChild(selectionFrame);
 
     const beginGesture = (event, mode, edge = '', captureTarget = null) => {
-      if (!selected || selected.dataset.cmsSignalOnly || inlineEditNode === selected) return false;
+      if (!selected || (selected.dataset.cmsSignalOnly && !formFieldPresentationForElement(selected,false)) || inlineEditNode === selected) return false;
       const section = selectedSection || currentSectionFor(selected);
       const parent = selected.parentElement;
       if (!section || !parent) return false;
@@ -3988,7 +3988,7 @@
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const immutableShell = isSharedShellElement(selected);
-      const protectedSemantic = !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length > 0) || selected.tagName === 'FORM';
+      const protectedSemantic = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length > 0) || selected.tagName === 'FORM';
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
@@ -4042,7 +4042,7 @@
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) {
       hidden.checked = ov.hidden === true || selected.hidden;
-      hidden.disabled = !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length>0) || selected.tagName === 'FORM';
+      hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length>0) || selected.tagName === 'FORM';
     }
     if (targetInput) targetInput.disabled = !!ov.actionKey;
   }
@@ -5287,14 +5287,6 @@
       markDirty();
     });
 
-    const fontInput = panel.querySelector('[data-theme-key="fontFamily"]');
-    if (fontInput?.replaceWith) {
-      const select = document.createElement('select'); select.dataset.themeKey = 'fontFamily';
-      for (const value of ['inherit','system-ui','serif','sans-serif','monospace','Georgia','Arial']) {
-        const option = document.createElement('option'); option.value = value; option.textContent = value; select.appendChild(option);
-      }
-      fontInput.replaceWith(select);
-    }
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && inlineEditNode) {
         event.preventDefault();
@@ -5785,7 +5777,26 @@
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-image-upload').click());
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
-    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedWebsiteModel(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
+    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => {
+      if (!selected) return;
+      const key=input.dataset.styleKey;
+      const numeric=input.type==='number' || key==='fontWeight';
+      const value=numeric ? Number(input.value) : input.value;
+      if(numeric && input.value!==''){
+        if(!Number.isFinite(value)) return;
+        const allowNegative=['letterSpacing','marginTop','marginBottom','marginLeft','marginRight'].includes(key);
+        if(!allowNegative && value<0) return;
+        if(['fontSize','lineHeight','aspectRatio'].includes(key) && value===0) return;
+        if(key==='opacity' && (value<0 || value>1)) return;
+        if(key==='fontWeight' && (value<100 || value>900)) return;
+      }
+      checkpoint();
+      const ov=selectedWebsiteModel(); if(!ov) return;
+      const style=editingStyle(ov,true);
+      if(input.value==='') delete style[key]; else style[key]=value;
+      applyStyle(selected,effectiveStyle(ov));
+      markDirty();
+    }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
       if (!selected) return;
       if (!/^#[a-f0-9]{6}$/i.test(input.value)) { input.setCustomValidity('Enter a six-digit hex color, such as #000000.'); input.reportValidity(); return; }
