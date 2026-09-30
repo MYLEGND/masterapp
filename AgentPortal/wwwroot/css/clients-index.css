@@ -4216,7 +4216,6 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 
     @media (max-width: 900px){
         .group.right{ justify-content:flex-start; }
-        .actions{ justify-content:flex-start; }
     }
 
     @media (max-width: 720px){
@@ -8697,10 +8696,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     }
     .archive-select-controls{
         justify-content:space-between;
-    }
-    .archive-actions{
-        min-width:0;
-        width:100%;
     }
     .archive-grid{
         gap:var(--app-mobile-block-gap);
