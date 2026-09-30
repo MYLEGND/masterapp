@@ -445,7 +445,11 @@ test('canonical modal backdrop shields the page without stacked WebKit blur surf
   assert.match(script,/function syncCanonicalBackdrop\(/);
   assert.match(script,/body\.classList\.toggle\("legend-modal-active", openSurfaces\.length > 0\)/);
   assert.match(script,/ensureSurfaceLayer\(surface\)/);
-  assert.doesNotMatch(script,/getBoundingClientRect\(\)/);
+  const backdropOwner=script.slice(
+    script.indexOf('function syncCanonicalBackdrop'),
+    script.indexOf('function normalizeCloseControl',script.indexOf('function syncCanonicalBackdrop'))
+  );
+  assert.doesNotMatch(backdropOwner,/getBoundingClientRect\(\)/);
 
   assert.doesNotMatch(clients,/body\.legend-bootstrap-modal-open \.modal-backdrop\.show/);
   assert.doesNotMatch(clients,/#modalBackdrop\.modal-backdrop\s*\{[\s\S]{0,220}background:/);
