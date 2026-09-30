@@ -150,7 +150,6 @@
   const pageScrollLockOwners = new Set();
   const surfaceLayerState = new WeakMap();
   let pageScrollState = null;
-  let canonicalExternalBackdrop = null;
   let header;
   let footer;
   let content;
@@ -216,39 +215,43 @@
     else surface.style.removeProperty("z-index");
   }
 
-  function ensureExternalBackdrop(){
-    if (canonicalExternalBackdrop?.isConnected) return canonicalExternalBackdrop;
-    const node = document.createElement("div");
-    node.className = "legend-external-modal-backdrop";
-    node.setAttribute("aria-hidden", "true");
-    node.hidden = true;
-    document.body?.appendChild(node);
-    canonicalExternalBackdrop = node;
-    return node;
+  function markLocalBackdrops(surface){
+    if (!surface?.children) return;
+    Array.from(surface.children).forEach(node => {
+      if (node.nodeType !== 1) return;
+      const name = String(node.className || "");
+      if (
+        /(?:^|[-_\\s])backdrop(?:$|[-_\\s])/i.test(name) ||
+        node.hasAttribute("data-modal-backdrop") ||
+        node.hasAttribute("data-legend-modal-backdrop")
+      ) {
+        node.setAttribute("data-legend-modal-backdrop", "");
+      }
+    });
   }
 
   function syncCanonicalBackdrop(){
     const body = document.body;
     if (!body) return;
 
-    const openSurfaces = [];
+    let openCount = 0;
     surfaceList.forEach(surface => {
       if (!surface.isConnected) {
         restoreSurfaceLayer(surface);
         surfaceList.delete(surface);
         return;
       }
+
+      markLocalBackdrops(surface);
       if (surfaceOpen(surface)) {
-        openSurfaces.push(surface);
+        openCount += 1;
         ensureSurfaceLayer(surface);
       } else {
         restoreSurfaceLayer(surface);
       }
     });
 
-    const backdrop = canonicalExternalBackdrop || (openSurfaces.length ? ensureExternalBackdrop() : null);
-    if (backdrop) backdrop.hidden = openSurfaces.length === 0;
-    body.classList.toggle("legend-modal-active", openSurfaces.length > 0);
+    body.classList.toggle("legend-modal-active", openCount > 0);
   }
 
   function normalizeCloseControl(surface){
@@ -349,6 +352,7 @@
       panel.setAttribute('data-legend-modal-panel', '');
     });
     surface.querySelectorAll('.modal-content').forEach(panel => panel.setAttribute('data-legend-modal-panel', ''));
+    markLocalBackdrops(surface);
     normalizeCloseControl(surface);
     syncModalSurfaceState(surface);
   }
