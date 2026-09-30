@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the exact-head green canonical AgentPortal + ClientApp mobile navigation, button activation, and modal shielding repair merged in PR #329.",
-  "purpose": "Deploy only AgentPortal and ClientApp. This release contains the shared canonical authenticated navigation and modal authorities, compact primary-first mobile navigation, corrected click activation ordering, Messages/LEGEND AI/profile command presentation, Legend Connect Copy wiring, inert analytics launcher removal, and canonical non-interactive shadowed modal backdrop behavior. Protect, Parfait, LEGEND public website, Cloudflare routing, database migrations, analytics event authority, Meta/OpenAI delivery, payments, and unrelated systems are excluded.",
-  "requestId": "canonical-mobile-controls-modal-shielding-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to repair and redeploy the broken AgentPortal + ClientApp release with the exact-head green canonical compact navigation and native URL activation replacement merged in PR #330.",
+  "purpose": "Deploy only AgentPortal and ClientApp from the current legend/approved-changes head. This release replaces the released full-screen/flattened mobile navigation at its canonical shared source, removes competing Bootstrap layout utilities from authenticated host layouts, deletes the stale duplicate Explore presentation authority, restores the compact Logo + LIFE HAC + menu top row with compact command/profile rows and same-panel Quick Find, and preserves browser-native URL activation before menu teardown. Protect, Parfait, LEGEND public website, Cloudflare routing, database migrations, analytics event authority, Meta/OpenAI delivery, payments, and unrelated systems are excluded.",
+  "requestId": "canonical-compact-mobile-nav-url-hotfix-20260930",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
