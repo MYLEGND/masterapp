@@ -87,7 +87,7 @@ test('Explore drawer has one shared mobile owner with explicit dismissal and scr
 test('Explore preserves scrolling and link navigation across every dismissal path',()=>{
   const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
   assert.match(navScript,/const syncResponsiveState = \(\) =>/);
-  assert.match(navScript,/closeControl\.hidden = !isMobile\(\)/);
+  assert.doesNotMatch(navScript,/closeControl\.hidden = !isMobile\(\)/);
   assert.match(navScript,/if \(isMobile\(\)\) window\.LegendModal\?\.lockPageScroll\?\.\(scrollOwner\)/);
   assert.match(navScript,/else window\.LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
   assert.match(navScript,/window\.addEventListener\('resize', syncResponsiveState/);
@@ -232,12 +232,43 @@ test('feature styles cannot reintroduce mobile modal scroll or sticky-shell auth
   assert.match(sharedMobile,/\.modal \.modal-header,[\s\S]*position:\s*sticky !important/);
 });
 
-test('Explore close treatment is mobile-only and desktop presentation stays unchanged',()=>{
+test('Explore close treatment is CSS-owned and cannot remain hidden on phones',()=>{
   const css=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
   const mobileStart=css.indexOf('@media(max-width:840px)');
   assert(mobileStart>=0);
-  assert.doesNotMatch(css.slice(0,mobileStart),/\.explore-close/);
+  assert.match(css.slice(0,mobileStart),/\.explore-close\{display:none\}/);
   assert.match(css.slice(mobileStart),/\.explore-close\{[\s\S]*display:block/);
+
+  for(const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml'
+  ]){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const closeTag=source.match(/<button[^>]*data-legend-explore-close[^>]*>/s)?.[0] ?? '';
+    assert(closeTag,file);
+    assert.doesNotMatch(closeTag,/\shidden(?:\s|=|>)/,file);
+  }
+});
+
+test('mobile global navigation and Explore are mutually exclusive',()=>{
+  const navScript=readFileSync(new URL('../../SHARED/wwwroot/js/legend-global-navigation.js',import.meta.url),'utf8');
+  assert.match(navScript,/let closeExplore = \(\) => \{\};/);
+  assert.match(navScript,/const closeAllMobileNavigation = \(\) =>/);
+  assert.match(navScript,/if \(willOpen\) closeExplore\(\)/);
+  assert.match(navScript,/closeExplore = closeDrawer/);
+  assert.match(navScript,/const openDrawer = \(\) => \{\s*closeAllMobileNavigation\(\)/);
+});
+
+test('home hero geometry has one shared responsive authority',()=>{
+  const local=readFileSync(new URL('../../AgentPortal/wwwroot/css/home-command-page.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+
+  assert.doesNotMatch(local,/\.home-command-page \.home-hero-panel \.dashboard-command-center-top\s*\{[^}]*grid-template-columns:/);
+  assert.match(shared,/\.home-command-page \.home-hero-top\s*\{[^}]*grid-template-columns:/);
+
+  const responsive=shared.slice(shared.indexOf('@media (max-width: 1180px)'));
+  assert.match(responsive,/\.dashboard-command-center-top,\s*\.home-command-page \.home-hero-top\s*\{\s*grid-template-columns:\s*1fr/);
 });
 
 test('every authenticated host loads the final shared mobile authority after page styles',()=>{
