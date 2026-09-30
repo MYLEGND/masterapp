@@ -5166,29 +5166,57 @@ header .legend-global-nav .container-fluid {
     }
 
     /*
-     * Canonical mobile header: one tiny permanent row plus one compact command
-     * tray, using the approved Website Studio open/close visual language.
+     * Canonical authenticated mobile navigation.
+     *
+     * The open/close icon owns one full-height command sheet. The existing
+     * Explore, left-nav, and right-nav content is moved into one internal
+     * scroll region by legend-global-navigation.js so there is no nested menu,
+     * no second control tier, and no page-scroll bleed while the sheet is open.
      */
     header .legend-global-nav .container-fluid {
         display: grid !important;
         grid-template-columns: minmax(40px, 48px) minmax(0, 1fr) 38px;
         grid-template-areas:
             "brand motto toggle"
-            "left left left"
-            "right right right";
+            "panel panel panel";
+        grid-template-rows: auto minmax(0, 1fr);
         align-items: center !important;
         gap: 5px 7px;
         width: 100%;
+        min-width: 0;
         padding: 0;
-        overflow: hidden;
+        overflow: visible;
         border: 1px solid transparent;
         border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius);
-        transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+    }
+
+    .legend-global-nav.mobile-open {
+        position: fixed;
+        inset: 0;
+        z-index: 5180;
+        width: 100vw;
+        height: 100dvh;
+        max-width: 100vw;
+        max-height: 100dvh;
+        padding:
+            max(6px, env(safe-area-inset-top))
+            max(8px, env(safe-area-inset-right))
+            max(8px, env(safe-area-inset-bottom))
+            max(8px, env(safe-area-inset-left));
+        overflow: hidden;
+        overscroll-behavior: none;
+        background: color-mix(in srgb, var(--legend-mobile-surface-deep) 97%, transparent);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
     }
 
     header .legend-global-nav.mobile-open .container-fluid {
+        height: 100%;
+        max-height: 100%;
+        min-height: 0;
+        padding: 0;
+        overflow: hidden;
         border-color: var(--legend-mobile-gold);
-        border-top-color: transparent;
         background: var(--legend-mobile-surface);
         box-shadow: 0 14px 32px #0007;
     }
@@ -5209,8 +5237,12 @@ header .legend-global-nav .container-fluid {
 
     .legend-global-nav .header-psalms {
         grid-area: motto;
+        position: static;
+        inset: auto;
         justify-self: stretch;
         align-self: center;
+        max-width: 100%;
+        margin: 0;
     }
 
     .legend-global-nav .nav-toggle {
@@ -5279,124 +5311,168 @@ header .legend-global-nav .container-fluid {
         opacity: 1;
     }
 
-    .legend-global-nav .navbar-left { grid-area: left; }
-    .legend-global-nav .navbar-right { grid-area: right; }
-
-    .legend-global-nav .navbar-left,
-    .legend-global-nav .navbar-right {
+    .legend-mobile-nav-panel {
         display: none;
-        width: 100%;
+        grid-area: panel;
         min-width: 0;
-        margin: 0;
-        padding: 2px 6px 4px;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        box-shadow: none;
+        min-height: 0;
     }
 
-    .legend-global-nav.mobile-open .navbar-left,
-    .legend-global-nav.mobile-open .navbar-right {
+    .legend-global-nav.mobile-open .legend-mobile-nav-panel {
         display: grid;
-    }
-
-    .legend-global-nav .navbar-left .nav-rows-grid {
-        display: grid;
-        gap: var(--legend-mobile-gap);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-content: start;
+        gap: 6px;
         width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        padding: 6px 8px calc(10px + env(safe-area-inset-bottom));
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    /* Flatten the former independent tiers into the one canonical command grid. */
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-rows-grid,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-row,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-drawer,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-card,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-list {
+        display: contents !important;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-item {
+        display: contents;
+    }
+
+    /* Explore is content, not a second mobile surface. */
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-item-explore,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-close,
+    .legend-global-nav[data-legend-mobile-nav-integrated] + .explore-overlay,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-overlay {
+        display: none !important;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-header,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-group-label,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-row {
+        grid-column: 1 / -1;
         min-width: 0;
     }
 
-    .legend-global-nav .navbar-left .nav-row,
-    .legend-global-nav .navbar-right {
-        grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
-        align-items: stretch;
-        gap: 5px;
-    }
-
-    .legend-global-nav .navbar-left .nav-item,
-    .legend-global-nav .navbar-left .nav-item-explore,
-    .legend-global-nav .navbar-right > * {
-        min-width: 0;
-        margin: 0;
-    }
-
-    .legend-global-nav .navbar-left .nav-link,
-    .legend-global-nav .navbar-right .nav-link,
-    .legend-global-nav .navbar-right .btn-link,
-    .legend-global-nav .navbar-left .explore-trigger,
-    .legend-global-nav .legend-founder-ai-nav-button,
-    .legend-global-nav .messaging-nav-button {
-        width: 100%;
-        min-width: 0;
-        min-height: var(--legend-mobile-control-height);
-        height: var(--legend-mobile-control-height);
-        margin: 0;
-        padding: 5px 6px;
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        margin: 0 -2px;
+        padding: 6px 8px;
         border: 1px solid var(--legend-mobile-control-line);
         border-radius: 8px;
+        background: var(--legend-mobile-surface);
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search {
+        padding: 0;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search input {
+        width: 100%;
+        min-width: 0;
+        min-height: 38px;
+        padding: 7px 10px;
+        font-size: 16px;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-group-label {
+        margin: 8px 2px 2px;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] :is(
+        .nav-link,
+        .btn-link,
+        .legend-founder-ai-nav-button,
+        .messaging-nav-button,
+        .profile-chip,
+        .explore-item
+    ) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        height: auto;
+        margin: 0;
+        padding: 7px 8px;
+        border: 1px solid var(--legend-mobile-control-line);
+        border-radius: 9px;
         background: var(--legend-mobile-control);
         color: var(--legend-mobile-text);
         justify-content: center;
         text-align: center;
-        font-size: clamp(0.68rem, 2.9vw, 0.78rem);
-        line-height: 1.05;
+        font-size: clamp(.72rem, 3vw, .82rem);
+        line-height: 1.08;
         white-space: normal;
         overflow-wrap: anywhere;
         box-shadow: none;
     }
 
-    .legend-global-nav .navbar-left .explore-trigger { min-width: 0; }
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-content: center;
+        justify-items: start;
+        gap: 4px;
+        text-align: left;
+    }
 
-    .legend-global-nav .nav-context-row {
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item span,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item small {
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
-        gap: 5px;
+        gap: 6px;
         width: 100%;
     }
 
-    .legend-global-nav .nav-context-pill,
-    .legend-global-nav .nav-context-exit {
-        width: 100%;
-        max-width: 100%;
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-pill,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-exit {
         min-width: 0;
-        min-height: var(--legend-mobile-control-height);
-        padding: 5px 7px;
+        min-height: 40px;
+        padding: 6px 8px;
         border-radius: 8px;
-        font-size: 0.72rem;
     }
 
-    .legend-global-nav .navbar-right .dropdown,
-    .legend-global-nav .navbar-right > .dropdown:last-child {
-        width: 100%;
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right > .dropdown,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right > .dropdown:last-child {
         min-width: 0;
-        max-width: 100%;
-        grid-column: auto;
-        justify-self: stretch;
-    }
-
-    .legend-global-nav .profile-chip {
         width: 100%;
         max-width: 100%;
-        min-width: 0;
-        min-height: var(--legend-mobile-control-height);
-        height: var(--legend-mobile-control-height);
-        padding: 3px 5px;
-        border-radius: 8px;
-        justify-content: center;
-        gap: 0;
+        margin: 0;
     }
 
-    .legend-global-nav .profile-avatar {
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-avatar {
         width: 26px;
         height: 26px;
         flex: 0 0 26px;
     }
 
-    .legend-global-nav .profile-meta { display: none; }
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-meta {
+        display: none;
+    }
 
-    .legend-global-nav .dropdown-menu-centered,
-    .legend-global-nav .dropdown-menu {
+    .legend-global-nav[data-legend-mobile-nav-integrated] .dropdown-menu-centered,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .dropdown-menu {
         position: static;
         width: 100%;
         max-width: 100%;
@@ -5405,7 +5481,7 @@ header .legend-global-nav .container-fluid {
         border: 1px solid var(--legend-mobile-control-line);
         border-radius: 8px;
         background: var(--legend-mobile-surface-deep);
-        font-size: 0.75rem;
+        font-size: .75rem;
     }
 }
 
