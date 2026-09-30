@@ -118,8 +118,8 @@
         .impersonation-text { font-weight: 800; letter-spacing: 0.02em; }
         .impersonation-text .muted { color: #4b5563; font-weight: 700; margin-left: 6px; }
     </style>
-<link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
 </head>
 
@@ -410,11 +410,16 @@
 
 @if (!isAssistant && !isOnboardingPublic)
 {
-<aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel">
+<aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel" aria-hidden="true">
     <div class="explore-card">
         <div class="explore-header">
             <div class="explore-title">EXPLORE</div>
             <div class="explore-pill">Quick Find</div>
+            <button type="button"
+                    class="explore-close"
+                    data-legend-explore-close
+                    aria-label="Close Explore"
+                    hidden></button>
         </div>
 
         <div class="explore-search">
@@ -1401,55 +1406,7 @@
 <script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
 }
 
-<script>
-    (function () {
-        const trigger = document.getElementById('exploreTrigger');
-        const drawer = document.getElementById('exploreDrawer');
-        const overlay = document.getElementById('exploreOverlay');
-        const search = document.getElementById('exploreSearch');
-        const list = document.getElementById('exploreList');
 
-        if (!trigger || !drawer || !overlay) {
-            return;
-        }
-
-        function openDrawer() {
-            drawer.classList.add('open');
-            overlay.classList.add('open');
-            trigger.setAttribute('aria-expanded', 'true');
-            setTimeout(() => search && search.focus(), 50);
-        }
-
-        function closeDrawer() {
-            drawer.classList.remove('open');
-            overlay.classList.remove('open');
-            trigger.setAttribute('aria-expanded', 'false');
-        }
-
-        trigger.addEventListener('click', function () {
-            if (drawer.classList.contains('open')) closeDrawer();
-            else openDrawer();
-        });
-
-        overlay.addEventListener('click', closeDrawer);
-
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') closeDrawer();
-        });
-
-        // simple search filter
-        if (search && list) {
-            search.addEventListener('input', function () {
-                const q = (search.value || '').toLowerCase().trim();
-                const items = list.querySelectorAll('.explore-item');
-                items.forEach(function (a) {
-                    const text = (a.innerText || a.textContent || '').toLowerCase();
-                    a.style.display = text.includes(q) ? '' : 'none';
-                });
-            });
-        }
-    })();
-</script>
 
 <script>
     (function () {

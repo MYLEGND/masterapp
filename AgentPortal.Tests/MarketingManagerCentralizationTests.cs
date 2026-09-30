@@ -116,7 +116,7 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
-    public void MobileStudioReadinessRelease_CoversOnlyActuallyAffectedApps()
+    public void CanonicalMobileShellRelease_CoversOnlyActuallyAffectedApps()
     {
         var root = Root();
         var request = Read(root, "Docs", "releases", "direct-release-request.json");
@@ -124,21 +124,24 @@ public sealed class MarketingManagerCentralizationTests
         foreach (var target in new[]
         {
             "masterapp-portal",
-            "masterapp-client",
-            "masterapp-protect",
-            "masterapp-website"
+            "masterapp-client"
         })
             Assert.Contains($"\"{target}\"", request, StringComparison.Ordinal);
 
-        Assert.DoesNotContain("\"masterapp-parfait\"", request, StringComparison.Ordinal);
+        foreach (var excluded in new[]
+        {
+            "masterapp-protect",
+            "masterapp-parfait",
+            "masterapp-website"
+        })
+            Assert.DoesNotContain($"\"{excluded}\"", request, StringComparison.Ordinal);
+
         Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
         Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
-        Assert.Contains("mobile-studio-readiness-canonical-20260929", request, StringComparison.Ordinal);
-        Assert.Contains("cba58037256c3c64a1cbd1bc8606734b7c1934a2", request, StringComparison.Ordinal);
-        Assert.Contains("draggable compact/expanded top-sheet", request, StringComparison.Ordinal);
-        Assert.Contains("Business default palette", request, StringComparison.Ordinal);
-        Assert.Contains("canonical premium business-name banner", request, StringComparison.Ordinal);
+        Assert.Contains("agent-client-canonical-mobile-shell-20260929", request, StringComparison.Ordinal);
+        Assert.Contains("validated canonical mobile shell repair from PR #300", request, StringComparison.Ordinal);
+        Assert.Contains("presentation-only canonical mobile shell", request, StringComparison.Ordinal);
     }
 
     [Fact]

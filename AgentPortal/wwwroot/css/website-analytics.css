@@ -1196,10 +1196,6 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
         align-items: stretch;
         gap: 8px;
     }
-    .product-link-actions {
-        width: 100%;
-        flex-wrap: wrap;
-    }
     .landing-routes-footer {
         align-items: stretch;
     }
@@ -4486,16 +4482,6 @@ body {
         white-space: normal;
     }
 
-    .wa-workbench-actions {
-        width: 100%;
-    }
-
-    .wa-workbench-copy-btn,
-    .wa-workbench-chip {
-        width: 100%;
-        white-space: normal;
-    }
-
     .wa-command-dashboard {
         gap: .75rem;
         padding-top: .8rem;
@@ -4520,14 +4506,6 @@ body {
     .fa-kpi-grid .kpi-card,
     .fa-module {
         min-height: auto;
-    }
-
-    .hero-link-meta-actions:not(.wa-kpi-meta-actions) {
-        flex-direction: column;
-    }
-
-    .hero-link-meta-actions:not(.wa-kpi-meta-actions) .btn {
-        width: 100%;
     }
 
     .control-bar .btn-group,
@@ -5043,11 +5021,6 @@ body {
         gap: var(--legend-mobile-gap);
     }
 
-    .wa-modal-header-actions {
-        width: 100%;
-        justify-content: flex-start;
-    }
-
     .wa-modal-subtitle {
         font-size: .78rem;
     }
@@ -5059,28 +5032,6 @@ body {
     .wa-modal-section {
         padding: var(--app-mobile-card-pad);
         border-radius: var(--legend-mobile-radius);
-    }
-
-    .wa-modal-toolbar {
-        width: 100%;
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .wa-modal-toggle-group {
-        width: 100%;
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: var(--app-mobile-control-gap);
-        padding: var(--legend-mobile-gap);
-        border-radius: 10px;
-    }
-
-    .wa-modal-toggle-group .btn,
-    .wa-modal-mode-badge,
-    .wa-modal-range-chip,
-    .wa-modal-note-chip {
-        width: 100%;
     }
 
     .wa-modal-meta-item {
