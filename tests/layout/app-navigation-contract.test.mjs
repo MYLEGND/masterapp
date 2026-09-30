@@ -267,15 +267,17 @@ test('mobile navigation preserves real URL activation before any command-surface
   assert.doesNotMatch(handler,/event\.preventDefault\(/);
 });
 
-test('mobile Quick Find uses compact two-column rows and puts primary app destinations first',()=>{
+test('mobile navigation keeps primary, utility, and Quick Find regions distinct and compact',()=>{
   const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
   const start=css.indexOf('@media (max-width: 840px)');
   const mobile=css.slice(start,css.indexOf('@media (min-width: 841px)',start));
 
-  assert.match(mobile,/\.explore-header \{[\s\S]*order:\s*-40/);
-  assert.match(mobile,/\.explore-search \{[\s\S]*order:\s*-39/);
-  assert.match(mobile,/\.navbar-left \.nav-link \{[\s\S]*order:\s*-60/);
-  assert.match(mobile,/\.navbar-right > \* \{[\s\S]*order:\s*-59/);
+  assert.match(mobile,/\.legend-mobile-nav-panel \{[\s\S]*display:\s*flex/);
+  assert.match(mobile,/\.navbar-left \{[\s\S]*order:\s*-60/);
+  assert.match(mobile,/\.navbar-right \{[\s\S]*order:\s*-59[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(mobile,/\.navbar-left \.nav-row \{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(mobile,/\.explore-list \{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
   assert.match(mobile,/\.explore-item \{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
-  assert.match(mobile,/\.explore-item small \{[\s\S]*font-size:\s*\.56rem/);
+  assert.match(mobile,/\.explore-item small \{[\s\S]*font-size:\s*\.48rem/);
+  assert.doesNotMatch(mobile,/display:\s*contents\s*!important/);
 });
