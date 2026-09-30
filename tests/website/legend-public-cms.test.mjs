@@ -2360,6 +2360,41 @@ test('duplicate canonical link has independent stable identity and history resto
   } finally { f.close(); }
 });
 
+test('canonical public design authority uses wider canvas, tighter rhythm, and crisp perimeter accents',()=>{
+  assert.match(foundationCss,/--web-public-page-pad:clamp\(24px,4\.25vw,72px\)/);
+  assert.match(foundationCss,/--web-public-section-y:clamp\(52px,6vw,88px\)/);
+  assert.match(foundationCss,/--web-public-body-weight:500/);
+  assert.match(foundationCss,/--web-public-heading-weight:800/);
+  assert.match(publicCss,/\.section\{padding:var\(--public-section-y\) var\(--public-page-pad\)\}/);
+  assert.match(publicCss,/\.card-grid\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,280px\),1fr\)\)/);
+  assert.match(publicCss,/border:1px solid var\(--public-card-border\)/);
+  assert.match(publicCss,/\.card::before\{content:none\}/);
+  assert.doesNotMatch(publicCss,/height:2px;background:linear-gradient\(90deg,var\(--gold\)/);
+});
+
+test('Website Studio style controls mutate only the selected canonical node and survive save', async () => {
+  const f=await domFixture();
+  try {
+    f.click('main h1');
+    f.input('[data-style-key="fontFamily"]','Georgia');
+    f.input('[data-style-key="fontSize"]','54');
+    f.input('[data-style-key="fontWeight"]','800');
+    f.click('main h2');
+    f.input('[data-style-key="fontFamily"]','Inter');
+    f.input('[data-style-key="fontSize"]','36');
+    f.input('[data-style-key="fontWeight"]','600');
+    const saved=await f.save();
+    const first=canonicalNodeById(saved,'home.h1.node.1').style;
+    const second=canonicalNodeById(saved,'home.h2.node.1').style;
+    assert.equal(first.fontFamily,'Georgia');
+    assert.equal(first.fontSize,54);
+    assert.equal(first.fontWeight,800);
+    assert.equal(second.fontFamily,'Inter');
+    assert.equal(second.fontSize,36);
+    assert.equal(second.fontWeight,600);
+  } finally { f.close(); }
+});
+
 test('canonical visual style preserves numeric font weight and signed letter spacing', async () => {
   const f=await domFixture();
   try {

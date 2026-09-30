@@ -6006,6 +6006,8 @@
       const style=editingStyle(ov,true);
       if(input.value==='') delete style[key]; else style[key]=value;
       applyStyle(selected,effectiveStyle(ov));
+      updateDirectCanvasUi();
+      syncSelectedSourcePresentationFromCanvas();
       syncEditorControls();
       markDirty();
     }));
