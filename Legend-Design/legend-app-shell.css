@@ -510,6 +510,13 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
   padding:.42rem .48rem;
   font-size:.75rem;
  }
+ body.legend-app .legend-app-content .legend-hero-body{
+  padding:var(--app-mobile-card-pad);
+ }
+ body.legend-app .legend-app-content .legend-title{
+  font-size:1.45rem;
+  line-height:1.05;
+ }
  .legend-app-content :where(.legend-mobile-compact){
   margin-block:0;
   gap:var(--app-mobile-block-gap);
