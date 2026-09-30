@@ -835,14 +835,6 @@
         grid-template-columns: 1fr;
     }
 
-    .home-clients-toolbar-actions {
-        justify-content: stretch;
-    }
-
-    .home-clients-toolbar-actions > * {
-        flex: 1 1 auto;
-    }
-
     #homeClientsAdd.home-clients-action {
         min-width: 0;
     }
