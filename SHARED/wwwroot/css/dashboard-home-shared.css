@@ -26,68 +26,38 @@
 /*
  * Canonical modal shielding authority.
  *
- * The shared modal owner marks the active Bootstrap/custom backdrop. This is
- * the only authenticated-app backdrop visual source: content behind an open
- * modal is strongly dimmed, cannot receive pointer interaction, and the page
- * itself cannot scroll until the modal closes.
+ * One lightweight solid scrim sits below the active modal surface. Full-screen
+ * GPU blur is intentionally avoided because stacked backdrop-filter layers can
+ * terminate WebKit tabs on iOS. Feature backdrops keep their click behavior,
+ * but the shared scrim is the sole visual dimming authority.
  */
 body.legend-app.legend-modal-active,
 body.legend-app.legend-bootstrap-modal-open {
     overflow: hidden;
 }
 
-body.legend-app .legend-canonical-modal-backdrop {
+body.legend-app > .legend-external-modal-backdrop {
     position: fixed;
     inset: 0;
+    z-index: var(--legend-modal-backdrop-z);
     background: var(--legend-modal-backdrop);
     opacity: 1;
     pointer-events: auto;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-}
-
-body.legend-app > .legend-external-modal-backdrop,
-body.legend-app > .modal-backdrop.legend-canonical-modal-backdrop {
-    z-index: var(--legend-modal-backdrop-z);
 }
 
 body.legend-app > .legend-external-modal-backdrop[hidden] {
     display: none;
 }
 
-body.legend-app #modalBackdrop.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    display: none;
-    z-index: var(--legend-modal-backdrop-z);
-}
-
-body.legend-app #modalBackdrop.modal-backdrop.open {
-    display: block;
-}
-
-body.legend-app [data-legend-modal-surface].legend-canonical-modal-overlay {
-    background: var(--legend-modal-backdrop);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-}
-
-body.legend-app [data-legend-modal-surface][data-legend-modal-open="true"] >
-.legend-canonical-modal-backdrop {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    background: var(--legend-modal-backdrop);
-    opacity: 1;
-    pointer-events: auto;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-}
-
-body.legend-app [data-legend-modal-surface][data-legend-modal-open="true"] >
-[data-legend-modal-panel] {
-    position: relative;
-    z-index: 1;
+body.legend-app.legend-modal-active :is(
+    .modal-backdrop,
+    [data-legend-modal-surface][data-legend-modal-open="true"] > [class$="-backdrop"],
+    [data-legend-modal-surface][data-legend-modal-open="true"] > [class*="-backdrop "],
+    [data-legend-modal-surface][data-legend-modal-open="true"] > [class$="__backdrop"],
+    [data-legend-modal-surface][data-legend-modal-open="true"] > [class*="__backdrop "]
+) {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 /* One shared content-region boundary; backdrop and focus ownership stay with
