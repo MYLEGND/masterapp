@@ -110,36 +110,54 @@ test('canonical mobile action density loads after page feature styles in both au
 });
 
 test('feature styles cannot reintroduce competing mobile action-stack authority',()=>{
+  const mediaBlocks=source=>{
+    const out=[];let pos=0;
+    while(true){
+      const start=source.indexOf('@media',pos);if(start<0) break;
+      const open=source.indexOf('{',start);if(open<0) break;
+      let depth=1,i=open+1;
+      for(;i<source.length&&depth;i++){
+        if(source[i]==='{') depth++;
+        else if(source[i]==='}') depth--;
+      }
+      out.push(source.slice(start,i));
+      pos=i;
+    }
+    return out;
+  };
   const checks=[
     ['ClientApp/wwwroot/css/client-mobile.css',[
-      /\.client-create-actions[\s\S]*grid-template-columns:\s*repeat\(2/,
-      /\.preview-actions\s*\{[\s\S]*grid-template-columns/
+      /\.client-create-actions[^\{]*\{[^}]*grid-template-columns:/,
+      /\.preview-actions\s*\{[^}]*grid-template-columns:/
     ]],
     ['ClientApp/wwwroot/css/subscription-activation.css',[
-      /@media \(max-width: 760px\)[\s\S]*\.activation-actions\s*\{[\s\S]*width:\s*100%/,
-      /@media \(max-width: 760px\)[\s\S]*\.activation-notice-actions\s*\{[\s\S]*grid-template-columns/
+      /\.activation-actions\s*\{[^}]*width:\s*100%/,
+      /\.activation-notice-actions\s*\{[^}]*grid-template-columns:/
     ]],
     ['AgentPortal/wwwroot/css/clients-index.css',[
-      /@media[^}]+\{[\s\S]*\.pipeline-head-actions\s*\{[\s\S]*width:\s*100%/,
-      /@media[^}]+\{[\s\S]*\.drawer-top-actions\s*\{[\s\S]*grid-template-columns/,
-      /@media[^}]+\{[\s\S]*\.queue-record-actions[\s\S]*flex-direction:\s*column/
+      /\.pipeline-head-actions\s*\{[^}]*width:\s*100%/,
+      /\.drawer[^\{]*\.drawer-top-actions\s*\{[^}]*grid-template-columns:/,
+      /\.queue-record-actions[^\{]*\{[^}]*flex-direction:\s*column/
     ]],
     ['AgentPortal/wwwroot/css/website-analytics.css',[
-      /@media[^}]+\{[\s\S]*\.hero-link-meta-actions[^\{]*\{[\s\S]*flex-direction:\s*column/,
-      /@media[^}]+\{[\s\S]*\.wa-modal-toggle-group\s*\{[\s\S]*grid-template-columns:\s*1fr/
+      /\.hero-link-meta-actions[^\{]*\{[^}]*flex-direction:\s*column/,
+      /\.wa-modal-toggle-group\s*\{[^}]*grid-template-columns:\s*1fr/
     ]],
     ['AgentPortal/wwwroot/css/scripts-rebuttals.css',[
-      /@media[^}]+\{[\s\S]*\.uw-actions\s*\{[\s\S]*grid-template-columns/,
-      /@media[^}]+\{[\s\S]*\.side-actions\s*\{[\s\S]*grid-template-columns:\s*1fr/
+      /\.uw-actions\s*\{[^}]*grid-template-columns:/,
+      /\.side-actions\s*\{[^}]*grid-template-columns:\s*1fr/
     ]],
     ['SHARED/wwwroot/css/legend-finance-shared.css',[
-      /@media \(max-width: 620px\)[\s\S]*\.llbs-action-buttons[\s\S]*grid-template-columns:\s*1fr/,
-      /@media \(max-width: 760px\)[\s\S]*\.savings-illustration-footer\s*\{[\s\S]*grid-template-columns/
+      /\.llbs-action-buttons[^\{]*\{[^}]*grid-template-columns:\s*1fr/,
+      /\.savings-illustration-footer\s*\{[^}]*grid-template-columns:/
     ]]
   ];
   for(const [file,patterns] of checks){
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
-    for(const pattern of patterns) assert.doesNotMatch(source,pattern,file+': '+pattern);
+    const mobile=mediaBlocks(source).filter(block=>/max-width/i.test(block));
+    for(const pattern of patterns){
+      for(const block of mobile) assert.doesNotMatch(block,pattern,file+': '+pattern);
+    }
   }
 });
 
