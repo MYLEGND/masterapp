@@ -694,7 +694,7 @@
 @media (max-width: 720px) {
     .carrier-editor-row {
         grid-template-columns: 1fr;
-        gap: 0.68rem;
+        gap: var(--app-mobile-control-gap);
     }
 
     .carrier-editor-summary {
@@ -720,7 +720,7 @@
     }
 
     .legend-modal.carrier-settings-modal .search-actions {
-        gap: 0.5rem;
+        gap: var(--app-mobile-control-gap);
     }
 
     .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-clear-search,
@@ -729,7 +729,7 @@
     }
 
     .carrier-category-block {
-        padding: 0.95rem 0.88rem 0.92rem;
+        padding: var(--app-mobile-card-pad);
     }
 
     .carrier-comp-row {
