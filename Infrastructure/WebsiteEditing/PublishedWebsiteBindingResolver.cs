@@ -19,7 +19,8 @@ public static class PublishedWebsiteBindingResolver
         WebsiteContentVersion? version,
         string siteKey,
         string? path,
-        string? bindingId)
+        string? bindingId,
+        string? metadataJson = null)
     {
         if (version is null || string.IsNullOrWhiteSpace(bindingId))
             return null;
@@ -62,7 +63,54 @@ public static class PublishedWebsiteBindingResolver
             });
         }
 
-        return matches.Count == 1 ? matches[0] : null;
+        if (matches.Count == 0) return null;
+
+        var hintedElement = ReadConfiguredElementHint(metadataJson, bindingId);
+        if (!string.IsNullOrWhiteSpace(hintedElement))
+        {
+            var hinted = matches.Where(match =>
+                string.Equals(
+                    match.FieldKey is null ? match.ElementId : match.ElementId + ":field:" + match.FieldKey,
+                    hintedElement,
+                    StringComparison.Ordinal)).ToList();
+            if (hinted.Count == 1) matches = hinted;
+        }
+
+        if (matches.Count != 1) return null;
+        var resolved = matches[0];
+        if (resolved.Binding.DeliveryMode == "off" ||
+            AnalyticsEventCatalog.RequiresServerAuthority(resolved.Binding.EventName))
+            return null;
+        return resolved;
+    }
+
+    private static string? ReadConfiguredElementHint(string? metadataJson, string bindingId)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            if (!document.RootElement.TryGetProperty("configuredSignalBindings", out var bindings) ||
+                bindings.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (var item in bindings.EnumerateArray())
+            {
+                var id = item.TryGetProperty("id", out var idProperty) && idProperty.ValueKind == JsonValueKind.String
+                    ? idProperty.GetString()
+                    : null;
+                if (!string.Equals(id, bindingId, StringComparison.Ordinal))
+                    continue;
+                return item.TryGetProperty("elementId", out var elementProperty) &&
+                       elementProperty.ValueKind == JsonValueKind.String
+                    ? elementProperty.GetString()
+                    : null;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+        return null;
     }
 
     public static bool ClaimsConfiguredBinding(string? metadataJson)
