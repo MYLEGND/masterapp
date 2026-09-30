@@ -734,6 +734,127 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Empty(await f.Db.AnalyticsEvents.ToListAsync());
     }
 
+
+    [Fact]
+    public async Task PublishedExperienceBinding_EnrichesObservedEventWithoutAllowingBrowserRetargeting()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+
+        var binding = WebsiteSignalBindingPolicy.Validate(
+        [
+            new WebsiteSignalBinding
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Trigger = "field_completed",
+                EventName = "PhoneFieldCompleted",
+                DeliveryMode = "destinations",
+                OncePerSession = false
+            }
+        ]).Single();
+
+        var document = new WebsiteContentDocument
+        {
+            Pages =
+            {
+                ["/contact"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "contact.phone-experience",
+                            Type = "experience",
+                            Tag = "form",
+                            Experience = new WebsiteExperienceDefinition
+                            {
+                                Kind = "form",
+                                Controls =
+                                [
+                                    new()
+                                    {
+                                        Key = "phone",
+                                        Type = "tel",
+                                        Label = "Phone",
+                                        ContactRole = "phone"
+                                    }
+                                ]
+                            },
+                            FieldSignals = new(StringComparer.Ordinal)
+                            {
+                                ["phone"] = [binding]
+                            }
+                        }
+                    ]
+                }
+            }
+        };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSiteSource.ValidateCanonical(document, WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Business));
+
+        var version = await f.Db.Set<WebsiteContentVersion>().SingleAsync(x => x.Id == f.VersionId);
+        version.DocumentJson = System.Text.Json.JsonSerializer.Serialize(
+            document,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        await f.Db.SaveChangesAsync();
+
+        var config = new ConfigurationBuilder().Build();
+        var domains = new WebsiteDomainService(f.Db, Mock.Of<IHttpClientFactory>(), config);
+        var controller = WebsiteTrackingIngestTests.BuildController(f.Db);
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddSingleton(f.Db);
+        services.AddSingleton(new PublicWebsiteRuntimeScopeResolver(f.Db, domains, config));
+        controller.HttpContext.RequestServices = services.BuildServiceProvider();
+        controller.Request.Host = new HostString("business.example");
+        controller.Request.Headers.Origin = "https://business.example";
+
+        var elementId = "contact.phone-experience:field:phone";
+        var request = new TrackingProxyController.AnalyticsEventRequest
+        {
+            ClientEventId = Guid.NewGuid(),
+            SessionId = Guid.NewGuid().ToString("N"),
+            VisitorId = Guid.NewGuid().ToString("N"),
+            Path = "/contact",
+            SiteKey = WebsiteEditorSiteKeys.Business,
+            EventType = "form_field_complete",
+            FormKey = "experience:contact.phone-experience",
+            FieldName = "phone",
+            WebsiteBindingId = binding.Id,
+            MetadataJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                configuredWebsiteSignal = true,
+                configuredSignalBindings = new[]
+                {
+                    new
+                    {
+                        id = binding.Id,
+                        elementId,
+                        eventName = "Purchase",
+                        actionKey = "forged_purchase",
+                        deliveryMode = "destinations"
+                    }
+                }
+            })
+        };
+
+        Assert.IsType<OkObjectResult>(await controller.Ingest(request, CancellationToken.None));
+        var row = Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
+        Assert.Equal("form_field_complete", row.EventType);
+        Assert.Equal(binding.Id, row.WebsiteBindingId);
+        Assert.Equal("phone_field_completed", row.ActionKey);
+        Assert.Equal("phone", row.FieldName);
+        Assert.Equal(elementId, row.ElementKey);
+        Assert.Contains("\"EventName\":\"PhoneFieldCompleted\"", row.MetadataJson ?? "", StringComparison.Ordinal);
+        Assert.DoesNotContain("forged_purchase", row.MetadataJson ?? "", StringComparison.Ordinal);
+        Assert.DoesNotContain("\"eventName\":\"Purchase\"", row.MetadataJson ?? "", StringComparison.Ordinal);
+
+        request.ClientEventId = Guid.NewGuid();
+        request.EventType = "cta_click";
+        var rejected = await controller.Ingest(request, CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(rejected);
+        Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
+    }
+
     private sealed class Fixture : IDisposable
     {
         public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>()
