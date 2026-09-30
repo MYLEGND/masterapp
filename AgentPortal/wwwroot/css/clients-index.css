@@ -4230,15 +4230,9 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
             width:100%;
             justify-items:start;
         }
-        .pipeline-action-row{
-            justify-content:flex-start;
-            width:100%;
-        }
-        .pipeline-head-actions,
         .pipeline-interact{
             width:100%;
         }
-        .pipeline-head-btn,
         .pipeline-quick .chip{
             width:100%;
             justify-content:center;
@@ -5344,10 +5338,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 
 
 @media (max-width: 980px){
-    .pipeline-head-actions{
-        width:100%;
-    }
-
     .pipeline-command-row-meta{
         justify-content:flex-start;
     }
@@ -6166,12 +6156,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         grid-template-columns:1fr;
     }
 
-    .leads-crm .pipeline-head-actions,
-    .clients-crm .pipeline-head-actions{
-        width:100%;
-        justify-content:flex-start;
-    }
-
     .leads-crm .pipeline-action-stack,
     .clients-crm .pipeline-action-stack,
     .leads-crm .pipeline-quick-wrap,
@@ -6190,20 +6174,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         justify-content:flex-start;
     }
 
-    .leads-crm .pipeline-scope-actions,
-    .clients-crm .pipeline-scope-actions{
-        width:100%;
-        margin-left:0;
-        justify-content:flex-start;
-        flex-wrap:wrap;
-    }
-
-    .pipeline-nav-actions{
-        width:100%;
-        justify-content:flex-start;
-        margin-left:0;
-    }
-
     .pipeline-nav-field{
         min-width:0;
         width:100%;
@@ -6216,13 +6186,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         padding:var(--app-mobile-card-pad);
     }
 
-    .leads-crm .pipeline-head-actions,
-    .clients-crm .pipeline-head-actions{
-        gap:6px;
-    }
-
-    .leads-crm .pipeline-head-btn,
-    .clients-crm .pipeline-head-btn,
     .leads-crm .pipeline-quick .chip,
     .clients-crm .pipeline-quick .chip{
         width:100%;
@@ -6231,11 +6194,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 
     .pipeline-command-row.pipeline-command-row-filters{
         grid-template-columns: 1fr;
-    }
-
-    .pipeline-command-row-filters .pipeline-mini-btn{
-        width:100%;
-        justify-self:stretch;
     }
 
     .pipeline-nav-toolbar{
@@ -6262,27 +6220,9 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         display:inline;
     }
 
-    .pipeline-nav-actions{
-        gap:10px;
-    }
-
-    .pipeline-nav-reset{
-        width:100%;
-    }
-
-    .pipeline-nav-danger{
-        width:100%;
-    }
-
     .leads-crm .pipeline-focus.active,
     .clients-crm .pipeline-focus.active{
         align-items:flex-start;
-    }
-
-    .leads-crm .pipeline-focus .btn.btn-ghost,
-    .clients-crm .pipeline-focus .btn.btn-ghost{
-        width:100%;
-        justify-content:center;
     }
 
     .pipeline-lane{
@@ -7524,10 +7464,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         justify-items:stretch;
     }
 
-    .drawer.crm-qv-shell .drawer-top-actions{
-        justify-content:flex-start;
-    }
-
     .drawer.crm-qv-shell .crm-qv-summary-grid{
         grid-template-columns:1fr;
     }
@@ -7547,7 +7483,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         align-items:start;
     }
 
-    .drawer.crm-qv-shell.lead-qv-shell .drawer-head-row-primary .drawer-top-actions,
     .drawer.crm-qv-shell.lead-qv-shell .drawer-head-context,
     .drawer.crm-qv-shell.lead-qv-shell #dPortalWrap{
         justify-content:flex-start;
@@ -7569,29 +7504,10 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         align-items:stretch;
     }
 
-    .drawer.crm-qv-shell .lead-contact-card-actions,
-    .drawer.crm-qv-shell .qv-right-actions{
-        justify-content:flex-start;
-    }
-
-    .drawer.crm-qv-shell .drawer-top-actions{
-        grid-template-columns:repeat(2, minmax(0, 1fr));
-    }
-
     .drawer.crm-qv-shell .ph-item{
         flex-direction:column;
     }
 
-    .drawer.crm-qv-shell .ph-actions{
-        width:100%;
-        flex:0 0 auto;
-        grid-template-columns:repeat(2, minmax(0, 1fr));
-    }
-
-    .drawer.crm-qv-shell .ph-actions .btn{
-        min-height:var(--legend-mobile-control-height,34px);
-        height:var(--legend-mobile-control-height,34px);
-    }
 }
 
 @media (max-width: 640px){
@@ -8173,9 +8089,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     }
 
     .leads-crm .crm-command-chip-row,
-    .clients-crm .crm-command-chip-row,
-    .leads-crm .crm-command-action-row,
-    .clients-crm .crm-command-action-row{
+    .clients-crm .crm-command-chip-row{
         justify-content:flex-start;
     }
 
@@ -8188,9 +8102,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         align-items:flex-start;
     }
 
-    .crm-command-modal-queues .myday-focus-actions{
-        justify-content:flex-start;
-    }
 }
 
 @media (max-width: 640px){
@@ -8518,9 +8429,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         grid-template-columns:1fr;
     }
 
-    .queue-workspace-page .queue-record-actions{
-        justify-content:flex-start;
-    }
 }
 
 @media (max-width: 720px){
@@ -8543,7 +8451,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         align-items:stretch;
     }
 
-    .queue-workspace-toolbar .btn,
     .queue-workspace-toolbar-note{
         width:100%;
     }
@@ -8552,16 +8459,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         grid-template-columns:1fr;
     }
 
-    .queue-workspace-page .queue-record-actions,
-    .queue-workspace-page .queue-record-footer{
-        flex-direction:column;
-        align-items:stretch;
-    }
-
-    .queue-workspace-page .queue-record-actions .btn,
-    .queue-workspace-page .queue-record-footer .btn{
-        width:100%;
-    }
 }
 
 
