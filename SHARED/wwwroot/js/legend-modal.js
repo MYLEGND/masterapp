@@ -173,20 +173,38 @@
     return surface.dataset.legendModalOwner;
   }
 
-  function canonicalBackdropChild(surface){
-    if (!surface?.children) return null;
-    return Array.from(surface.children).find(node => {
-      if (node.nodeType !== 1) return false;
-      const name = String(node.className || "");
-      return /(?:^|[-_\s])backdrop(?:$|[-_\s])/i.test(name);
-    }) || null;
+  function hasHiddenAncestor(surface){
+    for (let node = surface; node && node.nodeType === 1; node = node.parentElement){
+      if (node.hidden || node.hasAttribute("hidden") || node.getAttribute("aria-hidden") === "true") return true;
+      const style = window.getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden") return true;
+      if (node === document.body) break;
+    }
+    return false;
+  }
+
+  function surfaceOpen(surface){
+    if (!surface || !surface.isConnected || hasHiddenAncestor(surface)) return false;
+
+    if (surface.classList.contains("show") || surface.classList.contains("open")) return true;
+    if (surface.getAttribute("aria-hidden") === "false") return true;
+
+    const style = window.getComputedStyle(surface);
+    const opacity = Number.parseFloat(style.opacity || "1");
+    if (style.pointerEvents === "none" || opacity <= 0.01) return false;
+
+    // Bootstrap modals are open only with their explicit state class. Custom
+    // fixed dialog surfaces may use visible geometry without Bootstrap classes.
+    if (surface.matches(".modal")) return false;
+    return style.position === "fixed";
   }
 
   function ensureSurfaceLayer(surface){
     if (!surface || surfaceLayerState.has(surface)) return;
+    const inline = surface.style.zIndex;
     const computed = Number.parseInt(window.getComputedStyle(surface).zIndex || "", 10);
     if (Number.isFinite(computed) && computed >= 5200) return;
-    surfaceLayerState.set(surface, surface.style.zIndex);
+    surfaceLayerState.set(surface, inline);
     surface.style.zIndex = "5200";
   }
 
@@ -201,7 +219,7 @@
   function ensureExternalBackdrop(){
     if (canonicalExternalBackdrop?.isConnected) return canonicalExternalBackdrop;
     const node = document.createElement("div");
-    node.className = "legend-canonical-modal-backdrop legend-external-modal-backdrop";
+    node.className = "legend-external-modal-backdrop";
     node.setAttribute("aria-hidden", "true");
     node.hidden = true;
     document.body?.appendChild(node);
@@ -213,59 +231,24 @@
     const body = document.body;
     if (!body) return;
 
-    const openSurfaces = Array.from(surfaceList).filter(surfaceOpen);
-    const bootstrapBackdrops = Array.from(document.querySelectorAll(".modal-backdrop.show"));
-    const legacyBackdrop = document.querySelector("#modalBackdrop.modal-backdrop.open");
-
-    bootstrapBackdrops.forEach(node => node.classList.add("legend-canonical-modal-backdrop"));
-    legacyBackdrop?.classList.add("legend-canonical-modal-backdrop");
-
-    let needsExternalBackdrop = false;
-    for (const surface of openSurfaces){
-      ensureSurfaceLayer(surface);
-
-      const localBackdrop = canonicalBackdropChild(surface);
-      if (localBackdrop){
-        localBackdrop.classList.add("legend-canonical-modal-backdrop");
-        continue;
-      }
-
-      if (surface.matches(".modal") && (bootstrapBackdrops.length || legacyBackdrop)) continue;
-
-      const rect = surface.getBoundingClientRect();
-      const viewportWidth = window.visualViewport?.width || window.innerWidth || 0;
-      const viewportHeight = window.visualViewport?.height || window.innerHeight || 0;
-      const ownsViewport = viewportWidth > 0 && viewportHeight > 0
-        && rect.width >= viewportWidth * 0.9
-        && rect.height >= viewportHeight * 0.9;
-
-      if (ownsViewport) surface.classList.add("legend-canonical-modal-overlay");
-      else needsExternalBackdrop = true;
-    }
-
+    const openSurfaces = [];
     surfaceList.forEach(surface => {
-      if (!openSurfaces.includes(surface)){
-        surface.classList.remove("legend-canonical-modal-overlay");
+      if (!surface.isConnected) {
+        restoreSurfaceLayer(surface);
+        surfaceList.delete(surface);
+        return;
+      }
+      if (surfaceOpen(surface)) {
+        openSurfaces.push(surface);
+        ensureSurfaceLayer(surface);
+      } else {
         restoreSurfaceLayer(surface);
       }
     });
 
-    const external = canonicalExternalBackdrop || (needsExternalBackdrop ? ensureExternalBackdrop() : null);
-    if (external) external.hidden = !needsExternalBackdrop;
-
+    const backdrop = canonicalExternalBackdrop || (openSurfaces.length ? ensureExternalBackdrop() : null);
+    if (backdrop) backdrop.hidden = openSurfaces.length === 0;
     body.classList.toggle("legend-modal-active", openSurfaces.length > 0);
-  }
-
-  function surfaceOpen(surface){
-    if (!surface || !surface.isConnected) return false;
-    if (surface.hidden || surface.hasAttribute("hidden")) return false;
-    if (surface.getAttribute("aria-hidden") === "true") return false;
-    if (surface.classList.contains("show") || surface.classList.contains("open")) return true;
-    if (surface.getAttribute("aria-hidden") === "false") return true;
-    const style = window.getComputedStyle(surface);
-    if (style.display === "none" || style.visibility === "hidden") return false;
-    if (style.pointerEvents === "none" && Number.parseFloat(style.opacity || "1") === 0) return false;
-    return style.position === "fixed";
   }
 
   function normalizeCloseControl(surface){
