@@ -4444,8 +4444,8 @@
     if (['style','breakpointStyles','fontFamily','fontWeight','textAlign','objectFit','borderColor','borderStyle','textTransform','textDecoration','backgroundGradient','boxShadow','fieldPresentations','fieldLabels'].includes(key)) return 'style';
     if (['layout','breakpointLayouts','mode','direction','gapPx','columns','minItemWidthPx','alignItems','justifyContent','wrap'].includes(key)) return 'layout';
     if (['mediaAssetId','mediaUrl','faviconImageDataUrl'].includes(key)) return 'media';
-    if (['animations','trigger','effect','durationMs','delayMs','distancePx','easing','once','hidden','target'].includes(key)) return 'behavior';
-    if (['id','actionKey','systemKey','systemBinding','signals'].includes(key)) return 'protected';
+    if (['animations','trigger','effect','durationMs','delayMs','distancePx','easing','once','hidden','target','actionKey'].includes(key)) return 'behavior';
+    if (['id','systemKey','systemBinding','signals'].includes(key)) return 'protected';
     if (['type','tag','className','dataBinding','syncSourceId'].includes(key)) return 'structure';
     return 'default';
   }
