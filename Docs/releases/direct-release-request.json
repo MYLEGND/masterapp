@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to publish all currently merged but unpublished product changes in one consolidated release after PR #318 validated the canonical AgentPortal and ClientApp mobile navigation, full-width page, full-screen modal, clickability, and route authority.",
-  "purpose": "One consolidated release from the current legend/approved-changes head. Publish the newly merged PR #318 AgentPortal and ClientApp canonical mobile repair together with the remaining merged PR #302 Website Studio source-authority and shared WebsiteEditing/CMS changes for Protect and LEGEND Website. Deploy the four affected hosts together so there is no additional chain of isolated deployments. Parfait has no product delta in this release and remains excluded. No Cloudflare routing or database migration action is authorized.",
-  "requestId": "consolidated-mobile-website-studio-20260929",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to retry the consolidated four-app release after PR #319 repaired the release-validation boundary. Product payload remains the validated PR #318 mobile repair plus the remaining merged PR #302 Website Studio work.",
+  "purpose": "Publish all currently merged but unpublished affected product changes from legend/approved-changes in one consolidated release. Deploy AgentPortal and ClientApp with the validated PR #318 canonical mobile navigation, full-width page, full-screen modal, clickability, and route authority; deploy Protect and LEGEND Website with the remaining merged Website Studio source-authority and shared WebsiteEditing/CMS changes. Parfait remains excluded because it has no product delta. No Cloudflare routing or database migration action is authorized.",
+  "requestId": "consolidated-mobile-website-studio-retry-20260929",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
