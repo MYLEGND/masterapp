@@ -7998,7 +7998,9 @@ details.section{
     transform: translateY(-1px);
 }
 
-/* Mobile popout safety lock */
+/* Canonical mobile Workstation presentation.
+   Shared app/modal tokens own visual density; this block retains only the
+   Workstation-specific layout needed to keep lead context and actions usable. */
 @media (max-width: 900px){
     .uw-head,
     .proposal-dialog .uw-head,
@@ -8009,260 +8011,7 @@ details.section{
         top: 0 !important;
         z-index: 20 !important;
     }
-    #rbShell #rbNavArrow.nav-rail-arrow{
-        display: flex !important;
-        position: fixed !important;
-        top: calc(max(10px, env(safe-area-inset-top)) + 2px) !important;
-        left: 8px !important;
-        opacity: 1 !important;
-        z-index: 1300 !important;
-        transition: none !important;
-        animation: none !important;
-        transform: none !important;
-    }
 
-    #rbShell #prosperNavArrow.nav-rail-arrow{
-        display: none !important;
-        opacity: 0 !important;
-    }
-}
-
-/* Ultra-compact phone fit for Workstation mobile */
-@media (max-width: 900px){
-    html.lead-bridge-mobile,
-    html.lead-bridge-mobile body{
-        height: 100%;
-        overflow: hidden;
-    }
-
-    html.lead-bridge-mobile #rbShell{
-        height: 100dvh;
-        overflow: hidden;
-    }
-
-    html.lead-bridge-mobile #rbShell .rb-wrap{
-        height: 100%;
-        max-height: 100%;
-        overflow: hidden;
-        padding: 6px 7px !important;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    html.lead-bridge-mobile #rbShell .rb-hero{
-        padding: 8px !important;
-        margin: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .hero-left h1{
-        display: none !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .rb-hero .hero-actions{
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px !important;
-        width: 100%;
-    }
-
-    html.lead-bridge-mobile #rbShell .hero-action-group{
-        width: 100%;
-        min-width: 0;
-    }
-
-    html.lead-bridge-mobile #rbShell .hero-action-group.script-switcher{
-        grid-column: auto !important;
-        min-width: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .script-switcher{
-        min-width: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .script-switcher select.btn{
-        width: 100% !important;
-        min-width: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .hero-actions .btn,
-    html.lead-bridge-mobile #rbShell .hero-actions select.btn{
-        min-height: 36px;
-        padding: 7px 10px !important;
-        font-size: 12px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-bridge{
-        flex: 1 1 auto;
-        min-height: 0;
-        margin: 0 !important;
-        padding: 8px !important;
-        gap: 6px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-filterbar{
-        gap: 6px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-filterbar select,
-    html.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-search],
-    html.lead-bridge-mobile #rbShell .lb-filterbar .lb-btn{
-        min-height: 34px;
-        padding: 6px 8px !important;
-        font-size: 12px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-row.lb-row-fields{
-        gap: 6px !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-field.mobile-allowed{
-        min-height: 62px !important;
-        padding: 7px 9px !important;
-        gap: 2px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-field.mobile-allowed .lf-label{
-        font-size: .66rem !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-field.mobile-allowed .lf-value{
-        font-size: .88rem !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lead-field.mobile-allowed .lf-sub{
-        font-size: .68rem !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions{
-        gap: 6px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions .btn{
-        min-height: 34px;
-        padding: 7px 8px !important;
-        font-size: 12px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions .lb-dials{
-        padding: 6px 8px !important;
-        gap: 2px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions .lb-dials .lb-dials-label{
-        font-size: .70rem !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-actions .lb-dials .lb-dials-count{
-        font-size: .92rem !important;
-        padding: 1px 8px !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-meta.mobile-allowed{
-        display: flex !important;
-        flex-direction: row !important;
-        align-items: center !important;
-        justify-content: space-between !important;
-        gap: 6px !important;
-        margin-top: 0 !important;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-meta.mobile-allowed .lb-pos{
-        font-size: 12px !important;
-        white-space: nowrap;
-    }
-
-    html.lead-bridge-mobile #rbShell .lb-meta.mobile-allowed .lb-status{
-        font-size: 11.5px !important;
-        line-height: 1.1 !important;
-        max-width: 56%;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-}
-
-/* Final mobile fit lock: enforce compact banner + 2-card contact row */
-@media (max-width: 900px){
-    #rbShell{
-        height: 100dvh;
-        overflow: hidden;
-    }
-
-    #rbShell .rb-wrap{
-        height: 100%;
-        max-height: 100%;
-        overflow: hidden;
-        padding: 4px 6px !important;
-        gap: 5px !important;
-    }
-
-    #rbShell .rb-hero{
-        padding: 6px 8px !important;
-        margin: 0 !important;
-        min-height: 0 !important;
-    }
-
-    #rbShell .hero-left h1{
-        display: none !important;
-    }
-
-    #rbShell .hero-actions .btn,
-    #rbShell .hero-actions select.btn{
-        min-height: 34px !important;
-        padding: 6px 9px !important;
-        font-size: 11.5px !important;
-    }
-
-    
-
-    #rbShell [data-lf="name"]{
-        grid-column: 1 / -1;
-        grid-row: 1;
-    }
-
-    #rbShell [data-lf="phone"]{
-        grid-column: 1;
-        grid-row: 2;
-    }
-
-    #rbShell [data-lf="location"]{
-        grid-column: 2;
-        grid-row: 2;
-    }
-
-    #rbShell .lead-field.mobile-allowed{
-        min-height: 56px !important;
-        padding: 6px 8px !important;
-        gap: 2px !important;
-    }
-
-    #rbShell .lead-field.mobile-allowed .lf-label{
-        font-size: .64rem !important;
-    }
-
-    #rbShell .lead-field.mobile-allowed .lf-value{
-        font-size: .84rem !important;
-    }
-
-    #rbShell .lead-field.mobile-allowed .lf-sub{
-        font-size: .66rem !important;
-    }
-
-    #rbShell .lb-actions .btn{
-        min-height: 32px !important;
-        padding: 6px 8px !important;
-        font-size: 11.5px !important;
-    }
-
-    #rbShell .lb-actions .lb-dials{
-        padding: 5px 7px !important;
-    }
-}
-
-/* Mobile sanity hotfix: remove floating rail arrows + prevent header clipping */
-@media (max-width: 900px){
     #rbShell .nav-rail-arrow,
     #rbShell #rbNavArrow,
     #rbShell #prosperNavArrow{
@@ -8292,27 +8041,86 @@ details.section{
         height: auto !important;
         max-height: none !important;
         overflow: visible !important;
-        padding: max(6px, env(safe-area-inset-top)) 6px max(8px, env(safe-area-inset-bottom)) 6px !important;
-        gap: 6px !important;
+        padding: var(--app-mobile-card-pad) !important;
+        gap: var(--legend-mobile-gap) !important;
     }
 
     #rbShell .rb-hero{
-        padding: 6px 8px !important;
+        min-height: 0 !important;
         margin: 0 !important;
+        padding: var(--legend-mobile-gap) 8px !important;
     }
 
-    #rbShell .hero-left{
+    #rbShell .hero-left,
+    html.lead-bridge-mobile #rbShell .hero-left h1{
         display: none !important;
     }
 
     #rbShell .rb-hero-top{
-        gap: 6px !important;
+        gap: var(--legend-mobile-gap) !important;
     }
 
-    #rbShell .lb-row.lb-row-fields{
+    #rbShell .rb-hero .hero-actions,
+    html.lead-bridge-mobile #rbShell .rb-hero .hero-actions{
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--legend-mobile-gap) !important;
+        width: 100%;
+    }
+
+    #rbShell .hero-action-group,
+    html.lead-bridge-mobile #rbShell .hero-action-group{
+        width: 100%;
+        min-width: 0;
+    }
+
+    #rbShell .hero-action-group.script-switcher,
+    html.lead-bridge-mobile #rbShell .hero-action-group.script-switcher,
+    #rbShell .script-switcher,
+    html.lead-bridge-mobile #rbShell .script-switcher{
+        min-width: 0 !important;
+    }
+
+    #rbShell .script-switcher select.btn,
+    html.lead-bridge-mobile #rbShell .script-switcher select.btn{
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    #rbShell .hero-actions .btn,
+    #rbShell .hero-actions select.btn{
+        min-height: var(--legend-mobile-control-height) !important;
+        padding: 6px 8px !important;
+        font-size: .72rem !important;
+    }
+
+    #rbShell .lead-bridge,
+    html.lead-bridge-mobile #rbShell .lead-bridge{
+        flex: 1 1 auto;
+        min-height: 0;
+        margin: 0 !important;
+        padding: var(--app-mobile-card-pad) !important;
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    #rbShell .lb-filterbar,
+    html.lead-bridge-mobile #rbShell .lb-filterbar{
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    #rbShell .lb-filterbar select,
+    #rbShell .lb-filterbar [data-lb-search],
+    #rbShell .lb-filterbar .lb-btn{
+        min-height: var(--legend-mobile-control-height) !important;
+        padding: 6px 8px !important;
+        font-size: .72rem !important;
+    }
+
+    #rbShell .lb-row.lb-row-fields,
+    html.lead-bridge-mobile #rbShell .lb-row.lb-row-fields{
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 6px !important;
+        gap: var(--legend-mobile-gap) !important;
     }
 
     #rbShell .lead-field.mobile-allowed[data-lf="name"]{
@@ -8328,6 +8136,71 @@ details.section{
     #rbShell .lead-field.mobile-allowed[data-lf="location"]{
         grid-column: 2 !important;
         grid-row: 2 !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed{
+        min-height: 56px !important;
+        padding: 6px 8px !important;
+        gap: 2px !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed .lf-label{
+        font-size: .64rem !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed .lf-value{
+        font-size: .84rem !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed .lf-sub{
+        font-size: .66rem !important;
+    }
+
+    #rbShell .lb-actions{
+        gap: var(--legend-mobile-gap) !important;
+    }
+
+    #rbShell .lb-actions .btn{
+        min-height: var(--legend-mobile-control-height) !important;
+        padding: 6px 8px !important;
+        font-size: .72rem !important;
+    }
+
+    #rbShell .lb-actions .lb-dials{
+        padding: 5px 7px !important;
+        gap: 2px !important;
+    }
+
+    #rbShell .lb-actions .lb-dials .lb-dials-label{
+        font-size: .68rem !important;
+    }
+
+    #rbShell .lb-actions .lb-dials .lb-dials-count{
+        font-size: .88rem !important;
+        padding: 1px 7px !important;
+    }
+
+    #rbShell .lb-meta.mobile-allowed{
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: var(--legend-mobile-gap) !important;
+        margin-top: 0 !important;
+    }
+
+    #rbShell .lb-meta.mobile-allowed .lb-pos{
+        font-size: .72rem !important;
+        white-space: nowrap;
+    }
+
+    #rbShell .lb-meta.mobile-allowed .lb-status{
+        max-width: 56%;
+        overflow: hidden;
+        font-size: .7rem !important;
+        line-height: 1.1 !important;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 }
 
