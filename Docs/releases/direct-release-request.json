@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy merged PR #317 after the canonical Website Studio ID repair, expanded text controls, compact editor spacing, and static Website terminal-OneDeploy recovery were merged to legend/approved-changes.",
-  "purpose": "Deploy PR #317 to Protect and LEGEND Website only. This release repairs persisted duplicate canonical Website Studio node identities such as quote_dvh.root.1 while preserving protected system/form/signal identity, prevents future materialization ID collisions, expands the existing canonical WebsiteVisualStyle controls for typography and spacing, compacts Website Studio vertical controls, and adds one bounded static Website recovery after a proven terminal OneDeploy failure using the same verified immutable ZIP. AgentPortal, ClientApp, Parfait, Cloudflare routing, database migrations, CRM, payments, analytics provider wiring, and unrelated applications are excluded.",
-  "requestId": "website-studio-id-controls-static-recovery-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged PR #325 canonical public website design and first-paint publication repair.",
+  "purpose": "Deploy only the merged canonical public website repair to Protect and LEGEND Website. This release widens the shared public content canvas, improves default visual hierarchy and section rhythm, normalizes font family and heading/body weights, replaces weak card-top smears with crisp full-perimeter gold-accent borders, keeps Website Studio side-panel style controls synchronized to the selected canonical node, and eliminates stale/default-site flashes on refresh by hiding template markup until canonical publication hydration and preventing published HTML reuse. Protect serves Protect/Agent and Business custom-domain website scopes; LEGEND Website serves the main LEGEND public site. AgentPortal, ClientApp, Parfait, Cloudflare routing, analytics/Meta/OpenAI, CRM, payments, and database migration actions are excluded.",
+  "requestId": "canonical-public-design-first-paint-20260930",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
