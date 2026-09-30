@@ -1022,7 +1022,7 @@ public sealed class WebsiteSiteSourceV3Tests
                 Id = bindingId,
                 Trigger = "click",
                 EventName = "cta_click",
-                ActionKey = "business_quote",
+                ActionKey = "cta_click",
                 DeliveryMode = "destinations"
             }
         ];
