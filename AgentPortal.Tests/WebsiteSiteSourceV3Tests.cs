@@ -982,7 +982,7 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.Contains(saved.Experience.Controls, control => control.Action?.ActionKey == "business_schedule");
 
         var source = WebsiteSiteSource.Serialize(clean);
-        Assert.Contains("\\\"experience\\\"", source, StringComparison.Ordinal);
+        Assert.Contains("\"experience\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("/api/website-inquiries", source, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("website_lead_submitted", source, StringComparison.OrdinalIgnoreCase);
 
