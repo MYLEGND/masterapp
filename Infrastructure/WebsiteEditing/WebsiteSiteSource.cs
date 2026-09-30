@@ -147,7 +147,7 @@ public static class WebsiteSiteSource
                 Title = page.Title,
                 Description = page.Description,
                 Navigation = page.Navigation ?? new WebsitePageNavigation(),
-                DynamicBinding = page.DynamicBinding ?? currentPage?.DynamicBinding,
+                DynamicBinding = page.DynamicBinding,
                 SystemTemplateKey = currentPage?.SystemTemplateKey,
                 Composition = Clone(page.Composition ?? [])
             };
