@@ -158,8 +158,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
             return false;
 
         if (scope.SiteKey == WebsiteEditorSiteKeys.Legend)
-            return PublishedDocumentContainsPath(scope.PublishedVersion, normalized, WebsiteEditorSiteKeys.Legend) ||
-                   scope.PublishedVersion is null;
+            return true;
 
         if (scope.SiteKey == WebsiteEditorSiteKeys.Protect)
             return IsContactPath(normalized, allowAgentPrefix: true) ||
