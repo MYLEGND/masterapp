@@ -5023,9 +5023,6 @@ body {
 }
 
 @media (max-width: 991.98px) {
-    .wa-modal-header-actions {
-        justify-content: flex-start;
-    }
 }
 
 @media (max-width: 767.98px) {
@@ -6021,6 +6018,7 @@ body {
     }
 
     .wa-modal-header-actions {
+        justify-content: flex-start;
         justify-items: start;
         min-width: 0;
     }
