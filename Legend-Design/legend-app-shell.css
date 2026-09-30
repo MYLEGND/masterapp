@@ -231,6 +231,7 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
 .explore-title{flex:1 1 auto;min-width:0}
 
 .explore-close{
+    display:none;
     position:relative;
     flex:0 0 34px;
     width:34px;
@@ -517,6 +518,7 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
   padding:7px 10px;
   gap:7px;
  }
+ .explore-close{display:block}
  .explore-title{font-size:.86rem}
  .explore-pill{padding:4px 7px;font-size:.6rem}
  .explore-search{flex:0 0 auto;padding:6px 10px 4px}
