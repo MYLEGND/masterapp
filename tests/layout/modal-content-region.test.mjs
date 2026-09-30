@@ -192,6 +192,29 @@ test('shared mobile structure defeats desktop Home grids without restoring per-p
   assert.doesNotMatch(clientMobile,/\.client-portal \.dashboard-command-center-top[\s\S]*grid-template-columns/);
 });
 
+test('authenticated mobile pages use full width and explicit compact action grids',()=>{
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const mobile=shared.slice(shared.indexOf('@media (max-width: 768px)'));
+
+  assert.match(mobile,/\.legend-app-content :where\(\.container,\.container-fluid\) \{[\s\S]*max-width: none;[\s\S]*padding-inline: 2px;/);
+  assert.match(mobile,/\.legend-app-content :where\(\.row\) \{[\s\S]*margin-inline: 0;/);
+  assert.match(mobile,/\.client-create-actions,[\s\S]*\.wa-modal-toggle-group,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(mobile,/\.dashboard-hero-stats,[\s\S]*\.membership-billing-summary[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(mobile,/\[class\$="-actions"\]/);
+  assert.doesNotMatch(mobile,/\[class\*="-actions"\]/);
+});
+
+test('finance mobile source uses horizontal space before adding vertical scroll',()=>{
+  const finance=readFileSync(new URL('../../SHARED/wwwroot/css/legend-finance-shared.css',import.meta.url),'utf8');
+
+  assert.match(finance,/@media \(max-width: 991\.98px\)[\s\S]*\.finance-selector-row,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(finance,/@media \(max-width: 760px\)[\s\S]*\.el-top-controls--personal,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(finance,/@media \(max-width: 760px\)[\s\S]*\.ft-kpi-grid\.ft-kpi-grid--four[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(finance,/@media \(max-width: 620px\)[\s\S]*\.llbs-philosophy-grid,[\s\S]*\.llbs-tax-grid[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(finance,/\.networth-tool\.el-shell\.legend-finance-tool-card--narrow,[\s\S]*width: 100%;[\s\S]*max-width: none;/);
+  assert.match(finance,/\.llbs-status > :is\(\.llbs-save-state, \.llbs-growth-calculator-btn, \.llbs-print-btn, \.llbs-clear\)[\s\S]*min-width: 0;/);
+});
+
 test('feature styles cannot reintroduce competing mobile action-stack authority',()=>{
   const mediaBlocks=source=>{
     const out=[];let pos=0;
