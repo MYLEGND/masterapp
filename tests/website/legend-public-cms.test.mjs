@@ -676,9 +676,10 @@ test('public startup styling has one responsive authority and one palette author
   assert.equal((publicCss.match(/@media\(max-width:650px\)/g)||[]).length,1);
   assert.doesNotMatch(publicCss,/:root\[data-legend-site="business"\]/);
   assert.match(foundationCss,/:root\[data-legend-site="business"\]\{/);
-  assert.match(publicCss,/\.card::before\{[^}]*background:linear-gradient\(90deg,var\(--gold\)/);
+  assert.match(publicCss,/\.card::before\{content:none\}/);
   assert.match(publicCss,/\.card \.icon:empty,\.contact-card \.icon:empty\{display:none\}/);
-  assert.match(publicCss,/\.section\{padding:clamp\(64px,7\.5vw,104px\)/);
+  assert.match(publicCss,/\.section\{padding:var\(--public-section-y\) var\(--public-page-pad\)\}/);
+  assert.match(publicCss,/--public-page-pad:var\(--web-public-page-pad,var\(--page-pad\)\)/);
   assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.section\{padding-top:52px;padding-bottom:52px\}/);
   assert.doesNotMatch(source,/--accent:#b8955a/);
   assert.match(source,/const defaultCodeBlock = '[\s\S]*--navy-deep:#081a3a;--gold:#d4ad45/);
@@ -2705,7 +2706,7 @@ test('canonical sections duplicate directly in composition while shared shell re
 });
 
 test('shared public stylesheet keeps footer at viewport bottom without fixing it over content',()=>{
-  assert.match(publicCss,/body\{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip\}/);
+  assert.match(publicCss,/body\{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip;[^}]*font-family:var\(--font\);[^}]*font-weight:var\(--web-public-body-weight,500\)/);
   assert.match(publicCss,/main,\.public-main,\.layout-content\{flex:1 0 auto;min-height:0\}/);
   assert.match(publicCss,/\.site-footer\{flex:0 0 auto;margin-top:auto\}/);
   assert.doesNotMatch(publicCss,/\.site-footer\{[^}]*position:fixed/);

@@ -2,7 +2,7 @@
    Shared by www.mylegnd.com and protect.mylegnd.com.
    Brand-specific palettes are variables; layout, rhythm, components and responsive behavior live here. */
 :root{
-  --public-page-pad:var(--web-public-page-pad,var(--public-page-pad));
+  --public-page-pad:var(--web-public-page-pad,var(--page-pad));
   --public-section-y:var(--web-public-section-y,clamp(52px,6vw,88px));
   --public-reading-max:var(--web-public-reading-max,1040px);
   --public-heading-max:var(--web-public-heading-max,1180px);
