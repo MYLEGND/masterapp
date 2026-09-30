@@ -43,7 +43,10 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   let runtimePromise = null;
   const ensureRuntime = async () => {
     mountPublicInquiryForms(document);
-    if (!document.querySelector('[data-website-inquiry]:not([data-preview])')) return;
+    if (!document.querySelector(
+      '[data-website-inquiry]:not([data-preview]),' +
+      '[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'
+    )) return;
     runtimePromise ||= import(new URL('./legend-public-inquiry.js', import.meta.url).href);
     await runtimePromise;
   };

@@ -53,16 +53,38 @@
       let sourceActionKey = window.LEGEND_LAST_WEBSITE_ACTION_KEY || null;
       try { sourceActionKey ||= sessionStorage.getItem('legend_last_website_action_key'); } catch {}
 
+      const experienceId = form.dataset.websiteExperienceId || null;
+      const experienceAnswers = {};
+      if (experienceId) {
+        const seenRadio = new Set();
+        form.querySelectorAll('[data-cms-field-key]').forEach(control => {
+          const key = control.dataset.cmsFieldKey;
+          if (!key || control.matches('button,a')) return;
+          if (control.type === 'radio') {
+            if (seenRadio.has(key)) return;
+            seenRadio.add(key);
+            const selected = form.querySelector('input[type="radio"][data-cms-field-key="' + CSS.escape(key) + '"]:checked');
+            experienceAnswers[key] = selected?.value || '';
+          } else if (control.type === 'checkbox') {
+            experienceAnswers[key] = !!control.checked;
+          } else {
+            experienceAnswers[key] = control.value ?? '';
+          }
+        });
+      }
+
       const values = {
-        firstName: String(fields.get('FirstName') || ''),
-        lastName: String(fields.get('LastName') || ''),
-        phone: String(fields.get('Phone') || ''),
-        email: String(fields.get('Email') || ''),
-        message: String(fields.get('Message') || ''),
+        firstName: experienceId ? '' : String(fields.get('FirstName') || ''),
+        lastName: experienceId ? '' : String(fields.get('LastName') || ''),
+        phone: experienceId ? '' : String(fields.get('Phone') || ''),
+        email: experienceId ? '' : String(fields.get('Email') || ''),
+        message: experienceId ? '' : String(fields.get('Message') || ''),
         sourcePath: location.pathname,
         sourceActionKey,
         sourceFormElementId: form.dataset.cmsExtraId ? `extra:${form.dataset.cmsExtraId}` : (form.dataset.cmsId || null),
-        consent: fields.get('consent') === 'on',
+        consent: experienceId ? false : fields.get('consent') === 'on',
+        experienceId,
+        answers: experienceId ? experienceAnswers : null,
         sessionId: analytics?.ids?.getSessionId?.() || null,
         visitorId: analytics?.ids?.getVisitorId?.() || null,
         utmSource: attribution.utmSource || null,
@@ -125,6 +147,9 @@
 
   function bindInquiryForms() {
     document.querySelectorAll('[data-website-inquiry]:not([data-preview])').forEach(bindInquiryForm);
+    document.querySelectorAll(
+      '[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'
+    ).forEach(bindInquiryForm);
   }
 
   bindInquiryForms();

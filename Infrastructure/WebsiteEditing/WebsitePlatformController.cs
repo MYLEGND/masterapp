@@ -152,6 +152,14 @@ public class WebsitePlatformController : ControllerBase
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
             : await new WebsiteCollectionProjectionService(_db).LoadAsync(document, business.Id, cancellationToken);
         var publicStoreScope = await PublishedStoreScopeAsync(ownerKey, siteKey, document, cancellationToken);
+        var publicActions = await BuildCallToActionCatalogAsync(
+            siteKey,
+            ownerKey,
+            agentSlug,
+            business?.Id,
+            publicFacts,
+            cancellationToken,
+            document);
         return Ok(new
         {
             siteKey,
@@ -160,6 +168,7 @@ public class WebsitePlatformController : ControllerBase
             facts = publicFacts,
             collections = publicCollections.Values,
             store = await StorePayloadAsync(siteKey, document, publicStoreScope, ticket: null, cancellationToken),
+            ctaCatalog = new { options = publicActions },
             document,
             legacyMigration = document.LegacyMigration
         });
@@ -618,6 +627,12 @@ public class WebsitePlatformController : ControllerBase
         try
         {
             signals = WebsiteSignalBindingPolicy.Validate(request.Signals);
+            if (target.Type == "experience" && target.Experience is not null && fieldKey is not null)
+            {
+                var control = target.Experience.Controls.Single(control =>
+                    string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase));
+                WebsiteSignalBindingPolicy.ValidateExperienceControl(control, signals);
+            }
         }
         catch (ArgumentException ex)
         {
@@ -1861,7 +1876,7 @@ public class WebsitePlatformController : ControllerBase
         return null;
     }
 
-    private static bool TryFindSignalTarget(
+    internal static bool TryFindSignalTarget(
         WebsiteContentDocument document,
         string? pagePath,
         string? elementId,
@@ -1880,9 +1895,19 @@ public class WebsitePlatformController : ControllerBase
         if (found is null) return false;
 
         if (normalizedFieldKey is not null &&
-            found.Type != "form" &&
+            found.Type is not ("form" or "experience") &&
             !WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(found.SystemKey))
             return false;
+
+        if (normalizedFieldKey is not null &&
+            found.Type == "experience")
+        {
+            var signalFieldKey = normalizedFieldKey;
+            if (found.Experience is null ||
+                found.Experience.Controls.Count(control =>
+                    string.Equals(control.Key, signalFieldKey, StringComparison.OrdinalIgnoreCase)) != 1)
+                return false;
+        }
 
         target = found;
         return true;

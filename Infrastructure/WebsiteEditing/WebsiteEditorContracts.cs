@@ -164,6 +164,7 @@ public static class WebsiteCompositionSchema
             ["image"] = ["img"],
             ["video"] = ["video"],
             ["form"] = ["form"],
+            ["experience"] = ["form"],
             ["embed"] = ["div"],
             ["spacer"] = ["div"],
             ["reusable"] = ["div"]
@@ -312,6 +313,11 @@ public sealed class WebsiteCompositionNode
     public Dictionary<string, WebsiteCompositionLayout> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteAnimationBinding> Animations { get; set; } = new();
     public WebsiteDataBinding? DataBinding { get; set; }
+
+    // Authorable native interaction model. It owns questions, steps, branching,
+    // calculations, and presentation only; backend capabilities and event authority
+    // are resolved separately by the server.
+    public WebsiteExperienceDefinition? Experience { get; set; }
 
     // Presentation-only records keyed by the existing server/runtime field identity.
     // These never create, rename, reorder, validate, route, or submit a form field.

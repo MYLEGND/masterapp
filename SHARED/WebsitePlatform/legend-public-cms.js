@@ -687,7 +687,7 @@
         }
       });
     });
-    document.querySelectorAll('main form, main input:not([type="hidden"]):not([type="password"]), main select, main textarea').forEach((node, index) => {
+    document.querySelectorAll('main form:not([data-cms-composition-id]), main input:not([type="hidden"]):not([type="password"]), main select, main textarea').forEach((node, index) => {
       if (node.closest('[data-cms-locked="true"]')) return;
       node.dataset.cmsId ||= `signal:${pageKey}.${safeId(node.tagName)}.${safeId(node.id || node.name || 'field')}.${index}`;
       node.dataset.cmsFieldKey ||= safeId(node.name || node.id || ('field-'+index));
@@ -698,7 +698,9 @@
 
   function selectedSignalContext() {
     if (!selected || legacyMigration) return null;
-    const fieldKey=['INPUT','SELECT','TEXTAREA'].includes(selected.tagName) ? formFieldKey(selected) : null;
+    const fieldKey=['INPUT','SELECT','TEXTAREA','BUTTON'].includes(selected.tagName) && selected.dataset?.cmsFieldKey
+      ? formFieldKey(selected)
+      : null;
     const form=fieldKey ? selected.closest?.('form[data-cms-composition-id]') : null;
     const elementId=fieldKey
       ? form?.dataset?.cmsCompositionId
@@ -761,7 +763,7 @@
 
     let refreshed=findEditableElement(context.elementId);
     if(context.fieldKey && refreshed){
-      refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[type="submit"]')]
+      refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
         .find(control=>formFieldKey(control)===context.fieldKey) || null;
     }
     if(refreshed) setSelected(refreshed);
@@ -1449,7 +1451,7 @@
     const key=formFieldKey(el);
     if(!key) return null;
     const formNode=compositionNode(form.dataset.cmsCompositionId);
-    if(!formNode || !(formNode.type==='form' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
+    if(!formNode || !(formNode.type==='form' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
     if(create){
       formNode.fieldPresentations ||= {};
       formNode.fieldPresentations[key] ||= normalizeControlPresentation(null);
@@ -1960,7 +1962,7 @@
     const allowed={
       section:['section'],container:['div','article','header','footer','nav','ul','ol','fieldset'],
       heading:['h1','h2','h3','h4','h5','h6'],text:['p','span','small','strong','li','label','blockquote'],
-      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],embed:['div'],spacer:['div'],reusable:['div']
+      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],experience:['form'],embed:['div'],spacer:['div'],reusable:['div']
     }[type] || ['div'];
     return allowed.includes(tag) ? tag : allowed[0];
   }
@@ -1969,7 +1971,7 @@
     if(!form || !node) return;
     const presentations=node.fieldPresentations || {};
     const labels=node.fieldLabels || {};
-    const controls=[...form.querySelectorAll('input[name],select[name],textarea[name],button[type="submit"]')];
+    const controls=[...form.querySelectorAll('input[name],select[name],textarea[name],button[data-cms-field-key]')];
     controls.forEach((control,index)=>{
       const key=safeId(control.dataset.cmsFieldKey || control.getAttribute('name') || control.id || (control.matches('button[type="submit"]')?'submit':'field-'+index));
       if(!key) return;
@@ -1988,6 +1990,314 @@
         if(textNode) textNode.textContent=labels[key]+' ';
       }
     });
+  }
+
+  function experienceValue(raw) {
+    if(raw == null) return null;
+    if(typeof raw==='boolean' || typeof raw==='number') return raw;
+    const text=String(raw);
+    const numeric=Number(text);
+    return text!=='' && Number.isFinite(numeric) ? numeric : text;
+  }
+
+  function experienceTruthy(value) {
+    if(typeof value==='boolean') return value;
+    if(typeof value==='number') return value!==0;
+    return ['true','yes','on','1'].includes(String(value ?? '').trim().toLowerCase());
+  }
+
+  function evaluateExperienceExpression(expression, answers, calculations, stack=new Set()) {
+    if(!expression || typeof expression!=='object') return null;
+    const values=Array.isArray(expression.values)
+      ? expression.values.map(item=>evaluateExperienceExpression(item,answers,calculations,stack))
+      : [];
+    const number=value=>{ const parsed=Number(value); return Number.isFinite(parsed)?parsed:0; };
+    const compare=()=>{
+      if(values.length<2) return 0;
+      const a=Number(values[0]), b=Number(values[1]);
+      if(Number.isFinite(a)&&Number.isFinite(b)) return a===b?0:(a>b?1:-1);
+      return String(values[0]??'').localeCompare(String(values[1]??''),undefined,{sensitivity:'accent'});
+    };
+    switch(String(expression.op||'value')){
+      case 'value': return expression.value ?? null;
+      case 'ref': {
+        let key=String(expression.ref||'');
+        if(key.startsWith('answer.')) key=key.slice(7);
+        if(key.startsWith('calc.')){
+          const calcKey=key.slice(5);
+          if(stack.has(calcKey) || !calculations?.[calcKey]) return null;
+          stack.add(calcKey);
+          try{return evaluateExperienceExpression(calculations[calcKey],answers,calculations,stack);}
+          finally{stack.delete(calcKey);}
+        }
+        return Object.hasOwn(answers,key)?answers[key]:null;
+      }
+      case 'add': return values.reduce((sum,value)=>sum+number(value),0);
+      case 'subtract': return values.length?values.slice(1).reduce((sum,value)=>sum-number(value),number(values[0])):0;
+      case 'multiply': return values.length?values.reduce((sum,value)=>sum*number(value),1):0;
+      case 'divide': return values.length?values.slice(1).reduce((sum,value)=>number(value)===0?NaN:sum/number(value),number(values[0])):0;
+      case 'min': return values.length?Math.min(...values.map(number)):0;
+      case 'max': return values.length?Math.max(...values.map(number)):0;
+      case 'round': {
+        const digits=Math.max(0,Math.min(6,Math.trunc(number(values[1]))||0));
+        const factor=10**digits; return Math.round(number(values[0])*factor)/factor;
+      }
+      case 'percent': return number(values[0])/100;
+      case 'equals': return compare()===0;
+      case 'not_equals': return compare()!==0;
+      case 'greater_than': return compare()>0;
+      case 'less_than': return compare()<0;
+      case 'greater_or_equal': return compare()>=0;
+      case 'less_or_equal': return compare()<=0;
+      case 'and': return values.every(experienceTruthy);
+      case 'or': return values.some(experienceTruthy);
+      case 'not': return !experienceTruthy(values[0]);
+      case 'if': return experienceTruthy(values[0])?values[1]:values[2];
+      case 'coalesce': return values.find(value=>value!=null && String(value)!=='') ?? null;
+      case 'concat': return values.map(value=>String(value??'')).join('');
+      case 'lookup': {
+        const key=String(values[0]??'');
+        return expression.map && Object.hasOwn(expression.map,key) ? expression.map[key] : null;
+      }
+      default: return null;
+    }
+  }
+
+  function experienceAnswers(form, definition) {
+    const result={};
+    for(const control of definition?.controls || []){
+      if(['button','cta'].includes(control.type)) continue;
+      const controls=[...form.querySelectorAll('[data-cms-field-key="'+CSS.escape(control.key)+'"]')];
+      if(!controls.length) continue;
+      if(control.type==='checkbox') result[control.key]=!!controls[0].checked;
+      else if(['radio','choice'].includes(control.type)){
+        const selected=controls.find(input=>input.checked);
+        result[control.key]=selected?.value ?? '';
+      }else result[control.key]=experienceValue(controls[0].value);
+    }
+    return result;
+  }
+
+  function formatExperienceResult(value, format) {
+    const number=Number(value);
+    if(!Number.isFinite(number)) return String(value ?? '');
+    if(format==='currency') return new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',maximumFractionDigits:0}).format(number);
+    if(format==='percent') return number.toLocaleString(undefined,{maximumFractionDigits:2})+'%';
+    if(format==='integer') return Math.round(number).toLocaleString();
+    return number.toLocaleString(undefined,{maximumFractionDigits:2});
+  }
+
+  function buildNativeExperience(node) {
+    const definition=node.experience || {};
+    const form=document.createElement('form');
+    form.className='legend-native-experience';
+    form.dataset.websiteExperienceForm='';
+    form.dataset.websiteExperienceId=node.id;
+    form.dataset.submitCapability=definition.submitCapability || '';
+    form.dataset.formKey='experience:'+node.id;
+    form.noValidate=false;
+    if(editorMode) form.dataset.preview='';
+
+    const header=document.createElement('header');
+    header.className='legend-experience-header';
+    if(node.title){
+      const heading=document.createElement('h2');
+      heading.textContent=node.title;
+      header.appendChild(heading);
+    }
+    if(node.text){
+      const copy=document.createElement('p');
+      copy.textContent=node.text;
+      header.appendChild(copy);
+    }
+    if(header.childNodes.length) form.appendChild(header);
+
+    const progress=document.createElement('div');
+    progress.className='legend-experience-progress';
+    const progressBar=document.createElement('span');
+    progress.appendChild(progressBar);
+    form.appendChild(progress);
+
+    const body=document.createElement('div');
+    body.className='legend-experience-body';
+    form.appendChild(body);
+
+    const controlHosts=new Map();
+    const buildControl=control=>{
+      const wrapper=document.createElement('div');
+      wrapper.className='legend-experience-control';
+      wrapper.dataset.experienceControl=control.key;
+
+      if(control.type==='button' || control.type==='cta'){
+        const action=control.action || {};
+        const element=control.type==='cta' ? document.createElement('a') : document.createElement('button');
+        if(element.tagName==='BUTTON') element.type=action.type==='submit' && definition.submitCapability==='lead_capture' ? 'submit' : 'button';
+        else element.href='#';
+        element.className='btn '+(action.type==='back'?'secondary':'primary');
+        element.textContent=control.label || (action.type==='submit'?'Submit':'Continue');
+        element.dataset.experienceAction=action.type || (control.type==='cta'?'cta':'next');
+        element.dataset.experienceControlKey=control.key;
+        element.dataset.cmsFieldKey=control.key;
+        if(action.targetStep) element.dataset.experienceTargetStep=action.targetStep;
+        if(action.type==='cta' && action.actionKey) element.dataset.websiteActionKey=action.actionKey;
+        wrapper.appendChild(element);
+        return wrapper;
+      }
+
+      const label=document.createElement('label');
+      label.className='legend-experience-field';
+      if(control.label){
+        const title=document.createElement('span');
+        title.className='legend-experience-label';
+        title.textContent=control.label;
+        label.appendChild(title);
+      }
+
+      const applyCommon=input=>{
+        input.name=control.key;
+        input.dataset.cmsFieldKey=control.key;
+        if(control.required) input.required=true;
+        if(control.placeholder) input.placeholder=control.placeholder;
+        if(control.maxLength) input.maxLength=Number(control.maxLength);
+        if(control.min!=null) input.min=String(control.min);
+        if(control.max!=null) input.max=String(control.max);
+        if(control.step!=null) input.step=String(control.step);
+      };
+
+      if(control.type==='textarea'){
+        const input=document.createElement('textarea');
+        input.rows=4; applyCommon(input);
+        if(control.defaultValue!=null) input.value=String(control.defaultValue);
+        label.appendChild(input);
+      }else if(control.type==='select'){
+        const input=document.createElement('select'); applyCommon(input);
+        if(!control.required){const empty=document.createElement('option');empty.value='';empty.textContent='Select';input.appendChild(empty);}
+        for(const option of control.options || []){const el=document.createElement('option');el.value=option.value;el.textContent=option.label;input.appendChild(el);}
+        if(control.defaultValue!=null) input.value=String(control.defaultValue);
+        label.appendChild(input);
+      }else if(control.type==='radio' || control.type==='choice'){
+        const group=document.createElement('div');
+        group.className='legend-experience-options';
+        for(const option of control.options || []){
+          const optionLabel=document.createElement('label');
+          optionLabel.className='legend-experience-option';
+          const input=document.createElement('input');
+          input.type='radio'; applyCommon(input); input.value=option.value;
+          if(control.defaultValue!=null && String(control.defaultValue)===String(option.value)) input.checked=true;
+          const text=document.createElement('span'); text.textContent=option.label;
+          optionLabel.append(input,text); group.appendChild(optionLabel);
+        }
+        label.appendChild(group);
+      }else{
+        const input=document.createElement('input');
+        const types={email:'email',tel:'tel',number:'number',currency:'number',range:'range',checkbox:'checkbox',date:'date',text:'text'};
+        input.type=types[control.type] || 'text'; applyCommon(input);
+        if(control.type==='currency') input.inputMode='decimal';
+        if(control.type==='tel') input.inputMode='tel';
+        if(control.type==='checkbox') input.checked=control.defaultValue===true;
+        else if(control.defaultValue!=null) input.value=String(control.defaultValue);
+        label.appendChild(input);
+      }
+
+      if(control.helpText){
+        const help=document.createElement('small');
+        help.className='legend-experience-help';
+        help.textContent=control.helpText;
+        label.appendChild(help);
+      }
+      wrapper.appendChild(label);
+      return wrapper;
+    };
+
+    const controlsByKey=new Map((definition.controls || []).map(control=>[control.key,control]));
+    const steps=Array.isArray(definition.steps) && definition.steps.length
+      ? definition.steps
+      : [{key:'main',title:null,description:null,controlKeys:[...controlsByKey.keys()]}];
+    const stepHosts=new Map();
+
+    for(const step of steps){
+      const section=document.createElement('section');
+      section.className='legend-experience-step';
+      section.dataset.experienceStep=step.key;
+      if(step.title){const title=document.createElement('h3');title.textContent=step.title;section.appendChild(title);}
+      if(step.description){const copy=document.createElement('p');copy.className='legend-experience-step-copy';copy.textContent=step.description;section.appendChild(copy);}
+      const grid=document.createElement('div');grid.className='legend-experience-grid';section.appendChild(grid);
+      for(const key of step.controlKeys || []){
+        const control=controlsByKey.get(key);
+        if(!control) continue;
+        const wrapper=buildControl(control);
+        controlHosts.set(key,wrapper);
+        grid.appendChild(wrapper);
+      }
+      stepHosts.set(step.key,section);
+      body.appendChild(section);
+    }
+
+    const resultHost=document.createElement('div');
+    resultHost.className='legend-experience-results';
+    for(const result of definition.results || []){
+      const row=document.createElement('div'); row.className='legend-experience-result';
+      const label=document.createElement('span'); label.textContent=result.label || result.key;
+      const output=document.createElement('strong'); output.dataset.experienceResult=result.key;
+      row.append(label,output); resultHost.appendChild(row);
+    }
+    if(resultHost.childNodes.length) form.appendChild(resultHost);
+
+    const status=document.createElement('p');
+    status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+    status.className='legend-experience-status';
+    form.appendChild(status);
+
+    let currentStep=steps[0]?.key || null;
+    const visibleStepKeys=answers=>steps
+      .filter(step=>!step.visibleWhen || experienceTruthy(evaluateExperienceExpression(step.visibleWhen,answers,definition.calculations || {})))
+      .map(step=>step.key);
+
+    const render=()=>{
+      const answers=experienceAnswers(form,definition);
+      const visibleSteps=visibleStepKeys(answers);
+      if(!visibleSteps.includes(currentStep)) currentStep=visibleSteps[0] || null;
+      for(const [key,section] of stepHosts) section.hidden=key!==currentStep;
+      for(const control of definition.controls || []){
+        const host=controlHosts.get(control.key);
+        if(!host) continue;
+        host.hidden=!!control.visibleWhen && !experienceTruthy(evaluateExperienceExpression(control.visibleWhen,answers,definition.calculations || {}));
+      }
+      for(const result of definition.results || []){
+        const output=form.querySelector('[data-experience-result="'+CSS.escape(result.key)+'"]');
+        if(!output) continue;
+        const value=evaluateExperienceExpression(result.expression,answers,definition.calculations || {});
+        output.textContent=formatExperienceResult(value,result.format);
+      }
+      const index=Math.max(0,visibleSteps.indexOf(currentStep));
+      progress.hidden=visibleSteps.length<=1;
+      progressBar.style.width=visibleSteps.length ? (((index+1)/visibleSteps.length)*100)+'%' : '0%';
+      progress.setAttribute('aria-label',visibleSteps.length?('Step '+(index+1)+' of '+visibleSteps.length):'');
+    };
+
+    form.addEventListener('click',event=>{
+      const button=event.target.closest?.('[data-experience-action]');
+      if(!button || button.dataset.experienceAction==='cta') return;
+      const action=button.dataset.experienceAction;
+      if(action==='submit' && definition.submitCapability==='lead_capture') return;
+      event.preventDefault();
+      if(action==='reset'){form.reset();currentStep=steps[0]?.key || null;render();return;}
+      const answers=experienceAnswers(form,definition);
+      const visible=visibleStepKeys(answers);
+      const index=visible.indexOf(currentStep);
+      if(button.dataset.experienceTargetStep && visible.includes(button.dataset.experienceTargetStep))
+        currentStep=button.dataset.experienceTargetStep;
+      else if(action==='back') currentStep=visible[Math.max(0,index-1)] || currentStep;
+      else if(action==='next' || action==='submit') currentStep=visible[Math.min(visible.length-1,index+1)] || currentStep;
+      render();
+      form.scrollIntoView?.({behavior:'smooth',block:'nearest'});
+    });
+
+    form.addEventListener('input',render);
+    form.addEventListener('change',render);
+    applyFormFieldPresentations(form,node);
+    queueMicrotask(render);
+    return form;
   }
 
   function buildCanonicalInquiryForm(node) {
@@ -2086,6 +2396,8 @@
       renderReusableInstance(el, node);
     } else if (node.type === 'form') {
       el = buildCanonicalInquiryForm(node);
+    } else if (node.type === 'experience') {
+      el = buildNativeExperience(node);
     } else if (node.type === 'embed') {
       el = buildCanonicalEmbed(node);
     } else {
@@ -3782,6 +4094,11 @@
       else delete element.dataset.websiteRuntimeAction;
       if (option.metaIntentEventName) element.dataset.websiteMetaIntent = option.metaIntentEventName;
       else delete element.dataset.websiteMetaIntent;
+      if (element.tagName === 'A' && option.href && safeUrl(option.href)) {
+        element.href = option.href;
+        element.target = option.openInNewTab === true ? '_blank' : '_self';
+        element.rel = 'noopener noreferrer';
+      }
     });
   }
 
@@ -3802,7 +4119,7 @@
         candidates.push({id:node.id,model:node,node:element});
         if(element && node.fieldSignals && typeof node.fieldSignals==='object'){
           for(const [fieldKey,signals] of Object.entries(node.fieldSignals)){
-            const control=[...element.querySelectorAll('input,select,textarea,button[type="submit"]')]
+            const control=[...element.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
               .find(candidate=>formFieldKey(candidate)===fieldKey);
             if(control) candidates.push({
               id:node.id+':field:'+fieldKey,
@@ -3858,7 +4175,7 @@
         const managedForm = candidate.node.matches?.('form') ? candidate.node : candidate.node.closest?.('form');
         const managedAction = candidate.node.matches?.('[data-website-action-key],[data-cta]');
         if (window.LegendAnalytics?.registerBinding &&
-            ((managedForm && ['form_started','submit_attempt','field_started','validation_failed'].includes(binding.trigger)) ||
+            ((managedForm && ['form_started','submit_attempt','field_started','validation_failed','field_completed'].includes(binding.trigger)) ||
              (managedAction && binding.trigger === 'click'))) {
           cleanups.push(window.LegendAnalytics.registerBinding(candidate.node, binding, candidate.id));
           continue;
@@ -4025,6 +4342,7 @@
       const payload = await response.json();
       storeContext = payload.store || null;
       legacyMigration = payload.legacyMigration || null;
+      ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : ctaCatalog;
       if (payload.businessName) {
         document.querySelectorAll('[data-business-name]').forEach(element => {
           element.textContent = payload.businessName;
@@ -4033,6 +4351,9 @@
       bindBusiness(payload);
       prepareDom();
       applyDocument(payload.document || {});
+      applyRuntimeActionContracts();
+      if (SITE_KEY === 'protect' && window.__legendTrackingInitialized === true)
+        installPublishedSignalBindings();
       preservePreviewNavigation();
       document.documentElement.hidden = false;
     } catch (error) {
@@ -4341,24 +4662,28 @@
     const displayNumber = value => String(Math.round(value * 1000) / 1000);
     const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
     const serviceCard = businessServiceCardFor(selected);
+    const canonicalForm = ov.type === 'form' || String(ov.systemKey || '').startsWith('protect_runtime_form:');
+    const protectedMappings = (Array.isArray(ov.signals) && ov.signals.length > 0) ||
+      Object.values(ov.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length > 0);
     const duplicateButton = document.getElementById('legend-cms-duplicate');
     if (duplicateButton) {
       const immutableShell = selected.matches?.('.site-header,.site-footer');
       duplicateButton.textContent = serviceCard ? 'Duplicate service' : selected.dataset.cmsSection ? 'Duplicate section' : 'Duplicate selected';
-      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM' || immutableShell;
+      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || canonicalForm || immutableShell;
       duplicateButton.title = immutableShell ? 'The website banner and footer are shared shell authorities and cannot be duplicated.'
-        : selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
+        : canonicalForm ? 'Protected runtime forms cannot be duplicated.' : '';
     }
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const immutableShell = isSharedShellElement(selected);
-      const protectedSemantic = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length > 0) || selected.tagName === 'FORM';
+      const protectedSemantic = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || protectedMappings || canonicalForm;
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
         : selected.tagName === 'IMG' ? 'image'
         : selected.tagName === 'VIDEO' ? 'video'
-        : selected.tagName === 'FORM' ? 'form'
+        : ov.type === 'experience' ? 'interactive experience'
+        : canonicalForm ? 'form'
         : ['INPUT','SELECT','TEXTAREA'].includes(selected.tagName) ? 'field'
         : ['A','BUTTON'].includes(selected.tagName) ? 'button'
         : ['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName) ? 'block'
@@ -4406,7 +4731,7 @@
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) {
       hidden.checked = ov.hidden === true || selected.hidden;
-      hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length>0) || selected.tagName === 'FORM';
+      hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || protectedMappings || canonicalForm;
     }
     if (targetInput) targetInput.disabled = !!ov.actionKey;
   }
@@ -5972,12 +6297,13 @@
     const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
     const map={button:'cta',code:'embed'};
     const nodeType=map[type] || type;
-    const tags={section:'section',text:'p',cta:'a',video:'video',form:'form',embed:'div'}; 
+    const tags={section:'section',text:'p',cta:'a',video:'video',form:'form',experience:'form',embed:'div'}; 
     const defaultClasses={
       section:'section',
       cta:'btn primary',
       image:'legend-cms-image',
       form:'public-form legend-cms-inquiry-form',
+      experience:'legend-native-experience',
       embed:'legend-cms-embed'
     };
     const node={
@@ -5986,8 +6312,14 @@
       title:nodeType==='form'?'Send an inquiry':null,
       actionKey:null,href:null,target:nodeType==='cta'?'_self':null,
       systemKey:nodeType==='form'?'canonical_inquiry':null,
-      signals:[],style:nodeType==='embed'?{widthPercent:100,heightPx:320}:nodeType==='form'?{widthPercent:100}:{},
-      breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+      signals:[],style:nodeType==='embed'?{widthPercent:100,heightPx:320}:['form','experience'].includes(nodeType)?{widthPercent:100}:{},
+      breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[],
+      experience:nodeType==='experience'?{
+        kind:'form',submitCapability:null,
+        steps:[{key:'main',title:'Interactive experience',description:'Customize questions, logic, calculations, and results in Selected Source.',controlKeys:['choice']}],
+        controls:[{key:'choice',type:'choice',label:'Choose an option',required:true,options:[{value:'option_a',label:'Option A'},{value:'option_b',label:'Option B'}]}],
+        calculations:{},results:[]
+      }:null
     };
 
     if(nodeType==='section'){
@@ -6024,7 +6356,7 @@
     navigation.innerHTML = `<div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
-      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
+      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="experience">Interactive experience</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
       <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint values inherit every unset value from the base design.</p><div class="legend-cms-inline-help" id="legend-cms-responsive-policy"><strong>Canonical responsive hierarchy</strong><br>Mobile uses a conversion-first stack: context → headline → supporting copy/proof → action/form → media → deeper content. Visual breakpoint choices remain editable, while mobile flow safety keeps content in-frame and prevents stored X/Y offsets, fixed heights, or free-canvas geometry from overlapping the published page. Desktop preserves intentional side-by-side composition.</div><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. X/Y offsets remain a base/desktop composition tool; published mobile flow neutralizes them for primary content so it cannot overlap or leave the viewport.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
@@ -6742,7 +7074,10 @@
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected || isSharedShellElement(selected)) return;
       const current=selectedWebsiteModel(false);
-      if (current && (current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length>0) || selected.tagName === 'FORM')) return;
+      if (current && (current.systemKey || current.systemBinding ||
+          (Array.isArray(current.signals) && current.signals.length>0) ||
+          Object.values(current.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length>0) ||
+          current.type === 'form')) return;
       const serviceCard=businessServiceCardFor(selected);
       if(serviceCard?.dataset?.cmsCompositionId) setSelected(serviceCard);
       removeSelected();

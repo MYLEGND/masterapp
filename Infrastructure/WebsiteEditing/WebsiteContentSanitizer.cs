@@ -527,11 +527,14 @@ public static class WebsiteContentSanitizer
                 BreakpointLayouts = SanitizeLayoutMap(node.BreakpointLayouts, breakpointKeys),
                 Animations = SanitizeAnimations(node.Animations),
                 DataBinding = SanitizeDataBinding(node.DataBinding),
+                Experience = type == "experience" ? WebsiteExperiencePolicy.Sanitize(node.Experience) : null,
                 FieldPresentations = SanitizeFieldPresentations(node.FieldPresentations, breakpointKeys),
                 FieldLabels = SanitizeFieldLabels(node.FieldLabels),
                 FieldSignals = SanitizeFieldSignals(node.FieldSignals)
             };
-            clean.Children = SanitizeCompositionChildren(node.Children, breakpointKeys, mobileFlowSafety, depth + 1, ref remaining);
+            clean.Children = type == "experience"
+                ? []
+                : SanitizeCompositionChildren(node.Children, breakpointKeys, mobileFlowSafety, depth + 1, ref remaining);
             CanonicalizePassiveLink(clean);
             CanonicalizePlatformBrandGeometry(clean);
             if (mobileFlowSafety) CanonicalizeMobileFlowSafety(clean);

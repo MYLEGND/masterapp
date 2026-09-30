@@ -862,4 +862,472 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.DoesNotContain("QualifiedLead", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("PolicyIssued", serialized, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void NativeExperience_AllowsCreativeLogicButOnlyCanonicalBackendCapabilities()
+    {
+        var document = CanonicalDocument();
+        var experience = new WebsiteCompositionNode
+        {
+            Id = "home.project-estimator",
+            Type = "experience",
+            Tag = "form",
+            Title = "Project estimator",
+            Text = "Answer a few questions for a preliminary range.",
+            Experience = new WebsiteExperienceDefinition
+            {
+                Kind = "calculator",
+                SubmitCapability = WebsiteExperiencePolicy.LeadCaptureCapability,
+                Steps =
+                [
+                    new WebsiteExperienceStep
+                    {
+                        Key = "project",
+                        Title = "Project",
+                        ControlKeys = ["project_type", "project_size", "next"]
+                    },
+                    new WebsiteExperienceStep
+                    {
+                        Key = "contact",
+                        Title = "Contact",
+                        ControlKeys = ["first_name", "last_name", "phone", "email", "consent", "submit", "schedule"]
+                    }
+                ],
+                Controls =
+                [
+                    new WebsiteExperienceControl
+                    {
+                        Key = "project_type", Type = "choice", Label = "What do you need?", Required = true,
+                        Options =
+                        [
+                            new() { Value = "installation", Label = "New installation" },
+                            new() { Value = "repair", Label = "Repair / upgrade" }
+                        ]
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "project_size", Type = "number", Label = "Approximate size", Required = true,
+                        Min = 100, Max = 10000
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "first_name", Type = "text", Label = "First name", Required = true, ContactRole = "first_name"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "last_name", Type = "text", Label = "Last name", Required = true, ContactRole = "last_name"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "phone", Type = "tel", Label = "Phone", Required = true, ContactRole = "phone"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "email", Type = "email", Label = "Email", Required = true, ContactRole = "email"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "consent", Type = "checkbox", Label = "Share my inquiry", Required = true, ContactRole = "consent"
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "next", Type = "button", Label = "Continue",
+                        Action = new() { Type = "next", TargetStep = "contact" }
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "submit", Type = "button", Label = "Send",
+                        Action = new() { Type = "submit" }
+                    },
+                    new WebsiteExperienceControl
+                    {
+                        Key = "schedule", Type = "cta", Label = "Schedule instead",
+                        Action = new() { Type = "cta", ActionKey = "business_schedule" }
+                    }
+                ],
+                Calculations = new(StringComparer.Ordinal)
+                {
+                    ["estimate"] = new WebsiteExperienceExpression
+                    {
+                        Op = "multiply",
+                        Values =
+                        [
+                            new() { Op = "ref", Ref = "project_size" },
+                            new() { Op = "value", Value = JsonSerializer.SerializeToElement(3.25m) }
+                        ]
+                    }
+                },
+                Results =
+                [
+                    new WebsiteExperienceResult
+                    {
+                        Key = "estimate",
+                        Label = "Preliminary estimate",
+                        Format = "currency",
+                        Expression = new() { Op = "ref", Ref = "calc.estimate" }
+                    }
+                ]
+            }
+        };
+        document.Pages["/"].Composition[0].Children.Add(experience);
+
+        var clean = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSiteSource.ValidateCanonical(clean, BusinessActions());
+
+        var saved = clean.Pages["/"].Composition[0].Children.Single(node => node.Id == experience.Id);
+        Assert.Equal("experience", saved.Type);
+        Assert.Equal("calculator", saved.Experience!.Kind);
+        Assert.Equal(WebsiteExperiencePolicy.LeadCaptureCapability, saved.Experience.SubmitCapability);
+        Assert.Contains(saved.Experience.Controls, control => control.Key == "project_type");
+        Assert.Contains(saved.Experience.Controls, control => control.Action?.ActionKey == "business_schedule");
+
+        var source = WebsiteSiteSource.Serialize(clean);
+        Assert.Contains("\"experience\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("/api/website-inquiries", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("website_lead_submitted", source, StringComparison.OrdinalIgnoreCase);
+
+        saved.Experience.Controls.Single(control => control.Key == "schedule").Action!.ActionKey = "invented_backend_action";
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteSiteSource.ValidateCanonical(clean, BusinessActions()));
+    }
+
+    [Fact]
+    public void NativeExperience_RejectsExecutableOrUnknownCalculationAuthority()
+    {
+        var definition = new WebsiteExperienceDefinition
+        {
+            Kind = "calculator",
+            Calculations = new(StringComparer.Ordinal)
+            {
+                ["unsafe"] = new WebsiteExperienceExpression { Op = "script" }
+            }
+        };
+
+        var error = Assert.Throws<ArgumentException>(() => WebsiteExperiencePolicy.Sanitize(definition));
+        Assert.Contains("not supported", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    [Fact]
+    public void PublishedBindingResolver_UsesImmutablePublishedLineageAndRejectsServerOutcomeForgery()
+    {
+        const string bindingId = "11111111111111111111111111111111";
+        const string forgedBindingId = "22222222222222222222222222222222";
+        var document = CanonicalDocument();
+        var first = document.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.quote");
+        first.Signals =
+        [
+            new WebsiteSignalBinding
+            {
+                Id = bindingId,
+                Trigger = "click",
+                EventName = "cta_click",
+                ActionKey = "cta_click",
+                DeliveryMode = "destinations"
+            }
+        ];
+        var second = document.Pages["/"].Composition[0].Children.Single(node => node.Id == "home.hero.form");
+        second.Signals =
+        [
+            new WebsiteSignalBinding
+            {
+                Id = bindingId,
+                Trigger = "form_started",
+                EventName = "form_start",
+                ActionKey = "form_start",
+                DeliveryMode = "analytics"
+            }
+        ];
+
+        var version = new Domain.Entities.WebsiteContentVersion
+        {
+            DocumentJson = JsonSerializer.Serialize(
+                WebsiteContentSanitizer.Sanitize(document),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        };
+        var metadata = JsonSerializer.Serialize(new
+        {
+            configuredWebsiteSignal = true,
+            configuredSignalBindings = new[]
+            {
+                new { id = bindingId, elementId = "home.hero.form" }
+            }
+        });
+
+        var resolved = PublishedWebsiteBindingResolver.Resolve(
+            version,
+            WebsiteEditorSiteKeys.Business,
+            "/",
+            bindingId,
+            metadata);
+
+        Assert.NotNull(resolved);
+        Assert.Equal("home.hero.form", resolved!.ElementId);
+        Assert.Equal("form_start", resolved.Binding.EventName);
+        Assert.Equal("form_start", resolved.Binding.ActionKey);
+
+        document.Pages["/"].Composition[0].Children.Add(new WebsiteCompositionNode
+        {
+            Id = "home.forged",
+            Type = "text",
+            Tag = "p",
+            Text = "Forged",
+            Signals =
+            [
+                new WebsiteSignalBinding
+                {
+                    Id = forgedBindingId,
+                    Trigger = "click",
+                    EventName = "Lead",
+                    ActionKey = "lead_created",
+                    DeliveryMode = "destinations"
+                }
+            ]
+        });
+        version.DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Null(PublishedWebsiteBindingResolver.Resolve(
+            version,
+            WebsiteEditorSiteKeys.Business,
+            "/",
+            forgedBindingId,
+            JsonSerializer.Serialize(new
+            {
+                configuredWebsiteSignal = true,
+                configuredSignalBindings = new[] { new { id = forgedBindingId, elementId = "home.forged" } }
+            })));
+    }
+
+    [Fact]
+    public void AgentContract_TeachesConversionSignalCoherenceWithoutProviderAuthority()
+    {
+        var prompt = WebsiteStudioAgentContract.PromptTemplate;
+
+        Assert.Contains("Maximize truthful signal coverage, not event count", prompt, StringComparison.Ordinal);
+        Assert.Contains("form_field_complete", prompt, StringComparison.Ordinal);
+        Assert.Contains("server-confirmed outcome", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ADVERTISING-READY COHERENCE", prompt, StringComparison.Ordinal);
+        Assert.Contains("Selected Source must never write Signals or FieldSignals directly", prompt, StringComparison.Ordinal);
+        Assert.Contains("Ads Manager", prompt, StringComparison.Ordinal);
+        Assert.Contains("never manufacture Meta/OpenAI/provider event names", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    [Fact]
+    public void NativeExperience_MappedControlIdentityCannotBeOrphanedThroughSource()
+    {
+        var baseline = CanonicalDocument();
+        var experience = new WebsiteCompositionNode
+        {
+            Id = "home.intent",
+            Type = "experience",
+            Tag = "form",
+            Experience = new WebsiteExperienceDefinition
+            {
+                Kind = "calculator",
+                Controls =
+                [
+                    new WebsiteExperienceControl
+                    {
+                        Key = "project_size",
+                        Type = "number",
+                        Label = "Project size"
+                    }
+                ]
+            },
+            FieldSignals = new(StringComparer.Ordinal)
+            {
+                ["project_size"] =
+                [
+                    new WebsiteSignalBinding
+                    {
+                        Id = Guid.NewGuid().ToString("N"),
+                        Trigger = "field_completed",
+                        EventName = "form_field_complete",
+                        ActionKey = "form_field_complete",
+                        DeliveryMode = "analytics",
+                        OncePerSession = false
+                    }
+                ]
+            }
+        };
+        baseline.Pages["/"].Composition[0].Children.Add(experience);
+        baseline = WebsiteContentSanitizer.Sanitize(baseline);
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var sourceExperience = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero").Children
+            .Single(node => node.Id == experience.Id);
+
+        sourceExperience.Experience!.Controls.Clear();
+        var removed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var removeError = Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteSiteSource.Parse(removed, baseline, BusinessActions()));
+        Assert.Contains("cannot be removed or renamed", removeError.Message, StringComparison.OrdinalIgnoreCase);
+
+        model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        sourceExperience = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero").Children
+            .Single(node => node.Id == experience.Id);
+        sourceExperience.Experience!.Controls.Single().Type = "range";
+        var retyped = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var typeError = Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteSiteSource.Parse(retyped, baseline, BusinessActions()));
+        Assert.Contains("cannot change control type", typeError.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Once the custom mapping has been removed through its canonical Analytics authority,
+        // the same front-end control becomes fully authorable again.
+        baseline.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == experience.Id).FieldSignals.Clear();
+        serialized = WebsiteSiteSource.Serialize(baseline);
+        model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        sourceExperience = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero").Children
+            .Single(node => node.Id == experience.Id);
+        sourceExperience.Experience!.Controls.Clear();
+        var freeAgain = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var parsed = WebsiteSiteSource.Parse(freeAgain, baseline, BusinessActions());
+        Assert.Empty(parsed.Document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == experience.Id).Experience!.Controls);
+    }
+
+    [Fact]
+    public void NativeExperience_SignalTargetMustExistAndMatchItsSemanticRole()
+    {
+        var document = CanonicalDocument();
+        var experience = new WebsiteCompositionNode
+        {
+            Id = "home.intent",
+            Type = "experience",
+            Tag = "form",
+            Experience = new WebsiteExperienceDefinition
+            {
+                Kind = "form",
+                Controls =
+                [
+                    new() { Key = "project_size", Type = "number", Label = "Project size" },
+                    new() { Key = "phone", Type = "tel", Label = "Phone", ContactRole = "phone" },
+                    new() { Key = "email", Type = "email", Label = "Email", ContactRole = "email" },
+                    new() { Key = "continue", Type = "button", Label = "Continue", Action = new() { Type = "next" } }
+                ]
+            }
+        };
+        document.Pages["/"].Composition[0].Children.Add(experience);
+        document = WebsiteContentSanitizer.Sanitize(document);
+
+        Assert.True(Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.TryFindSignalTarget(
+            document, "/", experience.Id, "project_size", out var target, out var fieldKey));
+        Assert.Equal("project_size", fieldKey);
+        Assert.False(Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.TryFindSignalTarget(
+            document, "/", experience.Id, "not_a_real_control", out _, out _));
+
+        List<WebsiteSignalBinding> Map(string eventName, string trigger) =>
+            WebsiteSignalBindingPolicy.Validate(
+            [
+                new WebsiteSignalBinding
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    EventName = eventName,
+                    Trigger = trigger,
+                    DeliveryMode = "analytics",
+                    OncePerSession = false
+                }
+            ]);
+
+        WebsiteSignalBindingPolicy.ValidateExperienceControl(
+            target.Experience!.Controls.Single(control => control.Key == "project_size"),
+            Map("form_field_complete", "field_completed"));
+
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSignalBindingPolicy.ValidateExperienceControl(
+                target.Experience!.Controls.Single(control => control.Key == "project_size"),
+                Map("PhoneFieldCompleted", "field_completed")));
+
+        WebsiteSignalBindingPolicy.ValidateExperienceControl(
+            target.Experience!.Controls.Single(control => control.Key == "phone"),
+            Map("PhoneFieldCompleted", "field_completed"));
+        WebsiteSignalBindingPolicy.ValidateExperienceControl(
+            target.Experience!.Controls.Single(control => control.Key == "email"),
+            Map("ContactInputStarted", "field_started"));
+
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSignalBindingPolicy.ValidateExperienceControl(
+                target.Experience!.Controls.Single(control => control.Key == "project_size"),
+                Map("ContactInputStarted", "field_started")));
+
+        WebsiteSignalBindingPolicy.ValidateExperienceControl(
+            target.Experience!.Controls.Single(control => control.Key == "continue"),
+            Map("cta_click", "click"));
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSignalBindingPolicy.ValidateExperienceControl(
+                target.Experience!.Controls.Single(control => control.Key == "continue"),
+                Map("form_field_complete", "field_completed")));
+    }
+
+    [Fact]
+    public void NativeLeadCapture_ConsentCannotBePreselectedAndContactRolesStayTyped()
+    {
+        WebsiteExperienceDefinition Build(JsonElement? consentDefault = null, string phoneType = "tel") => new()
+        {
+            Kind = "form",
+            SubmitCapability = WebsiteExperiencePolicy.LeadCaptureCapability,
+            Controls =
+            [
+                new() { Key = "first_name", Type = "text", Required = true, ContactRole = "first_name" },
+                new() { Key = "last_name", Type = "text", Required = true, ContactRole = "last_name" },
+                new() { Key = "phone", Type = phoneType, Required = true, ContactRole = "phone" },
+                new() { Key = "email", Type = "email", Required = true, ContactRole = "email" },
+                new() { Key = "consent", Type = "checkbox", Required = true, ContactRole = "consent", DefaultValue = consentDefault },
+                new() { Key = "submit", Type = "button", Action = new() { Type = "submit" } }
+            ]
+        };
+
+        var valid = WebsiteExperiencePolicy.Sanitize(Build())!;
+        WebsiteExperiencePolicy.ValidateForPublish(valid, new HashSet<string>(StringComparer.Ordinal));
+
+        var preselected = WebsiteExperiencePolicy.Sanitize(
+            Build(JsonSerializer.SerializeToElement(true)))!;
+        var consentError = Assert.Throws<ArgumentException>(() =>
+            WebsiteExperiencePolicy.ValidateForPublish(preselected, new HashSet<string>(StringComparer.Ordinal)));
+        Assert.Contains("cannot be preselected", consentError.Message, StringComparison.OrdinalIgnoreCase);
+
+        var wrongPhone = WebsiteExperiencePolicy.Sanitize(Build(phoneType: "text"))!;
+        var phoneError = Assert.Throws<ArgumentException>(() =>
+            WebsiteExperiencePolicy.ValidateForPublish(wrongPhone, new HashSet<string>(StringComparer.Ordinal)));
+        Assert.Contains("telephone input type", phoneError.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    [Fact]
+    public void PublishedBindingResolver_PreservesObservedEventAndValidatesTriggerCompatibility()
+    {
+        var binding = new WebsiteSignalBinding
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Trigger = "field_completed",
+            EventName = "PhoneFieldCompleted",
+            ActionKey = "phone_field_completed",
+            DeliveryMode = "destinations",
+            OncePerSession = false
+        };
+
+        Assert.True(PublishedWebsiteBindingResolver.ObservedEventMatches("form_field_complete", binding));
+        Assert.True(PublishedWebsiteBindingResolver.ObservedEventMatches("PhoneFieldCompleted", binding));
+        Assert.False(PublishedWebsiteBindingResolver.ObservedEventMatches("cta_click", binding));
+        Assert.False(PublishedWebsiteBindingResolver.ObservedEventMatches("website_lead_submitted", binding));
+    }
+
 }

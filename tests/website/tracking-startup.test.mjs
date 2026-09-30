@@ -207,6 +207,45 @@ test('late provider projections share one accepted page event and unique signals
   } finally {f.dom.window.close();}
 });
 
+test('generic forms emit canonical field completion and validation friction for mapped experience fields',async()=>{
+  const f=fixture();
+  try {
+    const w=f.window;
+    w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('form_field_focus','form_field_complete','form_field_error');
+    w.eval(source);
+    const form=w.document.querySelector('form');
+    const field=form.querySelector('input');
+    field.dataset.cmsFieldKey='project_size';
+
+    w.LegendAnalytics.registerBinding(
+      field,
+      {id:'project-size-complete',eventName:'form_field_complete',actionKey:'form_field_complete',trigger:'field_completed',deliveryMode:'analytics',oncePerSession:false},
+      'project_size'
+    );
+
+    field.value='1500';
+    field.dispatchEvent(new w.Event('change',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const completes=f.events.filter(event=>event.EventType==='form_field_complete');
+    assert.equal(completes.length,1);
+    assert.equal(completes[0].FieldName,'FirstName');
+    assert.equal(completes[0].WebsiteBindingId,'project-size-complete');
+    const configured=JSON.parse(completes[0].MetadataJson).configuredSignalBindings[0];
+    assert.equal(configured.trigger,'field_completed');
+    assert.equal(configured.elementId,'project_size');
+
+    field.required=true;
+    field.value='';
+    field.dispatchEvent(new w.Event('invalid',{bubbles:false,cancelable:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const errors=f.events.filter(event=>event.EventType==='form_field_error');
+    assert.equal(errors.length,1);
+    assert.equal(errors[0].FieldName,'FirstName');
+    assert.match(errors[0].MetadataJson,/required|invalid/);
+  } finally {f.dom.window.close();}
+});
+
 test('managed form bindings enrich the one canonical envelope and preserve delivery policy',async()=>{
   const f=fixture();
   try {
@@ -335,4 +374,35 @@ test('canonical measurement consent choice is shared with every provider adapter
     assert.equal(granted.allowed,true);
     assert.match(w.document.cookie,/legend_measurement_consent=granted/);
   } finally { f.dom.window.close(); }
+});
+
+
+test('late CMS-rendered native forms join the same canonical tracker without duplicate startup wiring',async()=>{
+  const f=fixture();
+  try{
+    const w=f.window;
+    w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('form_field_focus','form_field_complete','form_field_error');
+    w.eval(source);
+    assert.equal(w.LegendAnalytics.bindForms(w.document),0);
+
+    const late=w.document.createElement('form');
+    late.dataset.formKey='experience:late';
+    const field=w.document.createElement('input');
+    field.name='project_size';
+    late.appendChild(field);
+    w.document.body.appendChild(late);
+
+    w.dispatchEvent(new w.CustomEvent('legend:website-content-rendered'));
+    assert.equal(late._legendTrackingBound,true);
+    assert.equal(w.LegendAnalytics.bindForms(w.document),0);
+
+    field.dispatchEvent(new w.FocusEvent('focusin',{bubbles:true}));
+    field.value='1500';
+    field.dispatchEvent(new w.Event('change',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    assert.equal(f.events.filter(event=>event.EventType==='form_start' && event.FormKey==='experience:late').length,1);
+    assert.equal(f.events.filter(event=>event.EventType==='form_field_focus' && event.FormKey==='experience:late').length,1);
+    assert.equal(f.events.filter(event=>event.EventType==='form_field_complete' && event.FormKey==='experience:late').length,1);
+  }finally{f.dom.window.close();}
 });
