@@ -375,3 +375,34 @@ test('canonical measurement consent choice is shared with every provider adapter
     assert.match(w.document.cookie,/legend_measurement_consent=granted/);
   } finally { f.dom.window.close(); }
 });
+
+
+test('late CMS-rendered native forms join the same canonical tracker without duplicate startup wiring',async()=>{
+  const f=fixture();
+  try{
+    const w=f.window;
+    w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('form_field_focus','form_field_complete','form_field_error');
+    w.eval(source);
+    assert.equal(w.LegendAnalytics.bindForms(w.document),0);
+
+    const late=w.document.createElement('form');
+    late.dataset.formKey='experience:late';
+    const field=w.document.createElement('input');
+    field.name='project_size';
+    late.appendChild(field);
+    w.document.body.appendChild(late);
+
+    w.dispatchEvent(new w.CustomEvent('legend:website-content-rendered'));
+    assert.equal(late._legendTrackingBound,true);
+    assert.equal(w.LegendAnalytics.bindForms(w.document),0);
+
+    field.dispatchEvent(new w.FocusEvent('focusin',{bubbles:true}));
+    field.value='1500';
+    field.dispatchEvent(new w.Event('change',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    assert.equal(f.events.filter(event=>event.EventType==='form_start' && event.FormKey==='experience:late').length,1);
+    assert.equal(f.events.filter(event=>event.EventType==='form_field_focus' && event.FormKey==='experience:late').length,1);
+    assert.equal(f.events.filter(event=>event.EventType==='form_field_complete' && event.FormKey==='experience:late').length,1);
+  }finally{f.dom.window.close();}
+});
