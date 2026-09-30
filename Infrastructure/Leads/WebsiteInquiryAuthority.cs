@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using System.ComponentModel.DataAnnotations;
 using System.Net;
+using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Leads;
@@ -69,7 +70,9 @@ public class WebsiteInquiryAuthority : ControllerBase
         string? MetaCampaignId = null,
         string? MetaAdSetId = null,
         string? MetaAdId = null,
-        string? MeasurementConsent = null);
+        string? MeasurementConsent = null,
+        string? ExperienceId = null,
+        Dictionary<string, JsonElement>? Answers = null);
 
     [HttpPost("public")]
     [RequestSizeLimit(32768)]
@@ -84,14 +87,40 @@ public class WebsiteInquiryAuthority : ControllerBase
         if (scope is null)
             return NotFound(new { error = "published_website_required" });
 
-        var firstName = request.FirstName?.Trim() ?? "";
-        var lastName = request.LastName?.Trim() ?? "";
-        var phone = request.Phone?.Trim() ?? "";
-        var email = request.Email?.Trim() ?? "";
-        var message = request.Message?.Trim() ?? "";
+        WebsiteExperienceSubmission? experience = null;
+        if (!string.IsNullOrWhiteSpace(request.ExperienceId))
+        {
+            try
+            {
+                experience = WebsiteExperiencePolicy.ResolvePublishedSubmission(
+                    scope.PublishedVersion,
+                    scope.SiteKey,
+                    path,
+                    request.ExperienceId,
+                    request.Answers);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = "invalid_experience_submission", message = ex.Message });
+            }
+
+            if (experience is null)
+                return BadRequest(new
+                {
+                    error = "published_experience_required",
+                    message = "This interactive experience is not available on the published website."
+                });
+        }
+
+        var firstName = (experience?.FirstName ?? request.FirstName)?.Trim() ?? "";
+        var lastName = (experience?.LastName ?? request.LastName)?.Trim() ?? "";
+        var phone = (experience?.Phone ?? request.Phone)?.Trim() ?? "";
+        var email = (experience?.Email ?? request.Email)?.Trim() ?? "";
+        var message = (experience?.Message ?? request.Message)?.Trim() ?? "";
+        var consent = experience?.Consent ?? request.Consent;
         var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
 
-        if (request.SubmissionId == Guid.Empty || !request.Consent ||
+        if (request.SubmissionId == Guid.Empty || !consent ||
             firstName.Length is < 1 or > 120 || lastName.Length is < 1 or > 120 ||
             phone.Length is < 7 or > 64 || phoneDigits.Length is < 10 or > 15 ||
             email.Length is < 3 or > 254 || !new EmailAddressAttribute().IsValid(email) ||
@@ -106,7 +135,7 @@ public class WebsiteInquiryAuthority : ControllerBase
                 message = "Enter your first name, last name, phone number, email and message, and agree to share them with this website."
             });
 
-        var lead = BuildLead(scope, request, firstName, lastName, phone, email, message, path);
+        var lead = BuildLead(scope, request, firstName, lastName, phone, email, message, path, consent);
         var submissionBinding = ResolvePublishedSubmissionBinding(scope, path, request.SourceFormElementId);
         lead.WebsiteBindingId = submissionBinding?.Id
             ?? Optional(request.SourceFormElementId, 120)
@@ -132,7 +161,8 @@ public class WebsiteInquiryAuthority : ControllerBase
         string phone,
         string email,
         string message,
-        string path)
+        string path,
+        bool consent)
     {
         var lead = new WebsiteLead
         {
@@ -152,7 +182,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             InterestType = scope.CommerceBusinessId.HasValue
                 ? "BusinessInquiry"
                 : scope.SiteKey == WebsiteEditorSiteKeys.Protect ? "ProtectionInquiry" : "LegendInquiry",
-            TermsAccepted = request.Consent,
+            TermsAccepted = consent,
             // Sharing an inquiry is not separate marketing or call/text permission.
             MarketingEmailConsent = false,
             CallTextConsent = false,
@@ -189,7 +219,8 @@ public class WebsiteInquiryAuthority : ControllerBase
             Obref = CanUseSubmittedMarketingIdentifiers(request)
                 ? UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, request.Obref)
                 : null,
-            PublishedWebsiteVersionId = scope.PublishedVersion?.Id
+            PublishedWebsiteVersionId = scope.PublishedVersion?.Id,
+            ExperienceId = Optional(request.ExperienceId, 160)
         });
         lead.LeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));
         return lead;
@@ -373,7 +404,9 @@ public class WebsiteInquiryAuthority : ControllerBase
             SessionId = lead.SessionId,
             VisitorId = lead.VisitorId,
             PageKey = lead.SourcePageKey,
-            FormKey = "website_inquiry",
+            FormKey = string.IsNullOrWhiteSpace(request.ExperienceId)
+                ? "website_inquiry"
+                : "experience:" + Optional(request.ExperienceId, 120),
             UtmSource = lead.UtmSource,
             UtmMedium = lead.UtmMedium,
             UtmCampaign = lead.UtmCampaign,
