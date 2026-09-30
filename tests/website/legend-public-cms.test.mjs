@@ -2403,8 +2403,9 @@ test('duplicate canonical link has independent stable identity and history resto
 });
 
 test('public publication renders without stale-template flash and HTML is never cached',()=>{
-  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\\$\{siteKey\}" hidden>/);
-  assert.match(protectLayoutSource,/<html lang="en" hidden>/);
+  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\$\{siteKey\}" hidden>/);
+  assert.match(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding \? "hidden" : null\)"/);
+  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
   assert.match(protectLayoutSource,/<noscript><style>html\[hidden\]\{display:block!important\}<\/style><\/noscript>/);
   assert.match(source,/function unavailable\(error\) \{[\s\S]*document\.documentElement\.hidden = false;/);
   assert.match(source,/fetch\(url, \{ cache: 'no-store' \}\)/);
