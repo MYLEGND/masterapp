@@ -3174,3 +3174,13 @@ test('native experience authoring exposes broad declarative freedom while backen
   assert.doesNotMatch(source,/eval\(.*experience/i);
   assert.doesNotMatch(source,/new Function\(/);
 });
+
+
+test('Protect native experiences reuse public CTA catalog, canonical bindings, and shared inquiry runtime',()=>{
+  assert.match(websitePlatformControllerSource,/ctaCatalog\s*=\s*new\s*\{\s*options\s*=\s*publicActions\s*\}/);
+  assert.match(source,/ctaCatalog\s*=\s*Array\.isArray\(payload\.ctaCatalog\?\.options\)/);
+  assert.match(source,/window\.__legendTrackingInitialized\s*===\s*true[\s\S]*installPublishedSignalBindings\(\)/);
+  assert.match(publicInquiryFormSource,/data-website-experience-form/);
+  assert.match(publicInquiryFormSource,/data-submit-capability="lead_capture"/);
+  assert.match(protectLayoutSource,/src="~\/js\/tracking\.js"/);
+});
