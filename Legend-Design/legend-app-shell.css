@@ -485,6 +485,7 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
 
 @media(max-width:840px){
  .explore-overlay{
+  top:var(--legend-modal-clearance-top,0px);
   z-index:5190;
   background:rgba(2,8,23,.48);
   backdrop-filter:blur(2px);
