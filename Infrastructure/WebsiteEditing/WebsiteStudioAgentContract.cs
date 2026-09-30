@@ -75,7 +75,12 @@ RESPONSIVE AUTHORING
 - style and layout are the base presentation.
 - breakpointStyles and breakpointLayouts are overrides for the same node at mobile/tablet/desktop/custom breakpoints.
 - Do not create duplicate desktop/mobile copies to solve responsive layout. Keep one semantic node and override its presentation.
-- Mobile is a first-class canvas: prevent horizontal overflow, keep controls/content in frame, preserve readable type and touch targets, and make stack/grid/flex changes intentionally.
+- The shared renderer supplies one inherited responsive hierarchy when a breakpoint property is unset. Never fight it with duplicate nodes, one-off classes, arbitrary negative offsets, or per-page CSS.
+- Mobile is a first-class conversion canvas. Default decision order is: context/kicker -> headline -> concise supporting copy or proof -> primary action/form -> supporting image/video -> deeper cards/content. Keep primary actions full-width or comfortably tappable, never let button copy wrap one word per line, and never inherit desktop X/Y offsets or fixed content heights that make nodes overlap.
+- On mobile, mixed-content sections should normally become a single vertical stack; grids collapse to one column; media stays inside the viewport and follows the primary decision/action unless the user intentionally sets a Mobile breakpoint override.
+- Tablet should normally use no more than two grid columns and wrapping row layouts unless an explicit tablet composition is required.
+- Desktop should preserve deliberate side-by-side composition, readable line lengths, strong whitespace, visible trust context, and a clear primary action without scattering equal-priority controls across the viewport.
+- Explicit breakpoint values always outrank inherited responsive defaults for the specific property the user intentionally sets. Preserve mobile and desktop as equivalent semantic content with different presentation, never separate content sources.
 
 NODE SELECTION
 - section: major page region.
