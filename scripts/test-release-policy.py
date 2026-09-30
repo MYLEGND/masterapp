@@ -169,16 +169,16 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
             if args[:4] == ('rev-list', '--parents', '-n', '1'):
                 current = args[4]
                 if current == head:
-                    return SimpleNamespace(returncode=0, stdout=f'{head} {control_merge}\\n')
+                    return SimpleNamespace(returncode=0, stdout=f'{head} {control_merge}\n')
                 if current == control_merge:
-                    return SimpleNamespace(returncode=0, stdout=f'{control_merge} {product_merge} {control_side}\\n')
+                    return SimpleNamespace(returncode=0, stdout=f'{control_merge} {product_merge} {control_side}\n')
                 if current == product_merge:
-                    return SimpleNamespace(returncode=0, stdout=f'{product_merge} {'f' * 40} {product_side}\\n')
+                    return SimpleNamespace(returncode=0, stdout=f'{product_merge} {product_base} {product_side}\n')
             if args and args[0] == 'diff-tree':
-                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\\n')
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
             return SimpleNamespace(returncode=1, stdout='')
 
-        with patch.object(self.lifecycle, 'direct_only_request', side_effect=lambda sha: sha == head), \\
+        with patch.object(self.lifecycle, 'direct_only_request', side_effect=lambda sha: sha == head), \
              patch.object(self.lifecycle, 'git', side_effect=fake_git):
             resolved = self.lifecycle.direct_release_approved_pr(Api(), head)
 
