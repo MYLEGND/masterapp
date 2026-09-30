@@ -442,7 +442,7 @@ test('managed CTA instances are authorable while system and signal authority sta
   assert.match(source,/const lockedManaged = !!key && !!byKey && \(!!model\?\.systemKey/);
   assert.match(source,/Managed action: choose any approved catalog action for this CTA instance/);
   assert.doesNotMatch(source,/if \(ov\.actionKey\) \{ syncEditorControls\(\); return; \}/);
-  assert.match(source,/const protectedSemantic = !!ov\.systemKey \|\| !!ov\.systemBinding/);
+  assert.match(source,/const protectedSemantic = !!selected\.dataset\.cmsSignalOnly \|\| !!ov\.systemKey \|\| !!ov\.systemBinding/);
 });
 
 test('protected form fields expose typed presentation without exposing execution',()=>{
@@ -470,7 +470,7 @@ test('Analytics mappings use a dedicated canonical mutation path and generic sav
 test('normal Canvas saves use the same server protection authority as Selected Source',()=>{
   assert.match(websitePlatformControllerSource,/NormalizeAuthorableDocumentAsync\(/);
   assert.match(websitePlatformControllerSource,/var source = WebsiteSiteSource\.Serialize\(candidate\)/);
-  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.Parse\([\s\S]*source,[\s\S]*current,[\s\S]*actions\)/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.Parse\([\s\S]*source,[\s\S]*current,[\s\S]*actions,[\s\S]*validateCanonical: false\)/);
   assert.match(websitePlatformControllerSource,/ValidateCompositionMediaOwnershipAsync\([\s\S]*protectedDocument/);
   assert.match(websitePlatformControllerSource,/catch \(WebsiteSiteSourceProtectionException ex\)[\s\S]*website_document_protected/);
 });

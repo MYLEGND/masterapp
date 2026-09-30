@@ -1047,10 +1047,7 @@ public class WebsitePlatformController : ControllerBase
         WebsiteContentDocument proposed,
         CancellationToken cancellationToken)
     {
-        var current = WebsiteContentSanitizer.Sanitize(baseline);
         var candidate = WebsiteContentSanitizer.Sanitize(proposed);
-
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, current);
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, candidate);
 
         WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business &&
@@ -1060,6 +1057,22 @@ public class WebsitePlatformController : ControllerBase
                 actor.CommerceBusinessId.Value,
                 cancellationToken)
             : null;
+
+        // A pre-v3 persisted document is a read-only migration envelope, not a
+        // competing canonical baseline. Its one permitted write is replacement
+        // by the browser-materialized v3 document. From that save forward the
+        // strict v3 protection path below owns every mutation.
+        if (baseline.LegacyMigration is not null)
+        {
+            await ValidateCompositionMediaOwnershipAsync(
+                actor,
+                candidate,
+                cancellationToken);
+            return candidate;
+        }
+
+        var current = WebsiteContentSanitizer.Sanitize(baseline);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, current);
 
         var actions = await BuildCallToActionCatalogAsync(
             actor,

@@ -4242,6 +4242,7 @@
     }
     updateDirectCanvasUi();
     markDirty();
+    syncSelectedSourcePresentationFromCanvas();
   }
 
   async function uploadMedia(file) {
@@ -4551,6 +4552,31 @@
       (sourceDocument.pages || []).map(page=>sourceFindNode(page?.composition,id)).find(Boolean) ||
       Object.values(sourceDocument.reusableComponents || {}).map(component=>sourceFindNode(component?.composition,id)).find(Boolean) ||
       null;
+  }
+
+  function syncSelectedSourcePresentationFromCanvas() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const selectedNodeId=sourceSelectedNodeId();
+    if(!textarea || textarea.readOnly || sourceEditorDirty || scope?.value!=='selection' || !selectedNodeId) return;
+    const current=editableCompositionNodeForElement(selected,false);
+    if(!current) return;
+    let projected;
+    try{ projected=JSON.parse(textarea.value); }
+    catch{ return; }
+    if(projected?.id!==selectedNodeId) return;
+
+    // Keep Selected Source visually synchronized with Canvas presentation while
+    // retaining the server-projected protected-authority omissions. This is a
+    // view synchronization only; persistence still flows through canonical save.
+    for(const key of ['text','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl'])
+    {
+      if(Object.hasOwn(current,key)) projected[key]=cloneCanonicalValue(current[key]);
+      else delete projected[key];
+    }
+    textarea.value=JSON.stringify(projected,null,2);
+    sourceEditorBaseNode=cloneCanonicalValue(projected);
+    renderSourceHighlight();
   }
 
   async function loadCanonicalSourceSnapshot() {
