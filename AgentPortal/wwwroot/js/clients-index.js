@@ -3104,7 +3104,7 @@ document.addEventListener("click", (e) => {
   if (e.target === drawerBackdrop) closeDrawer();
   if (e.target === modalBackdrop) closeModal();
 
-  const openDrawerEl = e.target.closest(".open-drawer");
+  const openDrawerEl = e.target.closest("[data-open-drawer]");
   if (openDrawerEl){
     const row = openDrawerEl.closest(".client-row");
     openQuickViewForRow(row);
