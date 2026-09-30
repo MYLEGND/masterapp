@@ -5566,7 +5566,7 @@ header .legend-global-nav .container-fluid {
         .nav-link,
         .btn-link,
         .legend-founder-ai-nav-button,
-        .messaging-nav-button,
+        .messaging-nav-trigger,
         .profile-chip,
         .explore-item
     ) {
@@ -5650,8 +5650,61 @@ header .legend-global-nav .container-fluid {
         flex: 0 0 26px;
     }
 
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-chip {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 7px;
+    }
+
     .legend-global-nav[data-legend-mobile-nav-integrated] .profile-meta {
+        display: grid;
+        min-width: 0;
+        gap: 1px;
+        text-align: left;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-name {
+        max-width: 100%;
+        overflow: hidden;
+        font-size: .68rem;
+        line-height: 1;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-role-pill {
+        font-size: .52rem;
+        line-height: 1;
+    }
+
+    .legend-founder-ai-nav-label,
+    .messaging-nav-label {
         display: none;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .legend-founder-ai-nav-button,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .messaging-nav-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .legend-founder-ai-nav-button .legend-founder-ai-logo-image {
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+        object-fit: cover;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] :is(.legend-founder-ai-nav-label, .messaging-nav-label) {
+        display: inline;
+        min-width: 0;
+        font-size: .64rem;
+        font-weight: 800;
+        line-height: 1;
+        white-space: nowrap;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .dropdown-menu-centered,
