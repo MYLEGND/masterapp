@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-29 to deploy the validated canonical mobile shell repair from PR #300 after all exact-head gates passed. This release is restricted to the two affected authenticated applications only.",
-  "purpose": "Deploy the validated presentation-only canonical mobile shell and density consolidation from PR #300 to AgentPortal and ClientApp. Preserve the approved Website Studio mobile baseline restored by the final validation repair. No Protect, Parfait, public Website, Cloudflare routing, backend/business logic, database, analytics, advertising, CRM, authentication, payment, or unrelated application deployment is authorized.",
-  "requestId": "agent-client-canonical-mobile-shell-20260929",
+  "authorization": "Explicit Founder authorization on 2026-09-29 to merge and deploy the validated canonical mobile navigation, modal, scrolling, and action-density repair from PR #303 after all exact-head gates passed.",
+  "purpose": "Deploy the validated presentation/client-side canonical mobile repair from PR #303 to AgentPortal and ClientApp only. The release centralizes authenticated navigation and Explore behavior, canonical mobile modal scrolling and dismissal, compact action density, and deletes stale competing mobile CSS paths while preserving desktop behavior and all existing route destinations. No Protect, Parfait, public Website, Cloudflare routing, backend/business logic, database, analytics, advertising, CRM, authentication, payment, or unrelated application deployment is authorized.",
+  "requestId": "agent-client-mobile-nav-modal-density-20260929",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
