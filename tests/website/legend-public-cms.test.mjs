@@ -456,6 +456,14 @@ test('protected form fields expose typed presentation without exposing execution
   assert.match(source,/connect-src 'none'/);
 });
 
+test('normal Canvas saves use the same server protection authority as Selected Source',()=>{
+  assert.match(websitePlatformControllerSource,/NormalizeAuthorableDocumentAsync\(/);
+  assert.match(websitePlatformControllerSource,/var source = WebsiteSiteSource\.Serialize\(candidate\)/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.Parse\([\s\S]*source,[\s\S]*current,[\s\S]*actions\)/);
+  assert.match(websitePlatformControllerSource,/ValidateCompositionMediaOwnershipAsync\([\s\S]*protectedDocument/);
+  assert.match(websitePlatformControllerSource,/catch \(WebsiteSiteSourceProtectionException ex\)[\s\S]*website_document_protected/);
+});
+
 test('source protection UI is reserved for explicit protected-authority failures',()=>{
   assert.match(source,/response\.status===409 && payload\.error==='revision_conflict'/);
   assert.match(source,/function selectedSourceHasConcurrentChange\([\s\S]*sourceEditorBaseNode/);
