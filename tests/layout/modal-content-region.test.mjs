@@ -126,6 +126,26 @@ test('Explore mobile sheet stays below the banner and uses a symmetric two-colum
   assert.match(css,/\.explore-close::before\{[\s\S]*border:1\.5px solid var\(--legend-mobile-text/);
 });
 
+test('every authenticated mobile page consumes the full width and retains an overflow escape hatch',()=>{
+  const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+
+  assert.doesNotMatch(shell,/body\.legend-app\{[^}]*overflow-x:clip/);
+  assert.match(shell,/@media\(min-width:769px\)\{[\s\S]*body\.legend-app\{overflow-x:clip\}/);
+  assert.match(shell,/@media\(max-width:768px\)\{[\s\S]*body\.legend-app\{[\s\S]*overflow-x:visible/);
+
+  const contractStart=css.indexOf('Canonical authenticated mobile width contract');
+  const contractEnd=css.indexOf('Shared native-style mobile sheet',contractStart);
+  assert(contractStart>=0 && contractEnd>contractStart);
+  const contract=css.slice(contractStart,contractEnd);
+
+  assert.match(contract,/body\.legend-app \.legend-app-content > main \{[\s\S]*width: 100%[\s\S]*max-width: 100%[\s\S]*min-width: 0[\s\S]*overflow-x: auto/);
+  assert.match(contract,/> main > :not\(script\):not\(style\):not\(link\):not\(\.modal\):not\(\[data-legend-modal-surface\]\) \{[\s\S]*width: 100%[\s\S]*margin-inline: 0/);
+  assert.match(contract,/\.dashboard-page-shell,[\s\S]*\.home-container,[\s\S]*\.legend-workspace-page,[\s\S]*\.finance-shell,[\s\S]*width: 100%/);
+  assert.match(contract,/\.table-responsive\) \{[\s\S]*overflow-x: auto/);
+  assert.doesNotMatch(contract,/overflow-x:\s*(?:clip|hidden)/);
+});
+
 test('canonical mobile action authority is explicit and cannot capture unrelated page controls',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   const authorityStart=css.indexOf('Canonical authenticated-mobile action authority');
