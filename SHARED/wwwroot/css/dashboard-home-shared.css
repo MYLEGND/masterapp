@@ -17,11 +17,81 @@
     --legend-modal-area-start: 24px;
     --legend-modal-area-end: 24px;
     --legend-modal-safe-height: calc(100dvh - 48px);
+    --legend-modal-backdrop: rgba(2, 8, 23, 0.88);
+    --legend-modal-backdrop-z: 5190;
+    --legend-modal-surface-z: 5200;
 
 }
 
+/*
+ * Canonical modal shielding authority.
+ *
+ * The shared modal owner marks the active Bootstrap/custom backdrop. This is
+ * the only authenticated-app backdrop visual source: content behind an open
+ * modal is strongly dimmed, cannot receive pointer interaction, and the page
+ * itself cannot scroll until the modal closes.
+ */
+body.legend-app.legend-modal-active,
+body.legend-app.legend-bootstrap-modal-open {
+    overflow: hidden;
+}
+
+body.legend-app .legend-canonical-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--legend-modal-backdrop);
+    opacity: 1;
+    pointer-events: auto;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+body.legend-app > .legend-external-modal-backdrop,
+body.legend-app > .modal-backdrop.legend-canonical-modal-backdrop {
+    z-index: var(--legend-modal-backdrop-z);
+}
+
+body.legend-app > .legend-external-modal-backdrop[hidden] {
+    display: none;
+}
+
+body.legend-app #modalBackdrop.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    display: none;
+    z-index: var(--legend-modal-backdrop-z);
+}
+
+body.legend-app #modalBackdrop.modal-backdrop.open {
+    display: block;
+}
+
+body.legend-app [data-legend-modal-surface].legend-canonical-modal-overlay {
+    background: var(--legend-modal-backdrop);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+body.legend-app [data-legend-modal-surface][data-legend-modal-open="true"] >
+.legend-canonical-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: var(--legend-modal-backdrop);
+    opacity: 1;
+    pointer-events: auto;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+body.legend-app [data-legend-modal-surface][data-legend-modal-open="true"] >
+[data-legend-modal-panel] {
+    position: relative;
+    z-index: 1;
+}
+
 /* One shared content-region boundary; backdrop and focus ownership stay with
-   the existing Bootstrap/custom dialog controller. No fixed banner heights. */
+   the canonical Bootstrap/custom dialog controller. No fixed banner heights. */
 html[data-legend-modal-region] body [data-legend-modal-surface] {
     box-sizing: border-box;
     padding: 0px var(--legend-modal-safe-margin) 0px;
@@ -5509,14 +5579,29 @@ header .legend-global-nav .container-fluid {
         position: sticky;
         top: 0;
         z-index: 2;
+        order: -40;
         margin: 0 -2px;
-        padding: 6px 8px;
+        padding: 5px 7px;
         border: 1px solid var(--legend-mobile-control-line);
         border-radius: 8px;
         background: var(--legend-mobile-surface);
     }
 
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-title {
+        font-size: .82rem;
+        line-height: 1;
+        letter-spacing: .08em;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-pill {
+        padding: 4px 8px;
+        font-size: .6rem;
+        line-height: 1;
+        letter-spacing: .02em;
+    }
+
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-search {
+        order: -39;
         padding: 0;
     }
 
@@ -5529,32 +5614,47 @@ header .legend-global-nav .container-fluid {
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-group-label {
-        margin: 8px 2px 2px;
+        margin: 7px 2px 1px;
+        font-size: .6rem;
+        line-height: 1;
+        letter-spacing: .12em;
+    }
+
+    /* Primary app destinations are the first command tier. Explore/Quick Find
+       follows as discovery, rather than burying Home/Finance/Store/profile
+       beneath the full catalog. All right-side command roots move together so
+       messaging, AI, and profile controls do not drift back to the bottom. */
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-left .nav-link {
+        order: -60;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .navbar-right > * {
+        order: -59;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] :is(
         .nav-link,
         .btn-link,
         .legend-founder-ai-nav-button,
-        .messaging-nav-button,
+        .messaging-nav-trigger,
         .profile-chip,
         .explore-item
     ) {
         width: 100%;
         max-width: 100%;
         min-width: 0;
-        min-height: 44px;
+        min-height: 40px;
         height: auto;
         margin: 0;
-        padding: 7px 8px;
+        padding: 6px 8px;
         border: 1px solid var(--legend-mobile-control-line);
-        border-radius: 9px;
+        border-radius: 8px;
         background: var(--legend-mobile-control);
         color: var(--legend-mobile-text);
         justify-content: center;
         text-align: center;
-        font-size: clamp(.72rem, 3vw, .82rem);
-        line-height: 1.08;
+        font-size: clamp(.68rem, 2.7vw, .78rem);
+        line-height: 1.04;
         white-space: normal;
         overflow-wrap: anywhere;
         box-shadow: none;
@@ -5562,18 +5662,33 @@ header .legend-global-nav .container-fluid {
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item {
         display: grid;
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
         align-content: center;
-        justify-items: start;
-        gap: 4px;
+        justify-items: stretch;
+        column-gap: 7px;
+        row-gap: 3px;
         text-align: left;
     }
 
-    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item span,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item span {
+        min-width: 0;
+        max-width: 100%;
+        font-size: clamp(.74rem, 2.8vw, .84rem);
+        line-height: 1.05;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+    }
+
     .legend-global-nav[data-legend-mobile-nav-integrated] .explore-item small {
         min-width: 0;
         max-width: 100%;
-        overflow-wrap: anywhere;
+        padding: 3px 6px;
+        font-size: .56rem;
+        line-height: 1;
+        letter-spacing: .03em;
+        white-space: nowrap;
+        overflow-wrap: normal;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .nav-context-row {
@@ -5605,8 +5720,61 @@ header .legend-global-nav .container-fluid {
         flex: 0 0 26px;
     }
 
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-chip {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 7px;
+    }
+
     .legend-global-nav[data-legend-mobile-nav-integrated] .profile-meta {
+        display: grid;
+        min-width: 0;
+        gap: 1px;
+        text-align: left;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-name {
+        max-width: 100%;
+        overflow: hidden;
+        font-size: .68rem;
+        line-height: 1;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .profile-role-pill {
+        font-size: .52rem;
+        line-height: 1;
+    }
+
+    .legend-founder-ai-nav-label,
+    .messaging-nav-label {
         display: none;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .legend-founder-ai-nav-button,
+    .legend-global-nav[data-legend-mobile-nav-integrated] .messaging-nav-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] .legend-founder-ai-nav-button .legend-founder-ai-logo-image {
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+        object-fit: cover;
+    }
+
+    .legend-global-nav[data-legend-mobile-nav-integrated] :is(.legend-founder-ai-nav-label, .messaging-nav-label) {
+        display: inline;
+        min-width: 0;
+        font-size: .64rem;
+        font-weight: 800;
+        line-height: 1;
+        white-space: nowrap;
     }
 
     .legend-global-nav[data-legend-mobile-nav-integrated] .dropdown-menu-centered,
