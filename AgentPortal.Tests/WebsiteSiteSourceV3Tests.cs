@@ -501,6 +501,69 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void SiteSource_AllowsAuthorPresentationClassesButRejectsInventedRuntimeClasses()
+    {
+        var baseline = CanonicalDocument();
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+
+        var authorModel = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var authorTitle = authorModel.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero")
+            .Children.Single(node => node.Id == "home.hero.title");
+        authorTitle.ClassName = "author-hero-title";
+        var authorSource = JsonSerializer.Serialize(
+            authorModel,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var parsed = WebsiteSiteSource.Parse(authorSource, baseline, BusinessActions());
+        Assert.Equal(
+            "author-hero-title",
+            parsed.Document.Pages["/"].Composition[0].Children
+                .Single(node => node.Id == "home.hero.title").ClassName);
+
+        var runtimeModel = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var runtimeTitle = runtimeModel.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero")
+            .Children.Single(node => node.Id == "home.hero.title");
+        runtimeTitle.ClassName = "site-header";
+        var runtimeSource = JsonSerializer.Serialize(
+            runtimeModel,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+
+        var error = Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteSiteSource.Parse(runtimeSource, baseline, BusinessActions()));
+        Assert.Contains("runtime class", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SiteSource_CanClearAuthorableDynamicPageBinding()
+    {
+        var baseline = CanonicalDocument();
+        baseline.Pages["/"].DynamicBinding = new WebsiteDynamicPageBinding
+        {
+            CollectionId = "products",
+            ItemKeyField = "slug",
+            RoutePattern = "/products/{item}"
+        };
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        model.Pages.Single(page => page.Path == "/").DynamicBinding = null;
+
+        var proposed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var parsed = WebsiteSiteSource.Parse(proposed, baseline, BusinessActions());
+
+        Assert.Null(parsed.Document.Pages["/"].DynamicBinding);
+    }
+
+    [Fact]
     public void SiteSource_UsesDedicatedProtectionExceptionOnlyForProtectedAuthorityChanges()
     {
         var baseline = CanonicalDocument();
