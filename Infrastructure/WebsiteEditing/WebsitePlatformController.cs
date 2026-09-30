@@ -1862,7 +1862,7 @@ public class WebsitePlatformController : ControllerBase
         return null;
     }
 
-    private static bool TryFindSignalTarget(
+    internal static bool TryFindSignalTarget(
         WebsiteContentDocument document,
         string? pagePath,
         string? elementId,
@@ -1896,7 +1896,7 @@ public class WebsitePlatformController : ControllerBase
         return true;
     }
 
-    private static void ValidateExperienceSignalTarget(
+    internal static void ValidateExperienceSignalTarget(
         WebsiteCompositionNode target,
         string? fieldKey,
         IReadOnlyList<WebsiteSignalBinding> signals)
