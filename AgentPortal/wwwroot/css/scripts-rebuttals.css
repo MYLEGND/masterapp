@@ -102,7 +102,6 @@ body{
     position: fixed;
     inset: 0;
     z-index: 10030;
-    background: rgba(2, 6, 14, .82);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -368,7 +367,6 @@ body{
 .uw-overlay{
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,.52);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2352,8 +2350,6 @@ details.section{
 .proposal-overlay{
     position: fixed;
     inset: 0;
-    background: rgba(7,14,28,.72);
-    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2424,9 +2420,6 @@ details.section{
 }
 
 /* Bootstrap decision capture modal stabilization */
-#captureDecisionModal.legend-popout-modal{
-    backdrop-filter: blur(2px);
-}
 #captureDecisionModal.legend-popout-modal .modal-dialog{
     width: min(94vw, 760px);
     max-width: min(94vw, 760px);
