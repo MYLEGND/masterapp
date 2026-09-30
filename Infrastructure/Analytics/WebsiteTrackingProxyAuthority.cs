@@ -192,26 +192,65 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             request.WebsiteBindingId,
             request.MetadataJson);
 
+        var looksLikeBindingId = Guid.TryParseExact(request.WebsiteBindingId, "N", out _);
         if (resolution is null)
-            return claimsConfiguredBinding
+            return claimsConfiguredBinding || looksLikeBindingId
                 ? BadRequest(new { error = "published_binding_invalid" })
                 : null;
 
         var binding = resolution.Binding;
-        if (!string.Equals(request.EventType, binding.EventName, StringComparison.OrdinalIgnoreCase) ||
-            (!string.IsNullOrWhiteSpace(request.ActionKey) &&
-             !string.Equals(request.ActionKey, binding.ActionKey, StringComparison.Ordinal)))
-            return BadRequest(new { error = "published_binding_identity_mismatch" });
+        if (!PublishedWebsiteBindingResolver.ObservedEventMatches(request.EventType, binding))
+            return BadRequest(new { error = "published_binding_trigger_mismatch" });
 
-        request.EventType = binding.EventName;
-        request.ActionKey = binding.ActionKey;
+        request.ActionKey = resolution.SourceActionKey ?? binding.ActionKey;
         request.WebsiteBindingId = binding.Id;
         request.ElementKey = resolution.FieldKey is null
             ? resolution.ElementId
             : resolution.ElementId + ":field:" + resolution.FieldKey;
         if (resolution.FieldKey is not null)
             request.FieldName = resolution.FieldKey;
+        request.MetadataJson = CanonicalizePublishedBindingMetadata(request.MetadataJson, resolution);
         return null;
+    }
+
+    private static string CanonicalizePublishedBindingMetadata(
+        string? metadataJson,
+        PublishedWebsiteBindingResolution resolution)
+    {
+        System.Text.Json.Nodes.JsonObject metadata;
+        try
+        {
+            metadata = string.IsNullOrWhiteSpace(metadataJson)
+                ? new System.Text.Json.Nodes.JsonObject()
+                : System.Text.Json.Nodes.JsonNode.Parse(metadataJson) as System.Text.Json.Nodes.JsonObject
+                    ?? new System.Text.Json.Nodes.JsonObject();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            metadata = new System.Text.Json.Nodes.JsonObject();
+        }
+
+        var binding = resolution.Binding;
+        var elementId = resolution.FieldKey is null
+            ? resolution.ElementId
+            : resolution.ElementId + ":field:" + resolution.FieldKey;
+        metadata["configuredWebsiteSignal"] = true;
+        metadata["configuredDeliveryMode"] = binding.DeliveryMode == "meta" ? "destinations" : binding.DeliveryMode;
+        metadata["configuredSignalBindings"] = System.Text.Json.JsonSerializer.SerializeToNode(new[]
+        {
+            new
+            {
+                binding.Id,
+                binding.Trigger,
+                binding.EventName,
+                binding.ActionKey,
+                deliveryMode = binding.DeliveryMode == "meta" ? "destinations" : binding.DeliveryMode,
+                binding.OncePerSession,
+                binding.MatchingFields,
+                elementId
+            }
+        });
+        return metadata.ToJsonString();
     }
 
     private async Task<IActionResult> PersistProtectEventAsync(
