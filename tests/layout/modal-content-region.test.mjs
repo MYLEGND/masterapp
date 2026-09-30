@@ -92,6 +92,8 @@ test('Explore preserves scrolling and link navigation across every dismissal pat
   assert.match(navScript,/else window\.LegendModal\?\.unlockPageScroll\?\.\(scrollOwner\)/);
   assert.match(navScript,/window\.addEventListener\('resize', syncResponsiveState/);
   assert.match(navScript,/window\.addEventListener\('pagehide'[\s\S]*unlockPageScroll/);
+  assert.match(navScript,/const closeAllNavigation = \(\) =>/);
+  assert.match(navScript,/const openDrawer = \(\) => \{[\s\S]*closeAllNavigation\(\);[\s\S]*refreshViewportOffsets/);
 
   const listHandler=navScript.slice(
     navScript.indexOf("list.addEventListener('click'"),
