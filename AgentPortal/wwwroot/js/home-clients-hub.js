@@ -275,12 +275,12 @@
 
   function lockBody() {
     document.body.dataset.homeClientsHubOpen = "true";
-    document.body.style.overflow = "hidden";
+    
   }
 
   function unlockBody() {
     delete document.body.dataset.homeClientsHubOpen;
-    document.body.style.overflow = "";
+    
   }
 
   function openHub() {
