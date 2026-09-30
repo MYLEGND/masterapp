@@ -153,6 +153,18 @@ test('mobile shared authority keeps controls clickable and modal content reachab
   assert.match(modal,/button\.addEventListener\("click"/);
 });
 
+test('mobile utility controls use their real canonical selectors and visible command labels',()=>{
+  const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
+  const messages=readFileSync(join(ROOT,'SHARED/Views/Messaging/_NavButton.cshtml'),'utf8');
+  const agentLayout=readFileSync(join(ROOT,'AgentPortal/Views/Shared/_Layout.cshtml'),'utf8');
+
+  assert.doesNotMatch(css,/\.messaging-nav-button\b/);
+  assert.match(css,/\.messaging-nav-trigger/);
+  assert.match(messages,/class="messaging-nav-label"[^>]*>Messages<\/span>/);
+  assert.match(agentLayout,/class="legend-founder-ai-nav-label"[^>]*>LEGEND® AI<\/span>/);
+  assert.match(css,/\[data-legend-mobile-nav-integrated\] \.profile-meta \{[\s\S]*display:\s*grid/);
+});
+
 test('mobile navigation never dismisses before delegated and default button activation completes',()=>{
   const nav=readFileSync(join(ROOT,'SHARED/wwwroot/js/legend-global-navigation.js'),'utf8');
   const handler=nav.slice(
