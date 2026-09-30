@@ -182,7 +182,10 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("Founder,", scope, StringComparison.Ordinal);
         Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
         Assert.Contains("ScopeType.Founder", queryScope, StringComparison.Ordinal);
-        Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, ct)", proxy, StringComparison.Ordinal);
+        Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, protectScope, ct)", proxy, StringComparison.Ordinal);
+        Assert.Contains("WebsiteContentVersionId = publishedScope?.PublishedVersion?.Id", proxy, StringComparison.Ordinal);
+        Assert.Contains("WebsiteBindingId = Clean(req.WebsiteBindingId)", proxy, StringComparison.Ordinal);
+        Assert.Contains("CanonicalizePublishedBinding(req, protectScope)", proxy, StringComparison.Ordinal);
         Assert.Contains("ProtectWebsiteOwnerResolver.ResolveAsync", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ResolveByUpnAsync", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
