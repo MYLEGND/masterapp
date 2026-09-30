@@ -267,6 +267,66 @@ test('feature styles cannot reintroduce competing mobile action-stack authority'
   }
 });
 
+test('all discovered authenticated mobile modals use one full-screen shared authority',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const modal=readFileSync(new URL('../../SHARED/wwwroot/js/legend-modal.js',import.meta.url),'utf8');
+
+  const mobile=css.slice(css.indexOf('@media (max-width: 900px)'));
+  assert.match(mobile,/\[data-legend-modal-surface\] \{[\s\S]*position: fixed !important;[\s\S]*inset: 0 !important;[\s\S]*width: 100vw !important;[\s\S]*height: 100dvh !important;[\s\S]*max-height: 100dvh !important;/);
+  assert.match(mobile,/\.modal > \.modal-dialog\[data-legend-modal-panel\] \{[\s\S]*height: 100% !important;[\s\S]*max-height: none !important;/);
+  assert.match(mobile,/\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\],[\s\S]*height: 100% !important;[\s\S]*overflow: hidden !important;/);
+  assert.match(mobile,/\.modal \.modal-body \{[\s\S]*overflow-y: auto;/);
+  assert.match(mobile,/\.legend-modal-close-control \{[\s\S]*width: 38px !important;[\s\S]*border-radius: 999px !important;/);
+  assert.match(mobile,/\.legend-modal-close-control::before,[\s\S]*\.legend-modal-close-control::after/);
+
+  assert.match(modal,/function surfaceOpen\(surface\)/);
+  assert.match(modal,/function syncModalSurfaceState\(surface\)/);
+  assert.match(modal,/if \(isMobileModalViewport\(\) && open\) lockPageScroll\(owner\)/);
+  assert.match(modal,/else unlockPageScroll\(owner\)/);
+  assert.match(modal,/normalizeCloseControl\(surface\)/);
+  assert.match(modal,/data-legend-generated-modal-close/);
+  assert.match(modal,/attributeFilter: \['class', 'hidden', 'aria-hidden', 'style'\]/);
+});
+
+test('feature scripts cannot own modal page scrolling anymore',()=>{
+  const files=[
+    'AgentPortal/wwwroot/js/home-zoom-hub.js',
+    'AgentPortal/wwwroot/js/home-clients-hub.js',
+    'AgentPortal/wwwroot/js/zoom-quick-popup.js',
+    'AgentPortal/wwwroot/js/website-analytics-ai.js',
+    'AgentPortal/wwwroot/js/website-analytics-kpi-modal.js',
+    'AgentPortal/wwwroot/js/leads-index.js',
+    'AgentPortal/wwwroot/js/clients-index.js',
+    'AgentPortal/wwwroot/js/uw-intake.js',
+    'AgentPortal/wwwroot/js/proposal-uw.js',
+    'AgentPortal/Views/AgencyCommand/Index.cshtml',
+    'ClientApp/Views/Home/Index.cshtml'
+  ];
+  for(const file of files){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.doesNotMatch(source,/document\.body\.style\.overflow\s*=/,file);
+    assert.doesNotMatch(source,/body\.classList\.(?:add|remove)\(['"]overflow-hidden['"]\)/,file);
+    assert.doesNotMatch(source,/document\.body\.classList\.(?:add|remove)\(["'](?:note-self-open|uw-open)["']\)/,file);
+  }
+});
+
+test('feature modal sizing is desktop-only and cannot compete on phones',()=>{
+  const checks=[
+    ['AgentPortal/wwwroot/css/qv-booking.css',/\@media \(min-width:901px\)\{[\s\S]*\.qv-booking-modal-shell \.modal-dialog/],
+    ['AgentPortal/wwwroot/css/legend-connect.css',/@media \(min-width:901px\) \{[\s\S]*\.lc-section-modal \.modal-dialog/],
+    ['AgentPortal/wwwroot/css/website-analytics.css',/@media \(min-width:901px\) \{[\s\S]*\.wa-modal-dialog/],
+    ['AgentPortal/wwwroot/css/home-command-page.css',/@media \(min-width:901px\) \{[\s\S]*\.home-clients-dialog/],
+    ['AgentPortal/wwwroot/css/clients-index.css',/@media \(min-width:901px\)\{[\s\S]*\.actions-hub-modal \.modal-dialog/],
+    ['AgentPortal/wwwroot/css/workstation-home-proposal.css',/@media \(min-width:901px\)\{#proposalDialog\.hp-dialog/],
+    ['AgentPortal/wwwroot/css/scripts-rebuttals.css',/@media \(min-width:901px\)\{[\s\S]*\.note-self-modal/],
+    ['SHARED/wwwroot/css/legend-finance-shared.css',/@media \(min-width:901px\) \{[\s\S]*\.finance-support-modal/]
+  ];
+  for(const [file,pattern] of checks){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.match(source,pattern,file);
+  }
+});
+
 test('feature styles cannot reintroduce mobile modal scroll or sticky-shell authority',()=>{
   const mediaBlocks=source=>{
     const out=[];let pos=0;
