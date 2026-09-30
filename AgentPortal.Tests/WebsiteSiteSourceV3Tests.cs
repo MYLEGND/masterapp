@@ -372,6 +372,135 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void SiteSource_AllowsOrdinaryManagedCtaInstanceToRetargetThroughApprovedCatalog()
+    {
+        var baseline = CanonicalDocument();
+        var hero = baseline.Pages["/"].Composition[0];
+        hero.Children.Add(new WebsiteCompositionNode
+        {
+            Id = "home.hero.secondary",
+            Type = "cta",
+            Tag = "a",
+            Text = "Contact",
+            ActionKey = "business_contact",
+            Href = "/contact",
+            Target = "_self"
+        });
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var cta = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero")
+            .Children.Single(node => node.Id == "home.hero.secondary");
+
+        cta.ActionKey = "business_quote";
+        cta.Text = "Get a quote";
+        var proposed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+
+        var parsed = WebsiteSiteSource.Parse(proposed, baseline, BusinessActions());
+        var saved = parsed.Document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.secondary");
+
+        Assert.Equal("business_quote", saved.ActionKey);
+        var catalog = BusinessActions().Single(option => option.Key == "business_quote");
+        Assert.Equal(catalog.Href, saved.Href);
+        Assert.Equal(catalog.OpenInNewTab ? "_blank" : "_self", saved.Target);
+        Assert.Empty(saved.Signals);
+    }
+
+    [Fact]
+    public void SiteSource_AllowsOrdinaryManagedCtaInstanceDeletionButKeepsSignalBoundCta()
+    {
+        var baseline = CanonicalDocument();
+        baseline.Pages["/"].Composition[0].Children.Add(new WebsiteCompositionNode
+        {
+            Id = "home.hero.secondary",
+            Type = "cta",
+            Tag = "a",
+            Text = "Contact",
+            ActionKey = "business_contact",
+            Href = "/contact"
+        });
+
+        var serialized = WebsiteSiteSource.Serialize(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var hero = model.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
+        hero.Children.RemoveAll(node => node.Id == "home.hero.secondary");
+
+        var proposed = JsonSerializer.Serialize(
+            model,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var parsed = WebsiteSiteSource.Parse(proposed, baseline, BusinessActions());
+        Assert.DoesNotContain(
+            parsed.Document.Pages["/"].Composition[0].Children,
+            node => node.Id == "home.hero.secondary");
+
+        var trackedModel = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            serialized,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var trackedHero = trackedModel.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero");
+        trackedHero.Children.RemoveAll(node => node.Id == "home.hero.quote");
+        var trackedProposal = JsonSerializer.Serialize(
+            trackedModel,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteSiteSource.Parse(trackedProposal, baseline, BusinessActions()));
+    }
+
+    [Fact]
+    public void Sanitizer_PreservesExpandedDesignAndFormFieldPresentationOnly()
+    {
+        var document = CanonicalDocument();
+        var form = document.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.form");
+        form.FieldLabels["firstname"] = "Your first name";
+        form.FieldPresentations["firstname"] = new WebsiteControlPresentation
+        {
+            Style = new WebsiteVisualStyle
+            {
+                FontFamily = "Inter, Arial, sans-serif",
+                FontWeight = 650,
+                BackgroundColor = "rgba(255, 255, 255, 0.92)",
+                BorderColor = "var(--web-gold)",
+                BorderWidth = 2,
+                BorderStyle = "solid",
+                BoxShadow = "0 8px 22px rgba(0,0,0,.12)",
+                MarginTop = 8,
+                Opacity = 0.95m,
+                AspectRatio = 3.5m,
+                ObjectPosition = "35% 60%"
+            }
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(document);
+        var saved = clean.Pages["/"].Composition[0].Children
+            .Single(node => node.Id == "home.hero.form");
+
+        Assert.Equal("canonical_inquiry", saved.SystemKey);
+        Assert.Equal("Your first name", saved.FieldLabels["firstname"]);
+        var style = saved.FieldPresentations["firstname"].Style;
+        Assert.Equal("Inter, Arial, sans-serif", style.FontFamily);
+        Assert.Equal(650, style.FontWeight);
+        Assert.Equal("rgba(255, 255, 255, 0.92)", style.BackgroundColor);
+        Assert.Equal("var(--web-gold)", style.BorderColor);
+        Assert.Equal(2m, style.BorderWidth);
+        Assert.Equal("solid", style.BorderStyle);
+        Assert.Equal("0 8px 22px rgba(0,0,0,.12)", style.BoxShadow);
+        Assert.Equal(0.95m, style.Opacity);
+        Assert.Equal(3.5m, style.AspectRatio);
+        Assert.Equal("35% 60%", style.ObjectPosition);
+    }
+
+    [Fact]
     public void SiteSource_UsesDedicatedProtectionExceptionOnlyForProtectedAuthorityChanges()
     {
         var baseline = CanonicalDocument();
