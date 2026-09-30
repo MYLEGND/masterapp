@@ -115,6 +115,50 @@ html[data-legend-modal-region] body .modal .modal-body {
         padding: 9px 10px 10px !important;
     }
 
+    /*
+     * Expense Lens creates its tracker overlay dynamically without a dialog role.
+     * CSS-only scope keeps its behavior untouched while routing its mobile
+     * geometry through the same canonical top-sheet contract.
+     */
+    html[data-legend-modal-region] body.legend-app .expense-lens-week-panel-backdrop {
+        align-items: flex-start !important;
+        justify-content: center !important;
+        padding: var(--legend-modal-area-start) 8px var(--legend-modal-area-end) !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app .expense-lens-week-panel {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: 0 !important;
+        height: auto !important;
+        max-height: min(72dvh, var(--legend-modal-safe-height)) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        border: 1px solid var(--legend-mobile-gold) !important;
+        border-radius: 0 0 var(--legend-mobile-radius) var(--legend-mobile-radius) !important;
+        background: var(--legend-mobile-surface) !important;
+        color: var(--legend-mobile-text) !important;
+        box-shadow: 0 14px 32px #0007 !important;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+    }
+
+    html[data-legend-modal-region] body.legend-app .expense-lens-week-panel > .el-projection-shell {
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 9px 10px 10px !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+    }
+
+    html[data-legend-modal-region] body.legend-app .expense-lens-week-panel .el-projection-header {
+        gap: var(--legend-mobile-gap) !important;
+        padding: 7px 0 8px !important;
+    }
+
     html[data-legend-modal-region] body.legend-app .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)) {
         top: var(--legend-modal-area-start) !important;
         right: 8px !important;
@@ -198,6 +242,12 @@ html[data-legend-modal-region] body .modal .modal-body {
         line-height: 1.15;
     }
 
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel] :is(h2, h3, h4),
+    html[data-legend-modal-region] body.legend-app .expense-lens-week-panel :is(h2, h3, h4) {
+        font-size: 1rem !important;
+        line-height: 1.15 !important;
+    }
+
     html[data-legend-modal-region] body.legend-app .modal :is(button, .btn, a.btn) {
         min-height: var(--legend-mobile-control-height);
         padding: 6px 9px;
@@ -218,7 +268,7 @@ html[data-legend-modal-region] body .modal .modal-body {
      * by the approved Website Studio control, without changing button behavior.
      */
     html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet])
+    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet], .expense-lens-week-panel)
     :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "]) {
         position: relative;
         display: inline-grid !important;
@@ -241,7 +291,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet])
+    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet], .expense-lens-week-panel)
     :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::before {
         content: "";
         width: 16px;
@@ -251,7 +301,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet])
+    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet], .expense-lens-week-panel)
     :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::after {
         content: "";
         position: absolute;
