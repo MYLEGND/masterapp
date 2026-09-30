@@ -104,7 +104,7 @@
         closing = false;
         modalRoot.hidden = false;
         modalRoot.classList.add('is-open');
-        document.body.style.overflow = 'hidden';
+        
         isOpen = true;
         setTimeout(() => btnClose && btnClose.focus(), 60);
     }
@@ -114,7 +114,7 @@
         closing = true;
         modalRoot.classList.remove('is-open');
         modalRoot.hidden = true;
-        document.body.style.overflow = '';
+        
         isOpen = false;
         closing = false;
 
@@ -496,7 +496,7 @@
             const closeTimelineModal = () => {
                 modal.classList.remove('is-open');
                 modal.setAttribute('hidden', 'hidden');
-                document.body.style.overflow = '';
+                
             };
 
             modal.querySelector('[data-wa-modal-close]')
@@ -579,7 +579,7 @@
 
         modal.removeAttribute('hidden');
         modal.classList.add('is-open');
-        document.body.style.overflow = 'hidden';
+        
     }
 
 
@@ -607,7 +607,7 @@
             const closeConcentrationModal = () => {
                 modal.classList.remove('is-open');
                 modal.setAttribute('hidden', 'hidden');
-                document.body.style.overflow = '';
+                
             };
 
             modal.querySelector('[data-wa-modal-close]')?.addEventListener('click', closeConcentrationModal);
@@ -720,7 +720,7 @@
 
         modal.removeAttribute('hidden');
         modal.classList.add('is-open');
-        document.body.style.overflow = 'hidden';
+        
     }
 
     async function copyTextWithFallback(text) {
