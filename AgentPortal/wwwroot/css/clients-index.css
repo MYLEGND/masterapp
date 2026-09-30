@@ -4492,10 +4492,6 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 }
 
 /* ===== Note to Self (exact Workstation modal/layout rules) ===== */
-body.note-self-open{
-    overflow: hidden;
-}
-
 .note-self-overlay{
     position: fixed;
     inset: 0;
@@ -4512,8 +4508,6 @@ body.note-self-open{
 }
 
 .note-self-modal{
-    width: min(1180px, 96vw);
-    max-height: 92vh;
     display: flex;
     flex-direction: column;
     background: #0c1220;
@@ -4521,6 +4515,9 @@ body.note-self-open{
     border-radius: 16px;
     box-shadow: 0 26px 80px rgba(0,0,0,.52);
     overflow: hidden;
+}
+@media (min-width:901px){
+    .note-self-modal{width:min(1180px,96vw);max-height:92vh;}
 }
 
 .note-self-head{
