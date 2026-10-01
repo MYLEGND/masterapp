@@ -154,7 +154,8 @@ internal sealed class LegendEngineeringReleaseCohortPlanner(
         };
         var ready = urgent || coverage >= 70.0 || timed;
         var code = urgent ? "p1_immediate" : coverage >= 70.0 ? "weighted_ready_coverage" : timed ? "cohort_time_limit" : "cohort_waiting";
-        var approval = compatible.Any(item => item.RiskClass == EngineeringRiskClass.TierB);
+        var approval = compatible.Any(item => item.RiskClass == EngineeringRiskClass.TierB &&
+                                              item.FounderReleaseApprovedUtc is null);
         return new(ready, code, seed.ReleaseCohort, coverage, compatible.Select(item => item.WorkItemId).ToArray(), approval);
     }
 
