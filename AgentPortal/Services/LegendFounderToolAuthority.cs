@@ -126,6 +126,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_capabilities" or
             "legend_software_remediation_status" or
             "legend_inspect_repository" or
+            "legend_prepare_repair_packet" or
             "legend_inspect_repair_validation" or
             "legend_request_repair_release" or
             "legend_verify_repair_deployment" or
@@ -193,6 +194,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_request_teacher_escalation" or
             "legend_software_remediation_status" or
             "legend_inspect_repository" or
+            "legend_prepare_repair_packet" or
             "legend_inspect_repair_validation" or
             "legend_request_repair_release" or
             "legend_verify_repair_deployment" or
@@ -519,6 +521,75 @@ internal sealed partial class LegendFounderToolAuthority
                         ReadOptionalString(arguments.RootElement, "path"),
                         ReadOptionalString(arguments.RootElement, "git_reference"),
                         cancellationToken));
+            }
+
+            case "legend_prepare_repair_packet":
+            {
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var root = arguments.RootElement;
+                var application = ReadRequiredString(root, "application");
+                var route = ReadRequiredString(root, "route");
+                var sourceRevision = ReadRequiredString(root, "source_revision");
+                var failureClass = ReadRequiredString(root, "failure_class");
+                var expected = ReadRequiredString(root, "expected_behavior");
+                var observed = ReadRequiredString(root, "observed_behavior");
+                if (!IsSafeRepairSymbol(application, 64) ||
+                    !IsSafeRepairRoute(route) ||
+                    !IsCommitSha(sourceRevision) ||
+                    failureClass is not ("CODE_DEFECT" or "CONFIGURATION_DEFECT" or "DEPLOYMENT_DRIFT" or
+                        "AUTHORIZATION_DENIAL" or "NETWORK_PROVIDER_FAILURE" or "EXPECTED_POLICY_BEHAVIOR" or "UNKNOWN") ||
+                    !IsSafeRepairNarrative(expected) || !IsSafeRepairNarrative(observed))
+                    return """{"ok":false,"error":"repair_packet_arguments_invalid"}""";
+
+                if (!TryReadSafeRepairSymbols(root, "component_ids", 24, out var componentIds) ||
+                    !TryReadSafeRepairSymbols(root, "issue_codes", 24, out var issueCodes) ||
+                    !TryReadRepairPaths(root, "suspected_paths", 16, out var suspectedPaths))
+                    return """{"ok":false,"error":"repair_packet_arguments_invalid"}""";
+
+                var sourcePaths = new List<object>();
+                foreach (var path in suspectedPaths)
+                {
+                    var disclosureClass = FounderSoftwareRemediationService.ClassifyInspectableSourcePath(path);
+                    if (disclosureClass is null ||
+                        disclosureClass == Shared.Diagnostics.LegendSiteToolDisclosureAuthority.PrivacyProtected)
+                        return """{"ok":false,"error":"repair_packet_protected_path"}""";
+                    sourcePaths.Add(new
+                    {
+                        path,
+                        disclosureClass,
+                        readable = disclosureClass == Shared.Diagnostics.LegendSiteToolDisclosureAuthority.SafeSource
+                    });
+                }
+
+                return SerializeUnbounded(new
+                {
+                    ok = true,
+                    schemaVersion = 1,
+                    packetType = "legend_sanitized_software_repair.v1",
+                    observedApplication = application,
+                    liveRoute = route,
+                    deployedSha = sourceRevision.ToLowerInvariant(),
+                    failureClass,
+                    expectedBehavior = expected,
+                    observedBehavior = observed,
+                    canonicalComponentIds = componentIds,
+                    safeIssueCodes = issueCodes,
+                    suspectedSourcePaths = sourcePaths,
+                    explicitProtectedAreas = new[]
+                    {
+                        "secret_values", "credentials", "authentication_material", "private_customer_data",
+                        "raw_production_payloads", "integrity_protected_source_bodies", "approved_branch_direct_edits",
+                        "production_branch_direct_edits"
+                    },
+                    privacySecurityClassification = "SANITIZED_STRUCTURAL_EVIDENCE_ONLY",
+                    sourceAuthority = "LegendFounderToolAuthority",
+                    repositoryAuthority = "FounderSoftwareRemediationService",
+                    requiresFreshApprovedHead = true,
+                    requiresIsolatedBranch = true,
+                    requiredValidationCannotBeBypassed = true,
+                    deployOnlyAffectedApplications = true,
+                    mutationAuthorized = false
+                });
             }
 
             case "legend_prepare_software_repair":
@@ -1974,6 +2045,63 @@ internal sealed partial class LegendFounderToolAuthority
         value.Length <= maximumLength &&
         !value.Any(char.IsControl);
 
+    private static bool IsCommitSha(string? value) =>
+        value is { Length: 40 } && value.All(Uri.IsHexDigit);
+
+    private static bool IsSafeRepairSymbol(string? value, int maximumLength) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= maximumLength &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-' or ':' or '/');
+
+    private static bool IsSafeRepairRoute(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 256 && value.StartsWith('/') &&
+        !value.Contains('?') && !value.Contains('#') && !value.Contains("..", StringComparison.Ordinal) &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) ||
+            character is '/' or '{' or '}' or ':' or '.' or '_' or '-');
+
+    private static bool IsSafeRepairNarrative(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 500 || value.Any(char.IsControl))
+            return false;
+        return !System.Text.RegularExpressions.Regex.IsMatch(
+            value,
+            @"(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\b\d{8,}\b|\bBearer\s+|(?:password|passwd|secret|token|api[_-]?key|cookie|connectionstring)\s*[:=]|https?://\S+[?#])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100));
+    }
+
+    private static bool TryReadSafeRepairSymbols(JsonElement root, string propertyName, int maximumItems, out string[] values)
+    {
+        values = Array.Empty<string>();
+        if (!root.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Array ||
+            element.GetArrayLength() > maximumItems) return false;
+        var list = new List<string>();
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String || !IsSafeRepairSymbol(item.GetString(), 96))
+                return false;
+            list.Add(item.GetString()!);
+        }
+        values = list.Distinct(StringComparer.Ordinal).ToArray();
+        return true;
+    }
+
+    private static bool TryReadRepairPaths(JsonElement root, string propertyName, int maximumItems, out string[] values)
+    {
+        values = Array.Empty<string>();
+        if (!root.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Array ||
+            element.GetArrayLength() > maximumItems) return false;
+        var list = new List<string>();
+        foreach (var item in element.EnumerateArray())
+        {
+            var value = item.ValueKind == JsonValueKind.String ? item.GetString() : null;
+            if (string.IsNullOrWhiteSpace(value) || value.Length > 260 || value.Any(char.IsControl))
+                return false;
+            list.Add(value);
+        }
+        values = list.Distinct(StringComparer.Ordinal).ToArray();
+        return true;
+    }
+
     private static IReadOnlyList<object> DescribeFounderCapabilities() => DescribeFounderCapabilitiesCore(false);
 
     private static IReadOnlyList<object> DescribeFounderCapabilitiesCore(bool cloudExposureOnly,
@@ -2779,6 +2907,54 @@ internal sealed partial class LegendFounderToolAuthority
                         git_reference = new { type = new[] { "string", "null" }, maxLength = 100 }
                     },
                     required = new[] { "path", "git_reference" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_prepare_repair_packet",
+                description =
+                    "Create a bounded sanitized software-repair packet from already observed structural evidence. It returns no source contents, customer data, credentials, auth material or mutation authority. Suspected repository paths are classified by the canonical disclosure policy; privacy-protected paths are rejected and integrity/existence-only paths remain unreadable metadata.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        application = new { type = "string", minLength = 1, maxLength = 64 },
+                        route = new { type = "string", minLength = 1, maxLength = 256 },
+                        source_revision = new { type = "string", minLength = 40, maxLength = 40 },
+                        failure_class = new { type = "string", @enum = new[]
+                        {
+                            "CODE_DEFECT", "CONFIGURATION_DEFECT", "DEPLOYMENT_DRIFT",
+                            "AUTHORIZATION_DENIAL", "NETWORK_PROVIDER_FAILURE",
+                            "EXPECTED_POLICY_BEHAVIOR", "UNKNOWN"
+                        } },
+                        expected_behavior = new { type = "string", minLength = 1, maxLength = 500 },
+                        observed_behavior = new { type = "string", minLength = 1, maxLength = 500 },
+                        component_ids = new
+                        {
+                            type = "array", maxItems = 24,
+                            items = new { type = "string", minLength = 1, maxLength = 96 }
+                        },
+                        issue_codes = new
+                        {
+                            type = "array", maxItems = 24,
+                            items = new { type = "string", minLength = 1, maxLength = 96 }
+                        },
+                        suspected_paths = new
+                        {
+                            type = "array", maxItems = 16,
+                            items = new { type = "string", minLength = 1, maxLength = 260 }
+                        }
+                    },
+                    required = new[]
+                    {
+                        "application", "route", "source_revision", "failure_class",
+                        "expected_behavior", "observed_behavior", "component_ids",
+                        "issue_codes", "suspected_paths"
+                    },
                     additionalProperties = false
                 },
                 strict = true
