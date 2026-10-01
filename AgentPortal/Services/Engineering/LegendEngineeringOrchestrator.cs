@@ -17,7 +17,7 @@ internal interface ILegendEngineeringOrchestrator
     Task<EngineeringContextSnapshot> BootstrapAsync(ClaimsPrincipal founder, Guid workItemId, string role, CancellationToken cancellationToken);
     Task<EngineeringContextSnapshot> BootstrapSystemAsync(Guid workItemId, string role, CancellationToken cancellationToken);
     Task<EngineeringTaskPacket> GetTaskPacketAsync(Guid engineeringContextId, CancellationToken cancellationToken);
-    Task<object> InspectRepositoryAsync(Guid engineeringContextId, string path, CancellationToken cancellationToken);
+    Task<object> InspectRepositoryAsync(Guid engineeringContextId, string path, string revision, CancellationToken cancellationToken);
     Task<object> PrepareRepairAsync(Guid engineeringContextId, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
 }
 
@@ -211,6 +211,7 @@ internal sealed class LegendEngineeringOrchestrator(
     public async Task<object> InspectRepositoryAsync(
         Guid engineeringContextId,
         string path,
+        string revision,
         CancellationToken cancellationToken)
     {
         var validation = await store.ValidateContextAsync(engineeringContextId, cancellationToken);
@@ -232,7 +233,19 @@ internal sealed class LegendEngineeringOrchestrator(
                 readable = false
             };
 
-        return await remediation.InspectRepositoryAsync(path, context.LiveSha, cancellationToken);
+        var workItem = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken);
+        if (workItem is null) return new { ok = false, error = "work_item_not_found" };
+        var gitReference = string.Equals(revision, "candidate", StringComparison.Ordinal)
+            ? workItem.CandidateSha
+            : string.Equals(revision, "live", StringComparison.Ordinal) ? context.LiveSha : null;
+        if (!LegendEngineeringPolicies.IsImmutableSha(gitReference))
+            return new { ok = false, error = "engineering_repository_revision_not_allowed" };
+        if (string.Equals(revision, "candidate", StringComparison.Ordinal) &&
+            context.Role != EngineeringRole.IndependentReviewer &&
+            context.Role != EngineeringRole.CodexImplementer)
+            return new { ok = false, error = "candidate_source_not_allowed_for_role" };
+
+        return await remediation.InspectRepositoryAsync(path, gitReference, cancellationToken);
     }
 
     public async Task<object> PrepareRepairAsync(
