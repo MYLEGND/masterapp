@@ -54,11 +54,43 @@
                 <span class="eng-status-label">Model Runtime</span>
                 <span class="eng-dot @StateClass(Model.ModelRuntimeReady)"></span>
             </div>
-            <strong>@(Model.ModelRuntimeReady ? "Ready" : "Blocked")</strong>
+            <strong>@Model.ModelRuntimeLabel</strong>
             <p>@Model.ModelRuntimeCode · ChatGPT-plan Responses only. No API-key fallback.</p>
             <div class="eng-mini-row"><span>Head GPT</span><b>@(string.IsNullOrWhiteSpace(Model.ResolvedHeadGptModel) ? Model.HeadGptModel : Model.ResolvedHeadGptModel)</b></div>
             <div class="eng-mini-row"><span>Codex</span><b>@(string.IsNullOrWhiteSpace(Model.ResolvedCodexModel) ? Model.CodexModel : Model.ResolvedCodexModel)</b></div>
             <div class="eng-mini-row"><span>Reviewer</span><b>@(string.IsNullOrWhiteSpace(Model.ResolvedReviewerModel) ? Model.ReviewerModel : Model.ResolvedReviewerModel)</b></div>
+            <div class="eng-mini-row"><span>Readiness proof</span><b>@(Model.ReadinessState == "READY" ? "Completed inference" : Model.ReadinessState)</b></div>
+            @if (!Model.ShowManageUsage && Model.ProviderRetryNotBeforeUtc is { } retryUtc)
+            {
+                <div class="eng-mini-row"><span>Provider retry</span><b>@retryUtc.ToLocalTime().ToString("MMM d · h:mm tt")</b></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.ProviderRequestId))
+            {
+                <div class="eng-mini-row"><span>Provider request</span><b>@Model.ProviderRequestId</b></div>
+            }
+            @if (Model.ShowManageUsage || Model.ShowRetryRuntime || Model.ShowReconnectChatGpt)
+            {
+                <div class="eng-connect-actions">
+                    @if (Model.ShowManageUsage)
+                    {
+                        <a class="eng-button is-primary" href="https://chatgpt.com/#settings/Usage" target="_blank" rel="noopener">Manage usage</a>
+                    }
+                    @if (Model.ShowRetryRuntime)
+                    {
+                        <form asp-action="RetryChatGptRuntime" method="post">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="eng-button is-secondary">Retry readiness</button>
+                        </form>
+                    }
+                    @if (Model.ShowReconnectChatGpt && Model.ChatGptPlanClientConfigured)
+                    {
+                        <form asp-action="ConnectChatGpt" method="post">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="eng-button is-secondary">Reconnect ChatGPT</button>
+                        </form>
+                    }
+                </div>
+            }
         </article>
 
         <article class="eng-status-card">
@@ -71,6 +103,11 @@
             <div class="eng-mini-row"><span>Open work</span><b>@Model.OpenWorkItems</b></div>
             <div class="eng-mini-row"><span>Leased</span><b>@Model.LeasedWorkItems</b></div>
             <div class="eng-mini-row"><span>Tier C review</span><b>@Model.SecurityReviewItems</b></div>
+            <div class="eng-mini-row"><span>Browser live proof</span><b>@Model.BrowserLiveProofItems</b></div>
+            @if (Model.BrowserLiveProofItems > 0)
+            {
+                <p class="eng-runtime-note">Browser-visible repairs remain fail-closed until the existing authenticated <code>legend_verify_current_page_repair</code> verifier proves the exact deployed revision, route, and preserved reproducer. Server telemetry cannot substitute for this proof.</p>
+            }
         </article>
     </section>
 
@@ -143,7 +180,7 @@
             <div class="eng-model-binding">
                 <label for="HeadGptModel">Head GPT model</label>
                 <select id="HeadGptModel" name="HeadGptModel">
-                    <option value="auto" selected="@(Model.HeadGptModel == "auto" ? "selected" : null)">Auto · first available plan model</option>
+                    <option value="auto" selected="@(Model.HeadGptModel == "auto" ? "selected" : null)">Auto · compatible plan model</option>
                     @if (Model.HeadGptModel != "auto" && !Model.AvailableModels.Any(item => item.Slug == Model.HeadGptModel))
                     {
                         <option value="@Model.HeadGptModel" selected>@Model.HeadGptModel · currently unavailable</option>
@@ -157,7 +194,7 @@
             <div class="eng-model-binding">
                 <label for="CodexModel">Codex model</label>
                 <select id="CodexModel" name="CodexModel">
-                    <option value="auto" selected="@(Model.CodexModel == "auto" ? "selected" : null)">Auto · first available plan model</option>
+                    <option value="auto" selected="@(Model.CodexModel == "auto" ? "selected" : null)">Auto · compatible plan model</option>
                     @if (Model.CodexModel != "auto" && !Model.AvailableModels.Any(item => item.Slug == Model.CodexModel))
                     {
                         <option value="@Model.CodexModel" selected>@Model.CodexModel · currently unavailable</option>
@@ -171,7 +208,7 @@
             <div class="eng-model-binding">
                 <label for="ReviewerModel">Reviewer model</label>
                 <select id="ReviewerModel" name="ReviewerModel">
-                    <option value="auto" selected="@(Model.ReviewerModel == "auto" ? "selected" : null)">Auto · first available plan model</option>
+                    <option value="auto" selected="@(Model.ReviewerModel == "auto" ? "selected" : null)">Auto · compatible plan model</option>
                     @if (Model.ReviewerModel != "auto" && !Model.AvailableModels.Any(item => item.Slug == Model.ReviewerModel))
                     {
                         <option value="@Model.ReviewerModel" selected>@Model.ReviewerModel · currently unavailable</option>
@@ -183,7 +220,7 @@
                 </select>
             </div>
             <p class="eng-model-note">
-                Auto uses the first model OpenAI reports as available to this connected ChatGPT account. Explicit bindings are revisioned with the live contract.
+                Auto deterministically selects a model only after the exact LEGEND role payload completes the non-mutating Responses compatibility canary. Explicit missing models stay paused until you choose another model.
             </p>
         </section>
 

@@ -40,6 +40,17 @@ public sealed class FounderEngineeringCommandCenterViewModel
     public DateTime? ChatGptPlanExpiresUtc { get; init; }
     public bool ModelRuntimeReady { get; init; }
     public string ModelRuntimeCode { get; init; } = string.Empty;
+    public string ModelRuntimeLabel { get; init; } = string.Empty;
+    public string ProviderBlockerClass { get; init; } = string.Empty;
+    public string ProviderBlockerCode { get; init; } = string.Empty;
+    public string ProviderRequestId { get; init; } = string.Empty;
+    public DateTime? ProviderRetryNotBeforeUtc { get; init; }
+    public string ProviderCircuitEpisodeId { get; init; } = string.Empty;
+    public string ReadinessState { get; init; } = string.Empty;
+    public DateTime? ReadinessCheckedUtc { get; init; }
+    public bool ShowManageUsage { get; init; }
+    public bool ShowReconnectChatGpt { get; init; }
+    public bool ShowRetryRuntime { get; init; }
     public bool AutonomousRuntimeActive { get; init; }
     public IReadOnlyList<FounderEngineeringModelOption> AvailableModels { get; init; } =
         Array.Empty<FounderEngineeringModelOption>();
@@ -47,6 +58,7 @@ public sealed class FounderEngineeringCommandCenterViewModel
     public int OpenWorkItems { get; init; }
     public int LeasedWorkItems { get; init; }
     public int SecurityReviewItems { get; init; }
+    public int BrowserLiveProofItems { get; init; }
     public IReadOnlyList<FounderEngineeringContractHistoryItem> History { get; init; } =
         Array.Empty<FounderEngineeringContractHistoryItem>();
 }
