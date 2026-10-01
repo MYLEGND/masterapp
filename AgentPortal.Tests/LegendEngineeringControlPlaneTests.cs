@@ -348,6 +348,11 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         var source = File.ReadAllText(Path.Combine(SourceRoot(), "AgentPortal", "Services", "Engineering", "ChatGptPlanCodexAppServerAdapter.cs"));
         Assert.Contains("openai_chatgpt_plan", source, StringComparison.Ordinal);
         Assert.Contains("start.Environment.Remove(\"OPENAI_API_KEY\")", source, StringComparison.Ordinal);
+        Assert.Contains("shell_environment_policy.inherit=\\\"none\\\"", source, StringComparison.Ordinal);
+        Assert.Contains("shell_environment_policy.ignore_default_excludes=false", source, StringComparison.Ordinal);
+        Assert.Contains("features.shell_tool=false", source, StringComparison.Ordinal);
+        Assert.Contains("web_search=\\\"disabled\\\"", source, StringComparison.Ordinal);
+        Assert.Contains("WorkingDirectory = tempHome", source, StringComparison.Ordinal);
         Assert.DoesNotContain("OpenAiKeyResolver", source, StringComparison.Ordinal);
         Assert.DoesNotContain("/v1/agents/sessions", source, StringComparison.Ordinal);
     }
