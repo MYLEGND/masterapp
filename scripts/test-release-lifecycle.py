@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
@@ -156,6 +157,16 @@ class BranchSafety(unittest.TestCase):
 
 
 class ReleaseTruth(unittest.TestCase):
+    def setUp(self):
+        request = json.dumps({"releaseMode": "approved-only", "targets": ["masterapp-portal"]})
+        self.git_patch = patch.object(
+            m, "git", return_value=SimpleNamespace(returncode=0, stdout=request, stderr="")
+        )
+        self.git_patch.start()
+
+    def tearDown(self):
+        self.git_patch.stop()
+
     def run(self, **overrides):
         row = {
             "id": 10,
@@ -163,6 +174,7 @@ class ReleaseTruth(unittest.TestCase):
             "conclusion": "success",
             "path": ".github/workflows/" + m.DIRECT,
             "head_branch": m.APPROVED,
+            "head_sha": "d" * 40,
             "head_repository": {"full_name": "MYLEGND/masterapp"},
         }
         row.update(overrides)
@@ -200,12 +212,14 @@ class ReleaseTruth(unittest.TestCase):
         self.assertTrue(m.successful_release(api, self.run(), app="portal"))
         self.assertFalse(m.successful_release(api, self.run(), app="client"))
 
-    def test_release_proven_can_reuse_older_exact_success_for_same_revision(self):
+    def test_release_proven_resolves_application_revision_receipt_not_workflow_head(self):
         api = Api()
         revision = "c" * 40
-        failed = self.run(id=11, conclusion="failure", updated_at="2026-10-01T12:00:00Z")
-        passed = self.run(id=10, updated_at="2026-10-01T11:00:00Z")
-        api.pages_map["actions/runs?head_sha=" + revision] = [failed, passed]
+        passed = self.run(id=10, head_sha="d" * 40)
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision] = [
+            {"expired": False, "workflow_run": {"id": 10}}
+        ]
+        api.api_map["actions/runs/10"] = passed
         api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs()
         self.assertTrue(m.release_proven(api, revision, app="portal"))
 
