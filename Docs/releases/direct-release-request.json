@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy merged PR #337 after exact-head green MasterApp architecture validation #1317 and Step 5 approved-baseline comparison #812.",
-  "purpose": "Deploy the Whole-MasterApp safe ChatGPT WebMCP diagnostics and Codex handoff operating layer from the current legend/approved-changes head to every affected web application. AgentPortal, ClientApp, Protect, Parfait, and the LEGEND Website are affected through their own host changes or the shared Infrastructure/SHARED diagnostic bridge. This release preserves the existing canonical release authority and does not publish native iOS/Android binaries, change Cloudflare routing, add database migrations, or broaden access to secrets, credentials, private customer data, CRM, payments, analytics, or unrelated application behavior.",
-  "requestId": "whole-masterapp-safe-chatgpt-webmcp-pr337-20260930",
+  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy the merged Whole-MasterApp safe ChatGPT WebMCP diagnostics and Codex handoff after PR #342 merged with green MasterApp architecture validation #1326 and Step 5 validation #815.",
+  "purpose": "Deploy the current legend/approved-changes head containing the Whole-MasterApp safe ChatGPT WebMCP diagnostics and Codex handoff plus the validated release-build corrections. AgentPortal, ClientApp, Protect, Parfait, and the LEGEND Website remain the affected web applications. Preserve already-live exact targets, do not publish native iOS/Android binaries, do not change Cloudflare routing, and do not broaden access to secrets, credentials, private customer data, CRM, payments, analytics, or unrelated application behavior.",
+  "requestId": "whole-masterapp-safe-chatgpt-webmcp-pr342-20260930",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
