@@ -22,15 +22,13 @@ namespace Infrastructure.Migrations
                 },
                 constraints: table => table.PrimaryKey("PK_LegendEngineeringControlLocks", x => x.LockKey));
 
-            migrationBuilder.InsertData(
-                table: "LegendEngineeringControlLocks",
-                columns: new[] { "LockKey", "Revision" },
-                values: new object[] { "lease-authority", 0L });
-
-            migrationBuilder.InsertData(
-                table: "LegendEngineeringControlLocks",
-                columns: new[] { "LockKey", "Revision" },
-                values: new object[] { "chatgpt-plan-credential", 0L });
+            // This lock table is deliberately raw SQL state, not an EF entity.
+            // Seed it with migration SQL so SQL generation never depends on model mappings.
+            migrationBuilder.Sql("""
+                INSERT INTO [LegendEngineeringControlLocks] ([LockKey], [Revision])
+                VALUES (N'lease-authority', CAST(0 AS bigint)),
+                       (N'chatgpt-plan-credential', CAST(0 AS bigint));
+                """);
 
             migrationBuilder.CreateTable(
                 name: "LegendEngineeringChatGptPlanCredentials",
