@@ -38,6 +38,7 @@ jobs:
       website_routing_canary: ${{ steps.live.outputs.website_routing_canary }}
       preserve_live_targets: ${{ steps.live.outputs.preserve_live_targets }}
       application_release_sha: ${{ steps.live.outputs.application_release_sha }}
+      package_identity: ${{ steps.live.outputs.package_identity }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,6 +113,7 @@ jobs:
       WEBSITE_ROUTING_CANARY: ${{ needs.discover-live.outputs.website_routing_canary }}
       PRESERVE_LIVE_TARGETS: ${{ needs.discover-live.outputs.preserve_live_targets }}
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+      PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -135,8 +137,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 scripts/validation-resume.py verify-release-coverage             --workflow all-intentional-direct-release-20260918.yml             --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
-          artifact_name="founder-diagnostics-packages-${APPLICATION_RELEASE_SHA}"
+          python3 scripts/validation-resume.py verify-release-coverage \
+            --workflow all-intentional-direct-release-20260918.yml \
+            --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
+          artifact_name="founder-diagnostics-packages-${PACKAGE_IDENTITY}"
           run_id=""
           artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
           while read -r candidate_run; do
@@ -372,7 +376,7 @@ jobs:
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: founder-diagnostics-packages-${{ needs.discover-live.outputs.application_release_sha }}
+          name: founder-diagnostics-packages-${{ needs.discover-live.outputs.package_identity }}
           path: /tmp/diagnostics-packages/
           retention-days: 7
           if-no-files-found: error
