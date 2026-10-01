@@ -1,0 +1,265 @@
+@model AgentPortal.Models.FounderEngineeringCommandCenterViewModel
+@{
+    ViewData["Title"] = "Engineering Command Center";
+    string StateClass(bool value) => value ? "is-good" : "is-warn";
+    string Short(string value) => string.IsNullOrWhiteSpace(value) ? "—" : value.Length <= 10 ? value : value[..10];
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/founder-engineering-command-center.css" asp-append-version="true" />
+}
+
+<main class="eng-command" data-engineering-command-center>
+    <header class="eng-hero">
+        <div class="eng-hero-copy">
+            <div class="eng-kicker">LEGEND® · FOUNDER ENGINEERING</div>
+            <h1>Engineering Command Center</h1>
+            <p>
+                One live operating contract for Head GPT, Codex, and independent review.
+                Security, privacy, risk, leases, CI, and release authority remain protected in code.
+            </p>
+        </div>
+        <div class="eng-hero-revision">
+            <span>LIVE CONTRACT</span>
+            <strong>v@Model.Version</strong>
+            <code>@Short(Model.Revision)</code>
+        </div>
+    </header>
+
+    @if (TempData["FounderEngineeringSuccess"] is string success)
+    {
+        <div class="eng-alert is-success" role="status">@success</div>
+    }
+    @if (TempData["FounderEngineeringError"] is string error)
+    {
+        <div class="eng-alert is-error" role="alert">@error</div>
+    }
+
+    <section class="eng-status-grid" aria-label="Engineering runtime status">
+        <article class="eng-status-card">
+            <div class="eng-status-top">
+                <span class="eng-status-label">ChatGPT Plan</span>
+                <span class="eng-dot @StateClass(Model.ChatGptPlanReady)"></span>
+            </div>
+            <strong>@(Model.ChatGptPlanReady ? "Connected" : "Needs attention")</strong>
+            <p>@Model.ChatGptPlanCode</p>
+            <div class="eng-mini-row"><span>Approved client</span><b>@(Model.ChatGptPlanApprovedClient ? "Yes" : "No")</b></div>
+            <div class="eng-mini-row"><span>Plan scope</span><b>@(Model.ChatGptPlanScopeGranted ? "Granted" : "Missing")</b></div>
+            <div class="eng-mini-row"><span>Expires</span><b>@(Model.ChatGptPlanExpiresUtc?.ToLocalTime().ToString("MMM d · h:mm tt") ?? "—")</b></div>
+        </article>
+
+        <article class="eng-status-card">
+            <div class="eng-status-top">
+                <span class="eng-status-label">Model Runtime</span>
+                <span class="eng-dot @StateClass(Model.AdapterEnabled && Model.CodexAppServerConfigured)"></span>
+            </div>
+            <strong>@(Model.AdapterEnabled && Model.CodexAppServerConfigured ? "Ready" : "Blocked")</strong>
+            <p>ChatGPT-plan Codex app-server only. No API-key fallback.</p>
+            <div class="eng-mini-row"><span>Head GPT</span><b>@Model.HeadGptModel</b></div>
+            <div class="eng-mini-row"><span>Codex</span><b>@Model.CodexModel</b></div>
+            <div class="eng-mini-row"><span>Reviewer</span><b>@Model.ReviewerModel</b></div>
+        </article>
+
+        <article class="eng-status-card">
+            <div class="eng-status-top">
+                <span class="eng-status-label">Autonomous Engineering</span>
+                <span class="eng-dot @StateClass(Model.AutonomousConfigEnabled && Model.ModelExecutionEnabled)"></span>
+            </div>
+            <strong>@(Model.AutonomousConfigEnabled && Model.ModelExecutionEnabled ? "Enabled" : "Paused")</strong>
+            <p>Deterministic monitoring continues even when model execution is paused.</p>
+            <div class="eng-mini-row"><span>Open work</span><b>@Model.OpenWorkItems</b></div>
+            <div class="eng-mini-row"><span>Leased</span><b>@Model.LeasedWorkItems</b></div>
+            <div class="eng-mini-row"><span>Tier C review</span><b>@Model.SecurityReviewItems</b></div>
+        </article>
+    </section>
+
+    <section class="eng-protected">
+        <div>
+            <div class="eng-section-kicker">PROTECTED CORE CONTRACT</div>
+            <h2>These boundaries cannot be edited from this page.</h2>
+            <p>
+                The live directive guides execution, but it cannot grant tools, reveal protected source,
+                change risk tier, bypass leases, merge code, deploy production, or weaken validation.
+            </p>
+        </div>
+        <div class="eng-protected-pills" aria-label="Protected engineering invariants">
+            <span>Founder-only authority</span>
+            <span>SAFE_SOURCE only</span>
+            <span>Tier C opaque</span>
+            <span>Atomic leases</span>
+            <span>No API fallback</span>
+            <span>Exact-head CI</span>
+            <span>Governed release</span>
+            <span>Live proof required</span>
+        </div>
+    </section>
+
+    <form class="eng-contract-form" asp-action="SaveContract" method="post" data-contract-form>
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="ExpectedRevision" value="@Model.Revision" />
+
+        <section class="eng-editor-header">
+            <div>
+                <div class="eng-section-kicker">LIVE OPERATIONAL CONTRACT</div>
+                <h2>Edit once. Every new engineering context receives this revision.</h2>
+                <p>Saving creates a new immutable revision. In-flight stale model actions are rejected before they can mutate source.</p>
+            </div>
+            <label class="eng-toggle">
+                @if (Model.ModelExecutionEnabled)
+                {
+                    <input type="checkbox" name="ModelExecutionEnabled" value="true" checked />
+                }
+                else
+                {
+                    <input type="checkbox" name="ModelExecutionEnabled" value="true" />
+                }
+                <span class="eng-toggle-track" aria-hidden="true"></span>
+                <span class="eng-toggle-copy">
+                    <strong>Model execution</strong>
+                    <small>Turn off for an immediate Founder kill switch.</small>
+                </span>
+            </label>
+        </section>
+
+        <div class="eng-quick-command">
+            <label for="engQuickCommand">Quick command</label>
+            <div class="eng-quick-row">
+                <input id="engQuickCommand" type="text" maxlength="500"
+                       placeholder="Add one operating instruction to the shared contract…" autocomplete="off" />
+                <button type="button" class="eng-button is-secondary" data-add-command>Add to contract</button>
+            </div>
+        </div>
+
+        <div class="eng-editor-grid">
+            <article class="eng-editor-card is-shared">
+                <div class="eng-editor-title">
+                    <div>
+                        <span>Shared directive</span>
+                        <small>Applied to every model role.</small>
+                    </div>
+                    <span class="eng-count" data-count-for="SharedDirective"></span>
+                </div>
+                <textarea id="SharedDirective" name="SharedDirective" maxlength="12000" rows="11"
+                          spellcheck="true">@Model.SharedDirective</textarea>
+            </article>
+
+            <article class="eng-editor-card">
+                <div class="eng-role-badge">HEAD GPT</div>
+                <div class="eng-editor-title">
+                    <div>
+                        <span>Supervisor contract</span>
+                        <small>Diagnosis, decomposition, escalation, evidence sufficiency.</small>
+                    </div>
+                    <span class="eng-count" data-count-for="HeadGptDirective"></span>
+                </div>
+                <textarea id="HeadGptDirective" name="HeadGptDirective" maxlength="12000" rows="11"
+                          spellcheck="true">@Model.HeadGptDirective</textarea>
+            </article>
+
+            <article class="eng-editor-card">
+                <div class="eng-role-badge">CODEX</div>
+                <div class="eng-editor-title">
+                    <div>
+                        <span>Implementation contract</span>
+                        <small>Canonical source repair, focused proof, no release authority.</small>
+                    </div>
+                    <span class="eng-count" data-count-for="CodexDirective"></span>
+                </div>
+                <textarea id="CodexDirective" name="CodexDirective" maxlength="12000" rows="11"
+                          spellcheck="true">@Model.CodexDirective</textarea>
+            </article>
+
+            <article class="eng-editor-card">
+                <div class="eng-role-badge">REVIEWER</div>
+                <div class="eng-editor-title">
+                    <div>
+                        <span>Independent review contract</span>
+                        <small>Challenge the root cause, scope, safety, and proof.</small>
+                    </div>
+                    <span class="eng-count" data-count-for="ReviewerDirective"></span>
+                </div>
+                <textarea id="ReviewerDirective" name="ReviewerDirective" maxlength="12000" rows="11"
+                          spellcheck="true">@Model.ReviewerDirective</textarea>
+            </article>
+        </div>
+
+        <div class="eng-save-bar">
+            <div class="eng-save-meta">
+                <span data-dirty-state>Saved revision @Short(Model.Revision)</span>
+                <small>
+                    @(Model.Version == 0
+                        ? "System defaults are active."
+                        : $"Last changed {Model.UpdatedUtc.ToLocalTime():MMM d, yyyy · h:mm tt}.")
+                </small>
+            </div>
+            <button type="submit" class="eng-button is-primary">Publish Contract Revision</button>
+        </div>
+    </form>
+
+    <section class="eng-history">
+        <div class="eng-history-head">
+            <div>
+                <div class="eng-section-kicker">REVISION HISTORY</div>
+                <h2>Restore safely without rewriting history.</h2>
+            </div>
+            <span>@Model.History.Count recent revision@(Model.History.Count == 1 ? "" : "s")</span>
+        </div>
+
+        @if (Model.History.Count == 0)
+        {
+            <div class="eng-empty">
+                No Founder-authored revisions yet. The protected system defaults are active.
+            </div>
+        }
+        else
+        {
+            <div class="eng-history-list">
+                @foreach (var revision in Model.History)
+                {
+                    <div class="eng-history-row">
+                        <div class="eng-history-version">
+                            <strong>v@revision.Version</strong>
+                            <code>@Short(revision.Revision)</code>
+                        </div>
+                        <div class="eng-history-detail">
+                            <span>@revision.UpdatedUtc.ToLocalTime().ToString("MMM d, yyyy · h:mm tt")</span>
+                            <small>@(revision.ModelExecutionEnabled ? "Model execution enabled" : "Model execution paused")</small>
+                        </div>
+                        @if (!string.Equals(revision.Revision, Model.Revision, StringComparison.Ordinal))
+                        {
+                            <form asp-action="RestoreContract" method="post" data-restore-form>
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="ExpectedRevision" value="@Model.Revision" />
+                                <input type="hidden" name="Revision" value="@revision.Revision" />
+                                <button type="submit" class="eng-button is-quiet">Restore as new revision</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="eng-live-badge">LIVE</span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="eng-subscription-actions">
+        <div>
+            <div class="eng-section-kicker">SUBSCRIPTION CONTROL</div>
+            <h2>ChatGPT-plan authorization</h2>
+            <p>
+                Credentials remain server protected and are never rendered here. Disconnecting stops new model execution;
+                deterministic monitoring and durable work items remain intact.
+            </p>
+        </div>
+        <form asp-action="DisconnectChatGpt" method="post" data-disconnect-form>
+            @Html.AntiForgeryToken()
+            <button type="submit" class="eng-button is-danger">Disconnect ChatGPT Plan</button>
+        </form>
+    </section>
+</main>
+
+@section Scripts {
+    <script src="~/js/founder-engineering-command-center.js" asp-append-version="true"></script>
+}

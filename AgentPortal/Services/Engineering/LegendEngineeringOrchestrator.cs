@@ -38,6 +38,7 @@ internal sealed class LegendEngineeringOrchestrator(
     LegendEngineeringStateStore store,
     LegendEngineeringBudgetAuthority budget,
     IFounderSoftwareRemediationService remediation,
+    ILegendEngineeringContractAuthority contractAuthority,
     IConfiguration configuration) : ILegendEngineeringOrchestrator
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -46,6 +47,7 @@ internal sealed class LegendEngineeringOrchestrator(
     {
         var work = await store.GetOpenWorkItemsAsync(100, cancellationToken);
         var envelope = await budget.GetEnvelopeAsync(cancellationToken);
+        var operationalContract = await contractAuthority.GetCurrentAsync(cancellationToken);
         return new
         {
             ok = true,
@@ -53,6 +55,8 @@ internal sealed class LegendEngineeringOrchestrator(
             authority = nameof(LegendEngineeringOrchestrator),
             contractRevision = LegendEngineeringContract.ContractRevision,
             policyRevision = LegendEngineeringContract.PolicyRevision,
+            operationalContractRevision = operationalContract.Revision,
+            modelExecutionEnabled = operationalContract.ModelExecutionEnabled,
             founderOnly = true,
             openWorkItems = work.Count,
             leasedWorkItems = work.Count(item => item.LeaseExpiresUtc > DateTime.UtcNow),
@@ -174,6 +178,10 @@ internal sealed class LegendEngineeringOrchestrator(
             throw new InvalidOperationException(validation.Code);
 
         var context = validation.Context;
+        var operational = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
+        if (!operational.Valid)
+            throw new InvalidOperationException(operational.Code);
         var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken)
             ?? throw new InvalidOperationException("work_item_not_found");
         var incidents = await db.RuntimeDiagnosticIncidents.AsNoTracking()
@@ -276,6 +284,10 @@ internal sealed class LegendEngineeringOrchestrator(
             return new { ok = false, error = validation.Code };
 
         var context = validation.Context;
+        var operational = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
+        if (!operational.Valid)
+            return new { ok = false, error = operational.Code };
         if (!context.AllowedTools.Contains("legend_inspect_repository", StringComparer.Ordinal))
             return new { ok = false, error = "engineering_context_tool_not_allowed" };
 
@@ -317,6 +329,10 @@ internal sealed class LegendEngineeringOrchestrator(
             return new { ok = false, error = validation.Code };
 
         var context = validation.Context;
+        var operational = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
+        if (!operational.Valid)
+            return new { ok = false, error = operational.Code };
         var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken);
         if (item is null) return new { ok = false, error = "work_item_not_found" };
         if (context.Role != EngineeringRole.CodexImplementer ||
@@ -472,6 +488,10 @@ internal sealed class LegendEngineeringOrchestrator(
         if (!budget.Permits(envelope, item))
             throw new InvalidOperationException("engineering_budget_does_not_permit_ai_work");
 
+        var operationalContract = await contractAuthority.GetCurrentAsync(cancellationToken);
+        if (!operationalContract.ModelExecutionEnabled)
+            throw new InvalidOperationException("engineering_operational_execution_paused");
+
         var attemptLimit = requestedRole == EngineeringRole.CodexImplementer
             ? envelope.MaxCodexAttempts
             : envelope.MaxDeepReasoningEscalations;
@@ -513,7 +533,8 @@ internal sealed class LegendEngineeringOrchestrator(
             ],
             lease.LeaseIdentity,
             now,
-            expires);
+            expires,
+            operationalContract.Revision);
 
         return await store.SaveContextAsync(context, cancellationToken);
     }

@@ -2,7 +2,7 @@ namespace Domain.Engineering;
 
 public static class LegendEngineeringContract
 {
-    public const string ContractRevision = "legend-engineering-context.v2";
+    public const string ContractRevision = "legend-engineering-context.v3";
     public const string PolicyRevision = "legend-engineering-policy.v1";
 }
 
@@ -161,7 +161,8 @@ public sealed record EngineeringContextSnapshot(
     IReadOnlyList<string> StopConditions,
     string LeaseIdentity,
     DateTime CreatedUtc,
-    DateTime ExpiresUtc);
+    DateTime ExpiresUtc,
+    string? OperationalContractRevision = null);
 
 public sealed record EngineeringTaskPacket(
     string PacketType,
