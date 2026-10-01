@@ -1557,7 +1557,7 @@ public sealed class LegendFounderAiContractTests
         {
             if (path == "/app/installations/2/access_tokens" && method == HttpMethod.Post)
                 return Json(HttpStatusCode.Created, "{\"token\":\"installation-token\"}");
-            if (path is "/repos/MYLEGND/masterapp/git/ref/heads/legend/approved-changes" or "/repos/MYLEGND/masterapp/git/ref/heads/legend%2Fapproved-changes")
+            if (path == "/repos/MYLEGND/masterapp/git/ref/heads/legend/approved-changes" || path == "/repos/MYLEGND/masterapp/git/ref/heads/legend%2Fapproved-changes")
                 return Json(HttpStatusCode.OK, $"{{\"object\":{{\"sha\":\"{new string('a', 40)}\"}}}}");
             if (path == $"/repos/MYLEGND/masterapp/git/commits/{new string('a', 40)}")
                 return Json(HttpStatusCode.OK, $"{{\"tree\":{{\"sha\":\"{new string('b', 40)}\"}}}}");
@@ -1577,7 +1577,7 @@ public sealed class LegendFounderAiContractTests
                 return Json(HttpStatusCode.OK, $"{{\"head\":{{\"sha\":\"{new string('c', 40)}\"}},\"base\":{{\"ref\":\"production\"}},\"state\":\"open\"}}");
             if (path == $"/repos/MYLEGND/masterapp/commits/{new string('c', 40)}/check-runs" && method == HttpMethod.Get)
                 return Json(HttpStatusCode.OK, "{\"check_runs\":[{\"name\":\"security\",\"conclusion\":\"success\"}]}");
-            if (path is "/repos/MYLEGND/masterapp/branches/legend/approved-changes/protection" or "/repos/MYLEGND/masterapp/branches/legend%2Fapproved-changes/protection" && method == HttpMethod.Get)
+            if ((path == "/repos/MYLEGND/masterapp/branches/legend/approved-changes/protection" || path == "/repos/MYLEGND/masterapp/branches/legend%2Fapproved-changes/protection") && method == HttpMethod.Get)
             {
                 var reviews = includePullRequestReviews ? ",\"required_pull_request_reviews\":{}" : string.Empty;
                 return Json(HttpStatusCode.OK, $"{{\"required_status_checks\":{{\"strict\":true,\"contexts\":[\"security\"]}},\"enforce_admins\":{{\"enabled\":true}}{reviews}}}");
