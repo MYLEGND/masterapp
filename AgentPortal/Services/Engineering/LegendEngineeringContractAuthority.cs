@@ -21,7 +21,7 @@ internal sealed record LegendEngineeringOperationalContract(
         Domain.Engineering.EngineeringRole.HeadGpt => HeadGptDirective,
         Domain.Engineering.EngineeringRole.CodexImplementer => CodexDirective,
         Domain.Engineering.EngineeringRole.IndependentReviewer => ReviewerDirective,
-        _ => SharedDirective
+        _ => string.Empty
     };
 }
 
