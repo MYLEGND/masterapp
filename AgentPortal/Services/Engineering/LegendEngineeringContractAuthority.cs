@@ -9,6 +9,10 @@ internal sealed record LegendEngineeringOperationalContract(
     string Revision,
     long Version,
     bool ModelExecutionEnabled,
+    bool AutonomousEngineeringEnabled,
+    string HeadGptModel,
+    string CodexModel,
+    string ReviewerModel,
     string SharedDirective,
     string HeadGptDirective,
     string CodexDirective,
@@ -23,12 +27,23 @@ internal sealed record LegendEngineeringOperationalContract(
         Domain.Engineering.EngineeringRole.IndependentReviewer => ReviewerDirective,
         _ => string.Empty
     };
+
+    internal string ModelForTier(string tier) => tier switch
+    {
+        Domain.Engineering.EngineeringModelTier.CodeImplementation => CodexModel,
+        Domain.Engineering.EngineeringModelTier.IndependentReview => ReviewerModel,
+        _ => HeadGptModel
+    };
 }
 
 internal sealed record LegendEngineeringContractRevision(
     string Revision,
     long Version,
     bool ModelExecutionEnabled,
+    bool AutonomousEngineeringEnabled,
+    string HeadGptModel,
+    string CodexModel,
+    string ReviewerModel,
     string SharedDirective,
     string HeadGptDirective,
     string CodexDirective,
@@ -43,6 +58,9 @@ internal interface ILegendEngineeringContractAuthority
     Task<(bool Valid, string Code, LegendEngineeringOperationalContract Contract)> ValidateBindingAsync(
         string? revision,
         CancellationToken cancellationToken);
+
+    // Compatibility surface for existing callers that only edit the directive contract.
+    // New activation/runtime controls remain on the same canonical row.
     Task<LegendEngineeringOperationalContract> UpdateAsync(
         string expectedRevision,
         bool modelExecutionEnabled,
@@ -52,6 +70,21 @@ internal interface ILegendEngineeringContractAuthority
         string? reviewerDirective,
         string updatedBy,
         CancellationToken cancellationToken);
+
+    Task<LegendEngineeringOperationalContract> UpdateAllAsync(
+        string expectedRevision,
+        bool modelExecutionEnabled,
+        bool autonomousEngineeringEnabled,
+        string? headGptModel,
+        string? codexModel,
+        string? reviewerModel,
+        string? sharedDirective,
+        string? headGptDirective,
+        string? codexDirective,
+        string? reviewerDirective,
+        string updatedBy,
+        CancellationToken cancellationToken);
+
     Task<LegendEngineeringOperationalContract> RestoreAsync(
         string expectedRevision,
         string restoreRevision,
@@ -62,9 +95,11 @@ internal interface ILegendEngineeringContractAuthority
 internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
     : ILegendEngineeringContractAuthority
 {
-    internal const string BuiltinRevision = "legend-engineering-operational.builtin-v1";
+    internal const string BuiltinRevision = "legend-engineering-operational.builtin-v2";
     internal const int MaximumDirectiveCharacters = 12_000;
     internal const int MaximumTotalDirectiveCharacters = 36_000;
+    internal const int MaximumModelSlugCharacters = 160;
+    internal const string AutoModel = "auto";
 
     internal const string DefaultSharedDirective =
         """
@@ -135,8 +170,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         {
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT [Revision],[Version],[ModelExecutionEnabled],[SharedDirective],[HeadGptDirective],
-                       [CodexDirective],[ReviewerDirective],[UpdatedUtc],[UpdatedBy]
+                SELECT [Revision],[Version],[ModelExecutionEnabled],[AutonomousEngineeringEnabled],
+                       [HeadGptModel],[CodexModel],[ReviewerModel],
+                       [SharedDirective],[HeadGptDirective],[CodexDirective],[ReviewerDirective],
+                       [UpdatedUtc],[UpdatedBy]
                 FROM [LegendEngineeringOperationalContractHistory]
                 ORDER BY [Version] DESC
                 """;
@@ -162,8 +199,45 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         string updatedBy,
         CancellationToken cancellationToken)
     {
+        return WithContractTransactionAsync(async (connection, transaction) =>
+        {
+            var current = await ReadCurrentAsync(connection, transaction, cancellationToken) ?? Defaults();
+            RequireExpected(current.Revision, expectedRevision);
+            var normalized = Normalize(
+                modelExecutionEnabled,
+                current.AutonomousEngineeringEnabled,
+                current.HeadGptModel,
+                current.CodexModel,
+                current.ReviewerModel,
+                sharedDirective,
+                headGptDirective,
+                codexDirective,
+                reviewerDirective,
+                updatedBy);
+            return await WriteAsync(connection, transaction, current, normalized, cancellationToken);
+        }, cancellationToken);
+    }
+
+    public Task<LegendEngineeringOperationalContract> UpdateAllAsync(
+        string expectedRevision,
+        bool modelExecutionEnabled,
+        bool autonomousEngineeringEnabled,
+        string? headGptModel,
+        string? codexModel,
+        string? reviewerModel,
+        string? sharedDirective,
+        string? headGptDirective,
+        string? codexDirective,
+        string? reviewerDirective,
+        string updatedBy,
+        CancellationToken cancellationToken)
+    {
         var normalized = Normalize(
             modelExecutionEnabled,
+            autonomousEngineeringEnabled,
+            headGptModel,
+            codexModel,
+            reviewerModel,
             sharedDirective,
             headGptDirective,
             codexDirective,
@@ -194,6 +268,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
                 ?? throw new InvalidOperationException("engineering_contract_restore_revision_not_found");
             var normalized = Normalize(
                 source.ModelExecutionEnabled,
+                source.AutonomousEngineeringEnabled,
+                source.HeadGptModel,
+                source.CodexModel,
+                source.ReviewerModel,
                 source.SharedDirective,
                 source.HeadGptDirective,
                 source.CodexDirective,
@@ -208,6 +286,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
             BuiltinRevision,
             0,
             true,
+            true,
+            AutoModel,
+            AutoModel,
+            AutoModel,
             DefaultSharedDirective,
             DefaultHeadGptDirective,
             DefaultCodexDirective,
@@ -217,6 +299,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
 
     private static ContractInput Normalize(
         bool modelExecutionEnabled,
+        bool autonomousEngineeringEnabled,
+        string? headGptModel,
+        string? codexModel,
+        string? reviewerModel,
         string? sharedDirective,
         string? headGptDirective,
         string? codexDirective,
@@ -234,7 +320,30 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         if (actor.Length > 128 || actor.Any(char.IsControl))
             throw new InvalidOperationException("engineering_contract_actor_invalid");
 
-        return new(modelExecutionEnabled, shared, head, codex, reviewer, actor);
+        return new(
+            modelExecutionEnabled,
+            autonomousEngineeringEnabled,
+            NormalizeModel(headGptModel),
+            NormalizeModel(codexModel),
+            NormalizeModel(reviewerModel),
+            shared,
+            head,
+            codex,
+            reviewer,
+            actor);
+    }
+
+    private static string NormalizeModel(string? value)
+    {
+        var model = string.IsNullOrWhiteSpace(value) ? AutoModel : value.Trim();
+        if (string.Equals(model, AutoModel, StringComparison.OrdinalIgnoreCase))
+            return AutoModel;
+        if (model.Length > MaximumModelSlugCharacters ||
+            model.Any(character =>
+                !(char.IsAsciiLetterOrDigit(character) ||
+                  character is '.' or '-' or '_' or '/' or ':')))
+            throw new InvalidOperationException("engineering_model_binding_invalid");
+        return model;
     }
 
     private static string NormalizeText(string? value)
@@ -269,6 +378,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
             Guid.NewGuid().ToString("N"),
             checked(current.Version + 1),
             input.ModelExecutionEnabled,
+            input.AutonomousEngineeringEnabled,
+            input.HeadGptModel,
+            input.CodexModel,
+            input.ReviewerModel,
             input.SharedDirective,
             input.HeadGptDirective,
             input.CodexDirective,
@@ -282,6 +395,8 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
             update.CommandText = """
                 UPDATE [LegendEngineeringOperationalContract] SET
                     [Revision]=@revision,[Version]=@version,[ModelExecutionEnabled]=@enabled,
+                    [AutonomousEngineeringEnabled]=@autonomous,[HeadGptModel]=@headModel,
+                    [CodexModel]=@codexModel,[ReviewerModel]=@reviewerModel,
                     [SharedDirective]=@shared,[HeadGptDirective]=@head,[CodexDirective]=@codex,
                     [ReviewerDirective]=@reviewer,[UpdatedUtc]=@updated,[UpdatedBy]=@by
                 WHERE [ContractKey]='founder-default' AND [Revision]=@expected
@@ -297,9 +412,11 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
                 insert.Transaction = transaction;
                 insert.CommandText = """
                     INSERT INTO [LegendEngineeringOperationalContract]
-                    ([ContractKey],[Revision],[Version],[ModelExecutionEnabled],[SharedDirective],[HeadGptDirective],
+                    ([ContractKey],[Revision],[Version],[ModelExecutionEnabled],[AutonomousEngineeringEnabled],
+                     [HeadGptModel],[CodexModel],[ReviewerModel],[SharedDirective],[HeadGptDirective],
                      [CodexDirective],[ReviewerDirective],[UpdatedUtc],[UpdatedBy])
-                    VALUES ('founder-default',@revision,@version,@enabled,@shared,@head,@codex,@reviewer,@updated,@by)
+                    VALUES ('founder-default',@revision,@version,@enabled,@autonomous,@headModel,@codexModel,
+                            @reviewerModel,@shared,@head,@codex,@reviewer,@updated,@by)
                     """;
                 BindCurrent(insert, next);
                 try
@@ -318,9 +435,11 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
             history.Transaction = transaction;
             history.CommandText = """
                 INSERT INTO [LegendEngineeringOperationalContractHistory]
-                ([Revision],[Version],[ModelExecutionEnabled],[SharedDirective],[HeadGptDirective],[CodexDirective],
-                 [ReviewerDirective],[UpdatedUtc],[UpdatedBy])
-                VALUES (@revision,@version,@enabled,@shared,@head,@codex,@reviewer,@updated,@by)
+                ([Revision],[Version],[ModelExecutionEnabled],[AutonomousEngineeringEnabled],
+                 [HeadGptModel],[CodexModel],[ReviewerModel],[SharedDirective],[HeadGptDirective],
+                 [CodexDirective],[ReviewerDirective],[UpdatedUtc],[UpdatedBy])
+                VALUES (@revision,@version,@enabled,@autonomous,@headModel,@codexModel,@reviewerModel,
+                        @shared,@head,@codex,@reviewer,@updated,@by)
                 """;
             BindCurrent(history, next);
             await history.ExecuteNonQueryAsync(cancellationToken);
@@ -337,8 +456,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            SELECT [Revision],[Version],[ModelExecutionEnabled],[SharedDirective],[HeadGptDirective],
-                   [CodexDirective],[ReviewerDirective],[UpdatedUtc],[UpdatedBy]
+            SELECT [Revision],[Version],[ModelExecutionEnabled],[AutonomousEngineeringEnabled],
+                   [HeadGptModel],[CodexModel],[ReviewerModel],
+                   [SharedDirective],[HeadGptDirective],[CodexDirective],[ReviewerDirective],
+                   [UpdatedUtc],[UpdatedBy]
             FROM [LegendEngineeringOperationalContract]
             WHERE [ContractKey]='founder-default'
             """;
@@ -355,8 +476,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            SELECT [Revision],[Version],[ModelExecutionEnabled],[SharedDirective],[HeadGptDirective],
-                   [CodexDirective],[ReviewerDirective],[UpdatedUtc],[UpdatedBy]
+            SELECT [Revision],[Version],[ModelExecutionEnabled],[AutonomousEngineeringEnabled],
+                   [HeadGptModel],[CodexModel],[ReviewerModel],
+                   [SharedDirective],[HeadGptDirective],[CodexDirective],[ReviewerDirective],
+                   [UpdatedUtc],[UpdatedBy]
             FROM [LegendEngineeringOperationalContractHistory]
             WHERE [Revision]=@revision
             """;
@@ -370,24 +493,32 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
             reader.GetString(0),
             reader.GetInt64(1),
             reader.GetBoolean(2),
-            reader.GetString(3),
+            reader.GetBoolean(3),
             reader.GetString(4),
             reader.GetString(5),
             reader.GetString(6),
-            reader.GetDateTime(7),
-            reader.GetString(8));
+            reader.GetString(7),
+            reader.GetString(8),
+            reader.GetString(9),
+            reader.GetString(10),
+            reader.GetDateTime(11),
+            reader.GetString(12));
 
     private static LegendEngineeringContractRevision ReadRevision(DbDataReader reader) =>
         new(
             reader.GetString(0),
             reader.GetInt64(1),
             reader.GetBoolean(2),
-            reader.GetString(3),
+            reader.GetBoolean(3),
             reader.GetString(4),
             reader.GetString(5),
             reader.GetString(6),
-            reader.GetDateTime(7),
-            reader.GetString(8));
+            reader.GetString(7),
+            reader.GetString(8),
+            reader.GetString(9),
+            reader.GetString(10),
+            reader.GetDateTime(11),
+            reader.GetString(12));
 
     private async Task<T> WithContractTransactionAsync<T>(
         Func<DbConnection, DbTransaction, Task<T>> action,
@@ -422,6 +553,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         LegendEngineeringOperationalContract current,
         ContractInput input) =>
         current.ModelExecutionEnabled == input.ModelExecutionEnabled &&
+        current.AutonomousEngineeringEnabled == input.AutonomousEngineeringEnabled &&
+        string.Equals(current.HeadGptModel, input.HeadGptModel, StringComparison.Ordinal) &&
+        string.Equals(current.CodexModel, input.CodexModel, StringComparison.Ordinal) &&
+        string.Equals(current.ReviewerModel, input.ReviewerModel, StringComparison.Ordinal) &&
         string.Equals(current.SharedDirective, input.SharedDirective, StringComparison.Ordinal) &&
         string.Equals(current.HeadGptDirective, input.HeadGptDirective, StringComparison.Ordinal) &&
         string.Equals(current.CodexDirective, input.CodexDirective, StringComparison.Ordinal) &&
@@ -432,6 +567,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         Add(command, "@revision", value.Revision);
         Add(command, "@version", value.Version);
         Add(command, "@enabled", value.ModelExecutionEnabled);
+        Add(command, "@autonomous", value.AutonomousEngineeringEnabled);
+        Add(command, "@headModel", value.HeadGptModel);
+        Add(command, "@codexModel", value.CodexModel);
+        Add(command, "@reviewerModel", value.ReviewerModel);
         Add(command, "@shared", value.SharedDirective);
         Add(command, "@head", value.HeadGptDirective);
         Add(command, "@codex", value.CodexDirective);
@@ -450,6 +589,10 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
 
     private sealed record ContractInput(
         bool ModelExecutionEnabled,
+        bool AutonomousEngineeringEnabled,
+        string HeadGptModel,
+        string CodexModel,
+        string ReviewerModel,
         string SharedDirective,
         string HeadGptDirective,
         string CodexDirective,
