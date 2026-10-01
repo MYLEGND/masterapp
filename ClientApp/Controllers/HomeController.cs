@@ -54,6 +54,7 @@ public class HomeController : Controller
 
     [Authorize]
     [HttpPost("/api/legend-site-tools/execute")]
+    [ValidateAntiForgeryToken]
     [RequestSizeLimit(32 * 1024)]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult ExecuteSiteTool(
