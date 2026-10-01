@@ -69,17 +69,27 @@ jobs:
           workflow_path=".github/workflows/$workflow_name"
           mkdir -p /tmp/step5-prior/candidate /tmp/step5-prior/baseline
 
-          runs_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_name/runs?event=pull_request&status=completed&per_page=100")"
           prior_run_id=""
           prior_head_sha=""
           candidate_name=""
           baseline_name="step5-baseline-$CURRENT_BASE"
 
-          # Search backward for the newest complete evidence pair. A later
-          # comparison-only/repair-only run may not own the expensive artifacts,
-          # and must never erase an older still-valid candidate/baseline success.
-          while read -r candidate_run candidate_head; do
-            [[ -n "$candidate_run" && "$candidate_head" =~ ^[0-9a-f]{40}$ ]] || continue
+          # Start from durable baseline artifacts, not the workflow-runs index.
+          # GitHub can expose the artifact before a filtered workflow-run listing
+          # becomes consistent. The artifact's owning run then supplies the exact
+          # candidate SHA, branch and workflow identity.
+          baseline_artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$baseline_name&per_page=100")"
+          while read -r candidate_run; do
+            [[ -n "$candidate_run" ]] || continue
+            run_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
+            candidate_head="$(printf '%s' "$run_json" | jq -r '.head_sha // ""')"
+            run_path="$(printf '%s' "$run_json" | jq -r '.path // ""')"
+            run_branch="$(printf '%s' "$run_json" | jq -r '.head_branch // ""')"
+            run_event="$(printf '%s' "$run_json" | jq -r '.event // ""')"
+            run_status="$(printf '%s' "$run_json" | jq -r '.status // ""')"
+            [[ "$candidate_head" =~ ^[0-9a-f]{40}$ ]] || continue
+            [[ "$run_path" == "$workflow_path" && "$run_branch" == "$HEAD_BRANCH" && "$run_event" == "pull_request" && "$run_status" == "completed" ]] || continue
+
             artifacts_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run/artifacts?per_page=100")"
             candidate_artifact="step5-candidate-$candidate_head"
             if printf '%s' "$artifacts_json" | jq -e --arg name "$candidate_artifact" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null &&
@@ -90,13 +100,13 @@ jobs:
               break
             fi
           done < <(
-            printf '%s' "$runs_json" | jq -r \
+            printf '%s' "$baseline_artifacts" | jq -r \
               --arg current "$GITHUB_RUN_ID" \
-              --arg branch "$HEAD_BRANCH" \
-              '.workflow_runs[]
-               | select((.id|tostring) != $current)
-               | select(.head_branch == $branch)
-               | "\(.id) \(.head_sha)"'
+              '.artifacts[]
+               | select(.expired == false)
+               | select((.workflow_run.id|tostring) != $current)
+               | .workflow_run.id' |
+            awk '!seen[$0]++'
           )
 
           if [[ -z "$prior_run_id" ]]; then
