@@ -137,31 +137,33 @@ jobs:
           set -euo pipefail
           artifact_name="legend-release-security-tested-$CANDIDATE_SHA"
           run_id=""
-          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
-          while read -r candidate_run; do
-            [ -n "$candidate_run" ] || continue
-            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
-            workflow_path="$(printf '%s' "$run" | jq -r '.path // ""')"
-            if [ "$workflow_path" = ".github/workflows/agentportal-production-deploy.yml" ]; then
-              run_id="$candidate_run"
-              break
+
+          # Live-provider/security evidence is intentionally reusable only inside
+          # the same workflow run. A separate run must refresh dynamic external
+          # inputs even when the source SHA is unchanged.
+          if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+            prior_attempt=$((GITHUB_RUN_ATTEMPT - 1))
+            prior_jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$prior_attempt/jobs?per_page=100")"
+            prior_full_suite="$(printf '%s' "$prior_jobs" | jq -r '
+              [.jobs[] | select(.name == "release-security") | .steps[] |
+               select(.name == "Test full suite including security regressions") | .conclusion][0] // ""')"
+            artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100")"
+            if [ "$prior_full_suite" = "success" ] &&
+               printf '%s' "$artifacts" | jq -e --arg name "$artifact_name" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null; then
+              run_id="$GITHUB_RUN_ID"
             fi
-          done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
+          fi
 
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
           if [ -z "$run_id" ]; then
             echo "REUSE_SECURITY_CACHE=false" >> "$GITHUB_ENV"
-            echo "No exact reusable release-security evidence exists."
+            echo "No same-run successful release-security evidence exists; dynamic security validation will refresh."
             exit 0
           fi
 
-          if [ "$run_id" = "$GITHUB_RUN_ID" ] && [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
-            prior_attempt=$((GITHUB_RUN_ATTEMPT - 1))
-            jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$prior_attempt/jobs?per_page=100")"
-          else
-            jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=latest&per_page=100")"
-          fi
+          prior_attempt=$((GITHUB_RUN_ATTEMPT - 1))
+          jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$prior_attempt/jobs?per_page=100")"
           step_outcome() {
             local step_name="$1"
             printf '%s' "$jobs" | jq -r --arg name "$step_name" '
