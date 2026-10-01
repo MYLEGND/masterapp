@@ -158,10 +158,11 @@ internal sealed class LegendEngineeringOrchestrator(
             throw new InvalidOperationException("work_item_incident_evidence_missing");
 
         var primary = incidents[0];
-        var safeHints = incidents.Select(row => row.SourceFilePath)
-            .Where(path => !string.IsNullOrWhiteSpace(path) &&
-                           FounderSoftwareRemediationService.ClassifyInspectableSourcePath(path!) == LegendSiteToolDisclosureAuthority.SafeSource)
-            .Select(path => NormalizePath(path!))
+        var safeHints = incidents
+            .Where(row => !string.IsNullOrWhiteSpace(row.SourceFilePath) &&
+                          (FounderSoftwareRemediationService.ClassifyInspectableSourcePath(row.SourceFilePath!) == LegendSiteToolDisclosureAuthority.SafeSource ||
+                           LegendEngineeringPolicies.IsSanitizedRuntimeSourceHint(row)))
+            .Select(row => NormalizePath(row.SourceFilePath!))
             .Distinct(StringComparer.Ordinal)
             .Take(16)
             .ToArray();
@@ -175,10 +176,11 @@ internal sealed class LegendEngineeringOrchestrator(
         var permitted = sourceResolution.Ready
             ? sourceResolution.Paths.OrderBy(path => path, StringComparer.Ordinal).ToArray()
             : Array.Empty<string>();
-        var protectedPaths = incidents.Select(row => row.SourceFilePath)
-            .Where(path => !string.IsNullOrWhiteSpace(path) &&
-                           FounderSoftwareRemediationService.ClassifyInspectableSourcePath(path!) != LegendSiteToolDisclosureAuthority.SafeSource)
-            .Select(path => "protected:" + Hash(NormalizePath(path!))[..20])
+        var protectedPaths = incidents
+            .Where(row => !string.IsNullOrWhiteSpace(row.SourceFilePath) &&
+                          FounderSoftwareRemediationService.ClassifyInspectableSourcePath(row.SourceFilePath!) != LegendSiteToolDisclosureAuthority.SafeSource &&
+                          !LegendEngineeringPolicies.IsSanitizedRuntimeSourceHint(row))
+            .Select(row => "protected:" + Hash(NormalizePath(row.SourceFilePath!))[..20])
             .Distinct(StringComparer.Ordinal)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
