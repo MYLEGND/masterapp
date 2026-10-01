@@ -661,10 +661,20 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
 
     private static string SourceRoot()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")))
-            directory = directory.Parent;
-        return directory?.FullName ?? throw new InvalidOperationException("Repository root not found.");
+        var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        if (!string.IsNullOrWhiteSpace(workspace) &&
+            File.Exists(Path.Combine(workspace, "MASTERAPP.sln")))
+            return workspace;
+
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+        {
+            var directory = new DirectoryInfo(start);
+            while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")))
+                directory = directory.Parent;
+            if (directory is not null) return directory.FullName;
+        }
+
+        throw new InvalidOperationException("Repository root not found.");
     }
 
     private EngineeringContextSnapshot Context(EngineeringWorkItemSnapshot item, EngineeringLeaseReceipt lease)
