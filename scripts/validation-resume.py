@@ -30,9 +30,21 @@ CONTROL_PATHS = {
     ".github/workflows/masterapp-platform-architecture-validation.yml",
     ".github/workflows/step6-openai-ads-execution-validation.yml",
     ".github/workflows/steps7-8-governed-advertising-validation.yml",
+    "scripts/test-validation-resume.py",
 }
 
-SOURCE_FORCE_ALL = (
+GLOBAL_DOTNET_INPUTS = (
+    "MASTERAPP.sln",
+    "global.json",
+    "NuGet.config",
+    "Directory.Build.*",
+    "Directory.Packages.*",
+    "**/*.csproj",
+    "**/*.props",
+    "**/*.targets",
+)
+
+WEB_DOTNET_SOURCE = (
     "AgentPortal/**",
     "ClientApp/**",
     "Protect-Website/**",
@@ -40,14 +52,53 @@ SOURCE_FORCE_ALL = (
     "Infrastructure/**",
     "Domain/**",
     "SHARED/**",
-    "Legend-Website/**",
-    "Legend-Design/**",
-    "Legend-Cloudflare/**",
+)
+
+WEBSITE_SOURCE = (
+    "Infrastructure/WebsiteEditing/**",
+    "Infrastructure/WebsiteRuntime/**",
+    "Infrastructure/Businesses/**",
+    "AgentPortal/Controllers/**Website*",
+    "AgentPortal/Services/**Website*",
+    "AgentPortal/Views/**Website*",
+    "ClientApp/Controllers/**Website*",
+    "ClientApp/Views/**Website*",
+    "Protect-Website/**",
+    "SHARED/WebsitePlatform/**",
+)
+
+MARKETING_SOURCE = (
+    "Infrastructure/Analytics/**",
+    "SHARED/Analytics/**",
+    "AgentPortal/Controllers/WebsiteAnalyticsController.cs",
+    "AgentPortal/Views/WebsiteAnalytics/**",
+    "AgentPortal/wwwroot/js/website-analytics.js",
+    "AgentPortal/wwwroot/css/website-analytics.css",
+)
+
+BOOKING_SOURCE = (
+    "Infrastructure/**Booking*",
+    "AgentPortal/**Booking*",
+    "Protect-Website/**Booking*",
+    "Domain/**Booking*",
+    "SHARED/**Booking*",
+)
+
+CRM_SOURCE = (
+    "Infrastructure/Businesses/**",
+    "AgentPortal/Controllers/LeadsController.cs",
+    "AgentPortal/Controllers/ClientsController.cs",
+    "AgentPortal/**CRM*",
+    "ClientApp/**CRM*",
+    "Domain/**Lead*",
+    "Domain/**Client*",
+    "SHARED/**Lead*",
+    "SHARED/**Client*",
 )
 
 WORKFLOWS = {
     "masterapp-platform-architecture-validation.yml": {
-        "force_all": SOURCE_FORCE_ALL,
+        "force_all": GLOBAL_DOTNET_INPUTS,
         "neutral": ("Docs/**", "*.md"),
         "gates": {
             "lifecycle": {
@@ -70,21 +121,21 @@ WORKFLOWS = {
             },
             "restore-dotnet": {
                 "step": "Restore .NET graph",
-                "paths": (),
+                "paths": GLOBAL_DOTNET_INPUTS,
             },
             "build-infrastructure": {
                 "step": "Build shared infrastructure",
-                "paths": (),
+                "paths": ("Infrastructure/**", "Domain/**", "SHARED/**") + GLOBAL_DOTNET_INPUTS,
                 "requires": ("restore-dotnet",),
             },
             "build-hosts": {
                 "step": "Build AgentPortal and ClientApp hosts",
-                "paths": (),
+                "paths": ("AgentPortal/**", "ClientApp/**", "Infrastructure/**", "Domain/**", "SHARED/**") + GLOBAL_DOTNET_INPUTS,
                 "requires": ("restore-dotnet",),
             },
             "build-protect": {
                 "step": "Build Protect host",
-                "paths": (),
+                "paths": ("Protect-Website/**", "Infrastructure/**", "Domain/**", "SHARED/**") + GLOBAL_DOTNET_INPUTS,
                 "requires": ("restore-dotnet",),
             },
             "tracking-assets": {
@@ -98,16 +149,16 @@ WORKFLOWS = {
             },
             "renderer-install": {
                 "step": "Install shared website renderer dependencies",
-                "paths": (),
+                "paths": ("Legend-Website/package.json", "Legend-Website/package-lock.json"),
             },
             "renderer-build": {
                 "step": "Build shared website renderer",
-                "paths": (),
+                "paths": ("Legend-Website/**", "Legend-Design/**", "SHARED/WebsitePlatform/**"),
                 "requires": ("renderer-install",),
             },
             "renderer-parity": {
                 "step": "Verify renderer authority parity",
-                "paths": (),
+                "paths": ("Legend-Website/**", "Legend-Design/**", "SHARED/WebsitePlatform/**"),
                 "requires": ("renderer-build",),
             },
             "renderer-tests": {
@@ -115,27 +166,29 @@ WORKFLOWS = {
                 "paths": (
                     "Legend-Website/scripts/render-business.test.mjs",
                     "Legend-Website/scripts/render-business.mjs",
+                    "Legend-Website/package-lock.json",
+                    "SHARED/WebsitePlatform/**",
                     "tests/website/legend-public-cms.test.mjs",
                 ),
                 "requires": ("renderer-install",),
             },
             "cms-install": {
                 "step": "Install canonical shared CMS test dependencies",
-                "paths": (),
+                "paths": ("tests/website/package.json", "tests/website/package-lock.json"),
             },
             "cms-tests": {
                 "step": "Run canonical shared CMS tests",
-                "paths": ("tests/website/**",),
+                "paths": ("tests/website/**", "SHARED/WebsitePlatform/**", "Legend-Design/**"),
                 "requires": ("cms-install",),
             },
             "compile-regression": {
                 "step": "Compile full regression test project",
-                "paths": (),
+                "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
                 "requires": ("restore-dotnet",),
             },
             "domain-release": {
                 "step": "Compile shared domain release refresh",
-                "paths": ("scripts/DomainReleaseRefresh/**",),
+                "paths": ("scripts/DomainReleaseRefresh/**", "Domain/**", "Infrastructure/**") + GLOBAL_DOTNET_INPUTS,
             },
             "website-regressions": {
                 "step": "Run website ownership and publishing regressions",
@@ -150,7 +203,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/AnalyticsCanonicalReconciliationTests.cs",
                     "AgentPortal.Tests/AnalyticsPageRoutingTruthTests.cs",
                     "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
-                ),
+                ) + WEBSITE_SOURCE,
                 "requires": ("compile-regression",),
             },
             "meta-regressions": {
@@ -163,12 +216,12 @@ WORKFLOWS = {
                     "AgentPortal.Tests/Tracking*Tests.cs",
                     "AgentPortal.Tests/QuoteProductInstrumentationContractTests.cs",
                     "AgentPortal.Tests/ProtectLeadModalInquiryTests.cs",
-                ),
+                ) + MARKETING_SOURCE,
                 "requires": ("compile-regression",),
             },
             "booking-regressions": {
                 "step": "Run booking authority regressions",
-                "paths": ("AgentPortal.Tests/*Booking*Tests.cs",),
+                "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE,
                 "requires": ("compile-regression",),
             },
             "crm-regressions": {
@@ -179,12 +232,17 @@ WORKFLOWS = {
                     "AgentPortal.Tests/WebsiteAnalyticsScopeTests.cs",
                     "AgentPortal.Tests/LaunchAuditRiskAssessmentTests.cs",
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
-                ),
+                ) + CRM_SOURCE,
                 "requires": ("compile-regression",),
             },
             "form-tracking": {
                 "step": "Run canonical form tracking tests",
-                "paths": ("tests/analytics/form-tracker.test.cjs",),
+                "paths": (
+                    "tests/analytics/form-tracker.test.cjs",
+                    "SHARED/WebsitePlatform/tracking.js",
+                    "SHARED/WebsitePlatform/meta-signal-intelligence.js",
+                    "SHARED/WebsitePlatform/openai-measurement.js",
+                ),
             },
             "release-policy": {
                 "step": "Verify consolidated release scope and routing policy",
