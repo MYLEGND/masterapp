@@ -37,22 +37,6 @@ def ancestor(before, after):
     return result.returncode == 0
 
 
-def commit_tree(revision):
-    result = git('rev-parse', revision + '^{tree}')
-    value = result.stdout.strip()
-    if not SHA.fullmatch(value):
-        raise RuntimeError('Cannot establish commit tree for canonical history')
-    return value
-
-
-def merge_base(left, right):
-    result = git('merge-base', left, right)
-    value = result.stdout.strip()
-    if not SHA.fullmatch(value):
-        raise RuntimeError('Cannot establish merge base for canonical history')
-    return value
-
-
 def eligible(branch, approved, live, open_refs, active_refs, failed_refs):
     name, sha = branch['name'], branch['commit']['sha']
     if name in KEEP or branch.get('protected'):
@@ -317,7 +301,7 @@ def candidate_validation(api, pr):
     step5 = '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
     step6 = '.github/workflows/step6-openai-ads-execution-validation.yml'
     step78 = '.github/workflows/steps7-8-governed-advertising-validation.yml'
-    security = '.github/workflows/approved-release-security-validation.yml'
+    security = '.github/workflows/' + SECURITY
     required = {architecture}
 
     files = api.pages(f"pulls/{pr['number']}/files")
@@ -735,8 +719,6 @@ def main():
     parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup'])
     parser.add_argument('--pr', type=int)
     parser.add_argument('--run', type=int)
-    parser.add_argument('--expected-head')
-    parser.add_argument('--dispatch', choices=['true', 'false'], default='false')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
