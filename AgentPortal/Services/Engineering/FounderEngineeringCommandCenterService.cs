@@ -272,7 +272,7 @@ internal sealed class FounderEngineeringCommandCenterService(
     {
         if (ReadBool(status, "runtimeReady")) return false;
         var blockerClass = ReadString(status, "providerBlockerClass");
-        if (blockerClass == "USAGE_LIMIT") return true;
+        if (blockerClass == "USAGE_LIMIT") return false;
         if (blockerClass == "TEMPORARY_PROVIDER")
         {
             var retry = ReadDateTime(status, "providerRetryNotBeforeUtc");
