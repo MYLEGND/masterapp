@@ -76,6 +76,7 @@ jobs:
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate lifecycle; then exit 0; fi
           python3 scripts/test-release-lifecycle.py
+          python3 scripts/test-validation-resume.py
 
       - name: Run authenticated mobile authority tests
         shell: bash
