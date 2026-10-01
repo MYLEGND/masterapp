@@ -80,6 +80,46 @@ public sealed class FounderEngineeringCommandCenterTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task BindingAuthority_RejectsStaleRevision_AndFounderPause()
+    {
+        var builtin = await _authority.GetCurrentAsync(default);
+        var initial = await _authority.ValidateBindingAsync(builtin.Revision, default);
+        Assert.True(initial.Valid);
+        Assert.Equal("engineering_operational_contract_current", initial.Code);
+
+        var changed = await _authority.UpdateAsync(
+            builtin.Revision,
+            true,
+            "new shared",
+            builtin.HeadGptDirective,
+            builtin.CodexDirective,
+            builtin.ReviewerDirective,
+            "Founder",
+            default);
+
+        var stale = await _authority.ValidateBindingAsync(builtin.Revision, default);
+        Assert.False(stale.Valid);
+        Assert.Equal("engineering_operational_contract_changed", stale.Code);
+
+        var current = await _authority.ValidateBindingAsync(changed.Revision, default);
+        Assert.True(current.Valid);
+
+        var paused = await _authority.UpdateAsync(
+            changed.Revision,
+            false,
+            changed.SharedDirective,
+            changed.HeadGptDirective,
+            changed.CodexDirective,
+            changed.ReviewerDirective,
+            "Founder",
+            default);
+
+        var blocked = await _authority.ValidateBindingAsync(paused.Revision, default);
+        Assert.False(blocked.Valid);
+        Assert.Equal("engineering_operational_execution_paused", blocked.Code);
+    }
+
+    [Fact]
     public async Task Restore_CreatesNewRevision_InsteadOfRewritingHistory()
     {
         var builtin = await _authority.GetCurrentAsync(default);
