@@ -102,6 +102,7 @@ public sealed record EngineeringWorkItemSnapshot(
     DateTime UpdatedUtc,
     IReadOnlyList<string>? CandidateChangedPaths = null,
     string? AgentSessionId = null,
+    Guid? AgentContextId = null,
     string? AgentSessionRole = null,
     DateTime? AgentSessionUpdatedUtc = null);
 
