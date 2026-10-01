@@ -12,6 +12,16 @@ public sealed record LegendSitePageIssue(
     string? Operation,
     string? SourcePath);
 
+public sealed record LegendSystemSurface(
+    string Key,
+    string Kind,
+    string RepositoryPath,
+    string? DeploymentTarget,
+    string ProvenanceChannel,
+    string DiagnosticChannel,
+    string ChatGptExposure,
+    string Ownership);
+
 public sealed record LegendRouteAuthority(
     string Route,
     string? Controller,
@@ -62,6 +72,64 @@ public static class LegendSiteToolDisclosureAuthority
     {
         "Authentication", "NetworkOrCapacity", "Network", "ExpectedCancellation",
         "ExpectedRequestFailure", "SuspectedDefect", "Observation"
+    };
+
+    public static object SystemInventory() => new
+    {
+        schemaVersion = 1,
+        disclosureClass = OperationalMetadata,
+        inventoryAuthority = nameof(LegendSiteToolDisclosureAuthority),
+        impactAuthority = "scripts/diagnostic-project-impact.py",
+        releaseAuthority = "existing approved LEGEND release lifecycle",
+        repositoryInspectionAuthority = "FounderSoftwareRemediationService",
+        surfaces = new[]
+        {
+            new LegendSystemSurface("agent-portal", "web_application", "AgentPortal", "masterapp-portal",
+                "/api/runtime-provenance", "shared Page Health + Infrastructure RuntimeDiagnostics",
+                "founder_authenticated_webmcp", "AgentPortal"),
+            new LegendSystemSurface("client-app", "web_application", "ClientApp", "masterapp-client",
+                "/api/runtime-provenance", "shared Page Health + Infrastructure RuntimeDiagnostics",
+                "authenticated_scoped_webmcp", "ClientApp"),
+            new LegendSystemSurface("protect-website", "public_web_application", "Protect-Website", "masterapp-protect",
+                "/api/runtime-provenance", "shared Page Health + Infrastructure RuntimeDiagnostics",
+                "public_structural_webmcp_only", "ProtectWebsite"),
+            new LegendSystemSurface("parfait-app", "commerce_web_application", "ParfaitApp", "masterapp-parfait",
+                "/api/runtime-provenance", "shared Page Health + Infrastructure RuntimeDiagnostics",
+                "public_structural_webmcp_only", "ParfaitApp"),
+            new LegendSystemSurface("legend-website", "static_public_web_application", "Legend-Website", "masterapp-website",
+                "/_deployment-provenance.txt", "shared Page Health through approved Protect diagnostics origin",
+                "public_structural_webmcp_only", "Legend-Website"),
+            new LegendSystemSurface("legend-ios", "native_ios_application", "Legend-ios", null,
+                "native build/version + sanitized diagnostic revision when available",
+                "LegendDiagnostics.swift -> authenticated /api/v1/mobile/runtime-diagnostics",
+                "founder_system_tools_via_central_diagnostics", "Legend-ios"),
+            new LegendSystemSurface("legend-android", "native_android_application", "Legend-Android", null,
+                "native build/version + sanitized diagnostic revision when available",
+                "RuntimeDiagnostics.kt -> authenticated /api/v1/mobile/runtime-diagnostics",
+                "founder_system_tools_via_central_diagnostics", "Legend-Android"),
+            new LegendSystemSurface("legend-cloudflare", "edge_ai_runtime", "Legend-Cloudflare", null,
+                "qualified runtime/registry revision evidence", "signed service callback + governed runtime evidence",
+                "no_browser_authority", "Legend-Cloudflare"),
+            new LegendSystemSurface("infrastructure", "shared_backend", "Infrastructure", null,
+                "consumer deployment provenance", "central runtime diagnostic store/sanitizer",
+                "founder_system_tools_only", "Infrastructure"),
+            new LegendSystemSurface("shared", "shared_application_library", "SHARED", null,
+                "consumer deployment provenance", "shared browser diagnostics/site-tool bridge",
+                "consumer_scoped", "SHARED"),
+            new LegendSystemSurface("domain", "shared_contracts", "Domain", null,
+                "consumer deployment provenance", "no independent runtime",
+                "founder_system_tools_only", "Domain"),
+            new LegendSystemSurface("legend-design", "shared_design_authority", "Legend-Design", null,
+                "consumer deployment provenance", "no independent runtime",
+                "consumer_scoped", "Legend-Design")
+        },
+        privacy = new
+        {
+            secretValuesIncluded = false,
+            privateCustomerDataIncluded = false,
+            rawRequestsOrResponsesIncluded = false,
+            authenticationMaterialIncluded = false
+        }
     };
 
     public static object CurrentPageTool => new
