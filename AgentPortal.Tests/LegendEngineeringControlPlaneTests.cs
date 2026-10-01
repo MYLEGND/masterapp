@@ -367,7 +367,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     private static string SourceRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "masterapp.sln")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")))
             directory = directory.Parent;
         return directory?.FullName ?? throw new InvalidOperationException("Repository root not found.");
     }
