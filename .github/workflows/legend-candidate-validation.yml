@@ -125,7 +125,7 @@ jobs:
             ${{ runner.temp }}/legend-validation/restore.log
             ${{ runner.temp }}/legend-validation/dotnet.log
             ${{ runner.temp }}/legend-validation/contracts.trx
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: warn
           include-hidden-files: false
           overwrite: true
