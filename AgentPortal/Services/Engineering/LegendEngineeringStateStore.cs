@@ -34,6 +34,11 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                 var state = existing.State is "COMPLETED" or "CLOSED"
                     ? InitialState(decision, recurring: true)
                     : existing.State;
+                var preserveWorkflowRole = existing.State is
+                    "LEASED" or "AGENT_ACTIVE" or "CANDIDATE_PREPARED" or "REVIEW_REQUIRED" or
+                    "REVIEWED" or "VALIDATED" or "RELEASE_REQUESTED" or
+                    "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "CI_FAILED_NEEDS_EVIDENCE" or
+                    "REVIEW_REJECTED" or "RELEASE_BLOCKED" or "FOUNDER_ESCALATION";
                 var updated = existing with
                 {
                     IncidentIds = incidentIds,
@@ -46,8 +51,8 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                     PriorityScore = Math.Max(existing.PriorityScore, decision.PriorityScore),
                     PriorityClass = MoreUrgent(existing.PriorityClass, decision.PriorityClass),
                     State = state,
-                    AssignedRole = decision.AssignedRole,
-                    ModelTier = decision.ModelTier,
+                    AssignedRole = preserveWorkflowRole ? existing.AssignedRole : decision.AssignedRole,
+                    ModelTier = preserveWorkflowRole ? existing.ModelTier : decision.ModelTier,
                     LeaseOwner = state == existing.State ? existing.LeaseOwner : null,
                     LeaseIdentity = state == existing.State ? existing.LeaseIdentity : null,
                     LeaseExpiresUtc = state == existing.State ? existing.LeaseExpiresUtc : null,
@@ -333,9 +338,10 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
         {
             var current = await ReadWorkItemAsync(connection, transaction, snapshot.WorkItemId, cancellationToken)
                 ?? throw new InvalidOperationException("work_item_not_found");
-            if (!string.Equals(current.EvidenceRevision, snapshot.EvidenceRevision, StringComparison.Ordinal) &&
-                current.UpdatedUtc > snapshot.UpdatedUtc)
+            if (!string.Equals(current.EvidenceRevision, snapshot.EvidenceRevision, StringComparison.Ordinal))
                 throw new InvalidOperationException("work_item_evidence_changed");
+            if (current.UpdatedUtc != snapshot.UpdatedUtc)
+                throw new InvalidOperationException("work_item_state_changed");
             await UpdateWorkItemAsync(connection, transaction, snapshot with { UpdatedUtc = DateTime.UtcNow }, cancellationToken);
             return true;
         }, cancellationToken);
