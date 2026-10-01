@@ -53,6 +53,40 @@ class ReleaseScopeSelection(unittest.TestCase):
                 'targets': ['masterapp-client', 'masterapp-parfait']
             })
 
+
+    def test_release_control_only_changes_preserve_live_application_identity(self):
+        rows = [{"revision": "a" * 40}]
+        with patch.object(
+            self.baseline.subprocess,
+            "check_output",
+            return_value=(
+                ".github/workflows/all-intentional-direct-release-20260918.yml\n"
+                "scripts/validation-resume.py\n"
+                "Docs/releases/direct-release-request.json\n"
+            ),
+        ):
+            self.assertEqual(
+                "a" * 40,
+                self.baseline.reusable_live_application_revision(rows, "b" * 40),
+            )
+
+    def test_runtime_change_invalidates_live_application_identity(self):
+        rows = [{"revision": "a" * 40}]
+        with patch.object(
+            self.baseline.subprocess,
+            "check_output",
+            return_value="AgentPortal/Services/Engineering/LegendEngineeringOrchestrator.cs\n",
+        ):
+            self.assertIsNone(
+                self.baseline.reusable_live_application_revision(rows, "b" * 40)
+            )
+
+    def test_different_live_target_revisions_cannot_share_application_identity(self):
+        rows = [{"revision": "a" * 40}, {"revision": "b" * 40}]
+        self.assertIsNone(
+            self.baseline.reusable_live_application_revision(rows, "c" * 40)
+        )
+
     def test_automatic_dispatch_does_not_expand_explicit_scope(self):
         request={'releaseMode':'approved-only','targets':['masterapp-portal','masterapp-client','masterapp-protect']}
         with tempfile.TemporaryDirectory() as directory:
@@ -370,7 +404,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_direct_release_reuses_only_exact_validated_package_evidence(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         self.assertIn('Reuse exact successful validation package when available', workflow)
-        self.assertIn('founder-diagnostics-packages-${GITHUB_SHA}', workflow)
+        self.assertIn('founder-diagnostics-packages-${APPLICATION_RELEASE_SHA}', workflow)
         self.assertIn('REUSE_VALIDATED_PACKAGE=true', workflow)
         self.assertIn('sha256sum -c SHA256SUMS', workflow)
         self.assertIn('overwrite: true', workflow)
