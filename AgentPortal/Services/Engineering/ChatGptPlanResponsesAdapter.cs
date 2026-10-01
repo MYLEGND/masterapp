@@ -359,6 +359,9 @@ internal sealed class ChatGptPlanResponsesAdapter(
 
             if (!run.Success)
             {
+                if (run.LogicalAttemptCompleted)
+                    return Failure(run.Code);
+
                 var failure = ClassifyProviderFailure(
                     run,
                     item.ProviderFailureCount + 1,
@@ -726,16 +729,30 @@ internal sealed class ChatGptPlanResponsesAdapter(
             Encoding.UTF8,
             "application/json");
 
+        var providerAttempted = false;
         try
         {
+            providerAttempted = true;
             using var response = await client.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
                 deadline.Token);
+            var requestId = ProviderRequestId(response);
+            var retryAfter = RetryAfterUtc(response);
+
             if (!response.IsSuccessStatusCode)
             {
                 var body = await ReadBoundedBodyAsync(response, 128 * 1024, deadline.Token);
-                return PlanRun.Fail(MapHttpFailure(response.StatusCode, body));
+                var error = ReadProviderError(body);
+                return PlanRun.Fail(
+                    MapHttpFailure(response.StatusCode, error.Code),
+                    providerAttempted: true,
+                    providerOutcome: "HTTP_REJECTED",
+                    httpStatus: (int)response.StatusCode,
+                    providerErrorCode: error.Code,
+                    providerErrorParam: error.Param,
+                    providerRequestId: requestId,
+                    retryAfterUtc: retryAfter);
             }
 
             await using var input =
@@ -748,7 +765,14 @@ internal sealed class ChatGptPlanResponsesAdapter(
             {
                 var line = await reader.ReadLineAsync(deadline.Token);
                 if (line is null)
-                    return PlanRun.Fail("chatgpt_plan_response_stream_closed");
+                    return PlanRun.Fail(
+                        "chatgpt_plan_response_stream_closed",
+                        responseId,
+                        providerAttempted: true,
+                        providerOutcome: responseId is null ? "STREAM_CLOSED" : "OUTCOME_UNKNOWN",
+                        httpStatus: (int)response.StatusCode,
+                        providerRequestId: requestId,
+                        retryAfterUtc: retryAfter);
                 if (!line.StartsWith("data:", StringComparison.Ordinal))
                     continue;
 
@@ -756,7 +780,13 @@ internal sealed class ChatGptPlanResponsesAdapter(
                 if (data.Length == 0 || data == "[DONE]")
                     continue;
                 if (data.Length > 1_000_000)
-                    return PlanRun.Fail("chatgpt_plan_response_event_too_large");
+                    return PlanRun.Fail(
+                        "chatgpt_plan_response_event_too_large",
+                        responseId,
+                        providerAttempted: true,
+                        providerOutcome: "STREAM_FAILED",
+                        httpStatus: (int)response.StatusCode,
+                        providerRequestId: requestId);
 
                 JsonDocument document;
                 try
@@ -772,12 +802,12 @@ internal sealed class ChatGptPlanResponsesAdapter(
                 {
                     var root = document.RootElement;
                     var type = ReadString(root, "type");
-                    if (type == "response.created" &&
-                        root.TryGetProperty("response", out var created))
-                    {
-                        responseId = ReadString(created, "id") ?? responseId;
+                    if (root.TryGetProperty("response", out var responseObject) &&
+                        responseObject.ValueKind == JsonValueKind.Object)
+                        responseId = ReadString(responseObject, "id") ?? responseId;
+
+                    if (type == "response.created")
                         continue;
-                    }
 
                     if (type == "response.output_text.delta")
                     {
@@ -785,7 +815,13 @@ internal sealed class ChatGptPlanResponsesAdapter(
                         if (delta is not null)
                         {
                             if (output.Length + delta.Length > 256_000)
-                                return PlanRun.Fail("chatgpt_plan_response_output_too_large");
+                                return PlanRun.Fail(
+                                    "chatgpt_plan_response_output_too_large",
+                                    responseId,
+                                    providerAttempted: true,
+                                    providerOutcome: "STREAM_FAILED",
+                                    httpStatus: (int)response.StatusCode,
+                                    providerRequestId: requestId);
                             output.Append(delta);
                         }
                         continue;
@@ -798,14 +834,36 @@ internal sealed class ChatGptPlanResponsesAdapter(
                         if (text is not null)
                         {
                             if (text.Length > 256_000)
-                                return PlanRun.Fail("chatgpt_plan_response_output_too_large");
+                                return PlanRun.Fail(
+                                    "chatgpt_plan_response_output_too_large",
+                                    responseId,
+                                    providerAttempted: true,
+                                    providerOutcome: "STREAM_FAILED",
+                                    httpStatus: (int)response.StatusCode,
+                                    providerRequestId: requestId);
                             output.Append(text);
                         }
                         continue;
                     }
 
                     if (type is "response.failed" or "response.incomplete")
-                        return PlanRun.Fail(MapStreamFailure(root));
+                    {
+                        var streamError = ReadStreamError(root);
+                        return PlanRun.Fail(
+                            streamError.Code ?? (type == "response.incomplete"
+                                ? "chatgpt_plan_response_incomplete"
+                                : "chatgpt_plan_response_failed"),
+                            responseId,
+                            providerAttempted: true,
+                            providerOutcome: type == "response.incomplete"
+                                ? "INCOMPLETE"
+                                : "FAILED",
+                            httpStatus: (int)response.StatusCode,
+                            providerErrorCode: streamError.Code,
+                            providerErrorParam: streamError.Param,
+                            providerRequestId: requestId,
+                            retryAfterUtc: retryAfter);
+                    }
 
                     if (type != "response.completed" ||
                         !root.TryGetProperty("response", out var completed))
@@ -814,7 +872,15 @@ internal sealed class ChatGptPlanResponsesAdapter(
                     responseId = ReadString(completed, "id") ?? responseId;
                     var parsed = ParseJson(output.ToString());
                     if (parsed is null)
-                        return PlanRun.Fail("chatgpt_plan_response_output_invalid");
+                        return PlanRun.Fail(
+                            "chatgpt_plan_response_output_invalid",
+                            responseId,
+                            providerAttempted: true,
+                            logicalAttemptCompleted: true,
+                            providerOutcome: "COMPLETED_INVALID_OUTPUT",
+                            httpStatus: (int)response.StatusCode,
+                            providerRequestId: requestId,
+                            totalTokens: ReadTokens(completed));
                     if (string.IsNullOrWhiteSpace(responseId))
                         responseId = StableId(parsed.Value);
                     return new(
@@ -822,7 +888,15 @@ internal sealed class ChatGptPlanResponsesAdapter(
                         "completed",
                         responseId,
                         parsed,
-                        ReadTokens(completed));
+                        ReadTokens(completed),
+                        true,
+                        true,
+                        "COMPLETED",
+                        (int)response.StatusCode,
+                        null,
+                        null,
+                        requestId,
+                        retryAfter);
                 }
             }
         }
@@ -832,11 +906,17 @@ internal sealed class ChatGptPlanResponsesAdapter(
         }
         catch (OperationCanceledException)
         {
-            return PlanRun.Fail("chatgpt_plan_response_timeout");
+            return PlanRun.Fail(
+                "chatgpt_plan_response_timeout",
+                providerAttempted: providerAttempted,
+                providerOutcome: providerAttempted ? "OUTCOME_UNKNOWN" : "NOT_SENT");
         }
         catch
         {
-            return PlanRun.Fail("chatgpt_plan_response_execution_failed_closed");
+            return PlanRun.Fail(
+                "chatgpt_plan_response_execution_failed_closed",
+                providerAttempted: providerAttempted,
+                providerOutcome: providerAttempted ? "OUTCOME_UNKNOWN" : "NOT_SENT");
         }
     }
 
@@ -1028,37 +1108,21 @@ internal sealed class ChatGptPlanResponsesAdapter(
 
     private static string MapHttpFailure(
         System.Net.HttpStatusCode status,
-        string body)
+        string? providerCode)
     {
-        var error = ReadErrorCode(body);
-        if (error is "subscription_sharing_usage_limit_exceeded" or
-            "subscription_sharing_usage_unavailable")
-            return error;
+        if (!string.IsNullOrWhiteSpace(providerCode))
+            return providerCode!;
         return (int)status switch
         {
-            401 or 403 => "chatgpt_plan_reauthorization_required",
+            401 => "chatgpt_plan_reauthorization_required",
+            403 => "chatgpt_plan_authorization_context_required",
             408 or 429 => "chatgpt_plan_response_temporarily_unavailable",
             >= 500 => "chatgpt_plan_response_temporarily_unavailable",
             _ => "chatgpt_plan_response_rejected"
         };
     }
 
-    private static string MapStreamFailure(JsonElement root)
-    {
-        if (root.TryGetProperty("response", out var response) &&
-            response.ValueKind == JsonValueKind.Object &&
-            response.TryGetProperty("error", out var error) &&
-            error.ValueKind == JsonValueKind.Object)
-        {
-            var code = ReadString(error, "code");
-            if (code is "subscription_sharing_usage_limit_exceeded" or
-                "subscription_sharing_usage_unavailable")
-                return code;
-        }
-        return "chatgpt_plan_response_failed";
-    }
-
-    private static string? ReadErrorCode(string body)
+    private static (string? Code, string? Param) ReadProviderError(string body)
     {
         try
         {
@@ -1066,13 +1130,47 @@ internal sealed class ChatGptPlanResponsesAdapter(
             var root = document.RootElement;
             if (root.TryGetProperty("error", out var error) &&
                 error.ValueKind == JsonValueKind.Object)
-                return ReadString(error, "code");
-            return ReadString(root, "error");
+                return (ReadString(error, "code") ?? ReadString(error, "type"),
+                    ReadString(error, "param"));
+            return (ReadString(root, "error"), null);
         }
         catch
         {
-            return null;
+            return (null, null);
         }
+    }
+
+    private static (string? Code, string? Param) ReadStreamError(JsonElement root)
+    {
+        if (root.TryGetProperty("response", out var response) &&
+            response.ValueKind == JsonValueKind.Object &&
+            response.TryGetProperty("error", out var error) &&
+            error.ValueKind == JsonValueKind.Object)
+            return (ReadString(error, "code") ?? ReadString(error, "type"),
+                ReadString(error, "param"));
+        return (null, null);
+    }
+
+    private static string? ProviderRequestId(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("x-request-id", out var values))
+            return null;
+        var value = values.FirstOrDefault()?.Trim();
+        return value is { Length: > 0 and <= 160 } &&
+               value.All(character => char.IsAsciiLetterOrDigit(character) ||
+                                      character is '.' or '-' or '_')
+            ? value
+            : null;
+    }
+
+    private static DateTime? RetryAfterUtc(HttpResponseMessage response)
+    {
+        var retry = response.Headers.RetryAfter;
+        if (retry?.Date is { } date)
+            return date.UtcDateTime;
+        if (retry?.Delta is { } delta && delta > TimeSpan.Zero)
+            return DateTime.UtcNow.Add(delta);
+        return null;
     }
 
     private static bool ValidModelSlug(string? value) =>
@@ -1129,9 +1227,30 @@ internal sealed class ChatGptPlanResponsesAdapter(
         string Code,
         string? ResponseId,
         JsonElement? Output,
-        long? TotalTokens)
+        long? TotalTokens,
+        bool ProviderAttempted,
+        bool LogicalAttemptCompleted,
+        string ProviderOutcome,
+        int? HttpStatus,
+        string? ProviderErrorCode,
+        string? ProviderErrorParam,
+        string? ProviderRequestId,
+        DateTime? RetryAfterUtc)
     {
-        internal static PlanRun Fail(string code) =>
-            new(false, code, null, null, null);
+        internal static PlanRun Fail(
+            string code,
+            string? responseId = null,
+            bool providerAttempted = false,
+            bool logicalAttemptCompleted = false,
+            string providerOutcome = "FAILED",
+            int? httpStatus = null,
+            string? providerErrorCode = null,
+            string? providerErrorParam = null,
+            string? providerRequestId = null,
+            DateTime? retryAfterUtc = null,
+            long? totalTokens = null) =>
+            new(false, code, responseId, null, totalTokens, providerAttempted,
+                logicalAttemptCompleted, providerOutcome, httpStatus,
+                providerErrorCode, providerErrorParam, providerRequestId, retryAfterUtc);
     }
 }
