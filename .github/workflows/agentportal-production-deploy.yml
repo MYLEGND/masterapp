@@ -140,7 +140,6 @@ jobs:
           artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
           while read -r candidate_run; do
             [ -n "$candidate_run" ] || continue
-            [ "$candidate_run" != "$GITHUB_RUN_ID" ] || continue
             run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
             workflow_path="$(printf '%s' "$run" | jq -r '.path // ""')"
             if [ "$workflow_path" = ".github/workflows/agentportal-production-deploy.yml" ]; then
@@ -157,7 +156,12 @@ jobs:
             exit 0
           fi
 
-          jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=latest&per_page=100")"
+          if [ "$run_id" = "$GITHUB_RUN_ID" ] && [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+            prior_attempt=$((GITHUB_RUN_ATTEMPT - 1))
+            jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$prior_attempt/jobs?per_page=100")"
+          else
+            jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=latest&per_page=100")"
+          fi
           step_outcome() {
             local step_name="$1"
             printf '%s' "$jobs" | jq -r --arg name "$step_name" '
