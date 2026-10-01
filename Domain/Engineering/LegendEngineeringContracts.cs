@@ -112,7 +112,8 @@ public sealed record EngineeringWorkItemSnapshot(
     string? DeployedTreeSha = null,
     long? DeploymentRunId = null,
     DateTime? DeploymentVerifiedUtc = null,
-    DateTime? FounderReleaseApprovedUtc = null);
+    DateTime? FounderReleaseApprovedUtc = null,
+    IReadOnlyList<string>? ValidationFailureCodes = null);
 
 public sealed record EngineeringLeaseReceipt(
     bool Acquired,
@@ -180,7 +181,9 @@ public sealed record EngineeringTaskPacket(
     string DefinitionOfFixed,
     IReadOnlyList<string> ValidationRequirements,
     string ReleasePolicy,
-    IReadOnlyList<string> LiveVerificationRequirements);
+    IReadOnlyList<string> LiveVerificationRequirements,
+    string? RepairBaseSha = null,
+    IReadOnlyList<string>? ValidationFailureCodes = null);
 
 public sealed record EngineeringUsageObservation(
     Guid UsageId,
