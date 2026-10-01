@@ -57,7 +57,7 @@
     const push = value => {
       try {
         const url = new URL(value, window.location.origin);
-        if (url.origin === window.location.origin && !url.search && !url.hash) result.push(url.pathname);
+        if (url.origin === window.location.origin && !url.username && !url.password) result.push(url.pathname);
       } catch { }
     };
     try {
@@ -101,7 +101,11 @@
         ...values("[data-component-id]", "data-component-id", 64),
         ...values("[data-system-key]", "data-system-key", 64)
       ],
-      actionKeys: values("[data-action-key]", "data-action-key", 64),
+      actionKeys: [
+        ...values("[data-action-key]", "data-action-key", 64),
+        ...values("[data-website-action-key]", "data-website-action-key", 64)
+      ],
+      compositionIds: values("[data-cms-composition-id]", "data-cms-composition-id", 64),
       modalIds: Array.from(document.querySelectorAll('[role="dialog"][id],.modal[id]')).slice(0, 32)
         .filter(node => {
           try { const style = window.getComputedStyle(node); return style.display !== "none" && style.visibility !== "hidden"; }
