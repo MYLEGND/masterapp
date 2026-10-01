@@ -339,6 +339,11 @@ WORKFLOWS = {
                 "step": "Restore security validation graph",
                 "paths": GLOBAL_DOTNET_INPUTS,
             },
+            "build": {
+                "step": "Build migration validation graph",
+                "paths": WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "requires": ("restore",),
+            },
             "db-validation": {
                 "step": "Validate database migration artifacts",
                 "paths": (
@@ -348,7 +353,7 @@ WORKFLOWS = {
                     "Infrastructure/**DbContext*.cs",
                     "Domain/Entities/**",
                 ) + GLOBAL_DOTNET_INPUTS,
-                "requires": ("restore",),
+                "requires": ("build",),
             },
             "no-skips": {
                 "step": "Reject skipped security tests",
