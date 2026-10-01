@@ -363,7 +363,7 @@ internal sealed class LegendEngineeringOrchestrator(
         if (role == EngineeringRole.CodexImplementer)
             return item.FailureClass == EngineeringFailureClass.CodeDefect && item.RiskClass != EngineeringRiskClass.TierC;
         if (role == EngineeringRole.HeadGpt)
-            return item.State is "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "QUEUED";
+            return item.State is "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "QUEUED" or "REVIEW_REJECTED";
         return role is EngineeringRole.IndependentReviewer or EngineeringRole.LiveVerifier;
     }
 
