@@ -285,12 +285,70 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.DoesNotContain("/v1/agents/sessions", source, StringComparison.Ordinal);
     }
 
+
+    [Fact]
+    public void ReleasePlanner_P1IsImmediate_AndUnrelatedCandidatesAreNotCombined()
+    {
+        var p1 = ReleaseWorkItem("P1", EngineeringRiskClass.TierA, "AgentPortal", "source:AgentPortal/A.cs", 'a');
+        var unrelated = ReleaseWorkItem("P3", EngineeringRiskClass.TierA, "ClientApp", "source:ClientApp/B.cs", 'b');
+        var decision = LegendEngineeringReleaseCohortPlanner.Plan([p1, unrelated], DateTime.UtcNow);
+        Assert.True(decision.Ready);
+        Assert.Equal("p1_immediate", decision.Code);
+        Assert.Single(decision.WorkItemIds);
+        Assert.Contains(p1.WorkItemId, decision.WorkItemIds);
+    }
+
+    [Fact]
+    public void ReleasePlanner_TierBStopsForFounderApproval()
+    {
+        var item = ReleaseWorkItem("P1", EngineeringRiskClass.TierB, "AgentPortal", "source:AgentPortal/A.cs", 'c');
+        var decision = LegendEngineeringReleaseCohortPlanner.Plan([item], DateTime.UtcNow);
+        Assert.True(decision.Ready);
+        Assert.True(decision.FounderApprovalRequired);
+    }
+
+    [Fact]
+    public void ReleasePlanner_P3WaitsUntilDailyCohortWhenCoverageIsBelowThreshold()
+    {
+        var ready = ReleaseWorkItem("P3", EngineeringRiskClass.TierA, "AgentPortal", "source:AgentPortal/A.cs", 'd',
+            priorityScore: 30, updatedUtc: DateTime.UtcNow.AddHours(-2));
+        var pending = ReleaseWorkItem("P2", EngineeringRiskClass.TierA, "AgentPortal", "source:AgentPortal/A.cs", 'e',
+            priorityScore: 70, state: "QUEUED", validation: "NOT_STARTED", updatedUtc: DateTime.UtcNow.AddHours(-2));
+        var decision = LegendEngineeringReleaseCohortPlanner.Plan([ready, pending], DateTime.UtcNow);
+        Assert.False(decision.Ready);
+        Assert.Equal("cohort_waiting", decision.Code);
+        Assert.True(decision.WeightedReadyCoverage < 70);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _db.DisposeAsync();
         await _connection.DisposeAsync();
     }
 
+
+
+    private static EngineeringWorkItemSnapshot ReleaseWorkItem(
+        string priority,
+        string risk,
+        string application,
+        string authority,
+        char key,
+        int priorityScore = 90,
+        string state = "VALIDATED",
+        string validation = "GREEN",
+        DateTime? updatedUtc = null)
+    {
+        var now = updatedUtc ?? DateTime.UtcNow.AddHours(-8);
+        return new EngineeringWorkItemSnapshot(
+            Guid.NewGuid(), [Guid.NewGuid()], new string(key, 64), authority,
+            [application], [application], ["authority:" + authority], new string('a', 40),
+            new string('e', 64), EngineeringFailureClass.CodeDefect, 90, 90, 80, 70, 90, 25,
+            risk, 40, priorityScore, priority, state,
+            EngineeringRole.CodexImplementer, EngineeringModelTier.CodeImplementation,
+            null, null, null, 1, "active", 123, new string('b', 40), validation,
+            LegendEngineeringPolicies.ReleaseCohort(priority), now, now);
+    }
 
     private static string SourceRoot()
     {
