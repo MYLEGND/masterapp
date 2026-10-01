@@ -356,7 +356,11 @@ public sealed class FounderSoftwareRepairBatchTests
             if (request.RequestUri.Host == "fixture.vault.azure.net") return Json(new { value = key });
             if (path == "/app/installations/2/access_tokens") return Json(new { token = "synthetic-installation" });
             if (request.RequestUri.Host == "one.example.test" && path == "/api/runtime-provenance")
-                return Json(new { schemaVersion = 1, appIdentifier = "AppOne", sourceRevision = HeadSha });
+            {
+                var response = Json(new { schemaVersion = 1, appIdentifier = "AppOne", sourceRevision = HeadSha });
+                response.RequestMessage = request;
+                return response;
+            }
 
             if (request.Method == HttpMethod.Get) Reads.Add(path);
             JsonElement body = default;
