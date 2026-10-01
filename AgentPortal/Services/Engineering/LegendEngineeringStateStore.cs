@@ -581,7 +581,10 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
     private static string InitialState(EngineeringPolicyDecision decision, bool recurring)
     {
         if (decision.RiskClass == EngineeringRiskClass.TierC) return "SECURITY_REVIEW";
-        if (decision.FailureClass == EngineeringFailureClass.Unknown) return recurring ? "RECURRED_NEEDS_SUPERVISOR" : "NEEDS_SUPERVISOR";
+        if (decision.FailureClass == EngineeringFailureClass.Unknown)
+            return decision.AssignedRole == EngineeringRole.TriageWorker
+                ? recurring ? "RECURRED_NEEDS_TRIAGE" : "NEEDS_TRIAGE"
+                : recurring ? "RECURRED_NEEDS_SUPERVISOR" : "NEEDS_SUPERVISOR";
         if (!decision.CodeRepairEligible) return "OBSERVATION_ONLY";
         return recurring ? "RECURRED" : "QUEUED";
     }
