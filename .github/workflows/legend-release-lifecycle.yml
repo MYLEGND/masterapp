@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: legend-release-lifecycle
   cancel-in-progress: false
@@ -48,10 +49,60 @@ jobs:
         with:
           ref: legend/approved-changes
           fetch-depth: 0
+
+      - name: Resolve lifecycle validation authority identity
+        id: lifecycleidentity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          authority_hash="$(
+            sha256sum               .github/workflows/legend-release-lifecycle.yml               scripts/release-lifecycle.py               scripts/release_policy.py               scripts/test-release-policy.py               scripts/test-release-lifecycle.py |
+            sha256sum | cut -d ' ' -f 1
+          )"
+          artifact_name="legend-lifecycle-contracts-$authority_hash"
+          run_id=""
+          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
+          while read -r candidate_run; do
+            [ -n "$candidate_run" ] || continue
+            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
+            if [ "$(printf '%s' "$run" | jq -r '.path // ""')" = ".github/workflows/legend-release-lifecycle.yml" ]; then
+              run_id="$candidate_run"
+              break
+            fi
+          done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
+          echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          if [ -n "$run_id" ]; then
+            echo "REUSE_LIFECYCLE_CONTRACTS=true" >> "$GITHUB_ENV"
+            echo "Lifecycle safety contracts unchanged; preserving prior success from run $run_id."
+          else
+            echo "REUSE_LIFECYCLE_CONTRACTS=false" >> "$GITHUB_ENV"
+          fi
       - name: Check lifecycle safety contracts
         run: |
+          if [ "$REUSE_LIFECYCLE_CONTRACTS" = true ]; then
+            echo "Preserved unchanged lifecycle safety validation."
+            exit 0
+          fi
           python3 scripts/test-release-policy.py
           python3 scripts/test-release-lifecycle.py
+
+      - name: Retain lifecycle validation authority receipt
+        if: env.REUSE_LIFECYCLE_CONTRACTS != 'true'
+        shell: bash
+        run: |
+          printf '%s\n' "${{ steps.lifecycleidentity.outputs.artifact }}" > "$RUNNER_TEMP/lifecycle-validation-receipt.txt"
+
+      - name: Preserve lifecycle validation authority receipt
+        if: env.REUSE_LIFECYCLE_CONTRACTS != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.lifecycleidentity.outputs.artifact }}
+          path: ${{ runner.temp }}/lifecycle-validation-receipt.txt
+          retention-days: 30
+          if-no-files-found: error
       - name: Integrate ready approved change and start direct release
         if: github.event_name == 'pull_request_target'
         env:

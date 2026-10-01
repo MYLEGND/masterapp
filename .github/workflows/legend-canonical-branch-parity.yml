@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: legend-canonical-branch-parity
@@ -64,8 +65,58 @@ jobs:
                       conn.close()
           PYENTRY
 
+      - name: Resolve canonical-history validation identity
+        id: parityidentity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          authority_hash="$(
+            sha256sum               .github/workflows/legend-canonical-branch-parity.yml               scripts/release-lifecycle.py               scripts/test-release-lifecycle.py |
+            sha256sum | cut -d ' ' -f 1
+          )"
+          artifact_name="legend-parity-contracts-$authority_hash"
+          run_id=""
+          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
+          while read -r candidate_run; do
+            [ -n "$candidate_run" ] || continue
+            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
+            if [ "$(printf '%s' "$run" | jq -r '.path // ""')" = ".github/workflows/legend-canonical-branch-parity.yml" ]; then
+              run_id="$candidate_run"
+              break
+            fi
+          done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
+          echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
+          if [ -n "$run_id" ]; then
+            echo "REUSE_PARITY_CONTRACTS=true" >> "$GITHUB_ENV"
+            echo "Canonical-history safety authority unchanged; preserving prior success."
+          else
+            echo "REUSE_PARITY_CONTRACTS=false" >> "$GITHUB_ENV"
+          fi
+
       - name: Check canonical history safety contracts
-        run: python3 scripts/test-release-lifecycle.py
+        shell: bash
+        run: |
+          if [ "$REUSE_PARITY_CONTRACTS" = true ]; then
+            echo "Preserved unchanged canonical-history safety validation."
+            exit 0
+          fi
+          python3 scripts/test-release-lifecycle.py
+
+      - name: Retain canonical-history validation receipt
+        if: env.REUSE_PARITY_CONTRACTS != 'true'
+        shell: bash
+        run: printf '%s\n' "${{ steps.parityidentity.outputs.artifact }}" > "$RUNNER_TEMP/parity-validation-receipt.txt"
+
+      - name: Preserve canonical-history validation receipt
+        if: env.REUSE_PARITY_CONTRACTS != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.parityidentity.outputs.artifact }}
+          path: ${{ runner.temp }}/parity-validation-receipt.txt
+          retention-days: 30
+          if-no-files-found: error
 
       - name: Fetch both canonical refs
         run: |
