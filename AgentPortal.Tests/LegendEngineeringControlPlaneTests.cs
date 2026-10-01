@@ -179,7 +179,13 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         var context = Context(item, lease);
         await _store.SaveContextAsync(context, default);
 
-        var newer = incident with { Id = Guid.NewGuid(), LastSeenUtc = incident.LastSeenUtc.AddMinutes(1), Occurrences = 2 };
+        var newer = Incident(source: incident.SourceFilePath!, occurrences: 2);
+        newer.AppIdentifier = incident.AppIdentifier;
+        newer.Category = incident.Category;
+        newer.ErrorName = incident.ErrorName;
+        newer.GitCommitHash = incident.GitCommitHash;
+        newer.ReleaseVerified = incident.ReleaseVerified;
+        newer.LastSeenUtc = incident.LastSeenUtc.AddMinutes(1);
         await _store.AttachIncidentAsync(newer, decision, default);
 
         var validation = await _store.ValidateContextAsync(context.EngineeringContextId, default);
