@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-10-01 to resume the PR #345 AgentPortal control-plane release after the direct-release migration step failed solely because the unmapped LegendEngineeringControlLocks table was seeded with EF InsertData. All successful validation/build/package/Azure-preparation evidence must be preserved where the release authority can prove compatibility; only the corrected migration and downstream portal deployment/live verification are invalidated.",
-  "purpose": "Deploy the validated Founder autonomous engineering control plane from PR #345 with the direct migration correction that replaces EF InsertData on the intentionally unmapped LegendEngineeringControlLocks table with literal migration SQL. Runtime scope remains AgentPortal only. Apply the additive LegendEngineering migration through the Portal migration authority, then deploy AgentPortal and verify exact live provenance. Do not redeploy ClientApp, Protect, Parfait, the LEGEND Website, or native iOS/Android. Do not change Cloudflare routing. Do not enable API-billed OpenAI fallback.",
-  "requestId": "autonomous-engineering-control-plane-pr345-migration-resume-20261001",
+  "authorization": "Explicit Founder authorization on 2026-10-01 to deploy the already validated and merged PR #349 Founder Engineering Command Center + GPT/Codex live operational contract + canonical browser verifier integration from exact product head 5423743685f0831d24a6606f37f5f7a0b03cd6b8. Preserve all successful validation evidence; this control-only authorization must not cause the completed Step 5 candidate/baseline suites to rerun.",
+  "purpose": "Deploy only the affected AgentPortal runtime for PR #349 from the current protected legend/approved-changes lineage. Apply the two additive engineering/runtime-diagnostic migrations through the existing Portal migration authority, deploy AgentPortal, and prove exact live provenance. Do not deploy ClientApp, Protect, Parfait, the LEGEND Website, native iOS/Android, or Cloudflare routing. Do not enable any API-billed OpenAI fallback.",
+  "requestId": "founder-engineering-command-center-pr349-release-20261001",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"
