@@ -29,20 +29,20 @@ public sealed class LegendSiteToolBridgeTests
         var json = JsonSerializer.Serialize(LegendSiteToolDisclosureAuthority.SanitizePage(
             snapshot, "AgentPortal", "founder_system", new string('a', 40), "/Clients/Index"));
 
-        Assert.Contains("\\\"website.editor\\\"", json, StringComparison.Ordinal);
-        Assert.Contains("\\\"contact.submit\\\"", json, StringComparison.Ordinal);
-        Assert.Contains("\\\"/js/app.js\\\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"website.editor\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"contact.submit\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"/js/app.js\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("customer@example.com", json, StringComparison.Ordinal);
         Assert.DoesNotContain("123456789-private", json, StringComparison.Ordinal);
         Assert.DoesNotContain("550e8400", json, StringComparison.Ordinal);
         Assert.DoesNotContain("token=secret", json, StringComparison.Ordinal);
         Assert.DoesNotContain("evil.invalid", json, StringComparison.Ordinal);
         Assert.DoesNotContain("PRIVATE_", json, StringComparison.Ordinal);
-        Assert.Contains("\\\"domTextIncluded\\\":false", json, StringComparison.Ordinal);
-        Assert.Contains("\\\"inputValuesIncluded\\\":false", json, StringComparison.Ordinal);
-        Assert.Contains("\\\"cookiesIncluded\\\":false", json, StringComparison.Ordinal);
-        Assert.Contains("\\\"authorizationMaterialIncluded\\\":false", json, StringComparison.Ordinal);
-        Assert.Contains("\\\"privateCustomerDataIncluded\\\":false", json, StringComparison.Ordinal);
+        Assert.Contains("\"domTextIncluded\":false", json, StringComparison.Ordinal);
+        Assert.Contains("\"inputValuesIncluded\":false", json, StringComparison.Ordinal);
+        Assert.Contains("\"cookiesIncluded\":false", json, StringComparison.Ordinal);
+        Assert.Contains("\"authorizationMaterialIncluded\":false", json, StringComparison.Ordinal);
+        Assert.Contains("\"privateCustomerDataIncluded\":false", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public sealed class LegendSiteToolBridgeTests
         var source = Read("ClientApp", "Controllers", "HomeController.cs");
         var section = source[source.IndexOf("[Authorize]\n    [HttpGet(\"/api/legend-site-tools/catalog\")", StringComparison.Ordinal)..];
         Assert.Contains("LegendSiteToolDisclosureAuthority.CurrentPageTool", section, StringComparison.Ordinal);
-        Assert.Contains("\\\"authenticated_client\\\"", section, StringComparison.Ordinal);
+        Assert.Contains("\"authenticated_client\"", section, StringComparison.Ordinal);
         Assert.Contains("mutationToolsExposed = false", section, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendFounderToolAuthority", section, StringComparison.Ordinal);
         Assert.DoesNotContain("IFounderSoftwareRemediationService", section, StringComparison.Ordinal);
