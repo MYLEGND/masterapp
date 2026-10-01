@@ -20,6 +20,7 @@ internal sealed record EngineeringModelCatalog(
     string Code,
     IReadOnlyList<EngineeringModelOption> Models,
     int? HttpStatus = null,
+    string? ProviderErrorShape = null,
     string? ProviderErrorCode = null,
     string? ProviderErrorParam = null,
     string? ProviderRequestId = null,
@@ -47,6 +48,7 @@ internal sealed record ChatGptPlanCredentialState(
     DateTime? ProviderRetryNotBeforeUtc = null,
     string? ProviderRequestId = null,
     int? ProviderHttpStatus = null,
+    string? ProviderErrorShape = null,
     string? ProviderErrorParam = null,
     string? ProviderCircuitEpisodeId = null,
     string? ProviderRecoveredEpisodeId = null,
@@ -66,6 +68,7 @@ internal sealed record ChatGptPlanProviderFailure(
     DateTime? RetryNotBeforeUtc,
     string? ProviderRequestId,
     int? HttpStatus,
+    string? ErrorShape,
     string? ErrorParam);
 
 internal sealed record ChatGptPlanProviderExecutionLease(
@@ -583,6 +586,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
                 ProviderRetryNotBeforeUtc = failure.RetryNotBeforeUtc?.ToUniversalTime(),
                 ProviderRequestId = SafeControlValue(failure.ProviderRequestId, 160),
                 ProviderHttpStatus = failure.HttpStatus is >= 100 and <= 599 ? failure.HttpStatus : null,
+                ProviderErrorShape = SafeControlValue(failure.ErrorShape, 48),
                 ProviderErrorParam = SafeControlValue(failure.ErrorParam, 160),
                 ProviderCircuitEpisodeId = episode,
                 ProviderFailureStreak = Math.Min(current.ProviderFailureStreak + 1, 1000),
@@ -630,6 +634,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
                 ProviderRetryNotBeforeUtc = null,
                 ProviderRequestId = SafeControlValue(providerRequestId, 160),
                 ProviderHttpStatus = null,
+                ProviderErrorShape = null,
                 ProviderErrorParam = null,
                 ProviderCircuitEpisodeId = null,
                 ProviderRecoveredEpisodeId = recoveredEpisode ?? current.ProviderRecoveredEpisodeId,
@@ -1333,7 +1338,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
                    [AccessTokenExpiresUtc],[State],[Revision],[RefreshLeaseIdentity],[RefreshLeaseUntilUtc],
                    [ConnectedUtc],[LastRefreshedUtc],[UpdatedUtc],
                    [ProviderBlockerClass],[ProviderBlockerCode],[ProviderBlockedUtc],[ProviderRetryNotBeforeUtc],
-                   [ProviderRequestId],[ProviderHttpStatus],[ProviderErrorParam],[ProviderCircuitEpisodeId],
+                   [ProviderRequestId],[ProviderHttpStatus],[ProviderErrorShape],[ProviderErrorParam],[ProviderCircuitEpisodeId],
                    [ProviderRecoveredEpisodeId],[ProviderRecoveredUtc],[ProviderFailureStreak],
                    [ReadinessState],[ReadinessSignature],[ReadinessModelsJson],[ReadinessCheckedUtc],
                    [ReadinessResponseId],[ReadinessRequestId],[ReadinessCode],
@@ -1368,18 +1373,19 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
             reader.IsDBNull(18) ? null : reader.GetString(18),
             reader.IsDBNull(19) ? null : reader.GetString(19),
             reader.IsDBNull(20) ? null : reader.GetString(20),
-            reader.IsDBNull(21) ? null : reader.GetDateTime(21),
-            reader.GetInt32(22),
-            reader.GetString(23),
-            reader.IsDBNull(24) ? null : reader.GetString(24),
+            reader.IsDBNull(21) ? null : reader.GetString(21),
+            reader.IsDBNull(22) ? null : reader.GetDateTime(22),
+            reader.GetInt32(23),
+            reader.GetString(24),
             reader.IsDBNull(25) ? null : reader.GetString(25),
-            reader.IsDBNull(26) ? null : reader.GetDateTime(26),
-            reader.IsDBNull(27) ? null : reader.GetString(27),
+            reader.IsDBNull(26) ? null : reader.GetString(26),
+            reader.IsDBNull(27) ? null : reader.GetDateTime(27),
             reader.IsDBNull(28) ? null : reader.GetString(28),
             reader.IsDBNull(29) ? null : reader.GetString(29),
             reader.IsDBNull(30) ? null : reader.GetString(30),
             reader.IsDBNull(31) ? null : reader.GetString(31),
-            reader.IsDBNull(32) ? null : reader.GetDateTime(32));
+            reader.IsDBNull(32) ? null : reader.GetString(32),
+            reader.IsDBNull(33) ? null : reader.GetDateTime(33));
     }
 
     private static async Task<ClientRegistrationRecord?> ReadClientRegistrationAsync(
@@ -1451,7 +1457,8 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
               [ProviderBlockerClass]=@blockerClass,[ProviderBlockerCode]=@blockerCode,
               [ProviderBlockedUtc]=@blockedUtc,[ProviderRetryNotBeforeUtc]=@retryUtc,
               [ProviderRequestId]=@providerRequest,[ProviderHttpStatus]=@providerStatus,
-              [ProviderErrorParam]=@providerParam,[ProviderCircuitEpisodeId]=@episode,
+              [ProviderErrorShape]=@providerShape,[ProviderErrorParam]=@providerParam,
+              [ProviderCircuitEpisodeId]=@episode,
               [ProviderRecoveredEpisodeId]=@recoveredEpisode,[ProviderRecoveredUtc]=@recoveredUtc,
               [ProviderFailureStreak]=@failureStreak,[ReadinessState]=@readinessState,
               [ReadinessSignature]=@readinessSignature,[ReadinessModelsJson]=@readinessModels,
@@ -1473,13 +1480,13 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
                [AccessTokenExpiresUtc],[State],[Revision],[RefreshLeaseIdentity],[RefreshLeaseUntilUtc],
                [ConnectedUtc],[LastRefreshedUtc],[UpdatedUtc],[ProviderBlockerClass],[ProviderBlockerCode],
                [ProviderBlockedUtc],[ProviderRetryNotBeforeUtc],[ProviderRequestId],[ProviderHttpStatus],
-               [ProviderErrorParam],[ProviderCircuitEpisodeId],[ProviderRecoveredEpisodeId],[ProviderRecoveredUtc],
+               [ProviderErrorShape],[ProviderErrorParam],[ProviderCircuitEpisodeId],[ProviderRecoveredEpisodeId],[ProviderRecoveredUtc],
                [ProviderFailureStreak],[ReadinessState],[ReadinessSignature],[ReadinessModelsJson],
                [ReadinessCheckedUtc],[ReadinessResponseId],[ReadinessRequestId],[ReadinessCode],
                [ProviderExecutionLeaseIdentity],[ProviderExecutionLeaseOwner],[ProviderExecutionLeaseUntilUtc])
             VALUES (@key,@client,@access,@refresh,@scopes,@expires,@state,@revision,@lease,@leaseUntil,
                     @connected,@refreshed,@updated,@blockerClass,@blockerCode,@blockedUtc,@retryUtc,
-                    @providerRequest,@providerStatus,@providerParam,@episode,@recoveredEpisode,@recoveredUtc,
+                    @providerRequest,@providerStatus,@providerShape,@providerParam,@episode,@recoveredEpisode,@recoveredUtc,
                     @failureStreak,@readinessState,@readinessSignature,@readinessModels,@readinessChecked,
                     @readinessResponse,@readinessRequest,@readinessCode,@executionLease,@executionOwner,@executionUntil)
             """;
@@ -1603,6 +1610,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         Add(command, "@retryUtc", credential.ProviderRetryNotBeforeUtc);
         Add(command, "@providerRequest", credential.ProviderRequestId);
         Add(command, "@providerStatus", credential.ProviderHttpStatus);
+        Add(command, "@providerShape", credential.ProviderErrorShape);
         Add(command, "@providerParam", credential.ProviderErrorParam);
         Add(command, "@episode", credential.ProviderCircuitEpisodeId);
         Add(command, "@recoveredEpisode", credential.ProviderRecoveredEpisodeId);
@@ -1695,7 +1703,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
                 record.Scopes, record.ExpiresUtc, eligibilityConfirmed,
                 record.ProviderBlockerClass, record.ProviderBlockerCode, record.ProviderBlockedUtc,
                 record.ProviderRetryNotBeforeUtc, record.ProviderRequestId, record.ProviderHttpStatus,
-                record.ProviderErrorParam, record.ProviderCircuitEpisodeId, record.ProviderRecoveredEpisodeId,
+                record.ProviderErrorShape, record.ProviderErrorParam, record.ProviderCircuitEpisodeId, record.ProviderRecoveredEpisodeId,
                 record.ProviderRecoveredUtc, record.ProviderFailureStreak, record.ReadinessState,
                 record.ReadinessSignature, readinessModels, record.ReadinessCheckedUtc,
                 record.ReadinessResponseId, record.ReadinessRequestId, record.ReadinessCode);
@@ -1889,6 +1897,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         DateTime? ProviderRetryNotBeforeUtc = null,
         string? ProviderRequestId = null,
         int? ProviderHttpStatus = null,
+        string? ProviderErrorShape = null,
         string? ProviderErrorParam = null,
         string? ProviderCircuitEpisodeId = null,
         string? ProviderRecoveredEpisodeId = null,
