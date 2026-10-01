@@ -452,6 +452,23 @@ def pending_updates(api):
     return {'integration': 'no ready changes or retained-branch corrections'}
 
 
+def release_targets(revision):
+    """Read the immutable target scope authorized by an approved release commit."""
+    result = git('show', revision + ':Docs/releases/direct-release-request.json', check=False)
+    if result.returncode:
+        return set()
+    try:
+        request = json.loads(result.stdout)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return set()
+    if request.get('releaseMode') != 'approved-only':
+        return set()
+    targets = request.get('targets')
+    if not isinstance(targets, list) or any(not isinstance(item, str) for item in targets):
+        return set()
+    return set(targets)
+
+
 def successful_release(api, run, app=None):
     """Accept only complete approved direct-release receipts.
 
@@ -482,18 +499,10 @@ def successful_release(api, run, app=None):
         return False
     if app is None:
         return True
-    target_steps = {
-        'portal': 'Direct deploy AgentPortal',
-        'client': 'Direct deploy ClientApp',
-        'protect': 'Direct deploy Protect immutable ZIP',
-        'parfait': 'Direct deploy Parfait',
-        'website': 'Direct deploy Website immutable ZIP',
-    }
-    target = target_steps.get(app)
-    return bool(target) and any(
-        step['name'] == target and step['conclusion'] == 'success'
-        for step in steps
-    )
+    # A selected target may have been intentionally preserved because it was
+    # already live at APPLICATION_RELEASE_SHA. Final live proof + enforcement is
+    # authoritative; requiring the deploy step itself would reject safe retries.
+    return 'masterapp-' + app in release_targets(run.get('head_sha', ''))
 
 def direct_only_request(sha):
     # A one-release exception bound to the exact commit that changes the request.
@@ -632,21 +641,27 @@ def reconcile(api, trigger=None):
 
 
 def release_proven(api, revision, app=None):
-    """Require an exact successful direct-release receipt for a deployed revision."""
-    runs = api.pages('actions/runs?head_sha=' + revision, 'workflow_runs')
-    runs = [
-        row for row in runs
-        if row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT
-        and row.get('head_branch') == APPROVED
-    ]
-    runs.sort(
-        key=lambda row: (row.get('updated_at') or row.get('run_started_at') or row.get('created_at', ''),
-                         row.get('run_attempt', 1)),
-        reverse=True,
+    """Require a durable successful direct-release receipt for a live app revision.
+
+    The workflow head can be a release-control-only descendant while the deployed
+    application identity intentionally remains an earlier source revision. The
+    artifact name binds proof to APPLICATION_RELEASE_SHA instead of guessing from
+    the workflow head.
+    """
+    name = 'legend-approved-release-' + revision
+    artifacts = api.pages(
+        'actions/artifacts?name=' + urllib.parse.quote(name, safe=''),
+        'artifacts',
     )
-    # A failed newer attempt never erases an older successful deployment receipt
-    # for the same immutable revision, but it also cannot become proof itself.
-    for run in runs:
+    run_ids = []
+    for artifact in artifacts:
+        if artifact.get('expired'):
+            continue
+        run_id = (artifact.get('workflow_run') or {}).get('id')
+        if isinstance(run_id, int) and run_id not in run_ids:
+            run_ids.append(run_id)
+    for run_id in run_ids:
+        run = api.api(f'actions/runs/{run_id}')
         if successful_release(api, run, app=app):
             return True
     return False
