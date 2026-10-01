@@ -23,7 +23,8 @@ internal sealed class LegendEngineeringFounderNotificationService(
         if (!Guid.TryParse(AgentPortal.Security.FounderGuard.FounderOid, out _)) return;
         var founder = AgentPortal.Security.FounderGuard.FounderOid.Trim().ToLowerInvariant();
         var actionable = workItems.Where(item => item.PriorityClass == "P1" || item.RiskClass == EngineeringRiskClass.TierC ||
-            item.State is "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "FOUNDER_ESCALATION" or "CI_FAILED_NEEDS_EVIDENCE" or "RELEASE_BLOCKED").ToArray();
+            item.State is "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "FOUNDER_ESCALATION" or "CI_FAILED_NEEDS_EVIDENCE" or
+                "RELEASE_BLOCKED" or "LIVE_FUNCTIONAL_PROOF_REQUIRED").ToArray();
 
         foreach (var item in actionable)
         {
@@ -100,6 +101,7 @@ internal sealed class LegendEngineeringFounderNotificationService(
         "FOUNDER_ESCALATION" => "escalation:" + item.EvidenceRevision,
         "CI_FAILED_NEEDS_EVIDENCE" => "ci-failed:" + item.CandidateSha,
         "RELEASE_BLOCKED" => "release-blocked:" + item.CandidateSha,
+        "LIVE_FUNCTIONAL_PROOF_REQUIRED" => "live-proof:" + item.MergedSha + ":" + item.ReproducerRoute,
         _ when item.RiskClass == EngineeringRiskClass.TierC => "tier-c:" + item.EvidenceRevision,
         _ => "p1:" + item.EvidenceRevision
     };
@@ -109,6 +111,7 @@ internal sealed class LegendEngineeringFounderNotificationService(
         "FOUNDER_RELEASE_APPROVAL_REQUIRED" => "LEGEND Engineering release approval required",
         "CI_FAILED_NEEDS_EVIDENCE" => "LEGEND Engineering CI needs review",
         "RELEASE_BLOCKED" => "LEGEND Engineering release blocked",
+        "LIVE_FUNCTIONAL_PROOF_REQUIRED" => "LEGEND Engineering browser proof required",
         "FOUNDER_ESCALATION" => "LEGEND Engineering needs Founder review",
         _ when item.RiskClass == EngineeringRiskClass.TierC => "LEGEND Engineering security review required",
         _ => "LEGEND Engineering P1 incident"
