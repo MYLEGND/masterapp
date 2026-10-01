@@ -62,11 +62,10 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
     private const int MaximumTitleCharacters = 160;
     private const int MaximumSummaryCharacters = 4_000;
     private static readonly TimeSpan GitHubAppJwtLifetime = TimeSpan.FromMinutes(9);
-    // GitHub exposes the required check-run by its job identity, not the
-    // workflow display name. This is the exact current check name emitted by
-    // .github/workflows/agentportal-production-deploy.yml; deployments fail closed if it ever
-    // changes or ceases to be required on the protected production branch.
-    private static readonly string[] DefaultRequiredChecks = ["security"];
+    // GitHub exposes the required check-run by job identity. The protected
+    // approved branch requires the canonical architecture validator; lifecycle
+    // policy separately requires every owning validator before integration.
+    private static readonly string[] DefaultRequiredChecks = ["architecture-validation"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly IHttpClientFactory _httpClientFactory;
@@ -581,7 +580,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
             using var response = await SendGitHubAsync(
                 client,
                 HttpMethod.Get,
-                $"repos/{options.RepositoryIdentity}/actions/workflows/agentportal-production-deploy.yml/runs?head_sha={Uri.EscapeDataString(commitSha)}&per_page=20",
+                $"repos/{options.RepositoryIdentity}/actions/workflows/all-intentional-direct-release-20260918.yml/runs?head_sha={Uri.EscapeDataString(commitSha)}&per_page=20",
                 null,
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -681,7 +680,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
             checks = checksByName.Select(pair => new { name = pair.Key, conclusion = pair.Value }).ToArray(),
             eligibleForProtectedMerge = false,
             observedChecksPassed = identityMatches && validChecks,
-            mergeAuthority = "existing production workflow only; observed check names do not authorize merging",
+            mergeAuthority = "protected approved-branch lifecycle only; observed check names do not authorize merging",
             deployment = "not_authorized"
         };
     }
@@ -814,11 +813,11 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
     {
         using var branch = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/git/ref/heads/{Uri.EscapeDataString(options.BaseBranch)}", null, cancellationToken);
         if (!branch.IsSuccessStatusCode)
-            throw new FounderSoftwareRemediationException("production_base_unavailable", "The configured production base branch could not be read.");
+            throw new FounderSoftwareRemediationException("approved_base_unavailable", "The configured approved base branch could not be read.");
         using var document = await JsonDocument.ParseAsync(await branch.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
         var sha = ReadNestedString(document.RootElement, "object", "sha");
         if (!IsCommitSha(sha))
-            throw new FounderSoftwareRemediationException("production_base_unavailable", "The production branch did not return an immutable commit SHA.");
+            throw new FounderSoftwareRemediationException("approved_base_unavailable", "The approved branch did not return an immutable commit SHA.");
         return sha!;
     }
 
