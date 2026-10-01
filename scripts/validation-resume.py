@@ -457,6 +457,7 @@ WORKFLOWS = {
 RELEASE_STEP_POLICIES = {
     "all-intentional-direct-release-20260918.yml": {
         "Pin approved source and actual live rollback revisions": "current_state",
+        "Reuse exact retained live package when available": "rollback_artifact",
         "Preserve source-equivalent rollback without production data": "rollback_artifact",
         "Reuse exact successful validation package when available": "evidence_lookup",
         "Load exact preserved deployable package": "artifact_restore",
