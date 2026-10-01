@@ -504,12 +504,24 @@ internal sealed class LegendEngineeringOrchestrator(
             throw new InvalidOperationException("engineering_attempt_limit_reached");
 
         var owner = $"engineering:{requestedRole.ToLowerInvariant()}:{workItemId:N}";
-        var lease = await store.TryAcquireLeaseAsync(workItemId, owner, TimeSpan.FromMinutes(15), cancellationToken);
+        var lease = await store.TryAcquireLeaseAsync(
+            workItemId,
+            owner,
+            TimeSpan.FromMinutes(5),
+            cancellationToken);
         if (!lease.Acquired || string.IsNullOrWhiteSpace(lease.LeaseIdentity) || lease.LeaseExpiresUtc is null)
             throw new InvalidOperationException(lease.Code);
 
         var now = DateTime.UtcNow;
-        var expires = lease.LeaseExpiresUtc.Value < now.AddMinutes(15) ? lease.LeaseExpiresUtc.Value : now.AddMinutes(15);
+        var turnSeconds = Math.Clamp(
+            configuration.GetValue<int?>("LegendEngineering:ChatGptPlan:TurnTimeoutSeconds") ?? 900,
+            30,
+            1800);
+        // Context lifetime is longer than the individual renewable lease. The
+        // adapter must keep renewing the exact identity while inference is active;
+        // a restart or lost heartbeat lets the short lease expire and the reaper
+        // restores the pre-lease actionable state.
+        var expires = now.AddSeconds(turnSeconds).AddMinutes(5);
         var context = new EngineeringContextSnapshot(
             Guid.NewGuid(),
             LegendEngineeringContract.ContractRevision,
@@ -554,7 +566,11 @@ internal sealed class LegendEngineeringOrchestrator(
         if (role == EngineeringRole.HeadGpt)
             return item.State is "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "QUEUED" or
                 "REVIEW_REJECTED" or "CI_FAILED_NEEDS_EVIDENCE";
-        return role is EngineeringRole.IndependentReviewer or EngineeringRole.LiveVerifier;
+        if (role == EngineeringRole.IndependentReviewer)
+            return item.State == "REVIEW_REQUIRED";
+        if (role == EngineeringRole.LiveVerifier)
+            return item.State == "LIVE_FUNCTIONAL_PROOF_REQUIRED";
+        return false;
     }
 
     private static IReadOnlyList<string> AllowedTools(string role) => role switch
