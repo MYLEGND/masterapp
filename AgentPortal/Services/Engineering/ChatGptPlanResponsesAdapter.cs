@@ -150,6 +150,10 @@ internal sealed class ChatGptPlanResponsesAdapter(
         if (!providerLease.Acquired || string.IsNullOrWhiteSpace(providerLease.LeaseIdentity))
             return Failure(providerLease.Code);
 
+        using var probeHeartbeatStop = new CancellationTokenSource();
+        var probeHeartbeat = RunProviderHeartbeatAsync(
+            providerLease.LeaseIdentity,
+            probeHeartbeatStop.Token);
         try
         {
             var bindings = new[]
@@ -203,12 +207,23 @@ internal sealed class ChatGptPlanResponsesAdapter(
                         break;
                     }
 
-                    if (auto && IsUnsupportedCapability(run))
+                    if (auto && (IsUnsupportedCapability(run) || run.LogicalAttemptCompleted))
                         continue;
 
-                    var providerFailure = ClassifyProviderFailure(run, credential.ProviderFailureStreak + 1, Guid.Empty);
+                    var providerFailure = run.LogicalAttemptCompleted
+                        ? new ChatGptPlanProviderFailure(
+                            "MODEL_BINDING",
+                            "chatgpt_plan_model_payload_incompatible",
+                            null,
+                            run.ProviderRequestId,
+                            run.HttpStatus,
+                            run.ProviderErrorParam)
+                        : ClassifyProviderFailure(
+                            run,
+                            credential.ProviderFailureStreak + 1,
+                            Guid.Empty);
                     await credentials.RecordProviderFailureAsync(providerFailure, cancellationToken);
-                    return Failure(run.Code);
+                    return Failure(providerFailure.Code);
                 }
 
                 if (selected is null)
@@ -235,6 +250,9 @@ internal sealed class ChatGptPlanResponsesAdapter(
         }
         finally
         {
+            probeHeartbeatStop.Cancel();
+            try { await probeHeartbeat; }
+            catch (OperationCanceledException) { }
             await credentials.ReleaseProviderExecutionLeaseAsync(
                 providerLease.LeaseIdentity,
                 CancellationToken.None);
