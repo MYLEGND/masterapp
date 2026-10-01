@@ -25,6 +25,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 env:
@@ -47,7 +48,45 @@ jobs:
           fetch-depth: 1
           lfs: true
 
+      - name: Reuse exact validated website artifact when available
+        id: reusewebsite
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact_name="legend-public-website-${GITHUB_SHA}"
+          run_id=""
+          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
+          while read -r candidate_run; do
+            [ -n "$candidate_run" ] || continue
+            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
+            if [ "$(printf '%s' "$run" | jq -r '.path // ""')" = ".github/workflows/legend-website-production-deploy.yml" ] &&
+               [ "$(printf '%s' "$run" | jq -r '.head_sha // ""')" = "$GITHUB_SHA" ]; then
+              run_id="$candidate_run"
+              break
+            fi
+          done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
+          if [ -n "$run_id" ]; then
+            echo "REUSE_WEBSITE_VALIDATION=true" >> "$GITHUB_ENV"
+            echo "Exact website validation preserved from run $run_id."
+          else
+            echo "REUSE_WEBSITE_VALIDATION=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Load exact validated website artifact
+        if: steps.reusewebsite.outputs.run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.reusewebsite.outputs.artifact }}
+          path: Legend-Website/dist
+          run-id: ${{ steps.reusewebsite.outputs.run_id }}
+          github-token: ${{ github.token }}
+
       - name: Setup Node
+        if: env.REUSE_WEBSITE_VALIDATION != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -55,6 +94,10 @@ jobs:
       - name: Build public site from canonical LEGEND design authority
         working-directory: Legend-Website
         run: |
+          if [ "$REUSE_WEBSITE_VALIDATION" = true ]; then
+            echo "Preserved exact website build validation."
+            exit 0
+          fi
           npm run build
           cp public/web.config dist/web.config
           npm run check
@@ -62,6 +105,10 @@ jobs:
       - name: Verify migration route boundary
         shell: bash
         run: |
+          if [ "$REUSE_WEBSITE_VALIDATION" = true ]; then
+            echo "Preserved exact website route-boundary validation."
+            exit 0
+          fi
           set -euo pipefail
           test -f Legend-Website/dist/index.html
           test -f Legend-Website/dist/about/index.html
@@ -88,6 +135,7 @@ jobs:
           path: Legend-Website/dist
           if-no-files-found: error
           retention-days: 7
+          overwrite: true
 
   deploy:
     if: github.event_name == 'push'
@@ -104,17 +152,11 @@ jobs:
           fetch-depth: 1
           lfs: true
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Download exact validated production website
+        uses: actions/download-artifact@v4
         with:
-          node-version: '20'
-
-      - name: Rebuild exact production website
-        working-directory: Legend-Website
-        run: |
-          npm run build
-          cp public/web.config dist/web.config
-          npm run check
+          name: legend-public-website-${{ github.sha }}
+          path: Legend-Website/dist
 
       - name: Verify current approved release authorization
         shell: bash
