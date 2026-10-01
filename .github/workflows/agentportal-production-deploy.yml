@@ -117,6 +117,7 @@ jobs:
       name: Production
     permissions:
       contents: read
+      actions: read
       id-token: write
 
     steps:
@@ -125,6 +126,92 @@ jobs:
         with:
           ref: ${{ needs.candidate.outputs.sha }}
           fetch-depth: 0
+
+      - name: Reuse exact successful release-security evidence when available
+        id: reusesecurity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          artifact_name="legend-release-security-tested-$CANDIDATE_SHA"
+          run_id=""
+          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
+          while read -r candidate_run; do
+            [ -n "$candidate_run" ] || continue
+            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
+            workflow_path="$(printf '%s' "$run" | jq -r '.path // ""')"
+            if [ "$workflow_path" = ".github/workflows/agentportal-production-deploy.yml" ]; then
+              run_id="$candidate_run"
+              break
+            fi
+          done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
+          if [ -z "$run_id" ]; then
+            echo "REUSE_SECURITY_CACHE=false" >> "$GITHUB_ENV"
+            echo "No exact reusable release-security evidence exists."
+            exit 0
+          fi
+
+          if [ "$run_id" = "$GITHUB_RUN_ID" ] && [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+            prior_attempt=$((GITHUB_RUN_ATTEMPT - 1))
+            jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$prior_attempt/jobs?per_page=100")"
+          else
+            jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=latest&per_page=100")"
+          fi
+          step_outcome() {
+            local step_name="$1"
+            printf '%s' "$jobs" | jq -r --arg name "$step_name" '
+              [.jobs[] | select(.name == "release-security") | .steps[] | select(.name == $name) | .conclusion][0] // ""'
+          }
+          export_gate() {
+            local variable="$1"
+            local step_name="$2"
+            local outcome
+            outcome="$(step_outcome "$step_name")"
+            if [ "$outcome" = "success" ]; then
+              echo "$variable=true" >> "$GITHUB_ENV"
+            else
+              echo "$variable=false" >> "$GITHUB_ENV"
+            fi
+          }
+
+          echo "REUSE_SECURITY_CACHE=true" >> "$GITHUB_ENV"
+          export_gate PRESERVE_DB_VALIDATION "Database migration validation"
+          export_gate PRESERVE_NO_SKIPS "No skipped security tests"
+          export_gate PRESERVE_VULNERABILITY_AUDIT "Dependency vulnerability audit"
+          export_gate PRESERVE_SECRET_SCAN "Committed-secret scan"
+          export_gate PRESERVE_COMPOSITION_INVARIANT "Architecture invariant - composition roots use shared authorities"
+          export_gate PRESERVE_KEYRING_INVARIANT "Architecture invariant - no inline Azure key-ring wiring"
+          export_gate PRESERVE_DIFF_CHECK "git diff --check"
+          echo "Exact tested-binary evidence found in run $run_id. Passed later gates will be preserved; failed or unexecuted gates will run."
+
+      - name: Load exact preserved release-security evidence
+        if: steps.reusesecurity.outputs.run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.reusesecurity.outputs.artifact }}
+          path: ${{ runner.temp }}/release-security-cache
+          run-id: ${{ steps.reusesecurity.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Restore preserved tested binaries and bounded decision
+        if: steps.reusesecurity.outputs.run_id != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$RUNNER_TEMP/release-security-cache/tested"
+          mkdir -p /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0
+          cp -a "$RUNNER_TEMP/release-security-cache/tested/." /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0/
+          results_dir="$RUNNER_TEMP/legend-full-regression-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$results_dir"
+          test -f "$RUNNER_TEMP/release-security-cache/release-decision.json"
+          test -f "$RUNNER_TEMP/release-security-cache/failure-summary.json"
+          cp "$RUNNER_TEMP/release-security-cache/release-decision.json" "$results_dir/release-decision.json"
+          cp "$RUNNER_TEMP/release-security-cache/failure-summary.json" "$results_dir/failure-summary.json"
 
       - name: Require candidate to be retained in approved changes
         env:
@@ -150,9 +237,11 @@ jobs:
         run: python3 scripts/test-legend-baseline-regression.py
 
       - name: Restore
+        if: env.REUSE_SECURITY_CACHE != 'true'
         run: dotnet restore MASTERAPP.sln
 
       - name: Build Release (must be 0 warnings / 0 errors)
+        if: env.REUSE_SECURITY_CACHE != 'true'
         run: |
           set -o pipefail
           dotnet build MASTERAPP.sln -c Release --no-restore 2>&1 | tee build.log
@@ -162,6 +251,7 @@ jobs:
           fi
 
       - name: Test discovery preflight
+        if: env.REUSE_SECURITY_CACHE != 'true'
         run: |
           set -o pipefail
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --list-tests 2>&1 | tee test-discovery.log
@@ -211,6 +301,7 @@ jobs:
           fi
 
       - name: Login to existing Azure configuration authority
+        if: env.REUSE_SECURITY_CACHE != 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -218,6 +309,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Test full suite including security regressions
+        if: env.REUSE_SECURITY_CACHE != 'true'
         env:
           LEGEND_BASELINE_PRODUCTION_BASE: ${{ needs.candidate.outputs.base }}
         run: |
@@ -271,6 +363,30 @@ jobs:
             --production-base-sha "$LEGEND_BASELINE_PRODUCTION_BASE" \
             --output "$results_dir/release-decision.json"
 
+      - name: Stage exact successful release-security evidence
+        if: env.REUSE_SECURITY_CACHE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/legend-full-regression-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test -f "$results_dir/release-decision.json"
+          test -f "$results_dir/failure-summary.json"
+          test -d /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0
+          rm -rf "$RUNNER_TEMP/release-security-cache"
+          mkdir -p "$RUNNER_TEMP/release-security-cache/tested"
+          cp -a /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0/. "$RUNNER_TEMP/release-security-cache/tested/"
+          cp "$results_dir/release-decision.json" "$RUNNER_TEMP/release-security-cache/release-decision.json"
+          cp "$results_dir/failure-summary.json" "$RUNNER_TEMP/release-security-cache/failure-summary.json"
+
+      - name: Preserve exact successful release-security evidence
+        if: env.REUSE_SECURITY_CACHE != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-release-security-tested-${{ needs.candidate.outputs.sha }}
+          path: ${{ runner.temp }}/release-security-cache/
+          if-no-files-found: error
+          retention-days: 7
+
       # Real-model execution is credentialed. Publish only the validator's
       # bounded decision/count/hash summary; raw TRX and logs stay runner-private.
       - name: Preserve full-regression decision and failure evidence
@@ -288,10 +404,20 @@ jobs:
         env:
           DB_BASE_REF: ${{ needs.candidate.outputs.base }}
           DB_BUILD_CONFIGURATION: Release
-        run: ./scripts/db.sh validate-artifacts
+        shell: bash
+        run: |
+          if [ "${PRESERVE_DB_VALIDATION:-false}" = true ]; then
+            echo "Preserved prior exact-candidate success: Database migration validation"
+            exit 0
+          fi
+          ./scripts/db.sh validate-artifacts
 
       - name: No skipped security tests
         run: |
+          if [ "${PRESERVE_NO_SKIPS:-false}" = true ]; then
+            echo "Preserved prior exact-candidate success: No skipped security tests"
+            exit 0
+          fi
           if grep -REn "Skip[[:space:]]*=" AgentPortal.Tests/*Antiforgery*.cs \
                 AgentPortal.Tests/Phase3IdentityAuthorityTests.cs \
                 AgentPortal.Tests/Phase4PlatformSecurityTests.cs \
@@ -304,6 +430,10 @@ jobs:
 
       - name: Dependency vulnerability audit
         run: |
+          if [ "${PRESERVE_VULNERABILITY_AUDIT:-false}" = true ]; then
+            echo "Preserved prior exact-candidate success: Dependency vulnerability audit"
+            exit 0
+          fi
           set -o pipefail
           dotnet list MASTERAPP.sln package --vulnerable --include-transitive 2>&1 | tee vuln.log
           if grep -qiE '>[[:space:]]*(Low|Moderate|High|Critical)' vuln.log || grep -qi 'has the following vulnerable' vuln.log; then
@@ -313,6 +443,10 @@ jobs:
 
       - name: Committed-secret scan
         run: |
+          if [ "${PRESERVE_SECRET_SCAN:-false}" = true ]; then
+            echo "Preserved prior exact-candidate success: Committed-secret scan"
+            exit 0
+          fi
           if git ls-files | grep -E 'publish-macos/.*appsettings.*\.json$'; then
             echo "::error::Committed publish-macos appsettings may contain secrets."
             exit 1
@@ -325,6 +459,10 @@ jobs:
 
       - name: Architecture invariant - composition roots use shared authorities
         run: |
+          if [ "${PRESERVE_COMPOSITION_INVARIANT:-false}" = true ]; then
+            echo "Preserved prior exact-candidate success: Architecture invariant - composition roots use shared authorities"
+            exit 0
+          fi
           set -e
           check() { grep -q "$2" "$1" || { echo "::error::$1 missing shared authority '$2'"; exit 1; }; }
           check AgentPortal/Program.cs AddPlatformDataProtection
@@ -355,6 +493,10 @@ jobs:
 
       - name: Architecture invariant - no inline Azure key-ring wiring
         run: |
+          if [ "${PRESERVE_KEYRING_INVARIANT:-false}" = true ]; then
+            echo "Preserved prior exact-candidate success: Architecture invariant - no inline Azure key-ring wiring"
+            exit 0
+          fi
           if grep -REn 'PersistKeysToAzureBlobStorage|ProtectKeysWithAzureKeyVault' \
                 AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
             echo "::error::An application composition root inlines Azure Data Protection key-ring wiring."
@@ -362,7 +504,13 @@ jobs:
           fi
 
       - name: git diff --check
-        run: git diff --check
+        shell: bash
+        run: |
+          if [ "${PRESERVE_DIFF_CHECK:-false}" = true ]; then
+            echo "Preserved prior exact-candidate success: git diff --check"
+            exit 0
+          fi
+          git diff --check
 
       - name: Preserve exact tested binaries for postdeployment verification
         uses: actions/upload-artifact@v4
@@ -371,6 +519,7 @@ jobs:
           path: /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0
           if-no-files-found: error
           retention-days: 1
+          overwrite: true
 
   # Keep this job name stable: it is the protected production required check.
   # For canonical branch parity it performs ancestry/integrity checks only.
