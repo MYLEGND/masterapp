@@ -175,7 +175,7 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
         var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
         var tools = new List<object> { LegendSiteToolDisclosureAuthority.CurrentPageTool };
         tools.AddRange(authority
-            .GetAvailableCloudTools(null, LegendConnectExternalProviderPolicy.CloudflareFoundation)
+            .GetAvailableSiteReadTools()
             .Where(tool =>
             {
                 var element = JsonSerializer.SerializeToElement(tool);
