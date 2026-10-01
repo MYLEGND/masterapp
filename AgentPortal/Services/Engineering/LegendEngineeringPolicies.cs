@@ -108,6 +108,11 @@ internal static class LegendEngineeringPolicies
     internal static bool IsImmutableSha(string? value)
         => value?.Length == 40 && value.All(Uri.IsHexDigit) && value.Any(ch => ch != '0');
 
+    internal static string ResolveRepairBaseSha(EngineeringWorkItemSnapshot item) =>
+        IsImmutableSha(item.CandidateSha)
+            ? item.CandidateSha!.ToLowerInvariant()
+            : item.LiveSha.ToLowerInvariant();
+
     private static string ClassifyFailure(RuntimeDiagnosticIncident incident, string? disclosure)
     {
         var category = (incident.Category ?? string.Empty).ToUpperInvariant();
