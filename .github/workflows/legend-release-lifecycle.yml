@@ -129,7 +129,7 @@ jobs:
           args=()
           if [ -n "$RELEASE_RUN" ]; then args+=(--run "$RELEASE_RUN"); fi
           python3 scripts/release-lifecycle.py reconcile "${args[@]}"
-      - name: Refresh references after synchronization
+      - name: Refresh approved references before cleanup
         run: git fetch --no-tags --prune origin
       - name: Retire only preserved successfully deployed branches
         if: github.event_name != 'pull_request_target' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
