@@ -39,6 +39,11 @@ public sealed record LegendSitePageSnapshot(
 /// </summary>
 public static class LegendSiteToolDisclosureAuthority
 {
+    public const string SafeSource = "SAFE_SOURCE";
+    public const string OperationalMetadata = "OPERATIONAL_METADATA";
+    public const string ExistenceOnly = "EXISTENCE_ONLY";
+    public const string PrivacyProtected = "PRIVACY_PROTECTED";
+    public const string IntegrityProtected = "INTEGRITY_PROTECTED";
     public const string CurrentPageToolName = "legend_current_page_diagnostics";
 
     private static readonly HashSet<string> ErrorNames = new(StringComparer.Ordinal)
