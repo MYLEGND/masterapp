@@ -19,6 +19,7 @@ internal interface ILegendEngineeringOrchestrator
     Task<EngineeringTaskPacket> GetTaskPacketAsync(Guid engineeringContextId, CancellationToken cancellationToken);
     Task<object> InspectRepositoryAsync(Guid engineeringContextId, string path, string revision, CancellationToken cancellationToken);
     Task<object> PrepareRepairAsync(Guid engineeringContextId, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
+    Task<object> ApproveReleaseAsync(ClaimsPrincipal founder, Guid workItemId, CancellationToken cancellationToken);
 }
 
 internal sealed class LegendEngineeringOrchestrator(
@@ -317,6 +318,41 @@ internal sealed class LegendEngineeringOrchestrator(
         };
         await store.UpdateWorkItemAsync(updated, cancellationToken);
         return result;
+    }
+
+
+    public async Task<object> ApproveReleaseAsync(
+        ClaimsPrincipal founder,
+        Guid workItemId,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(founder);
+        var item = await store.GetWorkItemAsync(workItemId, cancellationToken);
+        if (item is null) return new { ok = false, error = "work_item_not_found" };
+        if (item.RiskClass != EngineeringRiskClass.TierB ||
+            item.State != "FOUNDER_RELEASE_APPROVAL_REQUIRED" ||
+            item.ValidationState != "GREEN" ||
+            item.PullRequestNumber is not > 0 ||
+            !LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha))
+            return new { ok = false, error = "founder_release_approval_state_invalid" };
+
+        var approved = item with
+        {
+            State = "VALIDATED",
+            FounderReleaseApprovedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        await store.UpdateWorkItemAsync(approved, cancellationToken);
+        return new
+        {
+            ok = true,
+            workItemId,
+            approval = "tier_b_release",
+            approvedUtc = approved.FounderReleaseApprovedUtc,
+            candidateSha = approved.CandidateSha,
+            pullRequestNumber = approved.PullRequestNumber,
+            automaticReleaseStillRequiresCanonicalCohortPolicy = true
+        };
     }
 
     private async Task<EngineeringContextSnapshot> BootstrapCoreAsync(
