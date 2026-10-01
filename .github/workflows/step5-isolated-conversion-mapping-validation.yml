@@ -360,35 +360,35 @@ jobs:
 
           workflow_path=".github/workflows/step5-isolated-conversion-mapping-validation.yml"
           base_tree="$(git rev-parse "$CURRENT_BASE^{tree}")"
-          artifact_name="step5-tree-$base_tree"
-          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
-
-          while read -r run_id; do
-            [[ -n "$run_id" ]] || continue
-            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
-            run_path="$(printf '%s' "$run" | jq -r '.path // ""')"
-            run_event="$(printf '%s' "$run" | jq -r '.event // ""')"
-            run_status="$(printf '%s' "$run" | jq -r '.status // ""')"
-            run_head="$(printf '%s' "$run" | jq -r '.head_sha // ""')"
-            run_repo="$(printf '%s' "$run" | jq -r '.head_repository.full_name // ""')"
-            [[ "$run_path" == "$workflow_path" && "$run_event" == "pull_request" && "$run_status" == "completed" ]] || continue
-            [[ "$run_repo" == "$GITHUB_REPOSITORY" && "$run_head" =~ ^[0-9a-f]{40}$ ]] || continue
-            if ! python3 scripts/validation-resume.py job-unchanged \
-              --workflow-path "$workflow_path" \
-              --prior-sha "$run_head" \
-              --job candidate \
-              --job baseline; then
-              continue
-            fi
-            echo "reusable=true" >> "$GITHUB_OUTPUT"
-            echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-            echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
-            echo "Reusing full-suite baseline by exact Git tree identity $base_tree from run $run_id."
-            exit 0
-          done < <(
-            printf '%s' "$artifacts" | jq -r \
-              '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++'
-          )
+          for artifact_name in "step5-tree-candidate-$base_tree" "step5-tree-baseline-$base_tree"; do
+            artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
+            while read -r run_id; do
+              [[ -n "$run_id" ]] || continue
+              run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+              run_path="$(printf '%s' "$run" | jq -r '.path // ""')"
+              run_event="$(printf '%s' "$run" | jq -r '.event // ""')"
+              run_status="$(printf '%s' "$run" | jq -r '.status // ""')"
+              run_head="$(printf '%s' "$run" | jq -r '.head_sha // ""')"
+              run_repo="$(printf '%s' "$run" | jq -r '.head_repository.full_name // ""')"
+              [[ "$run_path" == "$workflow_path" && "$run_event" == "pull_request" && "$run_status" == "completed" ]] || continue
+              [[ "$run_repo" == "$GITHUB_REPOSITORY" && "$run_head" =~ ^[0-9a-f]{40}$ ]] || continue
+              if ! python3 scripts/validation-resume.py job-unchanged \
+                --workflow-path "$workflow_path" \
+                --prior-sha "$run_head" \
+                --job candidate \
+                --job baseline; then
+                continue
+              fi
+              echo "reusable=true" >> "$GITHUB_OUTPUT"
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
+              echo "Reusing full-suite baseline by exact Git tree identity $base_tree from run $run_id."
+              exit 0
+            done < <(
+              printf '%s' "$artifacts" | jq -r \
+                '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++'
+            )
+          done
 
           echo "No content-identical full-suite baseline artifact exists; baseline suite will execute."
 
@@ -444,7 +444,7 @@ jobs:
         if: always() && steps.full.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: step5-tree-${{ steps.tree.outputs.sha }}
+          name: step5-tree-candidate-${{ steps.tree.outputs.sha }}
           path: /tmp/step5-candidate/candidate.trx
           if-no-files-found: error
           retention-days: 30
@@ -495,7 +495,7 @@ jobs:
         if: always() && steps.full.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: step5-tree-${{ steps.tree.outputs.sha }}
+          name: step5-tree-baseline-${{ steps.tree.outputs.sha }}
           path: /tmp/step5-baseline/baseline.trx
           if-no-files-found: error
           retention-days: 30
