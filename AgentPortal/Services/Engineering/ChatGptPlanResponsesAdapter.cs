@@ -38,10 +38,11 @@ internal sealed class ChatGptPlanResponsesAdapter(
         var readinessMatches =
             string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) &&
             string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase);
+        var triage = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.TriageWorker, credential) : null;
         var head = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.HeadGpt, credential) : null;
         var codex = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.CodexImplementer, credential) : null;
         var reviewer = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.IndependentReviewer, credential) : null;
-        var modelsReady = head is not null && codex is not null && reviewer is not null;
+        var modelsReady = triage is not null && head is not null && codex is not null && reviewer is not null;
         var circuitOpen = !string.IsNullOrWhiteSpace(credential.ProviderBlockerCode);
         var runtimeReady = credential.Ready && readinessMatches && modelsReady && !circuitOpen;
         var eligibility = !contract.ModelExecutionEnabled
@@ -152,6 +153,7 @@ internal sealed class ChatGptPlanResponsesAdapter(
             string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) &&
             credential.ReadinessCheckedUtc is { } checkedUtc &&
             checkedUtc > now.AddHours(-6) &&
+            ResolveCachedReadyModel(EngineeringRole.TriageWorker, credential) is not null &&
             ResolveCachedReadyModel(EngineeringRole.HeadGpt, credential) is not null &&
             ResolveCachedReadyModel(EngineeringRole.CodexImplementer, credential) is not null &&
             ResolveCachedReadyModel(EngineeringRole.IndependentReviewer, credential) is not null)
@@ -183,6 +185,7 @@ internal sealed class ChatGptPlanResponsesAdapter(
 
             var bindings = new[]
             {
+                (Role: EngineeringRole.TriageWorker, Tier: EngineeringModelTier.FastTriage, Configured: contract.HeadGptModel),
                 (Role: EngineeringRole.HeadGpt, Tier: EngineeringModelTier.DeepReasoning, Configured: contract.HeadGptModel),
                 (Role: EngineeringRole.CodexImplementer, Tier: EngineeringModelTier.CodeImplementation, Configured: contract.CodexModel),
                 (Role: EngineeringRole.IndependentReviewer, Tier: EngineeringModelTier.IndependentReview, Configured: contract.ReviewerModel)
@@ -629,6 +632,8 @@ internal sealed class ChatGptPlanResponsesAdapter(
 
     private static string CanaryPrompt(string role) => role switch
     {
+        EngineeringRole.TriageWorker =>
+            """This is a non-mutating LEGEND runtime readiness canary. Return decision STOP, likely_domain "readiness", strong_reasoning_required false, and a short summary confirming structured-output compatibility. Do not diagnose or mutate production work.""",
         EngineeringRole.HeadGpt =>
             """This is a non-mutating LEGEND runtime readiness canary. Return decision STOP, evidence_sufficient false, and a short summary confirming structured-output compatibility. Do not propose or perform work.""",
         EngineeringRole.IndependentReviewer =>
