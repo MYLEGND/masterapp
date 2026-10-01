@@ -146,6 +146,102 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
         self.assertFalse(plan["gates"]["cms-tests"]["run"])
 
+
+    def test_single_gate_definition_change_invalidates_only_that_gate(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            [],
+            "prior_run",
+            {"Verify consolidated release scope and routing policy"},
+            False,
+        )
+        self.assertEqual("incremental", plan["mode"])
+        self.assertTrue(plan["gates"]["release-policy"]["run"])
+        self.assertEqual("gate_definition_changed", plan["gates"]["release-policy"]["reason"])
+        for key, gate in plan["gates"].items():
+            if key != "release-policy":
+                self.assertFalse(gate["run"], key)
+
+    def test_workflow_structure_change_still_fails_closed(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            [],
+            "prior_run",
+            set(),
+            True,
+        )
+        self.assertEqual("full", plan["mode"])
+        self.assertTrue(all(gate["run"] for gate in plan["gates"].values()))
+
+    def test_gate_scope_masks_only_configured_step_bodies(self):
+        prior = """name: X
+jobs:
+  validate:
+    steps:
+      - name: Gate A
+        run: echo old
+      - name: Gate B
+        run: echo same
+"""
+        current = prior.replace("echo old", "echo new")
+        changed, structure = m.workflow_gate_change_scope(prior, current, {"Gate A", "Gate B"})
+        self.assertEqual({"Gate A"}, changed)
+        self.assertFalse(structure)
+
+        structure_edit = current.replace("name: X", "name: Y")
+        _, structure = m.workflow_gate_change_scope(prior, structure_edit, {"Gate A", "Gate B"})
+        self.assertTrue(structure)
+
+    def test_job_definition_comparison_is_exact_and_bounded(self):
+        text = """jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo candidate
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo baseline
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo validate
+"""
+        blocks = m._job_blocks(text)
+        self.assertIn("candidate", blocks)
+        self.assertIn("baseline", blocks)
+        self.assertNotEqual(blocks["candidate"], blocks["baseline"])
+
+    def test_release_workflow_policy_covers_every_named_direct_release_step(self):
+        path = ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
+        policies = m.verify_release_policy_coverage(
+            "all-intentional-direct-release-20260918.yml",
+            path.read_text(),
+        )
+        self.assertEqual(
+            set(m.named_step_blocks(path.read_text())),
+            set(policies),
+        )
+
+    def test_release_lifecycle_policy_covers_every_named_step(self):
+        path = ROOT / ".github" / "workflows" / "legend-release-lifecycle.yml"
+        policies = m.verify_release_policy_coverage(
+            "legend-release-lifecycle.yml",
+            path.read_text(),
+        )
+        self.assertEqual(
+            set(m.named_step_blocks(path.read_text())),
+            set(policies),
+        )
+
     def test_validation_authority_change_fails_closed_to_full(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
