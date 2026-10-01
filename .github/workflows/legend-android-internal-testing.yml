@@ -3,11 +3,6 @@ name: Deploy Legend Android to Internal Testing
 # Production release authority for Google Play internal testing.
 
 on:
-  push:
-    branches:
-      - production
-    paths:
-      - '.github/workflows/legend-android-internal-testing.yml'
   workflow_dispatch:
     inputs:
       release_notes:
@@ -30,7 +25,7 @@ permissions:
 
 jobs:
   deploy-internal:
-    if: (github.ref == 'refs/heads/production' && (github.event_name == 'push' || inputs.confirmation == 'DEPLOY_INTERNAL')) || (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'BUILD_SIGNED')
+    if: github.ref == 'refs/heads/legend/approved-changes' && github.event_name == 'workflow_dispatch' && (inputs.confirmation == 'DEPLOY_INTERNAL' || inputs.confirmation == 'BUILD_SIGNED')
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: google-play-internal
