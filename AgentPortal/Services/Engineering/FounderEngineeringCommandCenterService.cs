@@ -4,11 +4,24 @@ using Domain.Engineering;
 
 namespace AgentPortal.Services.Engineering;
 
-public sealed class FounderEngineeringCommandCenterService(
+public interface IFounderEngineeringCommandCenterService
+{
+    Task<FounderEngineeringCommandCenterViewModel> GetAsync(CancellationToken cancellationToken);
+    Task<FounderEngineeringContractMutationResult> SaveAsync(
+        FounderEngineeringContractInput input,
+        CancellationToken cancellationToken);
+    Task<FounderEngineeringContractMutationResult> RestoreAsync(
+        FounderEngineeringRestoreInput input,
+        CancellationToken cancellationToken);
+    Task DisconnectChatGptAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class FounderEngineeringCommandCenterService(
     ILegendEngineeringContractAuthority contractAuthority,
     ILegendEngineeringOrchestrator orchestrator,
     ILegendChatGptPlanCredentialAuthority credentials,
     IConfiguration configuration)
+    : IFounderEngineeringCommandCenterService
 {
     public async Task<FounderEngineeringCommandCenterViewModel> GetAsync(CancellationToken cancellationToken)
     {
@@ -57,10 +70,11 @@ public sealed class FounderEngineeringCommandCenterService(
         };
     }
 
-    public Task<LegendEngineeringOperationalContract> SaveAsync(
+    public async Task<FounderEngineeringContractMutationResult> SaveAsync(
         FounderEngineeringContractInput input,
-        CancellationToken cancellationToken) =>
-        contractAuthority.UpdateAsync(
+        CancellationToken cancellationToken)
+    {
+        var value = await contractAuthority.UpdateAsync(
             input.ExpectedRevision,
             input.ModelExecutionEnabled,
             input.SharedDirective,
@@ -69,15 +83,20 @@ public sealed class FounderEngineeringCommandCenterService(
             input.ReviewerDirective,
             "Founder",
             cancellationToken);
+        return new(value.Revision, value.Version);
+    }
 
-    public Task<LegendEngineeringOperationalContract> RestoreAsync(
+    public async Task<FounderEngineeringContractMutationResult> RestoreAsync(
         FounderEngineeringRestoreInput input,
-        CancellationToken cancellationToken) =>
-        contractAuthority.RestoreAsync(
+        CancellationToken cancellationToken)
+    {
+        var value = await contractAuthority.RestoreAsync(
             input.ExpectedRevision,
             input.Revision,
             "Founder",
             cancellationToken);
+        return new(value.Revision, value.Version);
+    }
 
     public Task DisconnectChatGptAsync(CancellationToken cancellationToken) =>
         credentials.DisconnectAsync(cancellationToken);
