@@ -578,7 +578,7 @@ internal sealed partial class LegendFounderToolAuthority
                     packetType = "legend_sanitized_software_repair.v1",
                     observedApplication = application,
                     liveRoute = route,
-                    deployedSha = sourceRevision.ToLowerInvariant(),
+                    deployedSha = sourceRevision!.ToLowerInvariant(),
                     failureClass,
                     expectedBehavior = expected,
                     observedBehavior = observed,
