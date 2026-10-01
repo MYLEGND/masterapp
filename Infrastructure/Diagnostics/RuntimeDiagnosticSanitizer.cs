@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Domain.Entities;
 using Microsoft.AspNetCore.Http;
@@ -18,6 +19,7 @@ internal static partial class RuntimeDiagnosticSanitizer
             value.Category, value.AppVersion, value.ErrorName, value.GitCommitHash }.All(item => item is null || item.Length <= 128) &&
         (value.Route?.Length ?? 0) <= 1024 && (value.SourceFilePath?.Length ?? 0) <= 1024 &&
         (value.ErrorMessage?.Length ?? 0) <= 2048 && (value.StackTrace?.Length ?? 0) <= 8192 &&
+        StructuralReproducerBounded(value.StructuralReproducer) &&
         value.StatusCode is null or >= 100 and <= 599;
 
     internal static RuntimeDiagnosticIncident Sanitize(RuntimeDiagnosticEvent value, bool server,
@@ -101,11 +103,14 @@ internal static partial class RuntimeDiagnosticSanitizer
             // A native/web advertised build is explicitly unverified, never the API host release.
             incident.AppVersion = value.AppVersion is { Length: <= 40 } appVersion && VersionNumber().IsMatch(appVersion) ? appVersion : null;
             incident.SourceFilePath = SafePublicSource(value.SourceFilePath, environment, context);
+            var structural = LegendSiteToolDisclosureAuthority.SanitizeStructuralReproducer(value.StructuralReproducer);
+            if (structural is not null)
+                incident.StructuralReproducerJson = JsonSerializer.Serialize(structural);
         }
         incident.DeduplicationKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n',
             incident.AppIdentifier, incident.Platform, incident.Route, incident.ErrorName, incident.Category,
             incident.StatusCode, incident.GitCommitHash, incident.ReleaseVerified, incident.SourceFilePath,
-            incident.StackTrace)))).ToLowerInvariant();
+            incident.StackTrace, incident.StructuralReproducerJson)))).ToLowerInvariant();
         return incident;
     }
 
@@ -169,6 +174,19 @@ internal static partial class RuntimeDiagnosticSanitizer
         return file.Length <= 180 && SourcePath().IsMatch(file) && !file.Contains("..", StringComparison.Ordinal)
             ? file : null;
     }
+
+    private static bool StructuralReproducerBounded(RuntimeDiagnosticStructuralReproducer? value)
+    {
+        if (value is null) return true;
+        return BoundedSymbols(value.ComponentIds, 24) &&
+               BoundedSymbols(value.ActionKeys, 24) &&
+               BoundedSymbols(value.CompositionIds, 24) &&
+               BoundedSymbols(value.ModalIds, 16);
+    }
+
+    private static bool BoundedSymbols(IReadOnlyList<string>? values, int maximumItems) =>
+        values is null || values.Count <= maximumItems &&
+        values.All(value => value is not null && value.Length <= 128);
 
     [GeneratedRegex("^[a-fA-F0-9]{40}$")] private static partial Regex Sha();
     [GeneratedRegex("^[a-f0-9]{32}$")] private static partial Regex TraceId();

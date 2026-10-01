@@ -252,6 +252,7 @@ public class MasterAppDbContext : DbContext
             entity.Property(row => row.AppVersion).HasMaxLength(80);
             entity.Property(row => row.SourceFilePath).HasMaxLength(180);
             entity.Property(row => row.StackTrace).HasMaxLength(2300);
+            entity.Property(row => row.StructuralReproducerJson).HasMaxLength(6000);
             entity.Property(row => row.CorrelationId).HasMaxLength(32);
             entity.Property(row => row.Disposition).IsRequired().HasMaxLength(32);
             entity.Property(row => row.ReviewVersion).IsConcurrencyToken();

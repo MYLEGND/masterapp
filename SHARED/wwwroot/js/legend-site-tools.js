@@ -44,14 +44,6 @@
     return "xxl";
   }
 
-  function values(selector, attribute, maximum) {
-    try {
-      return Array.from(document.querySelectorAll(selector)).slice(0, maximum)
-        .map(node => node.getAttribute(attribute))
-        .filter(value => typeof value === "string" && value.length > 0 && value.length <= 128);
-    } catch { return []; }
-  }
-
   function assets() {
     const result = [];
     const push = value => {
@@ -88,6 +80,7 @@
     const width = Math.round(window.innerWidth || document.documentElement.clientWidth || 0);
     const height = Math.round(window.innerHeight || document.documentElement.clientHeight || 0);
     const route = typeof observer?.dataset?.route === "string" ? observer.dataset.route : "";
+    const structural = window.LegendPageHealth?.current?.structuralSnapshot?.() || {};
     return {
       application,
       sourceRevision,
@@ -96,21 +89,10 @@
       viewportHeight: height,
       devicePixelRatio: Number(window.devicePixelRatio || 1),
       breakpoint: breakpoint(width),
-      componentIds: [
-        ...values("[data-canonical-id]", "data-canonical-id", 64),
-        ...values("[data-component-id]", "data-component-id", 64),
-        ...values("[data-system-key]", "data-system-key", 64)
-      ],
-      actionKeys: [
-        ...values("[data-action-key]", "data-action-key", 64),
-        ...values("[data-website-action-key]", "data-website-action-key", 64)
-      ],
-      compositionIds: values("[data-cms-composition-id]", "data-cms-composition-id", 64),
-      modalIds: Array.from(document.querySelectorAll('[role="dialog"][id],.modal[id]')).slice(0, 32)
-        .filter(node => {
-          try { const style = window.getComputedStyle(node); return style.display !== "none" && style.visibility !== "hidden"; }
-          catch { return false; }
-        }).map(node => node.id),
+      componentIds: Array.isArray(structural.componentIds) ? structural.componentIds : [],
+      actionKeys: Array.isArray(structural.actionKeys) ? structural.actionKeys : [],
+      compositionIds: Array.isArray(structural.compositionIds) ? structural.compositionIds : [],
+      modalIds: Array.isArray(structural.modalIds) ? structural.modalIds : [],
       assetPaths: assets(),
       issues: issues()
     };
