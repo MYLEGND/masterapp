@@ -231,7 +231,7 @@ jobs:
           fi
           set -euo pipefail
           if [ "$PUBLIC_ONLY" = true ]; then
-            dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$RELEASE_SHA"
             node --test --test-name-pattern='publication compiler process consumes stdin and returns compiled pages' Legend-Website/scripts/render-business.test.mjs
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo --filter 'FullyQualifiedName~WebsiteContentEditorRoundTripTests.BusinessPublication_PreservesUtf8AcrossDotNetNodeCompilerTransport'
             dotnet tool restore
@@ -246,9 +246,9 @@ jobs:
                 --configuration Release \
                 --no-build
           elif [ "$PORTAL_ONLY" = true ]; then
-            dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$RELEASE_SHA"
           else
-            dotnet build MASTERAPP.sln -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet build MASTERAPP.sln -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$RELEASE_SHA"
           fi
       - name: Verify business website routing bridge
         id: routingchecks
