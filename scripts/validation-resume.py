@@ -27,7 +27,6 @@ import urllib.request
 
 CONTROL_PATHS = {
     "scripts/validation-resume.py",
-    "scripts/test-validation-resume.py",
 }
 
 WORKFLOW_PATHS = {
@@ -130,14 +129,24 @@ DIAGNOSTICS_TESTS = (
 WORKFLOWS = {
     "masterapp-platform-architecture-validation.yml": {
         "force_all": (),
-        "neutral": ("Docs/**", "*.md"),
+        "neutral": (
+            "Docs/**",
+            "*.md",
+            ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            ".github/workflows/step6-openai-ads-execution-validation.yml",
+            ".github/workflows/steps7-8-governed-advertising-validation.yml",
+        ),
         "gates": {
             "lifecycle": {
                 "step": "Run branch lifecycle safety contracts",
                 "paths": (
+                    ".github/workflows/legend-release-lifecycle.yml",
+                    ".github/workflows/all-intentional-direct-release-20260918.yml",
                     "scripts/release-lifecycle.py",
                     "scripts/release_policy.py",
+                    "scripts/approved-release-baseline.py",
                     "scripts/deploy-approved-app.py",
+                    "scripts/test-validation-resume.py",
                     "scripts/test-release-lifecycle.py",
                     "scripts/test-release-policy.py",
                     "scripts/test-deploy-approved-app.py",
