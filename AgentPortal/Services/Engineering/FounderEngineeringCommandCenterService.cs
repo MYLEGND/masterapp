@@ -108,6 +108,9 @@ internal sealed class FounderEngineeringCommandCenterService(
 
             OpenWorkItems = ReadInt(status, "openWorkItems"),
             LeasedWorkItems = ReadInt(status, "leasedWorkItems"),
+            PendingBrowserProofItems = CountWorkItemsInState(
+                status,
+                "LIVE_FUNCTIONAL_PROOF_REQUIRED"),
             SecurityReviewItems = ReadInt(status, "securityReviewItems"),
             History = history.Select(row => new FounderEngineeringContractHistoryItem(
                 row.Revision,
@@ -280,6 +283,19 @@ internal sealed class FounderEngineeringCommandCenterService(
         if (blockerClass is "MODEL_BINDING" or "MODEL_CATALOG") return true;
         return string.IsNullOrWhiteSpace(blockerClass) &&
                ReadString(status, "readinessState") != "READY";
+    }
+
+    private static int CountWorkItemsInState(JsonElement status, string state)
+    {
+        if (status.ValueKind != JsonValueKind.Object ||
+            !status.TryGetProperty("items", out var items) ||
+            items.ValueKind != JsonValueKind.Array)
+            return 0;
+        return items.EnumerateArray().Count(item =>
+            item.ValueKind == JsonValueKind.Object &&
+            item.TryGetProperty("state", out var value) &&
+            value.ValueKind == JsonValueKind.String &&
+            string.Equals(value.GetString(), state, StringComparison.Ordinal));
     }
 
     private static int ReadInt(JsonElement element, string name) =>
