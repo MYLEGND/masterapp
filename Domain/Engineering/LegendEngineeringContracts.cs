@@ -114,7 +114,13 @@ public sealed record EngineeringWorkItemSnapshot(
     DateTime? DeploymentVerifiedUtc = null,
     DateTime? FounderReleaseApprovedUtc = null,
     IReadOnlyList<string>? ValidationFailureCodes = null,
-    string? StateRevision = null);
+    string? StateRevision = null,
+    string? ReproducerRoute = null,
+    IReadOnlyList<string>? ReproducerComponentIds = null,
+    IReadOnlyList<string>? ReproducerActionKeys = null,
+    IReadOnlyList<string>? ReproducerCompositionIds = null,
+    IReadOnlyList<string>? ReproducerModalIds = null,
+    IReadOnlyList<string>? ReproducerForbiddenErrorNames = null);
 
 public sealed record EngineeringLeaseReceipt(
     bool Acquired,
@@ -167,6 +173,7 @@ public sealed record EngineeringTaskPacket(
     IReadOnlyList<string> ComponentIds,
     IReadOnlyList<string> ActionKeys,
     IReadOnlyList<string> CompositionIds,
+    IReadOnlyList<string> ModalIds,
     string FailureClass,
     int Severity,
     string RiskClass,

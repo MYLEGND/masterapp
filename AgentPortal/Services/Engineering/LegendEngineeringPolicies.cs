@@ -104,7 +104,8 @@ internal static class LegendEngineeringPolicies
             incident.Occurrences,
             incident.LastSeenUtc.ToUniversalTime().Ticks,
             incident.ReleaseVerified,
-            incident.GitCommitHash ?? "unknown"));
+            incident.GitCommitHash ?? "unknown",
+            incident.StructuralReproducerJson ?? "no-browser-reproducer"));
     }
 
     internal static bool IsImmutableSha(string? value)
