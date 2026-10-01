@@ -46,17 +46,7 @@ public sealed partial class FounderSoftwareRemediationService
                 await ReadCommitTreeShaAsync(client, options, mergedSha!, deadline.Token) != tree)
                 throw CompletionFailure("merged_tree_differs_from_reviewed_tree");
             await VerifyCompletionCoverageAsync(client, options, snapshot.BaseSha, headSha, tree, hosts.Keys.ToArray(), deadline.Token);
-            using var runs = await ReadCompletionJsonAsync(client,
-                $"repos/{options.RepositoryIdentity}/actions/workflows/agentportal-production-deploy.yml/runs?head_sha={headSha}&per_page=20",
-                1024 * 1024, deadline.Token);
-            var runId = runs.RootElement.GetProperty("workflow_runs").EnumerateArray()
-                .Where(run => ReadString(run, "head_sha") == headSha && ReadString(run, "status") == "completed" &&
-                    ReadString(run, "conclusion") == "success" && ReadString(run, "event") == "pull_request" &&
-                    ReadString(run, "path") == ".github/workflows/agentportal-production-deploy.yml")
-                .Select(run => run.TryGetProperty("id", out var id) && id.TryGetInt64(out var number) ? number : 0)
-                .Where(number => number > 0).OrderDescending().FirstOrDefault();
-            if (runId == 0) throw CompletionFailure("protected_release_success_not_observed");
-
+            var runId = 0L;
             var observations = new List<VerifiedDeploymentHost>();
             var sourceTrees = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var host in hosts)
@@ -78,6 +68,28 @@ public sealed partial class FounderSoftwareRemediationService
                 if (sourceTree != tree) throw CompletionFailure("live_source_tree_mismatch");
                 observations.Add(new(host.Key, source!, DateTime.UtcNow));
             }
+
+            // Each immutable live source revision must be backed by the sole
+            // approved direct-release authority. Control-only release commits
+            // may differ from the reviewed PR SHA while retaining the exact tree.
+            foreach (var source in observations.Select(item => item.SourceRevision).Distinct(StringComparer.Ordinal))
+            {
+                using var runs = await ReadCompletionJsonAsync(client,
+                    $"repos/{options.RepositoryIdentity}/actions/workflows/all-intentional-direct-release-20260918.yml/runs?head_sha={source}&per_page=20",
+                    1024 * 1024, deadline.Token);
+                var receipt = runs.RootElement.GetProperty("workflow_runs").EnumerateArray()
+                    .Where(run => ReadString(run, "head_sha") == source &&
+                        ReadString(run, "head_branch") == options.BaseBranch &&
+                        ReadString(run, "status") == "completed" &&
+                        ReadString(run, "conclusion") == "success" &&
+                        ReadString(run, "path") == ".github/workflows/all-intentional-direct-release-20260918.yml")
+                    .Select(run => run.TryGetProperty("id", out var id) && id.TryGetInt64(out var number) ? number : 0)
+                    .Where(number => number > 0).OrderDescending().FirstOrDefault();
+                if (receipt == 0) throw CompletionFailure("approved_release_success_not_observed");
+                runId = Math.Max(runId, receipt);
+            }
+            if (runId == 0) throw CompletionFailure("approved_release_success_not_observed");
+
             if (await RequireActiveAuthorityAsync(options, deadline.Token) is not null)
                 throw CompletionFailure("authority_changed");
             await using var transaction = _db.Database.IsRelational()
