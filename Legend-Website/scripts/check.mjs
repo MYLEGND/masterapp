@@ -30,6 +30,9 @@ if(!/^[a-f0-9]{40}$/.test(provenance.gitCommitHash))throw new Error('Missing sta
 for(const route of routes){
   const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
   if((html.match(/src="\/js\/page-health.js"/g)||[]).length!==1)throw new Error('Expected exactly one shared observer.');
+  if((html.match(/src="\/js\/legend-site-tools.js"/g)||[]).length!==1)throw new Error('Expected exactly one shared site-tool bridge.');
+  if(!html.includes(`data-endpoint="${apiBase || ''}/api/legend-public-site-tools"`) && apiBase)
+    throw new Error('Static site tools must use the approved public diagnostics origin.');
   for(const value of [`data-route="/${route}"`, `data-git-commit-hash="${provenance.gitCommitHash}"`, 'data-app="Legend-Website"'])
     if(!html.includes(value))throw new Error('Missing static diagnostics metadata: '+value);
   const apiBase=/apiBase:"(https:\/\/[^"/]+)"/.exec(html)?.[1];
