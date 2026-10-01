@@ -2,8 +2,8 @@ namespace Domain.Engineering;
 
 public static class LegendEngineeringContract
 {
-    public const string ContractRevision = "legend-engineering-context.v4";
-    public const string PolicyRevision = "legend-engineering-policy.v1";
+    public const string ContractRevision = "legend-engineering-context.v5";
+    public const string PolicyRevision = "legend-engineering-policy.v2";
 }
 
 public static class EngineeringFailureClass
