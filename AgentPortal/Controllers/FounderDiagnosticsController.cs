@@ -196,6 +196,7 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
     }
 
     [HttpPost("~/api/legend-site-tools/execute")]
+    [ValidateAntiForgeryToken]
     [RequestSizeLimit(64 * 1024)]
     public async Task<IActionResult> ExecuteSiteTool(
         [FromBody] LegendSiteToolExecutionRequest request,
