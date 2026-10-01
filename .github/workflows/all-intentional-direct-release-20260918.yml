@@ -16,7 +16,7 @@ permissions:
   pull-requests: read
   id-token: write
 concurrency:
-  group: agentportal-production
+  group: legend-approved-release
   cancel-in-progress: false
 env:
   RELEASE_SHA: ${{ github.sha }}
