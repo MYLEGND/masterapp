@@ -53,6 +53,8 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("registerTool", source, StringComparison.Ordinal);
         Assert.Contains("readOnlyHint: true", source, StringComparison.Ordinal);
         Assert.Contains("/api/legend-site-tools", source, StringComparison.Ordinal);
+        Assert.Contains("RequestVerificationToken", source, StringComparison.Ordinal);
+        Assert.Contains("legend_site_tool_antiforgery_unavailable", source, StringComparison.Ordinal);
         Assert.Contains("LegendPageHealth", source, StringComparison.Ordinal);
         Assert.DoesNotContain("textContent", source, StringComparison.Ordinal);
         Assert.DoesNotContain("innerHTML", source, StringComparison.Ordinal);
@@ -74,6 +76,7 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("authority.IsReadOnly", source, StringComparison.Ordinal);
         Assert.Contains("LegendConnectExternalProviderPolicy.CloudflareFoundation", source, StringComparison.Ordinal);
         Assert.Contains("mutationToolsExposed = false", source, StringComparison.Ordinal);
+        Assert.Contains("[ValidateAntiForgeryToken]", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_release_approved_repair", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_prepare_software_repair", SiteToolSection(source), StringComparison.Ordinal);
     }
@@ -86,11 +89,37 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("LegendSiteToolDisclosureAuthority.CurrentPageTool", section, StringComparison.Ordinal);
         Assert.Contains("\"authenticated_client\"", section, StringComparison.Ordinal);
         Assert.Contains("mutationToolsExposed = false", section, StringComparison.Ordinal);
+        Assert.Contains("[ValidateAntiForgeryToken]", section, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendFounderToolAuthority", section, StringComparison.Ordinal);
         Assert.DoesNotContain("IFounderSoftwareRemediationService", section, StringComparison.Ordinal);
         Assert.DoesNotContain("legend_inspect_repository", section, StringComparison.Ordinal);
         Assert.DoesNotContain("legend_prepare_software_repair", section, StringComparison.Ordinal);
         Assert.DoesNotContain("legend_release_approved_repair", section, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SharedPageHealth_OwnsSingleBridgeLoadForBothWebApps()
+    {
+        var partial = Read("SHARED", "Views", "Diagnostics", "_PageHealth.cshtml");
+        var portal = Read("AgentPortal", "Views", "Shared", "_Layout.cshtml");
+        var client = Read("ClientApp", "Views", "Shared", "_Layout.cshtml");
+        Assert.Equal(1, CountOccurrences(partial, "legend-site-tools.js"));
+        Assert.DoesNotContain("legend-site-tools.js", portal, StringComparison.Ordinal);
+        Assert.DoesNotContain("legend-site-tools.js", client, StringComparison.Ordinal);
+        Assert.Contains("AgentPortal", partial, StringComparison.Ordinal);
+        Assert.Contains("ClientApp", partial, StringComparison.Ordinal);
+    }
+
+    private static int CountOccurrences(string source, string value)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+        return count;
     }
 
     private static string SiteToolSection(string source)
