@@ -95,8 +95,9 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
         }
 
         await AddAsync("AGENTS.md", "live");
-        if (context.Role == EngineeringRole.IndependentReviewer &&
-            item.CandidateChangedPaths is { Count: > 0 } && LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha))
+        if (item.CandidateChangedPaths is { Count: > 0 } &&
+            LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha) &&
+            context.Role is EngineeringRole.IndependentReviewer or EngineeringRole.CodexImplementer or EngineeringRole.HeadGpt)
         {
             foreach (var path in item.CandidateChangedPaths.Take(3))
             {
@@ -151,7 +152,7 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
                 await store.UpdateWorkItemAsync(stopped, cancellationToken);
                 return Outcome(context, threadId, stopped.State);
             }
-            var proposal = ParseProposal(output, context.LiveSha);
+            var proposal = ParseProposal(output, LegendEngineeringPolicies.ResolveRepairBaseSha(item));
             if (proposal is null) return Failure("codex_repair_proposal_invalid");
             var result = await orchestrator.PrepareRepairAsync(context.EngineeringContextId, proposal, cancellationToken);
             var prepared = JsonSerializer.SerializeToElement(result, JsonOptions);
