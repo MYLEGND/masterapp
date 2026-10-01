@@ -203,7 +203,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/AnalyticsCanonicalReconciliationTests.cs",
                     "AgentPortal.Tests/AnalyticsPageRoutingTruthTests.cs",
                     "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
-                ) + WEBSITE_SOURCE,
+                ) + WEBSITE_SOURCE + WEB_DOTNET_SOURCE,
                 "requires": ("compile-regression",),
             },
             "meta-regressions": {
@@ -216,12 +216,12 @@ WORKFLOWS = {
                     "AgentPortal.Tests/Tracking*Tests.cs",
                     "AgentPortal.Tests/QuoteProductInstrumentationContractTests.cs",
                     "AgentPortal.Tests/ProtectLeadModalInquiryTests.cs",
-                ) + MARKETING_SOURCE,
+                ) + MARKETING_SOURCE + WEB_DOTNET_SOURCE,
                 "requires": ("compile-regression",),
             },
             "booking-regressions": {
                 "step": "Run booking authority regressions",
-                "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE,
+                "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE + WEB_DOTNET_SOURCE,
                 "requires": ("compile-regression",),
             },
             "crm-regressions": {
@@ -232,7 +232,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/WebsiteAnalyticsScopeTests.cs",
                     "AgentPortal.Tests/LaunchAuditRiskAssessmentTests.cs",
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
-                ) + CRM_SOURCE,
+                ) + CRM_SOURCE + WEB_DOTNET_SOURCE,
                 "requires": ("compile-regression",),
             },
             "form-tracking": {
