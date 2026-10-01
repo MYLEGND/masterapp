@@ -371,8 +371,11 @@ public sealed class FounderSoftwareRepairBatchTests
                 Writes.Add(new(path, body));
             }
             if (path.StartsWith(Repo + "git/ref/heads/") && request.Method == HttpMethod.Get)
-                return Refs.TryGetValue(path[(Repo + "git/ref/heads/").Length..], out var sha)
+            {
+                var branch = Uri.UnescapeDataString(path[(Repo + "git/ref/heads/").Length..]);
+                return Refs.TryGetValue(branch, out var sha)
                     ? Json(new { @object = new { sha } }) : Json(new { }, HttpStatusCode.NotFound);
+            }
             if (path.StartsWith(Repo + "git/commits/") && request.Method == HttpMethod.Get)
                 return Json(new { tree = new { sha = path.EndsWith(BaseSha) ? new string('b', 40) : new string('e', 40) } });
             if (path.StartsWith(Repo + "git/trees/") && request.Method == HttpMethod.Get)
