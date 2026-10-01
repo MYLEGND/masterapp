@@ -392,6 +392,60 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
             resolved = self.lifecycle.direct_release_approved_pr(Api(), head)
 
         self.assertEqual(resolved['number'], 302)
+
+    def test_shared_resume_authority_requires_every_consuming_validation(self):
+        head = "a" * 40
+        pr = {
+            "number": 400,
+            "head": {"sha": head},
+        }
+        architecture = ".github/workflows/masterapp-platform-architecture-validation.yml"
+        step5 = ".github/workflows/step5-isolated-conversion-mapping-validation.yml"
+        step6 = ".github/workflows/step6-openai-ads-execution-validation.yml"
+        step78 = ".github/workflows/steps7-8-governed-advertising-validation.yml"
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == "actions/runs?head_sha=" + head:
+                    return [
+                        {"head_sha": head, "event": "pull_request", "path": architecture,
+                         "status": "completed", "conclusion": "success", "created_at": "4", "id": 4},
+                        {"head_sha": head, "event": "pull_request", "path": step5,
+                         "status": "completed", "conclusion": "success", "created_at": "3", "id": 3},
+                        {"head_sha": head, "event": "pull_request", "path": step78,
+                         "status": "completed", "conclusion": "success", "created_at": "2", "id": 2},
+                    ]
+                if path == "pulls/400/files":
+                    return [{"filename": "scripts/validation-resume.py"}]
+                if path == "pulls/400/commits":
+                    return [{"sha": head}]
+                raise AssertionError(path)
+
+        pending = self.lifecycle.candidate_validation(Api(), pr)
+        self.assertIn(step6, pending)
+
+    def test_step5_workflow_change_requires_exact_step5_validation(self):
+        head = "b" * 40
+        pr = {"number": 401, "head": {"sha": head}}
+        architecture = ".github/workflows/masterapp-platform-architecture-validation.yml"
+        step5 = ".github/workflows/step5-isolated-conversion-mapping-validation.yml"
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == "actions/runs?head_sha=" + head:
+                    return [
+                        {"head_sha": head, "event": "pull_request", "path": architecture,
+                         "status": "completed", "conclusion": "success", "created_at": "2", "id": 2},
+                    ]
+                if path == "pulls/401/files":
+                    return [{"filename": step5}]
+                if path == "pulls/401/commits":
+                    return [{"sha": head}]
+                raise AssertionError(path)
+
+        pending = self.lifecycle.candidate_validation(Api(), pr)
+        self.assertEqual("Exact-head full-suite comparison has not started", pending)
+
     def test_direct_release_authorization_rejects_extra_changed_files(self):
         path = 'Docs/releases/direct-release-request.json'
         with patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
