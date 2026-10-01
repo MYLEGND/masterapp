@@ -38,6 +38,10 @@ public sealed class FounderEngineeringCommandCenterViewModel
         Array.Empty<FounderEngineeringContractHistoryItem>();
 }
 
+public sealed record FounderEngineeringContractMutationResult(
+    string Revision,
+    long Version);
+
 public sealed class FounderEngineeringContractInput
 {
     public string ExpectedRevision { get; set; } = string.Empty;
