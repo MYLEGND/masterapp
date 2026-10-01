@@ -87,7 +87,8 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("FounderGuard.EnsureFounderOrThrow(User)", source, StringComparison.Ordinal);
         Assert.Contains("new LegendFounderToolAuthority", source, StringComparison.Ordinal);
         Assert.Contains("authority.IsReadOnly", source, StringComparison.Ordinal);
-        Assert.Contains("LegendConnectExternalProviderPolicy.CloudflareFoundation", source, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(SiteToolSection(source), "GetAvailableSiteReadTools()"));
+        Assert.DoesNotContain("GetAvailableCloudTools", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("mutationToolsExposed = false", source, StringComparison.Ordinal);
         Assert.Contains("[ValidateAntiForgeryToken]", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("VerifyCurrentPageRepairTool", SiteToolSection(source), StringComparison.Ordinal);
