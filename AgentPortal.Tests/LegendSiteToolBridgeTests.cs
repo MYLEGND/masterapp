@@ -11,6 +11,8 @@ public sealed class LegendSiteToolBridgeTests
     public void DisclosureAuthority_DropsPrivateAndUnboundedBrowserMaterial()
     {
         var snapshot = new LegendSitePageSnapshot(
+            Application: "AgentPortal",
+            SourceRevision: new string('a', 40),
             Path: "/Clients/Index",
             ViewportWidth: 390,
             ViewportHeight: 844,
@@ -99,16 +101,92 @@ public sealed class LegendSiteToolBridgeTests
     }
 
     [Fact]
-    public void SharedPageHealth_OwnsSingleBridgeLoadForBothWebApps()
+    public void SharedPageHealth_OwnsSingleBridgeLoadForAllDotNetWebApps()
     {
         var partial = Read("SHARED", "Views", "Diagnostics", "_PageHealth.cshtml");
-        var portal = Read("AgentPortal", "Views", "Shared", "_Layout.cshtml");
-        var client = Read("ClientApp", "Views", "Shared", "_Layout.cshtml");
         Assert.Equal(1, CountOccurrences(partial, "legend-site-tools.js"));
-        Assert.DoesNotContain("legend-site-tools.js", portal, StringComparison.Ordinal);
-        Assert.DoesNotContain("legend-site-tools.js", client, StringComparison.Ordinal);
-        Assert.Contains("AgentPortal", partial, StringComparison.Ordinal);
-        Assert.Contains("ClientApp", partial, StringComparison.Ordinal);
+        foreach (var app in new[] { "AgentPortal", "ClientApp", "ProtectWebsite", "ParfaitApp" })
+            Assert.Contains(app, partial, StringComparison.Ordinal);
+
+        foreach (var path in new[]
+        {
+            new[] { "AgentPortal", "Views", "Shared", "_Layout.cshtml" },
+            new[] { "ClientApp", "Views", "Shared", "_Layout.cshtml" },
+            new[] { "Protect-Website", "Views", "Shared", "_Layout.cshtml" },
+            new[] { "ParfaitApp", "Views", "Shared", "_Layout.cshtml" }
+        })
+        {
+            var layout = Read(path);
+            Assert.Contains("_PageHealth.cshtml", layout, StringComparison.Ordinal);
+            Assert.DoesNotContain("legend-site-tools.js", layout, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void PublicWebBridge_ExposesOnlyStructuralPageTool_AndNoFounderAuthority()
+    {
+        var source = Read("Infrastructure", "Diagnostics", "PublicLegendSiteToolsController.cs");
+        Assert.Contains("[AllowAnonymous]", source, StringComparison.Ordinal);
+        Assert.Contains("CurrentPageTool", source, StringComparison.Ordinal);
+        Assert.Contains("public_structural_only", source, StringComparison.Ordinal);
+        Assert.Contains("mutationToolsExposed = false", source, StringComparison.Ordinal);
+        Assert.Contains("systemToolsExposed = false", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("LegendFounderToolAuthority", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("IFounderSoftwareRemediationService", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("MasterAppDbContext", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("legend_inspect_repository", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("legend_prepare_software_repair", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WholeMasterAppInventory_CoversWebNativeEdgeAndSharedAuthorities()
+    {
+        var json = JsonSerializer.SerializeToElement(LegendSiteToolDisclosureAuthority.SystemInventory());
+        var surfaces = json.GetProperty("surfaces").EnumerateArray().ToArray();
+        var keys = surfaces.Select(item => item.GetProperty("key").GetString()).ToArray();
+        foreach (var required in new[]
+        {
+            "agent-portal", "client-app", "protect-website", "parfait-app", "legend-website",
+            "legend-ios", "legend-android", "legend-cloudflare", "infrastructure", "shared", "domain", "legend-design"
+        })
+            Assert.Contains(required, keys);
+
+        foreach (var surface in surfaces)
+        {
+            var repositoryPath = surface.GetProperty("repositoryPath").GetString();
+            Assert.False(string.IsNullOrWhiteSpace(repositoryPath));
+            Assert.True(Directory.Exists(Path.Combine(RepoRoot, repositoryPath!)), repositoryPath);
+        }
+
+        var raw = json.GetRawText();
+        Assert.DoesNotContain("password", raw, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("connectionString", raw, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("clientSecret", raw, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("authenticated /api/v1/mobile/runtime-diagnostics", raw, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NativeApps_ReuseExistingSanitizedAuthenticatedDiagnosticTransports()
+    {
+        var ios = Read("Legend-ios", "Legend", "Core", "LegendDiagnostics.swift");
+        var android = Read("Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend", "registered", "core", "diagnostics", "RuntimeDiagnostics.kt");
+        var mobile = Read("AgentPortal", "Mobile", "MobileRuntimeDiagnosticsController.cs");
+        Assert.Contains("RuntimeDiagnosticEvent", ios, StringComparison.Ordinal);
+        Assert.Contains("RuntimeDiagnostic", android, StringComparison.Ordinal);
+        Assert.Contains("MobileApiAuthorization.PolicyName", mobile, StringComparison.Ordinal);
+        Assert.Contains("RuntimeDiagnosticStore", mobile, StringComparison.Ordinal);
+        Assert.DoesNotContain("AllowAnonymous", mobile, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LegendStaticWebsite_CopiesSharedBridge_AndUsesApprovedPublicDiagnosticsOrigin()
+    {
+        var build = Read("Legend-Website", "scripts", "build.mjs");
+        var check = Read("Legend-Website", "scripts", "check.mjs");
+        Assert.Contains("SHARED/wwwroot/js/legend-site-tools.js", build, StringComparison.Ordinal);
+        Assert.Contains("/api/legend-public-site-tools", build, StringComparison.Ordinal);
+        Assert.Contains("legend-site-tools.js", check, StringComparison.Ordinal);
+        Assert.Contains("approved public diagnostics origin", check, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string source, string value)
