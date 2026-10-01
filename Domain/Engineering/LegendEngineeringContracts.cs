@@ -99,7 +99,11 @@ public sealed record EngineeringWorkItemSnapshot(
     string ValidationState,
     string ReleaseCohort,
     DateTime CreatedUtc,
-    DateTime UpdatedUtc);
+    DateTime UpdatedUtc,
+    IReadOnlyList<string>? CandidateChangedPaths = null,
+    string? AgentSessionId = null,
+    string? AgentSessionRole = null,
+    DateTime? AgentSessionUpdatedUtc = null);
 
 public sealed record EngineeringLeaseReceipt(
     bool Acquired,
