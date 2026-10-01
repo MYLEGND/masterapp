@@ -40,6 +40,9 @@ internal interface ILegendEngineeringContractAuthority
 {
     Task<LegendEngineeringOperationalContract> GetCurrentAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<LegendEngineeringContractRevision>> GetHistoryAsync(int take, CancellationToken cancellationToken);
+    Task<(bool Valid, string Code, LegendEngineeringOperationalContract Contract)> ValidateBindingAsync(
+        string? revision,
+        CancellationToken cancellationToken);
     Task<LegendEngineeringOperationalContract> UpdateAsync(
         string expectedRevision,
         bool modelExecutionEnabled,
@@ -105,6 +108,19 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         {
             if (opened) await connection.CloseAsync();
         }
+    }
+
+    public async Task<(bool Valid, string Code, LegendEngineeringOperationalContract Contract)> ValidateBindingAsync(
+        string? revision,
+        CancellationToken cancellationToken)
+    {
+        var current = await GetCurrentAsync(cancellationToken);
+        if (!current.ModelExecutionEnabled)
+            return (false, "engineering_operational_execution_paused", current);
+        if (string.IsNullOrWhiteSpace(revision) ||
+            !string.Equals(revision, current.Revision, StringComparison.Ordinal))
+            return (false, "engineering_operational_contract_changed", current);
+        return (true, "engineering_operational_contract_current", current);
     }
 
     public async Task<IReadOnlyList<LegendEngineeringContractRevision>> GetHistoryAsync(
