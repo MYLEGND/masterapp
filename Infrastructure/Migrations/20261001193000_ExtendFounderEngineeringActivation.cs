@@ -1,194 +1,109 @@
-using System;
-using Infrastructure.Data;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
-    [DbContext(typeof(MasterAppDbContext))]
-    [Migration("20261001193000_ExtendFounderEngineeringActivation")]
+    /// <summary>
+    /// Model-neutral raw control-plane schema. These tables/columns are intentionally
+    /// not EF-mapped; the canonical engineering authorities access them through
+    /// serialized, bounded SQL commands. The matching generated designer therefore
+    /// carries the unchanged MasterAppDbContext target model.
+    /// </summary>
     public partial class ExtendFounderEngineeringActivation : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<bool>(
-                name: "AutonomousEngineeringEnabled",
-                table: "LegendEngineeringOperationalContract",
-                type: "bit",
-                nullable: false,
-                defaultValue: true);
+            migrationBuilder.Sql(
+                """
+                ALTER TABLE [LegendEngineeringOperationalContract]
+                  ADD [AutonomousEngineeringEnabled] bit NOT NULL
+                      CONSTRAINT [DF_LegendEngineeringOperationalContract_AutonomousEngineeringEnabled]
+                      DEFAULT CAST(1 AS bit),
+                      [HeadGptModel] nvarchar(160) NOT NULL
+                      CONSTRAINT [DF_LegendEngineeringOperationalContract_HeadGptModel]
+                      DEFAULT N'auto',
+                      [CodexModel] nvarchar(160) NOT NULL
+                      CONSTRAINT [DF_LegendEngineeringOperationalContract_CodexModel]
+                      DEFAULT N'auto',
+                      [ReviewerModel] nvarchar(160) NOT NULL
+                      CONSTRAINT [DF_LegendEngineeringOperationalContract_ReviewerModel]
+                      DEFAULT N'auto';
 
-            migrationBuilder.AddColumn<string>(
-                name: "HeadGptModel",
-                table: "LegendEngineeringOperationalContract",
-                type: "nvarchar(160)",
-                maxLength: 160,
-                nullable: false,
-                defaultValue: "auto");
+                ALTER TABLE [LegendEngineeringOperationalContractHistory]
+                  ADD [AutonomousEngineeringEnabled] bit NOT NULL
+                      CONSTRAINT [DF_LegendEngineeringOperationalContractHistory_AutonomousEngineeringEnabled]
+                      DEFAULT CAST(1 AS bit),
+                      [HeadGptModel] nvarchar(160) NOT NULL
+                      CONSTRAINT [DF_LegendEngineeringOperationalContractHistory_HeadGptModel]
+                      DEFAULT N'auto',
+                      [CodexModel] nvarchar(160) NOT NULL
+                      CONSTRAINT [DF_LegendEngineeringOperationalContractHistory_CodexModel]
+                      DEFAULT N'auto',
+                      [ReviewerModel] nvarchar(160) NOT NULL
+                      CONSTRAINT [DF_LegendEngineeringOperationalContractHistory_ReviewerModel]
+                      DEFAULT N'auto';
 
-            migrationBuilder.AddColumn<string>(
-                name: "CodexModel",
-                table: "LegendEngineeringOperationalContract",
-                type: "nvarchar(160)",
-                maxLength: 160,
-                nullable: false,
-                defaultValue: "auto");
+                CREATE TABLE [LegendEngineeringChatGptPlanClientRegistration] (
+                    [RegistrationKey] nvarchar(64) NOT NULL,
+                    [ClientId] nvarchar(200) NOT NULL,
+                    [AuthenticationMethod] nvarchar(32) NOT NULL,
+                    [ClientSecretCiphertext] nvarchar(max) NULL,
+                    [EligibilityConfirmed] bit NOT NULL,
+                    [Revision] nvarchar(32) NOT NULL,
+                    [UpdatedUtc] datetime2 NOT NULL,
+                    CONSTRAINT [PK_LegendEngineeringChatGptPlanClientRegistration]
+                        PRIMARY KEY ([RegistrationKey])
+                );
 
-            migrationBuilder.AddColumn<string>(
-                name: "ReviewerModel",
-                table: "LegendEngineeringOperationalContract",
-                type: "nvarchar(160)",
-                maxLength: 160,
-                nullable: false,
-                defaultValue: "auto");
+                CREATE TABLE [LegendEngineeringChatGptPlanOAuthTransactions] (
+                    [StateHash] nvarchar(64) NOT NULL,
+                    [ClientId] nvarchar(200) NOT NULL,
+                    [CodeVerifierCiphertext] nvarchar(max) NOT NULL,
+                    [NonceCiphertext] nvarchar(max) NOT NULL,
+                    [RedirectUri] nvarchar(512) NOT NULL,
+                    [CreatedUtc] datetime2 NOT NULL,
+                    [ExpiresUtc] datetime2 NOT NULL,
+                    CONSTRAINT [PK_LegendEngineeringChatGptPlanOAuthTransactions]
+                        PRIMARY KEY ([StateHash])
+                );
 
-            migrationBuilder.AddColumn<bool>(
-                name: "AutonomousEngineeringEnabled",
-                table: "LegendEngineeringOperationalContractHistory",
-                type: "bit",
-                nullable: false,
-                defaultValue: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "HeadGptModel",
-                table: "LegendEngineeringOperationalContractHistory",
-                type: "nvarchar(160)",
-                maxLength: 160,
-                nullable: false,
-                defaultValue: "auto");
-
-            migrationBuilder.AddColumn<string>(
-                name: "CodexModel",
-                table: "LegendEngineeringOperationalContractHistory",
-                type: "nvarchar(160)",
-                maxLength: 160,
-                nullable: false,
-                defaultValue: "auto");
-
-            migrationBuilder.AddColumn<string>(
-                name: "ReviewerModel",
-                table: "LegendEngineeringOperationalContractHistory",
-                type: "nvarchar(160)",
-                maxLength: 160,
-                nullable: false,
-                defaultValue: "auto");
-
-            migrationBuilder.CreateTable(
-                name: "LegendEngineeringChatGptPlanClientRegistration",
-                columns: table => new
-                {
-                    RegistrationKey = table.Column<string>(
-                        type: "nvarchar(64)",
-                        maxLength: 64,
-                        nullable: false),
-                    ClientId = table.Column<string>(
-                        type: "nvarchar(200)",
-                        maxLength: 200,
-                        nullable: false),
-                    AuthenticationMethod = table.Column<string>(
-                        type: "nvarchar(32)",
-                        maxLength: 32,
-                        nullable: false),
-                    ClientSecretCiphertext = table.Column<string>(
-                        type: "nvarchar(max)",
-                        nullable: true),
-                    EligibilityConfirmed = table.Column<bool>(
-                        type: "bit",
-                        nullable: false),
-                    Revision = table.Column<string>(
-                        type: "nvarchar(32)",
-                        maxLength: 32,
-                        nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(
-                        type: "datetime2",
-                        nullable: false)
-                },
-                constraints: table =>
-                    table.PrimaryKey(
-                        "PK_LegendEngineeringChatGptPlanClientRegistration",
-                        x => x.RegistrationKey));
-
-            migrationBuilder.CreateTable(
-                name: "LegendEngineeringChatGptPlanOAuthTransactions",
-                columns: table => new
-                {
-                    StateHash = table.Column<string>(
-                        type: "nvarchar(64)",
-                        maxLength: 64,
-                        nullable: false),
-                    ClientId = table.Column<string>(
-                        type: "nvarchar(200)",
-                        maxLength: 200,
-                        nullable: false),
-                    CodeVerifierCiphertext = table.Column<string>(
-                        type: "nvarchar(max)",
-                        nullable: false),
-                    NonceCiphertext = table.Column<string>(
-                        type: "nvarchar(max)",
-                        nullable: false),
-                    RedirectUri = table.Column<string>(
-                        type: "nvarchar(512)",
-                        maxLength: 512,
-                        nullable: false),
-                    CreatedUtc = table.Column<DateTime>(
-                        type: "datetime2",
-                        nullable: false),
-                    ExpiresUtc = table.Column<DateTime>(
-                        type: "datetime2",
-                        nullable: false)
-                },
-                constraints: table =>
-                    table.PrimaryKey(
-                        "PK_LegendEngineeringChatGptPlanOAuthTransactions",
-                        x => x.StateHash));
-
-            migrationBuilder.CreateIndex(
-                name: "IX_LegendEngineeringChatGptPlanOAuthTransactions_ExpiresUtc",
-                table: "LegendEngineeringChatGptPlanOAuthTransactions",
-                column: "ExpiresUtc");
+                CREATE INDEX [IX_LegendEngineeringChatGptPlanOAuthTransactions_ExpiresUtc]
+                    ON [LegendEngineeringChatGptPlanOAuthTransactions] ([ExpiresUtc]);
+                """);
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "LegendEngineeringChatGptPlanOAuthTransactions");
+            migrationBuilder.Sql(
+                """
+                DROP TABLE [LegendEngineeringChatGptPlanOAuthTransactions];
+                DROP TABLE [LegendEngineeringChatGptPlanClientRegistration];
 
-            migrationBuilder.DropTable(
-                name: "LegendEngineeringChatGptPlanClientRegistration");
+                ALTER TABLE [LegendEngineeringOperationalContract]
+                    DROP CONSTRAINT [DF_LegendEngineeringOperationalContract_AutonomousEngineeringEnabled],
+                         [DF_LegendEngineeringOperationalContract_HeadGptModel],
+                         [DF_LegendEngineeringOperationalContract_CodexModel],
+                         [DF_LegendEngineeringOperationalContract_ReviewerModel];
 
-            migrationBuilder.DropColumn(
-                name: "AutonomousEngineeringEnabled",
-                table: "LegendEngineeringOperationalContract");
+                ALTER TABLE [LegendEngineeringOperationalContract]
+                    DROP COLUMN [AutonomousEngineeringEnabled],
+                                [HeadGptModel],
+                                [CodexModel],
+                                [ReviewerModel];
 
-            migrationBuilder.DropColumn(
-                name: "HeadGptModel",
-                table: "LegendEngineeringOperationalContract");
+                ALTER TABLE [LegendEngineeringOperationalContractHistory]
+                    DROP CONSTRAINT [DF_LegendEngineeringOperationalContractHistory_AutonomousEngineeringEnabled],
+                         [DF_LegendEngineeringOperationalContractHistory_HeadGptModel],
+                         [DF_LegendEngineeringOperationalContractHistory_CodexModel],
+                         [DF_LegendEngineeringOperationalContractHistory_ReviewerModel];
 
-            migrationBuilder.DropColumn(
-                name: "CodexModel",
-                table: "LegendEngineeringOperationalContract");
-
-            migrationBuilder.DropColumn(
-                name: "ReviewerModel",
-                table: "LegendEngineeringOperationalContract");
-
-            migrationBuilder.DropColumn(
-                name: "AutonomousEngineeringEnabled",
-                table: "LegendEngineeringOperationalContractHistory");
-
-            migrationBuilder.DropColumn(
-                name: "HeadGptModel",
-                table: "LegendEngineeringOperationalContractHistory");
-
-            migrationBuilder.DropColumn(
-                name: "CodexModel",
-                table: "LegendEngineeringOperationalContractHistory");
-
-            migrationBuilder.DropColumn(
-                name: "ReviewerModel",
-                table: "LegendEngineeringOperationalContractHistory");
+                ALTER TABLE [LegendEngineeringOperationalContractHistory]
+                    DROP COLUMN [AutonomousEngineeringEnabled],
+                                [HeadGptModel],
+                                [CodexModel],
+                                [ReviewerModel];
+                """);
         }
     }
 }
