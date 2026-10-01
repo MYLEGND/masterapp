@@ -103,6 +103,11 @@
             <div class="eng-mini-row"><span>Open work</span><b>@Model.OpenWorkItems</b></div>
             <div class="eng-mini-row"><span>Leased</span><b>@Model.LeasedWorkItems</b></div>
             <div class="eng-mini-row"><span>Tier C review</span><b>@Model.SecurityReviewItems</b></div>
+            <div class="eng-mini-row"><span>Browser live proof</span><b>@Model.BrowserLiveProofItems</b></div>
+            @if (Model.BrowserLiveProofItems > 0)
+            {
+                <p class="eng-runtime-note">Browser-visible repairs remain fail-closed until the existing authenticated <code>legend_verify_current_page_repair</code> verifier proves the exact deployed revision, route, and preserved reproducer. Server telemetry cannot substitute for this proof.</p>
+            }
         </article>
     </section>
 
