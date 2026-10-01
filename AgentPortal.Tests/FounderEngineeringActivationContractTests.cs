@@ -92,6 +92,45 @@ public sealed class FounderEngineeringActivationContractTests
     }
 
     [Fact]
+    public void RuntimeResilience_ReusesCanonicalAuthorities_AndRequiresCompletedInferenceProof()
+    {
+        var root = SourceRoot();
+        var adapter = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering",
+            "ChatGptPlanResponsesAdapter.cs"));
+        var store = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering",
+            "LegendEngineeringStateStore.cs"));
+        var credential = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering",
+            "LegendChatGptPlanCredentialAuthority.cs"));
+        var budget = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering",
+            "LegendEngineeringBudgetAuthority.cs"));
+        var hosted = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering",
+            "LegendEngineeringHostedService.cs"));
+
+        Assert.DoesNotContain("LegendEngineering:Budget:Mode", budget, StringComparison.Ordinal);
+        Assert.Contains("CHATGPT_PLAN_PROVIDER_ENFORCED", budget, StringComparison.Ordinal);
+        Assert.Contains("LogicalAttemptCompleted", store, StringComparison.Ordinal);
+        Assert.Contains("RecoverExpiredLeasesAsync", store, StringComparison.Ordinal);
+        Assert.Contains("RenewLeaseAsync", store, StringComparison.Ordinal);
+        Assert.Contains("ProviderCircuitEpisodeId", credential, StringComparison.Ordinal);
+        Assert.Contains("ProviderExecutionLeaseIdentity", credential, StringComparison.Ordinal);
+        Assert.Contains("ProviderErrorShape", credential, StringComparison.Ordinal);
+        Assert.Contains("response.completed", adapter, StringComparison.Ordinal);
+        Assert.Contains("response.incomplete", adapter, StringComparison.Ordinal);
+        Assert.Contains("response.failed", adapter, StringComparison.Ordinal);
+        Assert.Contains("RetryAfterUtc", adapter, StringComparison.Ordinal);
+        Assert.Contains("EngineeringRole.TriageWorker", adapter, StringComparison.Ordinal);
+        Assert.Contains("browser_live_proof_waiting_for_registered_page_verifier", adapter, StringComparison.Ordinal);
+        Assert.Contains("RecoverExpiredLeasesAsync", hosted, StringComparison.Ordinal);
+        Assert.DoesNotContain("OPENAI_API_KEY", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("/v1/agents", adapter, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AutonomousActivation_IsOwnedByOperationalContract_NotDeploymentFlag()
     {
         var root = SourceRoot();
@@ -139,6 +178,7 @@ public sealed class FounderEngineeringActivationContractTests
                  {
                      nameof(FounderEngineeringController.SaveChatGptClient),
                      nameof(FounderEngineeringController.ConnectChatGpt),
+                     nameof(FounderEngineeringController.RetryChatGptRuntime),
                      nameof(FounderEngineeringController.DisconnectChatGpt)
                  })
         {

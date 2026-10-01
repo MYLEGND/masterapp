@@ -43,11 +43,27 @@ internal sealed class LegendEngineeringHostedService(
             // when ChatGPT plan execution is unavailable or Founder-paused.
             await releasePlanner.ReconcileAndReleaseAsync(cancellationToken);
 
+            // The work-item authority, not the scheduler, owns restart recovery.
+            // Any abandoned exact lease is restored before new work is considered.
+            await store.RecoverExpiredLeasesAsync(DateTime.UtcNow, cancellationToken);
+
             var contract = await contractAuthority.GetCurrentAsync(cancellationToken);
             var status = JsonSerializer.SerializeToElement(await adapter.GetStatusAsync(cancellationToken));
+            if (contract.AutonomousEngineeringEnabled && contract.ModelExecutionEnabled &&
+                RuntimeReconciliationDue(status, DateTime.UtcNow))
+            {
+                await adapter.ReconcileRuntimeAsync(force: false, cancellationToken);
+                status = JsonSerializer.SerializeToElement(
+                    await adapter.GetStatusAsync(cancellationToken));
+            }
             var runtimeReady = status.TryGetProperty("runtimeReady", out var readyValue) &&
                                readyValue.ValueKind == JsonValueKind.True;
             var autonomyEnabled = contract.AutonomousEngineeringEnabled && contract.ModelExecutionEnabled;
+            if (runtimeReady)
+                await store.ActivateProviderWaitingWorkAsync(
+                    DateTime.UtcNow,
+                    releaseProviderControlBlocks: true,
+                    cancellationToken);
             var blocker = autonomyEnabled && runtimeReady
                 ? null
                 : !contract.AutonomousEngineeringEnabled
@@ -60,7 +76,22 @@ internal sealed class LegendEngineeringHostedService(
                             : "chatgpt_plan_executor_not_ready";
 
             var openWork = await store.GetOpenWorkItemsAsync(100, cancellationToken);
-            await founderNotifications.NotifyActionableAsync(openWork, blocker, cancellationToken);
+            var blockerEpisodeId =
+                status.TryGetProperty("providerCircuitEpisodeId", out var blockerEpisode) &&
+                blockerEpisode.ValueKind == JsonValueKind.String
+                    ? blockerEpisode.GetString()
+                    : null;
+            var recoveredEpisodeId =
+                status.TryGetProperty("providerRecoveredEpisodeId", out var recoveredEpisode) &&
+                recoveredEpisode.ValueKind == JsonValueKind.String
+                    ? recoveredEpisode.GetString()
+                    : null;
+            await founderNotifications.NotifyActionableAsync(
+                openWork,
+                blocker,
+                blockerEpisodeId,
+                recoveredEpisodeId,
+                cancellationToken);
             await founderNotifications.NotifyDailyDigestAsync(openWork, cancellationToken);
 
             if (!autonomyEnabled || !runtimeReady)
@@ -112,10 +143,52 @@ internal sealed class LegendEngineeringHostedService(
     }
 
     private static bool IsAgentActionable(EngineeringWorkItemSnapshot item)
-        => item.LeaseExpiresUtc <= DateTime.UtcNow && item.State is
-            "QUEUED" or "NEEDS_TRIAGE" or "RECURRED_NEEDS_TRIAGE" or
-            "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "REVIEW_REQUIRED" or
-            "REVIEW_REJECTED" or "CI_FAILED_NEEDS_EVIDENCE";
+        => (item.LeaseExpiresUtc is null || item.LeaseExpiresUtc <= DateTime.UtcNow) &&
+           item.NextRetryUtc is null &&
+           item.State is
+               "QUEUED" or "NEEDS_TRIAGE" or "RECURRED_NEEDS_TRIAGE" or
+               "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "REVIEW_REQUIRED" or
+               "REVIEW_REJECTED" or "CI_FAILED_NEEDS_EVIDENCE";
+
+    private static bool RuntimeReconciliationDue(JsonElement status, DateTime nowUtc)
+    {
+        var blockerClass =
+            status.TryGetProperty("providerBlockerClass", out var blockerClassValue) &&
+            blockerClassValue.ValueKind == JsonValueKind.String
+                ? blockerClassValue.GetString()
+                : null;
+        var hasBlocker =
+            status.TryGetProperty("providerBlockerCode", out var blocker) &&
+            blocker.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(blocker.GetString());
+        var readinessState =
+            status.TryGetProperty("readinessState", out var readiness) &&
+            readiness.ValueKind == JsonValueKind.String
+                ? readiness.GetString()
+                : null;
+
+        if (hasBlocker)
+        {
+            // A changed model binding marks readiness UNVERIFIED. That is the only
+            // no-timer circuit class automatically retried after a contract change.
+            if (blockerClass == "MODEL_BINDING" &&
+                !string.Equals(readinessState, "READY", StringComparison.Ordinal))
+                return true;
+
+            return status.TryGetProperty("providerRetryNotBeforeUtc", out var retry) &&
+                   retry.ValueKind == JsonValueKind.String &&
+                   retry.TryGetDateTime(out var retryUtc) &&
+                   retryUtc <= nowUtc;
+        }
+
+        if (!string.Equals(readinessState, "READY", StringComparison.Ordinal))
+            return true;
+
+        return status.TryGetProperty("readinessCheckedUtc", out var checkedValue) &&
+               checkedValue.ValueKind == JsonValueKind.String &&
+               checkedValue.TryGetDateTime(out var checkedUtc) &&
+               checkedUtc <= nowUtc.AddHours(-6);
+    }
 
     private static int PriorityRank(string value) => value switch
     {

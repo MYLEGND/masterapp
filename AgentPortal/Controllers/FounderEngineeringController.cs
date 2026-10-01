@@ -168,14 +168,36 @@ public sealed class FounderEngineeringController(
                 cancellationToken);
             TempData["FounderEngineeringSuccess"] =
                 result.Ready
-                    ? "ChatGPT Plan connected. LEGEND verified the issued client, required plan scopes, PKCE transaction, browser session, and OpenID token."
-                    : "ChatGPT authorization completed but the plan runtime is not ready.";
+                    ? "ChatGPT Plan connected. LEGEND verified authorization and completed a non-mutating inference readiness canary through the governed Responses route."
+                    : "ChatGPT authorization completed, but inference readiness is blocked. The runtime card shows the exact recovery state.";
         }
         catch (InvalidOperationException exception)
         {
             TempData["FounderEngineeringError"] = ErrorMessage(exception.Message);
         }
 
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("chatgpt/runtime/retry")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RetryChatGptRuntime(
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        try
+        {
+            var result = await commandCenter.RetryChatGptRuntimeAsync(cancellationToken);
+            if (result.Ready)
+                TempData["FounderEngineeringSuccess"] =
+                    "ChatGPT runtime readiness is green after a completed non-mutating inference canary.";
+            else
+                TempData["FounderEngineeringError"] = ErrorMessage(result.Code);
+        }
+        catch (InvalidOperationException exception)
+        {
+            TempData["FounderEngineeringError"] = ErrorMessage(exception.Message);
+        }
         return RedirectToAction(nameof(Index));
     }
 
@@ -254,6 +276,35 @@ public sealed class FounderEngineeringController(
             "The connected ChatGPT authorization did not grant all required plan-usage scopes.",
         "chatgpt_plan_id_token_validation_failed" =>
             "LEGEND could not validate the OpenAI identity token.",
+        "subscription_sharing_usage_limit_exceeded" =>
+            "ChatGPT plan usage is currently exhausted for this app or account. Open ChatGPT Settings → Usage to review the account-specific limit, reset, or credit options; LEGEND will not guess a reset time.",
+        "subscription_sharing_usage_unavailable" or
+        "subscription_sharing_user_unavailable" or
+        "chatgpt_plan_response_temporarily_unavailable" =>
+            "ChatGPT is temporarily unavailable. LEGEND preserved the provider evidence and will retry only after the bounded provider backoff is due.",
+        "subscription_sharing_user_not_eligible" =>
+            "This ChatGPT account is not currently eligible for plan sharing with this app.",
+        "subscription_sharing_unsupported_capability" or
+        "chatgpt_plan_model_payload_incompatible" or
+        "chatgpt_plan_model_binding_unavailable" =>
+            "The selected model is unavailable or incompatible with the governed LEGEND role payload. Choose another model or Auto.",
+        "subscription_sharing_invalid_subscriber" or
+        "subscription_sharing_invalid_user" or
+        "chatgpt_plan_reauthorization_required" =>
+            "Reconnect ChatGPT with the intended account. LEGEND did not fall back to API billing.",
+        "chatpass_v2_scope_not_authorized" or
+        "chatpass_v2_invalid_authorization_context" or
+        "chatgpt_plan_authorization_context_required" or
+        "chatgpt_plan_admission_forbidden" or
+        "subscription_sharing_route_not_supported" =>
+            "The OpenAI client, grant, or admission configuration needs attention before plan execution can resume.",
+        "chatgpt_plan_model_catalog_invalid" or
+        "chatgpt_plan_model_catalog_empty" or
+        "chatgpt_plan_model_catalog_unavailable" =>
+            "The ChatGPT model catalog is not currently usable. LEGEND preserved the provider evidence and will not start model work until compatibility is re-established.",
+        "chatgpt_plan_readiness_canary_required" or
+        "chatgpt_plan_readiness_canary_failed" =>
+            "A completed inference readiness canary is required before autonomous model work can start.",
         _ => "The engineering control change was rejected by the canonical authority."
     };
 }

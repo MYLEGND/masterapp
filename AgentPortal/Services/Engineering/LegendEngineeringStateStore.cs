@@ -48,12 +48,16 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
 
                 var state = existing.State is "COMPLETED" or "CLOSED"
                     ? InitialState(decision, recurring: true)
-                    : existing.State;
+                    : evidenceChanged && existing.State == "LEASED"
+                        ? ResolveResumeState(existing)
+                        : existing.State;
                 var preserveWorkflowRole = existing.State is
                     "LEASED" or "AGENT_ACTIVE" or "CANDIDATE_PREPARED" or "REVIEW_REQUIRED" or
                     "REVIEWED" or "VALIDATED" or "RELEASE_REQUESTED" or
                     "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "CI_FAILED_NEEDS_EVIDENCE" or
-                    "REVIEW_REJECTED" or "RELEASE_BLOCKED" or "FOUNDER_ESCALATION";
+                    "REVIEW_REJECTED" or "RELEASE_BLOCKED" or "FOUNDER_ESCALATION" or
+                    "WAITING_PROVIDER_RETRY" or "WAITING_PROVIDER_CONTROL" or
+                    "LIVE_FUNCTIONAL_PROOF_REQUIRED";
                 var sameReproducerRoute = existing.ReproducerRoute is null ||
                     string.Equals(existing.ReproducerRoute, reproducerRoute, StringComparison.Ordinal);
                 var updated = existing with
@@ -73,6 +77,7 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                     LeaseOwner = state == existing.State && !evidenceChanged ? existing.LeaseOwner : null,
                     LeaseIdentity = state == existing.State && !evidenceChanged ? existing.LeaseIdentity : null,
                     LeaseExpiresUtc = state == existing.State && !evidenceChanged ? existing.LeaseExpiresUtc : null,
+                    ResumeState = state == existing.State ? existing.ResumeState : null,
                     ValidationState = state == existing.State ? existing.ValidationState : "NOT_STARTED",
                     ReleaseCohort = decision.ReleaseCohort,
                     FounderReleaseApprovedUtc = string.Equals(existing.EvidenceRevision, evidenceRevision, StringComparison.Ordinal)
@@ -187,17 +192,203 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                 return new(false, "overlapping_impact_set_leased", workItemId, other.LeaseOwner, other.LeaseIdentity, other.LeaseExpiresUtc, other.WorkItemId);
             }
 
+            if (item.State == "LEASED" && item.LeaseExpiresUtc <= now)
+                item = item with
+                {
+                    State = ResolveResumeState(item),
+                    LeaseOwner = null,
+                    LeaseIdentity = null,
+                    LeaseExpiresUtc = null
+                };
+
             var identity = Guid.NewGuid().ToString("N");
             var expires = now.Add(duration);
             var leased = Stamp(item with
             {
                 State = "LEASED",
+                ResumeState = item.State,
+                NextRetryUtc = null,
                 LeaseOwner = leaseOwner,
                 LeaseIdentity = identity,
                 LeaseExpiresUtc = expires
             });
             await UpdateWorkItemAsync(connection, transaction, leased, cancellationToken);
             return new(true, "lease_acquired", workItemId, leaseOwner, identity, expires, null);
+        }, cancellationToken);
+    }
+
+    internal async Task<bool> RenewLeaseAsync(
+        Guid workItemId,
+        string leaseIdentity,
+        TimeSpan duration,
+        DateTime boundedUntilUtc,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(leaseIdentity) || duration <= TimeSpan.Zero ||
+            duration > TimeSpan.FromMinutes(10) || boundedUntilUtc <= DateTime.UtcNow)
+            return false;
+
+        return await WithSerializedLeaseAuthorityAsync(async (connection, transaction) =>
+        {
+            var item = await ReadWorkItemAsync(connection, transaction, workItemId, cancellationToken);
+            var now = DateTime.UtcNow;
+            if (item is null || item.State != "LEASED" || item.LeaseExpiresUtc <= now ||
+                !string.Equals(item.LeaseIdentity, leaseIdentity, StringComparison.Ordinal))
+                return false;
+
+            var expires = now.Add(duration);
+            if (expires > boundedUntilUtc) expires = boundedUntilUtc;
+            if (expires <= now) return false;
+
+            // Heartbeats extend only the exact active lease. They do not
+            // create a new workflow state revision, so a legitimate long-running
+            // model turn cannot invalidate its own eventual state transition.
+            await UpdateWorkItemAsync(connection, transaction, item with
+            {
+                LeaseExpiresUtc = expires,
+                UpdatedUtc = now
+            }, cancellationToken);
+            return true;
+        }, cancellationToken);
+    }
+
+    internal async Task<bool> ReleaseLeaseAsync(
+        Guid workItemId,
+        string leaseIdentity,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(leaseIdentity)) return false;
+        return await WithSerializedLeaseAuthorityAsync(async (connection, transaction) =>
+        {
+            var item = await ReadWorkItemAsync(connection, transaction, workItemId, cancellationToken);
+            if (item is null || !string.Equals(item.LeaseIdentity, leaseIdentity, StringComparison.Ordinal))
+                return false;
+
+            var restored = Stamp(item with
+            {
+                State = item.State == "LEASED" ? ResolveResumeState(item) : item.State,
+                LeaseOwner = null,
+                LeaseIdentity = null,
+                LeaseExpiresUtc = null,
+                ResumeState = item.State == "LEASED" ? null : item.ResumeState
+            });
+            await UpdateWorkItemAsync(connection, transaction, restored, cancellationToken);
+            return true;
+        }, cancellationToken);
+    }
+
+    internal async Task<int> RecoverExpiredLeasesAsync(
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        return await WithSerializedLeaseAuthorityAsync(async (connection, transaction) =>
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                SELECT [SnapshotJson] FROM [LegendEngineeringWorkItems]
+                WHERE [LeaseIdentity] IS NOT NULL AND [LeaseExpiresUtc] IS NOT NULL
+                  AND [LeaseExpiresUtc] <= @now
+                  AND [State] NOT IN ('COMPLETED','CLOSED')
+                """;
+            Add(command, "@now", nowUtc);
+            var stranded = new List<EngineeringWorkItemSnapshot>();
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var item = JsonSerializer.Deserialize<EngineeringWorkItemSnapshot>(reader.GetString(0), JsonOptions);
+                    if (item is not null) stranded.Add(item);
+                }
+            }
+
+            foreach (var item in stranded)
+            {
+                var restored = Stamp(item with
+                {
+                    State = item.State == "LEASED" ? ResolveResumeState(item) : item.State,
+                    LeaseOwner = null,
+                    LeaseIdentity = null,
+                    LeaseExpiresUtc = null,
+                    ResumeState = item.State == "LEASED" ? null : item.ResumeState
+                });
+                await UpdateWorkItemAsync(connection, transaction, restored, cancellationToken);
+            }
+            return stranded.Count;
+        }, cancellationToken);
+    }
+
+    internal async Task<int> ActivateProviderWaitingWorkAsync(
+        DateTime nowUtc,
+        bool releaseProviderControlBlocks,
+        CancellationToken cancellationToken)
+    {
+        return await WithSerializedLeaseAuthorityAsync(async (connection, transaction) =>
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                SELECT [SnapshotJson] FROM [LegendEngineeringWorkItems]
+                WHERE [State] IN ('WAITING_PROVIDER_RETRY','WAITING_PROVIDER_CONTROL')
+                """;
+            var waiting = new List<EngineeringWorkItemSnapshot>();
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var item = JsonSerializer.Deserialize<EngineeringWorkItemSnapshot>(reader.GetString(0), JsonOptions);
+                    if (item is not null) waiting.Add(item);
+                }
+            }
+
+            var activated = 0;
+            foreach (var item in waiting)
+            {
+                var due = item.State == "WAITING_PROVIDER_RETRY" && item.NextRetryUtc <= nowUtc;
+                if (!due && !(releaseProviderControlBlocks && item.State == "WAITING_PROVIDER_CONTROL"))
+                    continue;
+                await UpdateWorkItemAsync(connection, transaction, Stamp(item with
+                {
+                    State = ResolveResumeState(item),
+                    ResumeState = null,
+                    NextRetryUtc = null
+                }), cancellationToken);
+                activated++;
+            }
+            return activated;
+        }, cancellationToken);
+    }
+
+    internal async Task<EngineeringWorkItemSnapshot?> TransitionProviderFailureAsync(
+        Guid workItemId,
+        string leaseIdentity,
+        string failureCode,
+        string? providerRequestId,
+        DateTime? nextRetryUtc,
+        bool waitForProviderControl,
+        CancellationToken cancellationToken)
+    {
+        return await WithSerializedLeaseAuthorityAsync(async (connection, transaction) =>
+        {
+            var item = await ReadWorkItemAsync(connection, transaction, workItemId, cancellationToken);
+            if (item is null || !string.Equals(item.LeaseIdentity, leaseIdentity, StringComparison.Ordinal))
+                return null;
+
+            var next = Stamp(item with
+            {
+                State = waitForProviderControl ? "WAITING_PROVIDER_CONTROL" : "WAITING_PROVIDER_RETRY",
+                ResumeState = item.ResumeState ?? ResolveResumeState(item),
+                NextRetryUtc = waitForProviderControl ? null : nextRetryUtc,
+                ProviderFailureCount = item.ProviderFailureCount + 1,
+                LastProviderFailureCode = SafeProviderCode(failureCode),
+                LastProviderRequestId = SafeProviderRequestId(providerRequestId),
+                LastProviderFailureUtc = DateTime.UtcNow,
+                LeaseOwner = null,
+                LeaseIdentity = null,
+                LeaseExpiresUtc = null
+            });
+            await UpdateWorkItemAsync(connection, transaction, next, cancellationToken);
+            return next;
         }, cancellationToken);
     }
 
@@ -320,8 +511,12 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
             command.CommandText = """
                 INSERT INTO [LegendEngineeringUsage]
                 ([UsageId],[WorkItemId],[ModelTier],[Role],[Provider],[SessionId],[InputTokens],[OutputTokens],
-                 [TotalTokens],[CostMicrousd],[UsageObserved],[CreatedUtc])
-                VALUES (@id,@work,@tier,@role,@provider,@session,@input,@output,@total,@cost,@observed,@created)
+                 [TotalTokens],[CostMicrousd],[UsageObserved],[CreatedUtc],[ProviderAttempted],
+                 [LogicalAttemptCompleted],[ProviderOutcome],[ProviderStatusCode],[ProviderErrorShape],[ProviderErrorCode],
+                 [ProviderErrorParam],[ProviderRequestId])
+                VALUES (@id,@work,@tier,@role,@provider,@session,@input,@output,@total,@cost,@observed,@created,
+                        @providerAttempted,@logicalCompleted,@providerOutcome,@providerStatus,@providerShape,@providerError,
+                        @providerParam,@providerRequest)
                 """;
             Add(command, "@id", usage.UsageId);
             Add(command, "@work", usage.WorkItemId);
@@ -335,6 +530,14 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
             Add(command, "@cost", usage.CostMicrousd);
             Add(command, "@observed", usage.UsageObserved);
             Add(command, "@created", usage.CreatedUtc);
+            Add(command, "@providerAttempted", usage.ProviderAttempted);
+            Add(command, "@logicalCompleted", usage.LogicalAttemptCompleted);
+            Add(command, "@providerOutcome", usage.ProviderOutcome);
+            Add(command, "@providerStatus", usage.ProviderStatusCode);
+            Add(command, "@providerShape", usage.ProviderErrorShape);
+            Add(command, "@providerError", usage.ProviderErrorCode);
+            Add(command, "@providerParam", usage.ProviderErrorParam);
+            Add(command, "@providerRequest", usage.ProviderRequestId);
             try { await command.ExecuteNonQueryAsync(cancellationToken); }
             catch (DbException)
             {
@@ -349,7 +552,15 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                       [OutputTokens]=COALESCE(@output,[OutputTokens]),
                       [TotalTokens]=COALESCE(@total,[TotalTokens]),
                       [CostMicrousd]=COALESCE(@cost,[CostMicrousd]),
-                      [UsageObserved]=CASE WHEN @observed=1 THEN 1 ELSE [UsageObserved] END
+                      [UsageObserved]=CASE WHEN @observed=1 THEN 1 ELSE [UsageObserved] END,
+                      [ProviderAttempted]=CASE WHEN @providerAttempted=1 THEN 1 ELSE [ProviderAttempted] END,
+                      [LogicalAttemptCompleted]=CASE WHEN @logicalCompleted=1 THEN 1 ELSE [LogicalAttemptCompleted] END,
+                      [ProviderOutcome]=COALESCE(@providerOutcome,[ProviderOutcome]),
+                      [ProviderStatusCode]=COALESCE(@providerStatus,[ProviderStatusCode]),
+                      [ProviderErrorShape]=COALESCE(@providerShape,[ProviderErrorShape]),
+                      [ProviderErrorCode]=COALESCE(@providerError,[ProviderErrorCode]),
+                      [ProviderErrorParam]=COALESCE(@providerParam,[ProviderErrorParam]),
+                      [ProviderRequestId]=COALESCE(@providerRequest,[ProviderRequestId])
                     WHERE [UsageId]=@id
                     """;
                 Add(update, "@id", usage.UsageId);
@@ -359,6 +570,14 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                 Add(update, "@total", usage.TotalTokens);
                 Add(update, "@cost", usage.CostMicrousd);
                 Add(update, "@observed", usage.UsageObserved);
+                Add(update, "@providerAttempted", usage.ProviderAttempted);
+                Add(update, "@logicalCompleted", usage.LogicalAttemptCompleted);
+                Add(update, "@providerOutcome", usage.ProviderOutcome);
+                Add(update, "@providerStatus", usage.ProviderStatusCode);
+                Add(update, "@providerShape", usage.ProviderErrorShape);
+                Add(update, "@providerError", usage.ProviderErrorCode);
+                Add(update, "@providerParam", usage.ProviderErrorParam);
+                Add(update, "@providerRequest", usage.ProviderRequestId);
                 await update.ExecuteNonQueryAsync(cancellationToken);
             }
         }
@@ -378,7 +597,7 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
             await using var command = connection.CreateCommand();
             command.CommandText = """
                 SELECT COUNT(*) FROM [LegendEngineeringUsage]
-                WHERE [WorkItemId]=@work AND [Role]=@role
+                WHERE [WorkItemId]=@work AND [Role]=@role AND [LogicalAttemptCompleted]=1
                 """;
             Add(command, "@work", workItemId);
             Add(command, "@role", role);
@@ -662,6 +881,39 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
         parameter.ParameterName = name;
         parameter.Value = value ?? DBNull.Value;
         command.Parameters.Add(parameter);
+    }
+
+    private static string ResolveResumeState(EngineeringWorkItemSnapshot item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.ResumeState) &&
+            item.ResumeState is not "LEASED" and not "AGENT_ACTIVE" and not "WAITING_PROVIDER_RETRY" and not "WAITING_PROVIDER_CONTROL")
+            return item.ResumeState;
+        return item.AssignedRole switch
+        {
+            EngineeringRole.TriageWorker => "NEEDS_TRIAGE",
+            EngineeringRole.HeadGpt => item.ValidationFailureCodes is { Count: > 0 }
+                ? "CI_FAILED_NEEDS_EVIDENCE" : "NEEDS_SUPERVISOR",
+            EngineeringRole.IndependentReviewer => "REVIEW_REQUIRED",
+            EngineeringRole.LiveVerifier => "LIVE_FUNCTIONAL_PROOF_REQUIRED",
+            _ => "QUEUED"
+        };
+    }
+
+    private static string SafeProviderCode(string? value)
+    {
+        var text = (value ?? "provider_failure").Trim();
+        if (text.Length > 128) text = text[..128];
+        return new string(text.Select(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.' or ':' ? character : '_').ToArray());
+    }
+
+    private static string? SafeProviderRequestId(string? value)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrWhiteSpace(text) || text.Length > 160 ||
+            text.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.')))
+            return null;
+        return text;
     }
 
     private static string InitialState(EngineeringPolicyDecision decision, bool recurring)
