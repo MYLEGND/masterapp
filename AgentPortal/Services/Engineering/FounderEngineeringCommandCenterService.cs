@@ -95,11 +95,9 @@ internal sealed class FounderEngineeringCommandCenterService(
                 "USAGE_LIMIT",
                 StringComparison.Ordinal),
             ShowReconnectChatGpt =
-                ReadString(adapterStatus, "providerBlockerClass") is "AUTHENTICATION" or "PLAN_ELIGIBILITY" ||
+                ReadString(adapterStatus, "providerBlockerClass") == "AUTHENTICATION" ||
                 ReadString(adapterStatus, "eligibility") == "chatgpt_plan_reauthorization_required",
-            ShowRetryRuntime =
-                !ReadBool(adapterStatus, "runtimeReady") &&
-                ReadString(adapterStatus, "providerBlockerClass") != "USAGE_LIMIT",
+            ShowRetryRuntime = ShouldOfferRuntimeRetry(adapterStatus),
             AutonomousRuntimeActive =
                 ReadBool(adapterStatus, "runtimeReady") &&
                 contract.ModelExecutionEnabled &&
@@ -147,7 +145,7 @@ internal sealed class FounderEngineeringCommandCenterService(
                 cancellationToken);
             var credential = await credentials.GetAsync(cancellationToken);
             if (credential.Ready)
-                await adapter.ReconcileRuntimeAsync(force: true, cancellationToken);
+                await adapter.ReconcileRuntimeAsync(force: false, cancellationToken);
         }
         return new(value.Revision, value.Version);
     }
@@ -169,7 +167,7 @@ internal sealed class FounderEngineeringCommandCenterService(
                 cancellationToken);
             var credential = await credentials.GetAsync(cancellationToken);
             if (credential.Ready)
-                await adapter.ReconcileRuntimeAsync(force: true, cancellationToken);
+                await adapter.ReconcileRuntimeAsync(force: false, cancellationToken);
         }
         return new(value.Revision, value.Version);
     }
@@ -258,14 +256,30 @@ internal sealed class FounderEngineeringCommandCenterService(
         var blockerClass = ReadString(status, "providerBlockerClass");
         if (blockerClass == "USAGE_LIMIT") return "Waiting for ChatGPT usage";
         if (blockerClass == "TEMPORARY_PROVIDER") return "ChatGPT temporarily unavailable";
-        if (blockerClass is "AUTHENTICATION" or "PLAN_ELIGIBILITY")
-            return "Reconnect ChatGPT";
-        if (blockerClass == "MODEL_BINDING" ||
+        if (blockerClass == "AUTHENTICATION") return "Reconnect ChatGPT";
+        if (blockerClass == "PLAN_ELIGIBILITY") return "Plan sharing unavailable";
+        if (blockerClass is "MODEL_BINDING" or "MODEL_CATALOG" ||
             ReadString(status, "eligibility") == "chatgpt_plan_model_binding_unavailable")
             return "Selected model unavailable";
-        if (blockerClass == "GRANT_CONFIGURATION")
+        if (blockerClass is "GRANT_CONFIGURATION" or "ROUTE_CONFIGURATION" or "ADMISSION_POLICY")
             return "Client/grant configuration required";
+        if (blockerClass == "PROVIDER_REJECTED") return "Provider request rejected";
         return ReadBool(status, "runtimeReady") ? "Inference ready" : "Readiness check required";
+    }
+
+    private static bool ShouldOfferRuntimeRetry(JsonElement status)
+    {
+        if (ReadBool(status, "runtimeReady")) return false;
+        var blockerClass = ReadString(status, "providerBlockerClass");
+        if (blockerClass == "USAGE_LIMIT") return true;
+        if (blockerClass == "TEMPORARY_PROVIDER")
+        {
+            var retry = ReadDateTime(status, "providerRetryNotBeforeUtc");
+            return retry is null || retry <= DateTime.UtcNow;
+        }
+        if (blockerClass is "MODEL_BINDING" or "MODEL_CATALOG") return true;
+        return string.IsNullOrWhiteSpace(blockerClass) &&
+               ReadString(status, "readinessState") != "READY";
     }
 
     private static int ReadInt(JsonElement element, string name) =>
