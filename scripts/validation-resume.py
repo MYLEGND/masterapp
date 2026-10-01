@@ -98,7 +98,7 @@ CRM_SOURCE = (
 
 WORKFLOWS = {
     "masterapp-platform-architecture-validation.yml": {
-        "force_all": GLOBAL_DOTNET_INPUTS,
+        "force_all": (),
         "neutral": ("Docs/**", "*.md"),
         "gates": {
             "lifecycle": {
