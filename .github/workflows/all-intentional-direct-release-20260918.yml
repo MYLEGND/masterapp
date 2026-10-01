@@ -140,7 +140,6 @@ jobs:
           artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
           while read -r candidate_run; do
             [ -n "$candidate_run" ] || continue
-            [ "$candidate_run" != "$GITHUB_RUN_ID" ] || continue
             run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
             workflow_path="$(printf '%s' "$run" | jq -r '.path // ""')"
             head_sha="$(printf '%s' "$run" | jq -r '.head_sha // ""')"
@@ -378,6 +377,7 @@ jobs:
           path: /tmp/diagnostics-packages/
           retention-days: 7
           if-no-files-found: error
+          overwrite: true
       - uses: azure/login@v2
         id: azure
         if: (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true'
