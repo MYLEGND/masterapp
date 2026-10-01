@@ -51,12 +51,11 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
         var validation = await store.ValidateContextAsync(engineeringContextId, cancellationToken);
         if (!validation.Valid || validation.Context is null) return Failure(validation.Code);
         var context = validation.Context;
-        var operationalContract = await contractAuthority.GetCurrentAsync(cancellationToken);
-        if (!operationalContract.ModelExecutionEnabled)
-            return Failure("engineering_operational_execution_paused");
-        if (string.IsNullOrWhiteSpace(context.OperationalContractRevision) ||
-            !string.Equals(context.OperationalContractRevision, operationalContract.Revision, StringComparison.Ordinal))
-            return Failure("engineering_operational_contract_changed");
+        var contractBinding = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
+        if (!contractBinding.Valid)
+            return Failure(contractBinding.Code);
+        var operationalContract = contractBinding.Contract;
         var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken);
         if (item is null) return Failure("work_item_not_found");
         var credential = await credentials.GetAsync(cancellationToken);
@@ -95,11 +94,10 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
             attemptId, item.WorkItemId, item.ModelTier, context.Role, ProviderName, run.ThreadId,
             null, null, run.TotalTokens, null, run.TotalTokens is not null, DateTime.UtcNow), cancellationToken);
 
-        var currentContract = await contractAuthority.GetCurrentAsync(cancellationToken);
-        if (!currentContract.ModelExecutionEnabled)
-            return Failure("engineering_operational_execution_paused");
-        if (!string.Equals(currentContract.Revision, operationalContract.Revision, StringComparison.Ordinal))
-            return Failure("engineering_operational_contract_changed");
+        var currentBinding = await contractAuthority.ValidateBindingAsync(
+            operationalContract.Revision, cancellationToken);
+        if (!currentBinding.Valid)
+            return Failure(currentBinding.Code);
 
         return await ApplyOutcomeAsync(context, item, run.ThreadId!, run.Output!.Value, cancellationToken);
     }
