@@ -79,7 +79,22 @@ internal sealed class LegendEngineeringHostedService(
                             : "chatgpt_plan_executor_not_ready";
 
             var openWork = await store.GetOpenWorkItemsAsync(100, cancellationToken);
-            await founderNotifications.NotifyActionableAsync(openWork, blocker, cancellationToken);
+            var blockerEpisodeId =
+                status.TryGetProperty("providerCircuitEpisodeId", out var blockerEpisode) &&
+                blockerEpisode.ValueKind == JsonValueKind.String
+                    ? blockerEpisode.GetString()
+                    : null;
+            var recoveredEpisodeId =
+                status.TryGetProperty("providerRecoveredEpisodeId", out var recoveredEpisode) &&
+                recoveredEpisode.ValueKind == JsonValueKind.String
+                    ? recoveredEpisode.GetString()
+                    : null;
+            await founderNotifications.NotifyActionableAsync(
+                openWork,
+                blocker,
+                blockerEpisodeId,
+                recoveredEpisodeId,
+                cancellationToken);
             await founderNotifications.NotifyDailyDigestAsync(openWork, cancellationToken);
 
             if (!autonomyEnabled || !runtimeReady)
