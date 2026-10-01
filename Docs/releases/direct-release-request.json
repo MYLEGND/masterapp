@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-10-01 to retire the legacy production Git branch authority and make protected legend/approved-changes the sole canonical integration and release path. Publish the affected AgentPortal remediation/runtime authority only after the exact retirement candidate passes all owning validation. Preserve prior successful evidence and rerun only gates invalidated by this authority change.",
-  "purpose": "Deploy only masterapp-portal after the single-branch release-authority retirement is merged. This publishes the Founder software-remediation authority changes that now bind to protected approved-branch validation and direct-release receipts. Do not deploy ClientApp, Protect, Parfait, the static Website, native iOS/Android, or Cloudflare routing. Apply only expected additive migrations if any are pending, preserve exact already-live targets, and require final runtime provenance.",
-  "requestId": "retire-production-branch-authority-20261001",
+  "authorization": "Explicit Founder authorization on 2026-10-01 to validate and deploy the completed Founder Engineering ChatGPT activation through the protected legend/approved-changes release authority. Release only the exact merged activation application revision after its owning validation is green. Preserve successful evidence and do not deploy unrelated applications.",
+  "purpose": "Deploy only masterapp-portal for the merged Founder Engineering ChatGPT activation. Apply the additive 20261001193000_ExtendFounderEngineeringActivation migration through the existing canonical migration authority, publish the Founder Engineering Command Center activation flow, ChatGPT-plan OAuth credential authority, plan-backed Responses execution adapter, model-role bindings, and autonomous engineering controls. Do not deploy ClientApp, Protect, Parfait, the static Website, native iOS/Android, or Cloudflare routing. Require final live runtime provenance for the exact application release SHA.",
+  "requestId": "founder-engineering-chatgpt-activation-20261001",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"
