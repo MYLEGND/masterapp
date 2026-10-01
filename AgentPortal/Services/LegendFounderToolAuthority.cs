@@ -126,6 +126,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_capabilities" or
             "legend_system_inventory" or
             "legend_system_health" or
+            "legend_configuration_presence" or
             "legend_software_remediation_status" or
             "legend_inspect_repository" or
             "legend_prepare_repair_packet" or
@@ -195,6 +196,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_capabilities" or
             "legend_system_inventory" or
             "legend_system_health" or
+            "legend_configuration_presence" or
             "legend_request_teacher_escalation" or
             "legend_software_remediation_status" or
             "legend_inspect_repository" or
@@ -510,6 +512,15 @@ internal sealed partial class LegendFounderToolAuthority
 
             case "legend_system_health":
                 return SerializeUnbounded(await ReadSanitizedSystemHealthAsync(cancellationToken));
+
+            case "legend_configuration_presence":
+            {
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var capability = ReadRequiredString(arguments.RootElement, "capability");
+                if (string.IsNullOrWhiteSpace(capability))
+                    return """{"ok":false,"error":"configuration_capability_required"}""";
+                return SerializeUnbounded(ReadConfigurationPresence(capability));
+            }
 
             case "legend_software_remediation_status":
             {
@@ -2910,6 +2921,33 @@ internal sealed partial class LegendFounderToolAuthority
                 {
                     type = "object", properties = new { },
                     required = Array.Empty<string>(), additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_configuration_presence",
+                description =
+                    "Read presence-only status for a fixed allowlist of production capability configuration groups. Returns configured/missing roles and counts only. It never accepts arbitrary configuration keys and never returns secret, credential, connection-string, token, identifier, endpoint value, or private data.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        capability = new
+                        {
+                            type = "string",
+                            @enum = new[]
+                            {
+                                "all", "founder_identity", "master_database", "github_remediation",
+                                "data_protection", "website_editor_data_protection", "meta_ads",
+                                "graph_provisioning", "azure_translator", "square_server_payments"
+                            }
+                        }
+                    },
+                    required = new[] { "capability" },
+                    additionalProperties = false
                 },
                 strict = true
             },
