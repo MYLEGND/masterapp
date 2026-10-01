@@ -70,8 +70,10 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("LegendPageHealth?.current?.structuralSnapshot?.()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("function values(selector, attribute, maximum)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("data-website-action-key", source, StringComparison.Ordinal);
-
-        Assert.Contains("data-cms-composition-id", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-cms-composition-id", source, StringComparison.Ordinal);
+        var pageHealth = Read("SHARED", "wwwroot", "js", "page-health.js");
+        Assert.Contains("data-website-action-key", pageHealth, StringComparison.Ordinal);
+        Assert.Contains("data-cms-composition-id", pageHealth, StringComparison.Ordinal);
         Assert.Contains("result.push(url.pathname)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("textContent", source, StringComparison.Ordinal);
         Assert.DoesNotContain("innerHTML", source, StringComparison.Ordinal);
