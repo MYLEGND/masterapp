@@ -391,6 +391,9 @@ internal sealed class LegendEngineeringOrchestrator(
         if (!string.Equals(item.AssignedRole, role, StringComparison.Ordinal)) return false;
         if (role == EngineeringRole.CodexImplementer)
             return item.FailureClass == EngineeringFailureClass.CodeDefect && item.RiskClass != EngineeringRiskClass.TierC;
+        if (role == EngineeringRole.TriageWorker)
+            return item.FailureClass == EngineeringFailureClass.Unknown &&
+                   item.State is "NEEDS_TRIAGE" or "RECURRED_NEEDS_TRIAGE";
         if (role == EngineeringRole.HeadGpt)
             return item.State is "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "QUEUED" or "REVIEW_REJECTED";
         return role is EngineeringRole.IndependentReviewer or EngineeringRole.LiveVerifier;
@@ -400,6 +403,8 @@ internal sealed class LegendEngineeringOrchestrator(
     {
         EngineeringRole.CodexImplementer =>
             ["legend_inspect_repository", "legend_prepare_software_repair"],
+        EngineeringRole.TriageWorker =>
+            ["legend_inspect_repository"],
         EngineeringRole.HeadGpt =>
             ["legend_inspect_repository"],
         EngineeringRole.IndependentReviewer =>
