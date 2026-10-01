@@ -14,6 +14,8 @@ on:
       - 'ParfaitApp/**'
       - 'AgentPortal.Tests/**'
       - '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
+      - 'scripts/validation-resume.py'
+      - 'scripts/test-validation-resume.py'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
