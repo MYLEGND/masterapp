@@ -2055,7 +2055,7 @@ internal sealed partial class LegendFounderToolAuthority
         value.Length <= maximumLength &&
         !value.Any(char.IsControl);
 
-    private static bool IsCommitSha(string? value) =>
+    private static bool IsCommitSha([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? value) =>
         value is { Length: 40 } && value.All(Uri.IsHexDigit);
 
     private static bool IsSafeRepairSymbol(string? value, int maximumLength) =>
