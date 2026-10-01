@@ -97,7 +97,7 @@ public sealed class FounderRepositoryInspectionTests
     [InlineData("AgentPortal/Program.cs", "INTEGRITY_PROTECTED")]
     [InlineData("AgentPortal/Security/Example.cs", "INTEGRITY_PROTECTED")]
     [InlineData("AgentPortal/FounderSoftwareRemediationService.cs", "INTEGRITY_PROTECTED")]
-    [InlineData(".github/workflows/agentportal-production-deploy.yml", "INTEGRITY_PROTECTED")]
+    [InlineData(".github/workflows/approved-release-security-validation.yml", "INTEGRITY_PROTECTED")]\n    [InlineData(".github/workflows/all-intentional-direct-release-20260918.yml", "INTEGRITY_PROTECTED")]
     [InlineData("AgentPortal/appsettings.cs", "EXISTENCE_ONLY")]
     [InlineData("AgentPortal/Secrets.cs", "EXISTENCE_ONLY")]
     [InlineData("AgentPortal/Credentials/example.cs", "EXISTENCE_ONLY")]
