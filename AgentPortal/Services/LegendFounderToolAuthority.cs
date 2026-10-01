@@ -83,6 +83,17 @@ internal sealed partial class LegendFounderToolAuthority
         }).ToArray();
     }
 
+    internal IReadOnlyList<object> GetAvailableSiteReadTools()
+    {
+        // Browser/site-tool exposure is a projection of this one executable
+        // registry. It never copies schemas into a second permission catalog.
+        return Tools.Where(tool =>
+        {
+            var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
+            return IsSiteReadableTool(name);
+        }).ToArray();
+    }
+
     internal IReadOnlyList<object> GetAvailableCloudTools(
         string? conversationId, LegendConnectExternalProviderPolicy providerPolicy)
     {
@@ -109,6 +120,19 @@ internal sealed partial class LegendFounderToolAuthority
         // Source inspection keeps its own regular-file, immutable-revision,
         // sensitive-path and credential-material checks before returning text.
         "legend_inspect_repository";
+
+    private static bool IsSiteReadableTool(string name) =>
+        IsReadOnlyFounderTool(name) && name is
+            "legend_capabilities" or
+            "legend_software_remediation_status" or
+            "legend_inspect_repository" or
+            "legend_inspect_repair_validation" or
+            "legend_request_repair_release" or
+            "legend_verify_repair_deployment" or
+            "legend_system_overview" or
+            "legend_provider_capacity" or
+            "legend_client_lead_portfolio";
+
 
     // A read-only status grouping can still contain arbitrary private text.
     // Cloud disclosure includes aggregate numbers, never editable CRM labels.
