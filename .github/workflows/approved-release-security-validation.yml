@@ -1,0 +1,171 @@
+name: LEGEND approved release security validation
+
+on:
+  pull_request:
+    branches: [legend/approved-changes]
+    paths:
+      - 'AgentPortal/**'
+      - 'ClientApp/**'
+      - 'Protect-Website/**'
+      - 'ParfaitApp/**'
+      - 'Infrastructure/**'
+      - 'Domain/**'
+      - 'SHARED/**'
+      - 'AgentPortal.Tests/**'
+      - 'MASTERAPP.sln'
+      - 'global.json'
+      - 'NuGet.config'
+      - 'Directory.Build.*'
+      - 'Directory.Packages.*'
+      - '**/*.csproj'
+      - '**/*.props'
+      - '**/*.targets'
+      - 'scripts/db.sh'
+      - 'scripts/validation-resume.py'
+      - 'scripts/test-validation-resume.py'
+      - '.github/workflows/approved-release-security-validation.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    name: approved-release-security
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Plan exact validation resume
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/validation-resume.py plan \
+            --workflow approved-release-security-validation.yml \
+            --current-sha "${{ github.event.pull_request.head.sha }}" \
+            --current-run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --head-branch "${{ github.head_ref }}" \
+            --event "${{ github.event_name }}" \
+            --repository "${{ github.repository }}" \
+            --output "$RUNNER_TEMP/validation-resume.json"
+
+      - name: Restore security validation graph
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore; then exit 0; fi
+          dotnet restore MASTERAPP.sln
+
+      - name: Validate database migration artifacts
+        shell: bash
+        env:
+          DB_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          DB_BUILD_CONFIGURATION: Release
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate db-validation; then exit 0; fi
+          ./scripts/db.sh validate-artifacts
+
+      - name: Reject skipped security tests
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate no-skips; then exit 0; fi
+          if grep -REn "Skip[[:space:]]*=" AgentPortal.Tests/*Antiforgery*.cs \
+                AgentPortal.Tests/Phase3IdentityAuthorityTests.cs \
+                AgentPortal.Tests/Phase4PlatformSecurityTests.cs \
+                AgentPortal.Tests/Phase5CrossPlatformSecurityTests.cs \
+                AgentPortal.Tests/Phase6ArchitectureInvariantTests.cs \
+                AgentPortal.Tests/CalendarControllerTests.cs 2>/dev/null; then
+            echo "::error::A security test is marked Skip."
+            exit 1
+          fi
+
+      - name: Audit dependency vulnerabilities
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities; then exit 0; fi
+          set -o pipefail
+          dotnet list MASTERAPP.sln package --vulnerable --include-transitive 2>&1 | tee vuln.log
+          if grep -qiE '>[[:space:]]*(Low|Moderate|High|Critical)' vuln.log || grep -qi 'has the following vulnerable' vuln.log; then
+            echo "::error::Vulnerable NuGet packages detected."
+            exit 1
+          fi
+
+      - name: Scan committed configuration for secrets
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate secret-scan; then exit 0; fi
+          if git ls-files | grep -E 'publish-macos/.*appsettings.*\.json$'; then
+            echo "::error::Committed publish-macos appsettings may contain secrets."
+            exit 1
+          fi
+          if git ls-files '*appsettings*.json' | xargs -r grep -nEi '(Password|AccountKey|ClientSecret|AccessToken)"?[:=][[:space:]]*"?[^"[:space:],}]+' \
+             | grep -vE '"[[:space:]]*"' ; then
+            echo "::error::A tracked appsettings file appears to contain a committed secret value."
+            exit 1
+          fi
+
+      - name: Verify shared composition authorities
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate composition; then exit 0; fi
+          set -e
+          check() { grep -q "$2" "$1" || { echo "::error::$1 missing shared authority '$2'"; exit 1; }; }
+          check AgentPortal/Program.cs AddPlatformDataProtection
+          check AgentPortal/Program.cs PlatformRateLimiting
+          check AgentPortal/Program.cs AddLegendConnectHostedWorkers
+          check ClientApp/Program.cs AddPlatformDataProtection
+          check ClientApp/Program.cs PlatformRateLimiting
+          check ClientApp/Program.cs PlatformSecurityHeaders
+          check Protect-Website/Program.cs AddPlatformDataProtection
+          check Protect-Website/Program.cs PlatformRateLimiting
+          check Protect-Website/Program.cs PlatformSecurityHeaders
+          check ParfaitApp/Program.cs PlatformConfigValidation
+          check ParfaitApp/Program.cs AddPlatformDataProtection
+          check ParfaitApp/Program.cs PlatformRateLimiting
+          if grep -REn 'AddHostedService<[^>]*LegendConnect' \
+                AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
+            echo "::error::An application composition root directly registers a LEGEND worker outside the canonical worker set."
+            exit 1
+          fi
+          if grep -q 'AddLegendConnectHostedWorkers' ClientApp/Program.cs; then
+            echo "::error::ClientApp must consume messaging services without becoming a competing LEGEND worker host."
+            exit 1
+          fi
+          if grep -q '_legend.TryInferConversationAsync' AgentPortal/Services/LegendFounderAiConversationService.cs; then
+            echo "::error::Founder production chat must not fall back to the legacy non-discourse LEGEND responder."
+            exit 1
+          fi
+
+      - name: Reject inline Azure key-ring wiring
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate keyring; then exit 0; fi
+          if grep -REn 'PersistKeysToAzureBlobStorage|ProtectKeysWithAzureKeyVault' \
+                AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
+            echo "::error::An application composition root inlines Azure Data Protection key-ring wiring."
+            exit 1
+          fi
+
+      - name: Verify patch whitespace integrity
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate diff-check; then exit 0; fi
+          git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
