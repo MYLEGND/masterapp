@@ -65,11 +65,96 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ matrix.revision }}
+
+      - name: Reuse exact retained live package when available
+        id: retained
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ matrix.revision }}
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          echo "reused=false" >> "$GITHUB_OUTPUT"
+          receipt_name="legend-approved-release-$REVISION"
+          receipts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$receipt_name&per_page=100")"
+          case "$APP" in
+            portal) package_name=agentportal.zip ;;
+            client) package_name=clientapp.zip ;;
+            protect) package_name=protect.zip ;;
+            parfait) package_name=parfait.zip ;;
+            website) package_name=website.zip ;;
+            *) echo "::error::Unknown rollback app $APP"; exit 1 ;;
+          esac
+
+          while read -r run_id; do
+            [[ -n "$run_id" ]] || continue
+            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            run_path="$(printf '%s' "$run" | jq -r '.path // ""')"
+            run_branch="$(printf '%s' "$run" | jq -r '.head_branch // ""')"
+            run_status="$(printf '%s' "$run" | jq -r '.status // ""')"
+            run_conclusion="$(printf '%s' "$run" | jq -r '.conclusion // ""')"
+            [[ "$run_path" == ".github/workflows/all-intentional-direct-release-20260918.yml" ]] || continue
+            [[ "$run_branch" == "legend/approved-changes" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] || continue
+
+            artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100")"
+            while read -r package_artifact; do
+              [[ -n "$package_artifact" ]] || continue
+              rm -rf /tmp/retained-package
+              mkdir -p /tmp/retained-package
+              if ! gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$package_artifact" --dir /tmp/retained-package; then
+                continue
+              fi
+              candidate="$(find /tmp/retained-package -type f -name "$package_name" -print -quit)"
+              [[ -n "$candidate" ]] || continue
+              sums="$(find "$(dirname "$candidate")" -maxdepth 1 -type f -name SHA256SUMS -print -quit)"
+              [[ -n "$sums" ]] || continue
+              if ! python3 - "$candidate" "$sums" "$REVISION" "$APP" <<'PYROLLBACK'
+          import hashlib,json,pathlib,sys,zipfile
+          package=pathlib.Path(sys.argv[1])
+          sums=pathlib.Path(sys.argv[2])
+          revision=sys.argv[3]
+          app=sys.argv[4]
+          rows=[line.split() for line in sums.read_text().splitlines()]
+          expected=[row[0] for row in rows if len(row)==2 and pathlib.Path(row[1]).name==package.name]
+          with package.open('rb') as stream:
+              actual=hashlib.file_digest(stream,'sha256').hexdigest()
+          if expected != [actual]:
+              raise SystemExit('Retained rollback package digest mismatch')
+          with zipfile.ZipFile(package) as archive:
+              if archive.testzip() is not None:
+                  raise SystemExit('Retained rollback package is corrupt')
+              entry='_deployment-provenance.txt' if app=='website' else 'wwwroot/_deployment-provenance.json'
+              raw=archive.read(entry).decode().strip()
+              embedded=raw if app=='website' else json.loads(raw)['releaseSha']
+          if embedded != revision:
+              raise SystemExit('Retained rollback package revision mismatch')
+          PYROLLBACK
+              then
+                continue
+              fi
+              mkdir -p /tmp/rollback
+              cp "$candidate" /tmp/rollback/package.zip
+              printf '%s %s retained canonical package from release run %s\n' "$APP" "$REVISION" "$run_id" > /tmp/rollback/manifest.txt
+              sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
+              echo "reused=true" >> "$GITHUB_OUTPUT"
+              echo "Reused exact verified rollback package for $APP at $REVISION from direct release run $run_id."
+              exit 0
+            done < <(
+              printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false and (.name | startswith("founder-diagnostics-packages-"))) | .name'
+            )
+          done < <(
+            printf '%s' "$receipts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++'
+          )
+
+          echo "No retained canonical package covers $APP at $REVISION; source-equivalent rollback rebuild remains required."
+
       - uses: actions/setup-dotnet@v4
-        if: matrix.project != 'static'
+        if: matrix.project != 'static' && steps.retained.outputs.reused != 'true'
         with:
           dotnet-version: '10.x'
       - name: Preserve source-equivalent rollback without production data
+        if: steps.retained.outputs.reused != 'true'
         env:
           PROJECT: ${{ matrix.project }}
           REVISION: ${{ matrix.revision }}
@@ -381,7 +466,7 @@ jobs:
         with:
           name: founder-diagnostics-packages-${{ needs.discover-live.outputs.package_identity }}
           path: /tmp/diagnostics-packages/
-          retention-days: 7
+          retention-days: 30
           if-no-files-found: error
           overwrite: true
       - uses: azure/login@v2
