@@ -429,16 +429,16 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
         var item = await ReadWorkItemAsync(connection, transaction, workItemId, cancellationToken);
         if (item is null) return (false, "work_item_not_found");
         if (item.State is "COMPLETED" or "CLOSED") return (false, "work_item_completed");
-        if (item.LeaseExpiresUtc <= DateTime.UtcNow || string.IsNullOrWhiteSpace(item.LeaseIdentity))
-            return (false, "engineering_lease_expired");
-        if (!string.Equals(item.LeaseIdentity, leaseIdentity, StringComparison.Ordinal))
-            return (false, "engineering_lease_changed");
         if (!string.Equals(item.LiveSha, liveSha, StringComparison.OrdinalIgnoreCase))
             return (false, "live_sha_changed");
         if (!string.Equals(item.EvidenceRevision, evidenceRevision, StringComparison.Ordinal))
             return (false, "evidence_revision_changed");
         if (!string.Equals(item.RiskClass, riskClass, StringComparison.Ordinal))
             return (false, "risk_class_changed");
+        if (item.LeaseExpiresUtc <= DateTime.UtcNow || string.IsNullOrWhiteSpace(item.LeaseIdentity))
+            return (false, "engineering_lease_expired");
+        if (!string.Equals(item.LeaseIdentity, leaseIdentity, StringComparison.Ordinal))
+            return (false, "engineering_lease_changed");
         return (true, "lease_binding_valid");
     }
 
