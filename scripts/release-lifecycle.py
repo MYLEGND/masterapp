@@ -344,9 +344,6 @@ def candidate_validation(api, pr):
         required.add(step5)
     if any(name in STEP6_VALIDATION_PATHS for name in names):
         required.add(step6)
-    if any(name in STEP78_VALIDATION_PATHS for name in names):
-        required.add(step78)
-
     scope_neutral = VALIDATION_NEUTRAL_PATHS | {
         'scripts/deploy-approved-app.py',
     }
@@ -373,6 +370,9 @@ def candidate_validation(api, pr):
     }
     public_website_only = bool(product_names) and all(
         name in public_website_exact for name in product_names)
+
+    if not public_website_only and any(name in STEP78_VALIDATION_PATHS for name in names):
+        required.add(step78)
 
     broad_product_change = any(
         name.startswith(('AgentPortal/', 'ClientApp/', 'Protect-Website/',
