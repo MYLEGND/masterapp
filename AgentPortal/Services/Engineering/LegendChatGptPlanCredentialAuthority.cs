@@ -24,6 +24,7 @@ internal interface ILegendEngineeringAgentAdapter
 {
     Task<object> GetStatusAsync(CancellationToken cancellationToken);
     Task<EngineeringModelCatalog> GetModelCatalogAsync(CancellationToken cancellationToken);
+    Task<object> ReconcileRuntimeAsync(bool force, CancellationToken cancellationToken);
     Task<object> StartAsync(Guid engineeringContextId, CancellationToken cancellationToken);
 }
 
