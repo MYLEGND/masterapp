@@ -25,7 +25,8 @@ internal sealed class LegendEngineeringOrchestrator(
     MasterAppDbContext db,
     LegendEngineeringStateStore store,
     LegendEngineeringBudgetAuthority budget,
-    IFounderSoftwareRemediationService remediation) : ILegendEngineeringOrchestrator
+    IFounderSoftwareRemediationService remediation,
+    IConfiguration configuration) : ILegendEngineeringOrchestrator
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -126,7 +127,13 @@ internal sealed class LegendEngineeringOrchestrator(
         Guid workItemId,
         string role,
         CancellationToken cancellationToken)
-        => BootstrapCoreAsync(workItemId, role, cancellationToken);
+    {
+        if (configuration.GetValue<bool?>("LegendEngineering:Autonomous:Enabled") != true)
+            throw new InvalidOperationException("autonomous_engineering_disabled");
+        if (!Guid.TryParse(AgentPortal.Security.FounderGuard.FounderOid, out _))
+            throw new InvalidOperationException("founder_identity_not_configured");
+        return BootstrapCoreAsync(workItemId, role, cancellationToken);
+    }
 
     public async Task<EngineeringTaskPacket> GetTaskPacketAsync(
         Guid engineeringContextId,
