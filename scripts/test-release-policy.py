@@ -486,6 +486,9 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('overwrite: true', workflow)
         self.assertIn('SourceRevisionId="$APPLICATION_RELEASE_SHA"', workflow)
         self.assertIn('verify-release-coverage', workflow)
+        self.assertIn('Retain exact approved release receipt', workflow)
+        self.assertIn('legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}', workflow)
+        self.assertIn("'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA']", workflow)
 
     def test_approved_security_validation_preserves_static_release_safety_gates(self):
         workflow=(ROOT.parent / '.github/workflows/approved-release-security-validation.yml').read_text()
