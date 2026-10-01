@@ -613,14 +613,17 @@ internal sealed class ChatGptPlanResponsesAdapter(
         EngineeringModelCatalog catalog)
     {
         var previous = ResolveCachedReadyModel(role, credential);
-        return catalog.Models
+        // Preserve OpenAI's account catalog ordering. If the last proven
+        // compatible model still exists, probe it first to avoid unnecessary plan
+        // usage; otherwise walk the provider order deterministically.
+        var values = catalog.Models
             .Select(model => model.Slug)
-            .OrderBy(model =>
-                string.Equals(model, previous, StringComparison.Ordinal) ? 0 : 1)
-            .ThenBy(model => model, StringComparer.Ordinal)
             .Distinct(StringComparer.Ordinal)
-            .Take(4)
-            .ToArray();
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(previous) &&
+            values.Remove(previous))
+            values.Insert(0, previous);
+        return values.Take(4).ToArray();
     }
 
     private static string ReadinessSignature(
