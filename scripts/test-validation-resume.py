@@ -404,5 +404,66 @@ jobs:
         self.assertFalse(plan["gates"]["restore"]["run"])
 
 
+    def test_content_equivalent_evidence_reuses_only_proven_gates_and_keeps_runtime_requirements(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        current = m.compute_plan(
+            workflow,
+            "b" * 40,
+            None,
+            {},
+            [],
+            "no_prior_completed_run",
+        )
+        candidate = m.compute_plan(
+            workflow,
+            "b" * 40,
+            None,
+            {},
+            [],
+            "no_prior_completed_run",
+        )
+        candidate["gates"]["renderer-tests"] = {
+            "step": m.WORKFLOWS[workflow]["gates"]["renderer-tests"]["step"],
+            "run": False,
+            "reason": "preserved_prior_success",
+        }
+        candidate["gates"]["restore-dotnet"] = {
+            "step": m.WORKFLOWS[workflow]["gates"]["restore-dotnet"]["step"],
+            "run": False,
+            "reason": "preserved_prior_success",
+        }
+        run = {"id": 88, "head_sha": "c" * 40}
+        self.assertTrue(m.merge_content_equivalent_evidence(current, candidate, run))
+        m._enforce_runtime_requirements(current)
+        self.assertFalse(current["gates"]["renderer-tests"]["run"])
+        self.assertEqual(88, current["gates"]["renderer-tests"]["evidenceRunId"])
+        self.assertEqual("c" * 40, current["gates"]["renderer-tests"]["evidenceHeadSha"])
+        self.assertEqual("trusted_pr_history", current["gates"]["renderer-tests"]["evidenceSource"])
+        self.assertTrue(current["gates"]["restore-dotnet"]["run"])
+        self.assertTrue(current["gates"]["booking-regressions"]["run"])
+
+    def test_content_equivalent_evidence_never_reuses_unproven_candidate_gate(self):
+        workflow = "step6-openai-ads-execution-validation.yml"
+        current = m.compute_plan(
+            workflow,
+            "b" * 40,
+            None,
+            {},
+            [],
+            "no_prior_completed_run",
+        )
+        candidate = m.compute_plan(
+            workflow,
+            "b" * 40,
+            None,
+            {},
+            [],
+            "no_prior_completed_run",
+        )
+        run = {"id": 89, "head_sha": "d" * 40}
+        self.assertFalse(m.merge_content_equivalent_evidence(current, candidate, run))
+        self.assertTrue(all(gate["run"] for gate in current["gates"].values()))
+
+
 if __name__ == "__main__":
     unittest.main()
