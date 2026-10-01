@@ -265,8 +265,9 @@ internal sealed class ChatGptPlanResponsesAdapter(
                         "MODEL_BINDING",
                         "subscription_sharing_unsupported_capability",
                         null,
-                        lastCompleted?.ProviderRequestId,
+                        null,
                         400,
+                        "STRUCTURED_ERROR",
                         null);
                     await credentials.RecordProviderFailureAsync(unsupported, cancellationToken);
                     return Failure(unsupported.Code);
