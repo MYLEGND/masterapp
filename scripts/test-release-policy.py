@@ -408,6 +408,8 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('REUSE_VALIDATED_PACKAGE=true', workflow)
         self.assertIn('sha256sum -c SHA256SUMS', workflow)
         self.assertIn('overwrite: true', workflow)
+        self.assertIn('SourceRevisionId="$APPLICATION_RELEASE_SHA"', workflow)
+        self.assertIn('verify-release-coverage', workflow)
 
     def test_rigorous_retry_preserves_same_run_security_evidence_only(self):
         workflow=(ROOT.parent / '.github/workflows/agentportal-production-deploy.yml').read_text()
@@ -441,6 +443,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         ):
             workflow=(ROOT.parent / '.github/workflows' / name).read_text()
             self.assertIn('scripts/validation-resume.py plan', workflow, name)
+        step5=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
+        self.assertIn('scripts/validation-resume.py job-unchanged', step5)
+        self.assertIn('mode=reuse', step5)
+        self.assertIn('Search backward for the newest complete evidence pair', step5)
         self.assertFalse((ROOT.parent / '.github/workflows/step5-approved-baseline-control.yml').exists())
 
     def test_release_orchestrator_contract_checks_are_receipt_reusable(self):
@@ -448,6 +454,9 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         parity=(ROOT.parent / '.github/workflows/legend-canonical-branch-parity.yml').read_text()
         self.assertIn('REUSE_LIFECYCLE_CONTRACTS=true', lifecycle)
         self.assertIn('legend-lifecycle-contracts-', lifecycle)
+        self.assertIn('scripts/validation-resume.py', lifecycle)
+        self.assertIn('.github/workflows/step5-isolated-conversion-mapping-validation.yml', lifecycle)
+        self.assertIn('.github/workflows/all-intentional-direct-release-20260918.yml', lifecycle)
         self.assertIn('REUSE_PARITY_CONTRACTS=true', parity)
         self.assertIn('legend-parity-contracts-', parity)
 
