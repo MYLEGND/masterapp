@@ -239,6 +239,46 @@ VALIDATION_NEUTRAL_PATHS = {
 }
 
 
+
+STEP6_VALIDATION_PATHS = {
+    'SHARED/Analytics/OpenAiAdsExecutionContracts.cs',
+    'Infrastructure/Analytics/OpenAiAdsExecutionService.cs',
+    'Infrastructure/Analytics/MarketingConnectionStore.cs',
+    'AgentPortal.Tests/OpenAiAdsExecutionServiceTests.cs',
+    'AgentPortal.Tests/OpenAiAdsAccountConnectionAuthorityTests.cs',
+    'AgentPortal.Tests/MarketingDestinationLayerTests.cs',
+    'AgentPortal.Tests/MarketingScopeParityContractTests.cs',
+    '.github/workflows/step6-openai-ads-execution-validation.yml',
+    'scripts/validation-resume.py',
+    'scripts/test-validation-resume.py',
+}
+
+STEP78_VALIDATION_PATHS = {
+    'Domain/Entities/AdvertisingActionAuthorization.cs',
+    'SHARED/Analytics/AdvertisingActionContracts.cs',
+    'Infrastructure/Analytics/AdvertisingActionAuthorizationService.cs',
+    'Infrastructure/Analytics/MarketingConnectionStore.cs',
+    'Infrastructure/WebsiteEditing/PromotionOrchestrationService.cs',
+    'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
+    'Infrastructure/Data/MasterAppDbContext.cs',
+    'Infrastructure/Migrations/20260927053000_AddAdvertisingActionAuthorizations.cs',
+    'Legend-Design/legend-website-management.js',
+    'AgentPortal.Tests/AdvertisingActionAuthorizationServiceTests.cs',
+    'AgentPortal.Tests/PromotionOrchestrationTests.cs',
+    'AgentPortal.Tests/MarketingScopeParityContractTests.cs',
+    'Infrastructure/Analytics/AdvertisingCommandCenterService.cs',
+    'AgentPortal/Controllers/WebsiteAnalyticsController.cs',
+    'AgentPortal/Views/WebsiteAnalytics/Index.cshtml',
+    'AgentPortal/wwwroot/js/website-analytics.js',
+    'AgentPortal/wwwroot/css/website-analytics.css',
+    'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
+    'AgentPortal.Tests/AdvertisingCommandCenterCentralizationTests.cs',
+    '.github/workflows/steps7-8-governed-advertising-validation.yml',
+    'scripts/validation-resume.py',
+    'scripts/test-validation-resume.py',
+}
+
+
 def validation_neutral_commit(api, sha):
     commit = api.api('commits/' + sha)
     files = [row.get('filename') for row in (commit or {}).get('files', [])]
@@ -291,10 +331,21 @@ def candidate_validation(api, pr):
 
     architecture = '.github/workflows/masterapp-platform-architecture-validation.yml'
     step5 = '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
+    step6 = '.github/workflows/step6-openai-ads-execution-validation.yml'
+    step78 = '.github/workflows/steps7-8-governed-advertising-validation.yml'
     required = {architecture}
 
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [f['filename'] for f in files]
+
+    if (step5 in names or
+        'scripts/validation-resume.py' in names or
+        'scripts/test-validation-resume.py' in names):
+        required.add(step5)
+    if any(name in STEP6_VALIDATION_PATHS for name in names):
+        required.add(step6)
+    if any(name in STEP78_VALIDATION_PATHS for name in names):
+        required.add(step78)
 
     scope_neutral = VALIDATION_NEUTRAL_PATHS | {
         'scripts/deploy-approved-app.py',
@@ -326,7 +377,7 @@ def candidate_validation(api, pr):
     broad_product_change = any(
         name.startswith(('AgentPortal/', 'ClientApp/', 'Protect-Website/',
                          'ParfaitApp/', 'SHARED/', 'Infrastructure/', 'Domain/'))
-        or name == step5.removeprefix('.github/workflows/')
+        or name == step5
         for name in product_names
     )
     if broad_product_change and not public_website_only:
