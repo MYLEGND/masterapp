@@ -173,7 +173,11 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
     {
         FounderGuard.EnsureFounderOrThrow(User);
         var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
-        var tools = new List<object> { LegendSiteToolDisclosureAuthority.CurrentPageTool };
+        var tools = new List<object>
+        {
+            LegendSiteToolDisclosureAuthority.CurrentPageTool,
+            LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepairTool
+        };
         tools.AddRange(authority
             .GetAvailableSiteReadTools()
             .Where(tool =>
@@ -221,6 +225,35 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
                 "founder_system",
                 LegendSiteToolDisclosureAuthority.EntryAssemblyRevision(),
                 route));
+        }
+
+        if (string.Equals(request.Name, LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepairToolName, StringComparison.Ordinal))
+        {
+            if (request.Arguments.ValueKind != JsonValueKind.Object)
+                return BadRequest(new { error = "live_repair_proof_arguments_invalid" });
+            var root = request.Arguments;
+            static string? ReadString(JsonElement value, string name) =>
+                value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
+            static string[] ReadArray(JsonElement value, string name) =>
+                value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Array
+                    ? item.EnumerateArray().Where(entry => entry.ValueKind == JsonValueKind.String)
+                        .Select(entry => entry.GetString()!).ToArray()
+                    : Array.Empty<string>();
+
+            var route = LegendSiteToolDisclosureAuthority.ResolveRouteAuthority(request.Page?.Path, endpointSources);
+            return Json(LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepair(
+                request.Page,
+                environment.ApplicationName,
+                "founder_system",
+                LegendSiteToolDisclosureAuthority.EntryAssemblyRevision(),
+                route,
+                ReadString(root, "expected_revision"),
+                ReadString(root, "expected_route"),
+                ReadArray(root, "required_component_ids"),
+                ReadArray(root, "required_action_keys"),
+                ReadArray(root, "required_composition_ids"),
+                ReadArray(root, "required_modal_ids"),
+                ReadArray(root, "forbidden_error_names")));
         }
 
         var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
