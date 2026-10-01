@@ -34,10 +34,14 @@ internal static class LegendEngineeringPolicies
         var risk = RiskClass(incident, disclosure);
         var complexity = Complexity(incident, projects.Length, applications.Length, breadth, risk);
         var codeEligible = failureClass == EngineeringFailureClass.CodeDefect && risk != EngineeringRiskClass.TierC;
-        var modelTier = ModelTier(complexity, risk, codeEligible);
         var role = codeEligible
             ? complexity >= 70 || risk == EngineeringRiskClass.TierB ? EngineeringRole.HeadGpt : EngineeringRole.CodexImplementer
-            : failureClass == EngineeringFailureClass.Unknown ? EngineeringRole.HeadGpt : EngineeringRole.Sentinel;
+            : failureClass == EngineeringFailureClass.Unknown
+                ? complexity >= 70 ? EngineeringRole.HeadGpt : EngineeringRole.TriageWorker
+                : EngineeringRole.Sentinel;
+        var modelTier = role == EngineeringRole.TriageWorker
+            ? EngineeringModelTier.FastTriage
+            : ModelTier(complexity, risk, codeEligible);
         var cohort = ReleaseCohort(priorityClass);
 
         return new(
