@@ -31,6 +31,17 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                     ? existing.IncidentIds
                     : existing.IncidentIds.Concat([incident.Id]).OrderBy(id => id).ToArray();
                 var evidenceRevision = LegendEngineeringPolicies.EvidenceRevision(incident, incidentIds);
+                var evidenceChanged = !string.Equals(existing.EvidenceRevision, evidenceRevision, StringComparison.Ordinal);
+                if (!evidenceChanged &&
+                    incidentIds.Count == existing.IncidentIds.Count &&
+                    existing.Severity >= decision.Severity &&
+                    existing.RevenueImpact >= decision.RevenueImpact &&
+                    existing.UserImpact >= decision.UserImpact &&
+                    existing.Frequency >= decision.Frequency &&
+                    existing.Confidence >= decision.Confidence &&
+                    existing.PriorityScore >= decision.PriorityScore)
+                    return existing;
+
                 var state = existing.State is "COMPLETED" or "CLOSED"
                     ? InitialState(decision, recurring: true)
                     : existing.State;
@@ -53,9 +64,9 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                     State = state,
                     AssignedRole = preserveWorkflowRole ? existing.AssignedRole : decision.AssignedRole,
                     ModelTier = preserveWorkflowRole ? existing.ModelTier : decision.ModelTier,
-                    LeaseOwner = state == existing.State ? existing.LeaseOwner : null,
-                    LeaseIdentity = state == existing.State ? existing.LeaseIdentity : null,
-                    LeaseExpiresUtc = state == existing.State ? existing.LeaseExpiresUtc : null,
+                    LeaseOwner = state == existing.State && !evidenceChanged ? existing.LeaseOwner : null,
+                    LeaseIdentity = state == existing.State && !evidenceChanged ? existing.LeaseIdentity : null,
+                    LeaseExpiresUtc = state == existing.State && !evidenceChanged ? existing.LeaseExpiresUtc : null,
                     ValidationState = state == existing.State ? existing.ValidationState : "NOT_STARTED",
                     ReleaseCohort = decision.ReleaseCohort,
                     FounderReleaseApprovedUtc = string.Equals(existing.EvidenceRevision, evidenceRevision, StringComparison.Ordinal)
@@ -63,6 +74,7 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                         : null,
                     UpdatedUtc = now
                 };
+                updated = Stamp(updated);
                 await UpdateWorkItemAsync(connection, transaction, updated, cancellationToken);
                 return updated;
             }
@@ -102,6 +114,7 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                 decision.ReleaseCohort,
                 now,
                 now);
+            snapshot = Stamp(snapshot);
 
             await InsertWorkItemAsync(connection, transaction, snapshot, cancellationToken);
             return snapshot;
@@ -145,14 +158,13 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
 
             var identity = Guid.NewGuid().ToString("N");
             var expires = now.Add(duration);
-            var leased = item with
+            var leased = Stamp(item with
             {
                 State = "LEASED",
                 LeaseOwner = leaseOwner,
                 LeaseIdentity = identity,
-                LeaseExpiresUtc = expires,
-                UpdatedUtc = now
-            };
+                LeaseExpiresUtc = expires
+            });
             await UpdateWorkItemAsync(connection, transaction, leased, cancellationToken);
             return new(true, "lease_acquired", workItemId, leaseOwner, identity, expires, null);
         }, cancellationToken);
@@ -375,20 +387,23 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
         finally { if (opened) await connection.CloseAsync(); }
     }
 
-    internal async Task UpdateWorkItemAsync(
+    internal async Task<EngineeringWorkItemSnapshot> UpdateWorkItemAsync(
         EngineeringWorkItemSnapshot snapshot,
         CancellationToken cancellationToken)
     {
-        await WithSerializedLeaseAuthorityAsync(async (connection, transaction) =>
+        return await WithSerializedLeaseAuthorityAsync(async (connection, transaction) =>
         {
             var current = await ReadWorkItemAsync(connection, transaction, snapshot.WorkItemId, cancellationToken)
                 ?? throw new InvalidOperationException("work_item_not_found");
             if (!string.Equals(current.EvidenceRevision, snapshot.EvidenceRevision, StringComparison.Ordinal))
                 throw new InvalidOperationException("work_item_evidence_changed");
-            if (current.UpdatedUtc != snapshot.UpdatedUtc)
+            if (string.IsNullOrWhiteSpace(snapshot.StateRevision) ||
+                !string.Equals(current.StateRevision, snapshot.StateRevision, StringComparison.Ordinal))
                 throw new InvalidOperationException("work_item_state_changed");
-            await UpdateWorkItemAsync(connection, transaction, snapshot with { UpdatedUtc = DateTime.UtcNow }, cancellationToken);
-            return true;
+
+            var persisted = Stamp(snapshot);
+            await UpdateWorkItemAsync(connection, transaction, persisted, cancellationToken);
+            return persisted;
         }, cancellationToken);
     }
 
@@ -567,6 +582,13 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
         Add(command, "@created", item.CreatedUtc);
         Add(command, "@updated", item.UpdatedUtc);
     }
+
+    private static EngineeringWorkItemSnapshot Stamp(EngineeringWorkItemSnapshot item) =>
+        item with
+        {
+            StateRevision = Guid.NewGuid().ToString("N"),
+            UpdatedUtc = DateTime.UtcNow
+        };
 
     private static EngineeringWorkItemSnapshot? Deserialize(object? raw)
         => raw is string json && !string.IsNullOrWhiteSpace(json)
