@@ -11,6 +11,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Shared.Diagnostics;
 
 namespace AgentPortal.Services;
 
@@ -222,7 +223,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
             disclosureClass = ClassifyInspectableSourcePath(path);
             if (disclosureClass is null)
                 return Failure("repository_path_not_allowed", "The requested path is outside the bounded canonical repository inspection policy.");
-            if (disclosureClass == "PRIVACY_PROTECTED")
+            if (disclosureClass == LegendSiteToolDisclosureAuthority.PrivacyProtected)
                 return Failure("repository_privacy_protected", "The requested path belongs to privacy-protected runtime or user-data storage and is not inspected.");
         }
         if (!string.IsNullOrWhiteSpace(gitReference) &&
@@ -285,7 +286,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 if (size is null or < 0 or > MaximumFileCharacters * 4)
                     return Failure("repository_content_not_text", "The requested source exceeds the bounded text size.");
             }
-            if (disclosureClass != "SAFE_SOURCE")
+            if (disclosureClass != LegendSiteToolDisclosureAuthority.SafeSource)
             {
                 unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
                 if (unavailable is not null) return unavailable;
@@ -317,7 +318,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 {
                     capability = "inspect_repository", repository = options.RepositoryIdentity,
                     reference, path, sha = blobSha, blobSha, commitSha, size,
-                    exists = true, readable = false, disclosureClass = "EXISTENCE_ONLY",
+                    exists = true, readable = false, disclosureClass = LegendSiteToolDisclosureAuthority.ExistenceOnly,
                     credentialLikeContent = true, contentOmitted = true,
                     citationUrl = $"https://github.com/{options.RepositoryIdentity}/blob/{commitSha}/{EscapeRepositoryPath(path)}",
                     instructionAuthority = false, inspected = true
@@ -381,7 +382,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
 
         if (segments.Any(segment => new[] { "bin", "obj", "artifacts", "TestResults", "logs", "uploads", "App_Data", "wwwroot-data" }
                 .Contains(segment, StringComparer.OrdinalIgnoreCase)))
-            return "PRIVACY_PROTECTED";
+            return LegendSiteToolDisclosureAuthority.PrivacyProtected;
 
         var extension = Path.GetExtension(path).ToLowerInvariant();
         if (extension is ".pem" or ".pfx" or ".key" or ".p12" or ".cer" or ".crt" ||
@@ -393,7 +394,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 segment.Equals("private", StringComparison.OrdinalIgnoreCase)) ||
             path.Contains("appsettings", StringComparison.OrdinalIgnoreCase) ||
             path.Contains("launchSettings", StringComparison.OrdinalIgnoreCase))
-            return "EXISTENCE_ONLY";
+            return LegendSiteToolDisclosureAuthority.ExistenceOnly;
 
         if (path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith(".azure/", StringComparison.OrdinalIgnoreCase) ||
@@ -410,12 +411,12 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
             path.Contains("FounderDiagnostics", StringComparison.OrdinalIgnoreCase) ||
             path.Contains("MobileApiControllerBase", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith("Program.cs", StringComparison.OrdinalIgnoreCase))
-            return "INTEGRITY_PROTECTED";
+            return LegendSiteToolDisclosureAuthority.IntegrityProtected;
 
         return extension is
             ".cs" or ".cshtml" or ".swift" or ".kt" or ".js" or ".mjs" or ".ts" or ".tsx" or ".jsx" or ".css" or
             ".py" or ".csproj" or ".props" or ".targets" or ".sln" or ".md" or ".json" or ".sh" or ".yml" or ".yaml"
-                ? "SAFE_SOURCE"
+                ? LegendSiteToolDisclosureAuthority.SafeSource
                 : null;
     }
 
