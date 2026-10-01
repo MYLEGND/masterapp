@@ -263,6 +263,7 @@ jobs:
           retention-days: 7
 
   validate:
+    name: step5-validation
     needs: [plan, candidate, baseline]
     if: >-
       always() &&
