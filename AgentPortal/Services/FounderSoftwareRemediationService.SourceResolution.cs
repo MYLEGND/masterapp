@@ -132,6 +132,13 @@ public sealed partial class FounderSoftwareRemediationService
         if (!hint.Contains('/', StringComparison.Ordinal))
             return string.Equals(Path.GetFileName(repositoryPath), hint, StringComparison.Ordinal);
 
+        const string sharedStaticPrefix = "_content/Shared/js/";
+        if (hint.StartsWith(sharedStaticPrefix, StringComparison.Ordinal))
+            return string.Equals(
+                repositoryPath,
+                "SHARED/wwwroot/js/" + hint[sharedStaticPrefix.Length..],
+                StringComparison.Ordinal);
+
         if (string.Equals(repositoryPath, hint, StringComparison.Ordinal) ||
             repositoryPath.EndsWith("/" + hint, StringComparison.Ordinal))
             return true;

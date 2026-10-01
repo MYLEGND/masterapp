@@ -20,7 +20,7 @@ internal static class LegendEngineeringPolicies
         var effectiveDisclosure = disclosure ?? (sourceHint ? LegendSiteToolDisclosureAuthority.SafeSource : null);
         var failureClass = ClassifyFailure(incident, effectiveDisclosure);
         var canonicalAuthority = CanonicalAuthority(incident, effectiveDisclosure);
-        var projects = Projects(incident.SourceFilePath, effectiveDisclosure, incident.AppIdentifier);
+        var projects = Projects(incident, effectiveDisclosure);
         var applications = string.IsNullOrWhiteSpace(incident.AppIdentifier)
             ? Array.Empty<string>()
             : [SafeToken(incident.AppIdentifier, 64)];
@@ -118,21 +118,42 @@ internal static class LegendEngineeringPolicies
 
     internal static bool IsSanitizedRuntimeSourceHint(RuntimeDiagnosticIncident incident)
     {
-        if (!string.Equals(incident.Platform, "Server", StringComparison.Ordinal))
-            return false;
         var source = NormalizePath(incident.SourceFilePath);
-        if (string.IsNullOrWhiteSpace(source) || source.Length > 180 ||
-            source.Contains('/', StringComparison.Ordinal) ||
-            source.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.')))
+        if (string.IsNullOrWhiteSpace(source)) return false;
+
+        if (string.Equals(incident.Platform, "Server", StringComparison.Ordinal))
+        {
+            if (source.Length > 180 || source.Contains('/', StringComparison.Ordinal) ||
+                source.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.')))
+                return false;
+            var extension = Path.GetExtension(source);
+            if (extension is not (".cs" or ".cshtml"))
+                return false;
+            var lower = source.ToLowerInvariant();
+            return lower != "program.cs" &&
+                   !ContainsAny(lower, "secret", "credential", "authentication", "authorization",
+                       "security", "identity", "migration", "remediation", "runtimediagnostic",
+                       "founderdiagnostic", "mobileapicontrollerbase");
+        }
+
+        if (!string.Equals(incident.Platform, "Web", StringComparison.Ordinal) ||
+            !incident.ReleaseVerified ||
+            !IsImmutableSha(incident.GitCommitHash) ||
+            string.IsNullOrWhiteSpace(incident.StructuralReproducerJson))
             return false;
-        var extension = Path.GetExtension(source);
-        if (extension is not (".cs" or ".cshtml"))
+
+        return IsSanitizedBrowserSource(source);
+    }
+
+    private static bool IsSanitizedBrowserSource(string source)
+    {
+        if (source.Length > 220 || source.Contains("..", StringComparison.Ordinal) ||
+            source.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.' or '/')))
             return false;
-        var lower = source.ToLowerInvariant();
-        return lower != "program.cs" &&
-               !ContainsAny(lower, "secret", "credential", "authentication", "authorization",
-                   "security", "identity", "migration", "remediation", "runtimediagnostic",
-                   "founderdiagnostic", "mobileapicontrollerbase");
+        if (Path.GetExtension(source) is not (".js" or ".mjs"))
+            return false;
+        return source.StartsWith("js/", StringComparison.Ordinal) ||
+               source.StartsWith("_content/Shared/js/", StringComparison.Ordinal);
     }
 
     private static string ClassifyFailure(RuntimeDiagnosticIncident incident, string? disclosure)
@@ -155,9 +176,18 @@ internal static class LegendEngineeringPolicies
         if (category.Contains("DEPLOYMENT_DRIFT", StringComparison.Ordinal) ||
             error.Contains("DEPLOYMENT_DRIFT", StringComparison.Ordinal))
             return EngineeringFailureClass.DeploymentDrift;
+
+        var verifiedBrowserScriptDefect =
+            string.Equals(incident.Platform, "Web", StringComparison.Ordinal) &&
+            incident.ReleaseVerified &&
+            IsImmutableSha(incident.GitCommitHash) &&
+            string.Equals(category, "SUSPECTEDDEFECT", StringComparison.Ordinal) &&
+            error is "TYPEERROR" or "REFERENCEERROR" or "SYNTAXERROR" or "RANGEERROR";
+
         if (disclosure == LegendSiteToolDisclosureAuthority.SafeSource &&
             (incident.StatusCode >= 500 || category.Contains("CODE", StringComparison.Ordinal) ||
-             category.Contains("RUNTIME", StringComparison.Ordinal) || error.Contains("EXCEPTION", StringComparison.Ordinal)))
+             category.Contains("RUNTIME", StringComparison.Ordinal) || error.Contains("EXCEPTION", StringComparison.Ordinal) ||
+             verifiedBrowserScriptDefect))
             return EngineeringFailureClass.CodeDefect;
         return EngineeringFailureClass.Unknown;
     }
@@ -166,22 +196,40 @@ internal static class LegendEngineeringPolicies
     {
         var source = NormalizePath(incident.SourceFilePath);
         if (!string.IsNullOrWhiteSpace(source) && disclosure == LegendSiteToolDisclosureAuthority.SafeSource)
+        {
+            if (string.Equals(incident.Platform, "Web", StringComparison.Ordinal) &&
+                IsSanitizedRuntimeSourceHint(incident))
+                return CanonicalBrowserSourceAuthority(incident.AppIdentifier, source);
             return source.Contains('/', StringComparison.Ordinal)
                 ? "source:" + source
                 : "source:" + SafeToken(incident.AppIdentifier, 64) + ":" + source;
+        }
         if (!string.IsNullOrWhiteSpace(source))
             return "protected:" + Sha256(source)[..20];
         return "route:" + SafeToken(incident.AppIdentifier, 64) + ":" + SafeRoute(incident.Route);
     }
 
-    private static string[] Projects(string? sourcePath, string? disclosure, string? application)
+    private static string CanonicalBrowserSourceAuthority(string? application, string source)
+    {
+        const string sharedPrefix = "_content/Shared/js/";
+        if (source.StartsWith(sharedPrefix, StringComparison.Ordinal))
+            return "source:SHARED:wwwroot/js/" + source[sharedPrefix.Length..];
+        return "source:" + SafeToken(application, 64) + ":wwwroot/" + source;
+    }
+
+    private static string[] Projects(RuntimeDiagnosticIncident incident, string? disclosure)
     {
         if (disclosure != LegendSiteToolDisclosureAuthority.SafeSource) return [];
-        var path = NormalizePath(sourcePath);
+        var path = NormalizePath(incident.SourceFilePath);
         if (string.IsNullOrWhiteSpace(path)) return [];
+        if (string.Equals(incident.Platform, "Web", StringComparison.Ordinal) &&
+            IsSanitizedRuntimeSourceHint(incident))
+            return path.StartsWith("_content/Shared/js/", StringComparison.Ordinal)
+                ? ["SHARED"]
+                : [SafeToken(incident.AppIdentifier, 64)];
         var slash = path.IndexOf('/');
         if (slash >= 0) return [path[..slash]];
-        var app = SafeToken(application, 64);
+        var app = SafeToken(incident.AppIdentifier, 64);
         return app == "unknown" ? [] : [app];
     }
 
@@ -190,6 +238,7 @@ internal static class LegendEngineeringPolicies
         var values = new HashSet<string>(StringComparer.Ordinal) { "authority:" + canonicalAuthority };
         var path = NormalizePath(sourcePath);
         if (disclosure != LegendSiteToolDisclosureAuthority.SafeSource ||
+            canonicalAuthority.StartsWith("source:SHARED:", StringComparison.Ordinal) ||
             path.StartsWith("SHARED/", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("Infrastructure/", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("Domain/", StringComparison.OrdinalIgnoreCase) ||

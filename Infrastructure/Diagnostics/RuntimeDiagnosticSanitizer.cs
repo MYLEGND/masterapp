@@ -23,7 +23,8 @@ internal static partial class RuntimeDiagnosticSanitizer
         value.StatusCode is null or >= 100 and <= 599;
 
     internal static RuntimeDiagnosticIncident Sanitize(RuntimeDiagnosticEvent value, bool server,
-        IHostEnvironment environment, HttpContext? context, IReadOnlyList<EndpointDataSource> endpoints, DateTime now)
+        IHostEnvironment environment, HttpContext? context, IReadOnlyList<EndpointDataSource> endpoints, DateTime now,
+        string? serverRuntimeRevision = null)
     {
         // Exception messages, client paths/stacks, operation and correlation strings
         // can contain private user content even when they resemble identifiers.
@@ -75,14 +76,13 @@ internal static partial class RuntimeDiagnosticSanitizer
             },
             FirstSeenUtc = now, LastSeenUtc = now, ExpiresUtc = now.AddDays(30)
         };
+        var runtimeRevision = serverRuntimeRevision ?? LegendSiteToolDisclosureAuthority.EntryAssemblyRevision();
         if (server)
         {
             var assembly = Assembly.GetEntryAssembly();
-            var version = assembly?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            var candidate = version?.Split('+').Last();
-            if (candidate is not null && Sha().IsMatch(candidate))
+            if (runtimeRevision is not null && Sha().IsMatch(runtimeRevision))
             {
-                incident.GitCommitHash = candidate.ToLowerInvariant();
+                incident.GitCommitHash = runtimeRevision.ToLowerInvariant();
                 incident.ReleaseVerified = true;
             }
             incident.AppVersion = assembly?.GetName().Version?.ToString();
@@ -99,8 +99,22 @@ internal static partial class RuntimeDiagnosticSanitizer
         }
         else
         {
-            incident.GitCommitHash = value.GitCommitHash is { } hash && Sha().IsMatch(hash) ? hash.ToLowerInvariant() : null;
-            // A native/web advertised build is explicitly unverified, never the API host release.
+            var advertisedRevision = value.GitCommitHash is { } hash && Sha().IsMatch(hash) ? hash.ToLowerInvariant() : null;
+            var sameHostWeb = string.Equals(incident.Platform, "Web", StringComparison.Ordinal) &&
+                              SameHostWebApplication(value.AppIdentifier, environment.ApplicationName);
+            if (sameHostWeb && runtimeRevision is not null && Sha().IsMatch(runtimeRevision))
+            {
+                // Same-host browser telemetry inherits only the server-observed deployed
+                // revision. The browser-advertised SHA is never promotion authority.
+                incident.GitCommitHash = runtimeRevision.ToLowerInvariant();
+                incident.ReleaseVerified = true;
+            }
+            else
+            {
+                // Native and cross-host/public observations retain advertised build identity
+                // only as unverified evidence and cannot authorize autonomous source repair.
+                incident.GitCommitHash = advertisedRevision;
+            }
             incident.AppVersion = value.AppVersion is { Length: <= 40 } appVersion && VersionNumber().IsMatch(appVersion) ? appVersion : null;
             incident.SourceFilePath = SafePublicSource(value.SourceFilePath, environment, context);
             var structural = LegendSiteToolDisclosureAuthority.SanitizeStructuralReproducer(value.StructuralReproducer);
@@ -118,6 +132,21 @@ internal static partial class RuntimeDiagnosticSanitizer
     private static string ApplicationName(string value) =>
         value.Length is > 0 and <= 64 && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_')
             ? value : "RegisteredApplication";
+
+    private static bool SameHostWebApplication(string? browserApplication, string serverApplication)
+    {
+        static string Normalize(string? value) => value?.Trim() switch
+        {
+            "AgentPortal" => "AgentPortal",
+            "ClientApp" => "ClientApp",
+            "ParfaitApp" => "ParfaitApp",
+            "ProtectWebsite" or "Protect-Website" => "ProtectWebsite",
+            _ => string.Empty
+        };
+
+        var server = Normalize(serverApplication);
+        return server.Length > 0 && string.Equals(server, Normalize(browserApplication), StringComparison.Ordinal);
+    }
 
     private static string SafeRoute(string? advertised, HttpContext? context, IReadOnlyList<EndpointDataSource> sources, bool server)
     {
@@ -194,5 +223,5 @@ internal static partial class RuntimeDiagnosticSanitizer
     [GeneratedRegex("^[A-Za-z0-9_/-]+\\.(?:cs|cshtml)$")] private static partial Regex SourcePath();
     [GeneratedRegex(@"\bin (.+):line ([0-9]{1,7})\s*$")] private static partial Regex Frame();
     [GeneratedRegex(@"^\s*at ([A-Za-z_][A-Za-z0-9_.+`<>]*)\(")] private static partial Regex MethodFrame();
-    [GeneratedRegex(@"^(?:js|css)/[A-Za-z0-9_./-]+\.(?:js|css)$")] private static partial Regex PublicSource();
+    [GeneratedRegex(@"^(?:(?:js|css)|_content/Shared/(?:js|css))/[A-Za-z0-9_./-]+\.(?:js|mjs|css)$")] private static partial Regex PublicSource();
 }
