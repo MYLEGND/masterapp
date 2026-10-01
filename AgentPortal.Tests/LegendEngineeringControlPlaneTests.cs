@@ -43,6 +43,16 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.Equal(100, LegendEngineeringPolicies.WeightedPriority(100, 100, 100, 100, 100, 100));
     }
 
+    [Theory]
+    [InlineData("legend/approved-changes", true)]
+    [InlineData(" production ", false)]
+    [InlineData("legend/approved-changes-old", false)]
+    [InlineData(null, false)]
+    public void AutonomousRepair_RequiresExactApprovedIntegrationBranch(string? branchName, bool allowed)
+    {
+        Assert.Equal(allowed, LegendEngineeringPolicies.IsApprovedAutonomousBaseBranch(branchName));
+    }
+
     [Fact]
     public void P1_BypassesBatchingDelay()
     {
