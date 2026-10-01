@@ -81,6 +81,28 @@ class ReleaseScopeSelection(unittest.TestCase):
                 self.baseline.reusable_live_application_revision(rows, "b" * 40)
             )
 
+
+    def test_package_identity_is_scope_and_contract_bound(self):
+        targets = (
+            ("portal", "portal.mylegnd.com", "AgentPortal/AgentPortal.csproj"),
+        )
+        with patch.object(self.baseline, "release_package_contract_hash", return_value="c" * 64):
+            first = self.baseline.release_package_identity("a" * 40, targets, False, "")
+            second = self.baseline.release_package_identity(
+                "a" * 40,
+                targets + (("client", "client.mylegnd.com", "ClientApp/ClientApp.csproj"),),
+                False,
+                "",
+            )
+            routing = self.baseline.release_package_identity(
+                "a" * 40,
+                targets,
+                True,
+                "camoexterior.com",
+            )
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(first, routing)
+
     def test_different_live_target_revisions_cannot_share_application_identity(self):
         rows = [{"revision": "a" * 40}, {"revision": "b" * 40}]
         self.assertIsNone(
@@ -404,7 +426,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_direct_release_reuses_only_exact_validated_package_evidence(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         self.assertIn('Reuse exact successful validation package when available', workflow)
-        self.assertIn('founder-diagnostics-packages-${APPLICATION_RELEASE_SHA}', workflow)
+        self.assertIn('founder-diagnostics-packages-${PACKAGE_IDENTITY}', workflow)
         self.assertIn('REUSE_VALIDATED_PACKAGE=true', workflow)
         self.assertIn('sha256sum -c SHA256SUMS', workflow)
         self.assertIn('overwrite: true', workflow)
