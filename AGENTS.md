@@ -69,3 +69,27 @@ existence-only value.
 
 If governed live evidence is incomplete, preserve the uncertainty instead of inventing
 a root cause.
+
+
+## Autonomous engineering control plane
+
+When a LEGEND EngineeringContext is supplied, it is the enforced runtime contract.
+Do not substitute conversation history, model inference, or repository prose for its
+server-owned work-item identity, role, risk class, live SHA, evidence revision, lease,
+budget, allowed source classes, or stop conditions.
+
+- One canonical authority/impact set has one active coding owner. Respect the durable
+  lease and never create parallel branches or repairs for matching work.
+- Consume the bounded EngineeringTaskPacket rather than a long chat transcript.
+- HEAD_GPT supervises reasoning and topology; it does not modify source.
+- CODEX_IMPLEMENTER may propose only the bounded SAFE_SOURCE replacements admitted by
+  the EngineeringContext. Existing remediation authority performs every repository write.
+- INDEPENDENT_REVIEWER is read-only and must challenge patching, duplicated authority,
+  unrelated changes, privacy drift, and weak regression proof.
+- Tier B stops before consequential release for Founder approval. Tier C remains
+  observation/security review only and may not mutate source.
+- ChatGPT-plan-backed Codex execution must use the authorized plan-sharing path when
+  available. Never silently substitute an API-key-billed OpenAI execution path.
+- If plan-sharing eligibility, OAuth scope, lease identity, evidence revision, live SHA,
+  source permission, budget/attempt policy, CI evidence, deployment identity, or live
+  reproducer proof is missing or stale, fail closed.
