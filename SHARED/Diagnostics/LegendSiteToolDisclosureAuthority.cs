@@ -19,6 +19,8 @@ public sealed record LegendRouteAuthority(
     string? Assembly);
 
 public sealed record LegendSitePageSnapshot(
+    string? Application,
+    string? SourceRevision,
     string? Path,
     int? ViewportWidth,
     int? ViewportHeight,
@@ -84,7 +86,7 @@ public static class LegendSiteToolDisclosureAuthority
         string? sourceRevision,
         LegendRouteAuthority routeAuthority)
     {
-        snapshot ??= new LegendSitePageSnapshot(null, null, null, null, null, null, null, null, null, null);
+        snapshot ??= new LegendSitePageSnapshot(null, null, null, null, null, null, null, null, null, null, null, null);
         var width = snapshot.ViewportWidth is >= 240 and <= 10000 ? snapshot.ViewportWidth : null;
         var height = snapshot.ViewportHeight is >= 240 and <= 10000 ? snapshot.ViewportHeight : null;
         double? dpr = snapshot.DevicePixelRatio is >= 0.5 and <= 8 && double.IsFinite(snapshot.DevicePixelRatio.Value)
@@ -177,6 +179,50 @@ public static class LegendSiteToolDisclosureAuthority
         return new("/unmatched", null, null, null);
     }
 
+    public static string? ResolvePublicApplication(string? browserApplication, string serverApplication)
+    {
+        var candidate = browserApplication?.Trim();
+        if (candidate is "Protect-Website" or "ProtectWebsite" or "ParfaitApp" or "Legend-Website")
+            return candidate == "ProtectWebsite" ? "Protect-Website" : candidate;
+
+        var normalizedServer = SafeApplication(serverApplication);
+        return normalizedServer switch
+        {
+            "ProtectWebsite" => "Protect-Website",
+            "Protect-Website" => "Protect-Website",
+            "ParfaitApp" => "ParfaitApp",
+            _ => null
+        };
+    }
+
+    public static LegendRouteAuthority ResolvePublicRouteAuthority(
+        string application,
+        string? path,
+        IEnumerable<EndpointDataSource> endpointSources)
+    {
+        if (application == "Legend-Website")
+        {
+            var route = SafePublicStaticRoute(path);
+            return new(route, null, null, "Legend-Website");
+        }
+
+        return ResolveRouteAuthority(path, endpointSources);
+    }
+
+    public static string? SafeBrowserRevision(string? value) =>
+        IsSha(value) ? value!.ToLowerInvariant() : null;
+
+    private static string SafePublicStaticRoute(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Length > 256 || !path.StartsWith('/') ||
+            path.StartsWith("//", StringComparison.Ordinal) || path.Contains('?') || path.Contains('#') ||
+            path.Contains("..", StringComparison.Ordinal))
+            return "/unmatched";
+        return Regex.IsMatch(path, @"\A/[A-Za-z0-9_./-]*\z",
+            RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50))
+            ? path : "/unmatched";
+    }
+
     public static string? EntryAssemblyRevision()
     {
         var version = Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
@@ -189,7 +235,8 @@ public static class LegendSiteToolDisclosureAuthority
             ? value : "RegisteredApplication";
 
     private static string SafeScope(string value) =>
-        value is "founder_system" or "authenticated_client" ? value : "authenticated_limited";
+        value is "founder_system" or "authenticated_client" or "public_structural"
+            ? value : "authenticated_limited";
 
     private static string SafeRoutePattern(string? value)
     {
