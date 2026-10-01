@@ -124,6 +124,8 @@ internal sealed partial class LegendFounderToolAuthority
     private static bool IsSiteReadableTool(string name) =>
         IsReadOnlyFounderTool(name) && name is
             "legend_capabilities" or
+            "legend_system_inventory" or
+            "legend_system_health" or
             "legend_software_remediation_status" or
             "legend_inspect_repository" or
             "legend_prepare_repair_packet" or
@@ -191,6 +193,8 @@ internal sealed partial class LegendFounderToolAuthority
         name is
             "legend_calculate" or
             "legend_capabilities" or
+            "legend_system_inventory" or
+            "legend_system_health" or
             "legend_request_teacher_escalation" or
             "legend_software_remediation_status" or
             "legend_inspect_repository" or
@@ -500,6 +504,12 @@ internal sealed partial class LegendFounderToolAuthority
                         : "external_provider_forbidden_by_policy"
                 });
             }
+
+            case "legend_system_inventory":
+                return SerializeUnbounded(Shared.Diagnostics.LegendSiteToolDisclosureAuthority.SystemInventory());
+
+            case "legend_system_health":
+                return SerializeUnbounded(await ReadSanitizedSystemHealthAsync(cancellationToken));
 
             case "legend_software_remediation_status":
             {
@@ -2874,6 +2884,32 @@ internal sealed partial class LegendFounderToolAuthority
                     },
                     required = new[] { "source_language_code", "families" },
                     additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_system_inventory",
+                description =
+                    "Read the privacy-safe whole-MasterApp application and authority inventory across AgentPortal, ClientApp, Protect, Parfait, LEGEND Website, iOS, Android, Cloudflare, Infrastructure, SHARED, Domain and shared design. Returns repository/deployment/diagnostic ownership metadata only; no private data or credentials.",
+                parameters = new
+                {
+                    type = "object", properties = new { },
+                    required = Array.Empty<string>(), additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_system_health",
+                description =
+                    "Read aggregate privacy-safe runtime diagnostic health across all MasterApp applications and platforms from the existing sanitized incident store. Returns counts, categories and safe revision identity only; never user identity, raw messages, request/response bodies, cookies, tokens or private fields.",
+                parameters = new
+                {
+                    type = "object", properties = new { },
+                    required = Array.Empty<string>(), additionalProperties = false
                 },
                 strict = true
             },
