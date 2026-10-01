@@ -289,10 +289,19 @@ public sealed class FounderEngineeringController(
         "chatgpt_plan_model_binding_unavailable" =>
             "The selected model is unavailable or incompatible with the governed LEGEND role payload. Choose another model or Auto.",
         "subscription_sharing_invalid_subscriber" or
+        "subscription_sharing_invalid_user" or
         "chatgpt_plan_reauthorization_required" =>
             "Reconnect ChatGPT with the intended account. LEGEND did not fall back to API billing.",
-        "chatgpt_plan_authorization_context_required" =>
-            "The OpenAI client or grant authorization context needs attention before plan execution can resume.",
+        "chatpass_v2_scope_not_authorized" or
+        "chatpass_v2_invalid_authorization_context" or
+        "chatgpt_plan_authorization_context_required" or
+        "chatgpt_plan_admission_forbidden" or
+        "subscription_sharing_route_not_supported" =>
+            "The OpenAI client, grant, or admission configuration needs attention before plan execution can resume.",
+        "chatgpt_plan_model_catalog_invalid" or
+        "chatgpt_plan_model_catalog_empty" or
+        "chatgpt_plan_model_catalog_unavailable" =>
+            "The ChatGPT model catalog is not currently usable. LEGEND preserved the provider evidence and will not start model work until compatibility is re-established.",
         "chatgpt_plan_readiness_canary_required" or
         "chatgpt_plan_readiness_canary_failed" =>
             "A completed inference readiness canary is required before autonomous model work can start.",
