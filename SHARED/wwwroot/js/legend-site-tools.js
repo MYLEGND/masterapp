@@ -46,7 +46,7 @@
       Array.from(document.querySelectorAll('link[rel="stylesheet"][href]')).slice(0, 64)
         .forEach(node => push(node.href));
     } catch { }
-    return [...new Set(result)].slice(0, 64);
+    return result.slice(0, 64);
   }
 
   function issues() {
