@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-10-01 to deploy merged PR #345 after exact-head green MasterApp platform architecture validation run 36837561689 and Step 5 approved-baseline comparison run 36837561723.",
-  "purpose": "Deploy the validated Founder autonomous engineering control plane from merged PR #345. Runtime scope is AgentPortal only: durable engineering work items, atomic leases, bounded EngineeringContext, deterministic priority/risk/complexity/model routing, ChatGPT-plan-only Codex app-server execution with durable offline authorization refresh, independent review, non-redundant CI recovery, governed release cohorts, Founder escalation/notifications, exact deployment lineage, and live backend quiet-window closure. Apply the additive LegendEngineering control-plane migration through the Portal migration authority. Do not redeploy ClientApp, Protect, Parfait, the LEGEND Website, or native iOS/Android. Do not change Cloudflare routing. Do not enable API-billed OpenAI fallback.",
-  "requestId": "autonomous-engineering-control-plane-pr345-20261001",
+  "authorization": "Explicit Founder authorization on 2026-10-01 to deploy the PR #345 autonomous engineering control plane with the release-only nullability correction after the validated product head and failed direct-release build proved the sole blocker was CS8629 in LegendEngineeringReleaseCohortPlanner.",
+  "purpose": "Deploy the validated Founder autonomous engineering control plane from merged PR #345 plus the direct source correction for the release-only nullable PullRequestNumber compiler error in LegendEngineeringReleaseCohortPlanner. Runtime scope remains AgentPortal only. Apply the additive LegendEngineering control-plane migration through the Portal migration authority. Do not redeploy ClientApp, Protect, Parfait, the LEGEND Website, or native iOS/Android. Do not change Cloudflare routing. Do not enable API-billed OpenAI fallback. Preserve all previously successful release discovery, rollback, architecture, Step 5, and unaffected-app evidence; only the invalidated portal release build/deploy chain should execute.",
+  "requestId": "autonomous-engineering-control-plane-pr345-release-nullability-20261001",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"

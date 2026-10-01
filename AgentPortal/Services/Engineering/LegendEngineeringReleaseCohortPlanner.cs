@@ -45,10 +45,13 @@ internal sealed class LegendEngineeringReleaseCohortPlanner(
         // FounderSoftwareRepairBatch is intentionally one durable publication identity.
         // Never attempt to publish unrelated candidate identities as one cohort.
         var identities = candidates.Select(item => new { item.PullRequestNumber, item.CandidateSha }).Distinct().ToArray();
-        if (identities.Length != 1 || identities[0].PullRequestNumber is not > 0 || !LegendEngineeringPolicies.IsImmutableSha(identities[0].CandidateSha))
+        if (identities.Length != 1 ||
+            identities[0].PullRequestNumber is not int pullRequestNumber ||
+            pullRequestNumber <= 0 ||
+            !LegendEngineeringPolicies.IsImmutableSha(identities[0].CandidateSha))
             return new { ok = false, released = false, code = "release_cohort_candidate_identity_not_single", decision.Cohort, decision.WorkItemIds };
 
-        var release = await remediation.ReleaseApprovedAsync(identities[0].PullRequestNumber.Value, identities[0].CandidateSha!, cancellationToken);
+        var release = await remediation.ReleaseApprovedAsync(pullRequestNumber, identities[0].CandidateSha!, cancellationToken);
         var json = JsonSerializer.SerializeToElement(release);
         var requested = json.TryGetProperty("publicationRequested", out var publication) && publication.ValueKind == JsonValueKind.True;
         var publicationPr = json.TryGetProperty("pullRequestNumber", out var publicationPrValue) &&
