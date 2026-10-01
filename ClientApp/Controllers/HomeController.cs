@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using AgentPortal.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Routing;
 using Shared.Diagnostics;
 
 namespace ClientApp.Controllers;
@@ -32,6 +34,44 @@ public class HomeController : Controller
     {
         var model = BuildModel(AppFailureDiagnosticsBuilder.BuildForStatusCode(HttpContext, "ClientApp", statusCode));
         return RenderFailure(model);
+    }
+
+
+    [Authorize]
+    [HttpGet("/api/legend-site-tools/catalog")]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public IActionResult SiteToolCatalog()
+    {
+        return Json(new
+        {
+            schemaVersion = 1,
+            authority = nameof(LegendSiteToolDisclosureAuthority),
+            authentication = "server_session_client",
+            mutationToolsExposed = false,
+            tools = new[] { LegendSiteToolDisclosureAuthority.CurrentPageTool }
+        });
+    }
+
+    [Authorize]
+    [HttpPost("/api/legend-site-tools/execute")]
+    [RequestSizeLimit(32 * 1024)]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public IActionResult ExecuteSiteTool(
+        [FromBody] ClientLegendSiteToolExecutionRequest request,
+        [FromServices] IHostEnvironment environment,
+        [FromServices] IEnumerable<EndpointDataSource> endpointSources)
+    {
+        if (request is null ||
+            !string.Equals(request.Name, LegendSiteToolDisclosureAuthority.CurrentPageToolName, StringComparison.Ordinal))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "legend_site_tool_not_exposed" });
+
+        var route = LegendSiteToolDisclosureAuthority.ResolveRoutePattern(request.Page?.Path, endpointSources);
+        return Json(LegendSiteToolDisclosureAuthority.SanitizePage(
+            request.Page,
+            environment.ApplicationName,
+            "authenticated_client",
+            LegendSiteToolDisclosureAuthority.EntryAssemblyRevision(),
+            route));
     }
 
     private ErrorViewModel BuildModel(AppFailureDiagnostics diagnostics)
@@ -68,3 +108,8 @@ public class HomeController : Controller
         return View("Error", model);
     }
 }
+
+public sealed record ClientLegendSiteToolExecutionRequest(
+    string? Name,
+    JsonElement Arguments,
+    LegendSitePageSnapshot? Page);
