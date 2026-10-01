@@ -74,6 +74,12 @@ jobs:
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore; then exit 0; fi
           dotnet restore MASTERAPP.sln
 
+      - name: Build migration validation graph
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build; then exit 0; fi
+          dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false
+
       - name: Validate database migration artifacts
         shell: bash
         env:
