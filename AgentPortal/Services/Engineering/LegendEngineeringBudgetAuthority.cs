@@ -14,6 +14,14 @@ internal sealed class LegendEngineeringBudgetAuthority(
         var monthlyCeiling = ReadPositiveLong("LegendEngineering:Budget:MonthlyTokenCeiling");
         var maxCodex = Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Budget:MaxCodexAttempts") ?? 3, 1, 10);
         var maxDeep = Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Budget:MaxDeepReasoningEscalations") ?? 2, 1, 10);
+        var billingMode = configuration["LegendEngineering:Budget:Mode"]?.Trim();
+
+        // ChatGPT-plan remaining allowance is enforced by the participating product
+        // and is not fabricated from API token accounting. Local attempt ceilings
+        // still bound retries; the adapter stops when the plan provider rejects work.
+        if (string.Equals(billingMode, "chatgpt_plan", StringComparison.OrdinalIgnoreCase))
+            return new(true, "CHATGPT_PLAN_PROVIDER_ENFORCED", null, null,
+                usage.DailyTokens, usage.MonthlyTokens, maxCodex, maxDeep, usage.UsageEvidenceComplete);
 
         if (dailyCeiling is null && monthlyCeiling is null)
             return new(false, "NOT_CONFIGURED", null, null, usage.DailyTokens, usage.MonthlyTokens,
