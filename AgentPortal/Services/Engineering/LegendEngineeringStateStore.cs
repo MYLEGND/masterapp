@@ -17,7 +17,7 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
         EngineeringPolicyDecision decision,
         CancellationToken cancellationToken)
     {
-        var liveSha = LegendEngineeringPolicies.IsImmutableSha(incident.GitCommitHash)
+        var liveSha = incident.ReleaseVerified && LegendEngineeringPolicies.IsImmutableSha(incident.GitCommitHash)
             ? incident.GitCommitHash!.ToLowerInvariant()
             : "0000000000000000000000000000000000000000";
         var workKey = LegendEngineeringPolicies.ComputeWorkKey(decision.CanonicalAuthorityKey, liveSha);
