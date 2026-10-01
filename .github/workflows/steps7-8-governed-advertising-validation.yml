@@ -25,6 +25,8 @@ on:
       - 'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs'
       - 'AgentPortal.Tests/AdvertisingCommandCenterCentralizationTests.cs'
       - '.github/workflows/steps7-8-governed-advertising-validation.yml'
+      - 'scripts/validation-resume.py'
+      - 'scripts/test-validation-resume.py'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
