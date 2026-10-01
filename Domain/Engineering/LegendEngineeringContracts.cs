@@ -217,6 +217,7 @@ public sealed record EngineeringUsageObservation(
     bool LogicalAttemptCompleted = false,
     string? ProviderOutcome = null,
     int? ProviderStatusCode = null,
+    string? ProviderErrorShape = null,
     string? ProviderErrorCode = null,
     string? ProviderErrorParam = null,
     string? ProviderRequestId = null);
