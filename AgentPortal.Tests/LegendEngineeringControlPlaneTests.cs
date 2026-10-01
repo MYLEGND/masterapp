@@ -207,6 +207,27 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ModelAttemptLedger_IsReplaySafe_AndPromotesObservedUsage()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(incident, LegendEngineeringPolicies.Classify(incident), default);
+        var attemptId = Guid.NewGuid();
+
+        await _store.RecordUsageAsync(new EngineeringUsageObservation(
+            attemptId, item.WorkItemId, EngineeringModelTier.CodeImplementation, EngineeringRole.CodexImplementer,
+            "ChatGPTPlanCodexAppServer", null, null, null, null, null, false, DateTime.UtcNow), default);
+        await _store.RecordUsageAsync(new EngineeringUsageObservation(
+            attemptId, item.WorkItemId, EngineeringModelTier.CodeImplementation, EngineeringRole.CodexImplementer,
+            "ChatGPTPlanCodexAppServer", "thread-1", null, null, 123, null, true, DateTime.UtcNow), default);
+
+        Assert.Equal(1, await _store.CountModelAttemptsAsync(item.WorkItemId, EngineeringRole.CodexImplementer, default));
+        var totals = await _store.ReadUsageTotalsAsync(DateTime.UtcNow, default);
+        Assert.Equal(123, totals.DailyTokens);
+        Assert.Equal(123, totals.MonthlyTokens);
+        Assert.True(totals.UsageEvidenceComplete);
+    }
+
+    [Fact]
     public async Task EvidenceRevisionChange_InvalidatesExistingContext()
     {
         var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
