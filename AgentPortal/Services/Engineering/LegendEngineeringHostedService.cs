@@ -49,9 +49,6 @@ internal sealed class LegendEngineeringHostedService(
 
             var contract = await contractAuthority.GetCurrentAsync(cancellationToken);
             var status = JsonSerializer.SerializeToElement(await adapter.GetStatusAsync(cancellationToken));
-            var runtimeInitiallyReady =
-                status.TryGetProperty("runtimeReady", out var initialReady) &&
-                initialReady.ValueKind == JsonValueKind.True;
             if (contract.AutonomousEngineeringEnabled && contract.ModelExecutionEnabled &&
                 RuntimeReconciliationDue(status, DateTime.UtcNow))
             {
