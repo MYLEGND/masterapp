@@ -105,7 +105,14 @@
                 <p>Saving creates a new immutable revision. In-flight stale model actions are rejected before they can mutate source.</p>
             </div>
             <label class="eng-toggle">
-                <input type="checkbox" name="ModelExecutionEnabled" value="true" @(Model.ModelExecutionEnabled ? "checked" : null) />
+                @if (Model.ModelExecutionEnabled)
+                {
+                    <input type="checkbox" name="ModelExecutionEnabled" value="true" checked />
+                }
+                else
+                {
+                    <input type="checkbox" name="ModelExecutionEnabled" value="true" />
+                }
                 <span class="eng-toggle-track" aria-hidden="true"></span>
                 <span class="eng-toggle-copy">
                     <strong>Model execution</strong>
