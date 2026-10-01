@@ -66,20 +66,11 @@ public sealed class FounderRepositoryInspectionTests
     }
 
     [Theory]
-    [InlineData("AgentPortal/appsettings.cs")]
-    [InlineData("AgentPortal/Secrets.cs")]
-    [InlineData("AgentPortal/Credentials/example.cs")]
-    [InlineData("AgentPortal/private/example.cs")]
-    [InlineData("AgentPortal/logs/example.cs")]
-    [InlineData("AgentPortal/uploads/example.cs")]
-    [InlineData("AgentPortal/.env/example.cs")]
     [InlineData("AgentPortal/../Example.cs")]
     [InlineData("AgentPortal/%2e%2e/Example.cs")]
     [InlineData("AgentPortal//Example.cs")]
     [InlineData("AgentPortal/Example.cs?token=hidden")]
-    [InlineData("AgentPortal/Program.cs")]
-    [InlineData("AgentPortal/Security/Example.cs")]
-    public async Task SensitiveAndNonCanonicalPaths_AreDeniedBeforeCredentialsOrNetwork(string path)
+    public async Task NonCanonicalPaths_AreDeniedBeforeCredentialsOrNetwork(string path)
     {
         using var fixture = new Fixture();
         var result = await fixture.InspectAsync(path);
@@ -87,6 +78,55 @@ public sealed class FounderRepositoryInspectionTests
         Assert.Equal(0, fixture.Credential.Calls);
         Assert.Equal(0, fixture.Handler.TotalRequests);
         Assert.False(fixture.Db.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData("AgentPortal/logs/example.cs")]
+    [InlineData("AgentPortal/uploads/example.cs")]
+    [InlineData("AgentPortal/App_Data/example.cs")]
+    public async Task PrivacyProtectedPaths_FailClosedBeforeCredentialsOrNetwork(string path)
+    {
+        using var fixture = new Fixture();
+        var result = await fixture.InspectAsync(path);
+        Assert.Equal("repository_privacy_protected", result.GetProperty("error").GetString());
+        Assert.Equal(0, fixture.Credential.Calls);
+        Assert.Equal(0, fixture.Handler.TotalRequests);
+    }
+
+    [Theory]
+    [InlineData("AgentPortal/Program.cs", "INTEGRITY_PROTECTED")]
+    [InlineData("AgentPortal/Security/Example.cs", "INTEGRITY_PROTECTED")]
+    [InlineData("AgentPortal/FounderSoftwareRemediationService.cs", "INTEGRITY_PROTECTED")]
+    [InlineData(".github/workflows/agentportal-production-deploy.yml", "INTEGRITY_PROTECTED")]
+    [InlineData("AgentPortal/appsettings.cs", "EXISTENCE_ONLY")]
+    [InlineData("AgentPortal/Secrets.cs", "EXISTENCE_ONLY")]
+    [InlineData("AgentPortal/Credentials/example.cs", "EXISTENCE_ONLY")]
+    [InlineData("AgentPortal/private/example.cs", "EXISTENCE_ONLY")]
+    [InlineData("AgentPortal/.env/example.cs", "EXISTENCE_ONLY")]
+    [InlineData("AgentPortal/Example.cs", "SAFE_SOURCE")]
+    [InlineData("AgentPortal/AgentPortal.csproj", "SAFE_SOURCE")]
+    [InlineData("scripts/diagnostic-project-impact.py", "SAFE_SOURCE")]
+    public void ReadClassification_IsExplicit_AndIndependentFromRepairWritePolicy(string path, string expected)
+    {
+        Assert.Equal(expected, FounderSoftwareRemediationService.ClassifyInspectableSourcePath(path));
+    }
+
+    [Theory]
+    [InlineData("AgentPortal/Program.cs", "INTEGRITY_PROTECTED")]
+    [InlineData("AgentPortal/Secrets.cs", "EXISTENCE_ONLY")]
+    [InlineData("AgentPortal/appsettings.cs", "EXISTENCE_ONLY")]
+    public async Task ProtectedSource_ReturnsIdentityAndHashMetadata_WithoutBlobContents(string path, string expectedClass)
+    {
+        using var fixture = new Fixture();
+        var result = await fixture.InspectAsync(path, CommitSha);
+        Assert.True(result.GetProperty("exists").GetBoolean());
+        Assert.False(result.GetProperty("readable").GetBoolean());
+        Assert.Equal(expectedClass, result.GetProperty("disclosureClass").GetString());
+        Assert.Equal(BlobSha, result.GetProperty("blobSha").GetString());
+        Assert.Equal(CommitSha, result.GetProperty("commitSha").GetString());
+        Assert.False(result.TryGetProperty("content", out _));
+        Assert.DoesNotContain(fixture.Handler.RepositoryReads, value => value.StartsWith("git/blobs/", StringComparison.Ordinal));
+        Assert.Empty(fixture.Handler.RepositoryWrites);
     }
 
     [Theory]
@@ -153,7 +193,9 @@ public sealed class FounderRepositoryInspectionTests
         using var fixture = new Fixture();
         fixture.Handler.Source = source;
         var result = await fixture.InspectAsync(SourcePath);
-        Assert.Equal("repository_sensitive_content", result.GetProperty("error").GetString());
+        Assert.Equal("EXISTENCE_ONLY", result.GetProperty("disclosureClass").GetString());
+        Assert.True(result.GetProperty("credentialLikeContent").GetBoolean());
+        Assert.False(result.GetProperty("readable").GetBoolean());
         Assert.False(result.TryGetProperty("content", out _));
         Assert.DoesNotContain(source, result.ToString(), StringComparison.Ordinal);
         Assert.Empty(fixture.Handler.RepositoryWrites);
@@ -209,8 +251,11 @@ public sealed class FounderRepositoryInspectionTests
             }).Build();
             Service = new(new ClientFactory(Handler), config, NullLogger<FounderSoftwareRemediationService>.Instance, Credential, Db);
         }
-        public async Task<JsonElement> InspectAsync(string? path, string? reference = null) =>
-            JsonSerializer.SerializeToElement(await Service.InspectRepositoryAsync(path, reference, default));
+        public async Task<JsonElement> InspectAsync(string? path, string? reference = null)
+        {
+            Handler.LeafPath = path?.Split('/').LastOrDefault() ?? "Example.cs";
+            return JsonSerializer.SerializeToElement(await Service.InspectRepositoryAsync(path, reference, default));
+        }
         public void Dispose() { Handler.Dispose(); Db.Dispose(); _key.Dispose(); }
     }
     private sealed class ClientFactory(HttpMessageHandler handler) : IHttpClientFactory
@@ -228,6 +273,7 @@ public sealed class FounderRepositoryInspectionTests
         public string Scenario { get; set; } = string.Empty;
         public string Mode { get; set; } = "100644";
         public string Source { get; set; } = "namespace Example; // café";
+        public string LeafPath { get; set; } = "Example.cs";
         public string CurrentBranchSha { get; private set; } = CommitSha;
         public List<string> RepositoryReads { get; } = [];
         public List<string> RepositoryWrites { get; } = [];
@@ -256,7 +302,7 @@ public sealed class FounderRepositoryInspectionTests
                     tree = new[] { new { path = "AgentPortal", type = Scenario == "directory-symlink" ? "blob" : "tree", mode = Scenario == "directory-symlink" ? "120000" : "040000", sha = DirectorySha } } });
             if (relative == "git/trees/" + DirectorySha)
             {
-                var entry = new { path = "Example.cs", type = Scenario == "submodule" ? "commit" : "blob",
+                var entry = new { path = LeafPath, type = Scenario == "submodule" ? "commit" : "blob",
                     mode = Scenario == "symlink" ? "120000" : Scenario == "submodule" ? "160000" : Mode,
                     sha = BlobSha, size = Scenario == "oversized-file" ? 240001 : bytes.Length };
                 return Json(new { sha = DirectorySha, truncated = false, tree = Scenario == "duplicate" ? new[] { entry, entry } : new[] { entry } });
