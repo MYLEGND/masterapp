@@ -83,6 +83,16 @@ def reusable_live_application_revision(rows, head):
 
 
 
+def exact_live_release(rows, application_release_sha, release_mode, website_routing):
+    """True only when publication cannot change any selected application target."""
+    return (
+        release_mode == 'approved-only'
+        and not website_routing
+        and bool(rows)
+        and all(row['revision'] == application_release_sha for row in rows)
+    )
+
+
 def release_package_contract_hash():
     resume_path = Path(__file__).with_name("validation-resume.py")
     spec = importlib.util.spec_from_file_location("validation_resume", resume_path)
@@ -225,10 +235,11 @@ def main():
         website_routing,
         website_routing_canary,
     )
-    exact_live = (
-        release_mode == 'approved-only'
-        and not website_routing
-        and all(row['revision'] == application_release_sha for row in rows)
+    exact_live = exact_live_release(
+        rows,
+        application_release_sha,
+        release_mode,
+        website_routing,
     )
     if exact_live:
         print('All selected application targets already expose the exact approved application revision; publication work is unnecessary.')
