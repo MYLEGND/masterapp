@@ -113,7 +113,8 @@ public sealed record EngineeringWorkItemSnapshot(
     long? DeploymentRunId = null,
     DateTime? DeploymentVerifiedUtc = null,
     DateTime? FounderReleaseApprovedUtc = null,
-    IReadOnlyList<string>? ValidationFailureCodes = null);
+    IReadOnlyList<string>? ValidationFailureCodes = null,
+    string? StateRevision = null);
 
 public sealed record EngineeringLeaseReceipt(
     bool Acquired,
