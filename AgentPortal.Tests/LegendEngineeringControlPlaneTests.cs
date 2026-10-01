@@ -111,6 +111,28 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public void SanitizedSourceHints_ResolveOnlyWithinApplicationAndSharedSafeRoots()
+    {
+        var resolved = FounderSoftwareRemediationService.ResolveSafeSourceHints(
+            new[] { "HomeController.cs", "js/legend-site-tools.js" },
+            "AgentPortal",
+            new[]
+            {
+                "AgentPortal/Controllers/HomeController.cs",
+                "ClientApp/Controllers/HomeController.cs",
+                "AgentPortal/wwwroot/js/legend-site-tools.js",
+                "SHARED/wwwroot/js/legend-site-tools.js",
+                "AgentPortal/Security/Secrets.cs"
+            });
+
+        Assert.Contains("AgentPortal/Controllers/HomeController.cs", resolved);
+        Assert.DoesNotContain("ClientApp/Controllers/HomeController.cs", resolved);
+        Assert.Contains("AgentPortal/wwwroot/js/legend-site-tools.js", resolved);
+        Assert.Contains("SHARED/wwwroot/js/legend-site-tools.js", resolved);
+        Assert.DoesNotContain("AgentPortal/Security/Secrets.cs", resolved);
+    }
+
+    [Fact]
     public async Task SameSanitizedFilenameAcrossApplications_DoesNotMergeWorkItems()
     {
         var agentIncident = Incident(app: "AgentPortal", source: "HomeController.cs");
