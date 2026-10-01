@@ -484,7 +484,7 @@ RELEASE_STEP_POLICIES = {
         "Resume ready changes and corrections on retained branches": "idempotent_external",
         "Refresh after automatically integrated corrections": "current_state",
         "Recover authorized direct release when needed": "idempotent_external",
-        "Refresh references after synchronization": "current_state",
+        "Refresh approved references before cleanup": "current_state",
         "Retire only preserved successfully deployed branches": "idempotent_external",
         "Retain exact cleanup decisions": "artifact_receipt",
     },
