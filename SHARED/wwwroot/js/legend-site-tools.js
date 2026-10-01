@@ -6,16 +6,33 @@
   const modelContext = document.modelContext;
   if (!modelContext || typeof modelContext.registerTool !== "function" || typeof window.fetch !== "function") return;
 
-  const endpoint = "/api/legend-site-tools";
   const registrationController = new AbortController();
   window.addEventListener("pagehide", () => registrationController.abort(), { once: true });
+  let observer = null;
+  let application = "";
+  let sourceRevision = "";
   let csrf = "";
+  let endpoint = "/api/legend-public-site-tools";
+  let privateTransport = false;
   try {
-    const observer = Array.from(document.scripts || []).find(node => {
-      try { return new URL(node.src, window.location.origin).pathname === "/_content/Shared/js/page-health.js"; }
-      catch { return false; }
-    });
-    csrf = typeof observer?.dataset?.csrf === "string" ? observer.dataset.csrf : "";
+    observer = Array.from(document.scripts || []).find(node => {
+      try {
+        const path = new URL(node.src, window.location.origin).pathname;
+        return path === "/_content/Shared/js/page-health.js" || path === "/js/page-health.js";
+      } catch { return false; }
+    }) || null;
+    application = typeof observer?.dataset?.app === "string" ? observer.dataset.app : "";
+    sourceRevision = typeof observer?.dataset?.gitCommitHash === "string" ? observer.dataset.gitCommitHash : "";
+    privateTransport = application === "AgentPortal" || application === "ClientApp";
+    csrf = privateTransport && typeof observer?.dataset?.csrf === "string" ? observer.dataset.csrf : "";
+    endpoint = privateTransport ? "/api/legend-site-tools" : "/api/legend-public-site-tools";
+    const explicit = document.currentScript?.dataset?.endpoint;
+    if (!privateTransport && typeof explicit === "string" && explicit.length > 0) {
+      const candidate = new URL(explicit, window.location.origin);
+      if (candidate.protocol === "https:" && !candidate.username && !candidate.password &&
+          !candidate.search && !candidate.hash && candidate.pathname === "/api/legend-public-site-tools")
+        endpoint = candidate.href.replace(/\/$/, "");
+    }
   } catch { }
 
   function breakpoint(width) {
@@ -70,15 +87,10 @@
   function pageSnapshot() {
     const width = Math.round(window.innerWidth || document.documentElement.clientWidth || 0);
     const height = Math.round(window.innerHeight || document.documentElement.clientHeight || 0);
-    let route = "";
-    try {
-      const observer = Array.from(document.scripts || []).find(node => {
-        try { return new URL(node.src, window.location.origin).pathname === "/_content/Shared/js/page-health.js"; }
-        catch { return false; }
-      });
-      route = typeof observer?.dataset?.route === "string" ? observer.dataset.route : "";
-    } catch { }
+    const route = typeof observer?.dataset?.route === "string" ? observer.dataset.route : "";
     return {
+      application,
+      sourceRevision,
       path: route,
       viewportWidth: width,
       viewportHeight: height,
@@ -101,12 +113,14 @@
   }
 
   async function invoke(name, args) {
-    if (!csrf) return { ok: false, error: "legend_site_tool_antiforgery_unavailable" };
+    if (privateTransport && !csrf) return { ok: false, error: "legend_site_tool_antiforgery_unavailable" };
+    const headers = { "Content-Type": "application/json", "Accept": "application/json" };
+    if (privateTransport) headers.RequestVerificationToken = csrf;
     const response = await window.fetch(endpoint + "/execute", {
       method: "POST",
-      credentials: "same-origin",
+      credentials: privateTransport ? "same-origin" : "omit",
       redirect: "error",
-      headers: { "Content-Type": "application/json", "Accept": "application/json", "RequestVerificationToken": csrf },
+      headers,
       body: JSON.stringify({ name, arguments: args || {}, page: pageSnapshot() })
     });
     if (!response.ok) return { ok: false, error: "legend_site_tool_http_" + response.status };
@@ -119,7 +133,8 @@
     let response;
     try {
       response = await window.fetch(endpoint + "/catalog", {
-        method: "GET", credentials: "same-origin", redirect: "error", headers: { "Accept": "application/json" }
+        method: "GET", credentials: privateTransport ? "same-origin" : "omit", redirect: "error",
+        headers: { "Accept": "application/json" }
       });
     } catch { return; }
     if (!response.ok) return;
