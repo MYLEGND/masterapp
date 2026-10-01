@@ -69,7 +69,7 @@ public sealed class FounderSoftwareRepairCompletionTests
     [InlineData("hosts", "deployment_verification_hosts_missing_or_unbounded")]
     [InlineData("merged", "publication_not_merged")]
     [InlineData("tree", "merged_tree_differs_from_reviewed_tree")]
-    [InlineData("workflow", "protected_release_success_not_observed")]
+    [InlineData("workflow", "approved_release_success_not_observed")]
     [InlineData("native", "changed_project_not_covered")]
     [InlineData("shared", "changed_project_not_covered")]
     [InlineData("runtime", "live_source_tree_mismatch")]
@@ -229,7 +229,7 @@ public sealed class FounderSoftwareRepairCompletionTests
             {
                 state = "closed", merged = fault != "merged", draft = false, merge_commit_sha = Merged,
                 head = new { sha = Head, @ref = "hotfix/publish-" + Reviewed, repo = new { full_name = "MYLEGND/masterapp" } },
-                @base = new { @ref = "production", repo = new { full_name = "MYLEGND/masterapp" } }
+                @base = new { @ref = "legend/approved-changes", repo = new { full_name = "MYLEGND/masterapp" } }
             };
             else if (path.Contains("/git/commits/")) body = new { tree = new { sha = fault == "tree" && path.EndsWith(Merged) || path.EndsWith(new string('8', 40)) ? new string('7', 40) : Tree } };
             else if (path.Contains("/git/trees/")) body = new
@@ -242,10 +242,11 @@ public sealed class FounderSoftwareRepairCompletionTests
                 status = "ahead", merge_base_commit = new { sha = Base },
                 files = new[] { new { filename = fault == "native" ? "Native/Example.swift" : fault == "shared" ? "Shared/Example.cs" : "AppOne/Controllers/Example.cs", status = "modified" } }
             };
-            else if (path.EndsWith("/actions/workflows/agentportal-production-deploy.yml/runs")) body = new
+            else if (path.EndsWith("/actions/workflows/all-intentional-direct-release-20260918.yml/runs")) body = new
             {
-                workflow_runs = new[] { new { id = 101, head_sha = Head, status = "completed", conclusion = fault == "workflow" ? "failure" : "success",
-                    @event = "pull_request", path = ".github/workflows/agentportal-production-deploy.yml" } }
+                workflow_runs = new[] { new { id = 101, head_sha = Source, head_branch = "legend/approved-changes",
+                    status = "completed", conclusion = fault == "workflow" ? "failure" : "success",
+                    path = ".github/workflows/all-intentional-direct-release-20260918.yml" } }
             };
             else status = HttpStatusCode.NotFound;
             var response = new HttpResponseMessage(status) { RequestMessage = request,
