@@ -664,6 +664,29 @@ def release_proven(api, revision, app=None):
         run = api.api(f'actions/runs/{run_id}')
         if successful_release(api, run, app=app):
             return True
+
+    # Bootstrap durable proof for exact-head direct releases that completed before
+    # the application-release receipt artifact existed. This is intentionally
+    # narrower than receipt reuse: the workflow run itself must be for this exact
+    # live revision, and successful_release still requires the sole direct-release
+    # workflow, approved branch, target scope, final live proof and enforcement.
+    # Control-only descendants therefore still require the receipt artifact above.
+    exact_runs = api.pages(
+        'actions/runs?head_sha=' + urllib.parse.quote(revision, safe=''),
+        'workflow_runs',
+    )
+    exact_runs.sort(
+        key=lambda row: (
+            row.get('updated_at') or row.get('run_started_at') or row.get('created_at', ''),
+            row.get('run_attempt', 1),
+        ),
+        reverse=True,
+    )
+    for run in exact_runs:
+        if run.get('head_sha') != revision:
+            continue
+        if successful_release(api, run, app=app):
+            return True
     return False
 
 

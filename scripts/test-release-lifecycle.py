@@ -224,6 +224,26 @@ class ReleaseTruth(unittest.TestCase):
         self.assertTrue(m.release_proven(api, revision, app="portal"))
 
 
+    def test_release_proven_accepts_exact_head_success_before_receipt_artifact(self):
+        api = Api()
+        revision = "c" * 40
+        passed = self.release_run(id=11, head_sha=revision)
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision] = []
+        api.pages_map["actions/runs?head_sha=" + revision] = [passed]
+        api.pages_map["actions/runs/11/jobs?filter=latest"] = successful_jobs()
+        self.assertTrue(m.release_proven(api, revision, app="portal"))
+        self.assertFalse(m.release_proven(api, revision, app="client"))
+
+    def test_release_proven_exact_head_fallback_rejects_mismatched_run_identity(self):
+        api = Api()
+        revision = "c" * 40
+        mismatched = self.release_run(id=12, head_sha="d" * 40)
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision] = []
+        api.pages_map["actions/runs?head_sha=" + revision] = [mismatched]
+        api.pages_map["actions/runs/12/jobs?filter=latest"] = successful_jobs()
+        self.assertFalse(m.release_proven(api, revision, app="portal"))
+
+
 class ReconcileSafety(unittest.TestCase):
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "direct_only_request", return_value=False)
