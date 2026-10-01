@@ -284,7 +284,12 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
             Add(command, "@cost", usage.CostMicrousd);
             Add(command, "@observed", usage.UsageObserved);
             Add(command, "@created", usage.CreatedUtc);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            try { await command.ExecuteNonQueryAsync(cancellationToken); }
+            catch (DbException)
+            {
+                // UsageId is deterministic per Agents API session. A duplicate
+                // terminal observation is a replay, not additional consumption.
+            }
         }
         finally { if (opened) await connection.CloseAsync(); }
     }
