@@ -257,6 +257,7 @@ WORKFLOWS = {
         },
     },
     "step6-openai-ads-execution-validation.yml": {
+        "unmatched_neutral": True,
         "force_all": (
             "SHARED/Analytics/OpenAiAdsExecutionContracts.cs",
             "Infrastructure/Analytics/OpenAiAdsExecutionService.cs",
@@ -279,6 +280,7 @@ WORKFLOWS = {
         },
     },
     "steps7-8-governed-advertising-validation.yml": {
+        "unmatched_neutral": True,
         "force_all": (
             "Domain/Entities/AdvertisingActionAuthorization.cs",
             "SHARED/Analytics/AdvertisingActionContracts.cs",
@@ -483,7 +485,7 @@ def compute_plan(workflow: str, current_sha: str, prior, prior_steps, changed_pa
                 known.add(path)
                 break
 
-    unknown = [
+    unknown = [] if config.get("unmatched_neutral") else [
         path
         for path in changed_paths
         if path not in known
