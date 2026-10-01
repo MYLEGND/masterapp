@@ -13,6 +13,8 @@ on:
       - 'AgentPortal.Tests/MarketingDestinationLayerTests.cs'
       - 'AgentPortal.Tests/MarketingScopeParityContractTests.cs'
       - '.github/workflows/step6-openai-ads-execution-validation.yml'
+      - 'scripts/validation-resume.py'
+      - 'scripts/test-validation-resume.py'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
