@@ -39,6 +39,48 @@ def selected_targets(request):
     return tuple(row for row in TARGETS if 'masterapp-' + row[0] in names)
 
 
+
+def release_control_only_path(path):
+    """Paths that can change release control/evidence without changing app bits."""
+    return (
+        path.startswith(".github/workflows/")
+        or path.startswith("Docs/")
+        or path.startswith("AgentPortal.Tests/")
+        or path.startswith("tests/")
+        or path in {
+            "scripts/approved-release-baseline.py",
+            "scripts/release-lifecycle.py",
+            "scripts/release_policy.py",
+            "scripts/deploy-approved-app.py",
+            "scripts/validation-resume.py",
+            "scripts/test-validation-resume.py",
+            "scripts/test-release-policy.py",
+            "scripts/test-release-lifecycle.py",
+            "scripts/test-deploy-approved-app.py",
+        }
+    )
+
+
+def reusable_live_application_revision(rows, head):
+    """Keep exact live provenance across release-control/test-only corrections.
+
+    This prevents a workflow/test/release-policy fix from manufacturing a new
+    application identity and needlessly rebuilding/redeploying unchanged product
+    code. Any runtime/product/migration change fails closed to the current head.
+    """
+    revisions = {row["revision"] for row in rows}
+    if len(revisions) != 1:
+        return None
+    live = next(iter(revisions))
+    changed = subprocess.check_output(
+        ["git", "diff", "--name-only", live, head],
+        text=True,
+    ).splitlines()
+    if all(release_control_only_path(path) for path in changed):
+        return live
+    return None
+
+
 def validate_revision(value):
     if not isinstance(value, str) or not re.fullmatch(r'[a-fA-F0-9]{40}', value):
         raise ValueError('Live source identity is missing or invalid')
@@ -130,7 +172,15 @@ def main():
         unexpected = sorted(path for path in changed if path not in allowed_control_files)
         if unexpected:
             raise ValueError('Preserve-live recovery contains application changes: ' + ', '.join(unexpected))
-    application_release_sha = preserve_live_revision if preserve_live_targets else head
+    if preserve_live_targets:
+        application_release_sha = preserve_live_revision
+    else:
+        application_release_sha = reusable_live_application_revision(rows, head) or head
+        if application_release_sha != head:
+            print(
+                "Preserving exact live application identity across release-control/test-only changes:",
+                application_release_sha,
+            )
     print(json.dumps(rows, indent=2))
     if args.output:
         with args.output.open('a') as out:
