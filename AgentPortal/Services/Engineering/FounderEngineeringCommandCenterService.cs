@@ -109,6 +109,7 @@ internal sealed class FounderEngineeringCommandCenterService(
             OpenWorkItems = ReadInt(status, "openWorkItems"),
             LeasedWorkItems = ReadInt(status, "leasedWorkItems"),
             SecurityReviewItems = ReadInt(status, "securityReviewItems"),
+            BrowserLiveProofItems = ReadInt(status, "browserLiveProofItems"),
             History = history.Select(row => new FounderEngineeringContractHistoryItem(
                 row.Revision,
                 row.Version,
