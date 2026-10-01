@@ -216,8 +216,15 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
         var options = ReadOptions();
         var unavailable = await RequireActiveAuthorityAsync(options, cancellationToken);
         if (unavailable is not null) return unavailable;
-        if (!string.IsNullOrWhiteSpace(path) && !IsInspectableSourcePath(path))
-            return Failure("repository_path_not_allowed", "The requested path is outside the bounded non-sensitive source and test allow-list.");
+        string? disclosureClass = null;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            disclosureClass = ClassifyInspectableSourcePath(path);
+            if (disclosureClass is null)
+                return Failure("repository_path_not_allowed", "The requested path is outside the bounded canonical repository inspection policy.");
+            if (disclosureClass == "PRIVACY_PROTECTED")
+                return Failure("repository_privacy_protected", "The requested path belongs to privacy-protected runtime or user-data storage and is not inspected.");
+        }
         if (!string.IsNullOrWhiteSpace(gitReference) &&
             (!IsGitReference(gitReference) || gitReference.Contains("..", StringComparison.Ordinal) || gitReference.StartsWith('/')))
             return Failure("invalid_git_reference", "Repository inspection accepts only a branch name or immutable Git SHA.");
@@ -278,6 +285,21 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 if (size is null or < 0 or > MaximumFileCharacters * 4)
                     return Failure("repository_content_not_text", "The requested source exceeds the bounded text size.");
             }
+            if (disclosureClass != "SAFE_SOURCE")
+            {
+                unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
+                if (unavailable is not null) return unavailable;
+                return new
+                {
+                    capability = "inspect_repository", repository = options.RepositoryIdentity,
+                    reference, path, sha = blobSha, blobSha, commitSha, size,
+                    exists = true, readable = false, disclosureClass,
+                    contentOmitted = true,
+                    citationUrl = $"https://github.com/{options.RepositoryIdentity}/blob/{commitSha}/{EscapeRepositoryPath(path)}",
+                    instructionAuthority = false, inspected = true
+                };
+            }
+
             using var blob = await ReadInspectionJsonAsync(client,
                 $"repos/{options.RepositoryIdentity}/git/blobs/{blobSha}", deadline.Token);
             var encoded = ReadString(blob.RootElement, "content");
@@ -288,7 +310,19 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 text.Any(character => char.IsControl(character) && character is not ('\r' or '\n' or '\t')))
                 return Failure("repository_content_not_text", "The requested object is not verified bounded UTF-8 source text.");
             if (ContainsSensitiveSourceLiteral(text))
-                return Failure("repository_sensitive_content", "The requested source contains credential-like material and cannot be returned.");
+            {
+                unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
+                if (unavailable is not null) return unavailable;
+                return new
+                {
+                    capability = "inspect_repository", repository = options.RepositoryIdentity,
+                    reference, path, sha = blobSha, blobSha, commitSha, size,
+                    exists = true, readable = false, disclosureClass = "EXISTENCE_ONLY",
+                    credentialLikeContent = true, contentOmitted = true,
+                    citationUrl = $"https://github.com/{options.RepositoryIdentity}/blob/{commitSha}/{EscapeRepositoryPath(path)}",
+                    instructionAuthority = false, inspected = true
+                };
+            }
             unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
             if (unavailable is not null) return unavailable;
             return new
@@ -330,19 +364,59 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
         }
     }
 
-    private static bool IsInspectableSourcePath(string path)
+    internal static string? ClassifyInspectableSourcePath(string path)
     {
-        // Read restrictions are additive. The repair/write policy is unchanged.
-        if (!IsAllowedPath(path) || path.Any(character => char.IsControl(character) || character is '%' or '?' or '#')) return false;
+        // This is a read-only disclosure policy. It intentionally does NOT call
+        // IsAllowedPath because that method is the stricter repair/write policy.
+        // Expanding readable metadata must never expand writable source.
+        if (string.IsNullOrWhiteSpace(path) || path.Length > MaximumPathLength ||
+            path.Contains('\\') || path.StartsWith('/') || path.Contains("..", StringComparison.Ordinal) ||
+            path.Contains('\0') || path.Any(character => char.IsControl(character) || character is '%' or '?' or '#'))
+            return null;
+
         var segments = path.Split('/');
-        if (segments.Length > 16 || segments.Any(segment => string.IsNullOrWhiteSpace(segment) || segment.StartsWith('.'))) return false;
-        return !segments.Any(segment =>
-            segment.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
-            segment.Contains("credential", StringComparison.OrdinalIgnoreCase) ||
-            segment.Contains("private", StringComparison.OrdinalIgnoreCase) ||
-            segment.Contains("connectionstring", StringComparison.OrdinalIgnoreCase) ||
-            new[] { "bin", "obj", "artifacts", "TestResults", "logs", "uploads", "App_Data", "wwwroot-data" }
-                .Contains(segment, StringComparer.OrdinalIgnoreCase));
+        if (segments.Length is < 2 or > 16 ||
+            segments.Any(segment => string.IsNullOrWhiteSpace(segment) || segment is "." or ".."))
+            return null;
+
+        if (segments.Any(segment => new[] { "bin", "obj", "artifacts", "TestResults", "logs", "uploads", "App_Data", "wwwroot-data" }
+                .Contains(segment, StringComparer.OrdinalIgnoreCase)))
+            return "PRIVACY_PROTECTED";
+
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        if (extension is ".pem" or ".pfx" or ".key" or ".p12" or ".cer" or ".crt" ||
+            segments.Any(segment =>
+                segment.Equals(".env", StringComparison.OrdinalIgnoreCase) ||
+                segment.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
+                segment.Contains("credential", StringComparison.OrdinalIgnoreCase) ||
+                segment.Contains("connectionstring", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("private", StringComparison.OrdinalIgnoreCase)) ||
+            path.Contains("appsettings", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("launchSettings", StringComparison.OrdinalIgnoreCase))
+            return "EXISTENCE_ONLY";
+
+        if (path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith(".azure/", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("deploy", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/deploy", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Security/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Auth/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Authorization", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Authentication", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Identity/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Migrations/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Remediation", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("RuntimeDiagnostic", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("FounderDiagnostics", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("MobileApiControllerBase", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith("Program.cs", StringComparison.OrdinalIgnoreCase))
+            return "INTEGRITY_PROTECTED";
+
+        return extension is
+            ".cs" or ".cshtml" or ".swift" or ".kt" or ".js" or ".mjs" or ".ts" or ".tsx" or ".jsx" or ".css" or
+            ".py" or ".csproj" or ".props" or ".targets" or ".sln" or ".md" or ".json" or ".sh" or ".yml" or ".yaml"
+                ? "SAFE_SOURCE"
+                : null;
     }
 
     private static bool ContainsSensitiveSourceLiteral(string text)
