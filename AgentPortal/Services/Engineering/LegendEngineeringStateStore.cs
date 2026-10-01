@@ -48,12 +48,16 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
 
                 var state = existing.State is "COMPLETED" or "CLOSED"
                     ? InitialState(decision, recurring: true)
-                    : existing.State;
+                    : evidenceChanged && existing.State == "LEASED"
+                        ? ResolveResumeState(existing)
+                        : existing.State;
                 var preserveWorkflowRole = existing.State is
                     "LEASED" or "AGENT_ACTIVE" or "CANDIDATE_PREPARED" or "REVIEW_REQUIRED" or
                     "REVIEWED" or "VALIDATED" or "RELEASE_REQUESTED" or
                     "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "CI_FAILED_NEEDS_EVIDENCE" or
-                    "REVIEW_REJECTED" or "RELEASE_BLOCKED" or "FOUNDER_ESCALATION";
+                    "REVIEW_REJECTED" or "RELEASE_BLOCKED" or "FOUNDER_ESCALATION" or
+                    "WAITING_PROVIDER_RETRY" or "WAITING_PROVIDER_CONTROL" or
+                    "LIVE_FUNCTIONAL_PROOF_REQUIRED";
                 var sameReproducerRoute = existing.ReproducerRoute is null ||
                     string.Equals(existing.ReproducerRoute, reproducerRoute, StringComparison.Ordinal);
                 var updated = existing with
@@ -73,6 +77,7 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                     LeaseOwner = state == existing.State && !evidenceChanged ? existing.LeaseOwner : null,
                     LeaseIdentity = state == existing.State && !evidenceChanged ? existing.LeaseIdentity : null,
                     LeaseExpiresUtc = state == existing.State && !evidenceChanged ? existing.LeaseExpiresUtc : null,
+                    ResumeState = state == existing.State ? existing.ResumeState : null,
                     ValidationState = state == existing.State ? existing.ValidationState : "NOT_STARTED",
                     ReleaseCohort = decision.ReleaseCohort,
                     FounderReleaseApprovedUtc = string.Equals(existing.EvidenceRevision, evidenceRevision, StringComparison.Ordinal)
