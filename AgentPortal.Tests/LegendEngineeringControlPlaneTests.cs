@@ -225,10 +225,79 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.DoesNotContain("EXISTENCE_ONLY", properties);
     }
 
+
+    [Fact]
+    public async Task ChatGptPlanCredential_UnapprovedPrivateClient_FailsClosed()
+    {
+        var authority = new LegendChatGptPlanCredentialAuthority(
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build());
+        var state = await authority.GetAsync(default);
+        Assert.False(state.Ready);
+        Assert.Equal("chatgpt_plan_private_client_eligibility_unverified", state.Code);
+        Assert.Null(state.AccessToken);
+    }
+
+    [Fact]
+    public async Task ChatGptPlanCredential_MissingPlanUsageScope_FailsClosed()
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["LegendEngineering:ChatGptPlan:PrivateClientApproved"] = "true",
+            ["LegendEngineering:ChatGptPlan:ClientId"] = "private-client",
+            ["LegendEngineering:ChatGptPlan:GrantedScopes"] = "openid offline_access resource.invoke",
+            ["LegendEngineering:ChatGptPlan:AccessToken"] = "opaque-test-token",
+            ["LegendEngineering:ChatGptPlan:AccessTokenExpiresUtc"] = DateTime.UtcNow.AddHours(1).ToString("O")
+        };
+        var authority = new LegendChatGptPlanCredentialAuthority(
+            new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+        var state = await authority.GetAsync(default);
+        Assert.False(state.Ready);
+        Assert.Equal("chatgpt_plan_usage_scope_missing", state.Code);
+        Assert.Null(state.AccessToken);
+    }
+
+    [Fact]
+    public async Task ChatGptPlanCredential_ApprovedPlanScope_IsEligibleWithoutApiKey()
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["LegendEngineering:ChatGptPlan:PrivateClientApproved"] = "true",
+            ["LegendEngineering:ChatGptPlan:ClientId"] = "private-client",
+            ["LegendEngineering:ChatGptPlan:GrantedScopes"] = "openid offline_access resource.invoke chatgpt.tokens.use.direct",
+            ["LegendEngineering:ChatGptPlan:AccessToken"] = "opaque-test-token",
+            ["LegendEngineering:ChatGptPlan:AccessTokenExpiresUtc"] = DateTime.UtcNow.AddHours(1).ToString("O")
+        };
+        var authority = new LegendChatGptPlanCredentialAuthority(
+            new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+        var state = await authority.GetAsync(default);
+        Assert.True(state.Ready);
+        Assert.Equal("chatgpt_plan_ready", state.Code);
+        Assert.Contains("chatgpt.tokens.use.direct", state.GrantedScopes);
+    }
+
+    [Fact]
+    public void ChatGptPlanCodexAdapter_HasNoAgentsApiOrApiKeyFallback()
+    {
+        var source = File.ReadAllText(Path.Combine(SourceRoot(), "AgentPortal", "Services", "Engineering", "ChatGptPlanCodexAppServerAdapter.cs"));
+        Assert.Contains("openai_chatgpt_plan", source, StringComparison.Ordinal);
+        Assert.Contains("start.Environment.Remove(\"OPENAI_API_KEY\")", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("OpenAiKeyResolver", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("/v1/agents/sessions", source, StringComparison.Ordinal);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _db.DisposeAsync();
         await _connection.DisposeAsync();
+    }
+
+
+    private static string SourceRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "masterapp.sln")))
+            directory = directory.Parent;
+        return directory?.FullName ?? throw new InvalidOperationException("Repository root not found.");
     }
 
     private EngineeringContextSnapshot Context(EngineeringWorkItemSnapshot item, EngineeringLeaseReceipt lease)
