@@ -242,6 +242,50 @@ jobs:
             set(policies),
         )
 
+
+    def test_step5_workflow_only_change_is_neutral_to_architecture(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            [".github/workflows/step5-isolated-conversion-mapping-validation.yml"],
+            "prior_run",
+        )
+        self.assertEqual("incremental", plan["mode"])
+        self.assertTrue(all(not gate["run"] for gate in plan["gates"].values()))
+
+    def test_direct_release_workflow_change_reruns_only_lifecycle_gate(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            [".github/workflows/all-intentional-direct-release-20260918.yml"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["lifecycle"]["run"])
+        self.assertEqual("gate_inputs_changed", plan["gates"]["lifecycle"]["reason"])
+        for key, gate in plan["gates"].items():
+            if key != "lifecycle":
+                self.assertFalse(gate["run"], key)
+
+    def test_resume_test_change_reruns_only_lifecycle_contract_gate(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["scripts/test-validation-resume.py"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["lifecycle"]["run"])
+        self.assertFalse(plan["gates"]["build-hosts"]["run"])
+        self.assertFalse(plan["gates"]["meta-regressions"]["run"])
+
     def test_validation_authority_change_fails_closed_to_full(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
