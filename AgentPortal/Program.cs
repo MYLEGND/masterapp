@@ -163,6 +163,7 @@ builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendEngineeringOr
 builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendChatGptPlanCredentialAuthority, AgentPortal.Services.Engineering.LegendChatGptPlanCredentialAuthority>();
 builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendEngineeringAgentAdapter, AgentPortal.Services.Engineering.ChatGptPlanCodexAppServerAdapter>();
 builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringReleaseCohortPlanner>();
+builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringFounderNotificationService>();
 builder.Services.AddHttpClient("FounderRuntimeProvenance", client => client.Timeout = TimeSpan.FromSeconds(8))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<LegendFounderAiConversationService>();
