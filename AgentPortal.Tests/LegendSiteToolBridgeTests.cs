@@ -27,7 +27,8 @@ public sealed class LegendSiteToolBridgeTests
             });
 
         var json = JsonSerializer.Serialize(LegendSiteToolDisclosureAuthority.SanitizePage(
-            snapshot, "AgentPortal", "founder_system", new string('a', 40), "/Clients/Index"));
+            snapshot, "AgentPortal", "founder_system", new string('a', 40),
+            new LegendRouteAuthority("/Clients/Index", "ClientsController", "Index", "AgentPortal")));
 
         Assert.Contains("\"website.editor\"", json, StringComparison.Ordinal);
         Assert.Contains("\"contact.submit\"", json, StringComparison.Ordinal);
