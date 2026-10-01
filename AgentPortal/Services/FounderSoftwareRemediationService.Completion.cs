@@ -74,17 +74,40 @@ public sealed partial class FounderSoftwareRemediationService
             // may differ from the reviewed PR SHA while retaining the exact tree.
             foreach (var source in observations.Select(item => item.SourceRevision).Distinct(StringComparer.Ordinal))
             {
-                using var runs = await ReadCompletionJsonAsync(client,
-                    $"repos/{options.RepositoryIdentity}/actions/workflows/all-intentional-direct-release-20260918.yml/runs?head_sha={source}&per_page=20",
+                using var artifacts = await ReadCompletionJsonAsync(client,
+                    $"repos/{options.RepositoryIdentity}/actions/artifacts?name=legend-approved-release-{source}&per_page=100",
                     1024 * 1024, deadline.Token);
-                var receipt = runs.RootElement.GetProperty("workflow_runs").EnumerateArray()
-                    .Where(run => ReadString(run, "head_sha") == source &&
-                        ReadString(run, "head_branch") == options.BaseBranch &&
-                        ReadString(run, "status") == "completed" &&
-                        ReadString(run, "conclusion") == "success" &&
-                        ReadString(run, "path") == ".github/workflows/all-intentional-direct-release-20260918.yml")
-                    .Select(run => run.TryGetProperty("id", out var id) && id.TryGetInt64(out var number) ? number : 0)
-                    .Where(number => number > 0).OrderDescending().FirstOrDefault();
+                var candidateRunIds = artifacts.RootElement.GetProperty("artifacts").EnumerateArray()
+                    .Where(artifact => !artifact.TryGetProperty("expired", out var expired) ||
+                        expired.ValueKind != JsonValueKind.True)
+                    .Select(artifact =>
+                    {
+                        if (!artifact.TryGetProperty("workflow_run", out var workflowRun) ||
+                            !workflowRun.TryGetProperty("id", out var id) ||
+                            !id.TryGetInt64(out var number))
+                            return 0L;
+                        return number;
+                    })
+                    .Where(number => number > 0)
+                    .Distinct()
+                    .OrderDescending()
+                    .ToArray();
+
+                var receipt = 0L;
+                foreach (var candidateRunId in candidateRunIds)
+                {
+                    using var run = await ReadCompletionJsonAsync(client,
+                        $"repos/{options.RepositoryIdentity}/actions/runs/{candidateRunId}",
+                        1024 * 1024, deadline.Token);
+                    if (ReadString(run.RootElement, "head_branch") == options.BaseBranch &&
+                        ReadString(run.RootElement, "status") == "completed" &&
+                        ReadString(run.RootElement, "conclusion") == "success" &&
+                        ReadString(run.RootElement, "path") == ".github/workflows/all-intentional-direct-release-20260918.yml")
+                    {
+                        receipt = candidateRunId;
+                        break;
+                    }
+                }
                 if (receipt == 0) throw CompletionFailure("approved_release_success_not_observed");
                 runId = Math.Max(runId, receipt);
             }
