@@ -152,7 +152,8 @@ internal sealed class LegendEngineeringOrchestrator(
             throw new InvalidOperationException(validation.Code);
 
         var context = validation.Context;
-        var operational = await ValidateOperationalContractAsync(context, cancellationToken);
+        var operational = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
         if (!operational.Valid)
             throw new InvalidOperationException(operational.Code);
         var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken)
@@ -253,7 +254,8 @@ internal sealed class LegendEngineeringOrchestrator(
             return new { ok = false, error = validation.Code };
 
         var context = validation.Context;
-        var operational = await ValidateOperationalContractAsync(context, cancellationToken);
+        var operational = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
         if (!operational.Valid)
             return new { ok = false, error = operational.Code };
         if (!context.AllowedTools.Contains("legend_inspect_repository", StringComparer.Ordinal))
@@ -297,7 +299,8 @@ internal sealed class LegendEngineeringOrchestrator(
             return new { ok = false, error = validation.Code };
 
         var context = validation.Context;
-        var operational = await ValidateOperationalContractAsync(context, cancellationToken);
+        var operational = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
         if (!operational.Valid)
             return new { ok = false, error = operational.Code };
         var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken);
@@ -452,19 +455,6 @@ internal sealed class LegendEngineeringOrchestrator(
             operationalContract.Revision);
 
         return await store.SaveContextAsync(context, cancellationToken);
-    }
-
-    private async Task<(bool Valid, string Code)> ValidateOperationalContractAsync(
-        EngineeringContextSnapshot context,
-        CancellationToken cancellationToken)
-    {
-        var current = await contractAuthority.GetCurrentAsync(cancellationToken);
-        if (!current.ModelExecutionEnabled)
-            return (false, "engineering_operational_execution_paused");
-        if (string.IsNullOrWhiteSpace(context.OperationalContractRevision) ||
-            !string.Equals(context.OperationalContractRevision, current.Revision, StringComparison.Ordinal))
-            return (false, "engineering_operational_contract_changed");
-        return (true, "engineering_operational_contract_current");
     }
 
     private static bool AllowedRoleForState(EngineeringWorkItemSnapshot item, string role)
