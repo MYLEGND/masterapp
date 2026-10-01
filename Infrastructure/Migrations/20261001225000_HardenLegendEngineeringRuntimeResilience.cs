@@ -26,6 +26,7 @@ namespace Infrastructure.Migrations
                     [ProviderRetryNotBeforeUtc] datetime2 NULL,
                     [ProviderRequestId] nvarchar(160) NULL,
                     [ProviderHttpStatus] int NULL,
+                    [ProviderErrorShape] nvarchar(48) NULL,
                     [ProviderErrorParam] nvarchar(160) NULL,
                     [ProviderCircuitEpisodeId] nvarchar(32) NULL,
                     [ProviderRecoveredEpisodeId] nvarchar(32) NULL,
@@ -51,6 +52,7 @@ namespace Infrastructure.Migrations
                         CONSTRAINT [DF_LegendEngineeringUsage_LogicalAttemptCompleted] DEFAULT CAST(0 AS bit),
                     [ProviderOutcome] nvarchar(48) NULL,
                     [ProviderStatusCode] int NULL,
+                    [ProviderErrorShape] nvarchar(48) NULL,
                     [ProviderErrorCode] nvarchar(128) NULL,
                     [ProviderErrorParam] nvarchar(160) NULL,
                     [ProviderRequestId] nvarchar(160) NULL;
@@ -71,7 +73,7 @@ namespace Infrastructure.Migrations
                          [DF_LegendEngineeringUsage_LogicalAttemptCompleted];
                 ALTER TABLE [LegendEngineeringUsage] DROP COLUMN
                     [ProviderAttempted],[LogicalAttemptCompleted],[ProviderOutcome],
-                    [ProviderStatusCode],[ProviderErrorCode],[ProviderErrorParam],[ProviderRequestId];
+                    [ProviderStatusCode],[ProviderErrorShape],[ProviderErrorCode],[ProviderErrorParam],[ProviderRequestId];
 
                 ALTER TABLE [LegendEngineeringChatGptPlanCredentials]
                     DROP CONSTRAINT [DF_LegendEngineeringChatGptPlanCredentials_ProviderFailureStreak],
@@ -79,7 +81,7 @@ namespace Infrastructure.Migrations
                 ALTER TABLE [LegendEngineeringChatGptPlanCredentials] DROP COLUMN
                     [ProviderBlockerClass],[ProviderBlockerCode],[ProviderBlockedUtc],
                     [ProviderRetryNotBeforeUtc],[ProviderRequestId],[ProviderHttpStatus],
-                    [ProviderErrorParam],[ProviderCircuitEpisodeId],[ProviderRecoveredEpisodeId],
+                    [ProviderErrorShape],[ProviderErrorParam],[ProviderCircuitEpisodeId],[ProviderRecoveredEpisodeId],
                     [ProviderRecoveredUtc],[ProviderFailureStreak],[ReadinessState],
                     [ReadinessSignature],[ReadinessModelsJson],[ReadinessCheckedUtc],
                     [ReadinessResponseId],[ReadinessRequestId],[ReadinessCode],
