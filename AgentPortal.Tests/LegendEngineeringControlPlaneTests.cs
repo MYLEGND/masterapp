@@ -257,6 +257,44 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task WorkItemStateRevision_RejectsStaleWriterWithoutUsingMutableTimestamp()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(incident, LegendEngineeringPolicies.Classify(incident), default);
+        Assert.False(string.IsNullOrWhiteSpace(item.StateRevision));
+
+        var persisted = await _store.UpdateWorkItemAsync(
+            item with { State = "FIRST_TRANSITION", UpdatedUtc = DateTime.UtcNow.AddMinutes(1) },
+            default);
+        Assert.NotEqual(item.StateRevision, persisted.StateRevision);
+        Assert.Equal("FIRST_TRANSITION", persisted.State);
+
+        var stale = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _store.UpdateWorkItemAsync(
+                item with { State = "STALE_TRANSITION", UpdatedUtc = DateTime.UtcNow.AddHours(1) },
+                default));
+        Assert.Equal("work_item_state_changed", stale.Message);
+
+        var fresh = await _store.UpdateWorkItemAsync(
+            persisted with { State = "SECOND_TRANSITION", UpdatedUtc = DateTime.UtcNow.AddHours(2) },
+            default);
+        Assert.Equal("SECOND_TRANSITION", fresh.State);
+    }
+
+    [Fact]
+    public async Task UnchangedIncidentScan_DoesNotChurnWorkItemStateRevision()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var decision = LegendEngineeringPolicies.Classify(incident);
+        var first = await _store.AttachIncidentAsync(incident, decision, default);
+        var second = await _store.AttachIncidentAsync(incident, decision, default);
+
+        Assert.Equal(first.WorkItemId, second.WorkItemId);
+        Assert.Equal(first.StateRevision, second.StateRevision);
+        Assert.Equal(first.UpdatedUtc, second.UpdatedUtc);
+    }
+
+    [Fact]
     public async Task EvidenceRevisionChange_InvalidatesExistingContext()
     {
         var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
