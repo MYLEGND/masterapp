@@ -461,6 +461,56 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task LeaseHeartbeat_RenewsExactIdentityWithoutChangingWorkflowRevision()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(
+            incident, LegendEngineeringPolicies.Classify(incident), default);
+        var lease = await _store.TryAcquireLeaseAsync(
+            item.WorkItemId, "heartbeat-owner", TimeSpan.FromMinutes(5), default);
+        Assert.True(lease.Acquired);
+
+        var before = await _store.GetWorkItemAsync(item.WorkItemId, default);
+        Assert.NotNull(before);
+        var renewed = await _store.RenewLeaseAsync(
+            item.WorkItemId,
+            lease.LeaseIdentity!,
+            TimeSpan.FromMinutes(5),
+            DateTime.UtcNow.AddMinutes(20),
+            default);
+        Assert.True(renewed);
+
+        var after = await _store.GetWorkItemAsync(item.WorkItemId, default);
+        Assert.NotNull(after);
+        Assert.Equal(before!.StateRevision, after!.StateRevision);
+        Assert.Equal(lease.LeaseIdentity, after.LeaseIdentity);
+        Assert.True(after.LeaseExpiresUtc > before.LeaseExpiresUtc);
+    }
+
+    [Fact]
+    public async Task NewEvidenceDuringLease_RestoresActionableStateAndClearsStaleLease()
+    {
+        var firstIncident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var decision = LegendEngineeringPolicies.Classify(firstIncident);
+        var item = await _store.AttachIncidentAsync(firstIncident, decision, default);
+        var priorState = item.State;
+        var lease = await _store.TryAcquireLeaseAsync(
+            item.WorkItemId, "evidence-owner", TimeSpan.FromMinutes(5), default);
+        Assert.True(lease.Acquired);
+
+        var recurrence = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        recurrence.Occurrences = firstIncident.Occurrences + 1;
+        recurrence.LastSeenUtc = firstIncident.LastSeenUtc.AddSeconds(1);
+        var updated = await _store.AttachIncidentAsync(
+            recurrence, LegendEngineeringPolicies.Classify(recurrence), default);
+
+        Assert.Equal(priorState, updated.State);
+        Assert.Null(updated.LeaseIdentity);
+        Assert.Null(updated.LeaseOwner);
+        Assert.Null(updated.LeaseExpiresUtc);
+    }
+
+    [Fact]
     public async Task ChatGptPlanCircuit_IsAccountWide_EpisodeAware_AndClearedOnlyByReadinessProof()
     {
         var authority = PlanCredentialAuthority(new PlanTokenHandler(HttpStatusCode.OK, "{}"));
