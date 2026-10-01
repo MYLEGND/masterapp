@@ -8,6 +8,11 @@ namespace AgentPortal.Services.Engineering;
 
 internal static class LegendEngineeringPolicies
 {
+    internal const string ApprovedIntegrationBranch = "legend/approved-changes";
+
+    internal static bool IsApprovedAutonomousBaseBranch(string? value) =>
+        string.Equals(value?.Trim(), ApprovedIntegrationBranch, StringComparison.Ordinal);
+
     internal static EngineeringPolicyDecision Classify(RuntimeDiagnosticIncident incident)
     {
         var disclosure = FounderSoftwareRemediationService.ClassifyInspectableSourcePath(incident.SourceFilePath ?? string.Empty);
