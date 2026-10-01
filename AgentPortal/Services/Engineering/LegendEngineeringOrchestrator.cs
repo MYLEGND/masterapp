@@ -275,6 +275,7 @@ internal sealed class LegendEngineeringOrchestrator(
         {
             State = "CANDIDATE_PREPARED",
             CandidateSha = candidateSha,
+            CandidateChangedPaths = proposal.Changes.Select(change => NormalizePath(change.Path)).Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal).ToArray(),
             PullRequestNumber = pullRequest,
             RepairBatchId = "active",
             AttemptCount = item.AttemptCount + 1,
@@ -356,11 +357,11 @@ internal sealed class LegendEngineeringOrchestrator(
     private static IReadOnlyList<string> AllowedTools(string role) => role switch
     {
         EngineeringRole.CodexImplementer =>
-            ["legend_inspect_repository", "legend_prepare_software_repair", "legend_inspect_repair_validation"],
+            ["legend_inspect_repository", "legend_prepare_software_repair"],
         EngineeringRole.HeadGpt =>
-            ["legend_inspect_repository", "legend_prepare_repair_packet", "legend_system_health", "legend_system_inventory"],
+            ["legend_inspect_repository"],
         EngineeringRole.IndependentReviewer =>
-            ["legend_inspect_repository", "legend_inspect_repair_validation"],
+            ["legend_inspect_repository"],
         EngineeringRole.LiveVerifier =>
             ["legend_verify_repair_deployment", "legend_verify_current_page_repair"],
         _ => []
