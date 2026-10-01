@@ -30,36 +30,31 @@ internal sealed class ChatGptPlanResponsesAdapter(
 
     public async Task<object> GetStatusAsync(CancellationToken cancellationToken)
     {
+        // Status projection is deliberately network-free. Runtime readiness is
+        // proven by the persisted inference canary, not by polling the provider.
         var credential = await credentials.GetAsync(cancellationToken);
         var contract = await contractAuthority.GetCurrentAsync(cancellationToken);
-        var catalog = credential.Ready && !string.IsNullOrWhiteSpace(credential.AccessToken)
-            ? await GetModelCatalogAsync(credential, cancellationToken)
-            : new EngineeringModelCatalog(false, credential.Code, []);
-
         var signature = ReadinessSignature(credential.ClientId, contract);
         var readinessMatches =
             string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) &&
             string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase);
-        var head = ResolveReadyModel(EngineeringRole.HeadGpt, credential, catalog);
-        var codex = ResolveReadyModel(EngineeringRole.CodexImplementer, credential, catalog);
-        var reviewer = ResolveReadyModel(EngineeringRole.IndependentReviewer, credential, catalog);
-        var modelsReady = catalog.Ready && readinessMatches &&
-                          head is not null && codex is not null && reviewer is not null;
+        var head = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.HeadGpt, credential) : null;
+        var codex = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.CodexImplementer, credential) : null;
+        var reviewer = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.IndependentReviewer, credential) : null;
+        var modelsReady = head is not null && codex is not null && reviewer is not null;
         var circuitOpen = !string.IsNullOrWhiteSpace(credential.ProviderBlockerCode);
-        var runtimeReady = credential.Ready && modelsReady && !circuitOpen;
+        var runtimeReady = credential.Ready && readinessMatches && modelsReady && !circuitOpen;
         var eligibility = !contract.ModelExecutionEnabled
             ? "engineering_operational_execution_paused"
             : !credential.Ready
                 ? credential.Code
                 : circuitOpen
                     ? credential.ProviderBlockerCode!
-                    : !catalog.Ready
-                        ? catalog.Code
-                        : !readinessMatches
-                            ? credential.ReadinessCode ?? "chatgpt_plan_readiness_canary_required"
-                            : !modelsReady
-                                ? "chatgpt_plan_model_binding_unavailable"
-                                : "chatgpt_plan_inference_ready";
+                    : !readinessMatches
+                        ? credential.ReadinessCode ?? "chatgpt_plan_readiness_canary_required"
+                        : !modelsReady
+                            ? "chatgpt_plan_model_binding_unavailable"
+                            : "chatgpt_plan_inference_ready";
 
         return new
         {
@@ -82,9 +77,11 @@ internal sealed class ChatGptPlanResponsesAdapter(
                 credential.GrantedScopes.Contains("chatgpt.tokens.use.direct", StringComparer.Ordinal),
             accessTokenPresent = !string.IsNullOrWhiteSpace(credential.AccessToken),
             credential.ExpiresUtc,
-            modelCatalogReady = catalog.Ready,
-            modelCatalogCode = catalog.Code,
-            modelCount = catalog.Models.Count,
+            modelCatalogReady = credential.ReadinessModels is { Count: > 0 },
+            modelCatalogCode = readinessMatches
+                ? "chatgpt_plan_cached_inference_evidence"
+                : "chatgpt_plan_catalog_not_polled_for_status",
+            modelCount = credential.ReadinessModels?.Values.Distinct(StringComparer.Ordinal).Count() ?? 0,
             readinessState = credential.ReadinessState,
             readinessCode = credential.ReadinessCode,
             readinessCheckedUtc = credential.ReadinessCheckedUtc,
@@ -95,6 +92,7 @@ internal sealed class ChatGptPlanResponsesAdapter(
             providerRetryNotBeforeUtc = credential.ProviderRetryNotBeforeUtc,
             providerRequestId = credential.ProviderRequestId,
             providerHttpStatus = credential.ProviderHttpStatus,
+            providerErrorParam = credential.ProviderErrorParam,
             providerCircuitEpisodeId = credential.ProviderCircuitEpisodeId,
             providerRecoveredEpisodeId = credential.ProviderRecoveredEpisodeId,
             providerRecoveredUtc = credential.ProviderRecoveredUtc,
@@ -111,6 +109,16 @@ internal sealed class ChatGptPlanResponsesAdapter(
         var credential = await credentials.GetAsync(cancellationToken);
         if (!credential.Ready || string.IsNullOrWhiteSpace(credential.AccessToken))
             return new(false, credential.Code, []);
+
+        var now = DateTime.UtcNow;
+        var blocksProviderRead =
+            !string.IsNullOrWhiteSpace(credential.ProviderBlockerCode) &&
+            credential.ProviderBlockerClass is not "MODEL_BINDING" &&
+            (credential.ProviderRetryNotBeforeUtc is null ||
+             credential.ProviderRetryNotBeforeUtc > now);
+        if (blocksProviderRead)
+            return new(false, credential.ProviderBlockerCode!, []);
+
         return await GetModelCatalogAsync(credential, cancellationToken);
     }
 
@@ -124,22 +132,29 @@ internal sealed class ChatGptPlanResponsesAdapter(
 
         var contract = await contractAuthority.GetCurrentAsync(cancellationToken);
         var signature = ReadinessSignature(credential.ClientId, contract);
-        var catalog = await GetModelCatalogAsync(credential, cancellationToken);
-        if (!catalog.Ready)
-            return Failure(catalog.Code);
-
         var now = DateTime.UtcNow;
+        var signatureChanged =
+            !string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase);
+        var blockerCanRecoverFromContractChange =
+            credential.ProviderBlockerClass == "MODEL_BINDING" && signatureChanged;
+
         if (!force && !string.IsNullOrWhiteSpace(credential.ProviderBlockerCode) &&
+            !blockerCanRecoverFromContractChange &&
             (credential.ProviderRetryNotBeforeUtc is null ||
              credential.ProviderRetryNotBeforeUtc > now))
             return Failure(credential.ProviderBlockerCode!);
 
+        // A successful canary is durable. Re-check periodically for model
+        // retirement/disappearance, but never probe on every scheduler pass.
         if (!force &&
+            string.IsNullOrWhiteSpace(credential.ProviderBlockerCode) &&
+            !signatureChanged &&
             string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) &&
-            string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase) &&
-            ResolveReadyModel(EngineeringRole.HeadGpt, credential, catalog) is not null &&
-            ResolveReadyModel(EngineeringRole.CodexImplementer, credential, catalog) is not null &&
-            ResolveReadyModel(EngineeringRole.IndependentReviewer, credential, catalog) is not null)
+            credential.ReadinessCheckedUtc is { } checkedUtc &&
+            checkedUtc > now.AddHours(-6) &&
+            ResolveCachedReadyModel(EngineeringRole.HeadGpt, credential) is not null &&
+            ResolveCachedReadyModel(EngineeringRole.CodexImplementer, credential) is not null &&
+            ResolveCachedReadyModel(EngineeringRole.IndependentReviewer, credential) is not null)
             return await GetStatusAsync(cancellationToken);
 
         var providerLease = await credentials.TryAcquireProviderExecutionLeaseAsync(
@@ -156,6 +171,16 @@ internal sealed class ChatGptPlanResponsesAdapter(
             probeHeartbeatStop.Token);
         try
         {
+            var catalog = await GetModelCatalogAsync(credential, cancellationToken);
+            if (!catalog.Ready)
+            {
+                var failure = ClassifyCatalogFailure(
+                    catalog,
+                    credential.ProviderFailureStreak + 1);
+                await credentials.RecordProviderFailureAsync(failure, cancellationToken);
+                return Failure(failure.Code);
+            }
+
             var bindings = new[]
             {
                 (Role: EngineeringRole.HeadGpt, Tier: EngineeringModelTier.DeepReasoning, Configured: contract.HeadGptModel),
@@ -172,9 +197,11 @@ internal sealed class ChatGptPlanResponsesAdapter(
                     LegendEngineeringContractAuthority.AutoModel,
                     StringComparison.OrdinalIgnoreCase);
                 var candidates = auto
-                    ? catalog.Models.OrderBy(model => model.Slug, StringComparer.Ordinal).Take(8).Select(model => model.Slug).ToArray()
-                    : catalog.Models.Where(model => string.Equals(model.Slug, binding.Configured, StringComparison.Ordinal))
-                        .Select(model => model.Slug).ToArray();
+                    ? AutoCandidates(binding.Role, credential, catalog)
+                    : catalog.Models.Where(model =>
+                            string.Equals(model.Slug, binding.Configured, StringComparison.Ordinal))
+                        .Select(model => model.Slug)
+                        .ToArray();
 
                 if (candidates.Length == 0)
                 {
@@ -182,9 +209,9 @@ internal sealed class ChatGptPlanResponsesAdapter(
                         "MODEL_BINDING",
                         "chatgpt_plan_model_binding_unavailable",
                         null,
-                        null,
-                        null,
-                        null);
+                        catalog.ProviderRequestId,
+                        catalog.HttpStatus,
+                        catalog.ProviderErrorParam);
                     await credentials.RecordProviderFailureAsync(missing, cancellationToken);
                     return Failure(missing.Code);
                 }
@@ -232,7 +259,7 @@ internal sealed class ChatGptPlanResponsesAdapter(
                         "MODEL_BINDING",
                         "subscription_sharing_unsupported_capability",
                         null,
-                        null,
+                        lastCompleted?.ProviderRequestId,
                         400,
                         null);
                     await credentials.RecordProviderFailureAsync(unsupported, cancellationToken);
