@@ -16,6 +16,8 @@ internal sealed class LegendEngineeringFounderNotificationService(
     internal async Task NotifyActionableAsync(
         IReadOnlyList<EngineeringWorkItemSnapshot> workItems,
         string? executorBlocker,
+        string? blockerEpisodeId,
+        string? recoveredEpisodeId,
         CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(AgentPortal.Security.FounderGuard.FounderOid, out _)) return;
@@ -31,9 +33,20 @@ internal sealed class LegendEngineeringFounderNotificationService(
         }
 
         if (!string.IsNullOrWhiteSpace(executorBlocker) && workItems.Any(IsPendingModelWork))
-            await StageOnceAsync(founder, Guid.Empty, "executor:" + executorBlocker,
-                "LEGEND Engineering needs setup",
-                "Autonomous model execution is paused because the ChatGPT-plan Codex executor is not ready (" + Safe(executorBlocker, 96) + "). Deterministic monitoring and CI/release reconciliation remain active; no API-billed fallback was used.",
+        {
+            var episode = string.IsNullOrWhiteSpace(blockerEpisodeId)
+                ? Safe(executorBlocker, 96)
+                : Safe(blockerEpisodeId, 48);
+            await StageOnceAsync(founder, Guid.Empty, "executor:" + episode,
+                "LEGEND Engineering needs attention",
+                "Autonomous model execution is paused because the ChatGPT-plan runtime is not ready (" + Safe(executorBlocker, 96) + "). Deterministic monitoring and CI/release reconciliation remain active; no API-billed fallback was used.",
+                cancellationToken);
+        }
+
+        if (!string.IsNullOrWhiteSpace(recoveredEpisodeId))
+            await StageOnceAsync(founder, Guid.Empty, "executor-recovered:" + Safe(recoveredEpisodeId, 48),
+                "LEGEND Engineering runtime recovered",
+                "The ChatGPT-plan runtime completed a fresh inference readiness check and autonomous model execution can resume under the existing Founder contract.",
                 cancellationToken);
     }
 
