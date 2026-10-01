@@ -310,6 +310,20 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 text is null || Encoding.UTF8.GetByteCount(text) != size ||
                 text.Any(character => char.IsControl(character) && character is not ('\r' or '\n' or '\t')))
                 return Failure("repository_content_not_text", "The requested object is not verified bounded UTF-8 source text.");
+            if (ContainsPrivacySourceLiteral(text))
+            {
+                unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
+                if (unavailable is not null) return unavailable;
+                return new
+                {
+                    capability = "inspect_repository", repository = options.RepositoryIdentity,
+                    reference, path, sha = blobSha, blobSha, commitSha, size,
+                    exists = true, readable = false, disclosureClass = LegendSiteToolDisclosureAuthority.PrivacyProtected,
+                    privacyLikeContent = true, contentOmitted = true,
+                    citationUrl = $"https://github.com/{options.RepositoryIdentity}/blob/{commitSha}/{EscapeRepositoryPath(path)}",
+                    instructionAuthority = false, inspected = true
+                };
+            }
             if (ContainsSensitiveSourceLiteral(text))
             {
                 unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
@@ -418,6 +432,35 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
             ".py" or ".csproj" or ".props" or ".targets" or ".sln" or ".md" or ".json" or ".sh" or ".yml" or ".yaml"
                 ? LegendSiteToolDisclosureAuthority.SafeSource
                 : null;
+    }
+
+    private static bool ContainsPrivacySourceLiteral(string text)
+    {
+        // High-confidence privacy admission only. A match denies the complete
+        // source body; it is never redacted into apparently exact evidence.
+        if (System.Text.RegularExpressions.Regex.IsMatch(
+                text,
+                @"\b\d{3}-\d{2}-\d{4}\b|(?:phone|mobile|telephone|social[_ -]?security|ssn|account[_ -]?number|card[_ -]?number)\w*[\"']?\s*[:=]\s*[@]?['\"][^'\"\r\n]{5,80}['\"]",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+                TimeSpan.FromMilliseconds(100)))
+            return true;
+
+        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(
+                     text,
+                     @"\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})\b",
+                     System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+                     TimeSpan.FromMilliseconds(100)))
+        {
+            var domain = match.Groups[1].Value;
+            if (domain.EndsWith(".invalid", StringComparison.OrdinalIgnoreCase) ||
+                domain is "example.com" or "example.org" or "example.net" ||
+                domain.EndsWith(".example.com", StringComparison.OrdinalIgnoreCase) ||
+                domain.EndsWith(".example.org", StringComparison.OrdinalIgnoreCase))
+                continue;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool ContainsSensitiveSourceLiteral(string text)
