@@ -1,5 +1,4 @@
 using Infrastructure.Data;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,8 +10,6 @@ namespace Infrastructure.Migrations
     /// provider resilience evidence. No parallel queue, scheduler, credential store,
     /// inference backend, or release authority is introduced.
     /// </summary>
-    [DbContext(typeof(MasterAppDbContext))]
-    [Migration("20261001225000_HardenLegendEngineeringRuntimeResilience")]
     public partial class HardenLegendEngineeringRuntimeResilience : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
