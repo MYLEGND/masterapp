@@ -479,6 +479,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
                 null,
                 "req-limit",
                 429,
+                "error_object",
                 null),
             default);
 
@@ -1025,7 +1026,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
               LastRefreshedUtc TEXT NULL, UpdatedUtc TEXT NOT NULL,
               ProviderBlockerClass TEXT NULL, ProviderBlockerCode TEXT NULL, ProviderBlockedUtc TEXT NULL,
               ProviderRetryNotBeforeUtc TEXT NULL, ProviderRequestId TEXT NULL, ProviderHttpStatus INTEGER NULL,
-              ProviderErrorParam TEXT NULL, ProviderCircuitEpisodeId TEXT NULL, ProviderRecoveredEpisodeId TEXT NULL,
+              ProviderErrorShape TEXT NULL, ProviderErrorParam TEXT NULL, ProviderCircuitEpisodeId TEXT NULL, ProviderRecoveredEpisodeId TEXT NULL,
               ProviderRecoveredUtc TEXT NULL, ProviderFailureStreak INTEGER NOT NULL DEFAULT 0,
               ReadinessState TEXT NOT NULL DEFAULT 'UNVERIFIED', ReadinessSignature TEXT NULL,
               ReadinessModelsJson TEXT NULL, ReadinessCheckedUtc TEXT NULL, ReadinessResponseId TEXT NULL,
@@ -1055,8 +1056,8 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
               Provider TEXT NOT NULL, SessionId TEXT NULL, InputTokens INTEGER NULL, OutputTokens INTEGER NULL,
               TotalTokens INTEGER NULL, CostMicrousd INTEGER NULL, UsageObserved INTEGER NOT NULL, CreatedUtc TEXT NOT NULL,
               ProviderAttempted INTEGER NOT NULL DEFAULT 0, LogicalAttemptCompleted INTEGER NOT NULL DEFAULT 0,
-              ProviderOutcome TEXT NULL, ProviderStatusCode INTEGER NULL, ProviderErrorCode TEXT NULL,
-              ProviderErrorParam TEXT NULL, ProviderRequestId TEXT NULL);
+              ProviderOutcome TEXT NULL, ProviderStatusCode INTEGER NULL, ProviderErrorShape TEXT NULL,
+              ProviderErrorCode TEXT NULL, ProviderErrorParam TEXT NULL, ProviderRequestId TEXT NULL);
             """;
         command.ExecuteNonQuery();
     }
