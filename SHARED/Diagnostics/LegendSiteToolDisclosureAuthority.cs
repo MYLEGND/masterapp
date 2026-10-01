@@ -38,6 +38,7 @@ public sealed record LegendSitePageSnapshot(
     string? Breakpoint,
     IReadOnlyList<string>? ComponentIds,
     IReadOnlyList<string>? ActionKeys,
+    IReadOnlyList<string>? CompositionIds,
     IReadOnlyList<string>? ModalIds,
     IReadOnlyList<string>? AssetPaths,
     IReadOnlyList<LegendSitePageIssue>? Issues);
@@ -196,6 +197,7 @@ public static class LegendSiteToolDisclosureAuthority
             },
             componentIds = SafeSymbols(snapshot.ComponentIds, 96),
             actionKeys = SafeSymbols(snapshot.ActionKeys, 96),
+            compositionIds = SafeSymbols(snapshot.CompositionIds, 96),
             modalIds = SafeSymbols(snapshot.ModalIds, 96),
             loadedAssets = (snapshot.AssetPaths ?? Array.Empty<string>())
                 .Select(SafeAsset).Where(value => value is not null).Cast<string>().Distinct(StringComparer.Ordinal).Take(64).ToArray(),
