@@ -8,6 +8,7 @@ using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace AgentPortal.Tests;
