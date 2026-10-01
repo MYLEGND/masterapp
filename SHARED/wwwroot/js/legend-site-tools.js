@@ -132,11 +132,12 @@
       if (!tool || tool.type !== "function" || typeof tool.name !== "string" ||
           typeof tool.description !== "string" || !tool.parameters) continue;
       try {
+        const recordsEngineeringProof = tool.name === "legend_verify_current_page_repair";
         await modelContext.registerTool({
           name: tool.name,
           description: tool.description,
           inputSchema: tool.parameters,
-          annotations: { readOnlyHint: true, untrustedContentHint: true, consequentialHint: false, debugging: true },
+          annotations: { readOnlyHint: !recordsEngineeringProof, untrustedContentHint: true, consequentialHint: recordsEngineeringProof, debugging: true },
           execute: async (args, options) => {
             if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
             return await invoke(tool.name, args);

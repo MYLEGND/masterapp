@@ -61,7 +61,8 @@ public sealed class LegendSiteToolBridgeTests
         var source = Read("SHARED", "wwwroot", "js", "legend-site-tools.js");
         Assert.Contains("document.modelContext", source, StringComparison.Ordinal);
         Assert.Contains("registerTool", source, StringComparison.Ordinal);
-        Assert.Contains("readOnlyHint: true", source, StringComparison.Ordinal);
+        Assert.Contains("readOnlyHint: !recordsEngineeringProof", source, StringComparison.Ordinal);
+        Assert.Contains("consequentialHint: recordsEngineeringProof", source, StringComparison.Ordinal);
         Assert.Contains("/api/legend-site-tools", source, StringComparison.Ordinal);
         Assert.Contains("RequestVerificationToken", source, StringComparison.Ordinal);
         Assert.Contains("legend_site_tool_antiforgery_unavailable", source, StringComparison.Ordinal);
