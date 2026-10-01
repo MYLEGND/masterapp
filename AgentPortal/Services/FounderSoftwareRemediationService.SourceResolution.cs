@@ -114,10 +114,17 @@ public sealed partial class FounderSoftwareRemediationService
         if (string.IsNullOrWhiteSpace(value)) return null;
         var hint = value.Trim().Replace('\\', '/').TrimStart('/');
         if (hint.Length is 0 or > 260 || hint.Contains("..", StringComparison.Ordinal) ||
-            hint.Contains('?', StringComparison.Ordinal) || hint.Contains('#', StringComparison.Ordinal) ||
-            ClassifyInspectableSourcePath(hint) != LegendSiteToolDisclosureAuthority.SafeSource)
+            hint.Contains('?', StringComparison.Ordinal) || hint.Contains('#', StringComparison.Ordinal))
             return null;
-        return hint;
+        if (!hint.Contains('/', StringComparison.Ordinal))
+        {
+            if (hint.Length > 180 ||
+                hint.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.')) ||
+                Path.GetExtension(hint) is not (".cs" or ".cshtml"))
+                return null;
+            return hint;
+        }
+        return ClassifyInspectableSourcePath(hint) == LegendSiteToolDisclosureAuthority.SafeSource ? hint : null;
     }
 
     private static bool SourceHintMatches(string hint, string repositoryPath)
