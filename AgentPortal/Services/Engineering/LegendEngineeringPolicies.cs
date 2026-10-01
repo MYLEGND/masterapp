@@ -97,7 +97,7 @@ internal static class LegendEngineeringPolicies
     }
 
     internal static bool IsImmutableSha(string? value)
-        => value?.Length == 40 && value.All(Uri.IsHexDigit);
+        => value?.Length == 40 && value.All(Uri.IsHexDigit) && value.Any(ch => ch != '0');
 
     private static string ClassifyFailure(RuntimeDiagnosticIncident incident, string? disclosure)
     {
@@ -116,7 +116,8 @@ internal static class LegendEngineeringPolicies
         if (incident.StatusCode is 401 or 403 || category.Contains("AUTHORIZATION", StringComparison.Ordinal) ||
             error.Contains("FORBIDDEN", StringComparison.Ordinal) || error.Contains("UNAUTHORIZED", StringComparison.Ordinal))
             return EngineeringFailureClass.AuthorizationDenial;
-        if (!incident.ReleaseVerified && IsImmutableSha(incident.GitCommitHash))
+        if (category.Contains("DEPLOYMENT_DRIFT", StringComparison.Ordinal) ||
+            error.Contains("DEPLOYMENT_DRIFT", StringComparison.Ordinal))
             return EngineeringFailureClass.DeploymentDrift;
         if (disclosure == LegendSiteToolDisclosureAuthority.SafeSource &&
             (incident.StatusCode >= 500 || category.Contains("CODE", StringComparison.Ordinal) ||
