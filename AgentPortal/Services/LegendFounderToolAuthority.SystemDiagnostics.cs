@@ -1,6 +1,7 @@
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 
 namespace AgentPortal.Services;
 
@@ -108,6 +109,110 @@ internal sealed partial class LegendFounderToolAuthority
             }
         };
     }
+
+    private object ReadConfigurationPresence(string capability)
+    {
+        if (_authorizationScopes is null)
+            return new
+            {
+                ok = false,
+                error = "configuration_presence_authority_unavailable",
+                disclosureClass = Shared.Diagnostics.LegendSiteToolDisclosureAuthority.ExistenceOnly
+            };
+
+        using var scope = _authorizationScopes.CreateScope();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+
+        static bool Present(string? value) => !string.IsNullOrWhiteSpace(value);
+        bool Any(params string[] keys) => keys.Any(key => Present(configuration[key]));
+        ConfigurationPresenceResult Result(string name, params (string Role, bool Present)[] inputs)
+        {
+            var missing = inputs.Where(input => !input.Present).Select(input => input.Role).ToArray();
+            return new(
+                name,
+                missing.Length == 0,
+                inputs.Count(input => input.Present),
+                inputs.Length,
+                missing,
+                Readable: false,
+                Shared.Diagnostics.LegendSiteToolDisclosureAuthority.ExistenceOnly,
+                "server_configuration");
+        }
+
+        var results = new[]
+        {
+            Result("founder_identity",
+                ("founder_oid", Any("FOUNDER_OID", "Founder:Oid"))),
+            Result("master_database",
+                ("masterapp_connection", Present(configuration.GetConnectionString("MasterAppDb")) ||
+                    Any("ConnectionStrings:MasterAppDb"))),
+            Result("github_remediation",
+                ("enabled", configuration.GetValue<bool?>("FounderSoftwareRemediation:Enabled") == true),
+                ("repository", Any("FounderSoftwareRemediation:RepositoryOwner")),
+                ("repository_name", Any("FounderSoftwareRemediation:RepositoryName")),
+                ("base_branch", Any("FounderSoftwareRemediation:BaseBranch")),
+                ("github_app", Any("FounderSoftwareRemediation:GitHubAppId")),
+                ("github_installation", Any("FounderSoftwareRemediation:GitHubInstallationId")),
+                ("private_key_reference", Any("FounderSoftwareRemediation:GitHubAppPrivateKeySecretUri"))),
+            Result("data_protection",
+                ("key_store", Any("DataProtection:BlobUri")),
+                ("key_protector", Any("DataProtection:KeyVaultKeyId"))),
+            Result("website_editor_data_protection",
+                ("key_store", Any("WebsiteEditorDataProtection:BlobUri", "DataProtection:BlobUri")),
+                ("key_protector", Any("WebsiteEditorDataProtection:KeyVaultKeyId", "DataProtection:KeyVaultKeyId"))),
+            Result("meta_ads",
+                ("application_id", Any("MetaAds:AppId")),
+                ("application_secret", Any("MetaAds:AppSecret"))),
+            Result("graph_provisioning",
+                ("tenant", Any("GraphProvisioning:TenantId", "AzureAd:TenantId")),
+                ("client", Any("GraphProvisioning:ClientId", "AzureAd:ClientId")),
+                ("client_secret", Any("GraphProvisioning:ClientSecret", "AzureAd:ClientSecret"))),
+            Result("azure_translator",
+                ("endpoint", Any("AzureTranslator:Endpoint")),
+                ("credential", Any("AzureTranslator:Key")),
+                ("region", Any("AzureTranslator:Region"))),
+            Result("square_server_payments",
+                ("access_credential", Any("Square:AccessToken", "Square:Token", "Square:SecretAccessToken")),
+                ("location", Any("Square:LocationId", "Square:PublicLocationId", "Square:WebPaymentsLocationId")))
+        };
+
+        if (string.Equals(capability, "all", StringComparison.Ordinal))
+            return new
+            {
+                ok = true,
+                schemaVersion = 1,
+                disclosureClass = Shared.Diagnostics.LegendSiteToolDisclosureAuthority.ExistenceOnly,
+                valuesReadable = false,
+                results
+            };
+
+        var selected = results.SingleOrDefault(result => string.Equals(result.Capability, capability, StringComparison.Ordinal));
+        return selected is null
+            ? new
+            {
+                ok = false,
+                error = "configuration_capability_not_allowed",
+                disclosureClass = Shared.Diagnostics.LegendSiteToolDisclosureAuthority.ExistenceOnly
+            }
+            : new
+            {
+                ok = true,
+                schemaVersion = 1,
+                disclosureClass = Shared.Diagnostics.LegendSiteToolDisclosureAuthority.ExistenceOnly,
+                valuesReadable = false,
+                result = selected
+            };
+    }
+
+    private sealed record ConfigurationPresenceResult(
+        string Capability,
+        bool Configured,
+        int PresentInputs,
+        int RequiredInputs,
+        string[] MissingRoles,
+        bool Readable,
+        string DisclosureClass,
+        string Source);
 
     private static string SafeHealthSymbol(string? value) =>
         value is { Length: > 0 and <= 64 } &&
