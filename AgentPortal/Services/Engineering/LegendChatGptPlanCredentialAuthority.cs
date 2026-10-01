@@ -34,7 +34,39 @@ internal sealed record ChatGptPlanCredentialState(
     string? AccessToken,
     IReadOnlyList<string> GrantedScopes,
     DateTime? ExpiresUtc,
-    bool PrivateClientApproved);
+    bool PrivateClientApproved,
+    string? ProviderBlockerClass = null,
+    string? ProviderBlockerCode = null,
+    DateTime? ProviderBlockedUtc = null,
+    DateTime? ProviderRetryNotBeforeUtc = null,
+    string? ProviderRequestId = null,
+    int? ProviderHttpStatus = null,
+    string? ProviderErrorParam = null,
+    string? ProviderCircuitEpisodeId = null,
+    string? ProviderRecoveredEpisodeId = null,
+    DateTime? ProviderRecoveredUtc = null,
+    int ProviderFailureStreak = 0,
+    string ReadinessState = "UNVERIFIED",
+    string? ReadinessSignature = null,
+    IReadOnlyDictionary<string, string>? ReadinessModels = null,
+    DateTime? ReadinessCheckedUtc = null,
+    string? ReadinessResponseId = null,
+    string? ReadinessRequestId = null,
+    string? ReadinessCode = null);
+
+internal sealed record ChatGptPlanProviderFailure(
+    string BlockerClass,
+    string Code,
+    DateTime? RetryNotBeforeUtc,
+    string? ProviderRequestId,
+    int? HttpStatus,
+    string? ErrorParam);
+
+internal sealed record ChatGptPlanProviderExecutionLease(
+    bool Acquired,
+    string Code,
+    string? LeaseIdentity,
+    DateTime? LeaseUntilUtc);
 
 public sealed record ChatGptPlanClientRegistrationState(
     bool Configured,
@@ -86,6 +118,36 @@ internal interface ILegendChatGptPlanCredentialAuthority
         CancellationToken cancellationToken);
 
     Task DisconnectAsync(CancellationToken cancellationToken);
+
+    Task RecordProviderFailureAsync(
+        ChatGptPlanProviderFailure failure,
+        CancellationToken cancellationToken);
+
+    Task RecordReadinessSuccessAsync(
+        string signature,
+        IReadOnlyDictionary<string, string> resolvedModels,
+        string? responseId,
+        string? providerRequestId,
+        CancellationToken cancellationToken);
+
+    Task MarkReadinessUnverifiedAsync(
+        string code,
+        CancellationToken cancellationToken);
+
+    Task<ChatGptPlanProviderExecutionLease> TryAcquireProviderExecutionLeaseAsync(
+        string owner,
+        TimeSpan duration,
+        bool allowCircuitProbe,
+        CancellationToken cancellationToken);
+
+    Task<bool> RenewProviderExecutionLeaseAsync(
+        string leaseIdentity,
+        TimeSpan duration,
+        CancellationToken cancellationToken);
+
+    Task ReleaseProviderExecutionLeaseAsync(
+        string leaseIdentity,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class LegendChatGptPlanCredentialAuthority(
@@ -1495,7 +1557,28 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         DateTime? RefreshLeaseUntilUtc,
         DateTime ConnectedUtc,
         DateTime? LastRefreshedUtc,
-        DateTime UpdatedUtc);
+        DateTime UpdatedUtc,
+        string? ProviderBlockerClass = null,
+        string? ProviderBlockerCode = null,
+        DateTime? ProviderBlockedUtc = null,
+        DateTime? ProviderRetryNotBeforeUtc = null,
+        string? ProviderRequestId = null,
+        int? ProviderHttpStatus = null,
+        string? ProviderErrorParam = null,
+        string? ProviderCircuitEpisodeId = null,
+        string? ProviderRecoveredEpisodeId = null,
+        DateTime? ProviderRecoveredUtc = null,
+        int ProviderFailureStreak = 0,
+        string ReadinessState = "UNVERIFIED",
+        string? ReadinessSignature = null,
+        string? ReadinessModelsJson = null,
+        DateTime? ReadinessCheckedUtc = null,
+        string? ReadinessResponseId = null,
+        string? ReadinessRequestId = null,
+        string? ReadinessCode = null,
+        string? ProviderExecutionLeaseIdentity = null,
+        string? ProviderExecutionLeaseOwner = null,
+        DateTime? ProviderExecutionLeaseUntilUtc = null);
 
     private sealed record ClientRegistrationRecord(
         string ClientId,
