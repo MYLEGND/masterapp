@@ -234,6 +234,7 @@ builder.Services.AddHostedService(static services =>
 builder.Services.AddHostedService<AccountClosureHostedService>();
 builder.Services.AddHostedService<AgentProfileImageLegacyBackfillHostedService>();
 builder.Services.AddHostedService<AnalyticsIncidentResponseHostedService>();
+builder.Services.AddHostedService<AgentPortal.Services.Engineering.LegendEngineeringHostedService>();
 builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();
 builder.Services.AddHostedService<LeadAppointmentAutoCompletionHostedService>();
 builder.Services.AddHostedService<AzureAgentDirectorySyncHostedService>();
