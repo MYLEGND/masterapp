@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Routing;
 
 namespace Shared.Diagnostics;
 
@@ -11,6 +12,7 @@ public sealed record LegendSitePageIssue(
     string? SourcePath);
 
 public sealed record LegendSitePageSnapshot(
+    string? Path,
     int? ViewportWidth,
     int? ViewportHeight,
     double? DevicePixelRatio,
@@ -70,7 +72,7 @@ public static class LegendSiteToolDisclosureAuthority
         string? sourceRevision,
         string? routePattern)
     {
-        snapshot ??= new LegendSitePageSnapshot(null, null, null, null, null, null, null, null, null);
+        snapshot ??= new LegendSitePageSnapshot(null, null, null, null, null, null, null, null, null, null);
         var width = snapshot.ViewportWidth is >= 240 and <= 10000 ? snapshot.ViewportWidth : null;
         var height = snapshot.ViewportHeight is >= 240 and <= 10000 ? snapshot.ViewportHeight : null;
         var dpr = snapshot.DevicePixelRatio is >= 0.5 and <= 8 && double.IsFinite(snapshot.DevicePixelRatio.Value)
@@ -122,6 +124,30 @@ public static class LegendSiteToolDisclosureAuthority
                 privateCustomerDataIncluded = false
             }
         };
+    }
+
+    public static string ResolveRoutePattern(string? path, IEnumerable<EndpointDataSource> endpointSources)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Length > 1024 || !path.StartsWith('/') ||
+            path.StartsWith("//", StringComparison.Ordinal) || path.Contains('?') || path.Contains('#'))
+            return "/unmatched";
+
+        foreach (var endpoint in endpointSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>())
+        {
+            var pattern = endpoint.RoutePattern.RawText;
+            if (string.IsNullOrWhiteSpace(pattern)) continue;
+            try
+            {
+                var matcher = new Microsoft.AspNetCore.Routing.Template.TemplateMatcher(
+                    Microsoft.AspNetCore.Routing.Template.TemplateParser.Parse(pattern),
+                    new RouteValueDictionary());
+                if (matcher.TryMatch(path, new RouteValueDictionary()))
+                    return SafeRoutePattern(pattern);
+            }
+            catch (ArgumentException) { }
+        }
+
+        return "/unmatched";
     }
 
     public static string? EntryAssemblyRevision()
