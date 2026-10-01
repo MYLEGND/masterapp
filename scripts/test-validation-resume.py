@@ -19,6 +19,23 @@ class ValidationResumePlannerTests(unittest.TestCase):
     def prior(self, sha="a" * 40):
         return {"id": 17, "head_sha": sha, "run_attempt": 1}
 
+    def test_effective_steps_keeps_latest_executed_failure_and_backfills_only_skips(self):
+        effective = m._effective_steps([
+            {
+                "gate-a": "failure",
+                "gate-b": "skipped",
+                "gate-c": "success",
+            },
+            {
+                "gate-a": "success",
+                "gate-b": "success",
+                "gate-c": "failure",
+            },
+        ])
+        self.assertEqual("failure", effective["gate-a"])
+        self.assertEqual("success", effective["gate-b"])
+        self.assertEqual("success", effective["gate-c"])
+
     def test_unchanged_successes_are_preserved(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
@@ -116,6 +133,19 @@ class ValidationResumePlannerTests(unittest.TestCase):
         )
         self.assertEqual("full", plan["mode"])
         self.assertTrue(all(gate["run"] for gate in plan["gates"].values()))
+
+    def test_step6_unrelated_commit_preserves_all_successful_step6_evidence(self):
+        workflow = "step6-openai-ads-execution-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["scripts/test-release-policy.py"],
+            "prior_run",
+        )
+        self.assertEqual("incremental", plan["mode"])
+        self.assertTrue(all(not gate["run"] for gate in plan["gates"].values()))
 
     def test_step6_test_fix_preserves_unrelated_workflows_but_rebuilds_test_graph(self):
         workflow = "step6-openai-ads-execution-validation.yml"
