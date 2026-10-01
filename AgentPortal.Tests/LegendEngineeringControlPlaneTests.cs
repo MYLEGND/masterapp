@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Shared.Diagnostics;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -140,6 +141,31 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         var app = LegendEngineeringPolicies.Classify(Incident(
             app: "ClientApp", source: "ClientApp/Controllers/HomeController.cs"));
         Assert.True(LegendEngineeringPolicies.ImpactSetsOverlap(shared.ImpactSet, app.ImpactSet));
+    }
+
+    [Fact]
+    public async Task BrowserStructuralReproducer_IsPreservedOnDurableWorkItem()
+    {
+        var incident = Incident(app: "AgentPortal", source: "js/app.js");
+        incident.Platform = "Web";
+        incident.Route = "/Clients/Index";
+        incident.ErrorName = "TypeError";
+        incident.StructuralReproducerJson = JsonSerializer.Serialize(new RuntimeDiagnosticStructuralReproducer
+        {
+            ComponentIds = new[] { "website.modal" },
+            ActionKeys = new[] { "contact.submit" },
+            CompositionIds = new[] { "cms.hero.primary" },
+            ModalIds = new[] { "website-modal" }
+        });
+
+        var item = await _store.AttachIncidentAsync(incident, LegendEngineeringPolicies.Classify(incident), default);
+
+        Assert.Equal("/Clients/Index", item.ReproducerRoute);
+        Assert.Equal(new[] { "website.modal" }, item.ReproducerComponentIds);
+        Assert.Equal(new[] { "contact.submit" }, item.ReproducerActionKeys);
+        Assert.Equal(new[] { "cms.hero.primary" }, item.ReproducerCompositionIds);
+        Assert.Equal(new[] { "website-modal" }, item.ReproducerModalIds);
+        Assert.Equal(new[] { "TypeError" }, item.ReproducerForbiddenErrorNames);
     }
 
     [Fact]

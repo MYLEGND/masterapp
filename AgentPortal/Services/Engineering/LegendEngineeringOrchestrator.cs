@@ -20,6 +20,16 @@ internal interface ILegendEngineeringOrchestrator
     Task<object> InspectRepositoryAsync(Guid engineeringContextId, string path, string revision, CancellationToken cancellationToken);
     Task<object> PrepareRepairAsync(Guid engineeringContextId, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
     Task<object> ApproveReleaseAsync(ClaimsPrincipal founder, Guid workItemId, CancellationToken cancellationToken);
+    Task RecordBrowserFunctionalProofAsync(
+        Guid workItemId,
+        string expectedRevision,
+        string expectedRoute,
+        IReadOnlyList<string> componentIds,
+        IReadOnlyList<string> actionKeys,
+        IReadOnlyList<string> compositionIds,
+        IReadOnlyList<string> modalIds,
+        IReadOnlyList<string> forbiddenErrorNames,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class LegendEngineeringOrchestrator(
@@ -67,7 +77,22 @@ internal sealed class LegendEngineeringOrchestrator(
                 item.ModelTier,
                 item.ValidationState,
                 item.ReleaseCohort,
-                item.UpdatedUtc
+                item.UpdatedUtc,
+                liveProof = item.State == "LIVE_FUNCTIONAL_PROOF_REQUIRED" &&
+                            item.ReproducerRoute is not null &&
+                            LegendEngineeringPolicies.IsImmutableSha(item.MergedSha)
+                    ? new
+                    {
+                        engineeringWorkItemId = item.WorkItemId,
+                        expectedRevision = item.MergedSha,
+                        expectedRoute = item.ReproducerRoute,
+                        requiredComponentIds = item.ReproducerComponentIds ?? Array.Empty<string>(),
+                        requiredActionKeys = item.ReproducerActionKeys ?? Array.Empty<string>(),
+                        requiredCompositionIds = item.ReproducerCompositionIds ?? Array.Empty<string>(),
+                        requiredModalIds = item.ReproducerModalIds ?? Array.Empty<string>(),
+                        forbiddenErrorNames = item.ReproducerForbiddenErrorNames ?? Array.Empty<string>()
+                    }
+                    : null
             })
         };
     }
@@ -197,18 +222,19 @@ internal sealed class LegendEngineeringOrchestrator(
             item.WorkItemId,
             item.AffectedApplications.FirstOrDefault() ?? "unknown",
             item.LiveSha,
-            SafeRoute(primary.Route),
+            item.ReproducerRoute ?? SafeRoute(primary.Route),
             item.CanonicalAuthorityKey,
-            [],
-            [],
-            [],
+            item.ReproducerComponentIds ?? Array.Empty<string>(),
+            item.ReproducerActionKeys ?? Array.Empty<string>(),
+            item.ReproducerCompositionIds ?? Array.Empty<string>(),
+            item.ReproducerModalIds ?? Array.Empty<string>(),
             item.FailureClass,
             item.Severity,
             item.RiskClass,
             item.ComplexityScore,
             "The canonical route completes without the sanitized runtime incident and preserves existing authorities.",
             string.Join(",", issueCodes.Length == 0 ? ["sanitized_runtime_incident"] : issueCodes),
-            issueCodes,
+            item.ReproducerForbiddenErrorNames is { Count: > 0 } ? item.ReproducerForbiddenErrorNames : issueCodes,
             permitted,
             protectedPaths,
             item.AffectedProjects,
@@ -367,6 +393,55 @@ internal sealed class LegendEngineeringOrchestrator(
             pullRequestNumber = approved.PullRequestNumber,
             automaticReleaseStillRequiresCanonicalCohortPolicy = true
         };
+    }
+
+    public async Task RecordBrowserFunctionalProofAsync(
+        Guid workItemId,
+        string expectedRevision,
+        string expectedRoute,
+        IReadOnlyList<string> componentIds,
+        IReadOnlyList<string> actionKeys,
+        IReadOnlyList<string> compositionIds,
+        IReadOnlyList<string> modalIds,
+        IReadOnlyList<string> forbiddenErrorNames,
+        CancellationToken cancellationToken)
+    {
+        var item = await store.GetWorkItemAsync(workItemId, cancellationToken)
+            ?? throw new InvalidOperationException("work_item_not_found");
+        if (!LegendEngineeringPolicies.IsImmutableSha(item.MergedSha) || item.DeploymentVerifiedUtc is null)
+            throw new InvalidOperationException("browser_live_proof_deployment_not_verified");
+        if (!string.Equals(item.MergedSha, expectedRevision, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("browser_live_proof_revision_mismatch");
+        if (string.IsNullOrWhiteSpace(item.ReproducerRoute))
+            throw new InvalidOperationException("browser_reproducer_not_preserved");
+        if (!string.Equals(item.ReproducerRoute, expectedRoute, StringComparison.Ordinal) ||
+            !SameProofValues(item.ReproducerComponentIds, componentIds) ||
+            !SameProofValues(item.ReproducerActionKeys, actionKeys) ||
+            !SameProofValues(item.ReproducerCompositionIds, compositionIds) ||
+            !SameProofValues(item.ReproducerModalIds, modalIds) ||
+            !SameProofValues(item.ReproducerForbiddenErrorNames, forbiddenErrorNames))
+            throw new InvalidOperationException("browser_live_proof_does_not_match_preserved_reproducer");
+
+        if (item.State == "COMPLETED" && item.ValidationState == "LIVE_VERIFIED") return;
+        if (item.State != "LIVE_FUNCTIONAL_PROOF_REQUIRED")
+            throw new InvalidOperationException("browser_live_proof_state_invalid");
+
+        await store.UpdateWorkItemAsync(item with
+        {
+            State = "COMPLETED",
+            ValidationState = "LIVE_VERIFIED",
+            LeaseOwner = null,
+            LeaseIdentity = null,
+            LeaseExpiresUtc = null,
+            UpdatedUtc = DateTime.UtcNow
+        }, cancellationToken);
+    }
+
+    private static bool SameProofValues(IReadOnlyList<string>? expected, IReadOnlyList<string>? actual)
+    {
+        var left = (expected ?? Array.Empty<string>()).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal);
+        var right = (actual ?? Array.Empty<string>()).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal);
+        return left.SequenceEqual(right, StringComparer.Ordinal);
     }
 
     private async Task<EngineeringContextSnapshot> BootstrapCoreAsync(

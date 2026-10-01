@@ -66,7 +66,10 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("RequestVerificationToken", source, StringComparison.Ordinal);
         Assert.Contains("legend_site_tool_antiforgery_unavailable", source, StringComparison.Ordinal);
         Assert.Contains("LegendPageHealth", source, StringComparison.Ordinal);
-        Assert.Contains("data-website-action-key", source, StringComparison.Ordinal);
+        Assert.Contains("LegendPageHealth?.current?.structuralSnapshot?.()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("function values(selector, attribute, maximum)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-website-action-key", source, StringComparison.Ordinal);
+
         Assert.Contains("data-cms-composition-id", source, StringComparison.Ordinal);
         Assert.Contains("result.push(url.pathname)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("textContent", source, StringComparison.Ordinal);
@@ -92,6 +95,7 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("mutationToolsExposed = false", source, StringComparison.Ordinal);
         Assert.Contains("[ValidateAntiForgeryToken]", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("VerifyCurrentPageRepairTool", SiteToolSection(source), StringComparison.Ordinal);
+        Assert.Contains("RecordBrowserFunctionalProofAsync", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_release_approved_repair", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_prepare_software_repair", SiteToolSection(source), StringComparison.Ordinal);
     }
