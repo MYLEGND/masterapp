@@ -134,6 +134,19 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertEqual("full", plan["mode"])
         self.assertTrue(all(gate["run"] for gate in plan["gates"].values()))
 
+    def test_step6_unrelated_commit_preserves_all_successful_step6_evidence(self):
+        workflow = "step6-openai-ads-execution-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["scripts/test-release-policy.py"],
+            "prior_run",
+        )
+        self.assertEqual("incremental", plan["mode"])
+        self.assertTrue(all(not gate["run"] for gate in plan["gates"].values()))
+
     def test_step6_test_fix_preserves_unrelated_workflows_but_rebuilds_test_graph(self):
         workflow = "step6-openai-ads-execution-validation.yml"
         plan = m.compute_plan(
