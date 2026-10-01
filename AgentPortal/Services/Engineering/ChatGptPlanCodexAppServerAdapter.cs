@@ -165,7 +165,16 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
         Process? process = null;
         try
         {
-            var start = new ProcessStartInfo { FileName = executable, UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            var start = new ProcessStartInfo
+            {
+                FileName = executable,
+                WorkingDirectory = tempHome,
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
             start.ArgumentList.Add("app-server");
             start.ArgumentList.Add("--listen");
             start.ArgumentList.Add("stdio://");
@@ -234,7 +243,18 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
         "model_providers.openai_chatgpt_plan.env_key=\"ACCESS_TOKEN\"",
         "model_providers.openai_chatgpt_plan.wire_api=\"responses\"",
         "model_providers.openai_chatgpt_plan.requires_openai_auth=false",
-        "model_providers.openai_chatgpt_plan.supports_websockets=false"
+        "model_providers.openai_chatgpt_plan.supports_websockets=false",
+        "web_search=\"disabled\"",
+        "features.shell_tool=false",
+        "features.unified_exec=false",
+        "features.multi_agent=false",
+        "features.apps=false",
+        "features.goals=false",
+        "features.memories=false",
+        "features.hooks=false",
+        "features.shell_snapshot=false",
+        "shell_environment_policy.inherit=\"none\"",
+        "shell_environment_policy.ignore_default_excludes=false"
     ];
 
     private static FounderSoftwareRepairProposal? ParseProposal(JsonElement output, string expectedBaseSha)
