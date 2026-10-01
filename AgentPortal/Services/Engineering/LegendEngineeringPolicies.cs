@@ -13,7 +13,7 @@ internal static class LegendEngineeringPolicies
         var disclosure = FounderSoftwareRemediationService.ClassifyInspectableSourcePath(incident.SourceFilePath ?? string.Empty);
         var failureClass = ClassifyFailure(incident, disclosure);
         var canonicalAuthority = CanonicalAuthority(incident, disclosure);
-        var projects = Projects(incident.SourceFilePath, disclosure);
+        var projects = Projects(incident.SourceFilePath, disclosure, incident.AppIdentifier);
         var applications = string.IsNullOrWhiteSpace(incident.AppIdentifier)
             ? Array.Empty<string>()
             : [SafeToken(incident.AppIdentifier, 64)];
@@ -130,19 +130,23 @@ internal static class LegendEngineeringPolicies
     {
         var source = NormalizePath(incident.SourceFilePath);
         if (!string.IsNullOrWhiteSpace(source) && disclosure == LegendSiteToolDisclosureAuthority.SafeSource)
-            return "source:" + source;
+            return source.Contains('/', StringComparison.Ordinal)
+                ? "source:" + source
+                : "source:" + SafeToken(incident.AppIdentifier, 64) + ":" + source;
         if (!string.IsNullOrWhiteSpace(source))
             return "protected:" + Sha256(source)[..20];
         return "route:" + SafeToken(incident.AppIdentifier, 64) + ":" + SafeRoute(incident.Route);
     }
 
-    private static string[] Projects(string? sourcePath, string? disclosure)
+    private static string[] Projects(string? sourcePath, string? disclosure, string? application)
     {
         if (disclosure != LegendSiteToolDisclosureAuthority.SafeSource) return [];
         var path = NormalizePath(sourcePath);
         if (string.IsNullOrWhiteSpace(path)) return [];
         var slash = path.IndexOf('/');
-        return [slash < 0 ? path : path[..slash]];
+        if (slash >= 0) return [path[..slash]];
+        var app = SafeToken(application, 64);
+        return app == "unknown" ? [] : [app];
     }
 
     private static string[] ImpactSet(string canonicalAuthority, string? sourcePath, string? disclosure, IReadOnlyList<string> applications)
