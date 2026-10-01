@@ -2,6 +2,7 @@
 """Read live source identities and refuse to release a candidate missing live history."""
 import argparse
 import importlib.util
+import hashlib
 import concurrent.futures
 import json
 import os
@@ -79,6 +80,43 @@ def reusable_live_application_revision(rows, head):
     if all(release_control_only_path(path) for path in changed):
         return live
     return None
+
+
+
+def release_package_contract_hash():
+    resume_path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume", resume_path)
+    resume = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(resume)
+    workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
+    blocks = resume.named_step_blocks(workflow.read_text())
+    names = (
+        "Build exact selected release candidate",
+        "Verify business website routing bridge",
+        "Verify localization retention privacy limits and original delivery",
+        "Verify shared web catalog contracts",
+        "Verify selected website catalog and build",
+        "Publish exact selected application packages",
+    )
+    if any(name not in blocks for name in names):
+        raise ValueError("Release package contract step is missing")
+    payload = "\n".join(name + "\n" + blocks[name] for name in names).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def release_package_identity(application_release_sha, targets, website_routing, website_routing_canary):
+    payload = json.dumps(
+        {
+            "applicationReleaseSha": application_release_sha,
+            "targets": ["masterapp-" + row[0] for row in targets],
+            "websiteRouting": bool(website_routing),
+            "websiteRoutingCanary": website_routing_canary or "",
+            "packageContractSha256": release_package_contract_hash(),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def validate_revision(value):
@@ -181,6 +219,12 @@ def main():
                 "Preserving exact live application identity across release-control/test-only changes:",
                 application_release_sha,
             )
+    package_identity = release_package_identity(
+        application_release_sha,
+        targets,
+        website_routing,
+        website_routing_canary,
+    )
     print(json.dumps(rows, indent=2))
     if args.output:
         with args.output.open('a') as out:
@@ -197,6 +241,7 @@ def main():
             out.write('website_routing_canary=' + website_routing_canary + '\n')
             out.write('preserve_live_targets=' + str(preserve_live_targets).lower() + '\n')
             out.write('application_release_sha=' + application_release_sha + '\n')
+            out.write('package_identity=' + package_identity + '\n')
 
 
 if __name__ == '__main__':
