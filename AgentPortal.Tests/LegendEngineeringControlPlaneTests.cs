@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -7,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using AgentPortal.Services;
 using AgentPortal.Services.Engineering;
 using Domain.Engineering;
 using Domain.Entities;
@@ -426,8 +428,10 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     [Fact]
     public async Task ChatGptPlanCredential_UnapprovedPrivateClient_FailsClosed()
     {
-        var authority = new LegendChatGptPlanCredentialAuthority(
-            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build());
+        var authority = PlanCredentialAuthority(
+            new PlanTokenHandler(HttpStatusCode.OK, "{}"),
+            privateClientApproved: false,
+            clientId: "private-client");
         var state = await authority.GetAsync(default);
         Assert.False(state.Ready);
         Assert.Equal("chatgpt_plan_private_client_eligibility_unverified", state.Code);
@@ -437,37 +441,41 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     [Fact]
     public async Task ChatGptPlanCredential_MissingPlanUsageScope_FailsClosed()
     {
-        var settings = new Dictionary<string, string?>
-        {
-            ["LegendEngineering:ChatGptPlan:PrivateClientApproved"] = "true",
-            ["LegendEngineering:ChatGptPlan:ClientId"] = "private-client",
-            ["LegendEngineering:ChatGptPlan:GrantedScopes"] = "openid offline_access resource.invoke",
-            ["LegendEngineering:ChatGptPlan:AccessToken"] = "opaque-test-token",
-            ["LegendEngineering:ChatGptPlan:AccessTokenExpiresUtc"] = DateTime.UtcNow.AddHours(1).ToString("O")
-        };
-        var authority = new LegendChatGptPlanCredentialAuthority(
-            new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
-        var state = await authority.GetAsync(default);
-        Assert.False(state.Ready);
-        Assert.Equal("chatgpt_plan_usage_scope_missing", state.Code);
-        Assert.Null(state.AccessToken);
+        var authority = PlanCredentialAuthority(
+            new PlanTokenHandler(HttpStatusCode.OK, "{}"),
+            privateClientApproved: true,
+            clientId: "private-client");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            authority.StoreAuthorizationAsync(
+                "private-client",
+                "opaque-access-token-1234567890",
+                "opaque-refresh-token-1234567890",
+                new[] { "openid", "offline_access", "resource.invoke" },
+                DateTime.UtcNow.AddHours(1),
+                default));
+
+        Assert.Equal("chatgpt_plan_usage_scope_missing", error.Message);
     }
 
     [Fact]
     public async Task ChatGptPlanCredential_ApprovedPlanScope_IsEligibleWithoutApiKey()
     {
-        var settings = new Dictionary<string, string?>
-        {
-            ["LegendEngineering:ChatGptPlan:PrivateClientApproved"] = "true",
-            ["LegendEngineering:ChatGptPlan:ClientId"] = "private-client",
-            ["LegendEngineering:ChatGptPlan:GrantedScopes"] = "openid offline_access resource.invoke chatgpt.tokens.use.direct",
-            ["LegendEngineering:ChatGptPlan:AccessToken"] = "opaque-test-token",
-            ["LegendEngineering:ChatGptPlan:AccessTokenExpiresUtc"] = DateTime.UtcNow.AddHours(1).ToString("O")
-        };
-        var authority = new LegendChatGptPlanCredentialAuthority(
-            new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+        var authority = PlanCredentialAuthority(
+            new PlanTokenHandler(HttpStatusCode.OK, "{}"),
+            privateClientApproved: true,
+            clientId: "private-client");
+
+        await authority.StoreAuthorizationAsync(
+            "private-client",
+            "opaque-access-token-1234567890",
+            "opaque-refresh-token-1234567890",
+            new[] { "openid", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct" },
+            DateTime.UtcNow.AddHours(1),
+            default);
+
         var state = await authority.GetAsync(default);
-        Assert.True(state.Ready);
+        Assert.True(state.Ready, state.Code);
         Assert.Equal("chatgpt_plan_ready", state.Code);
         Assert.Contains("chatgpt.tokens.use.direct", state.GrantedScopes);
     }
@@ -711,12 +719,15 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         };
     }
 
-    private LegendChatGptPlanCredentialAuthority PlanCredentialAuthority(HttpMessageHandler handler)
+    private LegendChatGptPlanCredentialAuthority PlanCredentialAuthority(
+        HttpMessageHandler handler,
+        bool privateClientApproved = true,
+        string clientId = "client-fixture")
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["LegendEngineering:ChatGptPlan:PrivateClientApproved"] = "true",
-            ["LegendEngineering:ChatGptPlan:ClientId"] = "client-fixture"
+            ["LegendEngineering:ChatGptPlan:PrivateClientApproved"] = privateClientApproved ? "true" : "false",
+            ["LegendEngineering:ChatGptPlan:ClientId"] = clientId
         }).Build();
         return new LegendChatGptPlanCredentialAuthority(
             _db,
@@ -750,10 +761,10 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             LastBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             var response = _responses.Count > 0
                 ? _responses.Dequeue()
-                : (HttpStatusCode.ServiceUnavailable, """{"error":"temporarily_unavailable"}""");
+                : (Status: HttpStatusCode.ServiceUnavailable, Body: """{"error":"temporarily_unavailable"}""");
             return new HttpResponseMessage(response.Status)
             {
-                Content = new StringContent(response.Body, Encoding.UTF8, "application/json"),
+                Content = new StringContent(response.Body, Encoding.UTF8),
                 RequestMessage = request
             };
         }
