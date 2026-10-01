@@ -292,9 +292,51 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
             try { await command.ExecuteNonQueryAsync(cancellationToken); }
             catch (DbException)
             {
-                // UsageId is deterministic per Agents API session. A duplicate
-                // terminal observation is a replay, not additional consumption.
+                // UsageId is the durable engineering-context attempt identity.
+                // A later terminal observation updates the same attempt instead
+                // of counting another model start.
+                await using var update = connection.CreateCommand();
+                update.CommandText = """
+                    UPDATE [LegendEngineeringUsage] SET
+                      [SessionId]=COALESCE(@session,[SessionId]),
+                      [InputTokens]=COALESCE(@input,[InputTokens]),
+                      [OutputTokens]=COALESCE(@output,[OutputTokens]),
+                      [TotalTokens]=COALESCE(@total,[TotalTokens]),
+                      [CostMicrousd]=COALESCE(@cost,[CostMicrousd]),
+                      [UsageObserved]=CASE WHEN @observed=1 THEN 1 ELSE [UsageObserved] END
+                    WHERE [UsageId]=@id
+                    """;
+                Add(update, "@id", usage.UsageId);
+                Add(update, "@session", usage.SessionId);
+                Add(update, "@input", usage.InputTokens);
+                Add(update, "@output", usage.OutputTokens);
+                Add(update, "@total", usage.TotalTokens);
+                Add(update, "@cost", usage.CostMicrousd);
+                Add(update, "@observed", usage.UsageObserved);
+                await update.ExecuteNonQueryAsync(cancellationToken);
             }
+        }
+        finally { if (opened) await connection.CloseAsync(); }
+    }
+
+    internal async Task<int> CountModelAttemptsAsync(
+        Guid workItemId,
+        string role,
+        CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var opened = connection.State != ConnectionState.Open;
+        if (opened) await connection.OpenAsync(cancellationToken);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT COUNT(*) FROM [LegendEngineeringUsage]
+                WHERE [WorkItemId]=@work AND [Role]=@role
+                """;
+            Add(command, "@work", workItemId);
+            Add(command, "@role", role);
+            return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
         }
         finally { if (opened) await connection.CloseAsync(); }
     }
