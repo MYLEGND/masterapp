@@ -1,6 +1,5 @@
 using System.Text.Json;
 using AgentPortal.Models;
-using Domain.Engineering;
 
 namespace AgentPortal.Services.Engineering;
 
@@ -13,6 +12,20 @@ public interface IFounderEngineeringCommandCenterService
     Task<FounderEngineeringContractMutationResult> RestoreAsync(
         FounderEngineeringRestoreInput input,
         CancellationToken cancellationToken);
+    Task<ChatGptPlanClientRegistrationState> SaveClientRegistrationAsync(
+        FounderEngineeringClientRegistrationInput input,
+        CancellationToken cancellationToken);
+    Task<ChatGptPlanAuthorizationStart> BeginChatGptAuthorizationAsync(
+        CancellationToken cancellationToken);
+    Task<ChatGptPlanAuthorizationResult> CompleteChatGptAuthorizationAsync(
+        string code,
+        string state,
+        string? responseIssuer,
+        string? callbackClientId,
+        CancellationToken cancellationToken);
+    Task AbortChatGptAuthorizationAsync(
+        string state,
+        CancellationToken cancellationToken);
     Task DisconnectChatGptAsync(CancellationToken cancellationToken);
 }
 
@@ -20,26 +33,35 @@ internal sealed class FounderEngineeringCommandCenterService(
     ILegendEngineeringContractAuthority contractAuthority,
     ILegendEngineeringOrchestrator orchestrator,
     ILegendChatGptPlanCredentialAuthority credentials,
-    ILegendEngineeringAgentAdapter adapter,
-    IConfiguration configuration)
+    ILegendEngineeringAgentAdapter adapter)
     : IFounderEngineeringCommandCenterService
 {
-    public async Task<FounderEngineeringCommandCenterViewModel> GetAsync(CancellationToken cancellationToken)
+    public async Task<FounderEngineeringCommandCenterViewModel> GetAsync(
+        CancellationToken cancellationToken)
     {
         var contract = await contractAuthority.GetCurrentAsync(cancellationToken);
         var history = await contractAuthority.GetHistoryAsync(10, cancellationToken);
+        var registration = await credentials.GetClientRegistrationAsync(cancellationToken);
         var status = JsonSerializer.SerializeToElement(
             await orchestrator.GetStatusAsync(cancellationToken),
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var adapterStatus = JsonSerializer.SerializeToElement(
             await adapter.GetStatusAsync(cancellationToken),
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var catalog = await adapter.GetModelCatalogAsync(cancellationToken);
 
         return new FounderEngineeringCommandCenterViewModel
         {
             Revision = contract.Revision,
             Version = contract.Version,
             ModelExecutionEnabled = contract.ModelExecutionEnabled,
+            AutonomousEngineeringEnabled = contract.AutonomousEngineeringEnabled,
+            HeadGptModel = contract.HeadGptModel,
+            CodexModel = contract.CodexModel,
+            ReviewerModel = contract.ReviewerModel,
+            ResolvedHeadGptModel = ReadString(adapterStatus, "resolvedHeadGptModel"),
+            ResolvedCodexModel = ReadString(adapterStatus, "resolvedCodexModel"),
+            ResolvedReviewerModel = ReadString(adapterStatus, "resolvedReviewerModel"),
             SharedDirective = contract.SharedDirective,
             HeadGptDirective = contract.HeadGptDirective,
             CodexDirective = contract.CodexDirective,
@@ -49,15 +71,22 @@ internal sealed class FounderEngineeringCommandCenterService(
 
             ChatGptPlanReady = ReadBool(adapterStatus, "credentialReady"),
             ChatGptPlanCode = ReadString(adapterStatus, "credentialCode"),
+            ChatGptPlanClientConfigured = registration.Configured,
+            ChatGptPlanClientId = registration.ClientId ?? string.Empty,
+            ChatGptPlanClientAuthenticationMethod = registration.AuthenticationMethod,
+            ChatGptPlanClientSecretConfigured = registration.ClientSecretConfigured,
             ChatGptPlanApprovedClient = ReadBool(adapterStatus, "privateClientApproved"),
             ChatGptPlanScopeGranted = ReadBool(adapterStatus, "planUsageScopeGranted"),
             ChatGptPlanExpiresUtc = ReadDateTime(adapterStatus, "expiresUtc"),
-            CodexAppServerConfigured = ReadBool(adapterStatus, "codexAppServerConfigured"),
-            AdapterEnabled = ReadBool(adapterStatus, "enabled"),
-            AutonomousConfigEnabled = configuration.GetValue<bool?>("LegendEngineering:Autonomous:Enabled") == true,
-            HeadGptModel = configuration[$"LegendEngineering:ChatGptPlan:Models:{EngineeringModelTier.DeepReasoning}"] ?? "Not configured",
-            CodexModel = configuration[$"LegendEngineering:ChatGptPlan:Models:{EngineeringModelTier.CodeImplementation}"] ?? "Not configured",
-            ReviewerModel = configuration[$"LegendEngineering:ChatGptPlan:Models:{EngineeringModelTier.IndependentReview}"] ?? "Not configured",
+            ModelRuntimeReady = ReadBool(adapterStatus, "runtimeReady"),
+            ModelRuntimeCode = ReadString(adapterStatus, "eligibility"),
+            AutonomousRuntimeActive =
+                ReadBool(adapterStatus, "runtimeReady") &&
+                contract.ModelExecutionEnabled &&
+                contract.AutonomousEngineeringEnabled,
+            AvailableModels = catalog.Models
+                .Select(model => new FounderEngineeringModelOption(model.Slug, model.DisplayName))
+                .ToArray(),
 
             OpenWorkItems = ReadInt(status, "openWorkItems"),
             LeasedWorkItems = ReadInt(status, "leasedWorkItems"),
@@ -66,6 +95,7 @@ internal sealed class FounderEngineeringCommandCenterService(
                 row.Revision,
                 row.Version,
                 row.ModelExecutionEnabled,
+                row.AutonomousEngineeringEnabled,
                 row.UpdatedUtc,
                 row.UpdatedBy)).ToArray()
         };
@@ -75,9 +105,13 @@ internal sealed class FounderEngineeringCommandCenterService(
         FounderEngineeringContractInput input,
         CancellationToken cancellationToken)
     {
-        var value = await contractAuthority.UpdateAsync(
+        var value = await contractAuthority.UpdateAllAsync(
             input.ExpectedRevision,
             input.ModelExecutionEnabled,
+            input.AutonomousEngineeringEnabled,
+            input.HeadGptModel,
+            input.CodexModel,
+            input.ReviewerModel,
             input.SharedDirective,
             input.HeadGptDirective,
             input.CodexDirective,
@@ -98,6 +132,37 @@ internal sealed class FounderEngineeringCommandCenterService(
             cancellationToken);
         return new(value.Revision, value.Version);
     }
+
+    public Task<ChatGptPlanClientRegistrationState> SaveClientRegistrationAsync(
+        FounderEngineeringClientRegistrationInput input,
+        CancellationToken cancellationToken) =>
+        credentials.SaveClientRegistrationAsync(
+            input.ClientId,
+            input.AuthenticationMethod,
+            input.ClientSecret,
+            cancellationToken);
+
+    public Task<ChatGptPlanAuthorizationStart> BeginChatGptAuthorizationAsync(
+        CancellationToken cancellationToken) =>
+        credentials.BeginAuthorizationAsync(cancellationToken);
+
+    public Task<ChatGptPlanAuthorizationResult> CompleteChatGptAuthorizationAsync(
+        string code,
+        string state,
+        string? responseIssuer,
+        string? callbackClientId,
+        CancellationToken cancellationToken) =>
+        credentials.CompleteAuthorizationAsync(
+            code,
+            state,
+            responseIssuer,
+            callbackClientId,
+            cancellationToken);
+
+    public Task AbortChatGptAuthorizationAsync(
+        string state,
+        CancellationToken cancellationToken) =>
+        credentials.AbortAuthorizationAsync(state, cancellationToken);
 
     public Task DisconnectChatGptAsync(CancellationToken cancellationToken) =>
         credentials.DisconnectAsync(cancellationToken);

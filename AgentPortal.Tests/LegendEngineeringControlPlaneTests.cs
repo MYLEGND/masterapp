@@ -523,18 +523,20 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
-    public void ChatGptPlanCodexAdapter_HasNoAgentsApiOrApiKeyFallback()
+    public void ChatGptPlanResponsesAdapter_HasNoAgentsApiOrApiKeyFallback()
     {
-        var source = File.ReadAllText(Path.Combine(SourceRoot(), "AgentPortal", "Services", "Engineering", "ChatGptPlanCodexAppServerAdapter.cs"));
-        Assert.Contains("openai_chatgpt_plan", source, StringComparison.Ordinal);
-        Assert.Contains("start.Environment.Remove(\"OPENAI_API_KEY\")", source, StringComparison.Ordinal);
-        Assert.Contains("shell_environment_policy.inherit=\\\"none\\\"", source, StringComparison.Ordinal);
-        Assert.Contains("shell_environment_policy.ignore_default_excludes=false", source, StringComparison.Ordinal);
-        Assert.Contains("features.shell_tool=false", source, StringComparison.Ordinal);
-        Assert.Contains("web_search=\\\"disabled\\\"", source, StringComparison.Ordinal);
-        Assert.Contains("WorkingDirectory = tempHome", source, StringComparison.Ordinal);
+        var source = File.ReadAllText(Path.Combine(SourceRoot(), "AgentPortal", "Services", "Engineering", "ChatGptPlanResponsesAdapter.cs"));
+        Assert.Contains("https://api.openai.com/v1/responses", source, StringComparison.Ordinal);
+        Assert.Contains("https://api.openai.com/v1/models", source, StringComparison.Ordinal);
+        Assert.Contains("new AuthenticationHeaderValue(\"Bearer\"", source, StringComparison.Ordinal);
+        Assert.Contains("store = false", source, StringComparison.Ordinal);
+        Assert.Contains("stream = true", source, StringComparison.Ordinal);
+        Assert.Contains("text = new", source, StringComparison.Ordinal);
+        Assert.Contains("type = \"json_schema\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("OPENAI_API_KEY", source, StringComparison.Ordinal);
         Assert.DoesNotContain("OpenAiKeyResolver", source, StringComparison.Ordinal);
         Assert.DoesNotContain("/v1/agents/sessions", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("app-server", source, StringComparison.Ordinal);
     }
 
 
@@ -835,6 +837,14 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
               AccessTokenExpiresUtc TEXT NOT NULL, State TEXT NOT NULL, Revision TEXT NOT NULL,
               RefreshLeaseIdentity TEXT NULL, RefreshLeaseUntilUtc TEXT NULL, ConnectedUtc TEXT NOT NULL,
               LastRefreshedUtc TEXT NULL, UpdatedUtc TEXT NOT NULL);
+            CREATE TABLE LegendEngineeringChatGptPlanClientRegistration (
+              RegistrationKey TEXT PRIMARY KEY, ClientId TEXT NOT NULL, AuthenticationMethod TEXT NOT NULL,
+              ClientSecretCiphertext TEXT NULL, EligibilityConfirmed INTEGER NOT NULL, Revision TEXT NOT NULL,
+              UpdatedUtc TEXT NOT NULL);
+            CREATE TABLE LegendEngineeringChatGptPlanOAuthTransactions (
+              StateHash TEXT PRIMARY KEY, ClientId TEXT NOT NULL, CodeVerifierCiphertext TEXT NOT NULL,
+              NonceCiphertext TEXT NOT NULL, RedirectUri TEXT NOT NULL, CreatedUtc TEXT NOT NULL,
+              ExpiresUtc TEXT NOT NULL);
             CREATE TABLE LegendEngineeringWorkItems (
               WorkItemId TEXT PRIMARY KEY, WorkKey TEXT NOT NULL UNIQUE, CanonicalAuthorityKey TEXT NOT NULL,
               ImpactSetJson TEXT NOT NULL, LiveSha TEXT NOT NULL, EvidenceRevision TEXT NOT NULL,

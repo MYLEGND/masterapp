@@ -43,6 +43,10 @@ public sealed class FounderEngineeringCommandCenterTests : IAsyncDisposable
         Assert.Equal(LegendEngineeringContractAuthority.BuiltinRevision, current.Revision);
         Assert.Equal(0, current.Version);
         Assert.True(current.ModelExecutionEnabled);
+        Assert.True(current.AutonomousEngineeringEnabled);
+        Assert.Equal(LegendEngineeringContractAuthority.AutoModel, current.HeadGptModel);
+        Assert.Equal(LegendEngineeringContractAuthority.AutoModel, current.CodexModel);
+        Assert.Equal(LegendEngineeringContractAuthority.AutoModel, current.ReviewerModel);
         Assert.Contains("Preserve successful evidence", current.SharedDirective, StringComparison.Ordinal);
         Assert.Contains("engineering supervisor", current.HeadGptDirective, StringComparison.Ordinal);
         Assert.Contains("implementation engineer", current.CodexDirective, StringComparison.Ordinal);
@@ -111,6 +115,51 @@ public sealed class FounderEngineeringCommandCenterTests : IAsyncDisposable
         Assert.Equal(first.Revision, replay.Revision);
         Assert.Equal(first.Version, replay.Version);
         Assert.Single(await _authority.GetHistoryAsync(10, default));
+    }
+
+    [Fact]
+    public async Task RuntimeActivationControls_ShareTheSameRevisionLockedContract()
+    {
+        var current = await _authority.GetCurrentAsync(default);
+        var updated = await _authority.UpdateAllAsync(
+            current.Revision,
+            true,
+            false,
+            "gpt-head",
+            "gpt-codex",
+            "gpt-review",
+            current.SharedDirective,
+            current.HeadGptDirective,
+            current.CodexDirective,
+            current.ReviewerDirective,
+            "Founder",
+            default);
+
+        Assert.False(updated.AutonomousEngineeringEnabled);
+        Assert.Equal("gpt-head", updated.HeadGptModel);
+        Assert.Equal("gpt-codex", updated.CodexModel);
+        Assert.Equal("gpt-review", updated.ReviewerModel);
+
+        var stale = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _authority.UpdateAllAsync(
+                current.Revision,
+                true,
+                true,
+                "auto",
+                "auto",
+                "auto",
+                current.SharedDirective,
+                current.HeadGptDirective,
+                current.CodexDirective,
+                current.ReviewerDirective,
+                "Founder",
+                default));
+        Assert.Equal("engineering_operational_contract_changed", stale.Message);
+
+        var history = await _authority.GetHistoryAsync(10, default);
+        var revision = Assert.Single(history);
+        Assert.Equal(updated.Revision, revision.Revision);
+        Assert.False(revision.AutonomousEngineeringEnabled);
     }
 
     [Fact]
@@ -230,6 +279,8 @@ public sealed class FounderEngineeringCommandCenterTests : IAsyncDisposable
                  {
                      nameof(FounderEngineeringController.SaveContract),
                      nameof(FounderEngineeringController.RestoreContract),
+                     nameof(FounderEngineeringController.SaveChatGptClient),
+                     nameof(FounderEngineeringController.ConnectChatGpt),
                      nameof(FounderEngineeringController.DisconnectChatGpt)
                  })
         {
@@ -265,6 +316,10 @@ public sealed class FounderEngineeringCommandCenterTests : IAsyncDisposable
               Revision TEXT NOT NULL,
               Version INTEGER NOT NULL,
               ModelExecutionEnabled INTEGER NOT NULL,
+              AutonomousEngineeringEnabled INTEGER NOT NULL,
+              HeadGptModel TEXT NOT NULL,
+              CodexModel TEXT NOT NULL,
+              ReviewerModel TEXT NOT NULL,
               SharedDirective TEXT NOT NULL,
               HeadGptDirective TEXT NOT NULL,
               CodexDirective TEXT NOT NULL,
@@ -276,6 +331,10 @@ public sealed class FounderEngineeringCommandCenterTests : IAsyncDisposable
               Revision TEXT PRIMARY KEY,
               Version INTEGER NOT NULL UNIQUE,
               ModelExecutionEnabled INTEGER NOT NULL,
+              AutonomousEngineeringEnabled INTEGER NOT NULL,
+              HeadGptModel TEXT NOT NULL,
+              CodexModel TEXT NOT NULL,
+              ReviewerModel TEXT NOT NULL,
               SharedDirective TEXT NOT NULL,
               HeadGptDirective TEXT NOT NULL,
               CodexDirective TEXT NOT NULL,
