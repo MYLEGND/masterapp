@@ -214,7 +214,7 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
 
         if (string.Equals(request.Name, LegendSiteToolDisclosureAuthority.CurrentPageToolName, StringComparison.Ordinal))
         {
-            var route = LegendSiteToolDisclosureAuthority.ResolveRoutePattern(request.Page?.Path, endpointSources);
+            var route = LegendSiteToolDisclosureAuthority.ResolveRouteAuthority(request.Page?.Path, endpointSources);
             return Json(LegendSiteToolDisclosureAuthority.SanitizePage(
                 request.Page,
                 environment.ApplicationName,
