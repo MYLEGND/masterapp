@@ -111,6 +111,20 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task SameSanitizedFilenameAcrossApplications_DoesNotMergeWorkItems()
+    {
+        var agentIncident = Incident(app: "AgentPortal", source: "HomeController.cs");
+        var clientIncident = Incident(app: "ClientApp", source: "HomeController.cs");
+        var agent = await _store.AttachIncidentAsync(agentIncident, LegendEngineeringPolicies.Classify(agentIncident), default);
+        var client = await _store.AttachIncidentAsync(clientIncident, LegendEngineeringPolicies.Classify(clientIncident), default);
+
+        Assert.NotEqual(agent.WorkItemId, client.WorkItemId);
+        Assert.NotEqual(agent.CanonicalAuthorityKey, client.CanonicalAuthorityKey);
+        Assert.Equal("AgentPortal", Assert.Single(agent.AffectedProjects));
+        Assert.Equal("ClientApp", Assert.Single(client.AffectedProjects));
+    }
+
+    [Fact]
     public async Task MatchingIncidents_MergeIntoOneDurableWorkItem()
     {
         var one = Incident(source: "AgentPortal/Controllers/HomeController.cs");
