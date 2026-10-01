@@ -32,7 +32,9 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
             enabled,
             operationalContractRevision = contract.Revision,
             modelExecutionEnabled = contract.ModelExecutionEnabled,
-            eligibility = credential.Code,
+            eligibility = contract.ModelExecutionEnabled
+                ? credential.Code
+                : "engineering_operational_execution_paused",
             credential.PrivateClientApproved,
             planUsageScopeGranted = credential.GrantedScopes.Contains("chatgpt.tokens.use.direct", StringComparer.Ordinal),
             accessTokenPresent = !string.IsNullOrWhiteSpace(credential.AccessToken),
