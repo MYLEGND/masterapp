@@ -440,7 +440,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
         // source body; it is never redacted into apparently exact evidence.
         if (System.Text.RegularExpressions.Regex.IsMatch(
                 text,
-                @"\b\d{3}-\d{2}-\d{4}\b|(?:phone|mobile|telephone|social[_ -]?security|ssn|account[_ -]?number|card[_ -]?number)\w*[\"']?\s*[:=]\s*[@]?['\"][^'\"\r\n]{5,80}['\"]",
+                """\b\d{3}-\d{2}-\d{4}\b|(?:phone|mobile|telephone|social[_ -]?security|ssn|account[_ -]?number|card[_ -]?number)\w*["']?\s*[:=]\s*[@]?['"][^'"\r\n]{5,80}['"]""",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant,
                 TimeSpan.FromMilliseconds(100)))
             return true;
