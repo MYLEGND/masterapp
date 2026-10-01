@@ -54,6 +54,8 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                     "REVIEWED" or "VALIDATED" or "RELEASE_REQUESTED" or
                     "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "CI_FAILED_NEEDS_EVIDENCE" or
                     "REVIEW_REJECTED" or "RELEASE_BLOCKED" or "FOUNDER_ESCALATION";
+                var sameReproducerRoute = existing.ReproducerRoute is null ||
+                    string.Equals(existing.ReproducerRoute, reproducerRoute, StringComparison.Ordinal);
                 var updated = existing with
                 {
                     IncidentIds = incidentIds,
@@ -77,11 +79,21 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                         ? existing.FounderReleaseApprovedUtc
                         : null,
                     ReproducerRoute = existing.ReproducerRoute ?? reproducerRoute,
-                    ReproducerComponentIds = PreserveReproducer(existing.ReproducerComponentIds, reproducer?.ComponentIds, 24),
-                    ReproducerActionKeys = PreserveReproducer(existing.ReproducerActionKeys, reproducer?.ActionKeys, 24),
-                    ReproducerCompositionIds = PreserveReproducer(existing.ReproducerCompositionIds, reproducer?.CompositionIds, 24),
-                    ReproducerModalIds = PreserveReproducer(existing.ReproducerModalIds, reproducer?.ModalIds, 16),
-                    ReproducerForbiddenErrorNames = MergeValues(existing.ReproducerForbiddenErrorNames, reproducerErrors, 12),
+                    ReproducerComponentIds = sameReproducerRoute
+                        ? PreserveReproducer(existing.ReproducerComponentIds, reproducer?.ComponentIds, 24)
+                        : existing.ReproducerComponentIds,
+                    ReproducerActionKeys = sameReproducerRoute
+                        ? PreserveReproducer(existing.ReproducerActionKeys, reproducer?.ActionKeys, 24)
+                        : existing.ReproducerActionKeys,
+                    ReproducerCompositionIds = sameReproducerRoute
+                        ? PreserveReproducer(existing.ReproducerCompositionIds, reproducer?.CompositionIds, 24)
+                        : existing.ReproducerCompositionIds,
+                    ReproducerModalIds = sameReproducerRoute
+                        ? PreserveReproducer(existing.ReproducerModalIds, reproducer?.ModalIds, 16)
+                        : existing.ReproducerModalIds,
+                    ReproducerForbiddenErrorNames = sameReproducerRoute
+                        ? MergeValues(existing.ReproducerForbiddenErrorNames, reproducerErrors, 12)
+                        : existing.ReproducerForbiddenErrorNames,
                     UpdatedUtc = now
                 };
                 updated = Stamp(updated);

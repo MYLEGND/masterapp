@@ -12,10 +12,13 @@ namespace Infrastructure.Migrations
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            var largeTextType = ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
+                ? "nvarchar(max)"
+                : "TEXT";
             migrationBuilder.AddColumn<string>(
                 name: "StructuralReproducerJson",
                 table: "RuntimeDiagnosticIncidents",
-                maxLength: 6000,
+                type: largeTextType,
                 nullable: true);
         }
 
