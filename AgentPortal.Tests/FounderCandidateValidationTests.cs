@@ -353,7 +353,7 @@ public sealed class FounderCandidateValidationTests
             {
                 number = 123, draft = true, state = "open",
                 head = new { sha = HeadSha, @ref = "hotfix/staging-batch", repo = new { full_name = PreflightScenario == "foreign_pr" ? "foreign/repo" : Repository } },
-                @base = new { @ref = "production", repo = new { full_name = Repository } }
+                @base = new { @ref = Branch, repo = new { full_name = Repository } }
             });
             if (path.StartsWith(Repo + "git/commits/", StringComparison.Ordinal))
             {
