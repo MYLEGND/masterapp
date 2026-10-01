@@ -20,6 +20,7 @@ internal sealed class FounderEngineeringCommandCenterService(
     ILegendEngineeringContractAuthority contractAuthority,
     ILegendEngineeringOrchestrator orchestrator,
     ILegendChatGptPlanCredentialAuthority credentials,
+    ILegendEngineeringAgentAdapter adapter,
     IConfiguration configuration)
     : IFounderEngineeringCommandCenterService
 {
@@ -27,9 +28,11 @@ internal sealed class FounderEngineeringCommandCenterService(
     {
         var contract = await contractAuthority.GetCurrentAsync(cancellationToken);
         var history = await contractAuthority.GetHistoryAsync(10, cancellationToken);
-        var credential = await credentials.GetAsync(cancellationToken);
         var status = JsonSerializer.SerializeToElement(
             await orchestrator.GetStatusAsync(cancellationToken),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var adapterStatus = JsonSerializer.SerializeToElement(
+            await adapter.GetStatusAsync(cancellationToken),
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
         return new FounderEngineeringCommandCenterViewModel
@@ -44,15 +47,13 @@ internal sealed class FounderEngineeringCommandCenterService(
             UpdatedUtc = contract.UpdatedUtc,
             UpdatedBy = contract.UpdatedBy,
 
-            ChatGptPlanReady = credential.Ready,
-            ChatGptPlanCode = credential.Code,
-            ChatGptPlanApprovedClient = credential.PrivateClientApproved,
-            ChatGptPlanScopeGranted = credential.GrantedScopes.Contains(
-                "chatgpt.tokens.use.direct", StringComparer.Ordinal),
-            ChatGptPlanExpiresUtc = credential.ExpiresUtc,
-            CodexAppServerConfigured = !string.IsNullOrWhiteSpace(
-                configuration["LegendEngineering:ChatGptPlan:CodexExecutable"]),
-            AdapterEnabled = configuration.GetValue<bool?>("LegendEngineering:ChatGptPlan:Enabled") == true,
+            ChatGptPlanReady = ReadBool(adapterStatus, "credentialReady"),
+            ChatGptPlanCode = ReadString(adapterStatus, "credentialCode"),
+            ChatGptPlanApprovedClient = ReadBool(adapterStatus, "privateClientApproved"),
+            ChatGptPlanScopeGranted = ReadBool(adapterStatus, "planUsageScopeGranted"),
+            ChatGptPlanExpiresUtc = ReadDateTime(adapterStatus, "expiresUtc"),
+            CodexAppServerConfigured = ReadBool(adapterStatus, "codexAppServerConfigured"),
+            AdapterEnabled = ReadBool(adapterStatus, "enabled"),
             AutonomousConfigEnabled = configuration.GetValue<bool?>("LegendEngineering:Autonomous:Enabled") == true,
             HeadGptModel = configuration[$"LegendEngineering:ChatGptPlan:Models:{EngineeringModelTier.DeepReasoning}"] ?? "Not configured",
             CodexModel = configuration[$"LegendEngineering:ChatGptPlan:Models:{EngineeringModelTier.CodeImplementation}"] ?? "Not configured",
@@ -107,4 +108,25 @@ internal sealed class FounderEngineeringCommandCenterService(
         value.TryGetInt32(out var result)
             ? result
             : 0;
+
+    private static bool ReadBool(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(name, out var value) &&
+        value.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+        value.GetBoolean();
+
+    private static string ReadString(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+
+    private static DateTime? ReadDateTime(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.String &&
+        value.TryGetDateTime(out var result)
+            ? result
+            : null;
 }
