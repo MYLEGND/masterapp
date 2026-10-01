@@ -25,10 +25,15 @@ internal sealed class LegendEngineeringHostedService(
             var orchestrator = scope.ServiceProvider.GetRequiredService<ILegendEngineeringOrchestrator>();
             var store = scope.ServiceProvider.GetRequiredService<LegendEngineeringStateStore>();
             var adapter = scope.ServiceProvider.GetRequiredService<ILegendEngineeringAgentAdapter>();
+            var releasePlanner = scope.ServiceProvider.GetRequiredService<LegendEngineeringReleaseCohortPlanner>();
 
             await orchestrator.ProcessIncidentsAsync(
                 Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Autonomous:IncidentScanLimit") ?? 250, 1, 1000),
                 cancellationToken);
+
+            // CI/release reconciliation is deterministic and remains active even
+            // when ChatGPT plan execution is unavailable.
+            await releasePlanner.ReconcileAndReleaseAsync(cancellationToken);
 
             var status = JsonSerializer.SerializeToElement(await adapter.GetStatusAsync(cancellationToken));
             var ready = status.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True;
