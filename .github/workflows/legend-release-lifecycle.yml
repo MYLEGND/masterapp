@@ -11,7 +11,7 @@ on:
       - Step 6 isolated ChatGPT Ads execution validation
       - Steps 7-8 governed advertising and Promote This validation
       - LEGEND approved direct release
-      - Validate, merge, and deploy AgentPortal to production
+      - LEGEND approved release security validation
     types: [completed]
   push:
     branches: [legend/approved-changes]
@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           authority_hash="$(
-            sha256sum               .github/workflows/legend-release-lifecycle.yml               .github/workflows/all-intentional-direct-release-20260918.yml               .github/workflows/step5-isolated-conversion-mapping-validation.yml               scripts/release-lifecycle.py               scripts/release_policy.py               scripts/approved-release-baseline.py               scripts/validation-resume.py               scripts/test-validation-resume.py               scripts/test-release-policy.py               scripts/test-release-lifecycle.py |
+            sha256sum               .github/workflows/legend-release-lifecycle.yml               .github/workflows/all-intentional-direct-release-20260918.yml               .github/workflows/approved-release-security-validation.yml               .github/workflows/step5-isolated-conversion-mapping-validation.yml               scripts/release-lifecycle.py               scripts/release_policy.py               scripts/approved-release-baseline.py               scripts/validation-resume.py               scripts/test-validation-resume.py               scripts/test-release-policy.py               scripts/test-release-lifecycle.py |
             sha256sum | cut -d ' ' -f 1
           )"
           artifact_name="legend-lifecycle-contracts-$authority_hash"
@@ -120,7 +120,7 @@ jobs:
       - name: Refresh after automatically integrated corrections
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request')
         run: git fetch --no-tags --prune origin
-      - name: Reconcile successful releases through existing production gates
+      - name: Recover authorized direct release when needed
         if: github.event_name != 'pull_request_target'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -129,7 +129,7 @@ jobs:
           args=()
           if [ -n "$RELEASE_RUN" ]; then args+=(--run "$RELEASE_RUN"); fi
           python3 scripts/release-lifecycle.py reconcile "${args[@]}"
-      - name: Refresh references after synchronization
+      - name: Refresh approved references before cleanup
         run: git fetch --no-tags --prune origin
       - name: Retire only preserved successfully deployed branches
         if: github.event_name != 'pull_request_target' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')

@@ -35,6 +35,7 @@ WORKFLOW_PATHS = {
         "masterapp-platform-architecture-validation.yml",
         "step6-openai-ads-execution-validation.yml",
         "steps7-8-governed-advertising-validation.yml",
+        "approved-release-security-validation.yml",
     )
 }
 
@@ -142,6 +143,7 @@ WORKFLOWS = {
                 "paths": (
                     ".github/workflows/legend-release-lifecycle.yml",
                     ".github/workflows/all-intentional-direct-release-20260918.yml",
+                    ".github/workflows/approved-release-security-validation.yml",
                     "scripts/release-lifecycle.py",
                     "scripts/release_policy.py",
                     "scripts/approved-release-baseline.py",
@@ -328,6 +330,82 @@ WORKFLOWS = {
             },
         },
     },
+    "approved-release-security-validation.yml": {
+        "unmatched_neutral": True,
+        "force_all": (),
+        "neutral": ("Docs/**", "*.md"),
+        "gates": {
+            "restore": {
+                "step": "Restore security validation graph",
+                "paths": GLOBAL_DOTNET_INPUTS,
+            },
+            "build": {
+                "step": "Build migration validation graph",
+                "paths": (
+                    "scripts/db.sh",
+                    "Infrastructure/Migrations/**",
+                    "Infrastructure/Data/MasterAppDbContext.cs",
+                    "Infrastructure/**DbContext*.cs",
+                    "Domain/Entities/**",
+                ) + GLOBAL_DOTNET_INPUTS,
+                "requires": ("restore",),
+            },
+            "db-validation": {
+                "step": "Validate database migration artifacts",
+                "paths": (
+                    "scripts/db.sh",
+                    "Infrastructure/Migrations/**",
+                    "Infrastructure/Data/MasterAppDbContext.cs",
+                    "Infrastructure/**DbContext*.cs",
+                    "Domain/Entities/**",
+                ) + GLOBAL_DOTNET_INPUTS,
+                "requires": ("build",),
+            },
+            "no-skips": {
+                "step": "Reject skipped security tests",
+                "paths": (
+                    "AgentPortal.Tests/*Antiforgery*.cs",
+                    "AgentPortal.Tests/Phase3IdentityAuthorityTests.cs",
+                    "AgentPortal.Tests/Phase4PlatformSecurityTests.cs",
+                    "AgentPortal.Tests/Phase5CrossPlatformSecurityTests.cs",
+                    "AgentPortal.Tests/Phase6ArchitectureInvariantTests.cs",
+                    "AgentPortal.Tests/CalendarControllerTests.cs",
+                ),
+            },
+            "vulnerabilities": {
+                "step": "Audit dependency vulnerabilities",
+                "paths": GLOBAL_DOTNET_INPUTS,
+                "requires": ("restore",),
+            },
+            "secret-scan": {
+                "step": "Scan committed configuration for secrets",
+                "paths": ("**/appsettings*.json",),
+            },
+            "composition": {
+                "step": "Verify shared composition authorities",
+                "paths": (
+                    "AgentPortal/Program.cs",
+                    "ClientApp/Program.cs",
+                    "Protect-Website/Program.cs",
+                    "ParfaitApp/Program.cs",
+                    "AgentPortal/Services/LegendFounderAiConversationService.cs",
+                ),
+            },
+            "keyring": {
+                "step": "Reject inline Azure key-ring wiring",
+                "paths": (
+                    "AgentPortal/Program.cs",
+                    "ClientApp/Program.cs",
+                    "Protect-Website/Program.cs",
+                    "ParfaitApp/Program.cs",
+                ),
+            },
+            "diff-check": {
+                "step": "Verify patch whitespace integrity",
+                "paths": ("**",),
+            },
+        },
+    },
     "steps7-8-governed-advertising-validation.yml": {
         "unmatched_neutral": True,
         "force_all": (
@@ -407,6 +485,7 @@ RELEASE_STEP_POLICIES = {
         "Capture exact Cloudflare challenge event after failed live proof": "diagnostic_on_failure",
         "Verify every deployed target and collect all failures": "final_live_proof",
         "Enforce complete direct deployment outcome": "finalize",
+        "Retain exact approved release receipt": "artifact_receipt",
     },
     "legend-release-lifecycle.yml": {
         "Resolve lifecycle validation authority identity": "evidence_lookup",
@@ -416,8 +495,8 @@ RELEASE_STEP_POLICIES = {
         "Integrate ready approved change and start direct release": "idempotent_external",
         "Resume ready changes and corrections on retained branches": "idempotent_external",
         "Refresh after automatically integrated corrections": "current_state",
-        "Reconcile successful releases through existing production gates": "idempotent_external",
-        "Refresh references after synchronization": "current_state",
+        "Recover authorized direct release when needed": "idempotent_external",
+        "Refresh approved references before cleanup": "current_state",
         "Retire only preserved successfully deployed branches": "idempotent_external",
         "Retain exact cleanup decisions": "artifact_receipt",
     },

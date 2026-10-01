@@ -16,7 +16,7 @@ permissions:
   pull-requests: read
   id-token: write
 concurrency:
-  group: agentportal-production
+  group: legend-approved-release
   cancel-in-progress: false
 env:
   RELEASE_SHA: ${{ github.sha }}
@@ -1192,4 +1192,21 @@ jobs:
               print(json.dumps({'mode':'approved-only','required':results,'unselected':skipped,'preservedExactLiveTargets':preserved},indent=2))
               assert all(value=='success' for value in results.values())
               assert all(value=='skipped' for value in skipped.values()), 'Unselected release step unexpectedly executed'
+          receipt={
+              'schemaVersion':1,
+              'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
+              'releaseHeadSha':os.environ['RELEASE_SHA'],
+              'selectedTargets':selected,
+              'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+          }
+          with open('/tmp/approved-release-receipt.json','w') as output:
+              json.dump(receipt,output,sort_keys=True,indent=2)
           PYRESULT
+      - name: Retain exact approved release receipt
+        if: success() && env.VALIDATE_ONLY != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}
+          path: /tmp/approved-release-receipt.json
+          retention-days: 90
+          if-no-files-found: error

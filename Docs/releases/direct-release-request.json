@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-10-01 to deploy the already validated and merged PR #349 Founder Engineering Command Center + GPT/Codex live operational contract + canonical browser verifier integration from exact product head 5423743685f0831d24a6606f37f5f7a0b03cd6b8. Preserve all successful validation evidence; this control-only authorization must not cause the completed Step 5 candidate/baseline suites to rerun.",
-  "purpose": "Deploy only the affected AgentPortal runtime for PR #349 from the current protected legend/approved-changes lineage. Apply the two additive engineering/runtime-diagnostic migrations through the existing Portal migration authority, deploy AgentPortal, and prove exact live provenance. Do not deploy ClientApp, Protect, Parfait, the LEGEND Website, native iOS/Android, or Cloudflare routing. Do not enable any API-billed OpenAI fallback.",
-  "requestId": "founder-engineering-command-center-pr349-release-20261001",
+  "authorization": "Explicit Founder authorization on 2026-10-01 to retire the legacy production Git branch authority and make protected legend/approved-changes the sole canonical integration and release path. Publish the affected AgentPortal remediation/runtime authority only after the exact retirement candidate passes all owning validation. Preserve prior successful evidence and rerun only gates invalidated by this authority change.",
+  "purpose": "Deploy only masterapp-portal after the single-branch release-authority retirement is merged. This publishes the Founder software-remediation authority changes that now bind to protected approved-branch validation and direct-release receipts. Do not deploy ClientApp, Protect, Parfait, the static Website, native iOS/Android, or Cloudflare routing. Apply only expected additive migrations if any are pending, preserve exact already-live targets, and require final runtime provenance.",
+  "requestId": "retire-production-branch-authority-20261001",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"

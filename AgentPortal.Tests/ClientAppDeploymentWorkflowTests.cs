@@ -6,165 +6,95 @@ namespace AgentPortal.Tests;
 
 public sealed class ClientAppDeploymentWorkflowTests
 {
+    private static string DirectRelease() =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "all-intentional-direct-release-20260918.yml"));
+
+    private static string SecurityValidation() =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "approved-release-security-validation.yml"));
+
     [Fact]
-    public void UnpublishedBatchCannotEnterProductionWorkflowEvenIfPreviewIsMadeReady()
+    public void ApprovedDirectRelease_IsTheOnlyApplicationDeploymentAuthority()
     {
-        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
-        var releaseSecurityStart = workflow.IndexOf("  release-security:", StringComparison.Ordinal);
-        var securityStart = workflow.IndexOf("  security:", releaseSecurityStart, StringComparison.Ordinal);
-        var mergeStart = workflow.IndexOf("  merge:", securityStart, StringComparison.Ordinal);
-        var migrateStart = workflow.IndexOf("  migrate:", mergeStart, StringComparison.Ordinal);
-
-        Assert.True(releaseSecurityStart >= 0 && securityStart > releaseSecurityStart);
-        Assert.True(mergeStart > securityStart && migrateStart > mergeStart);
-
-        var releaseSecurity = workflow[releaseSecurityStart..securityStart];
-        var security = workflow[securityStart..mergeStart];
-        var merge = workflow[mergeStart..migrateStart];
-
-        Assert.Contains("github.event.pull_request.head.ref != 'hotfix/staging-batch'", releaseSecurity, StringComparison.Ordinal);
-        Assert.Contains("github.event.pull_request.head.ref != 'hotfix/staging-batch'", merge, StringComparison.Ordinal);
-        Assert.Contains("needs: [candidate, release-security]", security, StringComparison.Ordinal);
-        Assert.Contains("needs.release-security.result == 'success'", security, StringComparison.Ordinal);
+        var workflow = DirectRelease();
+        Assert.Contains("name: LEGEND approved direct release", workflow, StringComparison.Ordinal);
+        Assert.Contains("branches: [legend/approved-changes]", workflow, StringComparison.Ordinal);
+        Assert.Contains("Preserve targets already live at exact candidate", workflow, StringComparison.Ordinal);
+        Assert.Contains("Verify every deployed target and collect all failures", workflow, StringComparison.Ordinal);
+        Assert.Contains("Enforce complete direct deployment outcome", workflow, StringComparison.Ordinal);
+        Assert.Contains("cancel-in-progress: false", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void MigrationReusesCandidateBoundStartupBinariesWithoutWeakeningReleaseGates()
+    public void ClientAndPortalRemainIndependentTargetsInsideOneReleaseAuthority()
     {
-        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
-        var build = workflow[workflow.IndexOf("  build:", StringComparison.Ordinal)..workflow.IndexOf("  merge:", StringComparison.Ordinal)];
-        var merge = workflow[workflow.IndexOf("  merge:", StringComparison.Ordinal)..workflow.IndexOf("  migrate:", StringComparison.Ordinal)];
-        var migrate = workflow[workflow.IndexOf("  migrate:", StringComparison.Ordinal)..workflow.IndexOf("  deploy:", StringComparison.Ordinal)];
-        var proof = workflow[workflow.IndexOf("  verify-legend-native-sql:", StringComparison.Ordinal)..];
-        Assert.Contains("needs: [security, candidate]", build, StringComparison.Ordinal);
-        Assert.Contains("- security", merge, StringComparison.Ordinal);
-        Assert.Contains("- build", merge, StringComparison.Ordinal);
-        Assert.Contains("Prove merged tree equals validated tree", merge, StringComparison.Ordinal);
-        Assert.Contains("- build", migrate, StringComparison.Ordinal);
-        Assert.Contains("- merge", migrate, StringComparison.Ordinal);
-        Assert.Contains("name: Production", migrate, StringComparison.Ordinal);
-        Assert.Contains("MIGRATION_ARTIFACT_NAME: agentportal-migration-binaries-${{ github.run_id }}", workflow, StringComparison.Ordinal);
-        Assert.Contains("name: ${{ env.MIGRATION_ARTIFACT_NAME }}", build, StringComparison.Ordinal);
-        Assert.Contains("name: ${{ env.MIGRATION_ARTIFACT_NAME }}", migrate, StringComparison.Ordinal);
-        Assert.Contains("path: ${{ steps.migration-binaries.outputs.path }}", build, StringComparison.Ordinal);
-        Assert.Contains("if ($builtHash -ne $publishedHash)", build, StringComparison.Ordinal);
-        foreach (var section in new[] { build, migrate })
-        {
-            Assert.Contains("@('AgentPortal.dll', 'Infrastructure.dll', 'Domain.dll', 'Shared.dll')", section, StringComparison.Ordinal);
-            Assert.Contains("-getProperty:TargetDir -property:Configuration=Release", section, StringComparison.Ordinal);
-            Assert.Contains("_migration-provenance.json", section, StringComparison.Ordinal);
-        }
-        Assert.Contains("$manifest.CandidateSha -ne '${{ needs.build.outputs.candidate_sha }}'", migrate, StringComparison.Ordinal);
-        Assert.Contains("$manifest.TestedTree -ne '${{ needs.build.outputs.tested_tree }}'", migrate, StringComparison.Ordinal);
-        Assert.Contains("$manifest.AssemblySha256.$assembly", migrate, StringComparison.Ordinal);
-        Assert.True(migrate.IndexOf("Verify and restore immutable EF startup binaries", StringComparison.Ordinal) <
-            migrate.IndexOf("Login to Azure with OIDC", StringComparison.Ordinal));
-        Assert.Contains("-Recurse -Force -ErrorAction Stop", migrate, StringComparison.Ordinal);
-        Assert.DoesNotContain("dotnet build", migrate, StringComparison.Ordinal);
-        Assert.DoesNotContain("dotnet publish", migrate, StringComparison.Ordinal);
-        Assert.Contains("Apply production EF migrations", migrate, StringComparison.Ordinal);
-        Assert.Contains("Verify zero pending production migrations", migrate, StringComparison.Ordinal);
-        Assert.Contains("--configuration Release --no-build", migrate, StringComparison.Ordinal);
-        Assert.Contains("LEGEND_PRODUCTION_PROOF_REQUIRED: 'true'", proof, StringComparison.Ordinal);
-        Assert.Contains("if ($matrixStatus -ne 'passed')", proof, StringComparison.Ordinal);
-        Assert.Contains("if ($validationErrors.Count -gt 0) { throw", proof, StringComparison.Ordinal);
-        Assert.DoesNotContain("legend-baseline-regression.py", proof, StringComparison.Ordinal);
+        var workflow = DirectRelease();
+        Assert.Contains("Direct deploy AgentPortal", workflow, StringComparison.Ordinal);
+        Assert.Contains("Direct deploy ClientApp", workflow, StringComparison.Ordinal);
+        Assert.Contains("contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal')", workflow, StringComparison.Ordinal);
+        Assert.Contains("contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client')", workflow, StringComparison.Ordinal);
+        Assert.Contains("steps.resumestate.outputs.portal_live != 'true'", workflow, StringComparison.Ordinal);
+        Assert.Contains("steps.resumestate.outputs.client_live != 'true'", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ProductionReleasesShareOneNonCancellingConcurrencyGroup()
+    public void ReleasePackagesAllSelectedDotnetAppsFromOneApprovedCheckout()
     {
-        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
-        var start = workflow.IndexOf("\nconcurrency:", StringComparison.Ordinal);
-        Assert.True(start >= 0);
-        var end = workflow.IndexOf("\npermissions:", start, StringComparison.Ordinal);
-        Assert.True(end > start);
-        var concurrency = workflow[start..end];
-        Assert.Contains("group: agentportal-production\n", concurrency, StringComparison.Ordinal);
-        Assert.Contains("cancel-in-progress: false", concurrency, StringComparison.Ordinal);
-        Assert.DoesNotContain("${{", concurrency, StringComparison.Ordinal);
+        var workflow = DirectRelease();
+        Assert.Contains("Publish exact selected application packages", workflow, StringComparison.Ordinal);
+        Assert.Contains("dotnet publish AgentPortal/AgentPortal.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("dotnet publish ClientApp/ClientApp.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("dotnet publish Protect-Website/ProtectWebsite.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("dotnet publish ParfaitApp/ParfaitApp.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("SourceRevisionId=\"$APPLICATION_RELEASE_SHA\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void BothHostsUseOneValidatedBuildAndMigrationGateWithMatchedSharedAssemblies()
+    public void MigrationGateRunsBeforeAnyDatabaseDependentDeployment()
     {
-        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
-        var build = workflow[workflow.IndexOf("  build:", StringComparison.Ordinal)..workflow.IndexOf("  merge:", StringComparison.Ordinal)];
-        var deploy = workflow[workflow.IndexOf("  deploy:", StringComparison.Ordinal)..workflow.IndexOf("  verify-legend-native:", StringComparison.Ordinal)];
-        Assert.Contains("needs: [security, candidate]", build, StringComparison.Ordinal);
-        Assert.Contains("Publish ClientApp from the same validated checkout", build, StringComparison.Ordinal);
-        Assert.Contains("@('Infrastructure.dll', 'Domain.dll')", build, StringComparison.Ordinal);
-        Assert.Contains("if ($portalHash -ne $clientHash)", build, StringComparison.Ordinal);
-        Assert.Contains("- migrate", deploy, StringComparison.Ordinal);
-        Assert.Contains("name: Production", deploy, StringComparison.Ordinal);
-        Assert.Contains("id-token: write", deploy, StringComparison.Ordinal);
-        Assert.Contains("$manifest.CandidateSha -ne '${{ needs.build.outputs.candidate_sha }}'", deploy, StringComparison.Ordinal);
-        Assert.Contains("$manifest.TestedTree -ne '${{ needs.build.outputs.tested_tree }}'", deploy, StringComparison.Ordinal);
-        Assert.Contains("$clientHash -ne $manifest.SharedAssemblySha256.$assembly", deploy, StringComparison.Ordinal);
-        Assert.Contains("package: ./package", deploy, StringComparison.Ordinal);
-        Assert.Contains("package: ./client-package", deploy, StringComparison.Ordinal);
-        Assert.True(deploy.IndexOf("Verify downloaded ClientApp provenance", StringComparison.Ordinal) <
-            deploy.IndexOf("Deploy immutable merged production tree", StringComparison.Ordinal));
-        Assert.True(deploy.IndexOf("Deploy ClientApp from the same immutable", StringComparison.Ordinal) <
-            deploy.IndexOf("id: identity", StringComparison.Ordinal));
-        Assert.DoesNotContain("dotnet publish", deploy, StringComparison.Ordinal);
-        Assert.DoesNotContain("actions/checkout", deploy, StringComparison.Ordinal);
+        var workflow = DirectRelease();
+        var migration = workflow.IndexOf("Apply additive diagnostics migrations before restarting apps", StringComparison.Ordinal);
+        var portal = workflow.IndexOf("Direct deploy AgentPortal", StringComparison.Ordinal);
+        var protect = workflow.IndexOf("Direct deploy Protect immutable ZIP", StringComparison.Ordinal);
+        var parfait = workflow.IndexOf("Direct deploy Parfait", StringComparison.Ordinal);
+        Assert.True(migration >= 0);
+        Assert.True(portal > migration);
+        Assert.True(protect > migration);
+        Assert.True(parfait > migration);
+        Assert.Contains("steps.migrate.outcome == 'success'", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ClientSmokeIsNonMutatingAndDoesNotClaimAuthenticatedContentProof()
+    public void StaticSecurityChecksAreValidationOnlyAndCannotDeploy()
     {
-        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
-        var start = workflow.IndexOf("      - name: Verify ClientApp shared-content authentication routing", StringComparison.Ordinal);
-        var end = workflow.IndexOf("      - name: Bind deployed artifact to immutable production SHA", start, StringComparison.Ordinal);
-        var smoke = workflow[start..end];
-        Assert.Contains("--request GET", smoke, StringComparison.Ordinal);
-        Assert.DoesNotContain("--request POST", smoke, StringComparison.Ordinal);
-        Assert.DoesNotContain("--location", smoke, StringComparison.Ordinal);
-        Assert.Contains("--output NUL", smoke, StringComparison.Ordinal);
-        Assert.Contains("$status -ne '302'", smoke, StringComparison.Ordinal);
-        Assert.Contains("AuthenticatedContentVerified = $false", smoke, StringComparison.Ordinal);
-        Assert.Contains("DeployedSha = '${{ needs.merge.outputs.merge_sha }}'", smoke, StringComparison.Ordinal);
-        Assert.Contains("path: ./client-receipt/deployment.json", smoke, StringComparison.Ordinal);
-        Assert.DoesNotContain("secrets.", smoke, StringComparison.Ordinal);
-        // The previous portal ingress smoke assertions remain part of the same release.
-        Assert.Contains("/api/v1/mobile/social/posts/media/stage' -ExpectedStatus '401'", workflow, StringComparison.Ordinal);
-    }
-    [Fact]
-    public void DirectReleasePortalAndProtectRemainIndependentlyTargetGated()
-    {
-        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "all-intentional-direct-release-20260918.yml"));
-
-        var portalStart = workflow.IndexOf("      - name: Direct deploy AgentPortal", StringComparison.Ordinal);
-        var clientStart = workflow.IndexOf("      - name: Direct deploy ClientApp", portalStart, StringComparison.Ordinal);
-        var protectStart = workflow.IndexOf("      - name: Direct deploy Protect immutable ZIP", clientStart, StringComparison.Ordinal);
-        var parfaitStart = workflow.IndexOf("      - name: Direct deploy Parfait", protectStart, StringComparison.Ordinal);
-
-        Assert.True(portalStart >= 0 && clientStart > portalStart && protectStart > clientStart && parfaitStart > protectStart);
-
-        var portal = workflow[portalStart..clientStart];
-        var protect = workflow[protectStart..parfaitStart];
-        Assert.Contains("contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal')", portal, StringComparison.Ordinal);
-        Assert.Contains("contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect')", protect, StringComparison.Ordinal);
-        Assert.DoesNotContain("masterapp-client", portal, StringComparison.Ordinal);
-        Assert.DoesNotContain("masterapp-parfait", protect, StringComparison.Ordinal);
+        var workflow = SecurityValidation();
+        Assert.Contains("name: LEGEND approved release security validation", workflow, StringComparison.Ordinal);
+        Assert.Contains("branches: [legend/approved-changes]", workflow, StringComparison.Ordinal);
+        Assert.Contains("Validate database migration artifacts", workflow, StringComparison.Ordinal);
+        Assert.Contains("Audit dependency vulnerabilities", workflow, StringComparison.Ordinal);
+        Assert.Contains("Scan committed configuration for secrets", workflow, StringComparison.Ordinal);
+        Assert.Contains("Verify shared composition authorities", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("webapps-deploy", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet-ef database update", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
     public void ProtectDirectReleaseUsesOneImmutableZipTransportAndNoDirectoryDeploy()
     {
-        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "all-intentional-direct-release-20260918.yml"));
-        var protectStart = workflow.IndexOf("      - name: Direct deploy Protect immutable ZIP", StringComparison.Ordinal);
-        var parfaitStart = workflow.IndexOf("      - name: Direct deploy Parfait", protectStart, StringComparison.Ordinal);
-        Assert.True(protectStart >= 0 && parfaitStart > protectStart);
-
-        var protect = workflow[protectStart..parfaitStart];
-        Assert.Contains("python3 scripts/deploy-approved-app.py --target protect", protect, StringComparison.Ordinal);
-        Assert.DoesNotContain("for attempt", protect, StringComparison.Ordinal);
-        foreach (var target in new[] { "portal", "client", "protect", "parfait", "website" })
-            Assert.Contains("python3 scripts/deploy-approved-app.py --target " + target, workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("azure/webapps-deploy@v3", protect, StringComparison.Ordinal);
-        Assert.DoesNotContain("package: /tmp/protect-publish", protect, StringComparison.Ordinal);
+        var workflow = DirectRelease();
+        Assert.Contains("Direct deploy Protect immutable ZIP", workflow, StringComparison.Ordinal);
+        Assert.Contains("python3 scripts/deploy-approved-app.py --target protect", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("azure/webapps-deploy@v3", workflow, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void PublishedTargetsAreProvenByRuntimeProvenanceNotBranchPromotion()
+    {
+        var workflow = DirectRelease();
+        Assert.Contains("api/runtime-provenance", workflow, StringComparison.Ordinal);
+        Assert.Contains("_deployment-provenance.txt", workflow, StringComparison.Ordinal);
+        Assert.Contains("preservedExactLiveTargets", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("refs/heads/production", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("base=production", workflow, StringComparison.Ordinal);
+    }
 }

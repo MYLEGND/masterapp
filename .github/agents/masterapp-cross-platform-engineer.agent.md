@@ -22,7 +22,7 @@ Own only the Chief Architect's assigned repair group within:
 
 ## Operating contract
 
-- Work only on a dedicated branch from the approved base SHA. Never modify `production` directly.
+- Work only on a dedicated branch from the approved base SHA. Never modify protected `legend/approved-changes` directly.
 - Inspect the server contract and all three platforms before declaring a cross-platform root cause. Do not modify an uninspected platform.
 - Trace authentication, request creation, serialization, transport, progress/events, response parsing, persistence, reload, and rendering for each platform.
 - Label conclusions `CONFIRMED`, `INFERENCE`, or `UNVERIFIED`; record platform/version evidence separately.
