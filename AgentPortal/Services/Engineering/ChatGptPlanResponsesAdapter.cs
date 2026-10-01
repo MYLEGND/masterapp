@@ -36,23 +36,30 @@ internal sealed class ChatGptPlanResponsesAdapter(
             ? await GetModelCatalogAsync(credential, cancellationToken)
             : new EngineeringModelCatalog(false, credential.Code, []);
 
-        var head = ResolveModel(contract.HeadGptModel, catalog);
-        var codex = ResolveModel(contract.CodexModel, catalog);
-        var reviewer = ResolveModel(contract.ReviewerModel, catalog);
-        var modelsReady = catalog.Ready &&
-                          head is not null &&
-                          codex is not null &&
-                          reviewer is not null;
-        var runtimeReady = credential.Ready && modelsReady;
+        var signature = ReadinessSignature(credential.ClientId, contract);
+        var readinessMatches =
+            string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) &&
+            string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase);
+        var head = ResolveReadyModel(EngineeringRole.HeadGpt, credential, catalog);
+        var codex = ResolveReadyModel(EngineeringRole.CodexImplementer, credential, catalog);
+        var reviewer = ResolveReadyModel(EngineeringRole.IndependentReviewer, credential, catalog);
+        var modelsReady = catalog.Ready && readinessMatches &&
+                          head is not null && codex is not null && reviewer is not null;
+        var circuitOpen = !string.IsNullOrWhiteSpace(credential.ProviderBlockerCode);
+        var runtimeReady = credential.Ready && modelsReady && !circuitOpen;
         var eligibility = !contract.ModelExecutionEnabled
             ? "engineering_operational_execution_paused"
             : !credential.Ready
                 ? credential.Code
-                : !catalog.Ready
-                    ? catalog.Code
-                    : !modelsReady
-                        ? "chatgpt_plan_model_binding_unavailable"
-                        : "chatgpt_plan_ready";
+                : circuitOpen
+                    ? credential.ProviderBlockerCode!
+                    : !catalog.Ready
+                        ? catalog.Code
+                        : !readinessMatches
+                            ? credential.ReadinessCode ?? "chatgpt_plan_readiness_canary_required"
+                            : !modelsReady
+                                ? "chatgpt_plan_model_binding_unavailable"
+                                : "chatgpt_plan_inference_ready";
 
         return new
         {
@@ -78,6 +85,19 @@ internal sealed class ChatGptPlanResponsesAdapter(
             modelCatalogReady = catalog.Ready,
             modelCatalogCode = catalog.Code,
             modelCount = catalog.Models.Count,
+            readinessState = credential.ReadinessState,
+            readinessCode = credential.ReadinessCode,
+            readinessCheckedUtc = credential.ReadinessCheckedUtc,
+            readinessSignature = credential.ReadinessSignature,
+            providerBlockerClass = credential.ProviderBlockerClass,
+            providerBlockerCode = credential.ProviderBlockerCode,
+            providerBlockedUtc = credential.ProviderBlockedUtc,
+            providerRetryNotBeforeUtc = credential.ProviderRetryNotBeforeUtc,
+            providerRequestId = credential.ProviderRequestId,
+            providerHttpStatus = credential.ProviderHttpStatus,
+            providerCircuitEpisodeId = credential.ProviderCircuitEpisodeId,
+            providerRecoveredEpisodeId = credential.ProviderRecoveredEpisodeId,
+            providerRecoveredUtc = credential.ProviderRecoveredUtc,
             resolvedHeadGptModel = head ?? string.Empty,
             resolvedCodexModel = codex ?? string.Empty,
             resolvedReviewerModel = reviewer ?? string.Empty,
