@@ -83,6 +83,16 @@ def reusable_live_application_revision(rows, head):
 
 
 
+def exact_live_release(rows, application_release_sha, release_mode, website_routing):
+    """True only when publication cannot change any selected application target."""
+    return (
+        release_mode == 'approved-only'
+        and not website_routing
+        and bool(rows)
+        and all(row['revision'] == application_release_sha for row in rows)
+    )
+
+
 def release_package_contract_hash():
     resume_path = Path(__file__).with_name("validation-resume.py")
     spec = importlib.util.spec_from_file_location("validation_resume", resume_path)
@@ -225,6 +235,14 @@ def main():
         website_routing,
         website_routing_canary,
     )
+    exact_live = exact_live_release(
+        rows,
+        application_release_sha,
+        release_mode,
+        website_routing,
+    )
+    if exact_live:
+        print('All selected application targets already expose the exact approved application revision; publication work is unnecessary.')
     print(json.dumps(rows, indent=2))
     if args.output:
         with args.output.open('a') as out:
@@ -240,6 +258,7 @@ def main():
             out.write('website_routing=' + str(website_routing).lower() + '\n')
             out.write('website_routing_canary=' + website_routing_canary + '\n')
             out.write('preserve_live_targets=' + str(preserve_live_targets).lower() + '\n')
+            out.write('exact_live=' + str(exact_live).lower() + '\n')
             out.write('application_release_sha=' + application_release_sha + '\n')
             out.write('package_identity=' + package_identity + '\n')
 

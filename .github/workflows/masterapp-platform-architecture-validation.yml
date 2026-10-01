@@ -32,7 +32,7 @@ permissions:
 
 concurrency:
   group: masterapp-platform-architecture-validation-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -49,19 +49,13 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
       - name: Plan exact validation resume
+        id: plan
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          plan="$RUNNER_TEMP/validation-resume.json"
           python3 scripts/validation-resume.py plan \
             --workflow masterapp-platform-architecture-validation.yml \
             --current-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
@@ -70,7 +64,35 @@ jobs:
             --head-branch "${{ github.head_ref || github.ref_name }}" \
             --event "${{ github.event_name }}" \
             --repository "${{ github.repository }}" \
-            --output "$RUNNER_TEMP/validation-resume.json"
+            --output "$plan"
+          python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPLAN'
+          import json, sys
+          data=json.load(open(sys.argv[1]))
+          running={key for key,row in data.get('gates',{}).items() if row.get('run')}
+          dotnet={
+              'restore-dotnet','build-infrastructure','build-hosts','build-protect','tracking-assets',
+              'compile-regression','founder-diagnostics-regressions','domain-release',
+              'website-regressions','meta-regressions','booking-regressions','crm-regressions',
+          }
+          node={
+              'mobile','renderer-install','renderer-build','renderer-parity','renderer-tests',
+              'cms-install','cms-tests','form-tracking',
+          }
+          with open(sys.argv[2],'a') as output:
+              output.write('dotnet='+str(bool(running & dotnet)).lower()+'\n')
+              output.write('node='+str(bool(running & node)).lower()+'\n')
+              output.write('all_preserved='+str(not running).lower()+'\n')
+          PYPLAN
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.plan.outputs.dotnet == 'true'
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        if: steps.plan.outputs.node == 'true'
+        with:
+          node-version: '24'
 
       - name: Run branch lifecycle safety contracts
         shell: bash

@@ -82,6 +82,29 @@ class ReleaseScopeSelection(unittest.TestCase):
             )
 
 
+    def test_exact_live_release_requires_every_selected_target_and_no_routing(self):
+        rows = [{"revision": "a" * 40}, {"revision": "a" * 40}]
+        self.assertTrue(
+            self.baseline.exact_live_release(rows, "a" * 40, "approved-only", False)
+        )
+        self.assertFalse(
+            self.baseline.exact_live_release(rows, "a" * 40, "validate-only", False)
+        )
+        self.assertFalse(
+            self.baseline.exact_live_release(rows, "a" * 40, "approved-only", True)
+        )
+        self.assertFalse(
+            self.baseline.exact_live_release(
+                [{"revision": "a" * 40}, {"revision": "b" * 40}],
+                "a" * 40,
+                "approved-only",
+                False,
+            )
+        )
+        self.assertFalse(
+            self.baseline.exact_live_release([], "a" * 40, "approved-only", False)
+        )
+
     def test_package_identity_is_scope_and_contract_bound(self):
         targets = (
             ("portal", "portal.mylegnd.com", "AgentPortal/AgentPortal.csproj"),
@@ -489,6 +512,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Retain exact approved release receipt', workflow)
         self.assertIn('legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}', workflow)
         self.assertIn("'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA']", workflow)
+        self.assertIn('Reuse exact retained live package when available', workflow)
+        self.assertIn('EXACT_LIVE', workflow)
+        self.assertIn("'mode':'exact-live-noop'", workflow)
+        self.assertIn('retention-days: 30', workflow)
 
     def test_approved_security_validation_preserves_static_release_safety_gates(self):
         workflow=(ROOT.parent / '.github/workflows/approved-release-security-validation.yml').read_text()
@@ -499,7 +526,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Scan committed configuration for secrets', workflow)
         self.assertIn('Verify shared composition authorities', workflow)
         self.assertIn('Reject inline Azure key-ring wiring', workflow)
-        self.assertIn('cancel-in-progress: false', workflow)
+        self.assertIn('cancel-in-progress: true', workflow)
         self.assertNotIn('webapps-deploy', workflow)
         self.assertNotIn('database update', workflow)
         self.assertNotIn('git/ref/heads/production', workflow)
@@ -527,14 +554,24 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         ):
             workflow=(ROOT.parent / '.github/workflows' / name).read_text()
             self.assertIn('scripts/validation-resume.py plan', workflow, name)
-            self.assertIn('cancel-in-progress: false', workflow, name)
+            self.assertIn('cancel-in-progress: true', workflow, name)
         step5=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
         self.assertIn('candidate_baseline_jobs_unchanged', step5)
-        self.assertNotIn('scripts/validation-resume.py job-unchanged', step5)
-        self.assertIn('cancel-in-progress: false', step5)
+        self.assertIn('scripts/validation-resume.py job-unchanged', step5)
+        self.assertIn('cancel-in-progress: true', step5)
+        self.assertIn('step5-tree-candidate-', step5)
+        self.assertIn('step5-tree-baseline-', step5)
         self.assertIn('mode=reuse', step5)
         self.assertIn('Start from durable baseline artifacts, not the workflow-runs index.', step5)
         self.assertFalse((ROOT.parent / '.github/workflows/step5-approved-baseline-control.yml').exists())
+
+    def test_release_mutation_authorities_remain_serialized(self):
+        for name in (
+            'legend-release-lifecycle.yml',
+            'all-intentional-direct-release-20260918.yml',
+        ):
+            workflow=(ROOT.parent / '.github/workflows' / name).read_text()
+            self.assertIn('cancel-in-progress: false', workflow, name)
 
     def test_release_orchestrator_contract_checks_are_receipt_reusable(self):
         lifecycle=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()

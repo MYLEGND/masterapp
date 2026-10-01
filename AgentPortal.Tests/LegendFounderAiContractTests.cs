@@ -1281,7 +1281,7 @@ public sealed class LegendFounderAiContractTests
         var workflow = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "approved-release-security-validation.yml"));
         Assert.Contains("scripts/validation-resume.py plan", workflow, StringComparison.Ordinal);
-        Assert.Contains("cancel-in-progress: false", workflow, StringComparison.Ordinal);
+        Assert.Contains("cancel-in-progress: true", workflow, StringComparison.Ordinal);
         Assert.Contains("Validate database migration artifacts", workflow, StringComparison.Ordinal);
         Assert.Contains("Reject skipped security tests", workflow, StringComparison.Ordinal);
         Assert.Contains("Reject inline Azure key-ring wiring", workflow, StringComparison.Ordinal);
