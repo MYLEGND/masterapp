@@ -27,6 +27,31 @@ namespace Infrastructure.Migrations
                 columns: new[] { "LockKey", "Revision" },
                 values: new object[] { "lease-authority", 0L });
 
+            migrationBuilder.InsertData(
+                table: "LegendEngineeringControlLocks",
+                columns: new[] { "LockKey", "Revision" },
+                values: new object[] { "chatgpt-plan-credential", 0L });
+
+            migrationBuilder.CreateTable(
+                name: "LegendEngineeringChatGptPlanCredentials",
+                columns: table => new
+                {
+                    CredentialKey = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    ClientId = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    AccessTokenCiphertext = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    RefreshTokenCiphertext = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    GrantedScopesJson = table.Column<string>(type: "nvarchar(max)", maxLength: 4000, nullable: false),
+                    AccessTokenExpiresUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    State = table.Column<string>(type: "nvarchar(48)", maxLength: 48, nullable: false),
+                    Revision = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
+                    RefreshLeaseIdentity = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: true),
+                    RefreshLeaseUntilUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    ConnectedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    LastRefreshedUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table => table.PrimaryKey("PK_LegendEngineeringChatGptPlanCredentials", x => x.CredentialKey));
+
             migrationBuilder.CreateTable(
                 name: "LegendEngineeringWorkItems",
                 columns: table => new
@@ -126,6 +151,7 @@ namespace Infrastructure.Migrations
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(name: "LegendEngineeringChatGptPlanCredentials");
             migrationBuilder.DropTable(name: "LegendEngineeringUsage");
             migrationBuilder.DropTable(name: "LegendEngineeringContexts");
             migrationBuilder.DropTable(name: "LegendEngineeringWorkItems");
