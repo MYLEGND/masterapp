@@ -375,6 +375,190 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.True(totals.UsageEvidenceComplete);
     }
 
+
+    [Fact]
+    public async Task ProviderFailure_DoesNotConsumeLogicalEngineeringAttempt()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(
+            incident, LegendEngineeringPolicies.Classify(incident), default);
+
+        await _store.RecordUsageAsync(new EngineeringUsageObservation(
+            Guid.NewGuid(), item.WorkItemId, EngineeringModelTier.CodeImplementation,
+            EngineeringRole.CodexImplementer, "ChatGPTPlanResponses", "resp-created",
+            null, null, null, null, false, DateTime.UtcNow,
+            ProviderAttempted: true,
+            LogicalAttemptCompleted: false,
+            ProviderOutcome: "OUTCOME_UNKNOWN",
+            ProviderStatusCode: 503,
+            ProviderErrorCode: "subscription_sharing_usage_unavailable",
+            ProviderRequestId: "req-fixture"), default);
+
+        Assert.Equal(0, await _store.CountModelAttemptsAsync(
+            item.WorkItemId, EngineeringRole.CodexImplementer, default));
+    }
+
+    [Fact]
+    public async Task ExpiredLeaseRecovery_RestoresExactPriorActionableState()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(
+            incident, LegendEngineeringPolicies.Classify(incident), default);
+        var priorState = item.State;
+        var lease = await _store.TryAcquireLeaseAsync(
+            item.WorkItemId, "owner-a", TimeSpan.FromMinutes(5), default);
+        Assert.True(lease.Acquired);
+
+        var leased = await _store.GetWorkItemAsync(item.WorkItemId, default);
+        Assert.NotNull(leased);
+        await _store.UpdateWorkItemAsync(
+            leased! with { LeaseExpiresUtc = DateTime.UtcNow.AddMinutes(-1) },
+            default);
+
+        Assert.Equal(1, await _store.RecoverExpiredLeasesAsync(DateTime.UtcNow, default));
+        var recovered = await _store.GetWorkItemAsync(item.WorkItemId, default);
+        Assert.NotNull(recovered);
+        Assert.Equal(priorState, recovered!.State);
+        Assert.Null(recovered.LeaseIdentity);
+        Assert.Null(recovered.LeaseOwner);
+        Assert.Null(recovered.LeaseExpiresUtc);
+    }
+
+    [Fact]
+    public async Task ProviderRetryTransition_ClearsLease_AndResumesOnlyWhenDue()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(
+            incident, LegendEngineeringPolicies.Classify(incident), default);
+        var priorState = item.State;
+        var lease = await _store.TryAcquireLeaseAsync(
+            item.WorkItemId, "owner-a", TimeSpan.FromMinutes(5), default);
+        Assert.True(lease.Acquired);
+
+        var retryUtc = DateTime.UtcNow.AddMinutes(5);
+        var waiting = await _store.TransitionProviderFailureAsync(
+            item.WorkItemId,
+            lease.LeaseIdentity!,
+            "chatgpt_plan_response_temporarily_unavailable",
+            "req-fixture",
+            retryUtc,
+            waitForProviderControl: false,
+            default);
+        Assert.NotNull(waiting);
+        Assert.Equal("WAITING_PROVIDER_RETRY", waiting!.State);
+        Assert.Null(waiting.LeaseIdentity);
+        Assert.Equal(priorState, waiting.ResumeState);
+        Assert.Equal(0, await _store.ActivateProviderWaitingWorkAsync(
+            retryUtc.AddSeconds(-1), releaseProviderControlBlocks: false, default));
+        Assert.Equal(1, await _store.ActivateProviderWaitingWorkAsync(
+            retryUtc.AddSeconds(1), releaseProviderControlBlocks: false, default));
+
+        var resumed = await _store.GetWorkItemAsync(item.WorkItemId, default);
+        Assert.NotNull(resumed);
+        Assert.Equal(priorState, resumed!.State);
+        Assert.Null(resumed.NextRetryUtc);
+        Assert.Null(resumed.ResumeState);
+    }
+
+    [Fact]
+    public async Task ChatGptPlanCircuit_IsAccountWide_EpisodeAware_AndClearedOnlyByReadinessProof()
+    {
+        var authority = PlanCredentialAuthority(new PlanTokenHandler(HttpStatusCode.OK, "{}"));
+        await authority.StoreAuthorizationAsync(
+            "client-fixture",
+            "access-token-1234567890",
+            "refresh-token-1234567890",
+            new[] { "openid", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct" },
+            DateTime.UtcNow.AddHours(1),
+            default);
+
+        await authority.RecordProviderFailureAsync(
+            new ChatGptPlanProviderFailure(
+                "USAGE_LIMIT",
+                "subscription_sharing_usage_limit_exceeded",
+                null,
+                "req-limit",
+                429,
+                null),
+            default);
+
+        var blocked = await authority.GetAsync(default);
+        Assert.Equal("USAGE_LIMIT", blocked.ProviderBlockerClass);
+        Assert.Equal("subscription_sharing_usage_limit_exceeded", blocked.ProviderBlockerCode);
+        Assert.False(string.IsNullOrWhiteSpace(blocked.ProviderCircuitEpisodeId));
+
+        var denied = await authority.TryAcquireProviderExecutionLeaseAsync(
+            "worker-a", TimeSpan.FromMinutes(2), allowCircuitProbe: false, default);
+        Assert.False(denied.Acquired);
+        Assert.Equal(blocked.ProviderBlockerCode, denied.Code);
+
+        var episode = blocked.ProviderCircuitEpisodeId;
+        await authority.RecordReadinessSuccessAsync(
+            new string('a', 64),
+            new Dictionary<string, string>
+            {
+                [EngineeringRole.HeadGpt] = "model-a",
+                [EngineeringRole.CodexImplementer] = "model-a",
+                [EngineeringRole.IndependentReviewer] = "model-a"
+            },
+            "resp-ready",
+            "req-ready",
+            default);
+
+        var recovered = await authority.GetAsync(default);
+        Assert.Null(recovered.ProviderBlockerCode);
+        Assert.Null(recovered.ProviderCircuitEpisodeId);
+        Assert.Equal(episode, recovered.ProviderRecoveredEpisodeId);
+        Assert.Equal("READY", recovered.ReadinessState);
+    }
+
+    [Fact]
+    public async Task ChatGptPlanProviderExecutionLease_SerializesAcrossWorkers()
+    {
+        var authority = PlanCredentialAuthority(new PlanTokenHandler(HttpStatusCode.OK, "{}"));
+        await authority.StoreAuthorizationAsync(
+            "client-fixture",
+            "access-token-1234567890",
+            "refresh-token-1234567890",
+            new[] { "openid", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct" },
+            DateTime.UtcNow.AddHours(1),
+            default);
+
+        var first = await authority.TryAcquireProviderExecutionLeaseAsync(
+            "worker-a", TimeSpan.FromMinutes(2), allowCircuitProbe: false, default);
+        Assert.True(first.Acquired);
+        var second = await authority.TryAcquireProviderExecutionLeaseAsync(
+            "worker-b", TimeSpan.FromMinutes(2), allowCircuitProbe: false, default);
+        Assert.False(second.Acquired);
+        Assert.Equal("chatgpt_plan_provider_execution_busy", second.Code);
+
+        await authority.ReleaseProviderExecutionLeaseAsync(first.LeaseIdentity!, default);
+        var afterRelease = await authority.TryAcquireProviderExecutionLeaseAsync(
+            "worker-b", TimeSpan.FromMinutes(2), allowCircuitProbe: false, default);
+        Assert.True(afterRelease.Acquired);
+    }
+
+    [Fact]
+    public void EngineeringRuntime_HasNoHiddenBillingModeOrParallelExecutionAuthority()
+    {
+        var root = SourceRoot();
+        var budget = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering", "LegendEngineeringBudgetAuthority.cs"));
+        var hosted = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering", "LegendEngineeringHostedService.cs"));
+        var adapter = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering", "ChatGptPlanResponsesAdapter.cs"));
+
+        Assert.DoesNotContain("LegendEngineering:Budget:Mode", budget, StringComparison.Ordinal);
+        Assert.Contains("CHATGPT_PLAN_PROVIDER_ENFORCED", budget, StringComparison.Ordinal);
+        Assert.Contains("RecoverExpiredLeasesAsync", hosted, StringComparison.Ordinal);
+        Assert.Contains("TryAcquireProviderExecutionLeaseAsync", adapter, StringComparison.Ordinal);
+        Assert.Contains("response.incomplete", adapter, StringComparison.Ordinal);
+        Assert.Contains("ProviderRequestId", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("OPENAI_API_KEY", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("/v1/agents", adapter, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task WorkItemStateRevision_RejectsStaleWriterWithoutUsingMutableTimestamp()
     {
