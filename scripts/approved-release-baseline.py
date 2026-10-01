@@ -225,6 +225,13 @@ def main():
         website_routing,
         website_routing_canary,
     )
+    exact_live = (
+        release_mode == 'approved-only'
+        and not website_routing
+        and all(row['revision'] == application_release_sha for row in rows)
+    )
+    if exact_live:
+        print('All selected application targets already expose the exact approved application revision; publication work is unnecessary.')
     print(json.dumps(rows, indent=2))
     if args.output:
         with args.output.open('a') as out:
@@ -240,6 +247,7 @@ def main():
             out.write('website_routing=' + str(website_routing).lower() + '\n')
             out.write('website_routing_canary=' + website_routing_canary + '\n')
             out.write('preserve_live_targets=' + str(preserve_live_targets).lower() + '\n')
+            out.write('exact_live=' + str(exact_live).lower() + '\n')
             out.write('application_release_sha=' + application_release_sha + '\n')
             out.write('package_identity=' + package_identity + '\n')
 
