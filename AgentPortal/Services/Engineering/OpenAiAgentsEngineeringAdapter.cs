@@ -107,6 +107,7 @@ internal sealed class OpenAiAgentsEngineeringAdapter(
         {
             State = "AGENT_ACTIVE",
             AgentSessionId = sessionId,
+            AgentContextId = context.EngineeringContextId,
             AgentSessionRole = context.Role,
             AgentSessionUpdatedUtc = DateTime.UtcNow,
             UpdatedUtc = DateTime.UtcNow
@@ -610,6 +611,7 @@ internal sealed class OpenAiAgentsEngineeringAdapter(
             LeaseIdentity = null,
             LeaseExpiresUtc = null,
             AgentSessionId = null,
+            AgentContextId = null,
             AgentSessionRole = null,
             AgentSessionUpdatedUtc = DateTime.UtcNow
         };
