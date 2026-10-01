@@ -108,18 +108,99 @@ jobs:
           gh run download "$prior_run_id" --repo "$GITHUB_REPOSITORY" --name "$baseline_name" --dir /tmp/step5-prior/baseline
 
           git diff --name-only "$prior_head_sha" "$CURRENT_HEAD" > /tmp/step5-prior/path-changes.txt
+          candidate_baseline_jobs_unchanged() {
+            python3 - "$workflow_path" "$prior_head_sha" <<'PY'
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          workflow_path, prior_sha = sys.argv[1:3]
+
+          def job_blocks(text):
+              lines = text.splitlines(keepends=True)
+              jobs_line = next((i for i, line in enumerate(lines) if line.rstrip() == "jobs:"), None)
+              if jobs_line is None:
+                  return {}
+              blocks = {}
+              index = jobs_line + 1
+              while index < len(lines):
+                  line = lines[index]
+                  if not line.strip():
+                      index += 1
+                      continue
+                  if not line.startswith(" "):
+                      break
+                  if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":"):
+                      name = line.strip()[:-1]
+                      end = index + 1
+                      while end < len(lines):
+                          candidate = lines[end]
+                          if not candidate.strip():
+                              end += 1
+                              continue
+                          if not candidate.startswith(" "):
+                              break
+                          if candidate.startswith("  ") and not candidate.startswith("    ") and candidate.strip().endswith(":"):
+                              break
+                          end += 1
+                      blocks[name] = "".join(lines[index:end])
+                      index = end
+                      continue
+                  index += 1
+              return blocks
+
+          prior = subprocess.run(
+              ["git", "show", f"{prior_sha}:{workflow_path}"],
+              check=True, text=True, capture_output=True
+          ).stdout
+          current = Path(workflow_path).read_text()
+          prior_jobs = job_blocks(prior)
+          current_jobs = job_blocks(current)
+          wanted = ("candidate", "baseline")
+          missing = [name for name in wanted if name not in prior_jobs or name not in current_jobs]
+          if missing:
+              raise SystemExit("Missing workflow jobs: " + ", ".join(missing))
+          changed = [name for name in wanted if prior_jobs[name] != current_jobs[name]]
+          if changed:
+              raise SystemExit("Changed workflow jobs: " + ", ".join(changed))
+          print("Preserved workflow job definitions: candidate, baseline")
+          PY
+          }
+
           if [[ "$(wc -l < /tmp/step5-prior/path-changes.txt | tr -d ' ')" == "1" ]] &&
              grep -Fxq "$workflow_path" /tmp/step5-prior/path-changes.txt &&
-             python3 scripts/validation-resume.py job-unchanged \
-               --workflow-path "$workflow_path" \
-               --prior-sha "$prior_head_sha" \
-               --job candidate \
-               --job baseline; then
+             candidate_baseline_jobs_unchanged; then
             echo "mode=reuse" >> "$GITHUB_OUTPUT"
             echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
             echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
             echo "Comparison-only repair: preserved the expensive candidate/baseline evidence pair; only final Step 5 comparison is invalidated."
             exit 0
+          fi
+
+          # Step 5 planner/test-policy-only changes cannot alter either full-suite
+          # execution job. Compare those jobs byte-for-byte and rerun only the final
+          # comparison so planner repairs never repay the suite cost.
+          if python3 - "$workflow_path" <<'PY'
+          from pathlib import Path
+          import sys
+          workflow_path = sys.argv[1]
+          changed = {
+              line.strip()
+              for line in Path("/tmp/step5-prior/path-changes.txt").read_text().splitlines()
+              if line.strip()
+          }
+          allowed = {workflow_path, "scripts/test-release-policy.py"}
+          if workflow_path not in changed or not changed <= allowed:
+              raise SystemExit(1)
+          PY
+          then
+            if candidate_baseline_jobs_unchanged; then
+              echo "mode=reuse" >> "$GITHUB_OUTPUT"
+              echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
+              echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
+              echo "Planner-only repair: preserved exact candidate/baseline evidence; only final comparison is invalidated."
+              exit 0
+            fi
           fi
 
           # Release-security workflow changes do not alter product/runtime code,
@@ -142,11 +223,7 @@ jobs:
               raise SystemExit(1)
           PY
           then
-            if python3 scripts/validation-resume.py job-unchanged \
-               --workflow-path "$workflow_path" \
-               --prior-sha "$prior_head_sha" \
-               --job candidate \
-               --job baseline; then
+            if candidate_baseline_jobs_unchanged; then
               echo "mode=repair" >> "$GITHUB_OUTPUT"
               echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
               echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
