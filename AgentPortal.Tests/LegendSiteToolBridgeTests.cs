@@ -145,7 +145,9 @@ public sealed class LegendSiteToolBridgeTests
     [Fact]
     public void WholeMasterAppInventory_CoversWebNativeEdgeAndSharedAuthorities()
     {
-        var json = JsonSerializer.SerializeToElement(LegendSiteToolDisclosureAuthority.SystemInventory());
+        var json = JsonSerializer.SerializeToElement(
+            LegendSiteToolDisclosureAuthority.SystemInventory(),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var surfaces = json.GetProperty("surfaces").EnumerateArray().ToArray();
         var keys = surfaces.Select(item => item.GetProperty("key").GetString()).ToArray();
         foreach (var required in new[]
