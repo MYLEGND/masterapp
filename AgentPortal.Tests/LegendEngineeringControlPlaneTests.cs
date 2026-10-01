@@ -1,11 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Services.Engineering;
 using Domain.Engineering;
 using Domain.Entities;
 using Infrastructure.Data;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -406,6 +411,105 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.True(decision.WeightedReadyCoverage < 70);
     }
 
+    [Fact]
+    public async Task ChatGptPlanCredential_RefreshesOnceAndRotatesDurableOfflineGrant()
+    {
+        var handler = new PlanTokenHandler(
+            HttpStatusCode.OK,
+            """{"access_token":"new-access-token-1234567890","refresh_token":"new-refresh-token-1234567890","expires_in":3600,"scope":"offline_access resource.invoke chatgpt.tokens.use.direct"}""");
+        var authority = PlanCredentialAuthority(handler);
+
+        await authority.StoreAuthorizationAsync(
+            "client-fixture",
+            "old-access-token-1234567890",
+            "old-refresh-token-1234567890",
+            new[] { "offline_access", "resource.invoke", "chatgpt.tokens.use.direct" },
+            DateTime.UtcNow.AddMinutes(2),
+            default);
+
+        var first = await authority.GetAsync(default);
+        Assert.True(first.Ready, first.Code);
+        Assert.Equal("new-access-token-1234567890", first.AccessToken);
+        Assert.Equal(1, handler.Calls);
+        Assert.Contains("grant_type=refresh_token", handler.LastBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("scope=", handler.LastBody, StringComparison.Ordinal);
+
+        var second = await authority.GetAsync(default);
+        Assert.True(second.Ready, second.Code);
+        Assert.Equal("new-access-token-1234567890", second.AccessToken);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task ChatGptPlanCredential_TerminalRefreshFailureRequiresFounderReauthorization()
+    {
+        var handler = new PlanTokenHandler(HttpStatusCode.BadRequest, """{"error":"invalid_grant"}""");
+        var authority = PlanCredentialAuthority(handler);
+
+        await authority.StoreAuthorizationAsync(
+            "client-fixture",
+            "old-access-token-1234567890",
+            "old-refresh-token-1234567890",
+            new[] { "offline_access", "resource.invoke", "chatgpt.tokens.use.direct" },
+            DateTime.UtcNow.AddMinutes(2),
+            default);
+
+        var first = await authority.GetAsync(default);
+        Assert.False(first.Ready);
+        Assert.Equal("chatgpt_plan_reauthorization_required", first.Code);
+        Assert.Equal(1, handler.Calls);
+
+        var second = await authority.GetAsync(default);
+        Assert.False(second.Ready);
+        Assert.Equal("chatgpt_plan_reauthorization_required", second.Code);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task ChatGptPlanCredential_TransientRefreshFailurePreservesGrantForRetry()
+    {
+        var handler = new PlanTokenHandler(
+            HttpStatusCode.ServiceUnavailable,
+            """{"error":"temporarily_unavailable"}""",
+            (HttpStatusCode.OK,
+             """{"access_token":"retry-access-token-1234567890","refresh_token":"retry-refresh-token-1234567890","expires_in":3600,"scope":"offline_access resource.invoke chatgpt.tokens.use.direct"}"""));
+        var authority = PlanCredentialAuthority(handler);
+
+        await authority.StoreAuthorizationAsync(
+            "client-fixture",
+            "old-access-token-1234567890",
+            "old-refresh-token-1234567890",
+            new[] { "offline_access", "resource.invoke", "chatgpt.tokens.use.direct" },
+            DateTime.UtcNow.AddMinutes(2),
+            default);
+
+        var first = await authority.GetAsync(default);
+        Assert.False(first.Ready);
+        Assert.Equal("chatgpt_plan_refresh_temporarily_unavailable", first.Code);
+
+        var retry = await authority.GetAsync(default);
+        Assert.True(retry.Ready, retry.Code);
+        Assert.Equal("retry-access-token-1234567890", retry.AccessToken);
+        Assert.Equal(2, handler.Calls);
+    }
+
+    [Fact]
+    public async Task ChatGptPlanCredential_RejectsGrantWithoutOfflineAccess()
+    {
+        var authority = PlanCredentialAuthority(new PlanTokenHandler(HttpStatusCode.OK, "{}"));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            authority.StoreAuthorizationAsync(
+                "client-fixture",
+                "access-token-1234567890",
+                "refresh-token-1234567890",
+                new[] { "resource.invoke", "chatgpt.tokens.use.direct" },
+                DateTime.UtcNow.AddHours(1),
+                default));
+
+        Assert.Equal("chatgpt_plan_usage_scope_missing", error.Message);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _db.DisposeAsync();
@@ -496,12 +600,67 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         };
     }
 
+    private LegendChatGptPlanCredentialAuthority PlanCredentialAuthority(HttpMessageHandler handler)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LegendEngineering:ChatGptPlan:PrivateClientApproved"] = "true",
+            ["LegendEngineering:ChatGptPlan:ClientId"] = "client-fixture"
+        }).Build();
+        return new LegendChatGptPlanCredentialAuthority(
+            _db,
+            configuration,
+            new EphemeralDataProtectionProvider(),
+            new PlanClientFactory(handler));
+    }
+
+    private sealed class PlanClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class PlanTokenHandler : HttpMessageHandler
+    {
+        private readonly Queue<(HttpStatusCode Status, string Body)> _responses = new();
+
+        public PlanTokenHandler(HttpStatusCode status, string body, params (HttpStatusCode Status, string Body)[] additional)
+        {
+            _responses.Enqueue((status, body));
+            foreach (var response in additional) _responses.Enqueue(response);
+        }
+
+        public int Calls { get; private set; }
+        public string LastBody { get; private set; } = string.Empty;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            Assert.Equal(new Uri("https://auth.openai.com/api/accounts/oauth/token"), request.RequestUri);
+            LastBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var response = _responses.Count > 0
+                ? _responses.Dequeue()
+                : (HttpStatusCode.ServiceUnavailable, """{"error":"temporarily_unavailable"}""");
+            return new HttpResponseMessage(response.Status)
+            {
+                Content = new StringContent(response.Body, Encoding.UTF8, "application/json"),
+                RequestMessage = request
+            };
+        }
+    }
+
     private void CreateControlPlaneTables()
     {
         using var command = _connection.CreateCommand();
         command.CommandText = """
             CREATE TABLE LegendEngineeringControlLocks (LockKey TEXT PRIMARY KEY, Revision INTEGER NOT NULL);
             INSERT INTO LegendEngineeringControlLocks (LockKey,Revision) VALUES ('lease-authority',0);
+            INSERT INTO LegendEngineeringControlLocks (LockKey,Revision) VALUES ('chatgpt-plan-credential',0);
+            CREATE TABLE LegendEngineeringChatGptPlanCredentials (
+              CredentialKey TEXT PRIMARY KEY, ClientId TEXT NOT NULL, AccessTokenCiphertext TEXT NOT NULL,
+              RefreshTokenCiphertext TEXT NOT NULL, GrantedScopesJson TEXT NOT NULL,
+              AccessTokenExpiresUtc TEXT NOT NULL, State TEXT NOT NULL, Revision TEXT NOT NULL,
+              RefreshLeaseIdentity TEXT NULL, RefreshLeaseUntilUtc TEXT NULL, ConnectedUtc TEXT NOT NULL,
+              LastRefreshedUtc TEXT NULL, UpdatedUtc TEXT NOT NULL);
             CREATE TABLE LegendEngineeringWorkItems (
               WorkItemId TEXT PRIMARY KEY, WorkKey TEXT NOT NULL UNIQUE, CanonicalAuthorityKey TEXT NOT NULL,
               ImpactSetJson TEXT NOT NULL, LiveSha TEXT NOT NULL, EvidenceRevision TEXT NOT NULL,
