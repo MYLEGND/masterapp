@@ -242,11 +242,15 @@ public sealed class FounderSoftwareRepairCompletionTests
                 status = "ahead", merge_base_commit = new { sha = Base },
                 files = new[] { new { filename = fault == "native" ? "Native/Example.swift" : fault == "shared" ? "Shared/Example.cs" : "AppOne/Controllers/Example.cs", status = "modified" } }
             };
-            else if (path.EndsWith("/actions/workflows/all-intentional-direct-release-20260918.yml/runs")) body = new
+            else if (path.EndsWith("/actions/artifacts")) body = new
             {
-                workflow_runs = new[] { new { id = 101, head_sha = Source, head_branch = "legend/approved-changes",
-                    status = "completed", conclusion = fault == "workflow" ? "failure" : "success",
-                    path = ".github/workflows/all-intentional-direct-release-20260918.yml" } }
+                artifacts = new[] { new { expired = false, workflow_run = new { id = 101 } } }
+            };
+            else if (path.EndsWith("/actions/runs/101")) body = new
+            {
+                id = 101, head_sha = Merged, head_branch = "legend/approved-changes",
+                status = "completed", conclusion = fault == "workflow" ? "failure" : "success",
+                path = ".github/workflows/all-intentional-direct-release-20260918.yml"
             };
             else status = HttpStatusCode.NotFound;
             var response = new HttpResponseMessage(status) { RequestMessage = request,
