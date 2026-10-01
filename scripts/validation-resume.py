@@ -341,7 +341,13 @@ WORKFLOWS = {
             },
             "build": {
                 "step": "Build migration validation graph",
-                "paths": WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "paths": (
+                    "scripts/db.sh",
+                    "Infrastructure/Migrations/**",
+                    "Infrastructure/Data/MasterAppDbContext.cs",
+                    "Infrastructure/**DbContext*.cs",
+                    "Domain/Entities/**",
+                ) + GLOBAL_DOTNET_INPUTS,
                 "requires": ("restore",),
             },
             "db-validation": {
