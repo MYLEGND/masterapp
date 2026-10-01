@@ -222,7 +222,11 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
     diagnostics => diagnostics.UseCors(RuntimeDiagnosticsExtensions.PublicWebsiteCorsPolicy));
-app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
+app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/legend-public-site-tools"),
+    siteTools => siteTools.UseCors(RuntimeDiagnosticsExtensions.PublicSiteToolsCorsPolicy));
+app.UseWhen(context =>
+        !context.Request.Path.StartsWithSegments("/api/runtime-diagnostics") &&
+        !context.Request.Path.StartsWithSegments("/api/legend-public-site-tools"),
     editor => editor.UseCors("PublicWebsiteEditor"));
 app.UseRateLimiter();
 
