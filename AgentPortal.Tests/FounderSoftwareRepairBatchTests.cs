@@ -220,6 +220,26 @@ public sealed class FounderSoftwareRepairBatchTests
     }
 
     [Fact]
+    public async Task VerifyDeployment_RequiresExactConfiguredHostRuntimeTreeProof()
+    {
+        using var fixture = new Fixture(configureLiveProof: true);
+        var result = JsonSerializer.SerializeToElement(
+            await fixture.Service.VerifyDeploymentAsync(HeadSha, default),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.True(result.GetProperty("liveDeploymentVerified").GetBoolean(), result.ToString());
+        Assert.Equal("live_verified", result.GetProperty("deploymentState").GetString());
+        var proof = result.GetProperty("liveProof");
+        Assert.True(proof.GetProperty("verified").GetBoolean());
+        var host = Assert.Single(proof.GetProperty("hosts").EnumerateArray());
+        Assert.Equal("AppOne", host.GetProperty("appIdentifier").GetString());
+        Assert.Equal(HeadSha, host.GetProperty("sourceRevision").GetString());
+        Assert.True(host.GetProperty("treeMatchesExpected").GetBoolean());
+        Assert.Equal("live_tree_matches_expected", host.GetProperty("status").GetString());
+        Assert.Empty(fixture.Handler.Writes);
+    }
+
+    [Fact]
     public async Task Reconcile_PublicationShowsExistingWorkflowObservation_WithoutClaimingLiveDeployment()
     {
         using var fixture = new Fixture();
@@ -280,11 +300,12 @@ public sealed class FounderSoftwareRepairBatchTests
         public ScenarioHandler Handler { get; }
         public FounderSoftwareRemediationService Service { get; }
         public FounderSoftwareRepairProposal Proposal { get; }
-        public Fixture(string project = "AgentPortal/AgentPortal.csproj", string path = "AgentPortal/Services/Example.cs", string mode = "100644")
+        public Fixture(string project = "AgentPortal/AgentPortal.csproj", string path = "AgentPortal/Services/Example.cs",
+            string mode = "100644", bool configureLiveProof = false)
         {
             Handler = new ScenarioHandler(_key.ExportPkcs8PrivateKeyPem(), project, path, mode);
             Proposal = new(BaseSha, "Bounded repair", "Synthetic reviewed fixture", [new(path, "// corrected fixture")]);
-            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            var values = new Dictionary<string, string?>
             {
                 ["FounderSoftwareRemediation:Enabled"] = "true",
                 ["FounderSoftwareRemediation:RepositoryOwner"] = "MYLEGND",
@@ -294,7 +315,10 @@ public sealed class FounderSoftwareRepairBatchTests
                 ["FounderSoftwareRemediation:GitHubInstallationId"] = "2",
                 ["FounderSoftwareRemediation:GitHubAppPrivateKeySecretUri"] = "https://fixture.vault.azure.net/secrets/app",
                 ["FounderSoftwareRemediation:GitHubApiBaseUri"] = "https://api.github.com/"
-            }).Build();
+            };
+            if (configureLiveProof)
+                values["FounderSoftwareRemediation:DeploymentVerificationHosts:AppOne"] = "https://one.example.test";
+            var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
             Service = new(new ClientFactory(Handler), config, NullLogger<FounderSoftwareRemediationService>.Instance, new Credential(), Db);
         }
         public async Task StageAsync()
@@ -332,6 +356,13 @@ public sealed class FounderSoftwareRepairBatchTests
             var path = request.RequestUri!.AbsolutePath;
             if (request.RequestUri.Host == "fixture.vault.azure.net") return Json(new { value = key });
             if (path == "/app/installations/2/access_tokens") return Json(new { token = "synthetic-installation" });
+            if (request.RequestUri.Host == "one.example.test" && path == "/api/runtime-provenance")
+            {
+                var response = Json(new { schemaVersion = 1, appIdentifier = "AppOne", sourceRevision = HeadSha });
+                response.RequestMessage = request;
+                return response;
+            }
+
             if (request.Method == HttpMethod.Get) Reads.Add(path);
             JsonElement body = default;
             if (request.Content is not null)

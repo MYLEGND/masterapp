@@ -96,6 +96,28 @@ CRM_SOURCE = (
     "SHARED/**Client*",
 )
 
+DIAGNOSTICS_SOURCE = (
+    "AgentPortal/Controllers/FounderDiagnosticsController.cs",
+    "AgentPortal/Services/FounderSoftwareRemediationService*.cs",
+    "AgentPortal/Services/LegendFounderToolAuthority*.cs",
+    "Infrastructure/Diagnostics/**",
+    "SHARED/Diagnostics/**",
+    "SHARED/Views/Diagnostics/**",
+    "SHARED/wwwroot/js/legend-site-tools.js",
+)
+
+DIAGNOSTICS_TESTS = (
+    "AgentPortal.Tests/LegendSiteToolBridgeTests.cs",
+    "AgentPortal.Tests/FounderRepositoryInspectionTests.cs",
+    "AgentPortal.Tests/LegendFounderToolAuthorizationTests.cs",
+    "AgentPortal.Tests/FounderSoftwareRepairBatchTests.cs",
+    "AgentPortal.Tests/FounderSoftwareRepairCompletionTests.cs",
+    "AgentPortal.Tests/FounderRemediationRevocationTests.cs",
+    "AgentPortal.Tests/RuntimeDiagnostics*Tests.cs",
+    "AgentPortal.Tests/PageHealthContractTests.cs",
+    "AgentPortal.Tests/WebDiagnosticPrivacyTests.cs",
+)
+
 WORKFLOWS = {
     "masterapp-platform-architecture-validation.yml": {
         "force_all": (),
@@ -186,6 +208,11 @@ WORKFLOWS = {
                 "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
                 "requires": ("restore-dotnet",),
             },
+            "founder-diagnostics-regressions": {
+                "step": "Run Founder diagnostics and safe GPT Codex regressions",
+                "paths": DIAGNOSTICS_SOURCE + DIAGNOSTICS_TESTS,
+                "requires": ("compile-regression",),
+            },
             "domain-release": {
                 "step": "Compile shared domain release refresh",
                 "paths": ("scripts/DomainReleaseRefresh/**", "Domain/**", "Infrastructure/**") + GLOBAL_DOTNET_INPUTS,
@@ -204,6 +231,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/AnalyticsPageRoutingTruthTests.cs",
                     "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
                 ) + WEBSITE_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "exclude_paths": DIAGNOSTICS_SOURCE,
                 "requires": ("compile-regression",),
             },
             "meta-regressions": {
@@ -217,11 +245,13 @@ WORKFLOWS = {
                     "AgentPortal.Tests/QuoteProductInstrumentationContractTests.cs",
                     "AgentPortal.Tests/ProtectLeadModalInquiryTests.cs",
                 ) + MARKETING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "exclude_paths": DIAGNOSTICS_SOURCE,
                 "requires": ("compile-regression",),
             },
             "booking-regressions": {
                 "step": "Run booking authority regressions",
                 "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "exclude_paths": DIAGNOSTICS_SOURCE,
                 "requires": ("compile-regression",),
             },
             "crm-regressions": {
@@ -233,6 +263,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/LaunchAuditRiskAssessmentTests.cs",
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
                 ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "exclude_paths": DIAGNOSTICS_SOURCE,
                 "requires": ("compile-regression",),
             },
             "form-tracking": {
@@ -325,6 +356,10 @@ WORKFLOWS = {
 
 def matches(path: str, patterns) -> bool:
     return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+
+
+def gate_matches(path: str, gate) -> bool:
+    return matches(path, gate.get("paths", ())) and not matches(path, gate.get("exclude_paths", ()))
 
 
 def git_changed(prior: str, current: str) -> list[str]:
@@ -481,7 +516,7 @@ def compute_plan(workflow: str, current_sha: str, prior, prior_steps, changed_pa
             neutral.add(path)
             continue
         for key, gate in gates.items():
-            if matches(path, gate.get("paths", ())):
+            if gate_matches(path, gate):
                 known.add(path)
                 break
 
@@ -511,7 +546,7 @@ def compute_plan(workflow: str, current_sha: str, prior, prior_steps, changed_pa
             run.add(key)
             reasons[key] = "prior_gate_not_successful"
             continue
-        if any(matches(path, gate.get("paths", ())) for path in changed_paths):
+        if any(gate_matches(path, gate) for path in changed_paths):
             run.add(key)
             reasons[key] = "gate_inputs_changed"
 

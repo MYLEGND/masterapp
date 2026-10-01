@@ -38,6 +38,7 @@ public sealed record LegendSitePageSnapshot(
     string? Breakpoint,
     IReadOnlyList<string>? ComponentIds,
     IReadOnlyList<string>? ActionKeys,
+    IReadOnlyList<string>? CompositionIds,
     IReadOnlyList<string>? ModalIds,
     IReadOnlyList<string>? AssetPaths,
     IReadOnlyList<LegendSitePageIssue>? Issues);
@@ -57,6 +58,7 @@ public static class LegendSiteToolDisclosureAuthority
     public const string PrivacyProtected = "PRIVACY_PROTECTED";
     public const string IntegrityProtected = "INTEGRITY_PROTECTED";
     public const string CurrentPageToolName = "legend_current_page_diagnostics";
+    public const string VerifyCurrentPageRepairToolName = "legend_verify_current_page_repair";
 
     private static readonly HashSet<string> ErrorNames = new(StringComparer.Ordinal)
     {
@@ -147,6 +149,120 @@ public static class LegendSiteToolDisclosureAuthority
         strict = true
     };
 
+    public static object VerifyCurrentPageRepairTool => new
+    {
+        type = "function",
+        name = VerifyCurrentPageRepairToolName,
+        description = "Verify the current live page against the exact expected deployed revision and canonical structural reproducer after a repair. Requires the original safe route/component/action/composition/modal identities and error names expected to be absent. It is read-only and does not treat deployment alone as functional proof.",
+        parameters = new
+        {
+            type = "object",
+            properties = new
+            {
+                expected_revision = new { type = "string", minLength = 40, maxLength = 40 },
+                expected_route = new { type = "string", minLength = 1, maxLength = 256 },
+                required_component_ids = new { type = "array", maxItems = 24, items = new { type = "string", minLength = 1, maxLength = 96 } },
+                required_action_keys = new { type = "array", maxItems = 24, items = new { type = "string", minLength = 1, maxLength = 96 } },
+                required_composition_ids = new { type = "array", maxItems = 24, items = new { type = "string", minLength = 1, maxLength = 96 } },
+                required_modal_ids = new { type = "array", maxItems = 16, items = new { type = "string", minLength = 1, maxLength = 96 } },
+                forbidden_error_names = new { type = "array", maxItems = 12, items = new { type = "string", minLength = 1, maxLength = 64 } }
+            },
+            required = new[]
+            {
+                "expected_revision", "expected_route", "required_component_ids", "required_action_keys",
+                "required_composition_ids", "required_modal_ids", "forbidden_error_names"
+            },
+            additionalProperties = false
+        },
+        strict = true
+    };
+
+    public static object VerifyCurrentPageRepair(
+        LegendSitePageSnapshot? snapshot,
+        string applicationName,
+        string scopeClassification,
+        string? sourceRevision,
+        LegendRouteAuthority routeAuthority,
+        string? expectedRevision,
+        string? expectedRoute,
+        IReadOnlyList<string>? requiredComponentIds,
+        IReadOnlyList<string>? requiredActionKeys,
+        IReadOnlyList<string>? requiredCompositionIds,
+        IReadOnlyList<string>? requiredModalIds,
+        IReadOnlyList<string>? forbiddenErrorNames)
+    {
+        if (!IsSha(expectedRevision) || string.IsNullOrWhiteSpace(expectedRoute) ||
+            expectedRoute.Length > 256 || expectedRoute.Contains('?') || expectedRoute.Contains('#'))
+            return new { ok = false, error = "live_repair_proof_arguments_invalid" };
+
+        var expectedComponents = SafeSymbols(requiredComponentIds, 96);
+        var expectedActions = SafeSymbols(requiredActionKeys, 96);
+        var expectedCompositions = SafeSymbols(requiredCompositionIds, 96);
+        var expectedModals = SafeSymbols(requiredModalIds, 96);
+        var expectedErrors = (forbiddenErrorNames ?? Array.Empty<string>())
+            .Where(value => value is not null && ErrorNames.Contains(value))
+            .Distinct(StringComparer.Ordinal)
+            .Take(12)
+            .ToArray();
+
+        if (expectedComponents.Length != (requiredComponentIds?.Distinct(StringComparer.Ordinal).Count() ?? 0) ||
+            expectedActions.Length != (requiredActionKeys?.Distinct(StringComparer.Ordinal).Count() ?? 0) ||
+            expectedCompositions.Length != (requiredCompositionIds?.Distinct(StringComparer.Ordinal).Count() ?? 0) ||
+            expectedModals.Length != (requiredModalIds?.Distinct(StringComparer.Ordinal).Count() ?? 0) ||
+            expectedErrors.Length != (forbiddenErrorNames?.Distinct(StringComparer.Ordinal).Count() ?? 0))
+            return new { ok = false, error = "live_repair_proof_arguments_invalid" };
+
+        snapshot ??= new LegendSitePageSnapshot(null, null, null, null, null, null, null, null, null, null, null, null, null);
+        var currentComponents = SafeSymbols(snapshot.ComponentIds, 96);
+        var currentActions = SafeSymbols(snapshot.ActionKeys, 96);
+        var currentCompositions = SafeSymbols(snapshot.CompositionIds, 96);
+        var currentModals = SafeSymbols(snapshot.ModalIds, 96);
+        var currentErrors = (snapshot.Issues ?? Array.Empty<LegendSitePageIssue>())
+            .Select(issue => issue.ErrorName is not null && ErrorNames.Contains(issue.ErrorName)
+                ? issue.ErrorName : "UnclassifiedError")
+            .Distinct(StringComparer.Ordinal)
+            .Take(18)
+            .ToArray();
+
+        var revisionMatches = string.Equals(sourceRevision, expectedRevision, StringComparison.OrdinalIgnoreCase);
+        var routeMatches = string.Equals(routeAuthority.Route, expectedRoute, StringComparison.Ordinal);
+        var componentsPresent = expectedComponents.All(currentComponents.Contains);
+        var actionsPresent = expectedActions.All(currentActions.Contains);
+        var compositionsPresent = expectedCompositions.All(currentCompositions.Contains);
+        var modalsPresent = expectedModals.All(currentModals.Contains);
+        var forbiddenErrorsAbsent = expectedErrors.All(error => !currentErrors.Contains(error, StringComparer.Ordinal));
+        var verified = revisionMatches && routeMatches && componentsPresent && actionsPresent &&
+            compositionsPresent && modalsPresent && forbiddenErrorsAbsent;
+
+        return new
+        {
+            ok = true,
+            schemaVersion = 1,
+            application = SafeApplication(applicationName),
+            scope = SafeScope(scopeClassification),
+            expectedRevision = expectedRevision!.ToLowerInvariant(),
+            liveRevision = IsSha(sourceRevision) ? sourceRevision!.ToLowerInvariant() : null,
+            revisionMatches,
+            expectedRoute,
+            liveRoute = routeAuthority.Route,
+            routeMatches,
+            componentsPresent,
+            actionsPresent,
+            compositionsPresent,
+            modalsPresent,
+            forbiddenErrorsAbsent,
+            repairVerified = verified,
+            privacy = new
+            {
+                domTextIncluded = false,
+                inputValuesIncluded = false,
+                bodiesIncluded = false,
+                credentialsIncluded = false,
+                privateCustomerDataIncluded = false
+            }
+        };
+    }
+
     public static object SanitizePage(
         LegendSitePageSnapshot? snapshot,
         string applicationName,
@@ -154,7 +270,7 @@ public static class LegendSiteToolDisclosureAuthority
         string? sourceRevision,
         LegendRouteAuthority routeAuthority)
     {
-        snapshot ??= new LegendSitePageSnapshot(null, null, null, null, null, null, null, null, null, null, null, null);
+        snapshot ??= new LegendSitePageSnapshot(null, null, null, null, null, null, null, null, null, null, null, null, null);
         var width = snapshot.ViewportWidth is >= 240 and <= 10000 ? snapshot.ViewportWidth : null;
         var height = snapshot.ViewportHeight is >= 240 and <= 10000 ? snapshot.ViewportHeight : null;
         double? dpr = snapshot.DevicePixelRatio is >= 0.5 and <= 8 && double.IsFinite(snapshot.DevicePixelRatio.Value)
@@ -196,6 +312,7 @@ public static class LegendSiteToolDisclosureAuthority
             },
             componentIds = SafeSymbols(snapshot.ComponentIds, 96),
             actionKeys = SafeSymbols(snapshot.ActionKeys, 96),
+            compositionIds = SafeSymbols(snapshot.CompositionIds, 96),
             modalIds = SafeSymbols(snapshot.ModalIds, 96),
             loadedAssets = (snapshot.AssetPaths ?? Array.Empty<string>())
                 .Select(SafeAsset).Where(value => value is not null).Cast<string>().Distinct(StringComparer.Ordinal).Take(64).ToArray(),

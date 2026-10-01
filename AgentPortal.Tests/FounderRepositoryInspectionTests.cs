@@ -202,6 +202,24 @@ public sealed class FounderRepositoryInspectionTests
     }
 
     [Theory]
+    [InlineData("const string CustomerEmail = \"real.person@privatebusiness.co\";")]
+    [InlineData("const string SocialSecurity = \"123-45-6789\";")]
+    [InlineData("const string Phone = \"602-555-0199\";")]
+    public async Task PrivacyLikeSource_IsReturnedOnlyAsProtectedMetadata(string source)
+    {
+        using var fixture = new Fixture();
+        fixture.Handler.Source = source;
+        var result = await fixture.InspectAsync(SourcePath);
+
+        Assert.Equal("PRIVACY_PROTECTED", result.GetProperty("disclosureClass").GetString());
+        Assert.True(result.GetProperty("privacyLikeContent").GetBoolean());
+        Assert.False(result.GetProperty("readable").GetBoolean());
+        Assert.False(result.TryGetProperty("content", out _));
+        Assert.DoesNotContain(source, result.ToString(), StringComparison.Ordinal);
+        Assert.Empty(fixture.Handler.RepositoryWrites);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Revocation_PreventsSourceDisclosure_AlsoWhenItArrivesDuringRead(bool duringRead)

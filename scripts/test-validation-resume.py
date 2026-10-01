@@ -86,6 +86,44 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertFalse(plan["gates"]["crm-regressions"]["run"])
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
 
+    def test_diagnostics_only_source_change_preserves_unrelated_domain_regressions(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["AgentPortal/Services/FounderSoftwareRemediationService.cs"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["build-hosts"]["run"])
+        self.assertTrue(plan["gates"]["compile-regression"]["run"])
+        self.assertTrue(plan["gates"]["restore-dotnet"]["run"])
+        self.assertTrue(plan["gates"]["founder-diagnostics-regressions"]["run"])
+        self.assertFalse(plan["gates"]["website-regressions"]["run"])
+        self.assertFalse(plan["gates"]["meta-regressions"]["run"])
+        self.assertFalse(plan["gates"]["booking-regressions"]["run"])
+        self.assertFalse(plan["gates"]["crm-regressions"]["run"])
+        self.assertFalse(plan["gates"]["renderer-tests"]["run"])
+
+    def test_diagnostics_test_fix_reruns_only_diagnostics_test_gate_and_build_chain(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["AgentPortal.Tests/FounderRepositoryInspectionTests.cs"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["founder-diagnostics-regressions"]["run"])
+        self.assertTrue(plan["gates"]["compile-regression"]["run"])
+        self.assertTrue(plan["gates"]["restore-dotnet"]["run"])
+        self.assertFalse(plan["gates"]["website-regressions"]["run"])
+        self.assertFalse(plan["gates"]["meta-regressions"]["run"])
+        self.assertFalse(plan["gates"]["booking-regressions"]["run"])
+        self.assertFalse(plan["gates"]["crm-regressions"]["run"])
+
     def test_backend_source_change_keeps_existing_dotnet_regression_coverage(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(

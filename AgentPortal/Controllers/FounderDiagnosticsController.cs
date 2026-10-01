@@ -173,7 +173,11 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
     {
         FounderGuard.EnsureFounderOrThrow(User);
         var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
-        var tools = new List<object> { LegendSiteToolDisclosureAuthority.CurrentPageTool };
+        var tools = new List<object>
+        {
+            LegendSiteToolDisclosureAuthority.CurrentPageTool,
+            LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepairTool
+        };
         tools.AddRange(authority
             .GetAvailableSiteReadTools()
             .Where(tool =>
@@ -223,9 +227,58 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
                 route));
         }
 
+        if (string.Equals(request.Name, LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepairToolName, StringComparison.Ordinal))
+        {
+            if (request.Arguments.ValueKind != JsonValueKind.Object)
+                return BadRequest(new { error = "live_repair_proof_arguments_invalid" });
+            var root = request.Arguments;
+            static string? ReadString(JsonElement value, string name) =>
+                value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
+            static bool TryReadArray(JsonElement value, string name, int maximumItems, out string[] result)
+            {
+                result = Array.Empty<string>();
+                if (!value.TryGetProperty(name, out var item) || item.ValueKind != JsonValueKind.Array ||
+                    item.GetArrayLength() > maximumItems)
+                    return false;
+
+                var values = new List<string>();
+                foreach (var entry in item.EnumerateArray())
+                {
+                    if (entry.ValueKind != JsonValueKind.String || entry.GetString() is not { } text ||
+                        string.IsNullOrWhiteSpace(text))
+                        return false;
+                    values.Add(text);
+                }
+                result = values.ToArray();
+                return true;
+            }
+
+            if (!TryReadArray(root, "required_component_ids", 24, out var requiredComponents) ||
+                !TryReadArray(root, "required_action_keys", 24, out var requiredActions) ||
+                !TryReadArray(root, "required_composition_ids", 24, out var requiredCompositions) ||
+                !TryReadArray(root, "required_modal_ids", 16, out var requiredModals) ||
+                !TryReadArray(root, "forbidden_error_names", 12, out var forbiddenErrors))
+                return BadRequest(new { error = "live_repair_proof_arguments_invalid" });
+
+            var route = LegendSiteToolDisclosureAuthority.ResolveRouteAuthority(request.Page?.Path, endpointSources);
+            return Json(LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepair(
+                request.Page,
+                environment.ApplicationName,
+                "founder_system",
+                LegendSiteToolDisclosureAuthority.EntryAssemblyRevision(),
+                route,
+                ReadString(root, "expected_revision"),
+                ReadString(root, "expected_route"),
+                requiredComponents,
+                requiredActions,
+                requiredCompositions,
+                requiredModals,
+                forbiddenErrors));
+        }
+
         var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
         var allowed = authority
-            .GetAvailableCloudTools(null, LegendConnectExternalProviderPolicy.CloudflareFoundation)
+            .GetAvailableSiteReadTools()
             .Any(tool =>
             {
                 var element = JsonSerializer.SerializeToElement(tool);

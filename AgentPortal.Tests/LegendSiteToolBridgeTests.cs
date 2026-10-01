@@ -23,7 +23,8 @@ public sealed class LegendSiteToolBridgeTests
             DevicePixelRatio: 3,
             Breakpoint: "xs",
             ComponentIds: new[] { "website.editor", "customer@example.com", "123456789-private" },
-            ActionKeys: new[] { "contact.submit", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            ActionKeys: new[] { "contact.submit", "business_contact", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            CompositionIds: new[] { "cms.hero.primary", "123456789-private" },
             ModalIds: new[] { "website-modal", "550e8400-e29b-41d4-a716-446655440000" },
             AssetPaths: new[] { "/js/app.js", "/js/private.js?token=secret", "https://evil.invalid/x.js" },
             Issues: new[]
@@ -38,6 +39,8 @@ public sealed class LegendSiteToolBridgeTests
 
         Assert.Contains("\"website.editor\"", json, StringComparison.Ordinal);
         Assert.Contains("\"contact.submit\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"business_contact\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"cms.hero.primary\"", json, StringComparison.Ordinal);
         Assert.Contains("\"/js/app.js\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("customer@example.com", json, StringComparison.Ordinal);
         Assert.DoesNotContain("123456789-private", json, StringComparison.Ordinal);
@@ -63,6 +66,9 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("RequestVerificationToken", source, StringComparison.Ordinal);
         Assert.Contains("legend_site_tool_antiforgery_unavailable", source, StringComparison.Ordinal);
         Assert.Contains("LegendPageHealth", source, StringComparison.Ordinal);
+        Assert.Contains("data-website-action-key", source, StringComparison.Ordinal);
+        Assert.Contains("data-cms-composition-id", source, StringComparison.Ordinal);
+        Assert.Contains("result.push(url.pathname)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("textContent", source, StringComparison.Ordinal);
         Assert.DoesNotContain("innerHTML", source, StringComparison.Ordinal);
         Assert.DoesNotContain("document.cookie", source, StringComparison.Ordinal);
@@ -81,9 +87,11 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("FounderGuard.EnsureFounderOrThrow(User)", source, StringComparison.Ordinal);
         Assert.Contains("new LegendFounderToolAuthority", source, StringComparison.Ordinal);
         Assert.Contains("authority.IsReadOnly", source, StringComparison.Ordinal);
-        Assert.Contains("LegendConnectExternalProviderPolicy.CloudflareFoundation", source, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(SiteToolSection(source), "GetAvailableSiteReadTools()"));
+        Assert.DoesNotContain("GetAvailableCloudTools", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("mutationToolsExposed = false", source, StringComparison.Ordinal);
         Assert.Contains("[ValidateAntiForgeryToken]", SiteToolSection(source), StringComparison.Ordinal);
+        Assert.Contains("VerifyCurrentPageRepairTool", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_release_approved_repair", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_prepare_software_repair", SiteToolSection(source), StringComparison.Ordinal);
     }
@@ -102,6 +110,69 @@ public sealed class LegendSiteToolBridgeTests
         Assert.DoesNotContain("legend_inspect_repository", section, StringComparison.Ordinal);
         Assert.DoesNotContain("legend_prepare_software_repair", section, StringComparison.Ordinal);
         Assert.DoesNotContain("legend_release_approved_repair", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("VerifyCurrentPageRepairTool", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("legend_configuration_presence", section, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CurrentPageRepairProof_RequiresExactLiveRevisionRouteAndStructuralReproducer()
+    {
+        var revision = new string('a', 40);
+        var snapshot = new LegendSitePageSnapshot(
+            Application: "AgentPortal",
+            SourceRevision: revision,
+            Path: "/Clients/Index",
+            ViewportWidth: 390,
+            ViewportHeight: 844,
+            DevicePixelRatio: 3,
+            Breakpoint: "xs",
+            ComponentIds: new[] { "website.modal" },
+            ActionKeys: new[] { "contact.submit" },
+            CompositionIds: new[] { "cms.hero.primary" },
+            ModalIds: new[] { "website-modal" },
+            AssetPaths: new[] { "/js/app.js?v=abc" },
+            Issues: Array.Empty<LegendSitePageIssue>());
+
+        var verified = JsonSerializer.SerializeToElement(
+            LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepair(
+                snapshot,
+                "AgentPortal",
+                "founder_system",
+                revision,
+                new LegendRouteAuthority("/Clients/Index", "ClientsController", "Index", "AgentPortal"),
+                revision,
+                "/Clients/Index",
+                new[] { "website.modal" },
+                new[] { "contact.submit" },
+                new[] { "cms.hero.primary" },
+                new[] { "website-modal" },
+                new[] { "TypeError" }));
+
+        Assert.True(verified.GetProperty("repairVerified").GetBoolean());
+        Assert.True(verified.GetProperty("revisionMatches").GetBoolean());
+        Assert.True(verified.GetProperty("forbiddenErrorsAbsent").GetBoolean());
+
+        var failedSnapshot = snapshot with
+        {
+            Issues = new[] { new LegendSitePageIssue("TypeError", 500, "SuspectedDefect", "ui_error", "/js/app.js") }
+        };
+        var failed = JsonSerializer.SerializeToElement(
+            LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepair(
+                failedSnapshot,
+                "AgentPortal",
+                "founder_system",
+                revision,
+                new LegendRouteAuthority("/Clients/Index", "ClientsController", "Index", "AgentPortal"),
+                revision,
+                "/Clients/Index",
+                new[] { "website.modal" },
+                new[] { "contact.submit" },
+                new[] { "cms.hero.primary" },
+                new[] { "website-modal" },
+                new[] { "TypeError" }));
+
+        Assert.False(failed.GetProperty("repairVerified").GetBoolean());
+        Assert.False(failed.GetProperty("forbiddenErrorsAbsent").GetBoolean());
     }
 
     [Fact]
@@ -140,6 +211,8 @@ public sealed class LegendSiteToolBridgeTests
         Assert.DoesNotContain("MasterAppDbContext", source, StringComparison.Ordinal);
         Assert.DoesNotContain("legend_inspect_repository", source, StringComparison.Ordinal);
         Assert.DoesNotContain("legend_prepare_software_repair", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("VerifyCurrentPageRepairTool", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("legend_configuration_presence", source, StringComparison.Ordinal);
     }
 
     [Fact]
