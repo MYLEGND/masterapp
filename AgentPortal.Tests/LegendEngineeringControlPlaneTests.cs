@@ -169,6 +169,22 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public void BrowserTaskPacket_FailsClosedWithoutPreservedReproducer_AndBindsLiveProofToApplication()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            SourceRoot(), "AgentPortal", "Services", "Engineering", "LegendEngineeringOrchestrator.cs"));
+
+        Assert.Contains("browser_reproducer_evidence_missing", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerRoute ?? SafeRoute(primary.Route)", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerComponentIds ?? Array.Empty<string>()", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerActionKeys ?? Array.Empty<string>()", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerCompositionIds ?? Array.Empty<string>()", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerModalIds ?? Array.Empty<string>()", source, StringComparison.Ordinal);
+        Assert.Contains("browser_live_proof_application_mismatch", source, StringComparison.Ordinal);
+        Assert.Contains("item.AffectedApplications.Contains(application, StringComparer.Ordinal)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BackendQuietWindow_ClosesOnlyServerRepairWithoutRecurrence()
     {
         var deployed = DateTime.UtcNow.AddMinutes(-20);

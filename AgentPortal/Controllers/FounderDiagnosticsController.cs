@@ -289,6 +289,7 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
                 {
                     await orchestrator.RecordBrowserFunctionalProofAsync(
                         engineeringWorkItemId,
+                        environment.ApplicationName,
                         expectedRevision,
                         expectedRoute,
                         requiredComponents,

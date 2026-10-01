@@ -97,6 +97,7 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("[ValidateAntiForgeryToken]", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("VerifyCurrentPageRepairTool", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("RecordBrowserFunctionalProofAsync", SiteToolSection(source), StringComparison.Ordinal);
+        Assert.Contains("environment.ApplicationName", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_release_approved_repair", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_prepare_software_repair", SiteToolSection(source), StringComparison.Ordinal);
     }

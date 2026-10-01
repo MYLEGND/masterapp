@@ -22,6 +22,7 @@ internal interface ILegendEngineeringOrchestrator
     Task<object> ApproveReleaseAsync(ClaimsPrincipal founder, Guid workItemId, CancellationToken cancellationToken);
     Task RecordBrowserFunctionalProofAsync(
         Guid workItemId,
+        string application,
         string expectedRevision,
         string expectedRoute,
         IReadOnlyList<string> componentIds,
@@ -216,6 +217,9 @@ internal sealed class LegendEngineeringOrchestrator(
             .ToArray();
         var repairBaseSha = LegendEngineeringPolicies.ResolveRepairBaseSha(item);
         var validationFailures = item.ValidationFailureCodes ?? Array.Empty<string>();
+        if (incidents.Any(row => string.Equals(row.Platform, "Web", StringComparison.Ordinal)) &&
+            string.IsNullOrWhiteSpace(item.ReproducerRoute))
+            throw new InvalidOperationException("browser_reproducer_evidence_missing");
 
         return new EngineeringTaskPacket(
             "legend_engineering_task_packet.v1",
@@ -397,6 +401,7 @@ internal sealed class LegendEngineeringOrchestrator(
 
     public async Task RecordBrowserFunctionalProofAsync(
         Guid workItemId,
+        string application,
         string expectedRevision,
         string expectedRoute,
         IReadOnlyList<string> componentIds,
@@ -408,6 +413,8 @@ internal sealed class LegendEngineeringOrchestrator(
     {
         var item = await store.GetWorkItemAsync(workItemId, cancellationToken)
             ?? throw new InvalidOperationException("work_item_not_found");
+        if (!item.AffectedApplications.Contains(application, StringComparer.Ordinal))
+            throw new InvalidOperationException("browser_live_proof_application_mismatch");
         if (!LegendEngineeringPolicies.IsImmutableSha(item.MergedSha) || item.DeploymentVerifiedUtc is null)
             throw new InvalidOperationException("browser_live_proof_deployment_not_verified");
         if (!string.Equals(item.MergedSha, expectedRevision, StringComparison.OrdinalIgnoreCase))
