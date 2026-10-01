@@ -85,6 +85,35 @@ public sealed class FounderEngineeringCommandCenterTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task NoOpUpdate_PreservesRevisionAndDoesNotInvalidateContexts()
+    {
+        var current = await _authority.GetCurrentAsync(default);
+        var first = await _authority.UpdateAsync(
+            current.Revision,
+            true,
+            current.SharedDirective + "\n- Keep this revision stable.",
+            current.HeadGptDirective,
+            current.CodexDirective,
+            current.ReviewerDirective,
+            "Founder",
+            default);
+
+        var replay = await _authority.UpdateAsync(
+            first.Revision,
+            first.ModelExecutionEnabled,
+            first.SharedDirective,
+            first.HeadGptDirective,
+            first.CodexDirective,
+            first.ReviewerDirective,
+            "Founder",
+            default);
+
+        Assert.Equal(first.Revision, replay.Revision);
+        Assert.Equal(first.Version, replay.Version);
+        Assert.Single(await _authority.GetHistoryAsync(10, default));
+    }
+
+    [Fact]
     public async Task BindingAuthority_RejectsStaleRevision_AndFounderPause()
     {
         var builtin = await _authority.GetCurrentAsync(default);
