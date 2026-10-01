@@ -140,6 +140,78 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public void BackendQuietWindow_ClosesOnlyServerRepairWithoutRecurrence()
+    {
+        var deployed = DateTime.UtcNow.AddMinutes(-20);
+        var baseIncident = Incident(app: "AgentPortal", source: "AgentPortal/Controllers/HomeController.cs");
+        baseIncident.Platform = "Server";
+        var decision = LegendEngineeringPolicies.Classify(baseIncident);
+        var item = new EngineeringWorkItemSnapshot(
+            Guid.NewGuid(),
+            new[] { baseIncident.Id },
+            "work-key",
+            decision.CanonicalAuthorityKey,
+            decision.AffectedProjects,
+            decision.AffectedApplications,
+            decision.ImpactSet,
+            new string('a', 40),
+            "evidence",
+            decision.FailureClass,
+            decision.Severity,
+            decision.RevenueImpact,
+            decision.UserImpact,
+            decision.Frequency,
+            decision.Confidence,
+            25,
+            decision.RiskClass,
+            decision.ComplexityScore,
+            decision.PriorityScore,
+            decision.PriorityClass,
+            "LIVE_FUNCTIONAL_PROOF_REQUIRED",
+            EngineeringRole.LiveVerifier,
+            EngineeringModelTier.StandardReasoning,
+            null,
+            null,
+            null,
+            1,
+            "active",
+            123,
+            new string('b', 40),
+            "DEPLOYMENT_VERIFIED_FUNCTIONAL_PROOF_PENDING",
+            decision.ReleaseCohort,
+            deployed.AddHours(-1),
+            deployed,
+            MergedSha: new string('c', 40),
+            DeploymentVerifiedUtc: deployed);
+
+        Assert.True(LegendEngineeringReleaseCohortPlanner.RuntimeQuietWindowProvesBackendRepair(
+            item,
+            new[] { baseIncident },
+            Array.Empty<RuntimeDiagnosticIncident>(),
+            DateTime.UtcNow,
+            TimeSpan.FromMinutes(10)));
+
+        var recurrence = Incident(app: "AgentPortal", source: "AgentPortal/Controllers/HomeController.cs");
+        recurrence.Platform = "Server";
+        recurrence.LastSeenUtc = deployed.AddMinutes(2);
+        Assert.False(LegendEngineeringReleaseCohortPlanner.RuntimeQuietWindowProvesBackendRepair(
+            item,
+            new[] { baseIncident },
+            new[] { recurrence },
+            DateTime.UtcNow,
+            TimeSpan.FromMinutes(10)));
+
+        var browserIncident = Incident(app: "AgentPortal", source: "js/app.js");
+        browserIncident.Platform = "Web";
+        Assert.False(LegendEngineeringReleaseCohortPlanner.RuntimeQuietWindowProvesBackendRepair(
+            item,
+            new[] { browserIncident },
+            Array.Empty<RuntimeDiagnosticIncident>(),
+            DateTime.UtcNow,
+            TimeSpan.FromMinutes(10)));
+    }
+
+    [Fact]
     public void SanitizedSourceHints_ResolveOnlyWithinApplicationAndSharedSafeRoots()
     {
         var resolved = FounderSoftwareRemediationService.ResolveSafeSourceHints(
