@@ -367,6 +367,56 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn("preservedExactLiveTargets", workflow)
         self.assertIn("was already live at the exact candidate but redeployed", workflow)
 
+    def test_direct_release_reuses_only_exact_validated_package_evidence(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        self.assertIn('Reuse exact successful validation package when available', workflow)
+        self.assertIn('founder-diagnostics-packages-${GITHUB_SHA}', workflow)
+        self.assertIn('REUSE_VALIDATED_PACKAGE=true', workflow)
+        self.assertIn('sha256sum -c SHA256SUMS', workflow)
+        self.assertIn('overwrite: true', workflow)
+
+    def test_rigorous_retry_preserves_same_run_security_evidence_only(self):
+        workflow=(ROOT.parent / '.github/workflows/agentportal-production-deploy.yml').read_text()
+        self.assertIn('Reuse exact successful release-security evidence when available', workflow)
+        self.assertIn('GITHUB_RUN_ATTEMPT', workflow)
+        self.assertIn('prior_full_suite', workflow)
+        self.assertIn('No same-run successful release-security evidence exists', workflow)
+        self.assertIn('PRESERVE_DB_VALIDATION', workflow)
+        self.assertIn('PRESERVE_VULNERABILITY_AUDIT', workflow)
+        self.assertIn('legend-release-security-tested-', workflow)
+
+    def test_website_deploy_consumes_validated_artifact_without_rebuild(self):
+        workflow=(ROOT.parent / '.github/workflows/legend-website-production-deploy.yml').read_text()
+        self.assertIn('Reuse exact validated website artifact when available', workflow)
+        self.assertIn('Download exact validated production website', workflow)
+        self.assertNotIn('Rebuild exact production website', workflow)
+
+    def test_android_build_reuse_is_bound_to_source_config_and_certificate_identity(self):
+        workflow=(ROOT.parent / '.github/workflows/legend-android-internal-testing.yml').read_text()
+        self.assertIn('Resolve exact Android validation identity', workflow)
+        self.assertIn('Reuse exact signed Android bundle when available', workflow)
+        self.assertIn('legend-android-signed-$GITHUB_SHA-$config_hash', workflow)
+        self.assertIn('REUSE_ANDROID_BUNDLE=true', workflow)
+        self.assertIn('Validate upload keystore before building', workflow)
+
+    def test_feature_validation_workflows_use_canonical_resume_authority(self):
+        for name in (
+            'masterapp-platform-architecture-validation.yml',
+            'step6-openai-ads-execution-validation.yml',
+            'steps7-8-governed-advertising-validation.yml',
+        ):
+            workflow=(ROOT.parent / '.github/workflows' / name).read_text()
+            self.assertIn('scripts/validation-resume.py plan', workflow, name)
+        self.assertFalse((ROOT.parent / '.github/workflows/step5-approved-baseline-control.yml').exists())
+
+    def test_release_orchestrator_contract_checks_are_receipt_reusable(self):
+        lifecycle=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
+        parity=(ROOT.parent / '.github/workflows/legend-canonical-branch-parity.yml').read_text()
+        self.assertIn('REUSE_LIFECYCLE_CONTRACTS=true', lifecycle)
+        self.assertIn('legend-lifecycle-contracts-', lifecycle)
+        self.assertIn('REUSE_PARITY_CONTRACTS=true', parity)
+        self.assertIn('legend-parity-contracts-', parity)
+
 
 class ReleasePolicy(unittest.TestCase):
     def test_hold_survives_descendant_until_explicit_release(self):
