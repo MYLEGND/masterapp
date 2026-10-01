@@ -1,15 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-30 to deploy merged PR #344 after exact-head green MasterApp platform architecture validation run 36816673106 and Step 5 approved-baseline comparison run 36816673031.",
-  "purpose": "Deploy the validated GPT-Codex closed-loop hardening from merged PR #344. This release unifies Founder WebMCP catalog and execution authority, adds allowlisted presence-only configuration diagnostics, improves live page-to-source identity, adds privacy-content admission for repository reads, adds configured-host live deployment proof, adds Founder-only current-page repair verification, establishes the canonical Codex repository operating contract, and introduces focused non-redundant Founder diagnostics validation. AgentPortal, ClientApp, Protect, Parfait, and the LEGEND Website are affected through AgentPortal or shared diagnostics/site-tool assets. Do not publish native iOS/Android binaries, do not run schema migrations, do not change Cloudflare routing, and do not broaden access to secrets, credentials, private customer data, CRM, payments, analytics, or unrelated application behavior.",
-  "requestId": "gpt-codex-closed-loop-hardening-pr344-20260930",
+  "authorization": "Explicit Founder authorization on 2026-10-01 to deploy merged PR #345 after exact-head green MasterApp platform architecture validation run 36837561689 and Step 5 approved-baseline comparison run 36837561723.",
+  "purpose": "Deploy the validated Founder autonomous engineering control plane from merged PR #345. Runtime scope is AgentPortal only: durable engineering work items, atomic leases, bounded EngineeringContext, deterministic priority/risk/complexity/model routing, ChatGPT-plan-only Codex app-server execution with durable offline authorization refresh, independent review, non-redundant CI recovery, governed release cohorts, Founder escalation/notifications, exact deployment lineage, and live backend quiet-window closure. Apply the additive LegendEngineering control-plane migration through the Portal migration authority. Do not redeploy ClientApp, Protect, Parfait, the LEGEND Website, or native iOS/Android. Do not change Cloudflare routing. Do not enable API-billed OpenAI fallback.",
+  "requestId": "autonomous-engineering-control-plane-pr345-20261001",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
+    "masterapp-portal"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
