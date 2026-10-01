@@ -114,6 +114,133 @@ internal sealed class ChatGptPlanResponsesAdapter(
         return await GetModelCatalogAsync(credential, cancellationToken);
     }
 
+    public async Task<object> ReconcileRuntimeAsync(
+        bool force,
+        CancellationToken cancellationToken)
+    {
+        var credential = await credentials.GetAsync(cancellationToken);
+        if (!credential.Ready || string.IsNullOrWhiteSpace(credential.AccessToken))
+            return Failure(credential.Code);
+
+        var contract = await contractAuthority.GetCurrentAsync(cancellationToken);
+        var signature = ReadinessSignature(credential.ClientId, contract);
+        var catalog = await GetModelCatalogAsync(credential, cancellationToken);
+        if (!catalog.Ready)
+            return Failure(catalog.Code);
+
+        var now = DateTime.UtcNow;
+        if (!force && !string.IsNullOrWhiteSpace(credential.ProviderBlockerCode) &&
+            (credential.ProviderRetryNotBeforeUtc is null ||
+             credential.ProviderRetryNotBeforeUtc > now))
+            return Failure(credential.ProviderBlockerCode!);
+
+        if (!force &&
+            string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) &&
+            string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase) &&
+            ResolveReadyModel(EngineeringRole.HeadGpt, credential, catalog) is not null &&
+            ResolveReadyModel(EngineeringRole.CodexImplementer, credential, catalog) is not null &&
+            ResolveReadyModel(EngineeringRole.IndependentReviewer, credential, catalog) is not null)
+            return await GetStatusAsync(cancellationToken);
+
+        var providerLease = await credentials.TryAcquireProviderExecutionLeaseAsync(
+            "readiness:" + signature[..16],
+            TimeSpan.FromMinutes(3),
+            allowCircuitProbe: true,
+            cancellationToken);
+        if (!providerLease.Acquired || string.IsNullOrWhiteSpace(providerLease.LeaseIdentity))
+            return Failure(providerLease.Code);
+
+        try
+        {
+            var bindings = new[]
+            {
+                (Role: EngineeringRole.HeadGpt, Tier: EngineeringModelTier.DeepReasoning, Configured: contract.HeadGptModel),
+                (Role: EngineeringRole.CodexImplementer, Tier: EngineeringModelTier.CodeImplementation, Configured: contract.CodexModel),
+                (Role: EngineeringRole.IndependentReviewer, Tier: EngineeringModelTier.IndependentReview, Configured: contract.ReviewerModel)
+            };
+            var resolved = new Dictionary<string, string>(StringComparer.Ordinal);
+            PlanRun? lastCompleted = null;
+
+            foreach (var binding in bindings)
+            {
+                var auto = string.Equals(
+                    binding.Configured,
+                    LegendEngineeringContractAuthority.AutoModel,
+                    StringComparison.OrdinalIgnoreCase);
+                var candidates = auto
+                    ? catalog.Models.OrderBy(model => model.Slug, StringComparer.Ordinal).Take(8).Select(model => model.Slug).ToArray()
+                    : catalog.Models.Where(model => string.Equals(model.Slug, binding.Configured, StringComparison.Ordinal))
+                        .Select(model => model.Slug).ToArray();
+
+                if (candidates.Length == 0)
+                {
+                    var missing = new ChatGptPlanProviderFailure(
+                        "MODEL_BINDING",
+                        "chatgpt_plan_model_binding_unavailable",
+                        null,
+                        null,
+                        null,
+                        null);
+                    await credentials.RecordProviderFailureAsync(missing, cancellationToken);
+                    return Failure(missing.Code);
+                }
+
+                PlanRun? selected = null;
+                foreach (var model in candidates)
+                {
+                    var run = await RunOnceAsync(
+                        credential.AccessToken,
+                        model,
+                        binding.Tier,
+                        binding.Role,
+                        CanaryPrompt(binding.Role),
+                        cancellationToken);
+                    if (run.Success)
+                    {
+                        selected = run;
+                        resolved[binding.Role] = model;
+                        lastCompleted = run;
+                        break;
+                    }
+
+                    if (auto && IsUnsupportedCapability(run))
+                        continue;
+
+                    var providerFailure = ClassifyProviderFailure(run, credential.ProviderFailureStreak + 1, Guid.Empty);
+                    await credentials.RecordProviderFailureAsync(providerFailure, cancellationToken);
+                    return Failure(run.Code);
+                }
+
+                if (selected is null)
+                {
+                    var unsupported = new ChatGptPlanProviderFailure(
+                        "MODEL_BINDING",
+                        "subscription_sharing_unsupported_capability",
+                        null,
+                        null,
+                        400,
+                        null);
+                    await credentials.RecordProviderFailureAsync(unsupported, cancellationToken);
+                    return Failure(unsupported.Code);
+                }
+            }
+
+            await credentials.RecordReadinessSuccessAsync(
+                signature,
+                resolved,
+                lastCompleted?.ResponseId,
+                lastCompleted?.ProviderRequestId,
+                cancellationToken);
+            return await GetStatusAsync(cancellationToken);
+        }
+        finally
+        {
+            await credentials.ReleaseProviderExecutionLeaseAsync(
+                providerLease.LeaseIdentity,
+                CancellationToken.None);
+        }
+    }
+
     public async Task<object> StartAsync(
         Guid engineeringContextId,
         CancellationToken cancellationToken)
@@ -123,99 +250,179 @@ internal sealed class ChatGptPlanResponsesAdapter(
             return Failure(validation.Code);
 
         var context = validation.Context;
-        var contractBinding = await contractAuthority.ValidateBindingAsync(
-            context.OperationalContractRevision,
-            cancellationToken);
-        if (!contractBinding.Valid)
-            return Failure(contractBinding.Code);
-
-        var operationalContract = contractBinding.Contract;
         var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken);
         if (item is null)
             return Failure("work_item_not_found");
 
-        var credential = await credentials.GetAsync(cancellationToken);
-        if (!credential.Ready || string.IsNullOrWhiteSpace(credential.AccessToken))
-            return Failure(credential.Code);
-
-        var catalog = await GetModelCatalogAsync(credential, cancellationToken);
-        if (!catalog.Ready)
-            return Failure(catalog.Code);
-
-        var configuredModel = operationalContract.ModelForTier(item.ModelTier);
-        var model = ResolveModel(configuredModel, catalog);
-        if (model is null)
-            return Failure("chatgpt_plan_model_binding_unavailable");
-
-        var packet = await orchestrator.GetTaskPacketAsync(engineeringContextId, cancellationToken);
-        var sources = await BuildSourceBundleAsync(context, item, packet, cancellationToken);
-        var prompt = JsonSerializer.Serialize(new
+        ChatGptPlanProviderExecutionLease? providerLease = null;
+        using var heartbeatStop = new CancellationTokenSource();
+        Task? heartbeat = null;
+        try
         {
-            operationalContract = new
+            var contractBinding = await contractAuthority.ValidateBindingAsync(
+                context.OperationalContractRevision,
+                cancellationToken);
+            if (!contractBinding.Valid)
+                return Failure(contractBinding.Code);
+            var operationalContract = contractBinding.Contract;
+
+            if (context.Role == EngineeringRole.LiveVerifier)
+                return Failure("browser_live_proof_waiting_for_registered_page_verifier");
+
+            var credential = await credentials.GetAsync(cancellationToken);
+            if (!credential.Ready || string.IsNullOrWhiteSpace(credential.AccessToken))
+                return Failure(credential.Code);
+
+            if (!string.IsNullOrWhiteSpace(credential.ProviderBlockerCode))
             {
-                revision = operationalContract.Revision,
-                authority = "Founder-editable operational guidance; non-authorizing",
-                sharedDirective = operationalContract.SharedDirective,
-                roleDirective = operationalContract.DirectiveForRole(context.Role)
-            },
-            engineeringContext = context,
-            taskPacket = packet,
-            sourceBundle = sources
-        }, JsonOptions);
+                await store.TransitionProviderFailureAsync(
+                    item.WorkItemId,
+                    context.LeaseIdentity,
+                    credential.ProviderBlockerCode!,
+                    credential.ProviderRequestId,
+                    credential.ProviderRetryNotBeforeUtc,
+                    waitForProviderControl: true,
+                    cancellationToken);
+                return Failure(credential.ProviderBlockerCode!);
+            }
 
-        var attemptId = context.EngineeringContextId;
-        await store.RecordUsageAsync(new EngineeringUsageObservation(
-            attemptId,
-            item.WorkItemId,
-            item.ModelTier,
-            context.Role,
-            ProviderName,
-            null,
-            null,
-            null,
-            null,
-            null,
-            false,
-            DateTime.UtcNow), cancellationToken);
+            var catalog = await GetModelCatalogAsync(credential, cancellationToken);
+            if (!catalog.Ready)
+                return Failure(catalog.Code);
 
-        var run = await RunOnceAsync(
-            credential.AccessToken,
-            model,
-            item.ModelTier,
-            context.Role,
-            prompt,
-            cancellationToken);
-        if (!run.Success)
-            return Failure(run.Code);
+            var signature = ReadinessSignature(credential.ClientId, operationalContract);
+            if (!string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) ||
+                !string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase))
+                return Failure("chatgpt_plan_readiness_canary_required");
 
-        await store.RecordUsageAsync(new EngineeringUsageObservation(
-            attemptId,
-            item.WorkItemId,
-            item.ModelTier,
-            context.Role,
-            ProviderName,
-            run.ResponseId,
-            null,
-            null,
-            run.TotalTokens,
-            null,
-            run.TotalTokens is not null,
-            DateTime.UtcNow), cancellationToken);
+            var model = ResolveReadyModel(context.Role, credential, catalog);
+            if (model is null)
+                return Failure("chatgpt_plan_model_binding_unavailable");
 
-        // Contract changes made while the model was running invalidate the
-        // outcome before it can mutate durable engineering state.
-        var currentBinding = await contractAuthority.ValidateBindingAsync(
-            operationalContract.Revision,
-            cancellationToken);
-        if (!currentBinding.Valid)
-            return Failure(currentBinding.Code);
+            providerLease = await credentials.TryAcquireProviderExecutionLeaseAsync(
+                "engineering:" + context.EngineeringContextId.ToString("N"),
+                TimeSpan.FromMinutes(3),
+                allowCircuitProbe: false,
+                cancellationToken);
+            if (!providerLease.Acquired || string.IsNullOrWhiteSpace(providerLease.LeaseIdentity))
+                return Failure(providerLease.Code);
 
-        return await ApplyOutcomeAsync(
-            context,
-            item,
-            run.ResponseId!,
-            run.Output!.Value,
-            cancellationToken);
+            heartbeat = RunHeartbeatAsync(
+                context,
+                providerLease.LeaseIdentity,
+                heartbeatStop.Token);
+
+            var packet = await orchestrator.GetTaskPacketAsync(engineeringContextId, cancellationToken);
+            var sources = await BuildSourceBundleAsync(context, item, packet, cancellationToken);
+            var prompt = JsonSerializer.Serialize(new
+            {
+                operationalContract = new
+                {
+                    revision = operationalContract.Revision,
+                    authority = "Founder-editable operational guidance; non-authorizing",
+                    sharedDirective = operationalContract.SharedDirective,
+                    roleDirective = operationalContract.DirectiveForRole(context.Role)
+                },
+                engineeringContext = context,
+                taskPacket = packet,
+                sourceBundle = sources
+            }, JsonOptions);
+
+            var run = await RunOnceAsync(
+                credential.AccessToken,
+                model,
+                item.ModelTier,
+                context.Role,
+                prompt,
+                cancellationToken);
+
+            await store.RecordUsageAsync(new EngineeringUsageObservation(
+                context.EngineeringContextId,
+                item.WorkItemId,
+                item.ModelTier,
+                context.Role,
+                ProviderName,
+                run.ResponseId,
+                null,
+                null,
+                run.TotalTokens,
+                null,
+                run.TotalTokens is not null,
+                DateTime.UtcNow,
+                ProviderAttempted: run.ProviderAttempted,
+                LogicalAttemptCompleted: run.LogicalAttemptCompleted,
+                ProviderOutcome: run.ProviderOutcome,
+                ProviderStatusCode: run.HttpStatus,
+                ProviderErrorCode: run.ProviderErrorCode,
+                ProviderErrorParam: run.ProviderErrorParam,
+                ProviderRequestId: run.ProviderRequestId), cancellationToken);
+
+            if (!run.Success)
+            {
+                var failure = ClassifyProviderFailure(
+                    run,
+                    item.ProviderFailureCount + 1,
+                    item.WorkItemId);
+                await credentials.RecordProviderFailureAsync(failure, cancellationToken);
+                await store.TransitionProviderFailureAsync(
+                    item.WorkItemId,
+                    context.LeaseIdentity,
+                    run.Code,
+                    run.ProviderRequestId,
+                    failure.RetryNotBeforeUtc,
+                    waitForProviderControl: failure.RetryNotBeforeUtc is null,
+                    cancellationToken);
+                return Failure(run.Code);
+            }
+
+            var renewedValidation =
+                await store.ValidateContextAsync(engineeringContextId, cancellationToken);
+            if (!renewedValidation.Valid)
+                return Failure(renewedValidation.Code);
+
+            // Contract changes made while the model was running invalidate the
+            // outcome before it can mutate durable engineering state.
+            var currentBinding = await contractAuthority.ValidateBindingAsync(
+                operationalContract.Revision,
+                cancellationToken);
+            if (!currentBinding.Valid)
+                return Failure(currentBinding.Code);
+
+            return await ApplyOutcomeAsync(
+                context,
+                item,
+                run.ResponseId!,
+                run.Output!.Value,
+                cancellationToken);
+        }
+        finally
+        {
+            heartbeatStop.Cancel();
+            if (heartbeat is not null)
+            {
+                try { await heartbeat; }
+                catch (OperationCanceledException) { }
+            }
+            if (providerLease?.Acquired == true &&
+                !string.IsNullOrWhiteSpace(providerLease.LeaseIdentity))
+            {
+                try
+                {
+                    await credentials.ReleaseProviderExecutionLeaseAsync(
+                        providerLease.LeaseIdentity,
+                        CancellationToken.None);
+                }
+                catch { }
+            }
+            try
+            {
+                await store.ReleaseLeaseAsync(
+                    item.WorkItemId,
+                    context.LeaseIdentity,
+                    CancellationToken.None);
+            }
+            catch { }
+        }
     }
 
     private async Task<EngineeringModelCatalog> GetModelCatalogAsync(
