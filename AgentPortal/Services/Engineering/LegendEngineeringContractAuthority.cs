@@ -261,6 +261,9 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         ContractInput input,
         CancellationToken cancellationToken)
     {
+        if (Equivalent(current, input))
+            return current;
+
         var now = DateTime.UtcNow;
         var next = new LegendEngineeringOperationalContract(
             Guid.NewGuid().ToString("N"),
@@ -414,6 +417,15 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
             if (opened) await connection.CloseAsync();
         }
     }
+
+    private static bool Equivalent(
+        LegendEngineeringOperationalContract current,
+        ContractInput input) =>
+        current.ModelExecutionEnabled == input.ModelExecutionEnabled &&
+        string.Equals(current.SharedDirective, input.SharedDirective, StringComparison.Ordinal) &&
+        string.Equals(current.HeadGptDirective, input.HeadGptDirective, StringComparison.Ordinal) &&
+        string.Equals(current.CodexDirective, input.CodexDirective, StringComparison.Ordinal) &&
+        string.Equals(current.ReviewerDirective, input.ReviewerDirective, StringComparison.Ordinal);
 
     private static void BindCurrent(DbCommand command, LegendEngineeringOperationalContract value)
     {
