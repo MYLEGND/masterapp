@@ -67,34 +67,362 @@ jobs:
           workflow_path=".github/workflows/$workflow_name"
           mkdir -p /tmp/step5-prior/candidate /tmp/step5-prior/baseline
 
-          runs_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_name/runs?event=pull_request&status=completed&per_page=50")"
-          prior_run_id="$(printf '%s' "$runs_json" | jq -r             --arg current "$GITHUB_RUN_ID"             --arg branch "$HEAD_BRANCH"             '.workflow_runs[] | select((.id|tostring) != $current) | select(.head_branch == $branch) | .id' | head -n 1)"
-
-          if [[ -z "$prior_run_id" || "$prior_run_id" == "null" ]]; then
-            echo "No completed prior Step 5 run for this PR branch; full validation is required."
-            exit 0
-          fi
-
-          prior_head_sha="$(printf '%s' "$runs_json" | jq -r --argjson id "$prior_run_id" '.workflow_runs[] | select(.id == $id) | .head_sha' | head -n 1)"
-          if [[ ! "$prior_head_sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Prior Step 5 head could not be proven; full validation is required."
-            exit 0
-          fi
-
-          candidate_name="step5-candidate-$prior_head_sha"
+          runs_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_name/runs?event=pull_request&status=completed&per_page=100")"
+          prior_run_id=""
+          prior_head_sha=""
+          candidate_name=""
           baseline_name="step5-baseline-$CURRENT_BASE"
-          artifacts_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$prior_run_id/artifacts?per_page=100")"
-          if ! printf '%s' "$artifacts_json" | jq -e --arg name "$candidate_name" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null; then
-            echo "Prior candidate artifact unavailable; full validation is required."
+
+          # Search backward for the newest complete evidence pair. A later
+          # comparison-only/repair-only run may not own the expensive artifacts,
+          # and must never erase an older still-valid candidate/baseline success.
+          while IFS=
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          def failed(path):
+              root = ET.parse(path).getroot()
+              return {
+                  node.attrib.get("testName", "")
+                  for node in root.iter()
+                  if node.tag.endswith("UnitTestResult") and node.attrib.get("outcome") == "Failed"
+              }
+
+          candidate = failed("/tmp/step5-prior/candidate/candidate.trx")
+          baseline = failed("/tmp/step5-prior/baseline/baseline.trx")
+          introduced = sorted(candidate - baseline)
+          classes = sorted({name.rsplit(".", 1)[0] for name in introduced if "." in name})
+          Path("/tmp/step5-prior/introduced.txt").write_text("\n".join(introduced) + ("\n" if introduced else ""))
+          Path("/tmp/step5-prior/classes.txt").write_text("\n".join(classes) + ("\n" if classes else ""))
+          PY
+
+          if [[ ! -s /tmp/step5-prior/introduced.txt || ! -s /tmp/step5-prior/classes.txt ]]; then
+            echo "Prior run did not expose a bounded introduced test failure; full validation is required."
             exit 0
           fi
-          if ! printf '%s' "$artifacts_json" | jq -e --arg name "$baseline_name" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null; then
-            echo "Exact-base baseline artifact unavailable; full validation is required."
+
+          git diff --name-status "$prior_head_sha" "$CURRENT_HEAD" > /tmp/step5-prior/changes.txt
+
+          if ! python3 - "$workflow_path" <<'PY'
+          from pathlib import Path
+          import sys
+
+          workflow_path = sys.argv[1]
+          classes = [line.strip() for line in Path("/tmp/step5-prior/classes.txt").read_text().splitlines() if line.strip()]
+          expected = {
+              f"AgentPortal.Tests/{class_name.rsplit('.', 1)[-1]}.cs"
+              for class_name in classes
+              if class_name.startswith("AgentPortal.Tests.")
+          }
+          if len(expected) != len(classes) or not expected:
+              raise SystemExit(1)
+
+          rows = []
+          for line in Path("/tmp/step5-prior/changes.txt").read_text().splitlines():
+              parts = line.split("\t")
+              if len(parts) != 2:
+                  raise SystemExit(1)
+              rows.append((parts[0], parts[1]))
+
+          if not rows:
+              raise SystemExit(1)
+
+          allowed = expected | {workflow_path}
+          changed = {path for _, path in rows}
+          if not changed <= allowed:
+              raise SystemExit(1)
+
+          changed_tests = {path for status, path in rows if path in expected and status == "M"}
+          if changed_tests != expected:
+              raise SystemExit(1)
+
+          for status, path in rows:
+              if path in expected and status != "M":
+                  raise SystemExit(1)
+              if path == workflow_path and status not in {"M", "A"}:
+                  raise SystemExit(1)
+          PY
+          then
+            echo "New head changes more than the exact previously failing test authority; full validation is required."
+            exit 0
+          fi
+
+          repair_classes="$(paste -sd';' /tmp/step5-prior/classes.txt)"
+          repair_filter="$(python3 - <<'PY'
+          from pathlib import Path
+          classes = [line.strip() for line in Path('/tmp/step5-prior/classes.txt').read_text().splitlines() if line.strip()]
+          print('|'.join(f'FullyQualifiedName~{name}' for name in classes))
+          PY
+          )"
+
+          echo "mode=repair" >> "$GITHUB_OUTPUT"
+          echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
+          echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
+          echo "repair_filter=$repair_filter" >> "$GITHUB_OUTPUT"
+          echo "repair_classes=$repair_classes" >> "$GITHUB_OUTPUT"
+          echo "Safe repair mode: prior candidate/baseline evidence is preserved; only the repaired failing class is invalidated."
+
+  candidate:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Restore AgentPortal tests
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+
+      - name: Build affected test graph
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
+
+      - name: Run Step 5 focused tests
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~MarketingScopeParityContractTests"
+
+      - name: Run full AgentPortal candidate suite
+        id: full
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/step5-candidate
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --logger "trx;LogFileName=candidate.trx" --results-directory /tmp/step5-candidate
+          exit 0
+
+      - name: Preserve completed candidate results
+        if: always() && steps.full.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-candidate-${{ github.event.pull_request.head.sha }}
+          path: /tmp/step5-candidate/candidate.trx
+          if-no-files-found: error
+          retention-days: 7
+
+  baseline:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact approved baseline
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Setup identical .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Run identical suite on approved baseline
+        id: full
+        shell: bash
+        run: |
+          baseline_artifacts=/tmp/masterapp-step5-baseline
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj -p:MasterAppArtifactsRoot="$baseline_artifacts"
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false -p:MasterAppArtifactsRoot="$baseline_artifacts"
+          set +e
+          rm -rf /tmp/step5-baseline
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build -p:MasterAppArtifactsRoot="$baseline_artifacts" --logger "trx;LogFileName=baseline.trx" --results-directory /tmp/step5-baseline
+          exit 0
+
+      - name: Preserve completed baseline results
+        if: always() && steps.full.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-baseline/baseline.trx
+          if-no-files-found: error
+          retention-days: 7
+
+  validate:
+    name: step5-validation
+    needs: [plan, candidate, baseline]
+    if: >-
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.plan.outputs.mode == 'repair' ||
+       needs.plan.outputs.mode == 'reuse' ||
+       (needs.candidate.result == 'success' && needs.baseline.result == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Load exact current candidate results
+        if: needs.plan.outputs.mode == 'full'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-candidate-${{ github.event.pull_request.head.sha }}
+          path: /tmp/step5-candidate
+
+      - name: Load exact current approved baseline results
+        if: needs.plan.outputs.mode == 'full'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-baseline
+
+      - name: Checkout only the repaired isolated head
+        if: needs.plan.outputs.mode == 'repair'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup .NET only for repaired failure proof
+        if: needs.plan.outputs.mode == 'repair'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Load preserved candidate results from prior exact head
+        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-candidate-${{ needs.plan.outputs.prior_head_sha }}
+          path: /tmp/step5-prior-candidate
+          run-id: ${{ needs.plan.outputs.prior_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Load preserved baseline results from same approved base
+        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-prior-baseline
+          run-id: ${{ needs.plan.outputs.prior_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Build only what the repaired test authority requires
+        if: needs.plan.outputs.mode == 'repair'
+        shell: bash
+        run: |
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
+
+      - name: Rerun only the previously introduced failing test class
+        if: needs.plan.outputs.mode == 'repair'
+        shell: bash
+        env:
+          REPAIR_FILTER: ${{ needs.plan.outputs.repair_filter }}
+        run: |
+          set +e
+          rm -rf /tmp/step5-repair
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build             --filter "$REPAIR_FILTER"             --logger "trx;LogFileName=repair.trx"             --results-directory /tmp/step5-repair
+          repair_rc=$?
+          set -e
+          test -f /tmp/step5-repair/repair.trx
+          echo "Focused repaired-class test exit code: $repair_rc"
+
+      - name: Prove Step 5 adds no full-suite failures
+        shell: bash
+        env:
+          VALIDATION_MODE: ${{ needs.plan.outputs.mode }}
+          REPAIR_CLASSES: ${{ needs.plan.outputs.repair_classes }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          def results(path):
+              root = ET.parse(path).getroot()
+              return {
+                  node.attrib.get("testName", ""): node.attrib.get("outcome", "")
+                  for node in root.iter()
+                  if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
+              }
+
+          def failed(path):
+              return {name for name, outcome in results(path).items() if outcome == "Failed"}
+
+          mode = os.environ["VALIDATION_MODE"]
+          if mode in {"repair", "reuse"}:
+              prior_candidate = failed("/tmp/step5-prior-candidate/candidate.trx")
+              baseline = failed("/tmp/step5-prior-baseline/baseline.trx")
+              if mode == "repair":
+                  repair_rows = results("/tmp/step5-repair/repair.trx")
+                  repair_failed = {name for name, outcome in repair_rows.items() if outcome == "Failed"}
+                  classes = [value for value in os.environ.get("REPAIR_CLASSES", "").split(";") if value]
+                  if not classes:
+                      raise SystemExit("Repair mode had no bounded failing class authority.")
+                  for class_name in classes:
+                      prefix = class_name + "."
+                      if not any(name.startswith(prefix) for name in repair_rows):
+                          raise SystemExit(f"Repair proof did not execute the full affected class: {class_name}")
+                  candidate = {
+                      name for name in prior_candidate
+                      if not any(name.startswith(class_name + ".") for class_name in classes)
+                  }
+                  candidate.update(repair_failed)
+                  print("Reused unchanged prior candidate/baseline evidence; only repaired failing-class results were replaced.")
+              else:
+                  candidate = prior_candidate
+                  print("Reused unchanged candidate/baseline evidence; only the final Step 5 comparison logic was re-executed.")
+          else:
+              candidate = failed("/tmp/step5-candidate/candidate.trx")
+              baseline = failed("/tmp/step5-baseline/baseline.trx")
+
+          introduced = sorted(candidate - baseline)
+          print(f"candidate failures: {len(candidate)}")
+          print(f"approved baseline failures: {len(baseline)}")
+          if introduced:
+              print("Step 5 introduced full-suite failures:")
+              for name in introduced:
+                  print(f" - {name}")
+              raise SystemExit(1)
+
+          print("Step 5 introduced zero new full-suite failures.")
+          PY
+\t' read -r candidate_run candidate_head; do
+            [[ -n "$candidate_run" && "$candidate_head" =~ ^[0-9a-f]{40}$ ]] || continue
+            artifacts_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run/artifacts?per_page=100")"
+            candidate_artifact="step5-candidate-$candidate_head"
+            if printf '%s' "$artifacts_json" | jq -e --arg name "$candidate_artifact" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null &&
+               printf '%s' "$artifacts_json" | jq -e --arg name "$baseline_name" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null; then
+              prior_run_id="$candidate_run"
+              prior_head_sha="$candidate_head"
+              candidate_name="$candidate_artifact"
+              break
+            fi
+          done < <(
+            printf '%s' "$runs_json" | jq -r \
+              --arg current "$GITHUB_RUN_ID" \
+              --arg branch "$HEAD_BRANCH" \
+              '.workflow_runs[]
+               | select((.id|tostring) != $current)
+               | select(.head_branch == $branch)
+               | [.id, .head_sha] | @tsv'
+          )
+
+          if [[ -z "$prior_run_id" ]]; then
+            echo "No completed prior Step 5 run owns a reusable candidate/baseline evidence pair; full validation is required."
             exit 0
           fi
 
           gh run download "$prior_run_id" --repo "$GITHUB_REPOSITORY" --name "$candidate_name" --dir /tmp/step5-prior/candidate
           gh run download "$prior_run_id" --repo "$GITHUB_REPOSITORY" --name "$baseline_name" --dir /tmp/step5-prior/baseline
+
+          git diff --name-only "$prior_head_sha" "$CURRENT_HEAD" > /tmp/step5-prior/path-changes.txt
+          if [[ "$(wc -l < /tmp/step5-prior/path-changes.txt | tr -d ' ')" == "1" ]] &&
+             grep -Fxq "$workflow_path" /tmp/step5-prior/path-changes.txt &&
+             python3 scripts/validation-resume.py job-unchanged \
+               --workflow-path "$workflow_path" \
+               --prior-sha "$prior_head_sha" \
+               --job candidate \
+               --job baseline; then
+            echo "mode=reuse" >> "$GITHUB_OUTPUT"
+            echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
+            echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
+            echo "Comparison-only repair: preserved the expensive candidate/baseline evidence pair; only final Step 5 comparison is invalidated."
+            exit 0
+          fi
 
           python3 - <<'PY'
           from pathlib import Path
@@ -301,7 +629,7 @@ jobs:
           dotnet-version: '10.0.401'
 
       - name: Load preserved candidate results from prior exact head
-        if: needs.plan.outputs.mode == 'repair'
+        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
         uses: actions/download-artifact@v4
         with:
           name: step5-candidate-${{ needs.plan.outputs.prior_head_sha }}
@@ -310,7 +638,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Load preserved baseline results from same approved base
-        if: needs.plan.outputs.mode == 'repair'
+        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
         uses: actions/download-artifact@v4
         with:
           name: step5-baseline-${{ github.event.pull_request.base.sha }}
