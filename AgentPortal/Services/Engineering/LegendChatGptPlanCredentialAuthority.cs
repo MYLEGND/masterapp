@@ -18,7 +18,12 @@ internal sealed record EngineeringModelOption(string Slug, string DisplayName);
 internal sealed record EngineeringModelCatalog(
     bool Ready,
     string Code,
-    IReadOnlyList<EngineeringModelOption> Models);
+    IReadOnlyList<EngineeringModelOption> Models,
+    int? HttpStatus = null,
+    string? ProviderErrorCode = null,
+    string? ProviderErrorParam = null,
+    string? ProviderRequestId = null,
+    DateTime? RetryAfterUtc = null);
 
 internal interface ILegendEngineeringAgentAdapter
 {
