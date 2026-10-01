@@ -55,16 +55,31 @@ jobs:
           set -euo pipefail
           artifact="legend-candidate-validation-$TRUSTED_SHA-$CANDIDATE_SHA"
           run_id=""
-          runs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/legend-candidate-validation.yml/runs?branch=legend/approved-changes&event=workflow_dispatch&status=success&per_page=50")"
-          while read -r candidate_run; do
-            [ -n "$candidate_run" ] || continue
-            [ "$candidate_run" != "$GITHUB_RUN_ID" ] || continue
-            artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run/artifacts?per_page=100")"
-            if printf '%s' "$artifacts" | jq -e --arg name "$artifact" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null; then
-              run_id="$candidate_run"
-              break
+
+          if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+            prior_attempt=$((GITHUB_RUN_ATTEMPT - 1))
+            prior_jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$prior_attempt/jobs?per_page=100")"
+            prior_verify="$(printf '%s' "$prior_jobs" | jq -r '
+              [.jobs[] | .steps[] | select(.name == "Verify and execute fixed candidate checks") | .conclusion][0] // ""')"
+            current_artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100")"
+            if [ "$prior_verify" = "success" ] &&
+               printf '%s' "$current_artifacts" | jq -e --arg name "$artifact" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null; then
+              run_id="$GITHUB_RUN_ID"
             fi
-          done < <(printf '%s' "$runs" | jq -r '.workflow_runs[].id')
+          fi
+
+          if [ -z "$run_id" ]; then
+            runs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/legend-candidate-validation.yml/runs?branch=legend/approved-changes&event=workflow_dispatch&status=success&per_page=50")"
+            while read -r candidate_run; do
+              [ -n "$candidate_run" ] || continue
+              [ "$candidate_run" != "$GITHUB_RUN_ID" ] || continue
+              artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run/artifacts?per_page=100")"
+              if printf '%s' "$artifacts" | jq -e --arg name "$artifact" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null; then
+                run_id="$candidate_run"
+                break
+              fi
+            done < <(printf '%s' "$runs" | jq -r '.workflow_runs[].id')
+          fi
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
           if [ -n "$run_id" ]; then
