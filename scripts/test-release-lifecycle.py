@@ -167,7 +167,7 @@ class ReleaseTruth(unittest.TestCase):
     def tearDown(self):
         self.git_patch.stop()
 
-    def run(self, **overrides):
+    def release_run(self, **overrides):
         row = {
             "id": 10,
             "status": "completed",
@@ -183,17 +183,17 @@ class ReleaseTruth(unittest.TestCase):
     def test_only_direct_release_can_prove_deployment(self):
         api = Api()
         api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs()
-        self.assertTrue(m.successful_release(api, self.run(), app="portal"))
+        self.assertTrue(m.successful_release(api, self.release_run(), app="portal"))
         self.assertFalse(m.successful_release(
-            api, self.run(path=".github/workflows/approved-release-security-validation.yml"), app="portal"
+            api, self.release_run(path=".github/workflows/approved-release-security-validation.yml"), app="portal"
         ))
 
     def test_wrong_branch_or_repository_cannot_prove_deployment(self):
         api = Api()
         api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs()
-        self.assertFalse(m.successful_release(api, self.run(head_branch="production")))
+        self.assertFalse(m.successful_release(api, self.release_run(head_branch="production")))
         self.assertFalse(m.successful_release(
-            api, self.run(head_repository={"full_name": "fork/masterapp"})
+            api, self.release_run(head_repository={"full_name": "fork/masterapp"})
         ))
 
     def test_missing_final_live_or_enforcement_proof_fails_closed(self):
@@ -204,18 +204,18 @@ class ReleaseTruth(unittest.TestCase):
                 {"name": "Direct deploy AgentPortal", "conclusion": "success"},
             ]},
         ]
-        self.assertFalse(m.successful_release(api, self.run(), app="portal"))
+        self.assertFalse(m.successful_release(api, self.release_run(), app="portal"))
 
     def test_app_receipt_is_target_specific(self):
         api = Api()
         api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs("Direct deploy AgentPortal")
-        self.assertTrue(m.successful_release(api, self.run(), app="portal"))
-        self.assertFalse(m.successful_release(api, self.run(), app="client"))
+        self.assertTrue(m.successful_release(api, self.release_run(), app="portal"))
+        self.assertFalse(m.successful_release(api, self.release_run(), app="client"))
 
     def test_release_proven_resolves_application_revision_receipt_not_workflow_head(self):
         api = Api()
         revision = "c" * 40
-        passed = self.run(id=10, head_sha="d" * 40)
+        passed = self.release_run(id=10, head_sha="d" * 40)
         api.pages_map["actions/artifacts?name=legend-approved-release-" + revision] = [
             {"expired": False, "workflow_run": {"id": 10}}
         ]
