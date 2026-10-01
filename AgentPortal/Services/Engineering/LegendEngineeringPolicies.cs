@@ -16,22 +16,24 @@ internal static class LegendEngineeringPolicies
     internal static EngineeringPolicyDecision Classify(RuntimeDiagnosticIncident incident)
     {
         var disclosure = FounderSoftwareRemediationService.ClassifyInspectableSourcePath(incident.SourceFilePath ?? string.Empty);
-        var failureClass = ClassifyFailure(incident, disclosure);
-        var canonicalAuthority = CanonicalAuthority(incident, disclosure);
-        var projects = Projects(incident.SourceFilePath, disclosure, incident.AppIdentifier);
+        var sourceHint = IsSanitizedRuntimeSourceHint(incident);
+        var effectiveDisclosure = disclosure ?? (sourceHint ? LegendSiteToolDisclosureAuthority.SafeSource : null);
+        var failureClass = ClassifyFailure(incident, effectiveDisclosure);
+        var canonicalAuthority = CanonicalAuthority(incident, effectiveDisclosure);
+        var projects = Projects(incident.SourceFilePath, effectiveDisclosure, incident.AppIdentifier);
         var applications = string.IsNullOrWhiteSpace(incident.AppIdentifier)
             ? Array.Empty<string>()
             : [SafeToken(incident.AppIdentifier, 64)];
-        var impact = ImpactSet(canonicalAuthority, incident.SourceFilePath, disclosure, applications);
+        var impact = ImpactSet(canonicalAuthority, incident.SourceFilePath, effectiveDisclosure, applications);
         var severity = Severity(incident);
         var revenue = RevenueImpact(incident);
         var users = UserImpact(incident);
         var frequency = Frequency(incident.Occurrences);
-        var confidence = Confidence(incident, disclosure);
+        var confidence = Confidence(incident, effectiveDisclosure);
         var breadth = impact.Contains("shared:*", StringComparer.Ordinal) ? 100 : Math.Min(100, 20 + projects.Length * 15 + applications.Length * 10);
         var priority = WeightedPriority(severity, revenue, users, frequency, confidence, breadth);
         var priorityClass = PriorityClass(priority, severity, revenue);
-        var risk = RiskClass(incident, disclosure);
+        var risk = RiskClass(incident, effectiveDisclosure);
         var complexity = Complexity(incident, projects.Length, applications.Length, breadth, risk);
         var codeEligible = failureClass == EngineeringFailureClass.CodeDefect && risk != EngineeringRiskClass.TierC;
         var role = codeEligible
@@ -112,6 +114,25 @@ internal static class LegendEngineeringPolicies
         IsImmutableSha(item.CandidateSha)
             ? item.CandidateSha!.ToLowerInvariant()
             : item.LiveSha.ToLowerInvariant();
+
+    internal static bool IsSanitizedRuntimeSourceHint(RuntimeDiagnosticIncident incident)
+    {
+        if (!string.Equals(incident.Platform, "Server", StringComparison.Ordinal))
+            return false;
+        var source = NormalizePath(incident.SourceFilePath);
+        if (string.IsNullOrWhiteSpace(source) || source.Length > 180 ||
+            source.Contains('/', StringComparison.Ordinal) ||
+            source.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.')))
+            return false;
+        var extension = Path.GetExtension(source);
+        if (extension is not (".cs" or ".cshtml"))
+            return false;
+        var lower = source.ToLowerInvariant();
+        return lower != "program.cs" &&
+               !ContainsAny(lower, "secret", "credential", "authentication", "authorization",
+                   "security", "identity", "migration", "remediation", "runtimediagnostic",
+                   "founderdiagnostic", "mobileapicontrollerbase");
+    }
 
     private static string ClassifyFailure(RuntimeDiagnosticIncident incident, string? disclosure)
     {
