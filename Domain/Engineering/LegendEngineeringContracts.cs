@@ -111,7 +111,8 @@ public sealed record EngineeringWorkItemSnapshot(
     string? MergedSha = null,
     string? DeployedTreeSha = null,
     long? DeploymentRunId = null,
-    DateTime? DeploymentVerifiedUtc = null);
+    DateTime? DeploymentVerifiedUtc = null,
+    DateTime? FounderReleaseApprovedUtc = null);
 
 public sealed record EngineeringLeaseReceipt(
     bool Acquired,
