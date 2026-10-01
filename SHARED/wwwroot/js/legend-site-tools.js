@@ -60,7 +60,16 @@
   function pageSnapshot() {
     const width = Math.round(window.innerWidth || document.documentElement.clientWidth || 0);
     const height = Math.round(window.innerHeight || document.documentElement.clientHeight || 0);
+    let route = "";
+    try {
+      const observer = Array.from(document.scripts || []).find(node => {
+        try { return new URL(node.src, window.location.origin).pathname === "/_content/Shared/js/page-health.js"; }
+        catch { return false; }
+      });
+      route = typeof observer?.dataset?.route === "string" ? observer.dataset.route : "";
+    } catch { }
     return {
+      path: route,
       viewportWidth: width,
       viewportHeight: height,
       devicePixelRatio: Number(window.devicePixelRatio || 1),
