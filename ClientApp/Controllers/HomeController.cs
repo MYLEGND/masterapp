@@ -66,7 +66,7 @@ public class HomeController : Controller
             !string.Equals(request.Name, LegendSiteToolDisclosureAuthority.CurrentPageToolName, StringComparison.Ordinal))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "legend_site_tool_not_exposed" });
 
-        var route = LegendSiteToolDisclosureAuthority.ResolveRoutePattern(request.Page?.Path, endpointSources);
+        var route = LegendSiteToolDisclosureAuthority.ResolveRouteAuthority(request.Page?.Path, endpointSources);
         return Json(LegendSiteToolDisclosureAuthority.SanitizePage(
             request.Page,
             environment.ApplicationName,
