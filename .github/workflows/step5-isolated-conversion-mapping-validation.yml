@@ -76,7 +76,49 @@ jobs:
           # Search backward for the newest complete evidence pair. A later
           # comparison-only/repair-only run may not own the expensive artifacts,
           # and must never erase an older still-valid candidate/baseline success.
-          while IFS=
+          while read -r candidate_run candidate_head; do
+            [[ -n "$candidate_run" && "$candidate_head" =~ ^[0-9a-f]{40}$ ]] || continue
+            artifacts_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run/artifacts?per_page=100")"
+            candidate_artifact="step5-candidate-$candidate_head"
+            if printf '%s' "$artifacts_json" | jq -e --arg name "$candidate_artifact" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null &&
+               printf '%s' "$artifacts_json" | jq -e --arg name "$baseline_name" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null; then
+              prior_run_id="$candidate_run"
+              prior_head_sha="$candidate_head"
+              candidate_name="$candidate_artifact"
+              break
+            fi
+          done < <(
+            printf '%s' "$runs_json" | jq -r \
+              --arg current "$GITHUB_RUN_ID" \
+              --arg branch "$HEAD_BRANCH" \
+              '.workflow_runs[]
+               | select((.id|tostring) != $current)
+               | select(.head_branch == $branch)
+               | "\(.id) \(.head_sha)"'
+          )
+
+          if [[ -z "$prior_run_id" ]]; then
+            echo "No completed prior Step 5 run owns a reusable candidate/baseline evidence pair; full validation is required."
+            exit 0
+          fi
+
+          gh run download "$prior_run_id" --repo "$GITHUB_REPOSITORY" --name "$candidate_name" --dir /tmp/step5-prior/candidate
+          gh run download "$prior_run_id" --repo "$GITHUB_REPOSITORY" --name "$baseline_name" --dir /tmp/step5-prior/baseline
+
+          git diff --name-only "$prior_head_sha" "$CURRENT_HEAD" > /tmp/step5-prior/path-changes.txt
+          if [[ "$(wc -l < /tmp/step5-prior/path-changes.txt | tr -d ' ')" == "1" ]] &&
+             grep -Fxq "$workflow_path" /tmp/step5-prior/path-changes.txt &&
+             python3 scripts/validation-resume.py job-unchanged \
+               --workflow-path "$workflow_path" \
+               --prior-sha "$prior_head_sha" \
+               --job candidate \
+               --job baseline; then
+            echo "mode=reuse" >> "$GITHUB_OUTPUT"
+            echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
+            echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
+            echo "Comparison-only repair: preserved the expensive candidate/baseline evidence pair; only final Step 5 comparison is invalidated."
+            exit 0
+          fi
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
