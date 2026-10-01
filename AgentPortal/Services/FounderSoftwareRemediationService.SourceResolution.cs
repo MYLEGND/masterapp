@@ -101,7 +101,7 @@ public sealed partial class FounderSoftwareRemediationService
 
             foreach (var hint in sourceHints)
             {
-                if (!SourceHintMatches(hint, normalized)) continue;
+                if (!SourceHintMatches(hint, normalized, application)) continue;
                 result.Add(normalized);
                 break;
             }
@@ -127,10 +127,31 @@ public sealed partial class FounderSoftwareRemediationService
         return ClassifyInspectableSourcePath(hint) == LegendSiteToolDisclosureAuthority.SafeSource ? hint : null;
     }
 
-    private static bool SourceHintMatches(string hint, string repositoryPath)
+    private static bool SourceHintMatches(string hint, string repositoryPath, string? application)
     {
         if (!hint.Contains('/', StringComparison.Ordinal))
             return string.Equals(Path.GetFileName(repositoryPath), hint, StringComparison.Ordinal);
+
+        const string sharedStaticPrefix = "_content/Shared/js/";
+        if (hint.StartsWith(sharedStaticPrefix, StringComparison.Ordinal))
+            return string.Equals(
+                repositoryPath,
+                "SHARED/wwwroot/js/" + hint[sharedStaticPrefix.Length..],
+                StringComparison.Ordinal);
+
+        if (hint.StartsWith("js/", StringComparison.Ordinal))
+        {
+            var applicationRoot = application?.Trim() switch
+            {
+                "AgentPortal" => "AgentPortal/",
+                "ClientApp" => "ClientApp/",
+                "ProtectWebsite" or "Protect-Website" => "Protect-Website/",
+                "ParfaitApp" => "ParfaitApp/",
+                _ => null
+            };
+            return applicationRoot is not null &&
+                   string.Equals(repositoryPath, applicationRoot + "wwwroot/" + hint, StringComparison.Ordinal);
+        }
 
         if (string.Equals(repositoryPath, hint, StringComparison.Ordinal) ||
             repositoryPath.EndsWith("/" + hint, StringComparison.Ordinal))

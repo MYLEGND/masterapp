@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgentPortal.Services;
+using AgentPortal.Services.Engineering;
 using AgentPortal.Security;
 using Domain.Entities;
 using Domain.Messaging;
@@ -253,7 +254,8 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
                 return true;
             }
 
-            if (!TryReadArray(root, "required_component_ids", 24, out var requiredComponents) ||
+            if (!Guid.TryParse(ReadString(root, "engineering_work_item_id"), out var engineeringWorkItemId) ||
+                !TryReadArray(root, "required_component_ids", 24, out var requiredComponents) ||
                 !TryReadArray(root, "required_action_keys", 24, out var requiredActions) ||
                 !TryReadArray(root, "required_composition_ids", 24, out var requiredCompositions) ||
                 !TryReadArray(root, "required_modal_ids", 16, out var requiredModals) ||
@@ -261,19 +263,48 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
                 return BadRequest(new { error = "live_repair_proof_arguments_invalid" });
 
             var route = LegendSiteToolDisclosureAuthority.ResolveRouteAuthority(request.Page?.Path, endpointSources);
-            return Json(LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepair(
+            var expectedRevision = ReadString(root, "expected_revision");
+            var expectedRoute = ReadString(root, "expected_route");
+            var proof = LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepair(
                 request.Page,
                 environment.ApplicationName,
                 "founder_system",
                 LegendSiteToolDisclosureAuthority.EntryAssemblyRevision(),
                 route,
-                ReadString(root, "expected_revision"),
-                ReadString(root, "expected_route"),
+                expectedRevision,
+                expectedRoute,
                 requiredComponents,
                 requiredActions,
                 requiredCompositions,
                 requiredModals,
-                forbiddenErrors));
+                forbiddenErrors);
+            var proofJson = JsonSerializer.SerializeToElement(proof);
+            var verified = proofJson.TryGetProperty("repairVerified", out var repairVerified) &&
+                           repairVerified.ValueKind == JsonValueKind.True;
+            if (verified && expectedRevision is not null && expectedRoute is not null)
+            {
+                await using var engineeringScope = scopes.CreateAsyncScope();
+                var orchestrator = engineeringScope.ServiceProvider.GetRequiredService<ILegendEngineeringOrchestrator>();
+                try
+                {
+                    await orchestrator.RecordBrowserFunctionalProofAsync(
+                        engineeringWorkItemId,
+                        environment.ApplicationName,
+                        expectedRevision,
+                        expectedRoute,
+                        requiredComponents,
+                        requiredActions,
+                        requiredCompositions,
+                        requiredModals,
+                        forbiddenErrors,
+                        cancellationToken);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    return Conflict(new { error = exception.Message });
+                }
+            }
+            return Json(proof);
         }
 
         var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);

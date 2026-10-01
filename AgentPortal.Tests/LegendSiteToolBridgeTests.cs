@@ -61,13 +61,19 @@ public sealed class LegendSiteToolBridgeTests
         var source = Read("SHARED", "wwwroot", "js", "legend-site-tools.js");
         Assert.Contains("document.modelContext", source, StringComparison.Ordinal);
         Assert.Contains("registerTool", source, StringComparison.Ordinal);
-        Assert.Contains("readOnlyHint: true", source, StringComparison.Ordinal);
+        Assert.Contains("readOnlyHint: !recordsEngineeringProof", source, StringComparison.Ordinal);
+        Assert.Contains("consequentialHint: recordsEngineeringProof", source, StringComparison.Ordinal);
         Assert.Contains("/api/legend-site-tools", source, StringComparison.Ordinal);
         Assert.Contains("RequestVerificationToken", source, StringComparison.Ordinal);
         Assert.Contains("legend_site_tool_antiforgery_unavailable", source, StringComparison.Ordinal);
         Assert.Contains("LegendPageHealth", source, StringComparison.Ordinal);
-        Assert.Contains("data-website-action-key", source, StringComparison.Ordinal);
-        Assert.Contains("data-cms-composition-id", source, StringComparison.Ordinal);
+        Assert.Contains("LegendPageHealth?.current?.structuralSnapshot?.()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("function values(selector, attribute, maximum)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-website-action-key", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-cms-composition-id", source, StringComparison.Ordinal);
+        var pageHealth = Read("SHARED", "wwwroot", "js", "page-health.js");
+        Assert.Contains("data-website-action-key", pageHealth, StringComparison.Ordinal);
+        Assert.Contains("data-cms-composition-id", pageHealth, StringComparison.Ordinal);
         Assert.Contains("result.push(url.pathname)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("textContent", source, StringComparison.Ordinal);
         Assert.DoesNotContain("innerHTML", source, StringComparison.Ordinal);
@@ -92,6 +98,8 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("mutationToolsExposed = false", source, StringComparison.Ordinal);
         Assert.Contains("[ValidateAntiForgeryToken]", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("VerifyCurrentPageRepairTool", SiteToolSection(source), StringComparison.Ordinal);
+        Assert.Contains("RecordBrowserFunctionalProofAsync", SiteToolSection(source), StringComparison.Ordinal);
+        Assert.Contains("environment.ApplicationName", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_release_approved_repair", SiteToolSection(source), StringComparison.Ordinal);
         Assert.DoesNotContain("legend_prepare_software_repair", SiteToolSection(source), StringComparison.Ordinal);
     }

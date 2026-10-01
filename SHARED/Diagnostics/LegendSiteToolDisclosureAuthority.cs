@@ -153,12 +153,13 @@ public static class LegendSiteToolDisclosureAuthority
     {
         type = "function",
         name = VerifyCurrentPageRepairToolName,
-        description = "Verify the current live page against the exact expected deployed revision and canonical structural reproducer after a repair. Requires the original safe route/component/action/composition/modal identities and error names expected to be absent. It is read-only and does not treat deployment alone as functional proof.",
+        description = "Verify the current live page against the exact expected deployed revision and canonical structural reproducer after a repair. Requires the exact durable engineering work-item identity plus the original safe route/component/action/composition/modal identities and error names expected to be absent. It records only bounded live-proof state; it cannot change product source, authorization, release scope, or deployment.",
         parameters = new
         {
             type = "object",
             properties = new
             {
+                engineering_work_item_id = new { type = "string", minLength = 36, maxLength = 36 },
                 expected_revision = new { type = "string", minLength = 40, maxLength = 40 },
                 expected_route = new { type = "string", minLength = 1, maxLength = 256 },
                 required_component_ids = new { type = "array", maxItems = 24, items = new { type = "string", minLength = 1, maxLength = 96 } },
@@ -169,7 +170,7 @@ public static class LegendSiteToolDisclosureAuthority
             },
             required = new[]
             {
-                "expected_revision", "expected_route", "required_component_ids", "required_action_keys",
+                "engineering_work_item_id", "expected_revision", "expected_route", "required_component_ids", "required_action_keys",
                 "required_composition_ids", "required_modal_ids", "forbidden_error_names"
             },
             additionalProperties = false
@@ -260,6 +261,18 @@ public static class LegendSiteToolDisclosureAuthority
                 credentialsIncluded = false,
                 privateCustomerDataIncluded = false
             }
+        };
+    }
+
+    public static RuntimeDiagnosticStructuralReproducer? SanitizeStructuralReproducer(RuntimeDiagnosticStructuralReproducer? value)
+    {
+        if (value is null) return null;
+        return new RuntimeDiagnosticStructuralReproducer
+        {
+            ComponentIds = SafeSymbols(value.ComponentIds, 96).Take(24).ToArray(),
+            ActionKeys = SafeSymbols(value.ActionKeys, 96).Take(24).ToArray(),
+            CompositionIds = SafeSymbols(value.CompositionIds, 96).Take(24).ToArray(),
+            ModalIds = SafeSymbols(value.ModalIds, 96).Take(16).ToArray()
         };
     }
 

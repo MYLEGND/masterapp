@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Shared.Diagnostics;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -143,6 +144,47 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task BrowserStructuralReproducer_IsPreservedOnDurableWorkItem()
+    {
+        var incident = Incident(app: "AgentPortal", source: "js/app.js");
+        incident.Platform = "Web";
+        incident.Route = "/Clients/Index";
+        incident.ErrorName = "TypeError";
+        incident.StructuralReproducerJson = JsonSerializer.Serialize(new RuntimeDiagnosticStructuralReproducer
+        {
+            ComponentIds = new[] { "website.modal" },
+            ActionKeys = new[] { "contact.submit" },
+            CompositionIds = new[] { "cms.hero.primary" },
+            ModalIds = new[] { "website-modal" }
+        });
+
+        var item = await _store.AttachIncidentAsync(incident, LegendEngineeringPolicies.Classify(incident), default);
+
+        Assert.Equal("/Clients/Index", item.ReproducerRoute);
+        Assert.Equal(new[] { "website.modal" }, item.ReproducerComponentIds);
+        Assert.Equal(new[] { "contact.submit" }, item.ReproducerActionKeys);
+        Assert.Equal(new[] { "cms.hero.primary" }, item.ReproducerCompositionIds);
+        Assert.Equal(new[] { "website-modal" }, item.ReproducerModalIds);
+        Assert.Equal(new[] { "TypeError" }, item.ReproducerForbiddenErrorNames);
+    }
+
+    [Fact]
+    public void BrowserTaskPacket_FailsClosedWithoutPreservedReproducer_AndBindsLiveProofToApplication()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            SourceRoot(), "AgentPortal", "Services", "Engineering", "LegendEngineeringOrchestrator.cs"));
+
+        Assert.Contains("browser_reproducer_evidence_missing", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerRoute ?? SafeRoute(primary.Route)", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerComponentIds ?? Array.Empty<string>()", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerActionKeys ?? Array.Empty<string>()", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerCompositionIds ?? Array.Empty<string>()", source, StringComparison.Ordinal);
+        Assert.Contains("item.ReproducerModalIds ?? Array.Empty<string>()", source, StringComparison.Ordinal);
+        Assert.Contains("browser_live_proof_application_mismatch", source, StringComparison.Ordinal);
+        Assert.Contains("item.AffectedApplications.Contains(application, StringComparer.Ordinal)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BackendQuietWindow_ClosesOnlyServerRepairWithoutRecurrence()
     {
         var deployed = DateTime.UtcNow.AddMinutes(-20);
@@ -218,7 +260,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     public void SanitizedSourceHints_ResolveOnlyWithinApplicationAndSharedSafeRoots()
     {
         var resolved = FounderSoftwareRemediationService.ResolveSafeSourceHints(
-            new[] { "HomeController.cs", "js/legend-site-tools.js" },
+            new[] { "HomeController.cs", "js/legend-site-tools.js", "_content/Shared/js/legend-site-tools.js" },
             "AgentPortal",
             new[]
             {

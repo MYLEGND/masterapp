@@ -20,6 +20,17 @@ internal interface ILegendEngineeringOrchestrator
     Task<object> InspectRepositoryAsync(Guid engineeringContextId, string path, string revision, CancellationToken cancellationToken);
     Task<object> PrepareRepairAsync(Guid engineeringContextId, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
     Task<object> ApproveReleaseAsync(ClaimsPrincipal founder, Guid workItemId, CancellationToken cancellationToken);
+    Task RecordBrowserFunctionalProofAsync(
+        Guid workItemId,
+        string application,
+        string expectedRevision,
+        string expectedRoute,
+        IReadOnlyList<string> componentIds,
+        IReadOnlyList<string> actionKeys,
+        IReadOnlyList<string> compositionIds,
+        IReadOnlyList<string> modalIds,
+        IReadOnlyList<string> forbiddenErrorNames,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class LegendEngineeringOrchestrator(
@@ -27,6 +38,7 @@ internal sealed class LegendEngineeringOrchestrator(
     LegendEngineeringStateStore store,
     LegendEngineeringBudgetAuthority budget,
     IFounderSoftwareRemediationService remediation,
+    ILegendEngineeringContractAuthority contractAuthority,
     IConfiguration configuration) : ILegendEngineeringOrchestrator
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -35,6 +47,7 @@ internal sealed class LegendEngineeringOrchestrator(
     {
         var work = await store.GetOpenWorkItemsAsync(100, cancellationToken);
         var envelope = await budget.GetEnvelopeAsync(cancellationToken);
+        var operationalContract = await contractAuthority.GetCurrentAsync(cancellationToken);
         return new
         {
             ok = true,
@@ -42,6 +55,8 @@ internal sealed class LegendEngineeringOrchestrator(
             authority = nameof(LegendEngineeringOrchestrator),
             contractRevision = LegendEngineeringContract.ContractRevision,
             policyRevision = LegendEngineeringContract.PolicyRevision,
+            operationalContractRevision = operationalContract.Revision,
+            modelExecutionEnabled = operationalContract.ModelExecutionEnabled,
             founderOnly = true,
             openWorkItems = work.Count,
             leasedWorkItems = work.Count(item => item.LeaseExpiresUtc > DateTime.UtcNow),
@@ -67,7 +82,22 @@ internal sealed class LegendEngineeringOrchestrator(
                 item.ModelTier,
                 item.ValidationState,
                 item.ReleaseCohort,
-                item.UpdatedUtc
+                item.UpdatedUtc,
+                liveProof = item.State == "LIVE_FUNCTIONAL_PROOF_REQUIRED" &&
+                            item.ReproducerRoute is not null &&
+                            LegendEngineeringPolicies.IsImmutableSha(item.MergedSha)
+                    ? new
+                    {
+                        engineeringWorkItemId = item.WorkItemId,
+                        expectedRevision = item.MergedSha,
+                        expectedRoute = item.ReproducerRoute,
+                        requiredComponentIds = item.ReproducerComponentIds ?? Array.Empty<string>(),
+                        requiredActionKeys = item.ReproducerActionKeys ?? Array.Empty<string>(),
+                        requiredCompositionIds = item.ReproducerCompositionIds ?? Array.Empty<string>(),
+                        requiredModalIds = item.ReproducerModalIds ?? Array.Empty<string>(),
+                        forbiddenErrorNames = item.ReproducerForbiddenErrorNames ?? Array.Empty<string>()
+                    }
+                    : null
             })
         };
     }
@@ -148,6 +178,10 @@ internal sealed class LegendEngineeringOrchestrator(
             throw new InvalidOperationException(validation.Code);
 
         var context = validation.Context;
+        var operational = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
+        if (!operational.Valid)
+            throw new InvalidOperationException(operational.Code);
         var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken)
             ?? throw new InvalidOperationException("work_item_not_found");
         var incidents = await db.RuntimeDiagnosticIncidents.AsNoTracking()
@@ -191,24 +225,28 @@ internal sealed class LegendEngineeringOrchestrator(
             .ToArray();
         var repairBaseSha = LegendEngineeringPolicies.ResolveRepairBaseSha(item);
         var validationFailures = item.ValidationFailureCodes ?? Array.Empty<string>();
+        if (incidents.Any(row => string.Equals(row.Platform, "Web", StringComparison.Ordinal)) &&
+            string.IsNullOrWhiteSpace(item.ReproducerRoute))
+            throw new InvalidOperationException("browser_reproducer_evidence_missing");
 
         return new EngineeringTaskPacket(
             "legend_engineering_task_packet.v1",
             item.WorkItemId,
             item.AffectedApplications.FirstOrDefault() ?? "unknown",
             item.LiveSha,
-            SafeRoute(primary.Route),
+            item.ReproducerRoute ?? SafeRoute(primary.Route),
             item.CanonicalAuthorityKey,
-            [],
-            [],
-            [],
+            item.ReproducerComponentIds ?? Array.Empty<string>(),
+            item.ReproducerActionKeys ?? Array.Empty<string>(),
+            item.ReproducerCompositionIds ?? Array.Empty<string>(),
+            item.ReproducerModalIds ?? Array.Empty<string>(),
             item.FailureClass,
             item.Severity,
             item.RiskClass,
             item.ComplexityScore,
             "The canonical route completes without the sanitized runtime incident and preserves existing authorities.",
             string.Join(",", issueCodes.Length == 0 ? ["sanitized_runtime_incident"] : issueCodes),
-            issueCodes,
+            item.ReproducerForbiddenErrorNames is { Count: > 0 } ? item.ReproducerForbiddenErrorNames : issueCodes,
             permitted,
             protectedPaths,
             item.AffectedProjects,
@@ -246,6 +284,10 @@ internal sealed class LegendEngineeringOrchestrator(
             return new { ok = false, error = validation.Code };
 
         var context = validation.Context;
+        var operational = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
+        if (!operational.Valid)
+            return new { ok = false, error = operational.Code };
         if (!context.AllowedTools.Contains("legend_inspect_repository", StringComparer.Ordinal))
             return new { ok = false, error = "engineering_context_tool_not_allowed" };
 
@@ -287,6 +329,10 @@ internal sealed class LegendEngineeringOrchestrator(
             return new { ok = false, error = validation.Code };
 
         var context = validation.Context;
+        var operational = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
+        if (!operational.Valid)
+            return new { ok = false, error = operational.Code };
         var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken);
         if (item is null) return new { ok = false, error = "work_item_not_found" };
         if (context.Role != EngineeringRole.CodexImplementer ||
@@ -369,6 +415,58 @@ internal sealed class LegendEngineeringOrchestrator(
         };
     }
 
+    public async Task RecordBrowserFunctionalProofAsync(
+        Guid workItemId,
+        string application,
+        string expectedRevision,
+        string expectedRoute,
+        IReadOnlyList<string> componentIds,
+        IReadOnlyList<string> actionKeys,
+        IReadOnlyList<string> compositionIds,
+        IReadOnlyList<string> modalIds,
+        IReadOnlyList<string> forbiddenErrorNames,
+        CancellationToken cancellationToken)
+    {
+        var item = await store.GetWorkItemAsync(workItemId, cancellationToken)
+            ?? throw new InvalidOperationException("work_item_not_found");
+        if (!item.AffectedApplications.Contains(application, StringComparer.Ordinal))
+            throw new InvalidOperationException("browser_live_proof_application_mismatch");
+        if (!LegendEngineeringPolicies.IsImmutableSha(item.MergedSha) || item.DeploymentVerifiedUtc is null)
+            throw new InvalidOperationException("browser_live_proof_deployment_not_verified");
+        if (!string.Equals(item.MergedSha, expectedRevision, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("browser_live_proof_revision_mismatch");
+        if (string.IsNullOrWhiteSpace(item.ReproducerRoute))
+            throw new InvalidOperationException("browser_reproducer_not_preserved");
+        if (!string.Equals(item.ReproducerRoute, expectedRoute, StringComparison.Ordinal) ||
+            !SameProofValues(item.ReproducerComponentIds, componentIds) ||
+            !SameProofValues(item.ReproducerActionKeys, actionKeys) ||
+            !SameProofValues(item.ReproducerCompositionIds, compositionIds) ||
+            !SameProofValues(item.ReproducerModalIds, modalIds) ||
+            !SameProofValues(item.ReproducerForbiddenErrorNames, forbiddenErrorNames))
+            throw new InvalidOperationException("browser_live_proof_does_not_match_preserved_reproducer");
+
+        if (item.State == "COMPLETED" && item.ValidationState == "LIVE_VERIFIED") return;
+        if (item.State != "LIVE_FUNCTIONAL_PROOF_REQUIRED")
+            throw new InvalidOperationException("browser_live_proof_state_invalid");
+
+        await store.UpdateWorkItemAsync(item with
+        {
+            State = "COMPLETED",
+            ValidationState = "LIVE_VERIFIED",
+            LeaseOwner = null,
+            LeaseIdentity = null,
+            LeaseExpiresUtc = null,
+            UpdatedUtc = DateTime.UtcNow
+        }, cancellationToken);
+    }
+
+    private static bool SameProofValues(IReadOnlyList<string>? expected, IReadOnlyList<string>? actual)
+    {
+        var left = (expected ?? Array.Empty<string>()).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal);
+        var right = (actual ?? Array.Empty<string>()).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal);
+        return left.SequenceEqual(right, StringComparer.Ordinal);
+    }
+
     private async Task<EngineeringContextSnapshot> BootstrapCoreAsync(
         Guid workItemId,
         string requestedRole,
@@ -389,6 +487,10 @@ internal sealed class LegendEngineeringOrchestrator(
         var envelope = await budget.GetEnvelopeAsync(cancellationToken);
         if (!budget.Permits(envelope, item))
             throw new InvalidOperationException("engineering_budget_does_not_permit_ai_work");
+
+        var operationalContract = await contractAuthority.GetCurrentAsync(cancellationToken);
+        if (!operationalContract.ModelExecutionEnabled)
+            throw new InvalidOperationException("engineering_operational_execution_paused");
 
         var attemptLimit = requestedRole == EngineeringRole.CodexImplementer
             ? envelope.MaxCodexAttempts
@@ -431,7 +533,8 @@ internal sealed class LegendEngineeringOrchestrator(
             ],
             lease.LeaseIdentity,
             now,
-            expires);
+            expires,
+            operationalContract.Revision);
 
         return await store.SaveContextAsync(context, cancellationToken);
     }

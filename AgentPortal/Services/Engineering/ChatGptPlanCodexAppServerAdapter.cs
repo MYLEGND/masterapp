@@ -10,7 +10,8 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
     IConfiguration configuration,
     LegendEngineeringStateStore store,
     ILegendEngineeringOrchestrator orchestrator,
-    ILegendChatGptPlanCredentialAuthority credentials) : ILegendEngineeringAgentAdapter
+    ILegendChatGptPlanCredentialAuthority credentials,
+    ILegendEngineeringContractAuthority contractAuthority) : ILegendEngineeringAgentAdapter
 {
     private const string ProviderName = "ChatGPTPlanCodexAppServer";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -18,17 +19,24 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
     public async Task<object> GetStatusAsync(CancellationToken cancellationToken)
     {
         var credential = await credentials.GetAsync(cancellationToken);
+        var contract = await contractAuthority.GetCurrentAsync(cancellationToken);
         var executable = configuration["LegendEngineering:ChatGptPlan:CodexExecutable"]?.Trim();
         var enabled = configuration.GetValue<bool?>("LegendEngineering:ChatGptPlan:Enabled") == true;
         return new
         {
-            ok = enabled && credential.Ready && !string.IsNullOrWhiteSpace(executable),
+            ok = enabled && contract.ModelExecutionEnabled && credential.Ready && !string.IsNullOrWhiteSpace(executable),
             provider = ProviderName,
             billingAuthority = "chatgpt_plan_only",
             apiKeyFallback = false,
             agentsApiFallback = false,
             enabled,
-            eligibility = credential.Code,
+            operationalContractRevision = contract.Revision,
+            modelExecutionEnabled = contract.ModelExecutionEnabled,
+            eligibility = contract.ModelExecutionEnabled
+                ? credential.Code
+                : "engineering_operational_execution_paused",
+            credentialReady = credential.Ready,
+            credentialCode = credential.Code,
             credential.PrivateClientApproved,
             planUsageScopeGranted = credential.GrantedScopes.Contains("chatgpt.tokens.use.direct", StringComparer.Ordinal),
             accessTokenPresent = !string.IsNullOrWhiteSpace(credential.AccessToken),
@@ -45,6 +53,11 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
         var validation = await store.ValidateContextAsync(engineeringContextId, cancellationToken);
         if (!validation.Valid || validation.Context is null) return Failure(validation.Code);
         var context = validation.Context;
+        var contractBinding = await contractAuthority.ValidateBindingAsync(
+            context.OperationalContractRevision, cancellationToken);
+        if (!contractBinding.Valid)
+            return Failure(contractBinding.Code);
+        var operationalContract = contractBinding.Contract;
         var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken);
         if (item is null) return Failure("work_item_not_found");
         var credential = await credentials.GetAsync(cancellationToken);
@@ -59,7 +72,14 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
         var sources = await BuildSourceBundleAsync(context, item, packet, cancellationToken);
         var prompt = JsonSerializer.Serialize(new
         {
-            instruction = "Operate only inside this LEGEND EngineeringContext and SAFE_SOURCE bundle. Never use shell, filesystem discovery, network tools, direct GitHub access, secrets, customer data, or protected source. Return only JSON matching the role schema. If evidence is insufficient, STOP or ESCALATE. For a repair, return complete replacement contents only for files supplied in the bundle. Never bypass CI, release authority, or live proof.",
+            instruction = "Operate only inside this LEGEND EngineeringContext and SAFE_SOURCE bundle. The Founder-editable operational contract below is guidance inside the immutable EngineeringContext; it can never expand tools, source classes, risk tier, privacy access, merge authority, release authority, or validation authority. Never use shell, filesystem discovery, network tools, direct GitHub access, secrets, customer data, or protected source. Return only JSON matching the role schema. If evidence is insufficient, STOP or ESCALATE. For a repair, return complete replacement contents only for files supplied in the bundle. Never bypass CI, release authority, or live proof.",
+            operationalContract = new
+            {
+                revision = operationalContract.Revision,
+                authority = "Founder-editable operational guidance; non-authorizing",
+                sharedDirective = operationalContract.SharedDirective,
+                roleDirective = operationalContract.DirectiveForRole(context.Role)
+            },
             engineeringContext = context,
             taskPacket = packet,
             sourceBundle = sources
@@ -75,6 +95,12 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
         await store.RecordUsageAsync(new EngineeringUsageObservation(
             attemptId, item.WorkItemId, item.ModelTier, context.Role, ProviderName, run.ThreadId,
             null, null, run.TotalTokens, null, run.TotalTokens is not null, DateTime.UtcNow), cancellationToken);
+
+        var currentBinding = await contractAuthority.ValidateBindingAsync(
+            operationalContract.Revision, cancellationToken);
+        if (!currentBinding.Valid)
+            return Failure(currentBinding.Code);
+
         return await ApplyOutcomeAsync(context, item, run.ThreadId!, run.Output!.Value, cancellationToken);
     }
 

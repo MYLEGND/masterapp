@@ -5,6 +5,7 @@ using Domain.Engineering;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Diagnostics;
 
 namespace AgentPortal.Services.Engineering;
 
@@ -21,6 +22,9 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
             ? incident.GitCommitHash!.ToLowerInvariant()
             : "0000000000000000000000000000000000000000";
         var workKey = LegendEngineeringPolicies.ComputeWorkKey(decision.CanonicalAuthorityKey, liveSha);
+        var reproducer = DeserializeReproducer(incident.StructuralReproducerJson);
+        var reproducerRoute = reproducer is null ? null : incident.Route;
+        var reproducerErrors = reproducer is null ? Array.Empty<string>() : NormalizeValues([incident.ErrorName], 12);
         return await WithSerializedLeaseAuthorityAsync(async (connection, transaction) =>
         {
             var existing = await ReadWorkItemByKeyAsync(connection, transaction, workKey, cancellationToken);
@@ -50,6 +54,8 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                     "REVIEWED" or "VALIDATED" or "RELEASE_REQUESTED" or
                     "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "CI_FAILED_NEEDS_EVIDENCE" or
                     "REVIEW_REJECTED" or "RELEASE_BLOCKED" or "FOUNDER_ESCALATION";
+                var sameReproducerRoute = existing.ReproducerRoute is null ||
+                    string.Equals(existing.ReproducerRoute, reproducerRoute, StringComparison.Ordinal);
                 var updated = existing with
                 {
                     IncidentIds = incidentIds,
@@ -72,6 +78,22 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                     FounderReleaseApprovedUtc = string.Equals(existing.EvidenceRevision, evidenceRevision, StringComparison.Ordinal)
                         ? existing.FounderReleaseApprovedUtc
                         : null,
+                    ReproducerRoute = existing.ReproducerRoute ?? reproducerRoute,
+                    ReproducerComponentIds = sameReproducerRoute
+                        ? PreserveReproducer(existing.ReproducerComponentIds, reproducer?.ComponentIds, 24)
+                        : existing.ReproducerComponentIds,
+                    ReproducerActionKeys = sameReproducerRoute
+                        ? PreserveReproducer(existing.ReproducerActionKeys, reproducer?.ActionKeys, 24)
+                        : existing.ReproducerActionKeys,
+                    ReproducerCompositionIds = sameReproducerRoute
+                        ? PreserveReproducer(existing.ReproducerCompositionIds, reproducer?.CompositionIds, 24)
+                        : existing.ReproducerCompositionIds,
+                    ReproducerModalIds = sameReproducerRoute
+                        ? PreserveReproducer(existing.ReproducerModalIds, reproducer?.ModalIds, 16)
+                        : existing.ReproducerModalIds,
+                    ReproducerForbiddenErrorNames = sameReproducerRoute
+                        ? MergeValues(existing.ReproducerForbiddenErrorNames, reproducerErrors, 12)
+                        : existing.ReproducerForbiddenErrorNames,
                     UpdatedUtc = now
                 };
                 updated = Stamp(updated);
@@ -114,6 +136,15 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                 decision.ReleaseCohort,
                 now,
                 now);
+            snapshot = snapshot with
+            {
+                ReproducerRoute = reproducerRoute,
+                ReproducerComponentIds = NormalizeValues(reproducer?.ComponentIds, 24),
+                ReproducerActionKeys = NormalizeValues(reproducer?.ActionKeys, 24),
+                ReproducerCompositionIds = NormalizeValues(reproducer?.CompositionIds, 24),
+                ReproducerModalIds = NormalizeValues(reproducer?.ModalIds, 16),
+                ReproducerForbiddenErrorNames = reproducer is null ? Array.Empty<string>() : reproducerErrors
+            };
             snapshot = Stamp(snapshot);
 
             await InsertWorkItemAsync(connection, transaction, snapshot, cancellationToken);
@@ -582,6 +613,36 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
         Add(command, "@created", item.CreatedUtc);
         Add(command, "@updated", item.UpdatedUtc);
     }
+
+    private static RuntimeDiagnosticStructuralReproducer? DeserializeReproducer(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonSerializer.Deserialize<RuntimeDiagnosticStructuralReproducer>(json, JsonOptions); }
+        catch (JsonException) { return null; }
+    }
+
+    private static IReadOnlyList<string> PreserveReproducer(
+        IReadOnlyList<string>? existing,
+        IReadOnlyList<string>? incoming,
+        int maximum)
+    {
+        var current = NormalizeValues(existing, maximum);
+        return current.Count > 0 ? current : NormalizeValues(incoming, maximum);
+    }
+
+    private static IReadOnlyList<string> MergeValues(
+        IReadOnlyList<string>? existing,
+        IReadOnlyList<string>? incoming,
+        int maximum) => NormalizeValues(
+        (existing ?? Array.Empty<string>()).Concat(incoming ?? Array.Empty<string>()), maximum);
+
+    private static IReadOnlyList<string> NormalizeValues(IEnumerable<string>? values, int maximum) =>
+        (values ?? Array.Empty<string>())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(value => value, StringComparer.Ordinal)
+            .Take(maximum)
+            .ToArray();
 
     private static EngineeringWorkItemSnapshot Stamp(EngineeringWorkItemSnapshot item) =>
         item with

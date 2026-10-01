@@ -2,7 +2,7 @@ namespace Domain.Engineering;
 
 public static class LegendEngineeringContract
 {
-    public const string ContractRevision = "legend-engineering-context.v1";
+    public const string ContractRevision = "legend-engineering-context.v3";
     public const string PolicyRevision = "legend-engineering-policy.v1";
 }
 
@@ -114,7 +114,13 @@ public sealed record EngineeringWorkItemSnapshot(
     DateTime? DeploymentVerifiedUtc = null,
     DateTime? FounderReleaseApprovedUtc = null,
     IReadOnlyList<string>? ValidationFailureCodes = null,
-    string? StateRevision = null);
+    string? StateRevision = null,
+    string? ReproducerRoute = null,
+    IReadOnlyList<string>? ReproducerComponentIds = null,
+    IReadOnlyList<string>? ReproducerActionKeys = null,
+    IReadOnlyList<string>? ReproducerCompositionIds = null,
+    IReadOnlyList<string>? ReproducerModalIds = null,
+    IReadOnlyList<string>? ReproducerForbiddenErrorNames = null);
 
 public sealed record EngineeringLeaseReceipt(
     bool Acquired,
@@ -155,7 +161,8 @@ public sealed record EngineeringContextSnapshot(
     IReadOnlyList<string> StopConditions,
     string LeaseIdentity,
     DateTime CreatedUtc,
-    DateTime ExpiresUtc);
+    DateTime ExpiresUtc,
+    string? OperationalContractRevision = null);
 
 public sealed record EngineeringTaskPacket(
     string PacketType,
@@ -167,6 +174,7 @@ public sealed record EngineeringTaskPacket(
     IReadOnlyList<string> ComponentIds,
     IReadOnlyList<string> ActionKeys,
     IReadOnlyList<string> CompositionIds,
+    IReadOnlyList<string> ModalIds,
     string FailureClass,
     int Severity,
     string RiskClass,

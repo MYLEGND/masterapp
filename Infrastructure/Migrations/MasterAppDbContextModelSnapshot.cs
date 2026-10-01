@@ -11525,6 +11525,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(2300)
                         .HasColumnType("nvarchar(2300)");
 
+                    b.Property<string>("StructuralReproducerJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int?>("StatusCode")
                         .HasColumnType("int");
 
