@@ -684,7 +684,8 @@ internal sealed class ChatGptPlanResponsesAdapter(
         }
         else if (code is "subscription_sharing_usage_unavailable" or
                          "subscription_sharing_user_unavailable" ||
-                 run.HttpStatus is 408 or 429 or >= 500 ||
+                 (run.HttpStatus is int status &&
+                  (status == 408 || status == 429 || status >= 500)) ||
                  run.Code is "chatgpt_plan_response_temporarily_unavailable" or
                              "chatgpt_plan_response_timeout" or
                              "chatgpt_plan_response_stream_closed" or
