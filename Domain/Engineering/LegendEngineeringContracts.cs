@@ -104,7 +104,14 @@ public sealed record EngineeringWorkItemSnapshot(
     string? AgentSessionId = null,
     Guid? AgentContextId = null,
     string? AgentSessionRole = null,
-    DateTime? AgentSessionUpdatedUtc = null);
+    DateTime? AgentSessionUpdatedUtc = null,
+    int? PublicationPullRequestNumber = null,
+    string? PublicationHeadSha = null,
+    string? PublicationBatchRevision = null,
+    string? MergedSha = null,
+    string? DeployedTreeSha = null,
+    long? DeploymentRunId = null,
+    DateTime? DeploymentVerifiedUtc = null);
 
 public sealed record EngineeringLeaseReceipt(
     bool Acquired,
