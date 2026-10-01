@@ -224,7 +224,8 @@ public sealed class FounderSoftwareRepairBatchTests
     {
         using var fixture = new Fixture(configureLiveProof: true);
         var result = JsonSerializer.SerializeToElement(
-            await fixture.Service.VerifyDeploymentAsync(HeadSha, default));
+            await fixture.Service.VerifyDeploymentAsync(HeadSha, default),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
         Assert.True(result.GetProperty("liveDeploymentVerified").GetBoolean(), result.ToString());
         Assert.Equal("live_verified", result.GetProperty("deploymentState").GetString());
