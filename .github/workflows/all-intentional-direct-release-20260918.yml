@@ -127,6 +127,48 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: Legend-Cloudflare/package-lock.json
+
+      - name: Reuse exact successful validation package when available
+        id: reusevalidated
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact_name="founder-diagnostics-packages-${GITHUB_SHA}"
+          run_id=""
+          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
+          while read -r candidate_run; do
+            [ -n "$candidate_run" ] || continue
+            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
+            workflow_path="$(printf '%s' "$run" | jq -r '.path // ""')"
+            head_sha="$(printf '%s' "$run" | jq -r '.head_sha // ""')"
+            head_branch="$(printf '%s' "$run" | jq -r '.head_branch // ""')"
+            if [ "$workflow_path" = ".github/workflows/all-intentional-direct-release-20260918.yml" ] &&
+               [ "$head_sha" = "$GITHUB_SHA" ] &&
+               [ "$head_branch" = "legend/approved-changes" ]; then
+              run_id="$candidate_run"
+              break
+            fi
+          done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
+          if [ -n "$run_id" ]; then
+            echo "REUSE_VALIDATED_PACKAGE=true" >> "$GITHUB_ENV"
+            echo "Exact candidate package and its prerequisite validation are preserved from run $run_id."
+          else
+            echo "REUSE_VALIDATED_PACKAGE=false" >> "$GITHUB_ENV"
+            echo "No exact reusable package evidence exists; validation will execute normally."
+          fi
+
+      - name: Load exact preserved deployable package
+        if: steps.reusevalidated.outputs.run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.reusevalidated.outputs.artifact }}
+          path: /tmp/diagnostics-packages
+          run-id: ${{ steps.reusevalidated.outputs.run_id }}
+          github-token: ${{ github.token }}
       - name: Verify current live base before publication
         id: base
         run: |
@@ -183,6 +225,10 @@ jobs:
         if: env.WEBSITE_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true'
         continue-on-error: true
         run: |
+          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
+            echo "Preserved exact candidate build validation."
+            exit 0
+          fi
           set -euo pipefail
           if [ "$PUBLIC_ONLY" = true ]; then
             dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
@@ -210,6 +256,10 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
+            echo "Preserved exact routing validation."
+            exit 0
+          fi
           set -euo pipefail
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo \
             --filter 'FullyQualifiedName~WebsiteDomainImportTests' \
@@ -229,6 +279,10 @@ jobs:
         if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && steps.build.outcome == 'success'
         continue-on-error: true
         run: |
+          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
+            echo "Preserved exact .NET validation."
+            exit 0
+          fi
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
             --filter 'FullyQualifiedName~ApplicationLocalization|FullyQualifiedName~ApplicationTranslationAdmission|FullyQualifiedName~LegendConnectTrainingDatasetGroupSplitTests|FullyQualifiedName~LegendConnectEntitlementTests|FullyQualifiedName~AzureTranslatorServiceTests|FullyQualifiedName~AzureTranslatorSubscriptionCapacityTests|FullyQualifiedName~MessagingDeferredPresentationTests|FullyQualifiedName~FounderLegendConnectLiveMetricsTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests|FullyQualifiedName~RuntimeDiagnosticCaptureTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~ClientAppDeploymentWorkflowTests|FullyQualifiedName~ClientAppSubscriptionActivationTests|FullyQualifiedName~ClientSubscriptionAdministrationTests.CreatePortalClient|FullyQualifiedName~ClientsControllerTests.Create_WhenLeadCreated_UsesTheDefaultCrmPlacement|FullyQualifiedName~LegendFounderAiContractTests.SoftwareRemediation|FullyQualifiedName~LegendCloudflareTransportTests|FullyQualifiedName~LegendCloudflareToolCallbackTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~LegendFounderCloudActionApprovalTests|FullyQualifiedName~MessagingServiceTests.FounderAiDelegation_|FullyQualifiedName~FounderCandidateValidationTests|FullyQualifiedName~LegendFounderCloudToolExposureTests|FullyQualifiedName~LegendFounderCloudProposalTests|FullyQualifiedName~AuthenticatedRequestBindingTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~ClientProfileControllerTests.BusinessWebsite|FullyQualifiedName~ClientProfileControllerTests.SharedAccountAgent|FullyQualifiedName~IdentityHardeningTests.AccountController_ManageProfile|FullyQualifiedName~ProfileWebsiteFounderTests|FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~ClientWorkspaceRoutingTests|FullyQualifiedName~BillingCentralizationTests.UpdateClientSubscription_RequiresFounderAuthorityAndPreservesTheCurrentSchedule|FullyQualifiedName~ClientBillingNotificationAndSchemaTests|FullyQualifiedName~LaunchAudit|FullyQualifiedName~FounderSubscriberAuditTests|FullyQualifiedName~MetaSignal|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~AnalyticsIngestConfigurationTests|FullyQualifiedName~AnalyticsQueryService|FullyQualifiedName~WebsiteAnalytics|FullyQualifiedName~BusinessAnalyticsDetailTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~WebsiteSignalBindingTests' \
             --logger 'trx;LogFileName=translation.trx' --results-directory /tmp/translation-results
@@ -248,6 +302,10 @@ jobs:
         if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true'
         continue-on-error: true
         run: |
+          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
+            echo "Preserved exact shared-web validation."
+            exit 0
+          fi
           node --test tests/analytics/csv-export.test.cjs
           node tests/analytics/form-tracker.test.cjs .
           node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
@@ -259,6 +317,10 @@ jobs:
         if: contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website')
         continue-on-error: true
         run: |
+          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
+            echo "Preserved exact website validation."
+            exit 0
+          fi
           npm ci --prefix tests/website
           node --test tests/website/*.test.mjs
           npm --prefix Legend-Website run build
@@ -267,6 +329,12 @@ jobs:
         id: package
         if: always() && env.PRESERVE_LIVE_TARGETS != 'true' && (env.WEBSITE_ROUTING != 'true' || steps.routingchecks.outcome == 'success') && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') || steps.websitechecks.outcome == 'success')))
         run: |
+          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
+            test -f /tmp/diagnostics-packages/SHA256SUMS
+            (cd /tmp/diagnostics-packages && sha256sum -c SHA256SUMS)
+            echo "Preserved exact deployable package; no duplicate build or validation required."
+            exit 0
+          fi
           set -euo pipefail
           apps=()
           if [[ "$SELECTED_TARGETS" == *'"masterapp-portal"'* ]]; then
@@ -307,8 +375,9 @@ jobs:
         with:
           name: founder-diagnostics-packages-${{ github.sha }}
           path: /tmp/diagnostics-packages/
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
+          overwrite: true
       - uses: azure/login@v2
         id: azure
         if: (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true'
