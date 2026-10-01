@@ -7,6 +7,14 @@
   if (!modelContext || typeof modelContext.registerTool !== "function" || typeof window.fetch !== "function") return;
 
   const endpoint = "/api/legend-site-tools";
+  let csrf = "";
+  try {
+    const observer = Array.from(document.scripts || []).find(node => {
+      try { return new URL(node.src, window.location.origin).pathname === "/_content/Shared/js/page-health.js"; }
+      catch { return false; }
+    });
+    csrf = typeof observer?.dataset?.csrf === "string" ? observer.dataset.csrf : "";
+  } catch { }
 
   function breakpoint(width) {
     if (width < 576) return "xs";
@@ -91,11 +99,12 @@
   }
 
   async function invoke(name, args) {
+    if (!csrf) return { ok: false, error: "legend_site_tool_antiforgery_unavailable" };
     const response = await window.fetch(endpoint + "/execute", {
       method: "POST",
       credentials: "same-origin",
       redirect: "error",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      headers: { "Content-Type": "application/json", "Accept": "application/json", "RequestVerificationToken": csrf },
       body: JSON.stringify({ name, arguments: args || {}, page: pageSnapshot() })
     });
     if (!response.ok) return { ok: false, error: "legend_site_tool_http_" + response.status };
