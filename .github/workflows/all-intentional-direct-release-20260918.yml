@@ -38,6 +38,7 @@ jobs:
       website_routing_canary: ${{ steps.live.outputs.website_routing_canary }}
       preserve_live_targets: ${{ steps.live.outputs.preserve_live_targets }}
       application_release_sha: ${{ steps.live.outputs.application_release_sha }}
+      package_identity: ${{ steps.live.outputs.package_identity }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,6 +113,7 @@ jobs:
       WEBSITE_ROUTING_CANARY: ${{ needs.discover-live.outputs.website_routing_canary }}
       PRESERVE_LIVE_TARGETS: ${{ needs.discover-live.outputs.preserve_live_targets }}
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+      PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -135,17 +137,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          artifact_name="founder-diagnostics-packages-${GITHUB_SHA}"
+          python3 scripts/validation-resume.py verify-release-coverage \
+            --workflow all-intentional-direct-release-20260918.yml \
+            --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
+          artifact_name="founder-diagnostics-packages-${PACKAGE_IDENTITY}"
           run_id=""
           artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
           while read -r candidate_run; do
             [ -n "$candidate_run" ] || continue
             run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
             workflow_path="$(printf '%s' "$run" | jq -r '.path // ""')"
-            head_sha="$(printf '%s' "$run" | jq -r '.head_sha // ""')"
             head_branch="$(printf '%s' "$run" | jq -r '.head_branch // ""')"
             if [ "$workflow_path" = ".github/workflows/all-intentional-direct-release-20260918.yml" ] &&
-               [ "$head_sha" = "$GITHUB_SHA" ] &&
                [ "$head_branch" = "legend/approved-changes" ]; then
               run_id="$candidate_run"
               break
@@ -231,7 +234,7 @@ jobs:
           fi
           set -euo pipefail
           if [ "$PUBLIC_ONLY" = true ]; then
-            dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
             node --test --test-name-pattern='publication compiler process consumes stdin and returns compiled pages' Legend-Website/scripts/render-business.test.mjs
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo --filter 'FullyQualifiedName~WebsiteContentEditorRoundTripTests.BusinessPublication_PreservesUtf8AcrossDotNetNodeCompilerTransport'
             dotnet tool restore
@@ -246,9 +249,9 @@ jobs:
                 --configuration Release \
                 --no-build
           elif [ "$PORTAL_ONLY" = true ]; then
-            dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
           else
-            dotnet build MASTERAPP.sln -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet build MASTERAPP.sln -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
           fi
       - name: Verify business website routing bridge
         id: routingchecks
@@ -338,28 +341,28 @@ jobs:
           set -euo pipefail
           apps=()
           if [[ "$SELECTED_TARGETS" == *'"masterapp-portal"'* ]]; then
-            dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-build --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-build --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
             apps+=(agentportal)
           fi
           if [[ "$SELECTED_TARGETS" == *'"masterapp-client"'* ]]; then
-            dotnet publish ClientApp/ClientApp.csproj -c Release --no-build --no-restore -o /tmp/clientapp-publish -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet publish ClientApp/ClientApp.csproj -c Release --no-build --no-restore -o /tmp/clientapp-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
             apps+=(clientapp)
           fi
           if [[ "$SELECTED_TARGETS" == *'"masterapp-protect"'* ]]; then
-            dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-build --no-restore -o /tmp/protect-publish -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-build --no-restore -o /tmp/protect-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
             apps+=(protect)
           fi
           if [[ "$SELECTED_TARGETS" == *'"masterapp-parfait"'* ]]; then
-            dotnet publish ParfaitApp/ParfaitApp.csproj -c Release --no-build --no-restore -o /tmp/parfait-publish -p:SourceRevisionId="$RELEASE_SHA"
+            dotnet publish ParfaitApp/ParfaitApp.csproj -c Release --no-build --no-restore -o /tmp/parfait-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
             apps+=(parfait)
           fi
           if [[ "$SELECTED_TARGETS" == *'"masterapp-website"'* ]]; then
-            printf '%s\n' "$RELEASE_SHA" > Legend-Website/dist/_deployment-provenance.txt
+            printf '%s\n' "$APPLICATION_RELEASE_SHA" > Legend-Website/dist/_deployment-provenance.txt
             cp Legend-Website/public/web.config Legend-Website/dist/web.config
           fi
           for app in "${apps[@]}"; do
             mkdir -p "/tmp/$app-publish/wwwroot"
-            printf '{"releaseSha":"%s","release":"founder-diagnostics-20260918"}\n' "$RELEASE_SHA" > "/tmp/$app-publish/wwwroot/_deployment-provenance.json"
+            printf '{"releaseSha":"%s","release":"founder-diagnostics-20260918"}\n' "$APPLICATION_RELEASE_SHA" > "/tmp/$app-publish/wwwroot/_deployment-provenance.json"
           done
           mkdir -p /tmp/diagnostics-packages
           for app in "${apps[@]}"; do
@@ -373,7 +376,7 @@ jobs:
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: founder-diagnostics-packages-${{ github.sha }}
+          name: founder-diagnostics-packages-${{ needs.discover-live.outputs.package_identity }}
           path: /tmp/diagnostics-packages/
           retention-days: 7
           if-no-files-found: error

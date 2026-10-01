@@ -27,10 +27,15 @@ import urllib.request
 
 CONTROL_PATHS = {
     "scripts/validation-resume.py",
-    ".github/workflows/masterapp-platform-architecture-validation.yml",
-    ".github/workflows/step6-openai-ads-execution-validation.yml",
-    ".github/workflows/steps7-8-governed-advertising-validation.yml",
-    "scripts/test-validation-resume.py",
+}
+
+WORKFLOW_PATHS = {
+    name: ".github/workflows/" + name
+    for name in (
+        "masterapp-platform-architecture-validation.yml",
+        "step6-openai-ads-execution-validation.yml",
+        "steps7-8-governed-advertising-validation.yml",
+    )
 }
 
 GLOBAL_DOTNET_INPUTS = (
@@ -124,14 +129,24 @@ DIAGNOSTICS_TESTS = (
 WORKFLOWS = {
     "masterapp-platform-architecture-validation.yml": {
         "force_all": (),
-        "neutral": ("Docs/**", "*.md"),
+        "neutral": (
+            "Docs/**",
+            "*.md",
+            ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            ".github/workflows/step6-openai-ads-execution-validation.yml",
+            ".github/workflows/steps7-8-governed-advertising-validation.yml",
+        ),
         "gates": {
             "lifecycle": {
                 "step": "Run branch lifecycle safety contracts",
                 "paths": (
+                    ".github/workflows/legend-release-lifecycle.yml",
+                    ".github/workflows/all-intentional-direct-release-20260918.yml",
                     "scripts/release-lifecycle.py",
                     "scripts/release_policy.py",
+                    "scripts/approved-release-baseline.py",
                     "scripts/deploy-approved-app.py",
+                    "scripts/test-validation-resume.py",
                     "scripts/test-release-lifecycle.py",
                     "scripts/test-release-policy.py",
                     "scripts/test-deploy-approved-app.py",
@@ -357,6 +372,173 @@ WORKFLOWS = {
 }
 
 
+
+RELEASE_STEP_POLICIES = {
+    "all-intentional-direct-release-20260918.yml": {
+        "Pin approved source and actual live rollback revisions": "current_state",
+        "Preserve source-equivalent rollback without production data": "rollback_artifact",
+        "Reuse exact successful validation package when available": "evidence_lookup",
+        "Load exact preserved deployable package": "artifact_restore",
+        "Verify current live base before publication": "current_state",
+        "Verify ClientApp browser entry routes": "current_state",
+        "Build exact selected release candidate": "artifact_reusable",
+        "Verify business website routing bridge": "artifact_reusable",
+        "Verify localization retention privacy limits and original delivery": "artifact_reusable",
+        "Verify shared web catalog contracts": "artifact_reusable",
+        "Verify selected website catalog and build": "artifact_reusable",
+        "Publish exact selected application packages": "artifact_reusable",
+        "Retain exact deployable candidate packages": "artifact_receipt",
+        "Preserve targets already live at exact candidate": "live_identity",
+        "Synchronize Protect shared website authorization and publisher runtime": "current_state",
+        "Synchronize shared website editor ticket authority": "current_state",
+        "Prepare shared business website routing authority": "current_state",
+        "Audit centralized Cloudflare routing authority": "current_state",
+        "Diagnose preserve-live routing origin acceptance": "current_state",
+        "Apply additive diagnostics migrations before restarting apps": "idempotent_external",
+        "Direct deploy AgentPortal": "live_identity",
+        "Direct deploy ClientApp": "live_identity",
+        "Refresh Azure OIDC before late deployments": "ephemeral_auth",
+        "Direct deploy Protect immutable ZIP": "live_identity",
+        "Direct deploy Parfait": "live_identity",
+        "Reconcile public custom-hostname Cloudflare policy": "current_state",
+        "Deploy shared Cloudflare business website router": "live_identity",
+        "Direct deploy Website immutable ZIP": "live_identity",
+        "Verify custom-domain bridge end to end": "current_state",
+        "Capture exact Cloudflare challenge event after failed live proof": "diagnostic_on_failure",
+        "Verify every deployed target and collect all failures": "final_live_proof",
+        "Enforce complete direct deployment outcome": "finalize",
+    },
+    "legend-release-lifecycle.yml": {
+        "Resolve lifecycle validation authority identity": "evidence_lookup",
+        "Check lifecycle safety contracts": "artifact_reusable",
+        "Retain lifecycle validation authority receipt": "artifact_receipt",
+        "Preserve lifecycle validation authority receipt": "artifact_receipt",
+        "Integrate ready approved change and start direct release": "idempotent_external",
+        "Resume ready changes and corrections on retained branches": "idempotent_external",
+        "Refresh after automatically integrated corrections": "current_state",
+        "Reconcile successful releases through existing production gates": "idempotent_external",
+        "Refresh references after synchronization": "current_state",
+        "Retire only preserved successfully deployed branches": "idempotent_external",
+        "Retain exact cleanup decisions": "artifact_receipt",
+    },
+}
+
+
+def _named_step_spans(text: str):
+    lines = text.splitlines(keepends=True)
+    rows = []
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not stripped.startswith("- name:"):
+            continue
+        indent = len(line) - len(stripped)
+        raw = stripped[len("- name:"):].strip()
+        name = raw.strip("'\"")
+        end = len(lines)
+        for cursor in range(index + 1, len(lines)):
+            candidate = lines[cursor]
+            candidate_stripped = candidate.lstrip()
+            candidate_indent = len(candidate) - len(candidate_stripped)
+            if candidate_indent == indent and candidate_stripped.startswith("- "):
+                end = cursor
+                break
+        rows.append((name, index, end))
+    return lines, rows
+
+
+def named_step_blocks(text: str):
+    lines, rows = _named_step_spans(text)
+    return {name: "".join(lines[start:end]) for name, start, end in rows}
+
+
+def _mask_named_steps(text: str, names):
+    lines, rows = _named_step_spans(text)
+    wanted = set(names)
+    spans = {start: (name, end) for name, start, end in rows if name in wanted}
+    output = []
+    cursor = 0
+    while cursor < len(lines):
+        row = spans.get(cursor)
+        if row is None:
+            output.append(lines[cursor])
+            cursor += 1
+            continue
+        name, end = row
+        indent = " " * (len(lines[cursor]) - len(lines[cursor].lstrip()))
+        output.append(f"{indent}- name: __LEGEND_GATE__{name}\\n")
+        cursor = end
+    return "".join(output)
+
+
+def workflow_gate_change_scope(prior_text: str, current_text: str, gate_steps):
+    gate_steps = tuple(gate_steps)
+    prior_blocks = named_step_blocks(prior_text)
+    current_blocks = named_step_blocks(current_text)
+    changed = {
+        name
+        for name in gate_steps
+        if prior_blocks.get(name) != current_blocks.get(name)
+    }
+    structure_changed = (
+        _mask_named_steps(prior_text, gate_steps)
+        != _mask_named_steps(current_text, gate_steps)
+    )
+    return changed, structure_changed
+
+
+def _job_blocks(text: str):
+    lines = text.splitlines(keepends=True)
+    jobs_line = next((i for i, line in enumerate(lines) if line.rstrip() == "jobs:"), None)
+    if jobs_line is None:
+        return {}
+    blocks = {}
+    index = jobs_line + 1
+    while index < len(lines):
+        line = lines[index]
+        if line and not line.startswith(" "):
+            break
+        if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":"):
+            name = line.strip()[:-1]
+            end = index + 1
+            while end < len(lines):
+                candidate = lines[end]
+                if candidate and not candidate.startswith(" "):
+                    break
+                if candidate.startswith("  ") and not candidate.startswith("    ") and candidate.strip().endswith(":"):
+                    break
+                end += 1
+            blocks[name] = "".join(lines[index:end])
+            index = end
+            continue
+        index += 1
+    return blocks
+
+
+def git_show_file(revision: str, path: str) -> str:
+    result = subprocess.run(
+        ["git", "show", f"{revision}:{path}"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return result.stdout
+
+
+def verify_release_policy_coverage(workflow_name: str, workflow_text: str):
+    expected = RELEASE_STEP_POLICIES.get(workflow_name)
+    if expected is None:
+        raise ValueError(f"Unsupported release workflow coverage: {workflow_name}")
+    actual = set(named_step_blocks(workflow_text))
+    missing = sorted(actual - set(expected))
+    stale = sorted(set(expected) - actual)
+    if missing or stale:
+        raise ValueError(
+            "Release resume policy coverage mismatch; "
+            f"unclassified={missing}; stale={stale}"
+        )
+    return expected
+
+
 def matches(path: str, patterns) -> bool:
     return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
 
@@ -478,7 +660,16 @@ def prior_evidence(args):
     return prior, _effective_steps(histories), "prior_exact_head_runs"
 
 
-def compute_plan(workflow: str, current_sha: str, prior, prior_steps, changed_paths, evidence_source):
+def compute_plan(
+    workflow: str,
+    current_sha: str,
+    prior,
+    prior_steps,
+    changed_paths,
+    evidence_source,
+    changed_gate_steps=None,
+    workflow_structure_changed=False,
+):
     config = WORKFLOWS[workflow]
     gates = config["gates"]
     plan = {
@@ -502,15 +693,17 @@ def compute_plan(workflow: str, current_sha: str, prior, prior_steps, changed_pa
             }
         return plan
 
-    if any(path in CONTROL_PATHS for path in changed_paths):
+    if any(path in CONTROL_PATHS for path in changed_paths) or workflow_structure_changed:
+        reason = "validation_authority_changed" if any(path in CONTROL_PATHS for path in changed_paths) else "workflow_structure_changed"
         for key, gate in gates.items():
             plan["gates"][key] = {
                 "step": gate["step"],
                 "run": True,
-                "reason": "validation_authority_changed",
+                "reason": reason,
             }
         return plan
 
+    changed_gate_steps = set(changed_gate_steps or ())
     force_all = any(matches(path, config.get("force_all", ())) for path in changed_paths)
     known = set()
     neutral = set()
@@ -545,6 +738,10 @@ def compute_plan(workflow: str, current_sha: str, prior, prior_steps, changed_pa
     reasons = {}
     for key, gate in gates.items():
         step = gate["step"]
+        if step in changed_gate_steps:
+            run.add(key)
+            reasons[key] = "gate_definition_changed"
+            continue
         if prior_steps.get(step) != "success":
             run.add(key)
             reasons[key] = "prior_gate_not_successful"
@@ -580,7 +777,27 @@ def cmd_plan(args):
     try:
         prior, steps, source = prior_evidence(args)
         changed = git_changed(prior["head_sha"], args.current_sha) if prior else []
-        plan = compute_plan(args.workflow, args.current_sha, prior, steps, changed, source)
+        changed_gate_steps = set()
+        workflow_structure_changed = False
+        workflow_path = WORKFLOW_PATHS.get(args.workflow)
+        if prior and workflow_path and workflow_path in changed:
+            prior_text = git_show_file(prior["head_sha"], workflow_path)
+            current_text = Path(workflow_path).read_text()
+            gate_steps = [gate["step"] for gate in WORKFLOWS[args.workflow]["gates"].values()]
+            changed_gate_steps, workflow_structure_changed = workflow_gate_change_scope(
+                prior_text, current_text, gate_steps
+            )
+            changed = [path for path in changed if path != workflow_path]
+        plan = compute_plan(
+            args.workflow,
+            args.current_sha,
+            prior,
+            steps,
+            changed,
+            source,
+            changed_gate_steps,
+            workflow_structure_changed,
+        )
     except Exception as exc:
         # Fail closed: planner uncertainty is never permission to skip validation.
         config = WORKFLOWS[args.workflow]
@@ -622,6 +839,29 @@ def cmd_preserved(args):
     raise SystemExit(0)
 
 
+
+def cmd_job_unchanged(args):
+    prior = git_show_file(args.prior_sha, args.workflow_path)
+    current = Path(args.workflow_path).read_text()
+    prior_jobs = _job_blocks(prior)
+    current_jobs = _job_blocks(current)
+    missing = [name for name in args.job if name not in prior_jobs or name not in current_jobs]
+    if missing:
+        print("Missing workflow jobs: " + ", ".join(missing), file=sys.stderr)
+        raise SystemExit(1)
+    changed = [name for name in args.job if prior_jobs[name] != current_jobs[name]]
+    if changed:
+        print("Changed workflow jobs: " + ", ".join(changed), file=sys.stderr)
+        raise SystemExit(1)
+    print("Preserved workflow job definitions: " + ", ".join(args.job))
+
+
+def cmd_verify_release_coverage(args):
+    text = Path(args.workflow_path).read_text()
+    verify_release_policy_coverage(args.workflow, text)
+    print(f"Every named release step is classified: {args.workflow}")
+
+
 def build_parser():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -641,6 +881,17 @@ def build_parser():
     preserved.add_argument("--plan", required=True)
     preserved.add_argument("--gate", required=True)
     preserved.set_defaults(func=cmd_preserved)
+
+    job_unchanged = sub.add_parser("job-unchanged")
+    job_unchanged.add_argument("--workflow-path", required=True)
+    job_unchanged.add_argument("--prior-sha", required=True)
+    job_unchanged.add_argument("--job", action="append", required=True)
+    job_unchanged.set_defaults(func=cmd_job_unchanged)
+
+    coverage = sub.add_parser("verify-release-coverage")
+    coverage.add_argument("--workflow", required=True)
+    coverage.add_argument("--workflow-path", required=True)
+    coverage.set_defaults(func=cmd_verify_release_coverage)
     return parser
 
 

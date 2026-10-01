@@ -53,6 +53,62 @@ class ReleaseScopeSelection(unittest.TestCase):
                 'targets': ['masterapp-client', 'masterapp-parfait']
             })
 
+
+    def test_release_control_only_changes_preserve_live_application_identity(self):
+        rows = [{"revision": "a" * 40}]
+        with patch.object(
+            self.baseline.subprocess,
+            "check_output",
+            return_value=(
+                ".github/workflows/all-intentional-direct-release-20260918.yml\n"
+                "scripts/validation-resume.py\n"
+                "Docs/releases/direct-release-request.json\n"
+            ),
+        ):
+            self.assertEqual(
+                "a" * 40,
+                self.baseline.reusable_live_application_revision(rows, "b" * 40),
+            )
+
+    def test_runtime_change_invalidates_live_application_identity(self):
+        rows = [{"revision": "a" * 40}]
+        with patch.object(
+            self.baseline.subprocess,
+            "check_output",
+            return_value="AgentPortal/Services/Engineering/LegendEngineeringOrchestrator.cs\n",
+        ):
+            self.assertIsNone(
+                self.baseline.reusable_live_application_revision(rows, "b" * 40)
+            )
+
+
+    def test_package_identity_is_scope_and_contract_bound(self):
+        targets = (
+            ("portal", "portal.mylegnd.com", "AgentPortal/AgentPortal.csproj"),
+        )
+        with patch.object(self.baseline, "release_package_contract_hash", return_value="c" * 64):
+            first = self.baseline.release_package_identity("a" * 40, targets, False, "")
+            second = self.baseline.release_package_identity(
+                "a" * 40,
+                targets + (("client", "client.mylegnd.com", "ClientApp/ClientApp.csproj"),),
+                False,
+                "",
+            )
+            routing = self.baseline.release_package_identity(
+                "a" * 40,
+                targets,
+                True,
+                "camoexterior.com",
+            )
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(first, routing)
+
+    def test_different_live_target_revisions_cannot_share_application_identity(self):
+        rows = [{"revision": "a" * 40}, {"revision": "b" * 40}]
+        self.assertIsNone(
+            self.baseline.reusable_live_application_revision(rows, "c" * 40)
+        )
+
     def test_automatic_dispatch_does_not_expand_explicit_scope(self):
         request={'releaseMode':'approved-only','targets':['masterapp-portal','masterapp-client','masterapp-protect']}
         with tempfile.TemporaryDirectory() as directory:
@@ -336,6 +392,60 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
             resolved = self.lifecycle.direct_release_approved_pr(Api(), head)
 
         self.assertEqual(resolved['number'], 302)
+
+    def test_shared_resume_authority_requires_every_consuming_validation(self):
+        head = "a" * 40
+        pr = {
+            "number": 400,
+            "head": {"sha": head},
+        }
+        architecture = ".github/workflows/masterapp-platform-architecture-validation.yml"
+        step5 = ".github/workflows/step5-isolated-conversion-mapping-validation.yml"
+        step6 = ".github/workflows/step6-openai-ads-execution-validation.yml"
+        step78 = ".github/workflows/steps7-8-governed-advertising-validation.yml"
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == "actions/runs?head_sha=" + head:
+                    return [
+                        {"head_sha": head, "event": "pull_request", "path": architecture,
+                         "status": "completed", "conclusion": "success", "created_at": "4", "id": 4},
+                        {"head_sha": head, "event": "pull_request", "path": step5,
+                         "status": "completed", "conclusion": "success", "created_at": "3", "id": 3},
+                        {"head_sha": head, "event": "pull_request", "path": step78,
+                         "status": "completed", "conclusion": "success", "created_at": "2", "id": 2},
+                    ]
+                if path == "pulls/400/files":
+                    return [{"filename": "scripts/validation-resume.py"}]
+                if path == "pulls/400/commits":
+                    return [{"sha": head}]
+                raise AssertionError(path)
+
+        pending = self.lifecycle.candidate_validation(Api(), pr)
+        self.assertIn(step6, pending)
+
+    def test_step5_workflow_change_requires_exact_step5_validation(self):
+        head = "b" * 40
+        pr = {"number": 401, "head": {"sha": head}}
+        architecture = ".github/workflows/masterapp-platform-architecture-validation.yml"
+        step5 = ".github/workflows/step5-isolated-conversion-mapping-validation.yml"
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == "actions/runs?head_sha=" + head:
+                    return [
+                        {"head_sha": head, "event": "pull_request", "path": architecture,
+                         "status": "completed", "conclusion": "success", "created_at": "2", "id": 2},
+                    ]
+                if path == "pulls/401/files":
+                    return [{"filename": step5}]
+                if path == "pulls/401/commits":
+                    return [{"sha": head}]
+                raise AssertionError(path)
+
+        pending = self.lifecycle.candidate_validation(Api(), pr)
+        self.assertEqual("Exact-head full-suite comparison has not started", pending)
+
     def test_direct_release_authorization_rejects_extra_changed_files(self):
         path = 'Docs/releases/direct-release-request.json'
         with patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
@@ -370,10 +480,12 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_direct_release_reuses_only_exact_validated_package_evidence(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         self.assertIn('Reuse exact successful validation package when available', workflow)
-        self.assertIn('founder-diagnostics-packages-${GITHUB_SHA}', workflow)
+        self.assertIn('founder-diagnostics-packages-${PACKAGE_IDENTITY}', workflow)
         self.assertIn('REUSE_VALIDATED_PACKAGE=true', workflow)
         self.assertIn('sha256sum -c SHA256SUMS', workflow)
         self.assertIn('overwrite: true', workflow)
+        self.assertIn('SourceRevisionId="$APPLICATION_RELEASE_SHA"', workflow)
+        self.assertIn('verify-release-coverage', workflow)
 
     def test_rigorous_retry_preserves_same_run_security_evidence_only(self):
         workflow=(ROOT.parent / '.github/workflows/agentportal-production-deploy.yml').read_text()
@@ -407,6 +519,12 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         ):
             workflow=(ROOT.parent / '.github/workflows' / name).read_text()
             self.assertIn('scripts/validation-resume.py plan', workflow, name)
+            self.assertIn('cancel-in-progress: false', workflow, name)
+        step5=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
+        self.assertIn('scripts/validation-resume.py job-unchanged', step5)
+        self.assertIn('cancel-in-progress: false', step5)
+        self.assertIn('mode=reuse', step5)
+        self.assertIn('Search backward for the newest complete evidence pair', step5)
         self.assertFalse((ROOT.parent / '.github/workflows/step5-approved-baseline-control.yml').exists())
 
     def test_release_orchestrator_contract_checks_are_receipt_reusable(self):
@@ -414,6 +532,9 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         parity=(ROOT.parent / '.github/workflows/legend-canonical-branch-parity.yml').read_text()
         self.assertIn('REUSE_LIFECYCLE_CONTRACTS=true', lifecycle)
         self.assertIn('legend-lifecycle-contracts-', lifecycle)
+        self.assertIn('scripts/validation-resume.py', lifecycle)
+        self.assertIn('.github/workflows/step5-isolated-conversion-mapping-validation.yml', lifecycle)
+        self.assertIn('.github/workflows/all-intentional-direct-release-20260918.yml', lifecycle)
         self.assertIn('REUSE_PARITY_CONTRACTS=true', parity)
         self.assertIn('legend-parity-contracts-', parity)
 

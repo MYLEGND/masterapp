@@ -2,6 +2,7 @@
 """Read live source identities and refuse to release a candidate missing live history."""
 import argparse
 import importlib.util
+import hashlib
 import concurrent.futures
 import json
 import os
@@ -37,6 +38,85 @@ def selected_targets(request):
     if set(names) not in ({'masterapp-website'}, {'masterapp-protect'}, {'masterapp-client'}, {'masterapp-client', 'masterapp-protect'}, {'masterapp-protect', 'masterapp-website'}, {'masterapp-parfait'}, {'masterapp-protect', 'masterapp-parfait'}, {'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}, {'masterapp-portal'}, {'masterapp-portal', 'masterapp-protect'}, {'masterapp-portal', 'masterapp-client'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect'}, {'masterapp-portal', 'masterapp-client', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-protect', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}):
         raise ValueError('Unsupported scoped release; migration and packaging policy must be reviewed')
     return tuple(row for row in TARGETS if 'masterapp-' + row[0] in names)
+
+
+
+def release_control_only_path(path):
+    """Paths that can change release control/evidence without changing app bits."""
+    return (
+        path.startswith(".github/workflows/")
+        or path.startswith("Docs/")
+        or path.startswith("AgentPortal.Tests/")
+        or path.startswith("tests/")
+        or path in {
+            "scripts/approved-release-baseline.py",
+            "scripts/release-lifecycle.py",
+            "scripts/release_policy.py",
+            "scripts/deploy-approved-app.py",
+            "scripts/validation-resume.py",
+            "scripts/test-validation-resume.py",
+            "scripts/test-release-policy.py",
+            "scripts/test-release-lifecycle.py",
+            "scripts/test-deploy-approved-app.py",
+        }
+    )
+
+
+def reusable_live_application_revision(rows, head):
+    """Keep exact live provenance across release-control/test-only corrections.
+
+    This prevents a workflow/test/release-policy fix from manufacturing a new
+    application identity and needlessly rebuilding/redeploying unchanged product
+    code. Any runtime/product/migration change fails closed to the current head.
+    """
+    revisions = {row["revision"] for row in rows}
+    if len(revisions) != 1:
+        return None
+    live = next(iter(revisions))
+    changed = subprocess.check_output(
+        ["git", "diff", "--name-only", live, head],
+        text=True,
+    ).splitlines()
+    if all(release_control_only_path(path) for path in changed):
+        return live
+    return None
+
+
+
+def release_package_contract_hash():
+    resume_path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume", resume_path)
+    resume = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(resume)
+    workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
+    blocks = resume.named_step_blocks(workflow.read_text())
+    names = (
+        "Build exact selected release candidate",
+        "Verify business website routing bridge",
+        "Verify localization retention privacy limits and original delivery",
+        "Verify shared web catalog contracts",
+        "Verify selected website catalog and build",
+        "Publish exact selected application packages",
+    )
+    if any(name not in blocks for name in names):
+        raise ValueError("Release package contract step is missing")
+    payload = "\n".join(name + "\n" + blocks[name] for name in names).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def release_package_identity(application_release_sha, targets, website_routing, website_routing_canary):
+    payload = json.dumps(
+        {
+            "applicationReleaseSha": application_release_sha,
+            "targets": ["masterapp-" + row[0] for row in targets],
+            "websiteRouting": bool(website_routing),
+            "websiteRoutingCanary": website_routing_canary or "",
+            "packageContractSha256": release_package_contract_hash(),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def validate_revision(value):
@@ -130,7 +210,21 @@ def main():
         unexpected = sorted(path for path in changed if path not in allowed_control_files)
         if unexpected:
             raise ValueError('Preserve-live recovery contains application changes: ' + ', '.join(unexpected))
-    application_release_sha = preserve_live_revision if preserve_live_targets else head
+    if preserve_live_targets:
+        application_release_sha = preserve_live_revision
+    else:
+        application_release_sha = reusable_live_application_revision(rows, head) or head
+        if application_release_sha != head:
+            print(
+                "Preserving exact live application identity across release-control/test-only changes:",
+                application_release_sha,
+            )
+    package_identity = release_package_identity(
+        application_release_sha,
+        targets,
+        website_routing,
+        website_routing_canary,
+    )
     print(json.dumps(rows, indent=2))
     if args.output:
         with args.output.open('a') as out:
@@ -147,6 +241,7 @@ def main():
             out.write('website_routing_canary=' + website_routing_canary + '\n')
             out.write('preserve_live_targets=' + str(preserve_live_targets).lower() + '\n')
             out.write('application_release_sha=' + application_release_sha + '\n')
+            out.write('package_identity=' + package_identity + '\n')
 
 
 if __name__ == '__main__':

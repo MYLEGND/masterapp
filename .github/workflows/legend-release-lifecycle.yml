@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           authority_hash="$(
-            sha256sum               .github/workflows/legend-release-lifecycle.yml               scripts/release-lifecycle.py               scripts/release_policy.py               scripts/test-release-policy.py               scripts/test-release-lifecycle.py |
+            sha256sum               .github/workflows/legend-release-lifecycle.yml               .github/workflows/all-intentional-direct-release-20260918.yml               .github/workflows/step5-isolated-conversion-mapping-validation.yml               scripts/release-lifecycle.py               scripts/release_policy.py               scripts/approved-release-baseline.py               scripts/validation-resume.py               scripts/test-validation-resume.py               scripts/test-release-policy.py               scripts/test-release-lifecycle.py |
             sha256sum | cut -d ' ' -f 1
           )"
           artifact_name="legend-lifecycle-contracts-$authority_hash"
@@ -88,6 +88,9 @@ jobs:
           fi
           python3 scripts/test-release-policy.py
           python3 scripts/test-release-lifecycle.py
+          python3 scripts/test-validation-resume.py
+          python3 scripts/validation-resume.py verify-release-coverage             --workflow all-intentional-direct-release-20260918.yml             --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
+          python3 scripts/validation-resume.py verify-release-coverage             --workflow legend-release-lifecycle.yml             --workflow-path .github/workflows/legend-release-lifecycle.yml
 
       - name: Retain lifecycle validation authority receipt
         if: env.REUSE_LIFECYCLE_CONTRACTS != 'true'
