@@ -485,22 +485,160 @@ internal sealed class ChatGptPlanResponsesAdapter(
         }
     }
 
-    private static string? ResolveModel(
-        string configured,
+    private static string? ResolveReadyModel(
+        string role,
+        ChatGptPlanCredentialState credential,
         EngineeringModelCatalog catalog)
     {
-        if (!catalog.Ready || catalog.Models.Count == 0)
+        if (!catalog.Ready || credential.ReadinessModels is null ||
+            !credential.ReadinessModels.TryGetValue(role, out var model) ||
+            !ValidModelSlug(model))
             return null;
-        if (string.Equals(
-                configured,
-                LegendEngineeringContractAuthority.AutoModel,
-                StringComparison.OrdinalIgnoreCase))
-            return catalog.Models[0].Slug;
-
-        return catalog.Models.Any(model =>
-            string.Equals(model.Slug, configured, StringComparison.Ordinal))
-            ? configured
+        return catalog.Models.Any(option =>
+            string.Equals(option.Slug, model, StringComparison.Ordinal))
+            ? model
             : null;
+    }
+
+    private static string ReadinessSignature(
+        string? clientId,
+        LegendEngineeringOperationalContract contract)
+    {
+        var input = string.Join("\n",
+            clientId?.Trim() ?? string.Empty,
+            contract.HeadGptModel,
+            contract.CodexModel,
+            contract.ReviewerModel);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input)))
+            .ToLowerInvariant();
+    }
+
+    private static string CanaryPrompt(string role) => role switch
+    {
+        EngineeringRole.HeadGpt =>
+            """This is a non-mutating LEGEND runtime readiness canary. Return decision STOP, evidence_sufficient false, and a short summary confirming structured-output compatibility. Do not propose or perform work.""",
+        EngineeringRole.IndependentReviewer =>
+            """This is a non-mutating LEGEND runtime readiness canary. Return decision REJECT, an empty findings array, and a short summary confirming structured-output compatibility. Do not review or mutate production work.""",
+        _ =>
+            """This is a non-mutating LEGEND runtime readiness canary. Return decision STOP, base_sha "0000000000000000000000000000000000000000", title "Readiness canary", summary "Structured output ready", and an empty changes array. Do not propose or perform a repair."""
+    };
+
+    private static bool IsUnsupportedCapability(PlanRun run) =>
+        string.Equals(run.Code, "subscription_sharing_unsupported_capability", StringComparison.Ordinal) ||
+        string.Equals(run.ProviderErrorCode, "subscription_sharing_unsupported_capability", StringComparison.Ordinal);
+
+    private static ChatGptPlanProviderFailure ClassifyProviderFailure(
+        PlanRun run,
+        int failureCount,
+        Guid workItemId)
+    {
+        var code = run.ProviderErrorCode ?? run.Code;
+        string blockerClass;
+        DateTime? retry;
+
+        if (code == "subscription_sharing_usage_limit_exceeded")
+        {
+            blockerClass = "USAGE_LIMIT";
+            // Never infer a plan reset. Only provider-supplied Retry-After is durable.
+            retry = run.RetryAfterUtc;
+        }
+        else if (code is "subscription_sharing_usage_unavailable" or
+                         "subscription_sharing_user_unavailable" ||
+                 run.HttpStatus is 408 or 429 or >= 500 ||
+                 run.Code is "chatgpt_plan_response_temporarily_unavailable" or
+                             "chatgpt_plan_response_timeout" or
+                             "chatgpt_plan_response_stream_closed" or
+                             "chatgpt_plan_response_incomplete" or
+                             "chatgpt_plan_response_failed" or
+                             "chatgpt_plan_response_execution_failed_closed")
+        {
+            blockerClass = "TEMPORARY_PROVIDER";
+            retry = run.RetryAfterUtc ?? BoundedRetryUtc(failureCount, workItemId);
+        }
+        else if (code == "subscription_sharing_user_not_eligible")
+        {
+            blockerClass = "PLAN_ELIGIBILITY";
+            retry = null;
+        }
+        else if (code == "subscription_sharing_unsupported_capability")
+        {
+            blockerClass = "MODEL_BINDING";
+            retry = null;
+        }
+        else if (code is "subscription_sharing_invalid_subscriber" or
+                         "chatgpt_plan_reauthorization_required" ||
+                 run.HttpStatus == 401)
+        {
+            blockerClass = "AUTHENTICATION";
+            retry = null;
+        }
+        else if (code.Contains("scope", StringComparison.OrdinalIgnoreCase) ||
+                 code.Contains("authorization_context", StringComparison.OrdinalIgnoreCase) ||
+                 run.HttpStatus == 403)
+        {
+            blockerClass = "GRANT_CONFIGURATION";
+            retry = null;
+        }
+        else
+        {
+            blockerClass = "PROVIDER_REJECTED";
+            retry = null;
+        }
+
+        return new(
+            blockerClass,
+            code,
+            retry,
+            run.ProviderRequestId,
+            run.HttpStatus,
+            run.ProviderErrorParam);
+    }
+
+    private static DateTime BoundedRetryUtc(int failureCount, Guid workItemId)
+    {
+        var exponent = Math.Clamp(failureCount - 1, 0, 5);
+        var seconds = Math.Min(1800, 60 * (1 << exponent));
+        var bytes = workItemId.ToByteArray();
+        var jitter = bytes.Aggregate(0, (value, item) => (value + item) % 31);
+        return DateTime.UtcNow.AddSeconds(seconds + jitter);
+    }
+
+    private async Task RunHeartbeatAsync(
+        EngineeringContextSnapshot context,
+        string providerLeaseIdentity,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
+            var workRenewed = await store.RenewLeaseAsync(
+                context.WorkItemId,
+                context.LeaseIdentity,
+                TimeSpan.FromMinutes(5),
+                context.ExpiresUtc,
+                cancellationToken);
+            var providerRenewed = await credentials.RenewProviderExecutionLeaseAsync(
+                providerLeaseIdentity,
+                TimeSpan.FromMinutes(3),
+                cancellationToken);
+            if (!workRenewed || !providerRenewed)
+                return;
+        }
+    }
+
+    private async Task RunProviderHeartbeatAsync(
+        string providerLeaseIdentity,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
+            if (!await credentials.RenewProviderExecutionLeaseAsync(
+                    providerLeaseIdentity,
+                    TimeSpan.FromMinutes(3),
+                    cancellationToken))
+                return;
+        }
     }
 
     private async Task<IReadOnlyList<object>> BuildSourceBundleAsync(
