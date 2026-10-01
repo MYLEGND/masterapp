@@ -159,20 +159,114 @@ internal sealed class LegendEngineeringReleaseCohortPlanner(
         return new(ready, code, seed.ReleaseCohort, coverage, compatible.Select(item => item.WorkItemId).ToArray(), approval);
     }
 
-    private async Task ReconcileValidationAsync(EngineeringWorkItemSnapshot item, CancellationToken cancellationToken)
+    private async Task ReconcileValidationAsync(
+        EngineeringWorkItemSnapshot item,
+        CancellationToken cancellationToken)
     {
-        var result = await remediation.InspectValidationAsync(item.PullRequestNumber!.Value, item.CandidateSha!, cancellationToken);
+        var result = await remediation.InspectValidationAsync(
+            item.PullRequestNumber!.Value,
+            item.CandidateSha!,
+            cancellationToken);
         var json = JsonSerializer.SerializeToElement(result);
-        var exact = json.TryGetProperty("exactIdentityMatches", out var identity) && identity.ValueKind == JsonValueKind.True;
-        var passed = json.TryGetProperty("observedChecksPassed", out var checks) && checks.ValueKind == JsonValueKind.True;
+        var exact = json.TryGetProperty("exactIdentityMatches", out var identity) &&
+                    identity.ValueKind == JsonValueKind.True;
+        var passed = json.TryGetProperty("observedChecksPassed", out var checksPassed) &&
+                     checksPassed.ValueKind == JsonValueKind.True;
         if (exact && passed)
         {
-            await store.UpdateWorkItemAsync(item with { State = "VALIDATED", ValidationState = "GREEN", UpdatedUtc = DateTime.UtcNow }, cancellationToken);
+            await store.UpdateWorkItemAsync(item with
+            {
+                State = "VALIDATED",
+                ValidationState = "GREEN",
+                ValidationFailureCodes = null,
+                UpdatedUtc = DateTime.UtcNow
+            }, cancellationToken);
             return;
         }
-        var failed = json.TryGetProperty("incompleteOrFailedChecks", out var failures) && failures.ValueKind == JsonValueKind.Array && failures.GetArrayLength() > 0;
-        if (failed)
-            await store.UpdateWorkItemAsync(item with { State = "CI_FAILED_NEEDS_EVIDENCE", ValidationState = "FAILED", UpdatedUtc = DateTime.UtcNow }, cancellationToken);
+
+        var required = ReadStringArray(json, "requiredChecks");
+        var missing = ReadStringArray(json, "missingChecks");
+        var conclusions = new Dictionary<string, string?>(StringComparer.Ordinal);
+        if (json.TryGetProperty("checks", out var checks) && checks.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var check in checks.EnumerateArray())
+            {
+                if (!check.TryGetProperty("name", out var nameValue) ||
+                    nameValue.ValueKind != JsonValueKind.String ||
+                    nameValue.GetString() is not { } name ||
+                    string.IsNullOrWhiteSpace(name))
+                    continue;
+                var conclusion = check.TryGetProperty("conclusion", out var conclusionValue) &&
+                                 conclusionValue.ValueKind == JsonValueKind.String
+                    ? conclusionValue.GetString()
+                    : null;
+                conclusions[name] = conclusion;
+            }
+        }
+
+        // Missing checks or a required check with no terminal conclusion are
+        // still running/queued evidence, never a repair failure.
+        var pending = missing.Length > 0 ||
+                      required.Any(name =>
+                          !conclusions.TryGetValue(name, out var conclusion) ||
+                          string.IsNullOrWhiteSpace(conclusion));
+        if (pending)
+        {
+            if (item.ValidationState != "PENDING")
+                await store.UpdateWorkItemAsync(item with
+                {
+                    ValidationState = "PENDING",
+                    ValidationFailureCodes = null,
+                    UpdatedUtc = DateTime.UtcNow
+                }, cancellationToken);
+            return;
+        }
+
+        var terminalFailures = required
+            .Where(name => conclusions.TryGetValue(name, out var conclusion) &&
+                           !string.Equals(conclusion, "success", StringComparison.OrdinalIgnoreCase))
+            .Select(SafeCheckName)
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Take(16)
+            .ToArray();
+        if (terminalFailures.Length == 0) return;
+
+        await store.UpdateWorkItemAsync(item with
+        {
+            State = "CI_FAILED_NEEDS_EVIDENCE",
+            ValidationState = "FAILED",
+            ValidationFailureCodes = terminalFailures,
+            AssignedRole = EngineeringRole.HeadGpt,
+            ModelTier = EngineeringModelTier.DeepReasoning,
+            LeaseOwner = null,
+            LeaseIdentity = null,
+            LeaseExpiresUtc = null,
+            UpdatedUtc = DateTime.UtcNow
+        }, cancellationToken);
+    }
+
+    private static string[] ReadStringArray(JsonElement root, string property)
+    {
+        if (!root.TryGetProperty(property, out var values) ||
+            values.ValueKind != JsonValueKind.Array)
+            return [];
+        return values.EnumerateArray()
+            .Where(value => value.ValueKind == JsonValueKind.String)
+            .Select(value => value.GetString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Cast<string>()
+            .ToArray();
+    }
+
+    private static string SafeCheckName(string value)
+    {
+        var text = value.Trim();
+        if (text.Length > 120) text = text[..120];
+        return new string(text.Select(character =>
+            char.IsLetterOrDigit(character) || character is ' ' or '-' or '_' or '.' or '/' or ':'
+                ? character
+                : '_').ToArray());
     }
 
     private static bool Compatible(EngineeringWorkItemSnapshot left, EngineeringWorkItemSnapshot right)
