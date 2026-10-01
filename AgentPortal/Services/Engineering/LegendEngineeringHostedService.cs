@@ -26,6 +26,7 @@ internal sealed class LegendEngineeringHostedService(
             var store = scope.ServiceProvider.GetRequiredService<LegendEngineeringStateStore>();
             var adapter = scope.ServiceProvider.GetRequiredService<ILegendEngineeringAgentAdapter>();
             var releasePlanner = scope.ServiceProvider.GetRequiredService<LegendEngineeringReleaseCohortPlanner>();
+            var founderNotifications = scope.ServiceProvider.GetRequiredService<LegendEngineeringFounderNotificationService>();
 
             await orchestrator.ProcessIncidentsAsync(
                 Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Autonomous:IncidentScanLimit") ?? 250, 1, 1000),
@@ -37,16 +38,20 @@ internal sealed class LegendEngineeringHostedService(
 
             var status = JsonSerializer.SerializeToElement(await adapter.GetStatusAsync(cancellationToken));
             var ready = status.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True;
-            if (!ready)
-            {
-                var code = status.TryGetProperty("eligibility", out var eligibility) && eligibility.ValueKind == JsonValueKind.String
+            var blocker = ready ? null :
+                status.TryGetProperty("eligibility", out var eligibility) && eligibility.ValueKind == JsonValueKind.String
                     ? eligibility.GetString()
                     : "chatgpt_plan_executor_not_ready";
-                logger.LogInformation("LEGEND engineering monitoring active; autonomous model execution blocked ({Code}).", code);
+            var openWork = await store.GetOpenWorkItemsAsync(100, cancellationToken);
+            await founderNotifications.NotifyActionableAsync(openWork, blocker, cancellationToken);
+            await founderNotifications.NotifyDailyDigestAsync(openWork, cancellationToken);
+            if (!ready)
+            {
+                logger.LogInformation("LEGEND engineering monitoring active; autonomous model execution blocked ({Code}).", blocker);
                 return;
             }
 
-            var candidates = (await store.GetOpenWorkItemsAsync(100, cancellationToken))
+            var candidates = openWork
                 .Where(IsAgentActionable)
                 .OrderBy(item => PriorityRank(item.PriorityClass))
                 .ThenByDescending(item => item.PriorityScore)
