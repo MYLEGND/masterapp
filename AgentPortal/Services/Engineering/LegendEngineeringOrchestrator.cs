@@ -62,6 +62,7 @@ internal sealed class LegendEngineeringOrchestrator(
             openWorkItems = work.Count,
             leasedWorkItems = work.Count(item => item.LeaseExpiresUtc > DateTime.UtcNow),
             securityReviewItems = work.Count(item => item.RiskClass == EngineeringRiskClass.TierC),
+            browserLiveProofItems = work.Count(item => item.State == "LIVE_FUNCTIONAL_PROOF_REQUIRED"),
             observationOnlyItems = work.Count(item => item.State == "OBSERVATION_ONLY"),
             codeRepairEligibleItems = work.Count(item => item.FailureClass == EngineeringFailureClass.CodeDefect &&
                                                         item.RiskClass != EngineeringRiskClass.TierC),
