@@ -187,6 +187,8 @@ internal sealed class LegendEngineeringOrchestrator(
             .Distinct(StringComparer.Ordinal)
             .Take(24)
             .ToArray();
+        var repairBaseSha = LegendEngineeringPolicies.ResolveRepairBaseSha(item);
+        var validationFailures = item.ValidationFailureCodes ?? Array.Empty<string>();
 
         return new EngineeringTaskPacket(
             "legend_engineering_task_packet.v1",
@@ -226,7 +228,9 @@ internal sealed class LegendEngineeringOrchestrator(
                 "Verify exact deployed revision/tree through canonical runtime provenance.",
                 "Run the original structural/page reproducer when the defect is user-interface visible.",
                 "Do not close the work item merely because CI or deployment succeeded."
-            ]);
+            ],
+            repairBaseSha,
+            validationFailures);
     }
 
     public async Task<object> InspectRepositoryAsync(
@@ -263,7 +267,9 @@ internal sealed class LegendEngineeringOrchestrator(
             return new { ok = false, error = "engineering_repository_revision_not_allowed" };
         if (string.Equals(revision, "candidate", StringComparison.Ordinal) &&
             context.Role != EngineeringRole.IndependentReviewer &&
-            context.Role != EngineeringRole.CodexImplementer)
+            context.Role != EngineeringRole.CodexImplementer &&
+            !(context.Role == EngineeringRole.HeadGpt &&
+              workItem.ValidationFailureCodes is { Count: > 0 }))
             return new { ok = false, error = "candidate_source_not_allowed_for_role" };
 
         return await remediation.InspectRepositoryAsync(path, gitReference, cancellationToken);
@@ -288,8 +294,9 @@ internal sealed class LegendEngineeringOrchestrator(
             return new { ok = false, error = "failure_class_does_not_permit_source_repair" };
         if (item.RiskClass == EngineeringRiskClass.TierC)
             return new { ok = false, error = "tier_c_source_mutation_forbidden" };
-        if (!string.Equals(proposal.BaseSha, context.LiveSha, StringComparison.OrdinalIgnoreCase))
-            return new { ok = false, error = "repair_base_sha_stale" };
+        var expectedRepairBase = LegendEngineeringPolicies.ResolveRepairBaseSha(item);
+        if (!string.Equals(proposal.BaseSha, expectedRepairBase, StringComparison.OrdinalIgnoreCase))
+            return new { ok = false, error = "repair_base_sha_stale", expectedRepairBase };
         if (proposal.Changes.Any(change =>
                 FounderSoftwareRemediationService.ClassifyInspectableSourcePath(change.Path) != LegendSiteToolDisclosureAuthority.SafeSource))
             return new { ok = false, error = "repair_contains_protected_source" };
@@ -309,11 +316,16 @@ internal sealed class LegendEngineeringOrchestrator(
         {
             State = "CANDIDATE_PREPARED",
             CandidateSha = candidateSha,
-            CandidateChangedPaths = proposal.Changes.Select(change => NormalizePath(change.Path)).Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal).ToArray(),
+            CandidateChangedPaths = (item.CandidateChangedPaths ?? Array.Empty<string>())
+                .Concat(proposal.Changes.Select(change => NormalizePath(change.Path)))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray(),
             PullRequestNumber = pullRequest,
             RepairBatchId = "active",
             AttemptCount = item.AttemptCount + 1,
             ValidationState = "PENDING",
+            ValidationFailureCodes = null,
             UpdatedUtc = DateTime.UtcNow
         };
         await store.UpdateWorkItemAsync(updated, cancellationToken);
@@ -431,7 +443,8 @@ internal sealed class LegendEngineeringOrchestrator(
             return item.FailureClass == EngineeringFailureClass.Unknown &&
                    item.State is "NEEDS_TRIAGE" or "RECURRED_NEEDS_TRIAGE";
         if (role == EngineeringRole.HeadGpt)
-            return item.State is "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "QUEUED" or "REVIEW_REJECTED";
+            return item.State is "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "QUEUED" or
+                "REVIEW_REJECTED" or "CI_FAILED_NEEDS_EVIDENCE";
         return role is EngineeringRole.IndependentReviewer or EngineeringRole.LiveVerifier;
     }
 
