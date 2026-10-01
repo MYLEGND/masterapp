@@ -555,6 +555,224 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         }, cancellationToken);
     }
 
+    public async Task RecordProviderFailureAsync(
+        ChatGptPlanProviderFailure failure,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(failure.Code) || failure.Code.Length > 128 ||
+            string.IsNullOrWhiteSpace(failure.BlockerClass) || failure.BlockerClass.Length > 48)
+            throw new InvalidOperationException("chatgpt_plan_provider_failure_invalid");
+
+        await WithCredentialLockAsync(async (connection, transaction) =>
+        {
+            var current = await ReadCredentialAsync(connection, transaction, cancellationToken)
+                ?? throw new InvalidOperationException("chatgpt_plan_sign_in_required");
+            var now = DateTime.UtcNow;
+            var episode = current.ProviderCircuitEpisodeId ?? Guid.NewGuid().ToString("N");
+            var next = current with
+            {
+                ProviderBlockerClass = SafeControlValue(failure.BlockerClass, 48),
+                ProviderBlockerCode = SafeControlValue(failure.Code, 128),
+                ProviderBlockedUtc = current.ProviderBlockedUtc ?? now,
+                ProviderRetryNotBeforeUtc = failure.RetryNotBeforeUtc?.ToUniversalTime(),
+                ProviderRequestId = SafeControlValue(failure.ProviderRequestId, 160),
+                ProviderHttpStatus = failure.HttpStatus is >= 100 and <= 599 ? failure.HttpStatus : null,
+                ProviderErrorParam = SafeControlValue(failure.ErrorParam, 160),
+                ProviderCircuitEpisodeId = episode,
+                ProviderFailureStreak = Math.Min(current.ProviderFailureStreak + 1, 1000),
+                ReadinessState = "BLOCKED",
+                ReadinessCode = SafeControlValue(failure.Code, 128),
+                ReadinessCheckedUtc = now,
+                Revision = Guid.NewGuid().ToString("N"),
+                UpdatedUtc = now
+            };
+            await UpsertCredentialAsync(connection, transaction, next, cancellationToken);
+            return true;
+        }, cancellationToken);
+    }
+
+    public async Task RecordReadinessSuccessAsync(
+        string signature,
+        IReadOnlyDictionary<string, string> resolvedModels,
+        string? responseId,
+        string? providerRequestId,
+        CancellationToken cancellationToken)
+    {
+        if (!ValidDigest(signature) || resolvedModels.Count is < 1 or > 8 ||
+            resolvedModels.Any(pair => string.IsNullOrWhiteSpace(pair.Key) ||
+                                       !ValidModelBindingValue(pair.Value)))
+            throw new InvalidOperationException("chatgpt_plan_readiness_evidence_invalid");
+
+        var modelsJson = JsonSerializer.Serialize(
+            resolvedModels.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+            JsonOptions);
+        if (modelsJson.Length > 2000)
+            throw new InvalidOperationException("chatgpt_plan_readiness_evidence_invalid");
+
+        await WithCredentialLockAsync(async (connection, transaction) =>
+        {
+            var current = await ReadCredentialAsync(connection, transaction, cancellationToken)
+                ?? throw new InvalidOperationException("chatgpt_plan_sign_in_required");
+            var now = DateTime.UtcNow;
+            var recoveredEpisode = current.ProviderCircuitEpisodeId;
+            var next = current with
+            {
+                ProviderBlockerClass = null,
+                ProviderBlockerCode = null,
+                ProviderBlockedUtc = null,
+                ProviderRetryNotBeforeUtc = null,
+                ProviderRequestId = SafeControlValue(providerRequestId, 160),
+                ProviderHttpStatus = null,
+                ProviderErrorParam = null,
+                ProviderCircuitEpisodeId = null,
+                ProviderRecoveredEpisodeId = recoveredEpisode ?? current.ProviderRecoveredEpisodeId,
+                ProviderRecoveredUtc = recoveredEpisode is null ? current.ProviderRecoveredUtc : now,
+                ProviderFailureStreak = 0,
+                ReadinessState = "READY",
+                ReadinessSignature = signature.ToLowerInvariant(),
+                ReadinessModelsJson = modelsJson,
+                ReadinessCheckedUtc = now,
+                ReadinessResponseId = SafeControlValue(responseId, 160),
+                ReadinessRequestId = SafeControlValue(providerRequestId, 160),
+                ReadinessCode = "chatgpt_plan_inference_ready",
+                Revision = Guid.NewGuid().ToString("N"),
+                UpdatedUtc = now
+            };
+            await UpsertCredentialAsync(connection, transaction, next, cancellationToken);
+            return true;
+        }, cancellationToken);
+    }
+
+    public async Task MarkReadinessUnverifiedAsync(
+        string code,
+        CancellationToken cancellationToken)
+    {
+        var safeCode = SafeControlValue(code, 128) ?? "chatgpt_plan_readiness_canary_required";
+        await WithCredentialLockAsync(async (connection, transaction) =>
+        {
+            var current = await ReadCredentialAsync(connection, transaction, cancellationToken);
+            if (current is null) return false;
+            var next = current with
+            {
+                ReadinessState = "UNVERIFIED",
+                ReadinessSignature = null,
+                ReadinessModelsJson = null,
+                ReadinessCheckedUtc = null,
+                ReadinessResponseId = null,
+                ReadinessRequestId = null,
+                ReadinessCode = safeCode,
+                Revision = Guid.NewGuid().ToString("N"),
+                UpdatedUtc = DateTime.UtcNow
+            };
+            await UpsertCredentialAsync(connection, transaction, next, cancellationToken);
+            return true;
+        }, cancellationToken);
+    }
+
+    public async Task<ChatGptPlanProviderExecutionLease> TryAcquireProviderExecutionLeaseAsync(
+        string owner,
+        TimeSpan duration,
+        bool allowCircuitProbe,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(owner) || owner.Length > 128 ||
+            duration <= TimeSpan.Zero || duration > TimeSpan.FromMinutes(5))
+            return new(false, "chatgpt_plan_provider_execution_lease_invalid", null, null);
+
+        return await WithCredentialLockAsync(async (connection, transaction) =>
+        {
+            var current = await ReadCredentialAsync(connection, transaction, cancellationToken);
+            if (current is null)
+                return new ChatGptPlanProviderExecutionLease(false, "chatgpt_plan_sign_in_required", null, null);
+
+            var now = DateTime.UtcNow;
+            if (!allowCircuitProbe && !string.IsNullOrWhiteSpace(current.ProviderBlockerCode))
+                return new(false, current.ProviderBlockerCode, null, current.ProviderRetryNotBeforeUtc);
+
+            if (current.ProviderExecutionLeaseUntilUtc > now &&
+                !string.IsNullOrWhiteSpace(current.ProviderExecutionLeaseIdentity))
+                return new(false, "chatgpt_plan_provider_execution_busy", null,
+                    current.ProviderExecutionLeaseUntilUtc);
+
+            var identity = Guid.NewGuid().ToString("N");
+            var until = now.Add(duration);
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE [LegendEngineeringChatGptPlanCredentials]
+                SET [ProviderExecutionLeaseIdentity]=@identity,
+                    [ProviderExecutionLeaseOwner]=@owner,
+                    [ProviderExecutionLeaseUntilUtc]=@until,
+                    [UpdatedUtc]=@updated
+                WHERE [CredentialKey]=@key
+                """;
+            Add(command, "@identity", identity);
+            Add(command, "@owner", owner.Trim());
+            Add(command, "@until", until);
+            Add(command, "@updated", now);
+            Add(command, "@key", CredentialKey);
+            return await command.ExecuteNonQueryAsync(cancellationToken) == 1
+                ? new ChatGptPlanProviderExecutionLease(true, "acquired", identity, until)
+                : new ChatGptPlanProviderExecutionLease(false, "chatgpt_plan_provider_execution_unavailable", null, null);
+        }, cancellationToken);
+    }
+
+    public async Task<bool> RenewProviderExecutionLeaseAsync(
+        string leaseIdentity,
+        TimeSpan duration,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(leaseIdentity) || duration <= TimeSpan.Zero ||
+            duration > TimeSpan.FromMinutes(5))
+            return false;
+        return await WithCredentialLockAsync(async (connection, transaction) =>
+        {
+            var current = await ReadCredentialAsync(connection, transaction, cancellationToken);
+            var now = DateTime.UtcNow;
+            if (current is null || current.ProviderExecutionLeaseUntilUtc <= now ||
+                !string.Equals(current.ProviderExecutionLeaseIdentity, leaseIdentity, StringComparison.Ordinal))
+                return false;
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE [LegendEngineeringChatGptPlanCredentials]
+                SET [ProviderExecutionLeaseUntilUtc]=@until,[UpdatedUtc]=@updated
+                WHERE [CredentialKey]=@key AND [ProviderExecutionLeaseIdentity]=@identity
+                """;
+            Add(command, "@until", now.Add(duration));
+            Add(command, "@updated", now);
+            Add(command, "@key", CredentialKey);
+            Add(command, "@identity", leaseIdentity);
+            return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        }, cancellationToken);
+    }
+
+    public async Task ReleaseProviderExecutionLeaseAsync(
+        string leaseIdentity,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(leaseIdentity)) return;
+        await WithCredentialLockAsync(async (connection, transaction) =>
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE [LegendEngineeringChatGptPlanCredentials]
+                SET [ProviderExecutionLeaseIdentity]=NULL,
+                    [ProviderExecutionLeaseOwner]=NULL,
+                    [ProviderExecutionLeaseUntilUtc]=NULL,
+                    [UpdatedUtc]=@updated
+                WHERE [CredentialKey]=@key AND [ProviderExecutionLeaseIdentity]=@identity
+                """;
+            Add(command, "@updated", DateTime.UtcNow);
+            Add(command, "@key", CredentialKey);
+            Add(command, "@identity", leaseIdentity);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return true;
+        }, cancellationToken);
+    }
+
     private async Task<ChatGptPlanCredentialState> RefreshAsync(
         CredentialRecord snapshot,
         ChatGptPlanClientRegistrationState registrationState,
@@ -1108,7 +1326,13 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         command.CommandText = """
             SELECT [ClientId],[AccessTokenCiphertext],[RefreshTokenCiphertext],[GrantedScopesJson],
                    [AccessTokenExpiresUtc],[State],[Revision],[RefreshLeaseIdentity],[RefreshLeaseUntilUtc],
-                   [ConnectedUtc],[LastRefreshedUtc],[UpdatedUtc]
+                   [ConnectedUtc],[LastRefreshedUtc],[UpdatedUtc],
+                   [ProviderBlockerClass],[ProviderBlockerCode],[ProviderBlockedUtc],[ProviderRetryNotBeforeUtc],
+                   [ProviderRequestId],[ProviderHttpStatus],[ProviderErrorParam],[ProviderCircuitEpisodeId],
+                   [ProviderRecoveredEpisodeId],[ProviderRecoveredUtc],[ProviderFailureStreak],
+                   [ReadinessState],[ReadinessSignature],[ReadinessModelsJson],[ReadinessCheckedUtc],
+                   [ReadinessResponseId],[ReadinessRequestId],[ReadinessCode],
+                   [ProviderExecutionLeaseIdentity],[ProviderExecutionLeaseOwner],[ProviderExecutionLeaseUntilUtc]
             FROM [LegendEngineeringChatGptPlanCredentials]
             WHERE [CredentialKey]=@key
             """;
@@ -1129,7 +1353,28 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
             reader.IsDBNull(8) ? null : reader.GetDateTime(8),
             reader.GetDateTime(9),
             reader.IsDBNull(10) ? null : reader.GetDateTime(10),
-            reader.GetDateTime(11));
+            reader.GetDateTime(11),
+            reader.IsDBNull(12) ? null : reader.GetString(12),
+            reader.IsDBNull(13) ? null : reader.GetString(13),
+            reader.IsDBNull(14) ? null : reader.GetDateTime(14),
+            reader.IsDBNull(15) ? null : reader.GetDateTime(15),
+            reader.IsDBNull(16) ? null : reader.GetString(16),
+            reader.IsDBNull(17) ? null : reader.GetInt32(17),
+            reader.IsDBNull(18) ? null : reader.GetString(18),
+            reader.IsDBNull(19) ? null : reader.GetString(19),
+            reader.IsDBNull(20) ? null : reader.GetString(20),
+            reader.IsDBNull(21) ? null : reader.GetDateTime(21),
+            reader.GetInt32(22),
+            reader.GetString(23),
+            reader.IsDBNull(24) ? null : reader.GetString(24),
+            reader.IsDBNull(25) ? null : reader.GetString(25),
+            reader.IsDBNull(26) ? null : reader.GetDateTime(26),
+            reader.IsDBNull(27) ? null : reader.GetString(27),
+            reader.IsDBNull(28) ? null : reader.GetString(28),
+            reader.IsDBNull(29) ? null : reader.GetString(29),
+            reader.IsDBNull(30) ? null : reader.GetString(30),
+            reader.IsDBNull(31) ? null : reader.GetString(31),
+            reader.IsDBNull(32) ? null : reader.GetDateTime(32));
     }
 
     private static async Task<ClientRegistrationRecord?> ReadClientRegistrationAsync(
@@ -1197,7 +1442,19 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
               [ClientId]=@client,[AccessTokenCiphertext]=@access,[RefreshTokenCiphertext]=@refresh,
               [GrantedScopesJson]=@scopes,[AccessTokenExpiresUtc]=@expires,[State]=@state,
               [Revision]=@revision,[RefreshLeaseIdentity]=@lease,[RefreshLeaseUntilUtc]=@leaseUntil,
-              [ConnectedUtc]=@connected,[LastRefreshedUtc]=@refreshed,[UpdatedUtc]=@updated
+              [ConnectedUtc]=@connected,[LastRefreshedUtc]=@refreshed,[UpdatedUtc]=@updated,
+              [ProviderBlockerClass]=@blockerClass,[ProviderBlockerCode]=@blockerCode,
+              [ProviderBlockedUtc]=@blockedUtc,[ProviderRetryNotBeforeUtc]=@retryUtc,
+              [ProviderRequestId]=@providerRequest,[ProviderHttpStatus]=@providerStatus,
+              [ProviderErrorParam]=@providerParam,[ProviderCircuitEpisodeId]=@episode,
+              [ProviderRecoveredEpisodeId]=@recoveredEpisode,[ProviderRecoveredUtc]=@recoveredUtc,
+              [ProviderFailureStreak]=@failureStreak,[ReadinessState]=@readinessState,
+              [ReadinessSignature]=@readinessSignature,[ReadinessModelsJson]=@readinessModels,
+              [ReadinessCheckedUtc]=@readinessChecked,[ReadinessResponseId]=@readinessResponse,
+              [ReadinessRequestId]=@readinessRequest,[ReadinessCode]=@readinessCode,
+              [ProviderExecutionLeaseIdentity]=@executionLease,
+              [ProviderExecutionLeaseOwner]=@executionOwner,
+              [ProviderExecutionLeaseUntilUtc]=@executionUntil
             WHERE [CredentialKey]=@key
             """;
         BindCredential(update, credential);
@@ -1209,9 +1466,17 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
             INSERT INTO [LegendEngineeringChatGptPlanCredentials]
               ([CredentialKey],[ClientId],[AccessTokenCiphertext],[RefreshTokenCiphertext],[GrantedScopesJson],
                [AccessTokenExpiresUtc],[State],[Revision],[RefreshLeaseIdentity],[RefreshLeaseUntilUtc],
-               [ConnectedUtc],[LastRefreshedUtc],[UpdatedUtc])
+               [ConnectedUtc],[LastRefreshedUtc],[UpdatedUtc],[ProviderBlockerClass],[ProviderBlockerCode],
+               [ProviderBlockedUtc],[ProviderRetryNotBeforeUtc],[ProviderRequestId],[ProviderHttpStatus],
+               [ProviderErrorParam],[ProviderCircuitEpisodeId],[ProviderRecoveredEpisodeId],[ProviderRecoveredUtc],
+               [ProviderFailureStreak],[ReadinessState],[ReadinessSignature],[ReadinessModelsJson],
+               [ReadinessCheckedUtc],[ReadinessResponseId],[ReadinessRequestId],[ReadinessCode],
+               [ProviderExecutionLeaseIdentity],[ProviderExecutionLeaseOwner],[ProviderExecutionLeaseUntilUtc])
             VALUES (@key,@client,@access,@refresh,@scopes,@expires,@state,@revision,@lease,@leaseUntil,
-                    @connected,@refreshed,@updated)
+                    @connected,@refreshed,@updated,@blockerClass,@blockerCode,@blockedUtc,@retryUtc,
+                    @providerRequest,@providerStatus,@providerParam,@episode,@recoveredEpisode,@recoveredUtc,
+                    @failureStreak,@readinessState,@readinessSignature,@readinessModels,@readinessChecked,
+                    @readinessResponse,@readinessRequest,@readinessCode,@executionLease,@executionOwner,@executionUntil)
             """;
         BindCredential(insert, credential);
         await insert.ExecuteNonQueryAsync(cancellationToken);
@@ -1327,6 +1592,27 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         Add(command, "@connected", credential.ConnectedUtc);
         Add(command, "@refreshed", credential.LastRefreshedUtc);
         Add(command, "@updated", credential.UpdatedUtc);
+        Add(command, "@blockerClass", credential.ProviderBlockerClass);
+        Add(command, "@blockerCode", credential.ProviderBlockerCode);
+        Add(command, "@blockedUtc", credential.ProviderBlockedUtc);
+        Add(command, "@retryUtc", credential.ProviderRetryNotBeforeUtc);
+        Add(command, "@providerRequest", credential.ProviderRequestId);
+        Add(command, "@providerStatus", credential.ProviderHttpStatus);
+        Add(command, "@providerParam", credential.ProviderErrorParam);
+        Add(command, "@episode", credential.ProviderCircuitEpisodeId);
+        Add(command, "@recoveredEpisode", credential.ProviderRecoveredEpisodeId);
+        Add(command, "@recoveredUtc", credential.ProviderRecoveredUtc);
+        Add(command, "@failureStreak", credential.ProviderFailureStreak);
+        Add(command, "@readinessState", credential.ReadinessState);
+        Add(command, "@readinessSignature", credential.ReadinessSignature);
+        Add(command, "@readinessModels", credential.ReadinessModelsJson);
+        Add(command, "@readinessChecked", credential.ReadinessCheckedUtc);
+        Add(command, "@readinessResponse", credential.ReadinessResponseId);
+        Add(command, "@readinessRequest", credential.ReadinessRequestId);
+        Add(command, "@readinessCode", credential.ReadinessCode);
+        Add(command, "@executionLease", credential.ProviderExecutionLeaseIdentity);
+        Add(command, "@executionOwner", credential.ProviderExecutionLeaseOwner);
+        Add(command, "@executionUntil", credential.ProviderExecutionLeaseUntilUtc);
     }
 
     private static void BindClientRegistration(
@@ -1390,8 +1676,24 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         try
         {
             var access = _tokenProtector.Unprotect(record.AccessTokenCiphertext);
+            IReadOnlyDictionary<string, string>? readinessModels = null;
+            if (!string.IsNullOrWhiteSpace(record.ReadinessModelsJson))
+            {
+                try
+                {
+                    readinessModels = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                        record.ReadinessModelsJson, JsonOptions);
+                }
+                catch (JsonException) { }
+            }
             return new(true, "chatgpt_plan_ready", record.ClientId, access,
-                record.Scopes, record.ExpiresUtc, eligibilityConfirmed);
+                record.Scopes, record.ExpiresUtc, eligibilityConfirmed,
+                record.ProviderBlockerClass, record.ProviderBlockerCode, record.ProviderBlockedUtc,
+                record.ProviderRetryNotBeforeUtc, record.ProviderRequestId, record.ProviderHttpStatus,
+                record.ProviderErrorParam, record.ProviderCircuitEpisodeId, record.ProviderRecoveredEpisodeId,
+                record.ProviderRecoveredUtc, record.ProviderFailureStreak, record.ReadinessState,
+                record.ReadinessSignature, readinessModels, record.ReadinessCheckedUtc,
+                record.ReadinessResponseId, record.ReadinessRequestId, record.ReadinessCode);
         }
         catch (CryptographicException)
         {
@@ -1455,6 +1757,24 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
 
     private static bool ValidToken(string? value) =>
         value is { Length: >= 16 and <= 32_768 };
+
+    private static bool ValidDigest(string? value) =>
+        value is { Length: 64 } && value.All(Uri.IsHexDigit);
+
+    private static bool ValidModelBindingValue(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 160 &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) ||
+                               character is '.' or '-' or '_' or '/' or ':');
+
+    private static string? SafeControlValue(string? value, int maximum)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrWhiteSpace(text) || text.Length > maximum ||
+            text.Any(character => !(char.IsAsciiLetterOrDigit(character) ||
+                                    character is '.' or '-' or '_' or '/' or ':')))
+            return null;
+        return text;
+    }
 
     private static async Task<string> ReadBoundedBodyAsync(
         HttpResponseMessage response,
