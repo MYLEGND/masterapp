@@ -555,12 +555,26 @@ internal sealed partial class LegendFounderToolAuthority
                 var workItemRaw = ReadRequiredString(arguments.RootElement, "work_item_id");
                 var role = ReadRequiredString(arguments.RootElement, "role");
                 if (!Guid.TryParse(workItemRaw, out var workItemId) || role is not
-                    ("HEAD_GPT" or "CODEX_IMPLEMENTER" or "INDEPENDENT_REVIEWER" or "LIVE_VERIFIER"))
+                    ("TRIAGE_WORKER" or "HEAD_GPT" or "CODEX_IMPLEMENTER" or "INDEPENDENT_REVIEWER" or "LIVE_VERIFIER"))
                     return """{"ok":false,"error":"engineering_bootstrap_arguments_invalid"}""";
                 await using var scope = _authorizationScopes.CreateAsyncScope();
                 var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
                 return SerializeUnbounded(await orchestrator.BootstrapAsync(founder, workItemId, role, cancellationToken));
             }
+
+            case "legend_engineering_approve_release":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"engineering_control_plane_unavailable"}""";
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var workItemRaw = ReadRequiredString(arguments.RootElement, "work_item_id");
+                if (!Guid.TryParse(workItemRaw, out var workItemId))
+                    return """{"ok":false,"error":"engineering_release_approval_arguments_invalid"}""";
+                await using var scope = _authorizationScopes.CreateAsyncScope();
+                var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
+                return SerializeUnbounded(await orchestrator.ApproveReleaseAsync(founder, workItemId, cancellationToken));
+            }
+
 
             case "legend_inspect_repository":
             {
@@ -3025,13 +3039,32 @@ internal sealed partial class LegendFounderToolAuthority
                     properties = new
                     {
                         work_item_id = new { type = "string", minLength = 36, maxLength = 36 },
-                        role = new { type = "string", @enum = new[] { "HEAD_GPT", "CODEX_IMPLEMENTER", "INDEPENDENT_REVIEWER", "LIVE_VERIFIER" } }
+                        role = new { type = "string", @enum = new[] { "TRIAGE_WORKER", "HEAD_GPT", "CODEX_IMPLEMENTER", "INDEPENDENT_REVIEWER", "LIVE_VERIFIER" } }
                     },
                     required = new[] { "work_item_id", "role" },
                     additionalProperties = false
                 },
                 strict = true
             },
+            new
+            {
+                type = "function",
+                name = "legend_engineering_approve_release",
+                description =
+                    "Explicit Founder approval for one exact Tier B engineering work item that has already passed independent review and required CI. Approval is invalidated by changed evidence and does not itself bypass release cohort policy, merge checks, deployment proof, or live functional proof.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        work_item_id = new { type = "string", minLength = 36, maxLength = 36 }
+                    },
+                    required = new[] { "work_item_id" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+
             new
             {
                 type = "function",
