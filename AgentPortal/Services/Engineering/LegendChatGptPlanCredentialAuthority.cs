@@ -866,19 +866,19 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         }
 
         var now = DateTime.UtcNow;
-        var stored = new CredentialRecord(
-            snapshot.ClientId,
-            _tokenProtector.Protect(refreshed.AccessToken.Trim()),
-            _tokenProtector.Protect(refreshed.RefreshToken.Trim()),
-            scopes,
-            now.AddSeconds(refreshed.ExpiresIn),
-            Connected,
-            Guid.NewGuid().ToString("N"),
-            null,
-            null,
-            snapshot.ConnectedUtc,
-            now,
-            now);
+        var stored = claim.Record! with
+        {
+            AccessTokenCiphertext = _tokenProtector.Protect(refreshed.AccessToken.Trim()),
+            RefreshTokenCiphertext = _tokenProtector.Protect(refreshed.RefreshToken.Trim()),
+            Scopes = scopes,
+            ExpiresUtc = now.AddSeconds(refreshed.ExpiresIn),
+            State = Connected,
+            Revision = Guid.NewGuid().ToString("N"),
+            RefreshLeaseIdentity = null,
+            RefreshLeaseUntilUtc = null,
+            LastRefreshedUtc = now,
+            UpdatedUtc = now
+        };
 
         var saved = await WithCredentialLockAsync(async (connection, transaction) =>
         {
@@ -891,8 +891,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         }, cancellationToken);
 
         return saved
-            ? new(true, "chatgpt_plan_ready", stored.ClientId, refreshed.AccessToken,
-                stored.Scopes, stored.ExpiresUtc, true)
+            ? Ready(stored, true)
             : new(false, "chatgpt_plan_refresh_outcome_uncertain", stored.ClientId, null,
                 stored.Scopes, stored.ExpiresUtc, registrationState.EligibilityConfirmed);
     }
