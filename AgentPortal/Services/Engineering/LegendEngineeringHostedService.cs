@@ -83,7 +83,8 @@ internal sealed class LegendEngineeringHostedService(
     private static bool IsAgentActionable(EngineeringWorkItemSnapshot item)
         => item.LeaseExpiresUtc <= DateTime.UtcNow && item.State is
             "QUEUED" or "NEEDS_TRIAGE" or "RECURRED_NEEDS_TRIAGE" or
-            "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "REVIEW_REQUIRED" or "REVIEW_REJECTED";
+            "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "REVIEW_REQUIRED" or
+            "REVIEW_REJECTED" or "CI_FAILED_NEEDS_EVIDENCE";
 
     private static int PriorityRank(string value) => value switch { "P1" => 1, "P2" => 2, "P3" => 3, _ => 4 };
 }
