@@ -122,6 +122,84 @@ public sealed partial class FounderSoftwareRemediationService
         catch (Exception) { return Failure("batch_completion_unverified", "Completion could not be verified and committed. Inspect the durable state before retrying; no remote write was requested."); }
     }
 
+    private async Task<LiveDeploymentProof> ReadLiveDeploymentProofAsync(
+        HttpClient github,
+        Options options,
+        string expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var expectedTree = await ReadCommitTreeShaAsync(github, options, expectedRevision, cancellationToken);
+            var hosts = CompletionHosts();
+            var observations = new List<LiveDeploymentHostProof>();
+            var sourceTrees = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (var host in hosts)
+            {
+                using var live = _httpClientFactory.CreateClient("FounderRuntimeProvenance");
+                live.DefaultRequestHeaders.Authorization = null;
+                var endpoint = new Uri(host.Value, "/api/runtime-provenance");
+                using var response = await live.GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!response.IsSuccessStatusCode || response.RequestMessage?.RequestUri != endpoint)
+                {
+                    observations.Add(new(host.Key, null, false, "live_provenance_unavailable"));
+                    continue;
+                }
+
+                using var json = await ReadBoundedCompletionJsonAsync(response, 8192, cancellationToken);
+                if (!json.RootElement.TryGetProperty("schemaVersion", out var schema) ||
+                    !schema.TryGetInt32(out var version) || version != 1 ||
+                    ReadString(json.RootElement, "appIdentifier") != host.Key)
+                {
+                    observations.Add(new(host.Key, null, false, "live_application_identity_mismatch"));
+                    continue;
+                }
+
+                var sourceRevision = ReadString(json.RootElement, "sourceRevision");
+                if (!IsCommitSha(sourceRevision))
+                {
+                    observations.Add(new(host.Key, null, false, "live_source_revision_missing"));
+                    continue;
+                }
+
+                if (!sourceTrees.TryGetValue(sourceRevision!, out var sourceTree))
+                    sourceTrees[sourceRevision!] = sourceTree =
+                        await ReadCommitTreeShaAsync(github, options, sourceRevision!, cancellationToken);
+
+                observations.Add(new(
+                    host.Key,
+                    sourceRevision!.ToLowerInvariant(),
+                    string.Equals(sourceTree, expectedTree, StringComparison.Ordinal),
+                    string.Equals(sourceTree, expectedTree, StringComparison.Ordinal)
+                        ? "live_tree_matches_expected"
+                        : "live_source_tree_mismatch"));
+            }
+
+            var verified = observations.Count == hosts.Count && observations.Count > 0 &&
+                observations.All(item => item.TreeMatchesExpected);
+            return new(
+                verified,
+                expectedRevision.ToLowerInvariant(),
+                expectedTree,
+                observations,
+                verified ? null : "one_or_more_configured_hosts_do_not_match_expected_tree");
+        }
+        catch (FounderSoftwareRemediationException failure)
+        {
+            return new(false, expectedRevision.ToLowerInvariant(), null, Array.Empty<LiveDeploymentHostProof>(), failure.Code);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return new(false, expectedRevision.ToLowerInvariant(), null, Array.Empty<LiveDeploymentHostProof>(),
+                "live_deployment_proof_unavailable");
+        }
+    }
+
     private SortedDictionary<string, Uri> CompletionHosts()
     {
         var result = new SortedDictionary<string, Uri>(StringComparer.Ordinal);
@@ -195,6 +273,19 @@ public sealed partial class FounderSoftwareRemediationService
 
     private static FounderSoftwareRemediationException CompletionFailure(string code) =>
         new(code, "The exact configured web deployment is not verified. The batch remains available for inspection; no incident was closed.");
+    private sealed record LiveDeploymentHostProof(
+        string AppIdentifier,
+        string? SourceRevision,
+        bool TreeMatchesExpected,
+        string Status);
+
+    private sealed record LiveDeploymentProof(
+        bool Verified,
+        string ExpectedRevision,
+        string? ExpectedTreeSha,
+        IReadOnlyList<LiveDeploymentHostProof> Hosts,
+        string? Error);
+
     private sealed record VerifiedDeploymentHost(string AppIdentifier, string SourceRevision, DateTime ObservedUtc);
     private static object CompletedReceipt(FounderSoftwareRepairBatch completed, bool replayed) => new
     {
