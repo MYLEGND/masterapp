@@ -313,6 +313,8 @@ internal sealed class LegendEngineeringOrchestrator(
     {
         var item = await store.GetWorkItemAsync(workItemId, cancellationToken)
             ?? throw new InvalidOperationException("work_item_not_found");
+        if (!LegendEngineeringPolicies.IsImmutableSha(item.LiveSha))
+            throw new InvalidOperationException("live_sha_unverified");
 
         if (!AllowedRoleForState(item, requestedRole))
             throw new InvalidOperationException("forged_or_stale_engineering_role");
