@@ -7,6 +7,8 @@
   if (!modelContext || typeof modelContext.registerTool !== "function" || typeof window.fetch !== "function") return;
 
   const endpoint = "/api/legend-site-tools";
+  const registrationController = new AbortController();
+  window.addEventListener("pagehide", () => registrationController.abort(), { once: true });
   let csrf = "";
   try {
     const observer = Array.from(document.scripts || []).find(node => {
@@ -133,12 +135,12 @@
           name: tool.name,
           description: tool.description,
           inputSchema: tool.parameters,
-          annotations: { readOnlyHint: true, consequentialHint: false, untrustedContentHint: true },
-          execute: async (args, context) => {
-            if (context?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+          annotations: { readOnlyHint: true, untrustedContentHint: true, consequentialHint: false, debugging: true },
+          execute: async (args, options) => {
+            if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
             return await invoke(tool.name, args);
           }
-        });
+        }, { signal: registrationController.signal });
       } catch { }
     }
   }
