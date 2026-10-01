@@ -82,7 +82,7 @@ public static class LegendSiteToolDisclosureAuthority
         snapshot ??= new LegendSitePageSnapshot(null, null, null, null, null, null, null, null, null, null);
         var width = snapshot.ViewportWidth is >= 240 and <= 10000 ? snapshot.ViewportWidth : null;
         var height = snapshot.ViewportHeight is >= 240 and <= 10000 ? snapshot.ViewportHeight : null;
-        var dpr = snapshot.DevicePixelRatio is >= 0.5 and <= 8 && double.IsFinite(snapshot.DevicePixelRatio.Value)
+        double? dpr = snapshot.DevicePixelRatio is >= 0.5 and <= 8 && double.IsFinite(snapshot.DevicePixelRatio.Value)
             ? Math.Round(snapshot.DevicePixelRatio.Value, 2) : null;
 
         var issues = (snapshot.Issues ?? Array.Empty<LegendSitePageIssue>())
