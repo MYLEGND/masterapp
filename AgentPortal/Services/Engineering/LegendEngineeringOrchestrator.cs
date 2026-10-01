@@ -337,6 +337,13 @@ internal sealed class LegendEngineeringOrchestrator(
         if (!budget.Permits(envelope, item))
             throw new InvalidOperationException("engineering_budget_does_not_permit_ai_work");
 
+        var attemptLimit = requestedRole == EngineeringRole.CodexImplementer
+            ? envelope.MaxCodexAttempts
+            : envelope.MaxDeepReasoningEscalations;
+        var observedAttempts = await store.CountModelAttemptsAsync(workItemId, requestedRole, cancellationToken);
+        if (observedAttempts >= attemptLimit)
+            throw new InvalidOperationException("engineering_attempt_limit_reached");
+
         var owner = $"engineering:{requestedRole.ToLowerInvariant()}:{workItemId:N}";
         var lease = await store.TryAcquireLeaseAsync(workItemId, owner, TimeSpan.FromMinutes(15), cancellationToken);
         if (!lease.Acquired || string.IsNullOrWhiteSpace(lease.LeaseIdentity) || lease.LeaseExpiresUtc is null)
@@ -363,7 +370,7 @@ internal sealed class LegendEngineeringOrchestrator(
                 "integrity_protected_source_bodies", "approved_branch_direct_edits", "production_branch_direct_edits"
             ],
             envelope,
-            requestedRole == EngineeringRole.CodexImplementer ? envelope.MaxCodexAttempts : envelope.MaxDeepReasoningEscalations,
+            attemptLimit,
             [
                 "insufficient_evidence", "stale_live_sha", "lease_conflict", "protected_source_requirement",
                 "privacy_boundary", "security_boundary", "risk_tier_requires_founder", "attempt_limit_reached",
