@@ -10,3 +10,7 @@
 <script src="~/_content/Shared/js/page-health.js" asp-append-version="true"
         data-app="@DiagnosticsHost.ApplicationName" data-route="@diagnosticsRoute"
         data-csrf="@diagnosticsToken" data-founder="@(diagnosticsFounder ? "true" : "false")"></script>
+@if (DiagnosticsHost.ApplicationName is "AgentPortal" or "ClientApp")
+{
+    <script src="~/_content/Shared/js/legend-site-tools.js" asp-append-version="true" defer></script>
+}
