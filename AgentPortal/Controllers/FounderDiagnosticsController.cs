@@ -2,10 +2,14 @@ using System.Text.Json;
 using AgentPortal.Services;
 using AgentPortal.Security;
 using Domain.Entities;
+using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Shared.Diagnostics;
 
 namespace AgentPortal.Controllers;
 
@@ -160,4 +164,104 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
         return Json(await repairs.GetCandidateValidationAsync(runId, headSha, cancellationToken));
     }
 
+    [HttpGet("~/api/legend-site-tools/catalog")]
+    public IActionResult SiteToolCatalog(
+        [FromServices] FounderLegendConnectService legend,
+        [FromServices] IFounderSoftwareRemediationService remediation,
+        [FromServices] AgencyCommandService agencyCommand,
+        [FromServices] IServiceScopeFactory scopes)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
+        var tools = new List<object> { LegendSiteToolDisclosureAuthority.CurrentPageTool };
+        tools.AddRange(authority
+            .GetAvailableCloudTools(null, LegendConnectExternalProviderPolicy.CloudflareFoundation)
+            .Where(tool =>
+            {
+                var element = JsonSerializer.SerializeToElement(tool);
+                return element.TryGetProperty("name", out var name) &&
+                    name.GetString() is { } value &&
+                    authority.IsReadOnly(value);
+            }));
+
+        return Json(new
+        {
+            schemaVersion = 1,
+            authority = nameof(LegendFounderToolAuthority),
+            disclosureAuthority = nameof(LegendSiteToolDisclosureAuthority),
+            authentication = "server_session_founder",
+            mutationToolsExposed = false,
+            tools
+        });
+    }
+
+    [HttpPost("~/api/legend-site-tools/execute")]
+    [RequestSizeLimit(64 * 1024)]
+    public async Task<IActionResult> ExecuteSiteTool(
+        [FromBody] LegendSiteToolExecutionRequest request,
+        [FromServices] FounderLegendConnectService legend,
+        [FromServices] IFounderSoftwareRemediationService remediation,
+        [FromServices] AgencyCommandService agencyCommand,
+        [FromServices] IServiceScopeFactory scopes,
+        [FromServices] IHostEnvironment environment,
+        [FromServices] IEnumerable<EndpointDataSource> endpointSources,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        if (request is null || string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 96)
+            return BadRequest(new { error = "legend_site_tool_request_invalid" });
+
+        if (string.Equals(request.Name, LegendSiteToolDisclosureAuthority.CurrentPageToolName, StringComparison.Ordinal))
+        {
+            var route = LegendSiteToolDisclosureAuthority.ResolveRoutePattern(request.Page?.Path, endpointSources);
+            return Json(LegendSiteToolDisclosureAuthority.SanitizePage(
+                request.Page,
+                environment.ApplicationName,
+                "founder_system",
+                LegendSiteToolDisclosureAuthority.EntryAssemblyRevision(),
+                route));
+        }
+
+        var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
+        var allowed = authority
+            .GetAvailableCloudTools(null, LegendConnectExternalProviderPolicy.CloudflareFoundation)
+            .Any(tool =>
+            {
+                var element = JsonSerializer.SerializeToElement(tool);
+                return element.TryGetProperty("name", out var name) &&
+                    string.Equals(name.GetString(), request.Name, StringComparison.Ordinal) &&
+                    authority.IsReadOnly(request.Name);
+            });
+        if (!allowed)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "legend_site_tool_not_exposed" });
+
+        var arguments = request.Arguments.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? "{}"
+            : request.Arguments.GetRawText();
+        if (System.Text.Encoding.UTF8.GetByteCount(arguments) > 32 * 1024)
+            return BadRequest(new { error = "legend_site_tool_arguments_too_large" });
+
+        var output = await authority.ExecuteAsync(
+            User,
+            new FounderAiToolCall(Guid.NewGuid().ToString("N"), request.Name, arguments),
+            "legend",
+            cancellationToken,
+            LegendConnectExternalProviderPolicy.CloudflareFoundation);
+
+        try
+        {
+            using var document = JsonDocument.Parse(output, new JsonDocumentOptions { MaxDepth = 64 });
+            return Json(document.RootElement.Clone());
+        }
+        catch (JsonException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = "legend_site_tool_output_invalid" });
+        }
+    }
+
 }
+
+public sealed record LegendSiteToolExecutionRequest(
+    string? Name,
+    JsonElement Arguments,
+    LegendSitePageSnapshot? Page);
