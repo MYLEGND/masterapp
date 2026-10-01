@@ -82,6 +82,29 @@ class ReleaseScopeSelection(unittest.TestCase):
             )
 
 
+    def test_exact_live_release_requires_every_selected_target_and_no_routing(self):
+        rows = [{"revision": "a" * 40}, {"revision": "a" * 40}]
+        self.assertTrue(
+            self.baseline.exact_live_release(rows, "a" * 40, "approved-only", False)
+        )
+        self.assertFalse(
+            self.baseline.exact_live_release(rows, "a" * 40, "validate-only", False)
+        )
+        self.assertFalse(
+            self.baseline.exact_live_release(rows, "a" * 40, "approved-only", True)
+        )
+        self.assertFalse(
+            self.baseline.exact_live_release(
+                [{"revision": "a" * 40}, {"revision": "b" * 40}],
+                "a" * 40,
+                "approved-only",
+                False,
+            )
+        )
+        self.assertFalse(
+            self.baseline.exact_live_release([], "a" * 40, "approved-only", False)
+        )
+
     def test_package_identity_is_scope_and_contract_bound(self):
         targets = (
             ("portal", "portal.mylegnd.com", "AgentPortal/AgentPortal.csproj"),
