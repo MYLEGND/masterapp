@@ -89,7 +89,10 @@ internal sealed class LegendEngineeringFounderNotificationService(
     }
 
     private static bool IsPendingModelWork(EngineeringWorkItemSnapshot item)
-        => item.State is "QUEUED" or "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "REVIEW_REQUIRED" or "REVIEW_REJECTED";
+        => item.State is "QUEUED" or "NEEDS_TRIAGE" or "RECURRED_NEEDS_TRIAGE" or
+            "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "REVIEW_REQUIRED" or
+            "REVIEW_REJECTED" or "CI_FAILED_NEEDS_EVIDENCE" or
+            "WAITING_PROVIDER_RETRY" or "WAITING_PROVIDER_CONTROL";
 
     private static string NotificationCode(EngineeringWorkItemSnapshot item) => item.State switch
     {
