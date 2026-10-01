@@ -162,6 +162,8 @@ builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringBud
 builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator, AgentPortal.Services.Engineering.LegendEngineeringOrchestrator>();
 builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendChatGptPlanCredentialAuthority, AgentPortal.Services.Engineering.LegendChatGptPlanCredentialAuthority>();
 builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendEngineeringAgentAdapter, AgentPortal.Services.Engineering.ChatGptPlanCodexAppServerAdapter>();
+builder.Services.AddHttpClient("LegendChatGptPlanOAuth", client => client.Timeout = TimeSpan.FromSeconds(30))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringReleaseCohortPlanner>();
 builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringFounderNotificationService>();
 builder.Services.AddHttpClient("FounderRuntimeProvenance", client => client.Timeout = TimeSpan.FromSeconds(8))
