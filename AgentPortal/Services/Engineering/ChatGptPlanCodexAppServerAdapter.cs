@@ -65,10 +65,15 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
             sourceBundle = sources
         }, JsonOptions);
 
+        var attemptId = context.EngineeringContextId;
+        await store.RecordUsageAsync(new EngineeringUsageObservation(
+            attemptId, item.WorkItemId, item.ModelTier, context.Role, ProviderName, null,
+            null, null, null, null, false, DateTime.UtcNow), cancellationToken);
+
         var run = await RunOnceAsync(executable, credential.AccessToken, model, item.ModelTier, context.Role, prompt, cancellationToken);
         if (!run.Success) return Failure(run.Code);
         await store.RecordUsageAsync(new EngineeringUsageObservation(
-            StableGuid(run.ThreadId!), item.WorkItemId, item.ModelTier, context.Role, ProviderName, run.ThreadId,
+            attemptId, item.WorkItemId, item.ModelTier, context.Role, ProviderName, run.ThreadId,
             null, null, run.TotalTokens, null, run.TotalTokens is not null, DateTime.UtcNow), cancellationToken);
         return await ApplyOutcomeAsync(context, item, run.ThreadId!, run.Output!.Value, cancellationToken);
     }
