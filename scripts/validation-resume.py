@@ -29,6 +29,9 @@ CONTROL_PATHS = {
     "scripts/validation-resume.py",
 }
 
+TRUSTED_PR_BASE = "legend/approved-changes"
+MAX_HISTORICAL_EVIDENCE_RUNS = 8
+
 WORKFLOW_PATHS = {
     name: ".github/workflows/" + name
     for name in (
@@ -739,6 +742,177 @@ def prior_evidence(args):
     return prior, _effective_steps(histories), "prior_exact_head_runs"
 
 
+def _plan_against_prior(workflow, current_sha, prior, prior_steps, evidence_source):
+    """Build the same fail-closed gate plan against one exact historical source tree."""
+    changed = git_changed(prior["head_sha"], current_sha) if prior else []
+    changed_gate_steps = set()
+    workflow_structure_changed = False
+    workflow_path = WORKFLOW_PATHS.get(workflow)
+    if prior and workflow_path and workflow_path in changed:
+        prior_text = git_show_file(prior["head_sha"], workflow_path)
+        current_text = Path(workflow_path).read_text()
+        gate_steps = [gate["step"] for gate in WORKFLOWS[workflow]["gates"].values()]
+        changed_gate_steps, workflow_structure_changed = workflow_gate_change_scope(
+            prior_text, current_text, gate_steps
+        )
+        changed = [path for path in changed if path != workflow_path]
+    return compute_plan(
+        workflow,
+        current_sha,
+        prior,
+        prior_steps,
+        changed,
+        evidence_source,
+        changed_gate_steps,
+        workflow_structure_changed,
+    )
+
+
+def _stamp_evidence(plan, prior, source):
+    if not prior:
+        return
+    for gate in plan.get("gates", {}).values():
+        if gate.get("run"):
+            continue
+        gate["evidenceRunId"] = prior.get("id")
+        gate["evidenceHeadSha"] = prior.get("head_sha")
+        gate["evidenceSource"] = source
+
+
+def _enforce_runtime_requirements(plan):
+    """Preserved proof cannot replace a prerequisite needed by a gate executing now."""
+    gates = WORKFLOWS[plan["workflow"]]["gates"]
+    changed = True
+    while changed:
+        changed = False
+        for key, result in list(plan["gates"].items()):
+            if not result.get("run"):
+                continue
+            for required in gates[key].get("requires", ()):
+                required_result = plan["gates"][required]
+                if required_result.get("run"):
+                    continue
+                required_result["run"] = True
+                required_result["reason"] = f"required_by:{key}"
+                required_result.pop("evidenceRunId", None)
+                required_result.pop("evidenceHeadSha", None)
+                required_result.pop("evidenceSource", None)
+                changed = True
+
+
+def merge_content_equivalent_evidence(plan, candidate_plan, run):
+    """Reuse only gates whose exact declared inputs and gate definition are unchanged."""
+    reused = False
+    for key, result in plan["gates"].items():
+        if not result.get("run"):
+            continue
+        candidate = candidate_plan["gates"].get(key)
+        if not candidate or candidate.get("run"):
+            continue
+        result["run"] = False
+        result["reason"] = "content_equivalent_success"
+        result["evidenceRunId"] = run.get("id")
+        result["evidenceHeadSha"] = run.get("head_sha")
+        result["evidenceSource"] = "trusted_pr_history"
+        reused = True
+    return reused
+
+
+def _trusted_historical_runs(args, token):
+    """Return only successful same-repository PR runs targeting the protected trunk."""
+    if args.event != "pull_request":
+        return []
+    workflow = urllib.parse.quote(args.workflow, safe="")
+    payload = api_get(
+        args.repository,
+        f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    rows = []
+    for run in payload.get("workflow_runs", []):
+        if int(run.get("id", 0)) == args.current_run_id:
+            continue
+        if run.get("event") != "pull_request" or run.get("conclusion") != "success":
+            continue
+        if (run.get("head_repository") or {}).get("full_name") != args.repository:
+            continue
+        pulls = run.get("pull_requests") or []
+        if not any((row.get("base") or {}).get("ref") == TRUSTED_PR_BASE for row in pulls):
+            continue
+        if not run.get("head_sha"):
+            continue
+        rows.append(run)
+    rows.sort(
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    return rows
+
+
+def _apply_content_equivalent_evidence(args, plan):
+    """Fill unresolved gates from recent successful runs with identical gate inputs.
+
+    This is intentionally an optimization only. Any lookup/diff uncertainty keeps
+    the existing plan unchanged, so historical reuse can never weaken validation.
+    """
+    if args.event != "pull_request" or not any(row.get("run") for row in plan["gates"].values()):
+        return plan
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        return plan
+
+    reused = False
+    seen_heads = set()
+    examined = 0
+    try:
+        runs = _trusted_historical_runs(args, token)
+    except Exception as exc:
+        plan["historicalEvidenceError"] = type(exc).__name__
+        return plan
+
+    for run in runs:
+        if examined >= MAX_HISTORICAL_EVIDENCE_RUNS:
+            break
+        head_sha = run["head_sha"]
+        if head_sha in seen_heads:
+            continue
+        seen_heads.add(head_sha)
+        try:
+            jobs_payload = api_get(
+                args.repository,
+                f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
+                token,
+            )
+            steps = _step_map(jobs_payload.get("jobs", []))
+            prior = {
+                "id": run["id"],
+                "head_sha": head_sha,
+                "run_attempt": run.get("run_attempt", 1),
+                "event": run.get("event"),
+                "head_branch": run.get("head_branch"),
+            }
+            candidate_plan = _plan_against_prior(
+                args.workflow,
+                args.current_sha,
+                prior,
+                steps,
+                "trusted_pr_history",
+            )
+        except Exception:
+            examined += 1
+            continue
+        examined += 1
+        reused = merge_content_equivalent_evidence(plan, candidate_plan, run) or reused
+        if not any(row.get("run") for row in plan["gates"].values()):
+            break
+
+    _enforce_runtime_requirements(plan)
+    if reused:
+        plan["mode"] = "content-addressed"
+        plan["historicalEvidenceRunsExamined"] = examined
+    return plan
+
+
 def compute_plan(
     workflow: str,
     current_sha: str,
@@ -855,28 +1029,19 @@ def cmd_plan(args):
         raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
     try:
         prior, steps, source = prior_evidence(args)
-        changed = git_changed(prior["head_sha"], args.current_sha) if prior else []
-        changed_gate_steps = set()
-        workflow_structure_changed = False
-        workflow_path = WORKFLOW_PATHS.get(args.workflow)
-        if prior and workflow_path and workflow_path in changed:
-            prior_text = git_show_file(prior["head_sha"], workflow_path)
-            current_text = Path(workflow_path).read_text()
-            gate_steps = [gate["step"] for gate in WORKFLOWS[args.workflow]["gates"].values()]
-            changed_gate_steps, workflow_structure_changed = workflow_gate_change_scope(
-                prior_text, current_text, gate_steps
+        if prior:
+            plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
+            _stamp_evidence(plan, prior, source)
+        else:
+            plan = compute_plan(
+                args.workflow,
+                args.current_sha,
+                None,
+                {},
+                [],
+                source,
             )
-            changed = [path for path in changed if path != workflow_path]
-        plan = compute_plan(
-            args.workflow,
-            args.current_sha,
-            prior,
-            steps,
-            changed,
-            source,
-            changed_gate_steps,
-            workflow_structure_changed,
-        )
+        plan = _apply_content_equivalent_evidence(args, plan)
     except Exception as exc:
         # Fail closed: planner uncertainty is never permission to skip validation.
         config = WORKFLOWS[args.workflow]
@@ -912,8 +1077,10 @@ def cmd_preserved(args):
         print(f"RUN {args.gate}: {gate.get('reason')}")
         raise SystemExit(1)
     print(
-        f"PRESERVED {args.gate}: prior successful evidence from "
-        f"run {plan.get('priorRunId')} at {plan.get('priorHeadSha')}"
+        f"PRESERVED {args.gate}: successful evidence from "
+        f"run {gate.get('evidenceRunId', plan.get('priorRunId'))} at "
+        f"{gate.get('evidenceHeadSha', plan.get('priorHeadSha'))} "
+        f"({gate.get('evidenceSource', plan.get('evidenceSource'))})"
     )
     raise SystemExit(0)
 
