@@ -155,7 +155,8 @@ public sealed record EngineeringContextSnapshot(
     IReadOnlyList<string> StopConditions,
     string LeaseIdentity,
     DateTime CreatedUtc,
-    DateTime ExpiresUtc);
+    DateTime ExpiresUtc,
+    string? OperationalContractRevision = null);
 
 public sealed record EngineeringTaskPacket(
     string PacketType,
