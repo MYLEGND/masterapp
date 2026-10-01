@@ -533,7 +533,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn('scripts/validation-resume.py job-unchanged', step5)
         self.assertIn('cancel-in-progress: false', step5)
         self.assertIn('mode=reuse', step5)
-        self.assertIn('Search backward for the newest complete evidence pair', step5)
+        self.assertIn('Start from durable baseline artifacts, not the workflow-runs index.', step5)
         self.assertFalse((ROOT.parent / '.github/workflows/step5-approved-baseline-control.yml').exists())
 
     def test_release_orchestrator_contract_checks_are_receipt_reusable(self):
