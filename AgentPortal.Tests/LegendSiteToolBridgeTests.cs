@@ -23,7 +23,8 @@ public sealed class LegendSiteToolBridgeTests
             DevicePixelRatio: 3,
             Breakpoint: "xs",
             ComponentIds: new[] { "website.editor", "customer@example.com", "123456789-private" },
-            ActionKeys: new[] { "contact.submit", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            ActionKeys: new[] { "contact.submit", "business_contact", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            CompositionIds: new[] { "cms.hero.primary", "123456789-private" },
             ModalIds: new[] { "website-modal", "550e8400-e29b-41d4-a716-446655440000" },
             AssetPaths: new[] { "/js/app.js", "/js/private.js?token=secret", "https://evil.invalid/x.js" },
             Issues: new[]
@@ -38,6 +39,8 @@ public sealed class LegendSiteToolBridgeTests
 
         Assert.Contains("\"website.editor\"", json, StringComparison.Ordinal);
         Assert.Contains("\"contact.submit\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"business_contact\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"cms.hero.primary\"", json, StringComparison.Ordinal);
         Assert.Contains("\"/js/app.js\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("customer@example.com", json, StringComparison.Ordinal);
         Assert.DoesNotContain("123456789-private", json, StringComparison.Ordinal);
@@ -63,6 +66,9 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("RequestVerificationToken", source, StringComparison.Ordinal);
         Assert.Contains("legend_site_tool_antiforgery_unavailable", source, StringComparison.Ordinal);
         Assert.Contains("LegendPageHealth", source, StringComparison.Ordinal);
+        Assert.Contains("data-website-action-key", source, StringComparison.Ordinal);
+        Assert.Contains("data-cms-composition-id", source, StringComparison.Ordinal);
+        Assert.Contains("result.push(url.pathname)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("textContent", source, StringComparison.Ordinal);
         Assert.DoesNotContain("innerHTML", source, StringComparison.Ordinal);
         Assert.DoesNotContain("document.cookie", source, StringComparison.Ordinal);
