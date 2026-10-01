@@ -115,6 +115,25 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
         EngineeringContextSnapshot context, EngineeringWorkItemSnapshot item, string threadId, JsonElement output, CancellationToken cancellationToken)
     {
         var decision = ReadString(output, "decision");
+        if (context.Role == EngineeringRole.TriageWorker)
+        {
+            var next = decision == "ESCALATE_TO_HEAD_GPT"
+                ? ClearLease(item) with
+                {
+                    State = "NEEDS_SUPERVISOR",
+                    AssignedRole = EngineeringRole.HeadGpt,
+                    ModelTier = EngineeringModelTier.DeepReasoning,
+                    UpdatedUtc = DateTime.UtcNow
+                }
+                : ClearLease(item) with
+                {
+                    State = decision == "STOP" ? "STOPPED" : "FOUNDER_ESCALATION",
+                    UpdatedUtc = DateTime.UtcNow
+                };
+            await store.UpdateWorkItemAsync(next, cancellationToken);
+            return Outcome(context, threadId, next.State);
+        }
+
         if (context.Role == EngineeringRole.HeadGpt)
         {
             var next = decision == "PROCEED_TO_CODEX" && item.FailureClass == EngineeringFailureClass.CodeDefect && item.RiskClass != EngineeringRiskClass.TierC
@@ -276,6 +295,19 @@ internal sealed class ChatGptPlanCodexAppServerAdapter(
 
     private static object RoleOutputSchema(string role) => role switch
     {
+        EngineeringRole.TriageWorker => new
+        {
+            type = "object",
+            properties = new
+            {
+                decision = new { type = "string", @enum = new[] { "ESCALATE_TO_HEAD_GPT", "STOP", "ESCALATE" } },
+                likely_domain = new { type = "string", maxLength = 160 },
+                strong_reasoning_required = new { type = "boolean" },
+                summary = new { type = "string", maxLength = 1000 }
+            },
+            required = new[] { "decision", "likely_domain", "strong_reasoning_required", "summary" },
+            additionalProperties = false
+        },
         EngineeringRole.HeadGpt => new { type = "object", properties = new { decision = new { type = "string", @enum = new[] { "PROCEED_TO_CODEX", "STOP", "ESCALATE" } }, evidence_sufficient = new { type = "boolean" }, summary = new { type = "string" } }, required = new[] { "decision", "evidence_sufficient", "summary" }, additionalProperties = false },
         EngineeringRole.IndependentReviewer => new { type = "object", properties = new { decision = new { type = "string", @enum = new[] { "APPROVE_VALIDATION", "REJECT", "ESCALATE" } }, findings = new { type = "array", items = new { type = "string" } }, summary = new { type = "string" } }, required = new[] { "decision", "findings", "summary" }, additionalProperties = false },
         _ => new { type = "object", properties = new { decision = new { type = "string", @enum = new[] { "REPAIR", "STOP", "ESCALATE" } }, base_sha = new { type = "string" }, title = new { type = "string" }, summary = new { type = "string" }, changes = new { type = "array", items = new { type = "object", properties = new { path = new { type = "string" }, content = new { type = "string" } }, required = new[] { "path", "content" }, additionalProperties = false } } }, required = new[] { "decision", "base_sha", "title", "summary", "changes" }, additionalProperties = false }
