@@ -14,6 +14,10 @@ internal sealed class LegendEngineeringReleaseCohortPlanner(
     internal async Task<object> ReconcileAndReleaseAsync(CancellationToken cancellationToken)
     {
         var items = await store.GetOpenWorkItemsAsync(500, cancellationToken);
+        foreach (var item in items.Where(item => item.State == "RELEASE_REQUESTED"))
+            await ReconcileDeploymentAsync(item, cancellationToken);
+
+        items = await store.GetOpenWorkItemsAsync(500, cancellationToken);
         foreach (var item in items.Where(item => item.State == "REVIEWED" && item.PullRequestNumber is > 0 && LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha)))
             await ReconcileValidationAsync(item, cancellationToken);
 
@@ -39,14 +43,92 @@ internal sealed class LegendEngineeringReleaseCohortPlanner(
         var release = await remediation.ReleaseApprovedAsync(identities[0].PullRequestNumber.Value, identities[0].CandidateSha!, cancellationToken);
         var json = JsonSerializer.SerializeToElement(release);
         var requested = json.TryGetProperty("publicationRequested", out var publication) && publication.ValueKind == JsonValueKind.True;
+        var publicationPr = json.TryGetProperty("pullRequestNumber", out var publicationPrValue) &&
+                            publicationPrValue.TryGetInt32(out var publicationPrNumber) ? publicationPrNumber : (int?)null;
+        var publicationHead = json.TryGetProperty("publishedHeadSha", out var publicationHeadValue) &&
+                              publicationHeadValue.ValueKind == JsonValueKind.String ? publicationHeadValue.GetString() : null;
+        var batchRevision = json.TryGetProperty("batchRevision", out var batchRevisionValue) &&
+                            batchRevisionValue.ValueKind == JsonValueKind.String ? batchRevisionValue.GetString() : null;
+        requested = requested && publicationPr is > 0 &&
+                    LegendEngineeringPolicies.IsImmutableSha(publicationHead) &&
+                    Guid.TryParseExact(batchRevision, "N", out _);
         foreach (var item in candidates)
             await store.UpdateWorkItemAsync(item with
             {
                 State = requested ? "RELEASE_REQUESTED" : "RELEASE_BLOCKED",
                 ValidationState = requested ? "GREEN_RELEASE_REQUESTED" : item.ValidationState,
+                PublicationPullRequestNumber = requested ? publicationPr : item.PublicationPullRequestNumber,
+                PublicationHeadSha = requested ? publicationHead : item.PublicationHeadSha,
+                PublicationBatchRevision = requested ? batchRevision : item.PublicationBatchRevision,
                 UpdatedUtc = DateTime.UtcNow
             }, cancellationToken);
         return new { ok = requested, released = false, publicationRequested = requested, decision.Cohort, decision.WeightedReadyCoverage, decision.WorkItemIds, release };
+    }
+
+
+    private async Task ReconcileDeploymentAsync(
+        EngineeringWorkItemSnapshot item,
+        CancellationToken cancellationToken)
+    {
+        if (item.PublicationPullRequestNumber is not > 0 ||
+            !LegendEngineeringPolicies.IsImmutableSha(item.PublicationHeadSha) ||
+            !Guid.TryParseExact(item.PublicationBatchRevision, "N", out _))
+        {
+            await store.UpdateWorkItemAsync(item with
+            {
+                State = "RELEASE_BLOCKED",
+                UpdatedUtc = DateTime.UtcNow
+            }, cancellationToken);
+            return;
+        }
+
+        var result = await remediation.ArchiveDeployedBatchAsync(
+            item.PublicationPullRequestNumber.Value,
+            item.PublicationHeadSha!,
+            item.PublicationBatchRevision!,
+            cancellationToken);
+        var json = JsonSerializer.SerializeToElement(result);
+        var archived = json.TryGetProperty("archived", out var archivedValue) &&
+                       archivedValue.ValueKind == JsonValueKind.True;
+        if (archived)
+        {
+            var mergedSha = json.TryGetProperty("mergedSha", out var mergedValue) &&
+                            mergedValue.ValueKind == JsonValueKind.String ? mergedValue.GetString() : null;
+            var tree = json.TryGetProperty("deployedTreeSha", out var treeValue) &&
+                       treeValue.ValueKind == JsonValueKind.String ? treeValue.GetString() : null;
+            var runId = json.TryGetProperty("deploymentRunId", out var runValue) &&
+                        runValue.TryGetInt64(out var deploymentRunId) ? deploymentRunId : (long?)null;
+            var verifiedUtc = json.TryGetProperty("verificationUtc", out var verifiedValue) &&
+                              verifiedValue.TryGetDateTime(out var observedUtc) ? observedUtc : DateTime.UtcNow;
+            await store.UpdateWorkItemAsync(item with
+            {
+                State = "LIVE_FUNCTIONAL_PROOF_REQUIRED",
+                ValidationState = "DEPLOYMENT_VERIFIED_FUNCTIONAL_PROOF_PENDING",
+                MergedSha = mergedSha,
+                DeployedTreeSha = tree,
+                DeploymentRunId = runId,
+                DeploymentVerifiedUtc = verifiedUtc,
+                UpdatedUtc = DateTime.UtcNow
+            }, cancellationToken);
+            return;
+        }
+
+        // Normal propagation/merge delay remains pending. Only an explicit
+        // terminal identity conflict becomes a release blocker.
+        var error = json.TryGetProperty("error", out var errorValue) &&
+                    errorValue.ValueKind == JsonValueKind.String ? errorValue.GetString() : null;
+        if (error is "batch_identity_changed" or "invalid_completion_identity" or
+            "merged_tree_differs_from_reviewed_tree" or "publication_not_merged")
+        {
+            // publication_not_merged is expected while the protected workflow is
+            // still running; preserve RELEASE_REQUESTED rather than invent failure.
+            if (error != "publication_not_merged")
+                await store.UpdateWorkItemAsync(item with
+                {
+                    State = "RELEASE_BLOCKED",
+                    UpdatedUtc = DateTime.UtcNow
+                }, cancellationToken);
+        }
     }
 
     internal static EngineeringReleaseDecision Plan(IReadOnlyList<EngineeringWorkItemSnapshot> items, DateTime nowUtc)
