@@ -310,7 +310,7 @@ public sealed class FounderSoftwareRepairBatchTests
                 ["FounderSoftwareRemediation:Enabled"] = "true",
                 ["FounderSoftwareRemediation:RepositoryOwner"] = "MYLEGND",
                 ["FounderSoftwareRemediation:RepositoryName"] = "masterapp",
-                ["FounderSoftwareRemediation:BaseBranch"] = "production",
+                ["FounderSoftwareRemediation:BaseBranch"] = "legend/approved-changes",
                 ["FounderSoftwareRemediation:GitHubAppId"] = "1",
                 ["FounderSoftwareRemediation:GitHubInstallationId"] = "2",
                 ["FounderSoftwareRemediation:GitHubAppPrivateKeySecretUri"] = "https://fixture.vault.azure.net/secrets/app",
