@@ -46,6 +46,7 @@ public sealed record ChatGptPlanClientRegistrationState(
 
 public sealed record ChatGptPlanAuthorizationStart(
     string AuthorizationUrl,
+    string State,
     string Code);
 
 public sealed record ChatGptPlanAuthorizationResult(
@@ -69,6 +70,11 @@ internal interface ILegendChatGptPlanCredentialAuthority
         string code,
         string state,
         string? responseIssuer,
+        string? callbackClientId,
+        CancellationToken cancellationToken);
+
+    Task AbortAuthorizationAsync(
+        string state,
         CancellationToken cancellationToken);
 
     Task StoreAuthorizationAsync(
@@ -292,13 +298,14 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
             ["resource"] = PlanResource
         };
         var authorizationUrl = QueryHelpers.AddQueryString(discovery.AuthorizationEndpoint, query);
-        return new(authorizationUrl, "chatgpt_plan_authorization_started");
+        return new(authorizationUrl, state, "chatgpt_plan_authorization_started");
     }
 
     public async Task<ChatGptPlanAuthorizationResult> CompleteAuthorizationAsync(
         string code,
         string state,
         string? responseIssuer,
+        string? callbackClientId,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(code) || code.Length > 8192 ||
@@ -314,6 +321,9 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
             ?? throw new InvalidOperationException("chatgpt_plan_client_registration_missing");
         if (!string.Equals(registration.ClientId, transactionRecord.ClientId, StringComparison.Ordinal))
             throw new InvalidOperationException("chatgpt_plan_client_registration_changed");
+        if (!string.IsNullOrWhiteSpace(callbackClientId) &&
+            !string.Equals(callbackClientId.Trim(), registration.ClientId, StringComparison.Ordinal))
+            throw new InvalidOperationException("chatgpt_plan_authorization_client_mismatch");
 
         var discovery = await GetDiscoveryAsync(cancellationToken);
         if (discovery.AuthorizationResponseIssuerSupported)
@@ -366,6 +376,15 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
             cancellationToken);
 
         return new(true, "chatgpt_plan_ready");
+    }
+
+    public async Task AbortAuthorizationAsync(
+        string state,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(state) || state.Length > 512)
+            return;
+        await ConsumeOAuthTransactionAsync(state, cancellationToken);
     }
 
     public async Task StoreAuthorizationAsync(
@@ -432,6 +451,40 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
 
     public async Task DisconnectAsync(CancellationToken cancellationToken)
     {
+        var credential = await ReadCredentialAsync(cancellationToken);
+        var registration = await ReadClientRegistrationAsync(cancellationToken);
+
+        if (credential is not null && registration is not null)
+        {
+            try
+            {
+                var refreshToken = _tokenProtector.Unprotect(credential.RefreshTokenCiphertext);
+                var discovery = await GetDiscoveryAsync(cancellationToken);
+                if (!string.IsNullOrWhiteSpace(discovery.RevocationEndpoint))
+                {
+                    var client = httpClientFactory.CreateClient("LegendChatGptPlanOAuth");
+                    using var request = new HttpRequestMessage(
+                        HttpMethod.Post,
+                        discovery.RevocationEndpoint)
+                    {
+                        Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                        {
+                            ["token"] = refreshToken,
+                            ["token_type_hint"] = "refresh_token",
+                            ["client_id"] = registration.ClientId
+                        })
+                    };
+                    ApplyClientAuthentication(request, registration);
+                    using var _ = await client.SendAsync(request, cancellationToken);
+                }
+            }
+            catch
+            {
+                // Local disconnect remains authoritative. A failed remote revocation
+                // never leaves LEGEND continuing to use the credential.
+            }
+        }
+
         await WithCredentialLockAsync(async (connection, transaction) =>
         {
             await DeleteCredentialAsync(connection, transaction, cancellationToken);
@@ -764,6 +817,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
             var authorization = ReadString(root, "authorization_endpoint");
             var token = ReadString(root, "token_endpoint");
             var jwks = ReadString(root, "jwks_uri");
+            var revocation = ReadString(root, "revocation_endpoint");
             var issuerSupported =
                 root.TryGetProperty("authorization_response_iss_parameter_supported", out var supported) &&
                 supported.ValueKind == JsonValueKind.True;
@@ -771,7 +825,8 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
             if (!string.Equals(issuer, ProductionIssuer, StringComparison.Ordinal) ||
                 !TrustedAuthEndpoint(authorization) ||
                 !TrustedAuthEndpoint(token) ||
-                !TrustedAuthEndpoint(jwks))
+                !TrustedAuthEndpoint(jwks) ||
+                (!string.IsNullOrWhiteSpace(revocation) && !TrustedAuthEndpoint(revocation)))
                 throw new InvalidOperationException("chatgpt_plan_discovery_invalid");
 
             return new(
@@ -779,6 +834,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
                 authorization!,
                 token!,
                 jwks!,
+                revocation,
                 issuerSupported);
         }
         catch (JsonException)
@@ -1475,6 +1531,7 @@ internal sealed class LegendChatGptPlanCredentialAuthority(
         string AuthorizationEndpoint,
         string TokenEndpoint,
         string JwksUri,
+        string? RevocationEndpoint,
         bool AuthorizationResponseIssuerSupported);
 
     private sealed class ChatGptPlanRefreshException(string code, bool terminal)

@@ -21,6 +21,10 @@ public interface IFounderEngineeringCommandCenterService
         string code,
         string state,
         string? responseIssuer,
+        string? callbackClientId,
+        CancellationToken cancellationToken);
+    Task AbortChatGptAuthorizationAsync(
+        string state,
         CancellationToken cancellationToken);
     Task DisconnectChatGptAsync(CancellationToken cancellationToken);
 }
@@ -146,12 +150,19 @@ internal sealed class FounderEngineeringCommandCenterService(
         string code,
         string state,
         string? responseIssuer,
+        string? callbackClientId,
         CancellationToken cancellationToken) =>
         credentials.CompleteAuthorizationAsync(
             code,
             state,
             responseIssuer,
+            callbackClientId,
             cancellationToken);
+
+    public Task AbortChatGptAuthorizationAsync(
+        string state,
+        CancellationToken cancellationToken) =>
+        credentials.AbortAuthorizationAsync(state, cancellationToken);
 
     public Task DisconnectChatGptAsync(CancellationToken cancellationToken) =>
         credentials.DisconnectAsync(cancellationToken);

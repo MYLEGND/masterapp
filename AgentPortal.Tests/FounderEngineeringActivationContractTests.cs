@@ -53,6 +53,26 @@ public sealed class FounderEngineeringActivationContractTests
     }
 
     [Fact]
+    public void ChatGptPlanAuthorization_BindsBrowserClientAndRevokesRenewableSession()
+    {
+        var root = SourceRoot();
+        var controller = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Controllers", "FounderEngineeringController.cs"));
+        var credential = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering",
+            "LegendChatGptPlanCredentialAuthority.cs"));
+
+        Assert.Contains("__Host-legend-engineering-chatgpt-state", controller, StringComparison.Ordinal);
+        Assert.Contains("FixedTimeEquals", controller, StringComparison.Ordinal);
+        Assert.Contains("callbackClientId", controller, StringComparison.Ordinal);
+        Assert.Contains("callbackClientId", credential, StringComparison.Ordinal);
+        Assert.Contains("chatgpt_plan_authorization_client_mismatch", credential, StringComparison.Ordinal);
+        Assert.Contains("AbortAuthorizationAsync", credential, StringComparison.Ordinal);
+        Assert.Contains("revocation_endpoint", credential, StringComparison.Ordinal);
+        Assert.Contains("token_type_hint", credential, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PlanExecution_UsesResponsesStreamingAndAccountModelCatalog()
     {
         var source = File.ReadAllText(Path.Combine(

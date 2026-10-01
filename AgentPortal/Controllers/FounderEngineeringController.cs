@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using AgentPortal.Models;
 using AgentPortal.Security;
 using AgentPortal.Services.Engineering;
@@ -13,6 +15,7 @@ namespace AgentPortal.Controllers;
 public sealed class FounderEngineeringController(
     IFounderEngineeringCommandCenterService commandCenter) : Controller
 {
+    private const string ChatGptStateCookie = "__Host-legend-engineering-chatgpt-state";
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
@@ -94,6 +97,18 @@ public sealed class FounderEngineeringController(
         try
         {
             var start = await commandCenter.BeginChatGptAuthorizationAsync(cancellationToken);
+            Response.Cookies.Append(
+                ChatGptStateCookie,
+                start.State,
+                new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = true,
+                    SameSite = SameSiteMode.Lax,
+                    Path = "/founder/engineering/chatgpt/callback",
+                    MaxAge = TimeSpan.FromMinutes(10),
+                    IsEssential = true
+                });
             return Redirect(start.AuthorizationUrl);
         }
         catch (InvalidOperationException exception)
@@ -104,19 +119,41 @@ public sealed class FounderEngineeringController(
     }
 
     [HttpGet("chatgpt/callback")]
+    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> ChatGptCallback(
         [FromQuery] string? code,
         [FromQuery] string? state,
         [FromQuery(Name = "iss")] string? responseIssuer,
+        [FromQuery(Name = "client_id")] string? callbackClientId,
         [FromQuery] string? error,
         CancellationToken cancellationToken)
     {
         FounderGuard.EnsureFounderOrThrow(User);
-        if (!string.IsNullOrWhiteSpace(error))
+
+        var cookieState = Request.Cookies[ChatGptStateCookie];
+        Response.Cookies.Delete(
+            ChatGptStateCookie,
+            new CookieOptions
+            {
+                Secure = true,
+                SameSite = SameSiteMode.Lax,
+                Path = "/founder/engineering/chatgpt/callback"
+            });
+
+        if (!SameState(cookieState, state))
         {
             TempData["FounderEngineeringError"] =
+                "ChatGPT authorization did not match this browser session. Start Connect again.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            if (!string.IsNullOrWhiteSpace(state))
+                await commandCenter.AbortChatGptAuthorizationAsync(state, cancellationToken);
+            TempData["FounderEngineeringError"] =
                 error == "access_denied"
-                    ? "ChatGPT authorization was cancelled."
+                    ? "ChatGPT authorization was cancelled or plan access was not granted."
                     : "ChatGPT authorization was rejected by the provider.";
             return RedirectToAction(nameof(Index));
         }
@@ -127,10 +164,11 @@ public sealed class FounderEngineeringController(
                 code ?? string.Empty,
                 state ?? string.Empty,
                 responseIssuer,
+                callbackClientId,
                 cancellationToken);
             TempData["FounderEngineeringSuccess"] =
                 result.Ready
-                    ? "ChatGPT Plan connected. LEGEND verified the issued client, required plan scopes, PKCE transaction, and OpenID token."
+                    ? "ChatGPT Plan connected. LEGEND verified the issued client, required plan scopes, PKCE transaction, browser session, and OpenID token."
                     : "ChatGPT authorization completed but the plan runtime is not ready.";
         }
         catch (InvalidOperationException exception)
@@ -151,6 +189,19 @@ public sealed class FounderEngineeringController(
         TempData["FounderEngineeringSuccess"] =
             "ChatGPT-plan authorization was disconnected. Deterministic monitoring continues; no new model execution can start until reconnected.";
         return RedirectToAction(nameof(Index));
+    }
+
+    private static bool SameState(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) ||
+            string.IsNullOrWhiteSpace(right) ||
+            left.Length > 512 ||
+            right.Length > 512)
+            return false;
+        var a = Encoding.UTF8.GetBytes(left);
+        var b = Encoding.UTF8.GetBytes(right);
+        return a.Length == b.Length &&
+               CryptographicOperations.FixedTimeEquals(a, b);
     }
 
     private static string Short(string value) =>
@@ -191,6 +242,8 @@ public sealed class FounderEngineeringController(
             "The ChatGPT authorization session expired or was already used. Start Connect again.",
         "chatgpt_plan_authorization_callback_invalid" =>
             "The ChatGPT authorization callback was incomplete.",
+        "chatgpt_plan_authorization_client_mismatch" =>
+            "The ChatGPT callback returned a different client registration than the one LEGEND started with.",
         "chatgpt_plan_authorization_issuer_mismatch" =>
             "The ChatGPT authorization response issuer did not match OpenAI.",
         "chatgpt_plan_authorization_exchange_failed" =>
