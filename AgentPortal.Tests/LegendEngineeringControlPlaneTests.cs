@@ -260,7 +260,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     public void SanitizedSourceHints_ResolveOnlyWithinApplicationAndSharedSafeRoots()
     {
         var resolved = FounderSoftwareRemediationService.ResolveSafeSourceHints(
-            new[] { "HomeController.cs", "js/legend-site-tools.js" },
+            new[] { "HomeController.cs", "js/legend-site-tools.js", "_content/Shared/js/legend-site-tools.js" },
             "AgentPortal",
             new[]
             {
