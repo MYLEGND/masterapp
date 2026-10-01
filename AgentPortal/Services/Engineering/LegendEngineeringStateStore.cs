@@ -58,6 +58,9 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                     LeaseExpiresUtc = state == existing.State ? existing.LeaseExpiresUtc : null,
                     ValidationState = state == existing.State ? existing.ValidationState : "NOT_STARTED",
                     ReleaseCohort = decision.ReleaseCohort,
+                    FounderReleaseApprovedUtc = string.Equals(existing.EvidenceRevision, evidenceRevision, StringComparison.Ordinal)
+                        ? existing.FounderReleaseApprovedUtc
+                        : null,
                     UpdatedUtc = now
                 };
                 await UpdateWorkItemAsync(connection, transaction, updated, cancellationToken);
