@@ -598,14 +598,18 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 }).ToArray()
                 : Array.Empty<object>();
 
+            var liveProof = await ReadLiveDeploymentProofAsync(client, options, commitSha, cancellationToken);
             return new
             {
                 capability = "verify_deployment",
                 commitSha,
-                verifiedThrough = "existing GitHub protected-production workflow observations (not live deployment proof)",
-                liveDeploymentVerified = false,
+                verifiedThrough = "GitHub workflow observations plus canonical configured-host runtime provenance",
+                liveDeploymentVerified = liveProof.Verified,
+                liveProof,
                 workflowRuns = runs,
-                deploymentState = runs.Length == 0 ? "not_yet_observed" : "observed",
+                deploymentState = liveProof.Verified
+                    ? "live_verified"
+                    : runs.Length == 0 ? "not_yet_observed" : "workflow_observed_live_unverified",
                 directAzureAccess = false
             };
         }
