@@ -512,10 +512,10 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                 INSERT INTO [LegendEngineeringUsage]
                 ([UsageId],[WorkItemId],[ModelTier],[Role],[Provider],[SessionId],[InputTokens],[OutputTokens],
                  [TotalTokens],[CostMicrousd],[UsageObserved],[CreatedUtc],[ProviderAttempted],
-                 [LogicalAttemptCompleted],[ProviderOutcome],[ProviderStatusCode],[ProviderErrorCode],
+                 [LogicalAttemptCompleted],[ProviderOutcome],[ProviderStatusCode],[ProviderErrorShape],[ProviderErrorCode],
                  [ProviderErrorParam],[ProviderRequestId])
                 VALUES (@id,@work,@tier,@role,@provider,@session,@input,@output,@total,@cost,@observed,@created,
-                        @providerAttempted,@logicalCompleted,@providerOutcome,@providerStatus,@providerError,
+                        @providerAttempted,@logicalCompleted,@providerOutcome,@providerStatus,@providerShape,@providerError,
                         @providerParam,@providerRequest)
                 """;
             Add(command, "@id", usage.UsageId);
@@ -534,6 +534,7 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
             Add(command, "@logicalCompleted", usage.LogicalAttemptCompleted);
             Add(command, "@providerOutcome", usage.ProviderOutcome);
             Add(command, "@providerStatus", usage.ProviderStatusCode);
+            Add(command, "@providerShape", usage.ProviderErrorShape);
             Add(command, "@providerError", usage.ProviderErrorCode);
             Add(command, "@providerParam", usage.ProviderErrorParam);
             Add(command, "@providerRequest", usage.ProviderRequestId);
@@ -556,6 +557,7 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                       [LogicalAttemptCompleted]=CASE WHEN @logicalCompleted=1 THEN 1 ELSE [LogicalAttemptCompleted] END,
                       [ProviderOutcome]=COALESCE(@providerOutcome,[ProviderOutcome]),
                       [ProviderStatusCode]=COALESCE(@providerStatus,[ProviderStatusCode]),
+                      [ProviderErrorShape]=COALESCE(@providerShape,[ProviderErrorShape]),
                       [ProviderErrorCode]=COALESCE(@providerError,[ProviderErrorCode]),
                       [ProviderErrorParam]=COALESCE(@providerParam,[ProviderErrorParam]),
                       [ProviderRequestId]=COALESCE(@providerRequest,[ProviderRequestId])
@@ -572,6 +574,7 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
                 Add(update, "@logicalCompleted", usage.LogicalAttemptCompleted);
                 Add(update, "@providerOutcome", usage.ProviderOutcome);
                 Add(update, "@providerStatus", usage.ProviderStatusCode);
+                Add(update, "@providerShape", usage.ProviderErrorShape);
                 Add(update, "@providerError", usage.ProviderErrorCode);
                 Add(update, "@providerParam", usage.ProviderErrorParam);
                 Add(update, "@providerRequest", usage.ProviderRequestId);
