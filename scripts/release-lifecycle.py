@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Own branch integration, checked production promotion, and lossless branch retirement.
+"""Own approved-branch integration, direct-release recovery, and lossless branch retirement.
 
-Runs only trusted default-branch code. Never executes source-branch code. GitHub's
-merge API and existing release workflows retain validation/deployment authority.
+Runs only trusted default-branch code. Never executes source-branch code. The
+protected approved branch is the sole Git release authority; immutable release
+receipts and live provenance replace the retired production-branch promotion path.
 """
 import argparse
 import importlib.util
@@ -19,11 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_policy import staging_only
 
 APPROVED = 'legend/approved-changes'
-PRODUCTION = 'production'
 DIRECT = 'all-intentional-direct-release-20260918.yml'
-RIGOROUS = 'agentportal-production-deploy.yml'
-WEBSITE = 'legend-website-production-deploy.yml'
-KEEP = {APPROVED, PRODUCTION}
+SECURITY = 'approved-release-security-validation.yml'
+KEEP = {APPROVED}
 SHA = re.compile(r'^[0-9a-f]{40}$')
 
 
@@ -54,23 +53,10 @@ def merge_base(left, right):
     return value
 
 
-def history_only_production_divergence(production, approved):
-    """True only when production's unique lineage contributes zero tree changes.
-
-    This is the exact topology created by a protected production synchronization
-    merge whose content already came from approved changes. Preserving that merge
-    in approved changes repairs ancestry without changing the approved tree.
-    """
-    if ancestor(production, approved) or ancestor(approved, production):
-        return False
-    base = merge_base(production, approved)
-    return commit_tree(production) == commit_tree(base)
-
-
-def eligible(branch, approved, production, live, open_refs, active_refs, failed_refs):
+def eligible(branch, approved, live, open_refs, active_refs, failed_refs):
     name, sha = branch['name'], branch['commit']['sha']
     if name in KEEP or branch.get('protected'):
-        return False, 'release/protected branch'
+        return False, 'canonical/protected branch'
     if name in open_refs:
         return False, 'open pull request uses branch as source or base'
     if name in active_refs:
@@ -79,11 +65,9 @@ def eligible(branch, approved, production, live, open_refs, active_refs, failed_
         return False, 'latest branch workflow failed or was cancelled'
     if not ancestor(sha, approved):
         return False, 'unique history not preserved in approved changes'
-    if not ancestor(sha, production):
-        return False, 'awaiting checked production promotion'
     if not live or not all(ancestor(sha, row['revision']) for row in live):
         return False, 'not covered by every live web application revision'
-    return True, 'preserved in both release paths and every live web revision'
+    return True, 'preserved in approved changes and every live web revision'
 
 
 class GitHub:
@@ -333,6 +317,7 @@ def candidate_validation(api, pr):
     step5 = '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
     step6 = '.github/workflows/step6-openai-ads-execution-validation.yml'
     step78 = '.github/workflows/steps7-8-governed-advertising-validation.yml'
+    security = '.github/workflows/approved-release-security-validation.yml'
     required = {architecture}
 
     files = api.pages(f"pulls/{pr['number']}/files")
@@ -382,6 +367,9 @@ def candidate_validation(api, pr):
     )
     if broad_product_change and not public_website_only:
         required.add(step5)
+        required.add(security)
+    if security in names or 'scripts/validation-resume.py' in names or 'scripts/test-validation-resume.py' in names:
+        required.add(security)
 
     failed = []
     for path in sorted(required):
@@ -474,84 +462,54 @@ def pending_updates(api):
         correction = api.api('pulls', {'head': name, 'base': APPROVED,
             'title': 'Continue approved release corrections from ' + name,
             'body': 'Automatically carries new commits on the retained source branch after its previous approved PR. '
-                    'The direct release and checked production gates will rerun; branch deletion remains gated.'})
+                    'Owning validation and the approved direct-release authority will re-evaluate only invalidated evidence; branch deletion remains gated.'})
         # The previous collaborator PR authorizes review, not skipping fresh CI.
         return {'correctionPr': correction['number'], 'retained': 'Fresh exact-head validation required'}
     return {'integration': 'no ready changes or retained-branch corrections'}
 
 
-def resolve_production(api, number, expected_head, dispatch=False):
-    if staging_only():
-        raise RuntimeError('Validation-only staging hold blocks production publication')
-    pr = api.api(f'pulls/{number}')
-    if (pr['state'] != 'open' or pr['draft'] or pr['base']['ref'] != PRODUCTION
-        or not pr['head']['repo'] or pr['head']['repo']['full_name'] != api.repo):
-        raise RuntimeError('Not a ready same-repository production PR')
-    head = pr['head']['sha']
-    if not SHA.fullmatch(expected_head or '') or head != expected_head:
-        raise RuntimeError('PR head changed or does not match the triggering workflow source')
-    if dispatch and pr['head']['ref'] != APPROVED:
-        raise RuntimeError('Dispatched production promotion must use the exact approved workflow revision')
-    bot_promotion = pr['head']['ref'] == APPROVED and pr['user']['login'] == 'github-actions[bot]'
-    if not bot_promotion and pr['author_association'] not in {'OWNER', 'MEMBER', 'COLLABORATOR'}:
-        raise RuntimeError('Untrusted production PR author')
-    if pr['head']['ref'] == 'hotfix/staging-batch' or pr['head']['ref'].startswith('hotfix/staging-batch/'):
-        raise RuntimeError('Unpublished staging batch is not a release candidate')
-    approved, production = api.ref(APPROVED), api.ref(PRODUCTION)
-    if pr['base']['sha'] != production or not ancestor(head, approved):
-        raise RuntimeError('Production candidate is stale or absent from approved changes')
-    if not pr.get('mergeable') or not SHA.fullmatch(pr.get('merge_commit_sha') or ''):
-        raise RuntimeError('Production merge candidate not ready; retain branch and retry')
-    merge = pr['merge_commit_sha']
-    git('fetch', '--no-tags', 'origin', merge)
-    # A rigorous release must not roll back ANY currently deployed web app.
-    for row in live_revisions():
-        if not ancestor(row['revision'], merge):
-            raise RuntimeError('Production candidate would omit live history: ' + row['app'])
-    return {'sha': merge, 'head': head, 'base': production, 'number': str(number)}
-
-
 def successful_release(api, run, app=None):
+    """Accept only complete approved direct-release receipts.
+
+    Validation workflows may authorize a merge, but only the single direct-release
+    workflow can establish deployed application provenance.
+    """
     if run['status'] != 'completed' or run['conclusion'] != 'success':
         return False
     path = run['path'].split('@')[0]
-    if path not in {'.github/workflows/' + DIRECT, '.github/workflows/' + RIGOROUS, '.github/workflows/' + WEBSITE}:
+    if path != '.github/workflows/' + DIRECT:
         return False
     if run.get('head_repository', {}).get('full_name') != api.repo:
         return False
-    if path.endswith(DIRECT) and run.get('head_branch') != APPROVED:
-        return False
-    if path.endswith(WEBSITE) and (run.get('head_branch') != PRODUCTION or run.get('event') != 'push'):
+    if run.get('head_branch') != APPROVED:
         return False
     jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
-    required = {'discover-live', 'release'} if path.endswith(DIRECT) else {
-        'security', 'build', 'merge', 'migrate', 'deploy', 'verify-legend-native', 'verify-legend-native-sql'}
-    if path.endswith(WEBSITE):
-        gate = 'website-security' if any(j['name'] == 'website-security' for j in jobs) else 'security'
-        required = {gate, 'deploy'}
+    required = {'discover-live', 'release'}
     passed = {job['name'] for job in jobs if job['conclusion'] == 'success'}
     if not required <= passed:
         return False
-    if path.endswith(DIRECT):
-        release_job = next(job for job in jobs if job['name'] == 'release')
-        steps = release_job.get('steps', [])
-        if not any(step['name'] == 'Verify every deployed target and collect all failures' and step['conclusion'] == 'success' for step in steps):
-            return False
-        if not any(step['name'].startswith('Direct deploy ') and step['conclusion'] == 'success' for step in steps):
-            return False
+    release_job = next(job for job in jobs if job['name'] == 'release')
+    steps = release_job.get('steps', [])
+    if not any(step['name'] == 'Verify every deployed target and collect all failures'
+               and step['conclusion'] == 'success' for step in steps):
+        return False
+    if not any(step['name'] == 'Enforce complete direct deployment outcome'
+               and step['conclusion'] == 'success' for step in steps):
+        return False
     if app is None:
         return True
-    if path.endswith(RIGOROUS):
-        return app in {'portal', 'client'}
-    if path.endswith(WEBSITE):
-        return app == 'website'
-    target_steps = {'portal': 'Direct deploy AgentPortal', 'client': 'Direct deploy ClientApp',
-                    'protect': 'Direct deploy Protect', 'parfait': 'Direct deploy Parfait',
-                    'website': 'Direct deploy Website'}
-    release_job = next(job for job in jobs if job['name'] == 'release')
-    return any(step['name'] == target_steps.get(app) and step['conclusion'] == 'success'
-               for step in release_job.get('steps', []))
-
+    target_steps = {
+        'portal': 'Direct deploy AgentPortal',
+        'client': 'Direct deploy ClientApp',
+        'protect': 'Direct deploy Protect immutable ZIP',
+        'parfait': 'Direct deploy Parfait',
+        'website': 'Direct deploy Website immutable ZIP',
+    }
+    target = target_steps.get(app)
+    return bool(target) and any(
+        step['name'] == target and step['conclusion'] == 'success'
+        for step in steps
+    )
 
 def direct_only_request(sha):
     # A one-release exception bound to the exact commit that changes the request.
@@ -597,6 +555,7 @@ def direct_release_approved_pr(api, sha):
     release_control_files = {
         request_path,
         '.github/workflows/masterapp-platform-architecture-validation.yml',
+        '.github/workflows/approved-release-security-validation.yml',
         'scripts/approved-release-baseline.py',
         'scripts/release-lifecycle.py',
         'scripts/test-release-policy.py',
@@ -644,192 +603,68 @@ def direct_release_approved_pr(api, sha):
     return None
 
 
-def reconcile_history_only(api, production=None, approved=None):
-    """Preserve tree-neutral canonical production lineage in approved history.
-
-    No product content, release request, deployment scope, or application state is
-    changed. Safety comes from the current production tip having the exact tree of
-    the common merge base, plus a post-merge proof that approved's tree is unchanged.
-    Any content-bearing divergence remains blocked for the checked release lifecycle.
-    """
-    production = production or api.ref(PRODUCTION)
-    approved = approved or api.ref(APPROVED)
-
-    if ancestor(production, approved):
-        return {'relation': 'production-preserved', 'reconciled': False}
-    if ancestor(approved, production):
-        return {'relation': 'production-ahead', 'reconciled': False}
-    if not history_only_production_divergence(production, approved):
-        return {'relation': 'diverged-content', 'reconciled': False}
-
-    before_tree = commit_tree(approved)
-    merge = api.api('merges', {
-        'base': APPROVED,
-        'head': production,
-        'commit_message': 'Preserve tree-neutral production synchronization history in approved changes'
-    })
-    merged_sha = (merge or {}).get('sha')
-    if not SHA.fullmatch(merged_sha or ''):
-        raise RuntimeError('Canonical history reconciliation did not return a merge revision')
-
-    git('fetch', '--no-tags', 'origin', merged_sha)
-    current_approved = api.ref(APPROVED)
-    if current_approved != merged_sha:
-        raise RuntimeError('Approved branch moved during canonical history reconciliation')
-    if commit_tree(current_approved) != before_tree:
-        raise RuntimeError('History-only reconciliation changed approved product content')
-    if not ancestor(production, current_approved):
-        raise RuntimeError('Production history was not preserved by reconciliation')
-
-    return {
-        'relation': 'production-history-reconciled',
-        'reconciled': True,
-        'productionSha': production,
-        'approvedSha': current_approved
-    }
-
-
-def branch_parity(api):
-    """Canonical verifier/reconciler used by the branch-parity workflow."""
-    production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
-    history = reconcile_history_only(api, production, approved)
-    if history.get('retained'):
-        raise RuntimeError(history['retained'])
-    if history.get('reconciled'):
-        production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
-
-    if production == approved:
-        return {'relation': 'identical', 'productionSha': production, 'approvedSha': approved}
-    if ancestor(production, approved):
-        return {'relation': 'approved-ahead', 'productionSha': production, 'approvedSha': approved}
-    if ancestor(approved, production):
-        return {'relation': 'production-ahead', 'productionSha': production, 'approvedSha': approved}
-    raise RuntimeError('Canonical branches contain content-bearing divergent history')
-
-
 def reconcile(api, trigger=None):
+    """Recover only the exact approved direct release; never create a second branch path."""
     if staging_only():
-        return {'promotion': 'disabled while validation-only staging hold is active'}
+        return {'release': 'disabled while validation-only staging hold is active'}
     if trigger:
         run = api.api(f'actions/runs/{trigger}')
-        if not successful_release(api, run):
-            return {'retained': 'No successful applicable release; no promotion or cleanup'}
-    # Recover missed workflow events and transient merge-back failures on every
-    # schedule. A failed production attempt never authorizes this synchronization.
-    production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
+        if run.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT:
+            if successful_release(api, run):
+                return {'release': 'exact approved direct release already successful'}
+            return {'retained': 'Triggered direct release did not complete successfully; no automatic replay'}
 
-    # Protected production synchronization creates a merge commit that can be
-    # topologically unique while contributing no content beyond the shared base.
-    # Preserve only that proven, tree-neutral lineage before evaluating an exact
-    # approved-only release request; this repairs ancestry without expanding scope.
-    history = reconcile_history_only(api, production, approved)
-    if history.get('retained'):
-        return history
-    if history.get('reconciled'):
-        return history
+    approved = api.ref(APPROVED)
+    if not direct_only_request(approved):
+        return {'release': 'no exact approved-only release authorization'}
 
-    if direct_only_request(approved):
-        runs = api.pages('actions/runs?head_sha=' + approved, 'workflow_runs')
-        if not any(r['path'].split('@')[0] == '.github/workflows/' + DIRECT for r in runs):
-            pr = direct_release_approved_pr(api, approved)
-            if pr is not None:
-                pending = candidate_validation(api, pr)
-                if pending: return {'retained': pending}
-                api.dispatch(DIRECT, {'automatic': 'false'})
-                return {'directRelease': 'recovered exact scoped request', 'promotion': 'disabled for approved-only release'}
-        return {'promotion': 'disabled for this exact approved-only release'}
-    if not ancestor(production, approved):
-        if not release_proven(api, production, production=True):
-            return {'retained': 'Current production tip is not bound to successful release proof'}
-        api.api('merges', {'base': APPROVED, 'head': production,
-            'commit_message': 'Preserve successfully validated production release in approved changes'})
-        git('fetch', '--no-tags', 'origin')
-        return {'synchronizedProduction': production, 'directReleaseDispatched': False}
-    # Never promote newer unreleased edits using an older workflow's green result.
-    if ancestor(approved, production):
-        return {'promotion': 'already preserved in production'}
-    runs = api.api('actions/runs?head_sha=' + approved + '&per_page=100')['workflow_runs']
-    direct_runs = [r for r in runs if r['path'].split('@')[0] == '.github/workflows/' + DIRECT
-                   and r['head_branch'] == APPROVED]
-    if not direct_runs:
-        return {'promotion': 'awaiting successful direct release of current approved head'}
-    if not successful_release(api, direct_runs[0]):
-        return {'promotion': 'awaiting successful direct release of current approved head'}
-    pulls = api.pages('pulls?state=open&base=production')
-    pr = next((p for p in pulls if p['head']['ref'] == APPROVED and p['head']['repo']['full_name'] == api.repo), None)
+    runs = api.pages('actions/runs?head_sha=' + approved, 'workflow_runs')
+    direct_runs = [
+        row for row in runs
+        if row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT
+        and row.get('head_branch') == APPROVED
+    ]
+    direct_runs.sort(
+        key=lambda row: (row.get('updated_at') or row.get('run_started_at') or row.get('created_at', ''),
+                         row.get('run_attempt', 1)),
+        reverse=True,
+    )
+    if direct_runs:
+        latest = direct_runs[0]
+        if latest.get('status') != 'completed':
+            return {'release': 'already queued or running'}
+        if successful_release(api, latest):
+            return {'release': 'exact approved direct release already successful'}
+        return {'retained': 'Exact approved release already attempted; correction or explicit rerun required'}
+
+    pr = direct_release_approved_pr(api, approved)
     if pr is None:
-        pr = api.api('pulls', {'head': APPROVED, 'base': PRODUCTION,
-            'title': 'Promote successfully released approved changes through production gates',
-            'body': 'Automatically prepared after the exact approved revision passed direct deployment. '
-                    'The existing production CI, security, artifact and live proof gates remain required. '
-                    'Source branches remain until both release paths preserve them and deployment is proven.'})
-    # Dispatch runs the SAME rigorous workflow, avoiding bot-created PR event suppression.
-    active = api.api('actions/runs?status=in_progress&per_page=100')['workflow_runs']
-    active += api.api('actions/runs?status=queued&per_page=100')['workflow_runs']
-    if any(r['path'].split('@')[0] == '.github/workflows/' + RIGOROUS for r in active):
-        return {'promotionPr': pr['number'], 'validation': 'already queued or running'}
-    # Avoid repeatedly paying for the same failed exact candidate on every schedule.
-    previous = [r for r in runs if r['path'].split('@')[0] == '.github/workflows/' + RIGOROUS and (
-                         (r.get('event') == 'pull_request' and any(p['number'] == pr['number'] for p in r.get('pull_requests', []))) or
-                         (r.get('event') == 'workflow_dispatch' and r.get('display_title') == 'LEGEND rigorous PR ' + str(pr['number'])))]
-    if previous:
-        return {'promotionPr': pr['number'], 'validation': 'already attempted; corrections or explicit rerun required'}
-    api.dispatch(RIGOROUS, {'pull_request': str(pr['number'])})
-    return {'promotionPr': pr['number'], 'validation': 'dispatched; no gates bypassed'}
+        return {'retained': 'Exact release authorization cannot be bound to a validated approved PR'}
+    pending = candidate_validation(api, pr)
+    if pending:
+        return {'retained': pending}
+    api.dispatch(DIRECT, {'automatic': 'false'})
+    return {'directRelease': 'recovered exact scoped approved request'}
 
 
-def undeployed_artifact_changes(sha, production):
-    # A web receipt cannot certify App Store, Play or Worker publication. Find
-    # the branch's first-parent fork; retain native/Worker work conservatively.
-    mainline = set(git('rev-list', '--first-parent', production).stdout.splitlines())
-    fork = next((c for c in git('rev-list', '--first-parent', sha).stdout.splitlines()
-                 if c in mainline), None)
-    if not fork:
-        return True
-    paths = git('diff', '--name-only', '--no-renames', fork, sha).stdout.splitlines()
-    return any(p.startswith(('Legend-ios/', 'Legend-Android/', 'Legend-Cloudflare/')) for p in paths)
-
-
-def website_only_revision(revision):
-    # Historical website-only production releases had their own security gate.
-    # That evidence is valid only for the exact website-owned first-parent diff.
-    paths = git('diff', '--name-only', '--no-renames', revision + '^1', revision).stdout.splitlines()
-    return bool(paths) and all(p.startswith('Legend-Website/') or p in {
-        'Legend-Design/legend-design.tokens.json',
-        'Legend-ios/Legend/Resources/Assets.xcassets/LegendLogo.imageset/legend-logo.png',
-        '.github/workflows/legend-website-production-deploy.yml'} for p in paths)
-
-
-def release_proven(api, revision, production=False, app=None):
+def release_proven(api, revision, app=None):
+    """Require an exact successful direct-release receipt for a deployed revision."""
     runs = api.pages('actions/runs?head_sha=' + revision, 'workflow_runs')
-    # A PR run records its source SHA; provenance records the actual merge SHA.
-    for pr in api.pages('commits/' + revision + '/pulls'):
-        if (pr.get('merge_commit_sha') == revision and pr.get('merged_at')
-            and pr['base']['ref'] == PRODUCTION and pr['head']['repo']
-            and pr['head']['repo']['full_name'] == api.repo):
-            runs += [r for r in api.pages('actions/runs?head_sha=' + pr['head']['sha'], 'workflow_runs')
-                     if r['path'].split('@')[0] == '.github/workflows/' + RIGOROUS and (
-                         (r.get('event') == 'pull_request' and any(p['number'] == pr['number'] for p in r.get('pull_requests', []))) or
-                         (r.get('event') == 'workflow_dispatch' and r.get('display_title') == 'LEGEND rigorous PR ' + str(pr['number'])))]
-    allowed = {'.github/workflows/' + RIGOROUS, '.github/workflows/' + WEBSITE}
-    if not production:
-        allowed.add('.github/workflows/' + DIRECT)
-    runs = [r for r in runs if r['path'].split('@')[0] in allowed]
-    runs.sort(key=lambda r: (r.get('updated_at') or r.get('run_started_at') or r['created_at'], r.get('run_attempt', 1)), reverse=True)
-    # An unrelated successful workflow never masks a failed release attempt.
-    if any(r['status'] == 'completed' and r['conclusion'] != 'success' for r in runs[:1]):
-        return False
-    if production:
-        rigorous = [r for r in runs if r['path'].split('@')[0].endswith(RIGOROUS)]
-        if rigorous:
-            return successful_release(api, rigorous[0])
-        return bool(runs) and website_only_revision(revision) and successful_release(api, runs[0])
+    runs = [
+        row for row in runs
+        if row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT
+        and row.get('head_branch') == APPROVED
+    ]
+    runs.sort(
+        key=lambda row: (row.get('updated_at') or row.get('run_started_at') or row.get('created_at', ''),
+                         row.get('run_attempt', 1)),
+        reverse=True,
+    )
+    # A failed newer attempt never erases an older successful deployment receipt
+    # for the same immutable revision, but it also cannot become proof itself.
     for run in runs:
-        if run['path'].split('@')[0].endswith(WEBSITE) and app != 'website':
-            continue
-        if run['path'].split('@')[0].endswith(RIGOROUS) and app not in {'portal', 'client'}:
-            continue
-        return successful_release(api, run, app=app)
+        if successful_release(api, run, app=app):
+            return True
     return False
 
 
@@ -837,63 +672,67 @@ def cleanup(api, apply=False):
     if staging_only():
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     branches = api.pages('branches')
-    approved, production = api.ref(APPROVED), api.ref(PRODUCTION)
+    approved = api.ref(APPROVED)
     live = live_revisions()
-    if not release_proven(api, production, production=True):
-        return {'retained': 'Current production base lacks a successful complete release receipt'}
     for row in live:
         if not release_proven(api, row['revision'], app=row['app']):
-            return {'retained': 'Live app lacks an exact successful deployment receipt: ' + row['app']}
-    for revision in [approved, production, *(r['revision'] for r in live)]:
+            return {'retained': 'Live app lacks an exact successful direct-release receipt: ' + row['app']}
+    for revision in [approved, *(row['revision'] for row in live)]:
         git('cat-file', '-e', revision + '^{commit}')
+
     pulls = api.pages('pulls?state=open')
-    open_refs = {p['base']['ref'] for p in pulls} | {
-        p['head']['ref'] for p in pulls if p['head']['repo'] and p['head']['repo']['full_name'] == api.repo}
-    # Fetch all active runs, not only the first page of repository activity.
+    open_refs = {pull['base']['ref'] for pull in pulls} | {
+        pull['head']['ref'] for pull in pulls
+        if pull['head']['repo'] and pull['head']['repo']['full_name'] == api.repo
+    }
     active = []
     for status in ('queued', 'in_progress', 'waiting', 'requested', 'pending'):
         active.extend(api.pages('actions/runs?status=' + status, 'workflow_runs'))
-    if any(r['path'].split('@')[0] in {'.github/workflows/' + DIRECT, '.github/workflows/' + RIGOROUS, '.github/workflows/legend-website-production-deploy.yml'} for r in active):
-        return {'retained': 'A release is queued or running; live evidence may change'}
-    active_refs = {r['head_branch'] for r in active}
+    if any(row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT for row in active):
+        return {'retained': 'A direct release is queued or running; live evidence may change'}
+    active_refs = {row['head_branch'] for row in active}
+
     rows = []
     for branch in branches:
         name, sha = branch['name'], branch['commit']['sha']
         latest = api.pages('actions/runs?branch=' + urllib.parse.quote(name, safe=''), 'workflow_runs')
-        latest.sort(key=lambda r: r.get('updated_at') or r['created_at'], reverse=True)
+        latest.sort(key=lambda row: row.get('updated_at') or row['created_at'], reverse=True)
         failed = {name} if latest and latest[0]['conclusion'] not in {'success', 'skipped', None} else set()
-        allowed, reason = eligible(branch, approved, production, live, open_refs, active_refs, failed)
-        if allowed and undeployed_artifact_changes(sha, production):
-            allowed, reason = False, 'native or Worker publication evidence required; web receipt is insufficient'
+        allowed, reason = eligible(branch, approved, live, open_refs, active_refs, failed)
         row = {'branch': name, 'sha': sha, 'eligible': allowed, 'reason': reason, 'deleted': False}
         if allowed and apply:
-            # Recheck repository references and open work immediately before the atomic lease.
-            if api.ref(APPROVED) != approved or api.ref(PRODUCTION) != production:
-                raise RuntimeError('Release branch moved during cleanup; stop and retry from fresh evidence')
+            if api.ref(APPROVED) != approved:
+                raise RuntimeError('Approved branch moved during cleanup; stop and retry from fresh evidence')
             current = api.api('branches/' + urllib.parse.quote(name, safe=''))
             fresh_pulls = api.pages('pulls?state=open')
-            used = any(p['base']['ref'] == name or (p['head']['repo'] and
-                p['head']['repo']['full_name'] == api.repo and p['head']['ref'] == name) for p in fresh_pulls)
+            used = any(
+                pull['base']['ref'] == name or (
+                    pull['head']['repo']
+                    and pull['head']['repo']['full_name'] == api.repo
+                    and pull['head']['ref'] == name
+                )
+                for pull in fresh_pulls
+            )
             recent = api.pages('actions/runs?branch=' + urllib.parse.quote(name, safe=''), 'workflow_runs')
-            recent.sort(key=lambda r: r.get('updated_at') or r['created_at'], reverse=True)
+            recent.sort(key=lambda item: item.get('updated_at') or item['created_at'], reverse=True)
             if (used or current['protected'] or current['commit']['sha'] != sha
-                or any(r['status'] != 'completed' for r in recent)
+                or any(item['status'] != 'completed' for item in recent)
                 or (recent and recent[0]['conclusion'] not in {'success', 'skipped'})):
                 row['reason'] = 'branch gained work or protection during cleanup'
             else:
-                # Compare-and-delete: a concurrent push makes the lease fail.
-                result = git('push', '--force-with-lease=refs/heads/' + name + ':' + sha,
-                    'origin', ':refs/heads/' + name, check=False)
+                result = git(
+                    'push', '--force-with-lease=refs/heads/' + name + ':' + sha,
+                    'origin', ':refs/heads/' + name, check=False
+                )
                 if result.returncode:
                     raise RuntimeError('Atomic branch deletion failed; branch retained: ' + name)
                 row['deleted'] = True
         rows.append(row)
-    return {'approvedSha': approved, 'productionSha': production, 'live': live, 'branches': rows}
-
+    return {'approvedSha': approved, 'live': live, 'branches': rows}
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'resolve-production', 'reconcile', 'branch-parity', 'cleanup'])
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup'])
     parser.add_argument('--pr', type=int)
     parser.add_argument('--run', type=int)
     parser.add_argument('--expected-head')
@@ -906,15 +745,8 @@ def main():
         result = integrate(api, args.pr)
     elif args.command == 'pending-updates':
         result = pending_updates(api)
-    elif args.command == 'resolve-production':
-        result = resolve_production(api, args.pr, args.expected_head, args.dispatch == 'true')
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
-            for key, value in result.items():
-                out.write(key + '=' + value + '\n')
     elif args.command == 'reconcile':
         result = reconcile(api, args.run)
-    elif args.command == 'branch-parity':
-        result = branch_parity(api)
     else:
         result = cleanup(api, args.apply)
     if args.output:
