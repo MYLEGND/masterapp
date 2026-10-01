@@ -31,9 +31,23 @@
         });
     });
 
-    root.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    root.querySelectorAll('input[type="checkbox"], select[name$="Model"]').forEach((input) => {
         input.addEventListener("change", setDirty);
     });
+
+    const authMethod = root.querySelector("[data-client-auth-method]");
+    const secretField = root.querySelector("[data-client-secret-field]");
+    const syncSecretField = () => {
+        if (!authMethod || !secretField) return;
+        const confidential = authMethod.value === "client_secret_basic";
+        secretField.hidden = !confidential;
+        const input = secretField.querySelector('input[name="ClientSecret"]');
+        if (input) input.disabled = !confidential;
+    };
+    if (authMethod) {
+        authMethod.addEventListener("change", syncSecretField);
+        syncSecretField();
+    }
 
     const addButton = root.querySelector("[data-add-command]");
     if (addButton && quickInput && shared) {
@@ -74,14 +88,13 @@
         });
     });
 
-    const disconnectForm = root.querySelector("[data-disconnect-form]");
-    if (disconnectForm) {
+    root.querySelectorAll("[data-disconnect-form]").forEach((disconnectForm) => {
         disconnectForm.addEventListener("submit", (event) => {
             if (!window.confirm("Disconnect the ChatGPT plan from LEGEND Engineering? New model execution will stop until the plan is reconnected.")) {
                 event.preventDefault();
             }
         });
-    }
+    });
 
     window.addEventListener("beforeunload", (event) => {
         if (!dirty) return;

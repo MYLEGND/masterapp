@@ -57,6 +57,7 @@ internal sealed class LegendEngineeringOrchestrator(
             policyRevision = LegendEngineeringContract.PolicyRevision,
             operationalContractRevision = operationalContract.Revision,
             modelExecutionEnabled = operationalContract.ModelExecutionEnabled,
+            autonomousEngineeringEnabled = operationalContract.AutonomousEngineeringEnabled,
             founderOnly = true,
             openWorkItems = work.Count,
             leasedWorkItems = work.Count(item => item.LeaseExpiresUtc > DateTime.UtcNow),
@@ -154,19 +155,22 @@ internal sealed class LegendEngineeringOrchestrator(
         return BootstrapCoreAsync(workItemId, role, cancellationToken);
     }
 
-    public Task<EngineeringContextSnapshot> BootstrapSystemAsync(
+    public async Task<EngineeringContextSnapshot> BootstrapSystemAsync(
         Guid workItemId,
         string role,
         CancellationToken cancellationToken)
     {
-        if (configuration.GetValue<bool?>("LegendEngineering:Autonomous:Enabled") != true)
+        var operationalContract = await contractAuthority.GetCurrentAsync(cancellationToken);
+        if (!operationalContract.AutonomousEngineeringEnabled)
             throw new InvalidOperationException("autonomous_engineering_disabled");
+        if (!operationalContract.ModelExecutionEnabled)
+            throw new InvalidOperationException("engineering_operational_execution_paused");
         if (!Guid.TryParse(AgentPortal.Security.FounderGuard.FounderOid, out _))
             throw new InvalidOperationException("founder_identity_not_configured");
         if (!LegendEngineeringPolicies.IsApprovedAutonomousBaseBranch(
                 configuration["FounderSoftwareRemediation:BaseBranch"]))
             throw new InvalidOperationException("autonomous_engineering_approved_base_required");
-        return BootstrapCoreAsync(workItemId, role, cancellationToken);
+        return await BootstrapCoreAsync(workItemId, role, cancellationToken);
     }
 
     public async Task<EngineeringTaskPacket> GetTaskPacketAsync(

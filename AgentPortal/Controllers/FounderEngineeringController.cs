@@ -62,9 +62,89 @@ public sealed class FounderEngineeringController(
         return RedirectToAction(nameof(Index));
     }
 
+    [HttpPost("chatgpt/client")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveChatGptClient(
+        FounderEngineeringClientRegistrationInput input,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        try
+        {
+            var registration =
+                await commandCenter.SaveClientRegistrationAsync(input, cancellationToken);
+            TempData["FounderEngineeringSuccess"] =
+                registration.EligibilityConfirmed
+                    ? "ChatGPT client registration is saved and verified."
+                    : "ChatGPT client registration is saved. Connect ChatGPT to verify the issued client and plan scopes.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            TempData["FounderEngineeringError"] = ErrorMessage(exception.Message);
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("chatgpt/connect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConnectChatGpt(CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        try
+        {
+            var start = await commandCenter.BeginChatGptAuthorizationAsync(cancellationToken);
+            return Redirect(start.AuthorizationUrl);
+        }
+        catch (InvalidOperationException exception)
+        {
+            TempData["FounderEngineeringError"] = ErrorMessage(exception.Message);
+            return RedirectToAction(nameof(Index));
+        }
+    }
+
+    [HttpGet("chatgpt/callback")]
+    public async Task<IActionResult> ChatGptCallback(
+        [FromQuery] string? code,
+        [FromQuery] string? state,
+        [FromQuery(Name = "iss")] string? responseIssuer,
+        [FromQuery] string? error,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            TempData["FounderEngineeringError"] =
+                error == "access_denied"
+                    ? "ChatGPT authorization was cancelled."
+                    : "ChatGPT authorization was rejected by the provider.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            var result = await commandCenter.CompleteChatGptAuthorizationAsync(
+                code ?? string.Empty,
+                state ?? string.Empty,
+                responseIssuer,
+                cancellationToken);
+            TempData["FounderEngineeringSuccess"] =
+                result.Ready
+                    ? "ChatGPT Plan connected. LEGEND verified the issued client, required plan scopes, PKCE transaction, and OpenID token."
+                    : "ChatGPT authorization completed but the plan runtime is not ready.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            TempData["FounderEngineeringError"] = ErrorMessage(exception.Message);
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
     [HttpPost("chatgpt/disconnect")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> DisconnectChatGpt(CancellationToken cancellationToken)
+    public async Task<IActionResult> DisconnectChatGpt(
+        CancellationToken cancellationToken)
     {
         FounderGuard.EnsureFounderOrThrow(User);
         await commandCenter.DisconnectChatGptAsync(cancellationToken);
@@ -74,8 +154,9 @@ public sealed class FounderEngineeringController(
     }
 
     private static string Short(string value) =>
-        string.IsNullOrWhiteSpace(value) ? "unknown" :
-        value.Length <= 10 ? value : value[..10];
+        string.IsNullOrWhiteSpace(value)
+            ? "unknown"
+            : value.Length <= 10 ? value : value[..10];
 
     private static string ErrorMessage(string code) => code switch
     {
@@ -85,8 +166,41 @@ public sealed class FounderEngineeringController(
             "The combined operating directives exceed the safe contract size.",
         "engineering_contract_directive_invalid" =>
             "One directive contains unsupported control characters or exceeds its safe size.",
+        "engineering_model_binding_invalid" =>
+            "One model binding is invalid. Choose Auto or one of the models available to the connected ChatGPT account.",
         "engineering_contract_restore_revision_not_found" =>
             "That historical revision is no longer available.",
-        _ => "The contract change was rejected by the canonical engineering authority."
+        "chatgpt_plan_client_registration_missing" =>
+            "Add the OpenAI-issued client registration before connecting ChatGPT.",
+        "chatgpt_plan_client_registration_invalid" =>
+            "The OpenAI-issued client ID is invalid.",
+        "chatgpt_plan_client_authentication_method_invalid" =>
+            "Choose the client authentication method supplied by OpenAI.",
+        "chatgpt_plan_client_secret_required" =>
+            "This client registration requires its OpenAI-issued client secret.",
+        "chatgpt_plan_client_secret_invalid" =>
+            "The supplied client secret is invalid.",
+        "chatgpt_plan_discovery_unavailable" =>
+            "OpenAI authorization discovery is temporarily unavailable.",
+        "chatgpt_plan_discovery_invalid" =>
+            "OpenAI authorization discovery returned an unexpected authority.",
+        "chatgpt_plan_redirect_uri_invalid" =>
+            "The registered ChatGPT callback configuration is invalid.",
+        "chatgpt_plan_authorization_state_invalid" or
+        "chatgpt_plan_authorization_state_expired" =>
+            "The ChatGPT authorization session expired or was already used. Start Connect again.",
+        "chatgpt_plan_authorization_callback_invalid" =>
+            "The ChatGPT authorization callback was incomplete.",
+        "chatgpt_plan_authorization_issuer_mismatch" =>
+            "The ChatGPT authorization response issuer did not match OpenAI.",
+        "chatgpt_plan_authorization_exchange_failed" =>
+            "OpenAI rejected the authorization-code exchange. Verify the issued client registration and callback URI.",
+        "chatgpt_plan_authorization_invalid" =>
+            "The authorization did not return a valid reusable ChatGPT-plan grant.",
+        "chatgpt_plan_usage_scope_missing" =>
+            "The connected ChatGPT authorization did not grant all required plan-usage scopes.",
+        "chatgpt_plan_id_token_validation_failed" =>
+            "LEGEND could not validate the OpenAI identity token.",
+        _ => "The engineering control change was rejected by the canonical authority."
     };
 }

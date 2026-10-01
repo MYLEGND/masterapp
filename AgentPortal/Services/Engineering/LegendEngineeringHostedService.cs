@@ -10,11 +10,17 @@ internal sealed class LegendEngineeringHostedService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (configuration.GetValue<bool?>("LegendEngineering:Autonomous:Enabled") != true) return;
-        var intervalSeconds = Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Autonomous:ScanIntervalSeconds") ?? 60, 15, 900);
+        // Monitoring/reconciliation is always live. The Founder operational contract
+        // controls model execution and autonomous agent starts without disabling the
+        // deterministic incident/release loop.
+        var intervalSeconds = Math.Clamp(
+            configuration.GetValue<int?>("LegendEngineering:Autonomous:ScanIntervalSeconds") ?? 60,
+            15,
+            900);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
         await RunPassAsync(stoppingToken);
-        while (await timer.WaitForNextTickAsync(stoppingToken)) await RunPassAsync(stoppingToken);
+        while (await timer.WaitForNextTickAsync(stoppingToken))
+            await RunPassAsync(stoppingToken);
     }
 
     private async Task RunPassAsync(CancellationToken cancellationToken)
@@ -25,6 +31,7 @@ internal sealed class LegendEngineeringHostedService(
             var orchestrator = scope.ServiceProvider.GetRequiredService<ILegendEngineeringOrchestrator>();
             var store = scope.ServiceProvider.GetRequiredService<LegendEngineeringStateStore>();
             var adapter = scope.ServiceProvider.GetRequiredService<ILegendEngineeringAgentAdapter>();
+            var contractAuthority = scope.ServiceProvider.GetRequiredService<ILegendEngineeringContractAuthority>();
             var releasePlanner = scope.ServiceProvider.GetRequiredService<LegendEngineeringReleaseCohortPlanner>();
             var founderNotifications = scope.ServiceProvider.GetRequiredService<LegendEngineeringFounderNotificationService>();
 
@@ -33,21 +40,34 @@ internal sealed class LegendEngineeringHostedService(
                 cancellationToken);
 
             // CI/release reconciliation is deterministic and remains active even
-            // when ChatGPT plan execution is unavailable.
+            // when ChatGPT plan execution is unavailable or Founder-paused.
             await releasePlanner.ReconcileAndReleaseAsync(cancellationToken);
 
+            var contract = await contractAuthority.GetCurrentAsync(cancellationToken);
             var status = JsonSerializer.SerializeToElement(await adapter.GetStatusAsync(cancellationToken));
-            var ready = status.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True;
-            var blocker = ready ? null :
-                status.TryGetProperty("eligibility", out var eligibility) && eligibility.ValueKind == JsonValueKind.String
-                    ? eligibility.GetString()
-                    : "chatgpt_plan_executor_not_ready";
+            var runtimeReady = status.TryGetProperty("runtimeReady", out var readyValue) &&
+                               readyValue.ValueKind == JsonValueKind.True;
+            var autonomyEnabled = contract.AutonomousEngineeringEnabled && contract.ModelExecutionEnabled;
+            var blocker = autonomyEnabled && runtimeReady
+                ? null
+                : !contract.AutonomousEngineeringEnabled
+                    ? "engineering_autonomous_execution_paused"
+                    : !contract.ModelExecutionEnabled
+                        ? "engineering_operational_execution_paused"
+                        : status.TryGetProperty("eligibility", out var eligibility) &&
+                          eligibility.ValueKind == JsonValueKind.String
+                            ? eligibility.GetString()
+                            : "chatgpt_plan_executor_not_ready";
+
             var openWork = await store.GetOpenWorkItemsAsync(100, cancellationToken);
             await founderNotifications.NotifyActionableAsync(openWork, blocker, cancellationToken);
             await founderNotifications.NotifyDailyDigestAsync(openWork, cancellationToken);
-            if (!ready)
+
+            if (!autonomyEnabled || !runtimeReady)
             {
-                logger.LogInformation("LEGEND engineering monitoring active; autonomous model execution blocked ({Code}).", blocker);
+                logger.LogInformation(
+                    "LEGEND engineering monitoring active; autonomous model execution blocked ({Code}).",
+                    blocker);
                 return;
             }
 
@@ -56,7 +76,10 @@ internal sealed class LegendEngineeringHostedService(
                 .OrderBy(item => PriorityRank(item.PriorityClass))
                 .ThenByDescending(item => item.PriorityScore)
                 .ThenBy(item => item.UpdatedUtc)
-                .Take(Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Autonomous:MaxAgentStartsPerPass") ?? 2, 1, 4))
+                .Take(Math.Clamp(
+                    configuration.GetValue<int?>("LegendEngineering:Autonomous:MaxAgentStartsPerPass") ?? 2,
+                    1,
+                    4))
                 .ToArray();
 
             foreach (var item in candidates)
@@ -64,19 +87,27 @@ internal sealed class LegendEngineeringHostedService(
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    var context = await orchestrator.BootstrapSystemAsync(item.WorkItemId, item.AssignedRole, cancellationToken);
+                    var context = await orchestrator.BootstrapSystemAsync(
+                        item.WorkItemId,
+                        item.AssignedRole,
+                        cancellationToken);
                     await adapter.StartAsync(context.EngineeringContextId, cancellationToken);
                 }
                 catch (InvalidOperationException exception)
                 {
-                    logger.LogInformation("LEGEND engineering work {WorkItemId} did not start ({Code}).", item.WorkItemId, exception.Message);
+                    logger.LogInformation(
+                        "LEGEND engineering work {WorkItemId} did not start ({Code}).",
+                        item.WorkItemId,
+                        exception.Message);
                 }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)
         {
-            logger.LogWarning("LEGEND engineering scheduler pass failed closed ({ExceptionType}).", exception.GetType().Name);
+            logger.LogWarning(
+                "LEGEND engineering scheduler pass failed closed ({ExceptionType}).",
+                exception.GetType().Name);
         }
     }
 
@@ -86,5 +117,11 @@ internal sealed class LegendEngineeringHostedService(
             "NEEDS_SUPERVISOR" or "RECURRED_NEEDS_SUPERVISOR" or "REVIEW_REQUIRED" or
             "REVIEW_REJECTED" or "CI_FAILED_NEEDS_EVIDENCE";
 
-    private static int PriorityRank(string value) => value switch { "P1" => 1, "P2" => 2, "P3" => 3, _ => 4 };
+    private static int PriorityRank(string value) => value switch
+    {
+        "P1" => 1,
+        "P2" => 2,
+        "P3" => 3,
+        _ => 4
+    };
 }
