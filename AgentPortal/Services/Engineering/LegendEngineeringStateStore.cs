@@ -235,10 +235,14 @@ internal sealed class LegendEngineeringStateStore(MasterAppDbContext db)
             if (expires > boundedUntilUtc) expires = boundedUntilUtc;
             if (expires <= now) return false;
 
-            await UpdateWorkItemAsync(connection, transaction, Stamp(item with
+            // Heartbeats extend only the exact active lease. They do not
+            // create a new workflow state revision, so a legitimate long-running
+            // model turn cannot invalidate its own eventual state transition.
+            await UpdateWorkItemAsync(connection, transaction, item with
             {
-                LeaseExpiresUtc = expires
-            }), cancellationToken);
+                LeaseExpiresUtc = expires,
+                UpdatedUtc = now
+            }, cancellationToken);
             return true;
         }, cancellationToken);
     }
