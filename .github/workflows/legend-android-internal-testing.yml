@@ -48,19 +48,6 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        if: env.REUSE_ANDROID_BUNDLE != 'true'
-        uses: android-actions/setup-android@v4
-
-      - name: Install Android 17 SDK
-        if: env.REUSE_ANDROID_BUNDLE != 'true'
-        shell: bash
-        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
-
-      - name: Set up Gradle
-        if: env.REUSE_ANDROID_BUNDLE != 'true'
-        uses: gradle/actions/setup-gradle@v4
-
       - name: Validate protected build configuration
         shell: bash
         env:
@@ -162,6 +149,19 @@ jobs:
           path: ${{ runner.temp }}/legend-android-release
           run-id: ${{ steps.reuseandroid.outputs.run_id }}
           github-token: ${{ github.token }}
+
+      - name: Set up Android SDK
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android 17 SDK
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
+        shell: bash
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
+
+      - name: Set up Gradle
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Create production runtime configuration
         if: env.REUSE_ANDROID_BUNDLE != 'true'
