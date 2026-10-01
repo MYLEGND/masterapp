@@ -361,10 +361,12 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
 
         await _store.RecordUsageAsync(new EngineeringUsageObservation(
             attemptId, item.WorkItemId, EngineeringModelTier.CodeImplementation, EngineeringRole.CodexImplementer,
-            "ChatGPTPlanCodexAppServer", null, null, null, null, null, false, DateTime.UtcNow), default);
+            "ChatGPTPlanCodexAppServer", null, null, null, null, null, false, DateTime.UtcNow,
+            ProviderAttempted: true, LogicalAttemptCompleted: false, ProviderOutcome: "OUTCOME_UNKNOWN"), default);
         await _store.RecordUsageAsync(new EngineeringUsageObservation(
             attemptId, item.WorkItemId, EngineeringModelTier.CodeImplementation, EngineeringRole.CodexImplementer,
-            "ChatGPTPlanCodexAppServer", "thread-1", null, null, 123, null, true, DateTime.UtcNow), default);
+            "ChatGPTPlanCodexAppServer", "thread-1", null, null, 123, null, true, DateTime.UtcNow,
+            ProviderAttempted: true, LogicalAttemptCompleted: true, ProviderOutcome: "COMPLETED"), default);
 
         Assert.Equal(1, await _store.CountModelAttemptsAsync(item.WorkItemId, EngineeringRole.CodexImplementer, default));
         var totals = await _store.ReadUsageTotalsAsync(DateTime.UtcNow, default);
@@ -836,7 +838,15 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
               RefreshTokenCiphertext TEXT NOT NULL, GrantedScopesJson TEXT NOT NULL,
               AccessTokenExpiresUtc TEXT NOT NULL, State TEXT NOT NULL, Revision TEXT NOT NULL,
               RefreshLeaseIdentity TEXT NULL, RefreshLeaseUntilUtc TEXT NULL, ConnectedUtc TEXT NOT NULL,
-              LastRefreshedUtc TEXT NULL, UpdatedUtc TEXT NOT NULL);
+              LastRefreshedUtc TEXT NULL, UpdatedUtc TEXT NOT NULL,
+              ProviderBlockerClass TEXT NULL, ProviderBlockerCode TEXT NULL, ProviderBlockedUtc TEXT NULL,
+              ProviderRetryNotBeforeUtc TEXT NULL, ProviderRequestId TEXT NULL, ProviderHttpStatus INTEGER NULL,
+              ProviderErrorParam TEXT NULL, ProviderCircuitEpisodeId TEXT NULL, ProviderRecoveredEpisodeId TEXT NULL,
+              ProviderRecoveredUtc TEXT NULL, ProviderFailureStreak INTEGER NOT NULL DEFAULT 0,
+              ReadinessState TEXT NOT NULL DEFAULT 'UNVERIFIED', ReadinessSignature TEXT NULL,
+              ReadinessModelsJson TEXT NULL, ReadinessCheckedUtc TEXT NULL, ReadinessResponseId TEXT NULL,
+              ReadinessRequestId TEXT NULL, ReadinessCode TEXT NULL, ProviderExecutionLeaseIdentity TEXT NULL,
+              ProviderExecutionLeaseOwner TEXT NULL, ProviderExecutionLeaseUntilUtc TEXT NULL);
             CREATE TABLE LegendEngineeringChatGptPlanClientRegistration (
               RegistrationKey TEXT PRIMARY KEY, ClientId TEXT NOT NULL, AuthenticationMethod TEXT NOT NULL,
               ClientSecretCiphertext TEXT NULL, EligibilityConfirmed INTEGER NOT NULL, Revision TEXT NOT NULL,
@@ -859,7 +869,10 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             CREATE TABLE LegendEngineeringUsage (
               UsageId TEXT PRIMARY KEY, WorkItemId TEXT NOT NULL, ModelTier TEXT NOT NULL, Role TEXT NOT NULL,
               Provider TEXT NOT NULL, SessionId TEXT NULL, InputTokens INTEGER NULL, OutputTokens INTEGER NULL,
-              TotalTokens INTEGER NULL, CostMicrousd INTEGER NULL, UsageObserved INTEGER NOT NULL, CreatedUtc TEXT NOT NULL);
+              TotalTokens INTEGER NULL, CostMicrousd INTEGER NULL, UsageObserved INTEGER NOT NULL, CreatedUtc TEXT NOT NULL,
+              ProviderAttempted INTEGER NOT NULL DEFAULT 0, LogicalAttemptCompleted INTEGER NOT NULL DEFAULT 0,
+              ProviderOutcome TEXT NULL, ProviderStatusCode INTEGER NULL, ProviderErrorCode TEXT NULL,
+              ProviderErrorParam TEXT NULL, ProviderRequestId TEXT NULL);
             """;
         command.ExecuteNonQuery();
     }
