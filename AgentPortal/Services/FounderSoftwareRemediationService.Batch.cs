@@ -259,6 +259,7 @@ public sealed partial class FounderSoftwareRemediationService
             return new { capability = "release_approved_repair", released = false, publicationRequested = true,
                 approvedHeadSha = headSha, publishedHeadSha = publishSha, treeSha = tree, pullRequestNumber = publicationNumber,
                 publicationBranch,
+                batchRevision = batch.Revision,
                 deployment = "Existing protected workflow requested; checks, merge and live deployment are not yet verified." };
         }
         catch (Exception)
