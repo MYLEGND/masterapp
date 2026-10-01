@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Domain.Engineering;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Services.Engineering;
 
@@ -9,13 +11,19 @@ internal sealed record EngineeringReleaseDecision(
 
 internal sealed class LegendEngineeringReleaseCohortPlanner(
     LegendEngineeringStateStore store,
-    IFounderSoftwareRemediationService remediation)
+    IFounderSoftwareRemediationService remediation,
+    MasterAppDbContext db,
+    IConfiguration configuration)
 {
     internal async Task<object> ReconcileAndReleaseAsync(CancellationToken cancellationToken)
     {
         var items = await store.GetOpenWorkItemsAsync(500, cancellationToken);
         foreach (var item in items.Where(item => item.State == "RELEASE_REQUESTED"))
             await ReconcileDeploymentAsync(item, cancellationToken);
+
+        items = await store.GetOpenWorkItemsAsync(500, cancellationToken);
+        foreach (var item in items.Where(item => item.State == "LIVE_FUNCTIONAL_PROOF_REQUIRED"))
+            await ReconcileFunctionalProofAsync(item, cancellationToken);
 
         items = await store.GetOpenWorkItemsAsync(500, cancellationToken);
         foreach (var item in items.Where(item => item.State == "REVIEWED" && item.PullRequestNumber is > 0 && LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha)))
@@ -129,6 +137,82 @@ internal sealed class LegendEngineeringReleaseCohortPlanner(
                     UpdatedUtc = DateTime.UtcNow
                 }, cancellationToken);
         }
+    }
+
+    private async Task ReconcileFunctionalProofAsync(
+        EngineeringWorkItemSnapshot item,
+        CancellationToken cancellationToken)
+    {
+        if (!LegendEngineeringPolicies.IsImmutableSha(item.MergedSha) ||
+            item.DeploymentVerifiedUtc is null)
+            return;
+
+        var original = await db.RuntimeDiagnosticIncidents.AsNoTracking()
+            .Where(row => item.IncidentIds.Contains(row.Id))
+            .ToArrayAsync(cancellationToken);
+        if (original.Length == 0)
+            return;
+
+        // Browser/native-visible failures require the explicit page/reproducer
+        // proof path. Only server incidents may close from a quiet-window proof.
+        if (original.Any(row => !string.Equals(row.Platform, "Server", StringComparison.Ordinal)))
+            return;
+
+        var stabilityMinutes = Math.Clamp(
+            configuration.GetValue<int?>("LegendEngineering:Autonomous:BackendStabilityMinutes") ?? 10,
+            2,
+            60);
+        var threshold = item.DeploymentVerifiedUtc.Value.AddMinutes(stabilityMinutes);
+        if (DateTime.UtcNow < threshold)
+            return;
+
+        var applications = item.AffectedApplications.ToArray();
+        var recent = await db.RuntimeDiagnosticIncidents.AsNoTracking()
+            .Where(row => row.LastSeenUtc > item.DeploymentVerifiedUtc.Value &&
+                          applications.Contains(row.AppIdentifier))
+            .OrderByDescending(row => row.LastSeenUtc)
+            .Take(1000)
+            .ToArrayAsync(cancellationToken);
+
+        if (!RuntimeQuietWindowProvesBackendRepair(
+                item,
+                original,
+                recent,
+                DateTime.UtcNow,
+                TimeSpan.FromMinutes(stabilityMinutes)))
+            return;
+
+        await store.UpdateWorkItemAsync(item with
+        {
+            State = "COMPLETED",
+            ValidationState = "LIVE_VERIFIED",
+            LeaseOwner = null,
+            LeaseIdentity = null,
+            LeaseExpiresUtc = null,
+            UpdatedUtc = DateTime.UtcNow
+        }, cancellationToken);
+    }
+
+    internal static bool RuntimeQuietWindowProvesBackendRepair(
+        EngineeringWorkItemSnapshot item,
+        IReadOnlyList<Domain.Entities.RuntimeDiagnosticIncident> original,
+        IReadOnlyList<Domain.Entities.RuntimeDiagnosticIncident> recent,
+        DateTime nowUtc,
+        TimeSpan stabilityWindow)
+    {
+        if (!LegendEngineeringPolicies.IsImmutableSha(item.MergedSha) ||
+            item.DeploymentVerifiedUtc is null ||
+            original.Count == 0 ||
+            original.Any(row => !string.Equals(row.Platform, "Server", StringComparison.Ordinal)) ||
+            nowUtc < item.DeploymentVerifiedUtc.Value.Add(stabilityWindow))
+            return false;
+
+        return !recent.Any(incident =>
+            incident.LastSeenUtc > item.DeploymentVerifiedUtc.Value &&
+            string.Equals(
+                LegendEngineeringPolicies.Classify(incident).CanonicalAuthorityKey,
+                item.CanonicalAuthorityKey,
+                StringComparison.Ordinal));
     }
 
     internal static EngineeringReleaseDecision Plan(IReadOnlyList<EngineeringWorkItemSnapshot> items, DateTime nowUtc)
