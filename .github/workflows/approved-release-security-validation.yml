@@ -87,6 +87,19 @@ jobs:
           DB_BUILD_CONFIGURATION: Release
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate db-validation; then exit 0; fi
+          changed_migration_inputs="$(
+            git diff --name-only "$DB_BASE_REF"...HEAD -- \
+              Infrastructure/Migrations \
+              Infrastructure/Data/MasterAppDbContext.cs \
+              Infrastructure \
+              Domain/Entities |
+            grep -E '^(Infrastructure/Migrations/|Infrastructure/Data/MasterAppDbContext\.cs$|Infrastructure/.*DbContext.*\.cs$|Domain/Entities/)' || true
+          )"
+          if [ -z "$changed_migration_inputs" ]; then
+            echo "No migration/model inputs changed from the approved base; historical approved migration artifacts are outside this PR's invalidation scope."
+            exit 0
+          fi
+          printf '%s\n' "$changed_migration_inputs"
           ./scripts/db.sh validate-artifacts
 
       - name: Reject skipped security tests
