@@ -331,16 +331,15 @@ internal sealed class ChatGptPlanResponsesAdapter(
                 return Failure(credential.ProviderBlockerCode!);
             }
 
-            var catalog = await GetModelCatalogAsync(credential, cancellationToken);
-            if (!catalog.Ready)
-                return Failure(catalog.Code);
-
             var signature = ReadinessSignature(credential.ClientId, operationalContract);
             if (!string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) ||
                 !string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase))
                 return Failure("chatgpt_plan_readiness_canary_required");
 
-            var model = ResolveReadyModel(context.Role, credential, catalog);
+            // The canary already proved this exact role/model payload. Do not poll
+            // the catalog for every work item; periodic runtime reconciliation owns
+            // model retirement/disappearance detection.
+            var model = ResolveCachedReadyModel(context.Role, credential);
             if (model is null)
                 return Failure("chatgpt_plan_model_binding_unavailable");
 
@@ -436,9 +435,16 @@ internal sealed class ChatGptPlanResponsesAdapter(
             if (!currentBinding.Valid)
                 return Failure(currentBinding.Code);
 
+            var currentItem = await store.GetWorkItemAsync(
+                item.WorkItemId,
+                cancellationToken);
+            if (currentItem is null ||
+                !string.Equals(currentItem.LeaseIdentity, context.LeaseIdentity, StringComparison.Ordinal))
+                return Failure("engineering_lease_changed");
+
             return await ApplyOutcomeAsync(
                 context,
-                item,
+                currentItem,
                 run.ResponseId!,
                 run.Output!.Value,
                 cancellationToken);
@@ -486,14 +492,35 @@ internal sealed class ChatGptPlanResponsesAdapter(
         try
         {
             using var response = await client.SendAsync(request, cancellationToken);
+            var requestId = ProviderRequestId(response);
+            var retryAfter = RetryAfterUtc(response);
             var body = await ReadBoundedBodyAsync(response, 1024 * 1024, cancellationToken);
             if (!response.IsSuccessStatusCode)
-                return new(false, "chatgpt_plan_model_catalog_unavailable", []);
+            {
+                var error = ReadProviderError(body);
+                return new(
+                    false,
+                    MapHttpFailure(response.StatusCode, error.Code),
+                    [],
+                    (int)response.StatusCode,
+                    error.Code,
+                    error.Param,
+                    requestId,
+                    retryAfter);
+            }
 
             using var json = JsonDocument.Parse(body);
             if (!json.RootElement.TryGetProperty("models", out var models) ||
                 models.ValueKind != JsonValueKind.Array)
-                return new(false, "chatgpt_plan_model_catalog_invalid", []);
+                return new(
+                    false,
+                    "chatgpt_plan_model_catalog_invalid",
+                    [],
+                    (int)response.StatusCode,
+                    null,
+                    null,
+                    requestId,
+                    retryAfter);
 
             var values = new List<EngineeringModelOption>();
             foreach (var model in models.EnumerateArray())
@@ -517,8 +544,24 @@ internal sealed class ChatGptPlanResponsesAdapter(
             }
 
             return values.Count == 0
-                ? new(false, "chatgpt_plan_model_catalog_empty", [])
-                : new(true, "chatgpt_plan_model_catalog_ready", values);
+                ? new(
+                    false,
+                    "chatgpt_plan_model_catalog_empty",
+                    [],
+                    (int)response.StatusCode,
+                    null,
+                    null,
+                    requestId,
+                    retryAfter)
+                : new(
+                    true,
+                    "chatgpt_plan_model_catalog_ready",
+                    values,
+                    (int)response.StatusCode,
+                    null,
+                    null,
+                    requestId,
+                    retryAfter);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -535,14 +578,40 @@ internal sealed class ChatGptPlanResponsesAdapter(
         ChatGptPlanCredentialState credential,
         EngineeringModelCatalog catalog)
     {
-        if (!catalog.Ready || credential.ReadinessModels is null ||
-            !credential.ReadinessModels.TryGetValue(role, out var model) ||
-            !ValidModelSlug(model))
+        var model = ResolveCachedReadyModel(role, credential);
+        if (model is null || !catalog.Ready)
             return null;
         return catalog.Models.Any(option =>
             string.Equals(option.Slug, model, StringComparison.Ordinal))
             ? model
             : null;
+    }
+
+    private static string? ResolveCachedReadyModel(
+        string role,
+        ChatGptPlanCredentialState credential)
+    {
+        if (credential.ReadinessModels is null ||
+            !credential.ReadinessModels.TryGetValue(role, out var model) ||
+            !ValidModelSlug(model))
+            return null;
+        return model;
+    }
+
+    private static string[] AutoCandidates(
+        string role,
+        ChatGptPlanCredentialState credential,
+        EngineeringModelCatalog catalog)
+    {
+        var previous = ResolveCachedReadyModel(role, credential);
+        return catalog.Models
+            .Select(model => model.Slug)
+            .OrderBy(model =>
+                string.Equals(model, previous, StringComparison.Ordinal) ? 0 : 1)
+            .ThenBy(model => model, StringComparer.Ordinal)
+            .Distinct(StringComparer.Ordinal)
+            .Take(4)
+            .ToArray();
     }
 
     private static string ReadinessSignature(
@@ -572,6 +641,32 @@ internal sealed class ChatGptPlanResponsesAdapter(
         string.Equals(run.Code, "subscription_sharing_unsupported_capability", StringComparison.Ordinal) ||
         string.Equals(run.ProviderErrorCode, "subscription_sharing_unsupported_capability", StringComparison.Ordinal);
 
+    private static ChatGptPlanProviderFailure ClassifyCatalogFailure(
+        EngineeringModelCatalog catalog,
+        int failureCount)
+    {
+        if (catalog.Code is "chatgpt_plan_model_catalog_invalid" or
+                            "chatgpt_plan_model_catalog_empty")
+            return new(
+                "MODEL_CATALOG",
+                catalog.Code,
+                null,
+                catalog.ProviderRequestId,
+                catalog.HttpStatus,
+                catalog.ProviderErrorParam);
+
+        var run = PlanRun.Fail(
+            catalog.Code,
+            providerAttempted: true,
+            providerOutcome: "CATALOG_FAILED",
+            httpStatus: catalog.HttpStatus,
+            providerErrorCode: catalog.ProviderErrorCode,
+            providerErrorParam: catalog.ProviderErrorParam,
+            providerRequestId: catalog.ProviderRequestId,
+            retryAfterUtc: catalog.RetryAfterUtc);
+        return ClassifyProviderFailure(run, failureCount, Guid.Empty);
+    }
+
     private static ChatGptPlanProviderFailure ClassifyProviderFailure(
         PlanRun run,
         int failureCount,
@@ -595,7 +690,8 @@ internal sealed class ChatGptPlanResponsesAdapter(
                              "chatgpt_plan_response_stream_closed" or
                              "chatgpt_plan_response_incomplete" or
                              "chatgpt_plan_response_failed" or
-                             "chatgpt_plan_response_execution_failed_closed")
+                             "chatgpt_plan_response_execution_failed_closed" or
+                             "chatgpt_plan_model_catalog_unavailable")
         {
             blockerClass = "TEMPORARY_PROVIDER";
             retry = run.RetryAfterUtc ?? BoundedRetryUtc(failureCount, workItemId);
@@ -605,23 +701,38 @@ internal sealed class ChatGptPlanResponsesAdapter(
             blockerClass = "PLAN_ELIGIBILITY";
             retry = null;
         }
-        else if (code == "subscription_sharing_unsupported_capability")
+        else if (code is "subscription_sharing_unsupported_capability" or
+                         "model_not_found" or
+                         "chatgpt_plan_model_binding_unavailable" ||
+                 run.HttpStatus == 404)
         {
             blockerClass = "MODEL_BINDING";
             retry = null;
         }
+        else if (code == "subscription_sharing_route_not_supported")
+        {
+            blockerClass = "ROUTE_CONFIGURATION";
+            retry = null;
+        }
         else if (code is "subscription_sharing_invalid_subscriber" or
+                         "subscription_sharing_invalid_user" or
                          "chatgpt_plan_reauthorization_required" ||
                  run.HttpStatus == 401)
         {
             blockerClass = "AUTHENTICATION";
             retry = null;
         }
-        else if (code.Contains("scope", StringComparison.OrdinalIgnoreCase) ||
-                 code.Contains("authorization_context", StringComparison.OrdinalIgnoreCase) ||
-                 run.HttpStatus == 403)
+        else if (code is "chatpass_v2_scope_not_authorized" or
+                         "chatpass_v2_invalid_authorization_context" ||
+                 code.Contains("scope", StringComparison.OrdinalIgnoreCase) ||
+                 code.Contains("authorization_context", StringComparison.OrdinalIgnoreCase))
         {
             blockerClass = "GRANT_CONFIGURATION";
+            retry = null;
+        }
+        else if (run.HttpStatus == 403)
+        {
+            blockerClass = "ADMISSION_POLICY";
             retry = null;
         }
         else
