@@ -128,6 +128,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_system_health" or
             "legend_configuration_presence" or
             "legend_software_remediation_status" or
+            "legend_engineering_status" or
             "legend_inspect_repository" or
             "legend_prepare_repair_packet" or
             "legend_inspect_repair_validation" or
@@ -199,6 +200,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_configuration_presence" or
             "legend_request_teacher_escalation" or
             "legend_software_remediation_status" or
+            "legend_engineering_status" or
             "legend_inspect_repository" or
             "legend_prepare_repair_packet" or
             "legend_inspect_repair_validation" or
@@ -529,6 +531,35 @@ internal sealed partial class LegendFounderToolAuthority
 
                 return SerializeUnbounded(
                     await _softwareRemediation.GetStatusAsync(cancellationToken));
+            }
+
+            case "legend_engineering_status":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"engineering_control_plane_unavailable"}""";
+                await using var scope = _authorizationScopes.CreateAsyncScope();
+                var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
+                var adapter = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringAgentAdapter>();
+                return SerializeUnbounded(new
+                {
+                    controlPlane = await orchestrator.GetStatusAsync(cancellationToken),
+                    executor = await adapter.GetStatusAsync(cancellationToken)
+                });
+            }
+
+            case "legend_engineering_bootstrap":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"engineering_control_plane_unavailable"}""";
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var workItemRaw = ReadRequiredString(arguments.RootElement, "work_item_id");
+                var role = ReadRequiredString(arguments.RootElement, "role");
+                if (!Guid.TryParse(workItemRaw, out var workItemId) || role is not
+                    ("HEAD_GPT" or "CODEX_IMPLEMENTER" or "INDEPENDENT_REVIEWER" or "LIVE_VERIFIER"))
+                    return """{"ok":false,"error":"engineering_bootstrap_arguments_invalid"}""";
+                await using var scope = _authorizationScopes.CreateAsyncScope();
+                var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
+                return SerializeUnbounded(await orchestrator.BootstrapAsync(founder, workItemId, role, cancellationToken));
             }
 
             case "legend_inspect_repository":
@@ -2962,6 +2993,41 @@ internal sealed partial class LegendFounderToolAuthority
                     type = "object",
                     properties = new { },
                     required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+
+            new
+            {
+                type = "function",
+                name = "legend_engineering_status",
+                description =
+                    "Read the Founder-only autonomous engineering control-plane status: durable work-item counts, priorities, risk states, local budget mode, and whether the configured ChatGPT-plan-backed Codex executor is eligible and ready. No OAuth token, API key, private source, customer data, or secret value is returned.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_engineering_bootstrap",
+                description =
+                    "Founder-only request to mint one server-enforced EngineeringContext for an existing durable engineering work item and its exact server-assigned role. This cannot change risk, role, scope, live SHA, evidence revision, or source disclosure; mismatches fail closed.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        work_item_id = new { type = "string", minLength = 36, maxLength = 36 },
+                        role = new { type = "string", @enum = new[] { "HEAD_GPT", "CODEX_IMPLEMENTER", "INDEPENDENT_REVIEWER", "LIVE_VERIFIER" } }
+                    },
+                    required = new[] { "work_item_id", "role" },
                     additionalProperties = false
                 },
                 strict = true
