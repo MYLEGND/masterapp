@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Mvc.Controllers;
 
 namespace Shared.Diagnostics;
 
@@ -10,6 +11,12 @@ public sealed record LegendSitePageIssue(
     string? Category,
     string? Operation,
     string? SourcePath);
+
+public sealed record LegendRouteAuthority(
+    string Route,
+    string? Controller,
+    string? Action,
+    string? Assembly);
 
 public sealed record LegendSitePageSnapshot(
     string? Path,
@@ -70,7 +77,7 @@ public static class LegendSiteToolDisclosureAuthority
         string applicationName,
         string scopeClassification,
         string? sourceRevision,
-        string? routePattern)
+        LegendRouteAuthority routeAuthority)
     {
         snapshot ??= new LegendSitePageSnapshot(null, null, null, null, null, null, null, null, null, null);
         var width = snapshot.ViewportWidth is >= 240 and <= 10000 ? snapshot.ViewportWidth : null;
@@ -97,7 +104,13 @@ public static class LegendSiteToolDisclosureAuthority
             application = SafeApplication(applicationName),
             scope = SafeScope(scopeClassification),
             sourceRevision = IsSha(sourceRevision) ? sourceRevision!.ToLowerInvariant() : null,
-            route = SafeRoutePattern(routePattern),
+            route = routeAuthority.Route,
+            routeAuthority = new
+            {
+                controller = SafeSymbol(routeAuthority.Controller, 96),
+                action = SafeSymbol(routeAuthority.Action, 96),
+                assembly = SafeSymbol(routeAuthority.Assembly, 96)
+            },
             viewport = new
             {
                 width,
@@ -110,7 +123,11 @@ public static class LegendSiteToolDisclosureAuthority
             actionKeys = SafeSymbols(snapshot.ActionKeys, 96),
             modalIds = SafeSymbols(snapshot.ModalIds, 96),
             loadedAssets = (snapshot.AssetPaths ?? Array.Empty<string>())
-                .Select(SafeAsset).Where(value => value is not null).Distinct(StringComparer.Ordinal).Take(64).ToArray(),
+                .Select(SafeAsset).Where(value => value is not null).Cast<string>().Distinct(StringComparer.Ordinal).Take(64).ToArray(),
+            duplicateAssets = (snapshot.AssetPaths ?? Array.Empty<string>())
+                .Select(SafeAsset).Where(value => value is not null).Cast<string>()
+                .GroupBy(value => value, StringComparer.Ordinal).Where(group => group.Count() > 1)
+                .Select(group => group.Key).Take(32).ToArray(),
             issues,
             privacy = new
             {
@@ -126,11 +143,11 @@ public static class LegendSiteToolDisclosureAuthority
         };
     }
 
-    public static string ResolveRoutePattern(string? path, IEnumerable<EndpointDataSource> endpointSources)
+    public static LegendRouteAuthority ResolveRouteAuthority(string? path, IEnumerable<EndpointDataSource> endpointSources)
     {
         if (string.IsNullOrWhiteSpace(path) || path.Length > 1024 || !path.StartsWith('/') ||
             path.StartsWith("//", StringComparison.Ordinal) || path.Contains('?') || path.Contains('#'))
-            return "/unmatched";
+            return new("/unmatched", null, null, null);
 
         foreach (var endpoint in endpointSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>())
         {
@@ -141,13 +158,18 @@ public static class LegendSiteToolDisclosureAuthority
                 var matcher = new Microsoft.AspNetCore.Routing.Template.TemplateMatcher(
                     Microsoft.AspNetCore.Routing.Template.TemplateParser.Parse(pattern),
                     new RouteValueDictionary());
-                if (matcher.TryMatch(path, new RouteValueDictionary()))
-                    return SafeRoutePattern(pattern);
+                if (!matcher.TryMatch(path, new RouteValueDictionary())) continue;
+                var action = endpoint.Metadata.GetMetadata<ControllerActionDescriptor>();
+                return new(
+                    SafeRoutePattern(pattern),
+                    action?.ControllerTypeInfo.Name,
+                    action?.ActionName,
+                    action?.ControllerTypeInfo.Assembly.GetName().Name);
             }
             catch (ArgumentException) { }
         }
 
-        return "/unmatched";
+        return new("/unmatched", null, null, null);
     }
 
     public static string? EntryAssemblyRevision()
