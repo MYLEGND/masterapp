@@ -154,13 +154,23 @@ internal sealed class LegendEngineeringOrchestrator(
             throw new InvalidOperationException("work_item_incident_evidence_missing");
 
         var primary = incidents[0];
-        var permitted = incidents.Select(row => row.SourceFilePath)
+        var safeHints = incidents.Select(row => row.SourceFilePath)
             .Where(path => !string.IsNullOrWhiteSpace(path) &&
                            FounderSoftwareRemediationService.ClassifyInspectableSourcePath(path!) == LegendSiteToolDisclosureAuthority.SafeSource)
             .Select(path => NormalizePath(path!))
             .Distinct(StringComparer.Ordinal)
-            .OrderBy(path => path, StringComparer.Ordinal)
+            .Take(16)
             .ToArray();
+        var sourceResolution = safeHints.Length == 0
+            ? new FounderRepositorySourceResolution(false, "repository_source_hints_missing", Array.Empty<string>(), false)
+            : await remediation.ResolveRepositorySourcePathsAsync(
+                safeHints,
+                item.AffectedApplications.FirstOrDefault(),
+                item.LiveSha,
+                cancellationToken);
+        var permitted = sourceResolution.Ready
+            ? sourceResolution.Paths.OrderBy(path => path, StringComparer.Ordinal).ToArray()
+            : Array.Empty<string>();
         var protectedPaths = incidents.Select(row => row.SourceFilePath)
             .Where(path => !string.IsNullOrWhiteSpace(path) &&
                            FounderSoftwareRemediationService.ClassifyInspectableSourcePath(path!) != LegendSiteToolDisclosureAuthority.SafeSource)
