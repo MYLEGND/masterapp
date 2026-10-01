@@ -53,7 +53,7 @@ internal sealed class LegendEngineeringHostedService(
                 status.TryGetProperty("runtimeReady", out var initialReady) &&
                 initialReady.ValueKind == JsonValueKind.True;
             if (contract.AutonomousEngineeringEnabled && contract.ModelExecutionEnabled &&
-                !runtimeInitiallyReady && RuntimeReconciliationDue(status, DateTime.UtcNow))
+                RuntimeReconciliationDue(status, DateTime.UtcNow))
             {
                 await adapter.ReconcileRuntimeAsync(force: false, cancellationToken);
                 status = JsonSerializer.SerializeToElement(
@@ -155,19 +155,42 @@ internal sealed class LegendEngineeringHostedService(
 
     private static bool RuntimeReconciliationDue(JsonElement status, DateTime nowUtc)
     {
-        if (status.TryGetProperty("providerBlockerCode", out var blocker) &&
+        var blockerClass =
+            status.TryGetProperty("providerBlockerClass", out var blockerClassValue) &&
+            blockerClassValue.ValueKind == JsonValueKind.String
+                ? blockerClassValue.GetString()
+                : null;
+        var hasBlocker =
+            status.TryGetProperty("providerBlockerCode", out var blocker) &&
             blocker.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(blocker.GetString()))
+            !string.IsNullOrWhiteSpace(blocker.GetString());
+        var readinessState =
+            status.TryGetProperty("readinessState", out var readiness) &&
+            readiness.ValueKind == JsonValueKind.String
+                ? readiness.GetString()
+                : null;
+
+        if (hasBlocker)
         {
+            // A changed model binding marks readiness UNVERIFIED. That is the only
+            // no-timer circuit class automatically retried after a contract change.
+            if (blockerClass == "MODEL_BINDING" &&
+                !string.Equals(readinessState, "READY", StringComparison.Ordinal))
+                return true;
+
             return status.TryGetProperty("providerRetryNotBeforeUtc", out var retry) &&
                    retry.ValueKind == JsonValueKind.String &&
                    retry.TryGetDateTime(out var retryUtc) &&
                    retryUtc <= nowUtc;
         }
 
-        return status.TryGetProperty("readinessState", out var readiness) &&
-               readiness.ValueKind == JsonValueKind.String &&
-               !string.Equals(readiness.GetString(), "READY", StringComparison.Ordinal);
+        if (!string.Equals(readinessState, "READY", StringComparison.Ordinal))
+            return true;
+
+        return status.TryGetProperty("readinessCheckedUtc", out var checkedValue) &&
+               checkedValue.ValueKind == JsonValueKind.String &&
+               checkedValue.TryGetDateTime(out var checkedUtc) &&
+               checkedUtc <= nowUtc.AddHours(-6);
     }
 
     private static int PriorityRank(string value) => value switch
