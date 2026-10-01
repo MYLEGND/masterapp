@@ -486,22 +486,29 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('overwrite: true', workflow)
         self.assertIn('SourceRevisionId="$APPLICATION_RELEASE_SHA"', workflow)
         self.assertIn('verify-release-coverage', workflow)
+        self.assertIn('Retain exact approved release receipt', workflow)
+        self.assertIn('legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}', workflow)
+        self.assertIn("'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA']", workflow)
 
-    def test_rigorous_retry_preserves_same_run_security_evidence_only(self):
-        workflow=(ROOT.parent / '.github/workflows/agentportal-production-deploy.yml').read_text()
-        self.assertIn('Reuse exact successful release-security evidence when available', workflow)
-        self.assertIn('GITHUB_RUN_ATTEMPT', workflow)
-        self.assertIn('prior_full_suite', workflow)
-        self.assertIn('No same-run successful release-security evidence exists', workflow)
-        self.assertIn('PRESERVE_DB_VALIDATION', workflow)
-        self.assertIn('PRESERVE_VULNERABILITY_AUDIT', workflow)
-        self.assertIn('legend-release-security-tested-', workflow)
+    def test_approved_security_validation_preserves_static_release_safety_gates(self):
+        workflow=(ROOT.parent / '.github/workflows/approved-release-security-validation.yml').read_text()
+        self.assertIn('scripts/validation-resume.py plan', workflow)
+        self.assertIn('Validate database migration artifacts', workflow)
+        self.assertIn('Reject skipped security tests', workflow)
+        self.assertIn('Audit dependency vulnerabilities', workflow)
+        self.assertIn('Scan committed configuration for secrets', workflow)
+        self.assertIn('Verify shared composition authorities', workflow)
+        self.assertIn('Reject inline Azure key-ring wiring', workflow)
+        self.assertIn('cancel-in-progress: false', workflow)
+        self.assertNotIn('webapps-deploy', workflow)
+        self.assertNotIn('database update', workflow)
+        self.assertNotIn('git/ref/heads/production', workflow)
 
-    def test_website_deploy_consumes_validated_artifact_without_rebuild(self):
-        workflow=(ROOT.parent / '.github/workflows/legend-website-production-deploy.yml').read_text()
-        self.assertIn('Reuse exact validated website artifact when available', workflow)
-        self.assertIn('Download exact validated production website', workflow)
-        self.assertNotIn('Rebuild exact production website', workflow)
+    def test_old_second_release_workflows_are_removed(self):
+        workflows=ROOT.parent / '.github/workflows'
+        self.assertFalse((workflows / 'agentportal-production-deploy.yml').exists())
+        self.assertFalse((workflows / 'legend-website-production-deploy.yml').exists())
+        self.assertFalse((workflows / 'legend-canonical-branch-parity.yml').exists())
 
     def test_android_build_reuse_is_bound_to_source_config_and_certificate_identity(self):
         workflow=(ROOT.parent / '.github/workflows/legend-android-internal-testing.yml').read_text()
@@ -516,12 +523,14 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
             'masterapp-platform-architecture-validation.yml',
             'step6-openai-ads-execution-validation.yml',
             'steps7-8-governed-advertising-validation.yml',
+            'approved-release-security-validation.yml',
         ):
             workflow=(ROOT.parent / '.github/workflows' / name).read_text()
             self.assertIn('scripts/validation-resume.py plan', workflow, name)
             self.assertIn('cancel-in-progress: false', workflow, name)
         step5=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
-        self.assertIn('scripts/validation-resume.py job-unchanged', step5)
+        self.assertIn('candidate_baseline_jobs_unchanged', step5)
+        self.assertNotIn('scripts/validation-resume.py job-unchanged', step5)
         self.assertIn('cancel-in-progress: false', step5)
         self.assertIn('mode=reuse', step5)
         self.assertIn('Search backward for the newest complete evidence pair', step5)
@@ -529,14 +538,14 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
 
     def test_release_orchestrator_contract_checks_are_receipt_reusable(self):
         lifecycle=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
-        parity=(ROOT.parent / '.github/workflows/legend-canonical-branch-parity.yml').read_text()
         self.assertIn('REUSE_LIFECYCLE_CONTRACTS=true', lifecycle)
         self.assertIn('legend-lifecycle-contracts-', lifecycle)
         self.assertIn('scripts/validation-resume.py', lifecycle)
         self.assertIn('.github/workflows/step5-isolated-conversion-mapping-validation.yml', lifecycle)
+        self.assertIn('.github/workflows/approved-release-security-validation.yml', lifecycle)
         self.assertIn('.github/workflows/all-intentional-direct-release-20260918.yml', lifecycle)
-        self.assertIn('REUSE_PARITY_CONTRACTS=true', parity)
-        self.assertIn('legend-parity-contracts-', parity)
+        self.assertIn('Recover authorized direct release when needed', lifecycle)
+        self.assertNotIn('production gates', lifecycle.lower())
 
 
 class ReleasePolicy(unittest.TestCase):

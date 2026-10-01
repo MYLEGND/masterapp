@@ -11,13 +11,12 @@ acceptance gate. No Containers permission is implied by historical sandbox work.
 `AgentPortal/Services/FounderSoftwareRemediationService.cs` already verifies the
 requested PR head, configured base, open state, and observed checks. Its check
 receipt explicitly denies protected merge authority. The batch/completion partials
-retain the reviewed revision, published branch/tree, production workflow evidence,
+retain the reviewed revision, published branch/tree, approved direct-release receipt evidence,
 and live deployment provenance. Those services remain the authority.
 
-The existing `agentportal-production-deploy.yml`,
+The existing `approved-release-security-validation.yml`,
 `legend-production-readonly-diagnostic.yml`, and
-`all-intentional-direct-release-20260918.yml` use production environments,
-credentials, or OIDC. They are not suitable unchanged for candidate execution.
+`all-intentional-direct-release-20260918.yml` have distinct trust boundaries. The security validator is credential-free; the read-only diagnostic and direct release may use production-scoped credentials or OIDC. They are not suitable unchanged for candidate execution.
 A privileged review must introduce a trusted, fixed validation job before this
 helper can run there. The helper is not a substitute for that review.
 
@@ -191,8 +190,7 @@ repository, immutable trusted workflow path/revision, expected event, exact
 approved candidate input, run/attempt IDs, required job conclusion, and artifact
 identity. Arbitrary matching check names, a candidate-written success JSON, or
 counts alone do not authorize merge. Keep artifact parsing in a trusted context
-that never executes artifact contents. Protected merge/deployment remain with
-the existing reviewed production workflow and completion checks.
+that never executes artifact contents. Protected merge remains with the approved-branch lifecycle; deployment remains solely with `all-intentional-direct-release-20260918.yml` and its live-provenance completion checks.
 
 Local validation: `python3 -B scripts/test-legend-candidate-validation.py` runs
 synthetic temporary Git repositories and fabricated test-report fixtures. These

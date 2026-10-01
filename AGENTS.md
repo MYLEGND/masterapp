@@ -32,7 +32,7 @@ For a live LEGEND defect, prefer governed live evidence over inference from a sc
 
 ## Repository changes
 
-- Never edit `legend/approved-changes` or `production` directly.
+- Never edit the protected `legend/approved-changes` branch directly.
 - Start from the exact current `legend/approved-changes` head on an isolated branch.
 - Repair the canonical owner. Do not add overrides, parallel services, duplicate
   registries, shadow events, copied authorization, or symptom-masking CSS/JS.

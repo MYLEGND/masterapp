@@ -339,6 +339,55 @@ jobs:
         self.assertTrue(plan["gates"]["build"]["run"])
         self.assertTrue(plan["gates"]["restore"]["run"])
 
+    def test_security_validator_preserves_unaffected_successful_gates(self):
+        workflow = "approved-release-security-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["AgentPortal/Services/Engineering/LegendEngineeringOrchestrator.cs"],
+            "prior_run",
+        )
+        self.assertEqual("incremental", plan["mode"])
+        self.assertFalse(plan["gates"]["db-validation"]["run"])
+        self.assertFalse(plan["gates"]["no-skips"]["run"])
+        self.assertFalse(plan["gates"]["vulnerabilities"]["run"])
+        self.assertFalse(plan["gates"]["secret-scan"]["run"])
+        self.assertFalse(plan["gates"]["keyring"]["run"])
+        self.assertFalse(plan["gates"]["composition"]["run"])
+        self.assertTrue(plan["gates"]["diff-check"]["run"])
+
+    def test_security_project_graph_change_reruns_restore_and_vulnerability_audit(self):
+        workflow = "approved-release-security-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["AgentPortal/AgentPortal.csproj"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["restore"]["run"])
+        self.assertTrue(plan["gates"]["vulnerabilities"]["run"])
+        self.assertFalse(plan["gates"]["composition"]["run"])
+
+    def test_security_program_change_reruns_only_composition_keyring_and_diff(self):
+        workflow = "approved-release-security-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["AgentPortal/Program.cs"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["composition"]["run"])
+        self.assertTrue(plan["gates"]["keyring"]["run"])
+        self.assertTrue(plan["gates"]["diff-check"]["run"])
+        self.assertFalse(plan["gates"]["db-validation"]["run"])
+        self.assertFalse(plan["gates"]["no-skips"]["run"])
+
     def test_step78_ui_only_fix_does_not_repeat_dotnet_validation(self):
         workflow = "steps7-8-governed-advertising-validation.yml"
         plan = m.compute_plan(

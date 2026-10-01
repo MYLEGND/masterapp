@@ -1,650 +1,352 @@
 #!/usr/bin/env python3
-"""Adversarial branch lifecycle tests; isolated git repositories, no network writes."""
-import json
+"""Adversarial tests for the single protected approved-branch release lifecycle."""
 import importlib.util
+import json
 import os
 from pathlib import Path
-import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('lifecycle', Path(__file__).with_name('release-lifecycle.py'))
+spec = importlib.util.spec_from_file_location(
+    "lifecycle", Path(__file__).with_name("release-lifecycle.py")
+)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 
-# These legacy orchestration cases exercise release mode; staging has dedicated cases below.
-def setUpModule():
-    global release_policy_patch
-    release_policy_patch = patch.object(m, 'staging_only', return_value=False)
-    release_policy_patch.start()
+def successful_jobs(target_step="Direct deploy AgentPortal"):
+    return [
+        {"name": "discover-live", "conclusion": "success", "steps": []},
+        {
+            "name": "release",
+            "conclusion": "success",
+            "steps": [
+                {"name": target_step, "conclusion": "success"},
+                {"name": "Verify every deployed target and collect all failures", "conclusion": "success"},
+                {"name": "Enforce complete direct deployment outcome", "conclusion": "success"},
+            ],
+        },
+    ]
 
-def tearDownModule():
-    release_policy_patch.stop()
+
+class Api:
+    repo = "MYLEGND/masterapp"
+
+    def __init__(self):
+        self.refs = {m.APPROVED: "a" * 40}
+        self.pages_map = {}
+        self.api_map = {}
+        self.dispatched = []
+
+    def ref(self, name):
+        return self.refs[name]
+
+    def pages(self, path, key=None):
+        value = self.pages_map.get(path, [])
+        if key and isinstance(value, dict):
+            return value.get(key, [])
+        return value
+
+    def api(self, path, data=None, method=None):
+        value = self.api_map.get(path)
+        if callable(value):
+            return value(data, method)
+        if value is None:
+            return {}
+        return value
+
+    def dispatch(self, workflow, inputs=None):
+        self.dispatched.append((workflow, inputs or {}))
+
+
+class DirectAuthorization(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old = Path.cwd()
+        os.chdir(self.tmp.name)
+        m.git("init", "-b", m.APPROVED)
+        m.git("config", "user.name", "Test")
+        m.git("config", "user.email", "test@example.invalid")
+        Path("base.txt").write_text("base")
+        m.git("add", ".")
+        m.git("commit", "-m", "base")
+        self.base = m.git("rev-parse", "HEAD").stdout.strip()
+
+    def tearDown(self):
+        os.chdir(self.old)
+        self.tmp.cleanup()
+
+    def authorize(self):
+        path = Path("Docs/releases/direct-release-request.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"releaseMode": "approved-only", "targets": ["masterapp-portal"]}))
+        m.git("add", str(path))
+        m.git("commit", "-m", "authorize release")
+        return m.git("rev-parse", "HEAD").stdout.strip()
+
+    def test_request_only_authorization_is_exact(self):
+        sha = self.authorize()
+        self.assertTrue(m.direct_only_request(sha))
+        Path("other.txt").write_text("not release authority")
+        m.git("add", "other.txt")
+        m.git("commit", "-m", "ordinary change")
+        self.assertFalse(m.direct_only_request(m.git("rev-parse", "HEAD").stdout.strip()))
+
+    def test_single_parent_authorization_rejects_extra_files(self):
+        path = Path("Docs/releases/direct-release-request.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"releaseMode": "approved-only"}))
+        Path("extra.txt").write_text("extra")
+        m.git("add", ".")
+        m.git("commit", "-m", "bad combined authorization")
+        self.assertFalse(m.direct_only_request(m.git("rev-parse", "HEAD").stdout.strip()))
 
 
 class BranchSafety(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.previous = Path.cwd()
-        os.chdir(self.tmp.name)
-        m.git('init', '-b', 'production')
-        m.git('config', 'user.name', 'Test')
-        m.git('config', 'user.email', 'test@example.invalid')
-        Path('base').write_text('base')
-        m.git('add', '.')
-        m.git('commit', '-m', 'base')
-        self.base = m.git('rev-parse', 'HEAD').stdout.strip()
-        m.git('switch', '-c', 'work')
-        Path('web').write_text('change')
-        m.git('add', '.')
-        m.git('commit', '-m', 'work')
-        self.work = m.git('rev-parse', 'HEAD').stdout.strip()
-        self.branch = {'name': 'work', 'commit': {'sha': self.work}, 'protected': False}
-        self.live = [{'revision': self.work} for _ in range(5)]
+    def branch(self, name="work", sha="b" * 40, protected=False):
+        return {"name": name, "commit": {"sha": sha}, "protected": protected}
 
-    def test_direct_only_request_is_bound_to_exact_commit(self):
-        path = Path('Docs/releases/direct-release-request.json')
-        path.parent.mkdir(parents=True)
-        path.write_text(json.dumps({'releaseMode': 'approved-only'}))
-        m.git('add', '.')
-        m.git('commit', '-m', 'authorized direct-only request')
-        request_sha = m.git('rev-parse', 'HEAD').stdout.strip()
-        self.assertTrue(m.direct_only_request(request_sha))
-        Path('web').write_text('later unrelated change')
-        m.git('add', '.')
-        m.git('commit', '-m', 'later update')
-        self.assertFalse(m.direct_only_request(m.git('rev-parse', 'HEAD').stdout.strip()))
+    @patch.object(m, "ancestor", return_value=True)
+    def test_fully_preserved_branch_is_eligible(self, _):
+        ok, reason = m.eligible(
+            self.branch(), "a" * 40,
+            [{"revision": "c" * 40}], set(), set(), set()
+        )
+        self.assertTrue(ok)
+        self.assertIn("approved changes", reason)
 
-    def test_merge_request_is_authorized_but_later_control_merge_is_not(self):
-        path=Path('Docs/releases/direct-release-request.json');path.parent.mkdir(parents=True)
-        path.write_text(json.dumps({'releaseMode':'approved-only','targets':['masterapp-protect']}))
-        m.git('add','.');m.git('commit','-m','scoped request')
-        m.git('switch','production');m.git('merge','--no-ff','work','-m','merge scoped request')
-        merged=m.git('rev-parse','HEAD').stdout.strip()
-        self.assertTrue(m.direct_only_request(merged))
-        m.git('switch','-c','maintenance');Path('workflow').write_text('read only')
-        m.git('add','.');m.git('commit','-m','maintenance')
-        m.git('switch','production');m.git('merge','--no-ff','maintenance','-m','merge maintenance')
-        self.assertFalse(m.direct_only_request(m.git('rev-parse','HEAD').stdout.strip()))
+    @patch.object(m, "ancestor", side_effect=[False])
+    def test_unique_history_is_never_deleted(self, _):
+        ok, reason = m.eligible(
+            self.branch(), "a" * 40,
+            [{"revision": "c" * 40}], set(), set(), set()
+        )
+        self.assertFalse(ok)
+        self.assertIn("unique history", reason)
 
-    def test_direct_only_reconcile_never_dispatches_production(self):
-        from unittest.mock import Mock
-        api = Mock()
-        api.ref.side_effect = [self.base, self.work]
-        api.pages.return_value = []
-        with patch.object(m, 'direct_only_request', return_value=True):
-            result = m.reconcile(api)
-        self.assertIn('disabled', result['promotion'])
-        api.dispatch.assert_not_called()
-        api.api.assert_not_called()
+    def test_approved_and_protected_branches_are_never_cleanup_candidates(self):
+        for branch in (
+            self.branch(m.APPROVED),
+            self.branch("protected-work", protected=True),
+        ):
+            ok, _ = m.eligible(branch, "a" * 40, [{"revision": "c" * 40}], set(), set(), set())
+            self.assertFalse(ok)
 
-    def tearDown(self):
-        os.chdir(self.previous)
-        self.tmp.cleanup()
+    @patch.object(m, "ancestor", return_value=True)
+    def test_open_active_or_failed_branch_is_retained(self, _):
+        branch = self.branch()
+        for open_refs, active, failed in [
+            ({"work"}, set(), set()),
+            (set(), {"work"}, set()),
+            (set(), set(), {"work"}),
+        ]:
+            ok, _ = m.eligible(branch, "a" * 40, [{"revision": "c" * 40}], open_refs, active, failed)
+            self.assertFalse(ok)
 
-    def allowed(self, **overrides):
-        args = dict(branch=self.branch, approved=self.work, production=self.work,
-                    live=self.live, open_refs=set(), active_refs=set(), failed_refs=set())
-        args.update(overrides)
-        return m.eligible(**args)[0]
-
-    def test_preserved_and_deployed_branch_is_eligible(self):
-        self.assertTrue(self.allowed())
-
-    def test_unique_work_is_never_deleted(self):
-        self.assertFalse(self.allowed(approved=self.base))
-
-    def test_quick_release_waits_for_production_gates(self):
-        self.assertFalse(self.allowed(production=self.base))
-
-    def test_one_stale_app_blocks_cleanup(self):
-        self.assertFalse(self.allowed(live=self.live[:4] + [{'revision': self.base}]))
-
-    def test_absent_live_evidence_is_not_success(self):
-        self.assertFalse(self.allowed(live=[]))
-
-    def test_failed_and_cancelled_branches_survive(self):
-        self.assertFalse(self.allowed(failed_refs={'work'}))
-
-    def test_active_branch_survives(self):
-        self.assertFalse(self.allowed(active_refs={'work'}))
-
-    def test_open_pr_source_or_base_survives(self):
-        self.assertFalse(self.allowed(open_refs={'work'}))
-
-    def test_release_and_protected_branches_survive(self):
-        for name in m.KEEP:
-            self.assertFalse(self.allowed(branch=self.branch | {'name': name}))
-        self.assertFalse(self.allowed(branch=self.branch | {'protected': True}))
-
-    def test_unknown_commit_is_failure_not_eligible(self):
-        with self.assertRaises(RuntimeError):
-            self.allowed(production='0' * 40)
-
-    def test_atomic_delete_refuses_concurrent_new_work(self):
-        remote = str(Path(self.tmp.name) / 'remote.git')
-        m.git('init', '--bare', remote)
-        m.git('remote', 'add', 'origin', remote)
-        m.git('push', 'origin', 'work')
-        Path('web').write_text('new correction')
-        m.git('add', '.')
-        m.git('commit', '-m', 'concurrent correction')
-        current = m.git('rev-parse', 'HEAD').stdout.strip()
-        m.git('push', 'origin', 'work')
-        result = m.git('push', '--force-with-lease=refs/heads/work:' + self.work,
-                       'origin', ':refs/heads/work', check=False)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn(current, m.git('ls-remote', 'origin', 'refs/heads/work').stdout)
-
-    def test_web_deploy_cannot_certify_mobile_or_worker_release(self):
-        Path('Legend-ios').mkdir()
-        Path('Legend-ios/changed.swift').write_text('native change')
-        m.git('add', '.')
-        m.git('commit', '-m', 'native work')
-        head = m.git('rev-parse', 'HEAD').stdout.strip()
-        self.assertTrue(m.undeployed_artifact_changes(head, self.base))
-        self.assertFalse(m.undeployed_artifact_changes(self.work, self.base))
-
-
-class CanonicalHistoryReconciliation(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.previous = Path.cwd()
-        os.chdir(self.tmp.name)
-        m.git('init', '-b', 'base')
-        m.git('config', 'user.name', 'Test')
-        m.git('config', 'user.email', 'test@example.invalid')
-        Path('shared').write_text('canonical')
-        m.git('add', '.')
-        m.git('commit', '-m', 'shared base')
-        self.base = m.git('rev-parse', 'HEAD').stdout.strip()
-
-    def tearDown(self):
-        os.chdir(self.previous)
-        self.tmp.cleanup()
-
-    def test_tree_neutral_production_lineage_is_safe_history_only_divergence(self):
-        m.git('switch', '-c', 'production')
-        m.git('commit', '--allow-empty', '-m', 'protected production synchronization merge')
-        production = m.git('rev-parse', 'HEAD').stdout.strip()
-        m.git('switch', '-c', 'approved', self.base)
-        Path('approved').write_text('new approved work')
-        m.git('add', '.')
-        m.git('commit', '-m', 'approved work')
-        approved = m.git('rev-parse', 'HEAD').stdout.strip()
-
-        self.assertFalse(m.ancestor(production, approved))
-        self.assertFalse(m.ancestor(approved, production))
-        self.assertEqual(m.commit_tree(production), m.commit_tree(self.base))
-        self.assertTrue(m.history_only_production_divergence(production, approved))
-
-    def test_content_bearing_production_divergence_is_never_history_only(self):
-        m.git('switch', '-c', 'production')
-        Path('production-only').write_text('real content')
-        m.git('add', '.')
-        m.git('commit', '-m', 'production content')
-        production = m.git('rev-parse', 'HEAD').stdout.strip()
-        m.git('switch', '-c', 'approved', self.base)
-        Path('approved').write_text('approved content')
-        m.git('add', '.')
-        m.git('commit', '-m', 'approved content')
-        approved = m.git('rev-parse', 'HEAD').stdout.strip()
-
-        self.assertFalse(m.history_only_production_divergence(production, approved))
-
-    def test_direct_only_tip_reconciles_safe_history_before_scope_short_circuit(self):
-        from unittest.mock import Mock
-        api = Mock()
-        api.ref.side_effect = ['a' * 40, 'b' * 40]
-        safe = {
-            'relation': 'production-history-reconciled',
-            'reconciled': True,
-            'productionSha': 'a' * 40,
-            'approvedSha': 'c' * 40,
-        }
-        with patch.object(m, 'reconcile_history_only', return_value=safe) as history, \
-             patch.object(m, 'direct_only_request', return_value=True) as direct_only:
-            result = m.reconcile(api)
-        self.assertEqual(safe, result)
-        history.assert_called_once_with(api, 'a' * 40, 'b' * 40)
-        direct_only.assert_not_called()
-
-
-class BranchParitySingleAuthority(unittest.TestCase):
-    def test_workflow_delegates_to_release_lifecycle_without_parallel_git_or_pr_logic(self):
-        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/legend-canonical-branch-parity.yml').read_text()
-        self.assertIn('python3 scripts/release-lifecycle.py branch-parity', workflow)
-        self.assertNotIn('git merge-base --is-ancestor', workflow)
-        self.assertNotIn('gh pr create', workflow)
-        self.assertNotIn('Fast-forward approved changes to production', workflow)
-        self.assertNotIn('Ensure protected production synchronization PR exists', workflow)
+    @patch.object(m, "ancestor", side_effect=[True, False])
+    def test_branch_not_covered_by_every_live_revision_is_retained(self, _):
+        ok, reason = m.eligible(
+            self.branch(), "a" * 40,
+            [{"revision": "c" * 40}, {"revision": "d" * 40}],
+            set(), set(), set()
+        )
+        self.assertFalse(ok)
+        self.assertIn("every live", reason)
 
 
 class ReleaseTruth(unittest.TestCase):
     def setUp(self):
-        self.api = type('API', (), {'repo': 'owner/repo', 'pages': lambda *args: []})()
-        self.run = {'id': 1, 'path': '.github/workflows/' + m.DIRECT,
-                    'status': 'completed', 'conclusion': 'success', 'head_branch': m.APPROVED,
-                    'head_repository': {'full_name': 'owner/repo'}}
+        request = json.dumps({"releaseMode": "approved-only", "targets": ["masterapp-portal"]})
+        self.git_patch = patch.object(
+            m, "git", return_value=SimpleNamespace(returncode=0, stdout=request, stderr="")
+        )
+        self.git_patch.start()
 
-    def test_green_run_with_skipped_deployment_does_not_authorize(self):
-        self.assertFalse(m.successful_release(self.api, self.run))
+    def tearDown(self):
+        self.git_patch.stop()
 
-    def test_wrong_workflow_cannot_authorize(self):
-        self.assertFalse(m.successful_release(self.api, self.run | {'path': 'diagnostic.yml'}))
+    def release_run(self, **overrides):
+        row = {
+            "id": 10,
+            "status": "completed",
+            "conclusion": "success",
+            "path": ".github/workflows/" + m.DIRECT,
+            "head_branch": m.APPROVED,
+            "head_sha": "d" * 40,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+        }
+        row.update(overrides)
+        return row
 
-    def test_failed_release_does_not_authorize(self):
-        self.assertFalse(m.successful_release(self.api, self.run | {'conclusion': 'failure'}))
+    def test_only_direct_release_can_prove_deployment(self):
+        api = Api()
+        api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs()
+        self.assertTrue(m.successful_release(api, self.release_run(), app="portal"))
+        self.assertFalse(m.successful_release(
+            api, self.release_run(path=".github/workflows/approved-release-security-validation.yml"), app="portal"
+        ))
 
-    def test_fork_run_does_not_authorize(self):
-        self.assertFalse(m.successful_release(self.api, self.run | {'head_repository': {'full_name': 'fork/repo'}}))
+    def test_wrong_branch_or_repository_cannot_prove_deployment(self):
+        api = Api()
+        api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs()
+        self.assertFalse(m.successful_release(api, self.release_run(head_branch="production")))
+        self.assertFalse(m.successful_release(
+            api, self.release_run(head_repository={"full_name": "fork/masterapp"})
+        ))
 
-    def test_approved_release_requires_real_successful_jobs(self):
-        self.api.pages = lambda *args: [{'name': name, 'conclusion': 'success'} for name in ('discover-live', 'release')]
-        self.assertFalse(m.successful_release(self.api, self.run))
-        self.api.pages = lambda *args: [
-            {'name': 'discover-live', 'conclusion': 'success'},
-            {'name': 'release', 'conclusion': 'success', 'steps': [
-                {'name': 'Direct deploy Website', 'conclusion': 'success'},
-                {'name': 'Verify every deployed target and collect all failures', 'conclusion': 'success'}]}]
-        self.assertTrue(m.successful_release(self.api, self.run))
+    def test_missing_final_live_or_enforcement_proof_fails_closed(self):
+        api = Api()
+        api.pages_map["actions/runs/10/jobs?filter=latest"] = [
+            {"name": "discover-live", "conclusion": "success", "steps": []},
+            {"name": "release", "conclusion": "success", "steps": [
+                {"name": "Direct deploy AgentPortal", "conclusion": "success"},
+            ]},
+        ]
+        self.assertFalse(m.successful_release(api, self.release_run(), app="portal"))
 
-    def test_rigorous_release_requires_every_existing_gate(self):
-        self.api.pages = lambda *args: [{'name': name, 'conclusion': 'success'} for name in ('security', 'build', 'merge', 'migrate', 'deploy')]
-        self.assertFalse(m.successful_release(self.api, self.run | {'path': '.github/workflows/' + m.RIGOROUS}))
+    def test_app_receipt_is_target_specific(self):
+        api = Api()
+        api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs("Direct deploy AgentPortal")
+        self.assertTrue(m.successful_release(api, self.release_run(), app="portal"))
+        self.assertFalse(m.successful_release(api, self.release_run(), app="client"))
 
-    def test_draft_and_untrusted_prs_are_not_approved_updates(self):
-        pr = {'state': 'open', 'draft': False, 'base': {'ref': m.APPROVED},
-              'head': {'ref': 'work', 'repo': {'full_name': 'owner/repo'}}, 'author_association': 'OWNER'}
-        self.assertTrue(m.ready(pr, 'owner/repo', m.APPROVED))
-        self.assertFalse(m.ready(pr | {'draft': True}, 'owner/repo', m.APPROVED))
-        self.assertFalse(m.ready(pr | {'author_association': 'NONE'}, 'owner/repo', m.APPROVED))
-
-
-class OrchestrationSafety(unittest.TestCase):
-    def test_failed_authoritative_production_receipt_stops_all_cleanup(self):
-        api = type('API', (), {
-            'pages': lambda self, path: [{'name': 'work', 'commit': {'sha': 'a' * 40}}],
-            'ref': lambda self, name: 'b' * 40})()
-        with patch.object(m, 'live_revisions', return_value=[{'revision': 'c' * 40, 'app': 'portal'}]), \
-             patch.object(m, 'release_proven', return_value=False), \
-             patch.object(m, 'git') as commands:
-            result = m.cleanup(api, apply=True)
-        self.assertIn('lacks a successful', result['retained'])
-        commands.assert_not_called()
-
-    def test_failed_live_receipt_stops_cleanup_even_when_ancestry_would_pass(self):
-        api = type('API', (), {'pages': lambda self, path: [], 'ref': lambda self, name: 'b' * 40})()
-        with patch.object(m, 'live_revisions', return_value=[{'revision': 'c' * 40, 'app': 'portal'}]), \
-             patch.object(m, 'release_proven', side_effect=[True, False]), \
-             patch.object(m, 'git') as commands:
-            result = m.cleanup(api, apply=True)
-        self.assertIn('Live app lacks', result['retained'])
-        commands.assert_not_called()
-
-    def test_newer_failed_attempt_invalidates_old_success(self):
-        runs = [{'id': 1, 'path': '.github/workflows/' + m.DIRECT, 'created_at': '2026-01-01', 'status': 'completed', 'conclusion': 'success'},
-                {'id': 2, 'path': '.github/workflows/' + m.DIRECT, 'created_at': '2026-01-02', 'status': 'completed', 'conclusion': 'failure'}]
-        api = type('API', (), {'pages': lambda self, path, *args: [] if path.startswith('commits/') else runs})()
-        with patch.object(m, 'successful_release', side_effect=lambda api, run: run['conclusion'] == 'success'):
-            self.assertFalse(m.release_proven(api, 'a' * 40))
-
-    def test_failed_release_event_never_synchronizes(self):
-        from unittest.mock import Mock
-        api = Mock()
-        api.api.return_value = {'id': 1}
-        with patch.object(m, 'successful_release', return_value=False):
-            result = m.reconcile(api, 1)
-        self.assertIn('No successful', result['retained'])
-        api.ref.assert_not_called()
-        api.dispatch.assert_not_called()
-
-    def test_production_merge_back_dispatches_new_direct_release(self):
-        from unittest.mock import Mock
-        api = Mock()
-        api.api.return_value = {'id': 1, 'path': '.github/workflows/' + m.RIGOROUS}
-        api.ref.side_effect = ['a' * 40, 'b' * 40]
-        with patch.object(m, 'successful_release', return_value=True), \
-             patch.object(m, 'reconcile_history_only', return_value={'relation': 'diverged-content', 'reconciled': False}), \
-             patch.object(m, 'release_proven', return_value=True), \
-             patch.object(m, 'ancestor', return_value=False), patch.object(m, 'git'):
-            result = m.reconcile(api, 1)
-        self.assertFalse(result['directReleaseDispatched'])
-        api.dispatch.assert_not_called()
-        self.assertEqual(api.api.call_args.args[0], 'merges')
-
-    def test_schedule_recovers_missed_successful_production_event(self):
-        from unittest.mock import Mock
-        api = Mock()
-        api.ref.side_effect = ['a' * 40, 'b' * 40]
-        with patch.object(m, 'reconcile_history_only', return_value={'relation': 'diverged-content', 'reconciled': False}), \
-             patch.object(m, 'ancestor', return_value=False), \
-             patch.object(m, 'release_proven', return_value=True), patch.object(m, 'git'):
-            with patch.object(m, 'direct_only_request', return_value=False):
-                result = m.reconcile(api)
-        self.assertFalse(result['directReleaseDispatched'])
-        api.dispatch.assert_not_called()
-        self.assertEqual(api.api.call_args.args[0], 'merges')
-
-    def test_schedule_never_synchronizes_failed_production(self):
-        from unittest.mock import Mock
-        api = Mock()
-        api.ref.side_effect = ['a' * 40, 'b' * 40]
-        with patch.object(m, 'reconcile_history_only', return_value={'relation': 'diverged-content', 'reconciled': False}), \
-             patch.object(m, 'ancestor', return_value=False), \
-             patch.object(m, 'release_proven', return_value=False):
-            with patch.object(m, 'direct_only_request', return_value=False):
-                result = m.reconcile(api)
-        self.assertIn('not bound to successful', result['retained'])
-        api.api.assert_not_called()
-        api.dispatch.assert_not_called()
-
-    def test_website_receipt_cannot_certify_portal(self):
-        from unittest.mock import Mock
-        run = {'id': 1, 'path': '.github/workflows/' + m.WEBSITE, 'created_at': '2026-01-01',
-               'status': 'completed', 'conclusion': 'success'}
-        api = Mock()
-        api.pages.side_effect = [[run], []]
-        self.assertFalse(m.release_proven(api, 'a' * 40, app='portal'))
-
-    def test_website_receipt_cannot_certify_unrelated_production_diff(self):
-        from unittest.mock import Mock
-        run = {'id': 1, 'path': '.github/workflows/' + m.WEBSITE, 'created_at': '2026-01-01',
-               'status': 'completed', 'conclusion': 'success'}
-        api = Mock()
-        api.pages.side_effect = [[run], []]
-        with patch.object(m, 'website_only_revision', return_value=False):
-            self.assertFalse(m.release_proven(api, 'a' * 40, production=True))
-
-    def test_website_green_cannot_erase_failed_rigorous_release(self):
-        from unittest.mock import Mock
-        website = {'id': 2, 'path': '.github/workflows/' + m.WEBSITE, 'created_at': '2026-01-02',
-                   'status': 'completed', 'conclusion': 'success'}
-        rigorous = website | {'id': 1, 'path': '.github/workflows/' + m.RIGOROUS,
-                              'created_at': '2026-01-01', 'conclusion': 'failure'}
-        api = Mock()
-        api.pages.side_effect = [[website, rigorous], []]
-        with patch.object(m, 'successful_release', side_effect=lambda api, run: run['conclusion'] == 'success'):
-            self.assertFalse(m.release_proven(api, 'a' * 40, production=True))
-
-    def test_failed_new_attempt_of_older_run_invalidates_green_newer_run(self):
-        from unittest.mock import Mock
-        old = {'id': 1, 'path': '.github/workflows/' + m.DIRECT, 'created_at': '2026-01-01',
-               'updated_at': '2026-01-03', 'status': 'completed', 'conclusion': 'failure', 'run_attempt': 2}
-        new = old | {'id': 2, 'created_at': '2026-01-02', 'updated_at': '2026-01-02',
-                     'conclusion': 'success', 'run_attempt': 1}
-        api = Mock()
-        api.pages.side_effect = [[new, old], []]
-        self.assertFalse(m.release_proven(api, 'a' * 40, app='portal'))
-
-    def test_successful_portal_only_direct_release_cannot_certify_client(self):
-        api = type('API', (), {'repo': 'owner/repo', 'pages': lambda *args: [
-            {'name': 'discover-live', 'conclusion': 'success'},
-            {'name': 'release', 'conclusion': 'success', 'steps': [
-                {'name': 'Direct deploy AgentPortal', 'conclusion': 'success'},
-                {'name': 'Direct deploy ClientApp', 'conclusion': 'skipped'},
-                {'name': 'Verify every deployed target and collect all failures', 'conclusion': 'success'}]}]})()
-        run = {'id': 1, 'path': '.github/workflows/' + m.DIRECT, 'status': 'completed',
-               'conclusion': 'success', 'head_branch': m.APPROVED, 'head_repository': {'full_name': 'owner/repo'}}
-        self.assertTrue(m.successful_release(api, run, app='portal'))
-        self.assertFalse(m.successful_release(api, run, app='client'))
-
-    def test_older_success_cannot_promote_newer_unreleased_approved_tip(self):
-        from unittest.mock import Mock
-        api = Mock()
-        api.ref.side_effect = ['a' * 40, 'b' * 40]
-        api.api.return_value = {'workflow_runs': []}
-        api.pages.return_value = []
-        with patch.object(m, 'reconcile_history_only', return_value={'relation': 'diverged-content', 'reconciled': False}), \
-             patch.object(m, 'ancestor', side_effect=[True, False]):
-            with patch.object(m, 'direct_only_request', return_value=False):
-                result = m.reconcile(api)
-        self.assertIn('awaiting successful', result['promotion'])
-        api.dispatch.assert_not_called()
-        self.assertIn('head_sha=' + 'b' * 40, api.api.call_args.args[0])
+    def test_release_proven_resolves_application_revision_receipt_not_workflow_head(self):
+        api = Api()
+        revision = "c" * 40
+        passed = self.release_run(id=10, head_sha="d" * 40)
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision] = [
+            {"expired": False, "workflow_run": {"id": 10}}
+        ]
+        api.api_map["actions/runs/10"] = passed
+        api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs()
+        self.assertTrue(m.release_proven(api, revision, app="portal"))
 
 
-class ApprovedDispatchScope(unittest.TestCase):
-    def ready_pr(self):
+class ReconcileSafety(unittest.TestCase):
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "direct_only_request", return_value=False)
+    def test_no_authorization_means_no_release(self, _, __):
+        api = Api()
+        self.assertEqual(
+            {"release": "no exact approved-only release authorization"},
+            m.reconcile(api),
+        )
+        self.assertEqual([], api.dispatched)
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "direct_only_request", return_value=True)
+    @patch.object(m, "direct_release_approved_pr")
+    @patch.object(m, "candidate_validation", return_value=None)
+    def test_missing_exact_run_recovers_only_direct_release(self, _, approved_pr, __, ___):
+        api = Api()
+        approved_pr.return_value = {"number": 42}
+        api.pages_map["actions/runs?head_sha=" + "a" * 40] = []
+        result = m.reconcile(api)
+        self.assertIn("directRelease", result)
+        self.assertEqual([(m.DIRECT, {"automatic": "false"})], api.dispatched)
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "direct_only_request", return_value=True)
+    def test_failed_exact_release_is_not_auto_replayed(self, _, __):
+        api = Api()
+        api.pages_map["actions/runs?head_sha=" + "a" * 40] = [{
+            "id": 8,
+            "status": "completed",
+            "conclusion": "failure",
+            "path": ".github/workflows/" + m.DIRECT,
+            "head_branch": m.APPROVED,
+            "updated_at": "2026-10-01T12:00:00Z",
+        }]
+        result = m.reconcile(api)
+        self.assertIn("retained", result)
+        self.assertEqual([], api.dispatched)
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "successful_release", return_value=False)
+    def test_failed_trigger_never_creates_another_release_path(self, _, __):
+        api = Api()
+        api.api_map["actions/runs/99"] = {
+            "path": ".github/workflows/" + m.DIRECT,
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        result = m.reconcile(api, 99)
+        self.assertIn("retained", result)
+        self.assertEqual([], api.dispatched)
+
+
+class CandidateValidation(unittest.TestCase):
+    def pr(self, files):
         return {
-            'number': 12, 'state': 'open',
-            'draft': False,
-            'base': {'ref': m.APPROVED},
-            'head': {'ref': 'release/scoped', 'sha': 'a' * 40, 'repo': {'full_name': 'owner/repo'}},
-            'author_association': 'OWNER'
-        }
+            "number": 7,
+            "head": {"sha": "b" * 40},
+        }, files
 
-    def test_exact_approved_only_request_dispatches_scoped_mode(self):
-        from unittest.mock import Mock
-        api = Mock()
-        api.repo = 'owner/repo'
-        api.pages.return_value = []
-        api.api.side_effect = [self.ready_pr(), {'merged': True, 'sha': 'b' * 40}]
-        with patch.object(m, 'direct_only_request', return_value=True) as scoped, patch.object(m, 'candidate_validation', return_value=None):
-            result = m.integrate(api, 12)
-        scoped.assert_called_once_with('a' * 40)
-        api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'false'})
-        self.assertFalse(result['automaticRelease'])
+    def test_broad_product_change_requires_architecture_step5_and_security(self):
+        pr, files = self.pr(["AgentPortal/Program.cs"])
+        api = Api()
+        api.pages_map["actions/runs?head_sha=" + "b" * 40] = []
+        api.pages_map["pulls/7/files"] = [{"filename": path} for path in files]
+        api.pages_map["pulls/7/commits"] = [{"sha": "b" * 40}]
+        pending = m.candidate_validation(api, pr)
+        self.assertIn("architecture", pending.lower())
 
-    def test_maintenance_change_merges_without_any_application_dispatch(self):
-        from unittest.mock import Mock
-        api = Mock()
-        api.repo = 'owner/repo'
-        api.pages.return_value = []
-        api.api.side_effect = [self.ready_pr(), {'merged': True, 'sha': 'b' * 40}]
-        with patch.object(m, 'direct_only_request', return_value=False), patch.object(m, 'candidate_validation', return_value=None):
-            result = m.integrate(api, 13)
-        api.dispatch.assert_not_called()
-        self.assertFalse(result['releaseDispatched'])
-        self.assertFalse(result['automaticRelease'])
-
-
-class ExactCandidateValidation(unittest.TestCase):
-    def run_record(self, path='masterapp-platform-architecture-validation.yml', **updates):
-        return dict({'head_sha':'a'*40, 'event':'pull_request', 'path':'.github/workflows/'+path,
-            'status':'completed','conclusion':'success','id':1,'created_at':'2026-09-27T00:00:00Z'}, **updates)
-
-    def api(self, runs, files=()):
-        from unittest.mock import Mock
-        api=Mock()
-        api.pages.side_effect=lambda path, *args: (
-            runs if path.startswith('actions/runs') else
-            [] if path.startswith('pulls/1/commits') else
-            [{'filename':f} for f in files])
-        api.api.side_effect=lambda path, *args, **kwargs: (
-            {'files':[{'filename':'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs'}]}
-            if path.startswith('commits/') else {})
-        return api
-
-    def validate(self, runs, files=()):
-        return m.candidate_validation(self.api(runs, files), {'number':1,'head':{'sha':'a'*40}})
-
-    def test_missing_or_wrong_head_validation_blocks(self):
-        self.assertIsNotNone(self.validate([]))
-        self.assertIsNotNone(self.validate([self.run_record(head_sha='b'*40)]))
-
-    def test_pending_failed_cancelled_or_skipped_is_never_success(self):
-        for status,conclusion in [('queued',None),('in_progress',None),('completed','failure'),('completed','cancelled'),('completed','skipped')]:
-            with self.subTest(status=status,conclusion=conclusion):
-                self.assertIsNotNone(self.validate([self.run_record(status=status,conclusion=conclusion)]))
-
-    def test_same_named_green_workflow_cannot_hide_failed_architecture(self):
-        self.assertIsNotNone(self.validate([self.run_record(conclusion='failure'),self.run_record('step6-openai-ads-execution-validation.yml',id=2)]))
-
-    def test_latest_attempt_wins_over_old_green(self):
-        self.assertIsNotNone(self.validate([self.run_record(),self.run_record(id=2,conclusion='failure')]))
-
-    def test_analytics_changes_require_full_suite_workflow(self):
-        runs=[self.run_record()]
-        self.assertIsNotNone(self.validate(runs,['Infrastructure/Analytics/example.cs']))
-        runs.append(self.run_record('step5-isolated-conversion-mapping-validation.yml',id=2))
-        self.assertIsNone(self.validate(runs,['Infrastructure/Analytics/example.cs']))
-
-    def test_website_studio_source_authority_uses_its_own_exact_head_gate(self):
-        files=[
-            'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
-            'AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs',
-            'Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs',
-            'Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs',
-            'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
-            'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs',
-            'Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs',
-            'Legend-Design/legend-web-foundation.css',
-            'SHARED/WebsitePlatform/legend-public-cms.js',
-            'SHARED/WebsitePlatform/legend-public-web.css',
-            'tests/website/legend-public-cms.test.mjs',
+        runs = [
+            {"id": 1, "head_sha": "b" * 40, "event": "pull_request", "created_at": "3",
+             "path": ".github/workflows/masterapp-platform-architecture-validation.yml",
+             "status": "completed", "conclusion": "success"},
+            {"id": 2, "head_sha": "b" * 40, "event": "pull_request", "created_at": "2",
+             "path": ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+             "status": "completed", "conclusion": "success"},
+            {"id": 3, "head_sha": "b" * 40, "event": "pull_request", "created_at": "1",
+             "path": ".github/workflows/approved-release-security-validation.yml",
+             "status": "completed", "conclusion": "success"},
         ]
-        runs=[
-            self.run_record(),
-            self.run_record('step5-isolated-conversion-mapping-validation.yml',id=2,conclusion='failure'),
-        ]
-        self.assertIsNone(self.validate(runs,files))
+        api.pages_map["actions/runs?head_sha=" + "b" * 40] = runs
+        self.assertIsNone(m.candidate_validation(api, pr))
 
-    def test_public_website_runtime_scope_does_not_require_step5(self):
-        files=[
-            '.github/workflows/masterapp-platform-architecture-validation.yml',
-            'Legend-Design/legend-web-foundation.css',
-            'Legend-Website/scripts/build.mjs',
-            'Legend-Website/public/web.config',
-            'Protect-Website/Views/Shared/_Layout.cshtml',
-            'SHARED/WebsitePlatform/legend-public-cms.js',
-            'SHARED/WebsitePlatform/legend-public-web.css',
-            'Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs',
-            'scripts/release-lifecycle.py',
-            'scripts/test-release-lifecycle.py',
-        ]
-        self.assertIsNone(self.validate([self.run_record()],files))
-
-    def test_architecture_workflow_is_validation_neutral_control_authority(self):
-        self.assertIn(
-            '.github/workflows/masterapp-platform-architecture-validation.yml',
-            m.VALIDATION_NEUTRAL_PATHS)
-
-    def test_public_website_architecture_accepts_unrelated_later_compile_failure(self):
-        run=self.run_record(status='completed',conclusion='failure',id=91)
-        steps=[
-            {'name':name,'conclusion':'success'}
-            for name in m.PUBLIC_WEBSITE_ARCHITECTURE_STEPS
-        ]
-        steps.append({'name':'Compile full regression test project','conclusion':'failure'})
-        class Api:
-            def pages(self,path,key=None):
-                if path=='actions/runs/91/jobs?filter=latest':
-                    return [{'name':'validate','steps':steps}]
-                raise AssertionError(path)
-        self.assertTrue(m.architecture_public_website_validation(Api(),run))
-
-    def test_website_studio_scope_does_not_exempt_unrelated_product_change(self):
-        files=[
-            'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
-            'Infrastructure/Analytics/example.cs',
-        ]
-        self.assertIsNotNone(self.validate([self.run_record()],files))
-
-    def test_website_studio_release_control_files_do_not_require_step5(self):
-        files=[
-            'Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs',
-            'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs',
-            'SHARED/WebsitePlatform/legend-public-cms.js',
-            'AgentPortal.Tests/WebsiteStudioV3ContractTests.cs',
-            'tests/website/legend-public-cms.test.mjs',
-            'scripts/deploy-approved-app.py',
-            'scripts/test-deploy-approved-app.py',
-            'scripts/test-release-policy.py',
-        ]
-        self.assertIsNone(self.validate([self.run_record()],files))
-
-    def test_inherited_product_validation_crosses_only_neutral_trailing_commits(self):
-        from unittest.mock import Mock
-        api=Mock()
-        head='c'*40
-        validated='b'*40
-        api.pages.side_effect=lambda path,*args: (
-            [{'sha':validated},{'sha':head}] if path.startswith('pulls/1/commits') else
-            [self.run_record(head_sha=validated,id=9)] if path.startswith('actions/runs?head_sha='+validated) else
-            [self.run_record(head_sha=head,id=10,conclusion='failure')] if path.startswith('actions/runs?head_sha='+head) else
-            [])
-        api.api.side_effect=lambda path: {
-            'files':[{'filename':'scripts/test-release-policy.py'}]
-        } if path=='commits/'+head else {
-            'files':[{'filename':'SHARED/WebsitePlatform/legend-public-cms.js'}]
-        }
-        with patch.object(m,'architecture_product_validation',
-                          side_effect=lambda _api,run: run.get('id')==9):
-            self.assertTrue(m.inherited_architecture_product_validation(
-                api,{'number':1,'head':{'sha':head}},
-                '.github/workflows/masterapp-platform-architecture-validation.yml'))
-
-    def test_host_changes_also_require_full_suite(self):
-        for path in ['Protect-Website/Models/RiskAssessmentModel.cs','ClientApp/Program.cs','Domain/Entities/Lead.cs']:
-            with self.subTest(path=path):
-                self.assertIsNotNone(self.validate([self.run_record()],[path]))
-
-    def test_successful_maintenance_validation_is_sufficient_without_deploy(self):
-        self.assertIsNone(self.validate([self.run_record()],['.github/workflows/deployment-diagnostics.yml']))
-
-    def test_pending_validation_never_merges_or_dispatches(self):
-        api=self.api([self.run_record(status='in_progress',conclusion=None)])
-        result=m.merge_validated(api,{'number':1,'head':{'sha':'a'*40}})
-        self.assertIn('retained',result)
-        self.assertTrue(all(call.args[0].startswith('commits/') for call in api.api.call_args_list))
-        api.dispatch.assert_not_called()
-
-    def test_pending_retained_branch_correction_is_not_auto_merged(self):
-        from unittest.mock import Mock
-        api=Mock();api.repo='owner/repo'
-        api.pages.side_effect=[[],[],[]];api.ref.return_value='a'*40
-        self.assertIn('integration',m.pending_updates(api))
-        api.api.assert_not_called();api.dispatch.assert_not_called()
+    def test_security_authority_change_requires_security_validator(self):
+        pr, files = self.pr([".github/workflows/approved-release-security-validation.yml"])
+        api = Api()
+        api.pages_map["pulls/7/files"] = [{"filename": path} for path in files]
+        api.pages_map["pulls/7/commits"] = [{"sha": "b" * 40}]
+        api.pages_map["actions/runs?head_sha=" + "b" * 40] = [{
+            "id": 1, "head_sha": "b" * 40, "event": "pull_request", "created_at": "2",
+            "path": ".github/workflows/masterapp-platform-architecture-validation.yml",
+            "status": "completed", "conclusion": "success",
+        }]
+        pending = m.candidate_validation(api, pr)
+        self.assertIn("approved-release-security-validation.yml", pending)
 
 
-class ProductionSyncWorkflowSafety(unittest.TestCase):
-    def test_history_only_security_job_checks_out_repository_before_git_ancestry(self):
-        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/agentportal-production-deploy.yml').read_text()
-        checkout = workflow.index('name: Checkout canonical history for synchronization proof')
-        verify = workflow.index('name: Verify canonical branch synchronization is history-only')
-        self.assertLess(checkout, verify)
-        window = workflow[checkout:verify]
-        self.assertIn('uses: actions/checkout@v4', window)
-        self.assertIn('ref: legend/approved-changes', window)
-        self.assertIn('fetch-depth: 0', window)
-        verify_block = workflow[verify:workflow.index('name: Confirm full release security completed', verify)]
-        self.assertIn("git merge-base --is-ancestor", verify_block)
+class SingleBranchTopology(unittest.TestCase):
+    def test_lifecycle_has_no_production_branch_authority(self):
+        source = Path(__file__).with_name("release-lifecycle.py").read_text()
+        self.assertNotIn("PRODUCTION =", source)
+        self.assertNotIn("resolve-production", source)
+        self.assertNotIn("branch-parity", source)
+        self.assertNotIn("base=production", source)
+        self.assertNotIn("refs/heads/production", source)
 
-
-class ProductionSyncMergeConditionSafety(unittest.TestCase):
-    def test_sync_merge_uses_always_after_intentional_release_security_skip(self):
-        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/agentportal-production-deploy.yml').read_text()
-        start = workflow.index('  sync-merge:')
-        end = workflow.index('\n  build:', start)
-        sync = workflow[start:end]
-        self.assertIn('always()', sync)
-        self.assertIn("needs.candidate.result == 'success'", sync)
-        self.assertIn("needs.candidate.outputs.sync_only == 'true'", sync)
-        self.assertIn("needs.security.result == 'success'", sync)
+    def test_lifecycle_workflow_uses_only_approved_release_authorities(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()
+        self.assertIn("LEGEND approved direct release", workflow)
+        self.assertIn("LEGEND approved release security validation", workflow)
+        self.assertNotIn("Validate, merge, and deploy AgentPortal to production", workflow)
+        self.assertNotIn("production gates", workflow.lower())
 
 
 class StagingSafety(unittest.TestCase):
-    def test_hold_blocks_all_automatic_mutations(self):
-        from unittest.mock import Mock
-        for action in [lambda api: m.integrate(api, 1), m.pending_updates,
-                       m.reconcile, lambda api: m.cleanup(api, True)]:
-            api = Mock()
-            with patch.object(m, 'staging_only', return_value=True):
-                result = action(api)
-            self.assertTrue(result)
-            self.assertEqual(api.mock_calls, [])
-
-    def test_hold_blocks_production_resolution(self):
-        from unittest.mock import Mock
-        api = Mock()
-        with patch.object(m, 'staging_only', return_value=True):
-            with self.assertRaises(RuntimeError):
-                m.resolve_production(api, 1, 'a' * 40)
-        self.assertEqual(api.mock_calls, [])
+    @patch.object(m, "staging_only", return_value=True)
+    def test_hold_blocks_automatic_mutations(self, _):
+        api = Api()
+        self.assertIn("retained", m.integrate(api, 1))
+        self.assertIn("retained", m.pending_updates(api))
+        self.assertIn("disabled", m.reconcile(api)["release"])
+        self.assertIn("retained", m.cleanup(api))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
