@@ -27,6 +27,8 @@ public interface IFounderEngineeringCommandCenterService
         string state,
         CancellationToken cancellationToken);
     Task DisconnectChatGptAsync(CancellationToken cancellationToken);
+    Task<ChatGptPlanAuthorizationResult> RetryChatGptRuntimeAsync(
+        CancellationToken cancellationToken);
 }
 
 internal sealed class FounderEngineeringCommandCenterService(
@@ -80,6 +82,24 @@ internal sealed class FounderEngineeringCommandCenterService(
             ChatGptPlanExpiresUtc = ReadDateTime(adapterStatus, "expiresUtc"),
             ModelRuntimeReady = ReadBool(adapterStatus, "runtimeReady"),
             ModelRuntimeCode = ReadString(adapterStatus, "eligibility"),
+            ModelRuntimeLabel = RuntimeLabel(adapterStatus, contract.ModelExecutionEnabled),
+            ProviderBlockerClass = ReadString(adapterStatus, "providerBlockerClass"),
+            ProviderBlockerCode = ReadString(adapterStatus, "providerBlockerCode"),
+            ProviderRequestId = ReadString(adapterStatus, "providerRequestId"),
+            ProviderRetryNotBeforeUtc = ReadDateTime(adapterStatus, "providerRetryNotBeforeUtc"),
+            ProviderCircuitEpisodeId = ReadString(adapterStatus, "providerCircuitEpisodeId"),
+            ReadinessState = ReadString(adapterStatus, "readinessState"),
+            ReadinessCheckedUtc = ReadDateTime(adapterStatus, "readinessCheckedUtc"),
+            ShowManageUsage = string.Equals(
+                ReadString(adapterStatus, "providerBlockerClass"),
+                "USAGE_LIMIT",
+                StringComparison.Ordinal),
+            ShowReconnectChatGpt =
+                ReadString(adapterStatus, "providerBlockerClass") is "AUTHENTICATION" or "PLAN_ELIGIBILITY" ||
+                ReadString(adapterStatus, "eligibility") == "chatgpt_plan_reauthorization_required",
+            ShowRetryRuntime =
+                !ReadBool(adapterStatus, "runtimeReady") &&
+                ReadString(adapterStatus, "providerBlockerClass") != "USAGE_LIMIT",
             AutonomousRuntimeActive =
                 ReadBool(adapterStatus, "runtimeReady") &&
                 contract.ModelExecutionEnabled &&
@@ -105,6 +125,7 @@ internal sealed class FounderEngineeringCommandCenterService(
         FounderEngineeringContractInput input,
         CancellationToken cancellationToken)
     {
+        var before = await contractAuthority.GetCurrentAsync(cancellationToken);
         var value = await contractAuthority.UpdateAllAsync(
             input.ExpectedRevision,
             input.ModelExecutionEnabled,
@@ -118,6 +139,16 @@ internal sealed class FounderEngineeringCommandCenterService(
             input.ReviewerDirective,
             "Founder",
             cancellationToken);
+
+        if (ModelBindingsChanged(before, value))
+        {
+            await credentials.MarkReadinessUnverifiedAsync(
+                "chatgpt_plan_readiness_canary_required",
+                cancellationToken);
+            var credential = await credentials.GetAsync(cancellationToken);
+            if (credential.Ready)
+                await adapter.ReconcileRuntimeAsync(force: true, cancellationToken);
+        }
         return new(value.Revision, value.Version);
     }
 
@@ -125,11 +156,21 @@ internal sealed class FounderEngineeringCommandCenterService(
         FounderEngineeringRestoreInput input,
         CancellationToken cancellationToken)
     {
+        var before = await contractAuthority.GetCurrentAsync(cancellationToken);
         var value = await contractAuthority.RestoreAsync(
             input.ExpectedRevision,
             input.Revision,
             "Founder",
             cancellationToken);
+        if (ModelBindingsChanged(before, value))
+        {
+            await credentials.MarkReadinessUnverifiedAsync(
+                "chatgpt_plan_readiness_canary_required",
+                cancellationToken);
+            var credential = await credentials.GetAsync(cancellationToken);
+            if (credential.Ready)
+                await adapter.ReconcileRuntimeAsync(force: true, cancellationToken);
+        }
         return new(value.Revision, value.Version);
     }
 
@@ -146,18 +187,34 @@ internal sealed class FounderEngineeringCommandCenterService(
         CancellationToken cancellationToken) =>
         credentials.BeginAuthorizationAsync(cancellationToken);
 
-    public Task<ChatGptPlanAuthorizationResult> CompleteChatGptAuthorizationAsync(
+    public async Task<ChatGptPlanAuthorizationResult> CompleteChatGptAuthorizationAsync(
         string code,
         string state,
         string? responseIssuer,
         string? callbackClientId,
-        CancellationToken cancellationToken) =>
-        credentials.CompleteAuthorizationAsync(
+        CancellationToken cancellationToken)
+    {
+        var authorization = await credentials.CompleteAuthorizationAsync(
             code,
             state,
             responseIssuer,
             callbackClientId,
             cancellationToken);
+        if (!authorization.Ready)
+            return authorization;
+
+        var readiness = JsonSerializer.SerializeToElement(
+            await adapter.ReconcileRuntimeAsync(force: true, cancellationToken),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var ready = ReadBool(readiness, "runtimeReady") || ReadBool(readiness, "ok");
+        return new(
+            ready,
+            ready
+                ? "chatgpt_plan_inference_ready"
+                : ReadString(readiness, "error") is { Length: > 0 } error
+                    ? error
+                    : "chatgpt_plan_readiness_canary_failed");
+    }
 
     public Task AbortChatGptAuthorizationAsync(
         string state,
@@ -166,6 +223,50 @@ internal sealed class FounderEngineeringCommandCenterService(
 
     public Task DisconnectChatGptAsync(CancellationToken cancellationToken) =>
         credentials.DisconnectAsync(cancellationToken);
+
+    public async Task<ChatGptPlanAuthorizationResult> RetryChatGptRuntimeAsync(
+        CancellationToken cancellationToken)
+    {
+        var result = JsonSerializer.SerializeToElement(
+            await adapter.ReconcileRuntimeAsync(force: true, cancellationToken),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var status = JsonSerializer.SerializeToElement(
+            await adapter.GetStatusAsync(cancellationToken),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var ready = ReadBool(status, "runtimeReady");
+        return new(
+            ready,
+            ready
+                ? "chatgpt_plan_inference_ready"
+                : ReadString(result, "error") is { Length: > 0 } error
+                    ? error
+                    : ReadString(status, "eligibility"));
+    }
+
+    private static bool ModelBindingsChanged(
+        LegendEngineeringOperationalContract before,
+        LegendEngineeringOperationalContract after) =>
+        !string.Equals(before.HeadGptModel, after.HeadGptModel, StringComparison.Ordinal) ||
+        !string.Equals(before.CodexModel, after.CodexModel, StringComparison.Ordinal) ||
+        !string.Equals(before.ReviewerModel, after.ReviewerModel, StringComparison.Ordinal);
+
+    private static string RuntimeLabel(
+        JsonElement status,
+        bool modelExecutionEnabled)
+    {
+        if (!modelExecutionEnabled) return "Paused by Founder";
+        var blockerClass = ReadString(status, "providerBlockerClass");
+        if (blockerClass == "USAGE_LIMIT") return "Waiting for ChatGPT usage";
+        if (blockerClass == "TEMPORARY_PROVIDER") return "ChatGPT temporarily unavailable";
+        if (blockerClass is "AUTHENTICATION" or "PLAN_ELIGIBILITY")
+            return "Reconnect ChatGPT";
+        if (blockerClass == "MODEL_BINDING" ||
+            ReadString(status, "eligibility") == "chatgpt_plan_model_binding_unavailable")
+            return "Selected model unavailable";
+        if (blockerClass == "GRANT_CONFIGURATION")
+            return "Client/grant configuration required";
+        return ReadBool(status, "runtimeReady") ? "Inference ready" : "Readiness check required";
+    }
 
     private static int ReadInt(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object &&
