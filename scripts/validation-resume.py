@@ -203,7 +203,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/AnalyticsCanonicalReconciliationTests.cs",
                     "AgentPortal.Tests/AnalyticsPageRoutingTruthTests.cs",
                     "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
-                ) + WEBSITE_SOURCE + WEB_DOTNET_SOURCE,
+                ) + WEBSITE_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "requires": ("compile-regression",),
             },
             "meta-regressions": {
@@ -216,12 +216,12 @@ WORKFLOWS = {
                     "AgentPortal.Tests/Tracking*Tests.cs",
                     "AgentPortal.Tests/QuoteProductInstrumentationContractTests.cs",
                     "AgentPortal.Tests/ProtectLeadModalInquiryTests.cs",
-                ) + MARKETING_SOURCE + WEB_DOTNET_SOURCE,
+                ) + MARKETING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "requires": ("compile-regression",),
             },
             "booking-regressions": {
                 "step": "Run booking authority regressions",
-                "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE + WEB_DOTNET_SOURCE,
+                "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "requires": ("compile-regression",),
             },
             "crm-regressions": {
@@ -232,7 +232,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/WebsiteAnalyticsScopeTests.cs",
                     "AgentPortal.Tests/LaunchAuditRiskAssessmentTests.cs",
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
-                ) + CRM_SOURCE + WEB_DOTNET_SOURCE,
+                ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "requires": ("compile-regression",),
             },
             "form-tracking": {
@@ -257,6 +257,7 @@ WORKFLOWS = {
         },
     },
     "step6-openai-ads-execution-validation.yml": {
+        "unmatched_neutral": True,
         "force_all": (
             "SHARED/Analytics/OpenAiAdsExecutionContracts.cs",
             "Infrastructure/Analytics/OpenAiAdsExecutionService.cs",
@@ -279,6 +280,7 @@ WORKFLOWS = {
         },
     },
     "steps7-8-governed-advertising-validation.yml": {
+        "unmatched_neutral": True,
         "force_all": (
             "Domain/Entities/AdvertisingActionAuthorization.cs",
             "SHARED/Analytics/AdvertisingActionContracts.cs",
@@ -352,32 +354,53 @@ def api_get(repository: str, path: str, token: str):
         return json.load(response)
 
 
+def _step_map(jobs):
+    return {
+        step.get("name"): step.get("conclusion")
+        for job in jobs
+        for step in (job.get("steps") or [])
+        if step.get("name")
+    }
+
+
+def _effective_steps(newest_to_oldest):
+    """Keep the newest executed result; skipped/missing later steps do not erase proof.
+
+    A later failure/cancellation always wins over an older success. A later run
+    that never reached a gate may inherit that gate's most recent executed result
+    from the exact same source SHA only.
+    """
+    effective = {}
+    for steps in newest_to_oldest:
+        for name, outcome in steps.items():
+            if name in effective or outcome in {None, "", "skipped"}:
+                continue
+            effective[name] = outcome
+    return effective
+
+
 def prior_evidence(args):
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
         return None, {}, "github_token_unavailable"
 
     if args.run_attempt > 1:
-        attempt = args.run_attempt - 1
-        payload = api_get(
-            args.repository,
-            f"actions/runs/{args.current_run_id}/attempts/{attempt}/jobs?per_page=100",
-            token,
-        )
-        jobs = payload.get("jobs", [])
-        steps = {
-            step.get("name"): step.get("conclusion")
-            for job in jobs
-            for step in (job.get("steps") or [])
-            if step.get("name")
-        }
+        histories = []
+        newest_attempt = args.run_attempt - 1
+        for attempt in range(newest_attempt, 0, -1):
+            payload = api_get(
+                args.repository,
+                f"actions/runs/{args.current_run_id}/attempts/{attempt}/jobs?per_page=100",
+                token,
+            )
+            histories.append(_step_map(payload.get("jobs", [])))
         return {
             "id": args.current_run_id,
             "head_sha": args.current_sha,
-            "run_attempt": attempt,
+            "run_attempt": newest_attempt,
             "event": args.event,
             "head_branch": args.head_branch,
-        }, steps, "prior_attempt"
+        }, _effective_steps(histories), "prior_attempts"
 
     workflow = urllib.parse.quote(args.workflow, safe="")
     branch = urllib.parse.quote(args.head_branch, safe="")
@@ -397,23 +420,24 @@ def prior_evidence(args):
     ]
     if not runs:
         return None, {}, "no_prior_completed_run"
-    prior = sorted(
+
+    ordered = sorted(
         runs,
         key=lambda run: (run.get("created_at", ""), int(run.get("id", 0))),
         reverse=True,
-    )[0]
-    jobs_payload = api_get(
-        args.repository,
-        f"actions/runs/{prior['id']}/jobs?filter=latest&per_page=100",
-        token,
     )
-    steps = {
-        step.get("name"): step.get("conclusion")
-        for job in jobs_payload.get("jobs", [])
-        for step in (job.get("steps") or [])
-        if step.get("name")
-    }
-    return prior, steps, "prior_run"
+    prior = ordered[0]
+    exact_head_runs = [run for run in ordered if run.get("head_sha") == prior.get("head_sha")][:10]
+    histories = []
+    for run in exact_head_runs:
+        jobs_payload = api_get(
+            args.repository,
+            f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
+            token,
+        )
+        histories.append(_step_map(jobs_payload.get("jobs", [])))
+
+    return prior, _effective_steps(histories), "prior_exact_head_runs"
 
 
 def compute_plan(workflow: str, current_sha: str, prior, prior_steps, changed_paths, evidence_source):
@@ -461,7 +485,7 @@ def compute_plan(workflow: str, current_sha: str, prior, prior_steps, changed_pa
                 known.add(path)
                 break
 
-    unknown = [
+    unknown = [] if config.get("unmatched_neutral") else [
         path
         for path in changed_paths
         if path not in known
