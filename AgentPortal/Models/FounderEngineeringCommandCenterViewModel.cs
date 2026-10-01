@@ -57,6 +57,7 @@ public sealed class FounderEngineeringCommandCenterViewModel
 
     public int OpenWorkItems { get; init; }
     public int LeasedWorkItems { get; init; }
+    public int PendingBrowserProofItems { get; init; }
     public int SecurityReviewItems { get; init; }
     public IReadOnlyList<FounderEngineeringContractHistoryItem> History { get; init; } =
         Array.Empty<FounderEngineeringContractHistoryItem>();
