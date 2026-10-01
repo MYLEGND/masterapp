@@ -132,10 +132,8 @@ internal sealed class LegendEngineeringOrchestrator(
             throw new InvalidOperationException("autonomous_engineering_disabled");
         if (!Guid.TryParse(AgentPortal.Security.FounderGuard.FounderOid, out _))
             throw new InvalidOperationException("founder_identity_not_configured");
-        if (!string.Equals(
-                configuration["FounderSoftwareRemediation:BaseBranch"]?.Trim(),
-                "legend/approved-changes",
-                StringComparison.Ordinal))
+        if (!LegendEngineeringPolicies.IsApprovedAutonomousBaseBranch(
+                configuration["FounderSoftwareRemediation:BaseBranch"]))
             throw new InvalidOperationException("autonomous_engineering_approved_base_required");
         return BootstrapCoreAsync(workItemId, role, cancellationToken);
     }
