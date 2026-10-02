@@ -543,6 +543,12 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn('dotnet build', step('Build exact selected release candidate'))
         self.assertNotIn('dotnet publish', step('Publish exact selected application packages'))
         self.assertNotIn('npm ', step('Publish exact selected application packages'))
+        migration = step('Apply additive diagnostics migrations before restarting apps')
+        self.assertIn("sys.path.insert(0,str(scripts))", migration)
+        self.assertIn("masterapp-migrations", migration)
+        self.assertIn("release_proven", migration)
+        self.assertNotIn("dotnet-ef','database','update", migration)
+        self.assertNotIn("dotnet-ef database update", migration)
 
     def test_architecture_validation_publishes_canonical_immutable_package(self):
         workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
