@@ -1,11 +1,11 @@
 :root {
-    --dcs-navy-1: #17233a;
-    --dcs-navy-2: #101827;
-    --dcs-navy-3: #0a121f;
-    --dcs-navy-4: #070d17;
-    --dcs-gold-1: var(--legend-gold-bright, #d5b24d);
-    --dcs-gold-2: var(--legend-gold, var(--legend-app-accent));
-    --dcs-gold-3: var(--legend-gold-deep, #8b6f1f);
+    --dcs-navy-1: var(--legend-app-surface-elevated);
+    --dcs-navy-2: var(--legend-app-surface-elevated);
+    --dcs-navy-3: var(--legend-app-surface);
+    --dcs-navy-4: var(--legend-app-surface);
+    --dcs-gold-1: var(--legend-app-accent-bright);
+    --dcs-gold-2: var(--legend-app-accent);
+    --dcs-gold-3: var(--legend-gold-deep);
     --dcs-ivory: #f7f1e3;
     --dcs-muted: rgba(247, 241, 227, 0.72);
     --dcs-muted-soft: rgba(247, 241, 227, 0.54);
@@ -14,8 +14,8 @@
     --dcs-shadow: 0 28px 72px rgba(0, 0, 0, 0.44);
     --dcs-shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.24);
     --dcs-radius-xl: 24px;
-    --dcs-radius-lg: 18px;
-    --dcs-radius-md: 14px;
+    --dcs-radius-lg: var(--legend-app-radius);
+    --dcs-radius-md: var(--legend-app-radius-compact);
 }
 
 .legend-modal.carrier-settings-modal .dashboard-search-shell {
