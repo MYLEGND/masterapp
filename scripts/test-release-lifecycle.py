@@ -579,6 +579,17 @@ class SingleBranchTopology(unittest.TestCase):
         self.assertNotIn("production gates", workflow.lower())
 
 
+    def test_validation_completions_do_not_run_full_branch_cleanup(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()
+        cleanup = workflow.split(
+            "      - name: Retire only preserved successfully deployed branches\n", 1
+        )[1].split("      - name:", 1)[0]
+        self.assertIn("github.event.workflow_run.name == 'LEGEND approved direct release'", cleanup)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", cleanup)
+        self.assertIn("github.event_name == 'schedule'", cleanup)
+        self.assertIn("github.event_name == 'workflow_dispatch'", cleanup)
+        self.assertNotIn("github.event_name != 'workflow_run'", cleanup)
+
     def test_lifecycle_refreshes_to_newly_merged_approved_code_before_recovery(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()
         refresh = workflow.split(
