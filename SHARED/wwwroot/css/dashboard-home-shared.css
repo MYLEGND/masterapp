@@ -9052,3 +9052,78 @@ header .legend-global-nav .container-fluid {
         border-radius: var(--legend-app-radius-compact);
     }
 }
+
+/*
+ * Premium desktop density contract.
+ * Generic authenticated chrome lives here; feature CSS must not re-own these
+ * measurements unless the component is semantically unique.
+ */
+@media (min-width: 901px) {
+    body.legend-app .legend-app-content :is(.btn,a.btn,button.btn,.dashboard-command-action) {
+        min-height: var(--legend-desktop-control-height);
+        padding: .45rem .72rem;
+        border-radius: var(--legend-app-radius-compact);
+        font-size: .84rem;
+        font-weight: 800;
+        line-height: 1.1;
+        box-shadow: none;
+    }
+
+    body.legend-app .legend-app-content :is(.form-control,.form-select) {
+        min-height: var(--legend-desktop-control-height);
+        padding-block: .42rem;
+        padding-inline: .68rem;
+        border-radius: var(--legend-app-radius-compact);
+        font-size: .9rem;
+        box-shadow: none;
+    }
+
+    body.legend-app .legend-app-content textarea.form-control {
+        min-height: 84px;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .card,
+        .dashboard-surface-panel,
+        .dashboard-command-center-panel,
+        .dashboard-analytics-panel,
+        .client-card,
+        .queue-workspace-record,
+        .queue-record,
+        .crm-card,
+        .home-command-panel,
+        .marketing-manager-goal-panel,
+        .marketing-manager-result
+    ) {
+        border-radius: var(--legend-app-radius);
+    }
+
+    body.legend-app .legend-app-content :is(
+        .card-body,
+        .dashboard-surface-panel,
+        .dashboard-command-center-panel,
+        .dashboard-analytics-panel
+    ) {
+        padding: var(--legend-desktop-card-pad);
+    }
+
+    body.legend-app .legend-app-content :is(
+        .dashboard-kpi-grid,
+        .legend-workspace-metrics,
+        .home-tools-grid,
+        .home-hero-summary,
+        .marketing-manager-plan-grid,
+        .wa-channel-grid,
+        .wa-growth-economics-grid
+    ) {
+        gap: var(--legend-desktop-gap);
+    }
+
+    body.legend-app .legend-app-content :is(h1,.legend-title,.hero-title) {
+        letter-spacing: -.025em;
+    }
+
+    body.legend-app .legend-app-content :is(h2,h3,.card-title,.section-title) {
+        letter-spacing: -.015em;
+    }
+}
