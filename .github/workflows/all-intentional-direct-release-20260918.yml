@@ -55,6 +55,20 @@ jobs:
       exact_live: ${{ steps.live.outputs.exact_live }}
       application_release_sha: ${{ steps.live.outputs.application_release_sha }}
       package_identity: ${{ steps.live.outputs.package_identity }}
+      resource_group: ${{ steps.live.outputs.resource_group }}
+      migration_bundle: ${{ steps.live.outputs.migration_bundle }}
+      database_authority: ${{ steps.live.outputs.database_authority }}
+      browser_entry_hosts: ${{ steps.live.outputs.browser_entry_hosts }}
+      shared_auth_targets: ${{ steps.live.outputs.shared_auth_targets }}
+      editor_targets: ${{ steps.live.outputs.editor_targets }}
+      marketing_targets: ${{ steps.live.outputs.marketing_targets }}
+      routing_targets: ${{ steps.live.outputs.routing_targets }}
+      routing_primary: ${{ steps.live.outputs.routing_primary }}
+      routing_primary_host: ${{ steps.live.outputs.routing_primary_host }}
+      selected_has_browser_entry: ${{ steps.live.outputs.selected_has_browser_entry }}
+      selected_has_static: ${{ steps.live.outputs.selected_has_static }}
+      selected_has_shared_auth: ${{ steps.live.outputs.selected_has_shared_auth }}
+      selected_has_editor: ${{ steps.live.outputs.selected_has_editor }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -218,6 +232,20 @@ jobs:
       EXACT_LIVE: ${{ needs.discover-live.outputs.exact_live }}
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
       PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
+      RELEASE_RESOURCE_GROUP: ${{ needs.discover-live.outputs.resource_group }}
+      MIGRATION_BUNDLE: ${{ needs.discover-live.outputs.migration_bundle }}
+      DATABASE_AUTHORITY: ${{ needs.discover-live.outputs.database_authority }}
+      BROWSER_ENTRY_HOSTS: ${{ needs.discover-live.outputs.browser_entry_hosts }}
+      SHARED_AUTH_TARGETS: ${{ needs.discover-live.outputs.shared_auth_targets }}
+      EDITOR_TARGETS: ${{ needs.discover-live.outputs.editor_targets }}
+      MARKETING_TARGETS: ${{ needs.discover-live.outputs.marketing_targets }}
+      ROUTING_TARGETS: ${{ needs.discover-live.outputs.routing_targets }}
+      ROUTING_PRIMARY: ${{ needs.discover-live.outputs.routing_primary }}
+      ROUTING_PRIMARY_HOST: ${{ needs.discover-live.outputs.routing_primary_host }}
+      SELECTED_HAS_BROWSER_ENTRY: ${{ needs.discover-live.outputs.selected_has_browser_entry }}
+      SELECTED_HAS_STATIC: ${{ needs.discover-live.outputs.selected_has_static }}
+      SELECTED_HAS_SHARED_AUTH: ${{ needs.discover-live.outputs.selected_has_shared_auth }}
+      SELECTED_HAS_EDITOR: ${{ needs.discover-live.outputs.selected_has_editor }}
     steps:
       - uses: actions/checkout@v4
         with:
