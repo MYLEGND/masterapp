@@ -189,7 +189,13 @@ def merge_validated(api, pr):
     if pending:
         return {'retained': pending}
 
-    targets = automatic_release_targets(api, pr)
+    files = api.pages(f"pulls/{pr['number']}/files")
+    names = [row.get('filename') for row in files if row.get('filename')]
+    targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
+    control_only = bool(names) and all(
+        VALIDATION_AUTHORITY.release_control_only_path(name)
+        for name in names
+    )
     try:
         result = api.api(f"pulls/{pr['number']}/merge",
             {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
@@ -211,7 +217,7 @@ def merge_validated(api, pr):
     # the validated PR. No second authorization command or hand-maintained target
     # table exists between merge and deployment.
     release_result = None
-    if targets:
+    if targets and not control_only:
         api.dispatch(DIRECT, automatic_release_inputs(pr, result['sha'], targets))
         release_result = {
             'directRelease': 'automatic validated-merge release',
@@ -226,13 +232,13 @@ def merge_validated(api, pr):
             'releaseRecovery': 'deferred until refreshed approved checkout',
         }
 
-    if any(f['filename'] == '.github/workflows/deployment-diagnostics.yml' for f in api.pages(f"pulls/{pr['number']}/files")):
+    if any(f.get('filename') == '.github/workflows/deployment-diagnostics.yml' for f in files):
         api.dispatch('deployment-diagnostics.yml')
     return {
         'mergedPr': pr['number'],
         'sha': result['sha'],
         'releaseDispatched': bool(release_result and 'directRelease' in release_result),
-        'automaticRelease': bool(targets),
+        'automaticRelease': bool(targets and not control_only),
         'targets': list(targets),
         'release': release_result,
     }
