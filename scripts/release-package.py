@@ -32,7 +32,7 @@ APPS = {
     key: (row["project"], row["package"], row["static"])
     for key, row in _RELEASE_AUTHORITY.RELEASE_TARGETS.items()
 }
-MIGRATION_BUNDLE = "masterapp-migrations"
+MIGRATION_BUNDLE = _RELEASE_AUTHORITY.MIGRATION_BUNDLE_NAME
 CONTRACT_INPUTS = (
     "scripts/release-package.py",
     "scripts/deploy-approved-app.py",
@@ -120,13 +120,15 @@ def build_dotnet(app: str, revision: str, output: Path):
     zip_directory(publish, output / archive_name)
 
 
-def build_website(revision: str, output: Path):
-    run("npm", "ci", "--prefix", "Legend-Website", "--ignore-scripts", "--no-audit", "--no-fund")
-    run("npm", "--prefix", "Legend-Website", "run", "build")
-    dist = ROOT / "Legend-Website" / "dist"
+def build_static(app: str, revision: str, output: Path):
+    target = _RELEASE_AUTHORITY.RELEASE_TARGETS[app]
+    source_root = target["sourceRoot"]
+    run("npm", "ci", "--prefix", source_root, "--ignore-scripts", "--no-audit", "--no-fund")
+    run("npm", "--prefix", source_root, "run", "build")
+    dist = ROOT / source_root / "dist"
     (dist / "_deployment-provenance.txt").write_text(revision + "\n")
-    shutil.copy2(ROOT / "Legend-Website" / "public" / "web.config", dist / "web.config")
-    zip_directory(dist, output / APPS["website"][1])
+    shutil.copy2(ROOT / source_root / "public" / "web.config", dist / "web.config")
+    zip_directory(dist, output / target["package"])
 
 
 def build_migration_bundle(output: Path):
@@ -156,9 +158,11 @@ def build_all(revision: str, output: Path):
     shutil.rmtree(output, ignore_errors=True)
     output.mkdir(parents=True, exist_ok=True)
 
-    for app in ("portal", "client", "protect", "parfait"):
-        build_dotnet(app, revision, output)
-    build_website(revision, output)
+    for app, (_, _, static) in APPS.items():
+        if static:
+            build_static(app, revision, output)
+        else:
+            build_dotnet(app, revision, output)
     build_migration_bundle(output)
 
     files = [output / APPS[app][1] for app in APPS] + [output / MIGRATION_BUNDLE]
