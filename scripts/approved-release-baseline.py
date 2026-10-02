@@ -160,7 +160,8 @@ def main():
     parser.add_argument('--automatic', action='store_true', help='Compatibility flag; committed target scope remains authoritative')
     args = parser.parse_args()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-    if os.environ.get('GITHUB_ACTIONS') == 'true':
+    github_release_context = os.environ.get('GITHUB_ACTIONS') == 'true'
+    if github_release_context:
         if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != os.environ.get('GITHUB_SHA'):
             raise SystemExit('Only the exact approved branch revision can be released')
     request = read_request()
@@ -170,7 +171,7 @@ def main():
         raise ValueError('releaseMode must be approved-only or validate-only')
     if release_mode == 'approved-only' and 'targets' not in request:
         raise ValueError('An approved release requires an explicit target list')
-    if os.environ.get('GITHUB_ACTIONS') == 'true' and release_mode == 'approved-only':
+    if github_release_context and release_mode == 'approved-only':
         spec = importlib.util.spec_from_file_location('release_lifecycle', Path(__file__).with_name('release-lifecycle.py'))
         lifecycle = importlib.util.module_from_spec(spec); spec.loader.exec_module(lifecycle)
         if not lifecycle.direct_only_request(head):
@@ -238,13 +239,15 @@ def main():
             raise ValueError('Preserve-live recovery contains application changes: ' + ', '.join(unexpected))
     if preserve_live_targets:
         application_release_sha = preserve_live_revision
-    elif release_mode == 'approved-only':
+    elif release_mode == 'approved-only' and github_release_context:
         application_release_sha = validated_application_revision(validated_source_sha, head)
         if application_release_sha != head:
             print(
                 "Using exact validated PR head as application provenance:",
                 application_release_sha,
             )
+    elif release_mode == 'approved-only':
+        application_release_sha = head
     else:
         application_release_sha = reusable_live_application_revision(rows, head) or head
         if application_release_sha != head:
