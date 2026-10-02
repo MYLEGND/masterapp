@@ -319,6 +319,7 @@ class AutomaticMergeRelease(unittest.TestCase):
         self.assertEqual("true", inputs["automatic"])
         self.assertEqual("77", inputs["source_pr"])
         self.assertEqual("b" * 40, inputs["validated_sha"])
+        self.assertEqual("c" * 40, inputs["source_merge_sha"])
         self.assertEqual("c" * 40, inputs["merge_sha"])
         self.assertEqual([target], json.loads(inputs["targets_json"]))
 

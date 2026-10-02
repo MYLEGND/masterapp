@@ -168,17 +168,21 @@ def main():
         except (KeyError, ValueError):
             raise ValueError('Automatic release requires the validated source PR number')
         validated_sha = validate_revision(os.environ.get('AUTOMATIC_VALIDATED_SHA'))
+        source_merge_sha = validate_revision(
+            os.environ.get('AUTOMATIC_SOURCE_MERGE_SHA') or os.environ.get('AUTOMATIC_MERGE_SHA')
+        )
         merge_sha = validate_revision(os.environ.get('AUTOMATIC_MERGE_SHA'))
         if merge_sha != head:
-            raise ValueError('Automatic release checkout is not the exact validated merge revision')
+            raise ValueError('Automatic release checkout is not the exact approved release authority')
         pr = api.api(f'pulls/{pr_number}')
         if (
             not pr.get('merged_at')
-            or pr.get('merge_commit_sha') != merge_sha
+            or pr.get('merge_commit_sha') != source_merge_sha
             or pr.get('base', {}).get('ref') != lifecycle.APPROVED
             or pr.get('head', {}).get('sha') != validated_sha
         ):
             raise ValueError('Automatic release inputs do not bind to one merged validated PR')
+        subprocess.run(['git', 'merge-base', '--is-ancestor', source_merge_sha, head], check=True)
         pending = lifecycle.candidate_validation(api, pr)
         if pending:
             raise ValueError(pending)

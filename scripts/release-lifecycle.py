@@ -173,12 +173,13 @@ def automatic_release_targets(api, pr):
     return VALIDATION_AUTHORITY.release_targets_for_paths(names)
 
 
-def automatic_release_inputs(pr, merge_sha, targets):
+def automatic_release_inputs(pr, release_sha, targets, *, source_merge_sha=None):
     return {
         'automatic': 'true',
         'source_pr': str(pr['number']),
         'validated_sha': pr['head']['sha'],
-        'merge_sha': merge_sha,
+        'source_merge_sha': source_merge_sha or release_sha,
+        'merge_sha': release_sha,
         'targets_json': json.dumps(list(targets), separators=(',', ':')),
     }
 
@@ -662,7 +663,12 @@ def dispatch_pending_automatic_release(api, approved):
 
     api.dispatch(
         DIRECT,
-        automatic_release_inputs(pr, pending['authorizationSha'], tuple(pending['targets'])),
+        automatic_release_inputs(
+            pr,
+            approved,
+            tuple(pending['targets']),
+            source_merge_sha=pending['authorizationSha'],
+        ),
     )
     return {
         'directRelease': 'recovered nearest still-unreleased automatic validated merge',
