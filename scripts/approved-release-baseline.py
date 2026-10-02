@@ -299,7 +299,7 @@ def main():
             out.write('baselines=' + json.dumps(rows, separators=(',', ':')) + '\n')
             out.write('portal=' + rows[0]['revision'] + '\n')
             out.write('database_baseline=' + database_baseline + '\n')
-            out.write('targets=' + json.dumps(['masterapp-' + row['app'] for row in rows], separators=(',', ':')) + '\n')
+            out.write('targets=' + json.dumps([row['releaseName'] for row in rows], separators=(',', ':')) + '\n')
             out.write('public_only=' + str(all(row['app'] in {'protect', 'website'} for row in rows)).lower() + '\n')
             out.write('client_only=' + str(len(rows) == 1 and rows[0]['app'] == 'client').lower() + '\n')
             out.write('website_only=' + str(len(rows) == 1 and rows[0]['app'] == 'website').lower() + '\n')
