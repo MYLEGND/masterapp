@@ -288,12 +288,32 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Resolve whether application bytes changed
+        id: packageplan
+        shell: bash
+        run: |
+          python3 - "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" "$GITHUB_OUTPUT" <<'PY'
+          import importlib.util, pathlib, subprocess, sys
+          base, head, output = sys.argv[1:]
+          path=pathlib.Path('scripts/approved-release-baseline.py')
+          spec=importlib.util.spec_from_file_location('release_baseline',path)
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          changed=subprocess.check_output(['git','diff','--name-only',base,head],text=True).splitlines()
+          application=[name for name in changed if not module.release_control_only_path(name)]
+          with open(output,'a') as stream:
+              stream.write('needed='+str(bool(application)).lower()+'\n')
+          print('Application package inputs changed:' if application else 'Control-only change; package build preserved.', application)
+          PY
+
       - name: Setup .NET for canonical package build
+        if: steps.packageplan.outputs.needed == 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.401'
 
       - name: Setup Node for canonical static package build
+        if: steps.packageplan.outputs.needed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -302,6 +322,7 @@ jobs:
 
       - name: Build immutable validated release package
         id: package
+        if: steps.packageplan.outputs.needed == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -311,6 +332,7 @@ jobs:
             --output "$GITHUB_OUTPUT"
 
       - name: Verify immutable validated release package
+        if: steps.packageplan.outputs.needed == 'true'
         shell: bash
         run: |
           python3 scripts/release-package.py verify \
@@ -318,6 +340,7 @@ jobs:
             --directory "$RUNNER_TEMP/validated-release-package"
 
       - name: Preserve immutable validated release package
+        if: steps.packageplan.outputs.needed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.artifact }}
