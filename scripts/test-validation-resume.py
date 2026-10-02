@@ -376,6 +376,36 @@ jobs:
         self.assertTrue(plan["gates"]["comparison"]["run"])
         self.assertFalse(plan["gates"]["candidate-focused"]["run"])
 
+    def test_merge_readiness_consumes_one_canonical_validation_topology(self):
+        topology = m.required_validation_topology(["scripts/validation-resume.py"])
+        self.assertEqual(
+            {
+                ".github/workflows/masterapp-platform-architecture-validation.yml",
+                ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+                ".github/workflows/step6-openai-ads-execution-validation.yml",
+                ".github/workflows/steps7-8-governed-advertising-validation.yml",
+                ".github/workflows/approved-release-security-validation.yml",
+            },
+            set(topology["required"]),
+        )
+
+        lifecycle = (ROOT / "scripts" / "release-lifecycle.py").read_text()
+        self.assertIn("VALIDATION_AUTHORITY.required_validation_topology(names)", lifecycle)
+        self.assertIn("VALIDATION_AUTHORITY.validation_neutral_path(path)", lifecycle)
+        self.assertNotIn("STEP6_VALIDATION_PATHS", lifecycle)
+        self.assertNotIn("STEP78_VALIDATION_PATHS", lifecycle)
+        self.assertNotIn("VALIDATION_NEUTRAL_PATHS =", lifecycle)
+
+    def test_public_website_only_scope_does_not_expand_into_unrelated_validations(self):
+        topology = m.required_validation_topology([
+            "Infrastructure/WebsiteEditing/WebsiteSiteSource.cs",
+        ])
+        self.assertTrue(topology["publicWebsiteOnly"])
+        self.assertEqual(
+            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            set(topology["required"]),
+        )
+
     def test_step5_workflow_only_change_is_neutral_to_architecture(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
