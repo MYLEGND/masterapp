@@ -1368,7 +1368,7 @@ public sealed class LegendFounderAiConversationService
                                 AllowTools: allowTools, RequireToolCall: requireToolCall,
                                 ProviderPolicy: providerPolicy,
                                 AdapterVersion: localModelSelection?.AdapterVersion,
-                                RequestingActorId: founder.GetCanonicalUserId(), Cognition: LegendModelCognitionPolicy.AdaptiveFounder), effectiveToken);
+                                RequestingActorId: founder.GetCanonicalUserId()), effectiveToken);
                         if (!generated.Succeeded || generated.Output is not { } localOutput)
                             throw new LocalFoundationExecutionException(generated.ErrorCode ?? "local_foundation_no_response");
                         return JsonDocument.Parse(localOutput.GetRawText());
