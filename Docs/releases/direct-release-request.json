@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-10-01 to validate and deploy the completed Founder Engineering ChatGPT activation through the protected legend/approved-changes release authority. Release only the exact merged activation application revision after its owning validation is green. Preserve successful evidence and do not deploy unrelated applications.",
-  "purpose": "Deploy only masterapp-portal for the merged Founder Engineering ChatGPT activation. Apply the additive 20261001193000_ExtendFounderEngineeringActivation migration through the existing canonical migration authority, publish the Founder Engineering Command Center activation flow, ChatGPT-plan OAuth credential authority, plan-backed Responses execution adapter, model-role bindings, and autonomous engineering controls. Do not deploy ClientApp, Protect, Parfait, the static Website, native iOS/Android, or Cloudflare routing. Require final live runtime provenance for the exact application release SHA.",
-  "requestId": "founder-engineering-chatgpt-activation-20261001",
+  "authorization": "Explicit Founder authorization on 2026-10-01 to deploy the merged Founder Engineering runtime resilience hardening through the sole protected legend/approved-changes release authority. Release only the exact validated application revision associated with PR #362 and preserve all successful validation evidence.",
+  "purpose": "Deploy only masterapp-portal for the merged Founder Engineering runtime resilience hardening. Apply the additive 20261001225000_HardenLegendEngineeringRuntimeResilience migration through the existing canonical migration authority and publish the hardened ChatGPT-plan provider circuit, readiness canaries, durable lease recovery, provider-vs-logical attempt accounting, bounded provider execution lease, Founder Engineering Command Center recovery states, and existing browser live-proof integration. Do not deploy ClientApp, Protect, Parfait, the static Website, native iOS/Android, or Cloudflare routing. Require final live runtime provenance for the exact application release SHA.",
+  "requestId": "founder-engineering-runtime-hardening-20261001",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"
