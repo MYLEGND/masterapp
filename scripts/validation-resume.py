@@ -506,10 +506,10 @@ RELEASE_STEP_POLICIES = {
         "Verify custom-domain bridge end to end": "current_state",
         "Capture exact Cloudflare challenge event after failed live proof": "diagnostic_on_failure",
         "Verify every deployed target and collect all failures": "final_live_proof",
-        "Retain exact release step-state receipt": "artifact_receipt",
-        "Preserve exact release step-state receipt": "artifact_receipt",
         "Enforce complete direct deployment outcome": "finalize",
         "Retain exact approved release receipt": "artifact_receipt",
+        "Capture exact release step-state receipt": "artifact_receipt",
+        "Preserve exact release step-state receipt artifact": "artifact_receipt",
     },
     "legend-release-lifecycle.yml": {
         "Resolve lifecycle validation authority identity": "evidence_lookup",
