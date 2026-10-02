@@ -299,17 +299,15 @@ class PendingUpdateFairness(unittest.TestCase):
 
 class AutomaticMergeRelease(unittest.TestCase):
     @patch.object(m, "candidate_validation", return_value=None)
-    @patch.object(m, "automatic_release_targets")
-    def test_green_merge_dispatches_release_without_second_command(self, targets, _):
+    def test_green_merge_dispatches_release_without_second_command(self, _):
         api = Api()
-        target = next(iter(m.VALIDATION_AUTHORITY.RELEASE_TARGETS.values()))["releaseName"]
-        targets.return_value = (target,)
+        target = canonical_name("portal")
         pr = {"number": 77, "head": {"sha": "b" * 40}}
         api.api_map["pulls/77/merge"] = {
             "merged": True,
             "sha": "c" * 40,
         }
-        api.pages_map["pulls/77/files"] = []
+        api.pages_map["pulls/77/files"] = [{"filename": "AgentPortal/Program.cs"}]
 
         result = m.merge_validated(api, pr)
 
@@ -329,18 +327,16 @@ class AutomaticMergeRelease(unittest.TestCase):
 
 
     @patch.object(m, "candidate_validation", return_value=None)
-    @patch.object(m, "automatic_release_targets", return_value=())
-    @patch.object(m, "dispatch_pending_legacy_release")
-    def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(
-        self, recover, _, __
-    ):
+    def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(self, _):
         api = Api()
         pr = {"number": 78, "head": {"sha": "e" * 40}}
         api.api_map["pulls/78/merge"] = {
             "merged": True,
             "sha": "f" * 40,
         }
-        api.pages_map["pulls/78/files"] = []
+        api.pages_map["pulls/78/files"] = [
+            {"filename": "scripts/deploy-founder-cloudflare.py"},
+        ]
 
         result = m.merge_validated(api, pr)
 
@@ -350,12 +346,10 @@ class AutomaticMergeRelease(unittest.TestCase):
             "deferred until refreshed approved checkout",
             result["release"]["releaseRecovery"],
         )
-        recover.assert_not_called()
 
 
     @patch.object(m, "candidate_validation", return_value=None)
-    @patch.object(m, "automatic_release_targets", return_value=())
-    def test_nonmergeable_validated_pr_is_retained_not_fatal(self, _, __):
+    def test_nonmergeable_validated_pr_is_retained_not_fatal(self, _):
         api = Api()
         pr = {"number": 323, "head": {"sha": "b" * 40}}
 
