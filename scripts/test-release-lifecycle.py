@@ -16,7 +16,7 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 
-def successful_jobs(target_step="Direct deploy AgentPortal"):
+def successful_jobs(target_step="Publish selected head as one transaction"):
     return [
         {"name": "discover-live", "conclusion": "success", "steps": []},
         {
@@ -179,6 +179,35 @@ class PendingUpdateFairness(unittest.TestCase):
         self.assertEqual(10, integrate.call_args_list[0].args[1])
         self.assertEqual(11, integrate.call_args_list[1].args[1])
 
+class AutomaticMergeRelease(unittest.TestCase):
+    @patch.object(m, "candidate_validation", return_value=None)
+    @patch.object(m, "automatic_release_targets")
+    def test_green_merge_dispatches_release_without_second_command(self, targets, _):
+        api = Api()
+        target = next(iter(m.VALIDATION_AUTHORITY.RELEASE_TARGETS.values()))["releaseName"]
+        targets.return_value = (target,)
+        pr = {"number": 77, "head": {"sha": "b" * 40}}
+        api.api_map["pulls/77/merge"] = {
+            "merged": True,
+            "sha": "c" * 40,
+        }
+        api.pages_map["pulls/77/files"] = []
+
+        result = m.merge_validated(api, pr)
+
+        self.assertTrue(result["automaticRelease"])
+        self.assertEqual([target], result["targets"])
+        self.assertEqual(1, len(api.dispatched))
+        workflow, inputs = api.dispatched[0]
+        self.assertEqual(m.DIRECT, workflow)
+        self.assertEqual("true", inputs["automatic"])
+        self.assertEqual("77", inputs["source_pr"])
+        self.assertEqual("b" * 40, inputs["validated_sha"])
+        self.assertEqual("c" * 40, inputs["merge_sha"])
+        self.assertEqual([target], json.loads(inputs["targets_json"]))
+
+
+
 
 class ReleaseTruth(unittest.TestCase):
     def setUp(self):
@@ -225,22 +254,29 @@ class ReleaseTruth(unittest.TestCase):
         api.pages_map["actions/runs/10/jobs?filter=latest"] = [
             {"name": "discover-live", "conclusion": "success", "steps": []},
             {"name": "release", "conclusion": "success", "steps": [
-                {"name": "Direct deploy AgentPortal", "conclusion": "success"},
+                {"name": "Publish selected head as one transaction", "conclusion": "success"},
             ]},
         ]
         self.assertFalse(m.successful_release(api, self.release_run(), app="portal"))
 
     def test_app_receipt_is_target_specific(self):
         api = Api()
-        api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs("Direct deploy AgentPortal")
-        self.assertTrue(m.successful_release(api, self.release_run(), app="portal"))
-        self.assertFalse(m.successful_release(api, self.release_run(), app="client"))
+        revision = "c" * 40
+        passed = self.release_run(id=10, head_sha="d" * 40)
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-portal"] = [
+            {"expired": False, "workflow_run": {"id": 10}}
+        ]
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-client"] = []
+        api.api_map["actions/runs/10"] = passed
+        api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs()
+        self.assertTrue(m.release_proven(api, revision, app="portal"))
+        self.assertFalse(m.release_proven(api, revision, app="client"))
 
     def test_release_proven_resolves_application_revision_receipt_not_workflow_head(self):
         api = Api()
         revision = "c" * 40
         passed = self.release_run(id=10, head_sha="d" * 40)
-        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision] = [
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-portal"] = [
             {"expired": False, "workflow_run": {"id": 10}}
         ]
         api.api_map["actions/runs/10"] = passed
@@ -252,7 +288,7 @@ class ReleaseTruth(unittest.TestCase):
         api = Api()
         revision = "c" * 40
         passed = self.release_run(id=11, head_sha=revision)
-        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision] = []
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-portal"] = []
         api.pages_map["actions/runs?head_sha=" + revision] = [passed]
         api.pages_map["actions/runs/11/jobs?filter=latest"] = successful_jobs()
         self.assertTrue(m.release_proven(api, revision, app="portal"))
@@ -274,7 +310,7 @@ class ReconcileSafety(unittest.TestCase):
     def test_no_authorization_means_no_release(self, _, __):
         api = Api()
         self.assertEqual(
-            {"release": "no exact approved-only release authorization"},
+            {"release": "no application publication required for exact approved head"},
             m.reconcile(api),
         )
         self.assertEqual([], api.dispatched)
