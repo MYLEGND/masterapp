@@ -2038,12 +2038,14 @@ def compute_rollback_evidence(repository: str, revision: str, app: str):
     if app not in RELEASE_TARGETS:
         raise ValueError(f"Unknown release target: {app}")
     result = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "revision": revision,
         "app": app,
         "packageName": RELEASE_TARGETS[app]["package"],
         "runId": None,
+        "releaseRunId": None,
         "packageArtifact": None,
+        "packageIdentity": None,
         "reusable": False,
     }
     token = os.environ.get("GITHUB_TOKEN", "")
@@ -2072,14 +2074,55 @@ def compute_rollback_evidence(repository: str, revision: str, app: str):
                 and (run.get("head_repository") or {}).get("full_name") == repository
             ):
                 continue
+            artifact_names = _run_artifact_names(repository, run_id, token)
+            link_prefix = f"legend-approved-package-link-{revision}-"
+            package_links = sorted(
+                name for name in artifact_names
+                if name.startswith(link_prefix)
+            )
+            for link_name in package_links:
+                package_identity = link_name[len(link_prefix):]
+                if not re.fullmatch(r"[0-9a-f]{64}", package_identity):
+                    continue
+                validated = compute_validated_package_evidence(
+                    repository,
+                    revision,
+                    package_identity,
+                )
+                if not validated.get("reusable"):
+                    continue
+                result.update({
+                    "runId": int(validated["runId"]),
+                    "releaseRunId": run_id,
+                    "packageArtifact": validated["artifact"],
+                    "packageIdentity": package_identity,
+                    "reusable": True,
+                    "reason": (
+                        "exact_target_release_receipt_with_validated_package_link"
+                        if receipt_name.endswith("-" + release_name)
+                        else "legacy_release_receipt_with_validated_package_link"
+                    ),
+                })
+                return result
+
+            # Backward compatibility for releases created before package-link
+            # receipts existed. New releases do not duplicate validated package
+            # bytes into the release run.
             names = sorted(
-                name for name in _run_artifact_names(repository, run_id, token)
+                name for name in artifact_names
                 if name.startswith("founder-diagnostics-packages-")
             )
             if names:
+                package_identity = names[-1].removeprefix("founder-diagnostics-packages-")
                 result.update({
                     "runId": run_id,
+                    "releaseRunId": run_id,
                     "packageArtifact": names[-1],
+                    "packageIdentity": (
+                        package_identity
+                        if re.fullmatch(r"[0-9a-f]{64}", package_identity)
+                        else None
+                    ),
                     "reusable": True,
                     "reason": (
                         "exact_target_release_receipt"
@@ -2097,12 +2140,14 @@ def cmd_rollback_evidence(args):
         result = compute_rollback_evidence(args.repository, args.revision, args.app)
     except Exception as exc:
         result = {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "revision": args.revision,
             "app": args.app,
             "packageName": RELEASE_TARGETS.get(args.app, {}).get("package"),
             "runId": None,
+            "releaseRunId": None,
             "packageArtifact": None,
+            "packageIdentity": None,
             "reusable": False,
             "reason": "planner_error_fail_closed",
             "plannerError": type(exc).__name__,
