@@ -66,8 +66,8 @@
   --legend-app-panel:var(--web-white);
   --legend-app-panel-soft:var(--web-surface);
   --legend-app-border:var(--web-border);
-  --legend-app-radius:var(--web-radius-md);
-  --legend-app-radius-compact:var(--web-radius-sm);
+  --legend-app-radius:14px;
+  --legend-app-radius-compact:10px;
 
   /* Mobile geometry aliases preserve the approved mobile contract. */
   --legend-mobile-surface:var(--legend-app-surface);
@@ -83,10 +83,10 @@
   --legend-mobile-gap:6px;
 
   /* Desktop geometry only; visual language remains shared above. */
-  --legend-desktop-control-height:40px;
-  --legend-desktop-card-pad:clamp(.9rem,1.1vw,1.2rem);
-  --legend-desktop-gap:clamp(.65rem,.9vw,1rem);
-  --legend-desktop-modal-gutter:clamp(24px,4vw,64px);
+  --legend-desktop-control-height:38px;
+  --legend-desktop-card-pad:clamp(.72rem,.9vw,1rem);
+  --legend-desktop-gap:clamp(.48rem,.7vw,.78rem);
+  --legend-desktop-modal-gutter:clamp(20px,3vw,48px);
   --legend-desktop-modal-width:min(1120px,calc(100vw - (2 * var(--legend-desktop-modal-gutter))));
   --legend-desktop-modal-height:calc(100dvh - (2 * var(--legend-desktop-modal-gutter)));
 }
