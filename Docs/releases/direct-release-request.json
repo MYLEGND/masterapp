@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-10-01 to resume the failed Founder Engineering runtime resilience release after correcting only the SQL Server migration batch-sequencing defect. Preserve all previously successful validation/release evidence and deploy only the exact corrected portal candidate through legend/approved-changes.",
-  "purpose": "Resume only masterapp-portal for the merged Founder Engineering runtime resilience hardening after correcting 20261001225000_HardenLegendEngineeringRuntimeResilience so its legacy usage backfill compiles after the new columns exist. Apply that additive migration through the existing canonical migration authority, then continue the already-authorized portal deployment and final live provenance enforcement. Do not deploy ClientApp, Protect, Parfait, the static Website, native iOS/Android, or Cloudflare routing.",
-  "requestId": "founder-engineering-runtime-hardening-migration-resume-20261001",
+  "authorization": "Explicit Founder authorization on 2026-10-02 to complete the already-validated Founder Engineering runtime resilience release after canonical release-lifecycle recovery hardening. Reuse all preserved successful validation evidence, bind publication to the corrected PR #364 product revision, and deploy only masterapp-portal through legend/approved-changes.",
+  "purpose": "Complete only masterapp-portal for the corrected Founder Engineering runtime resilience candidate from PR #364. Reuse its existing successful Architecture, Step 5, and Security evidence; apply the existing additive migration through the canonical migration authority; publish through the sole transactional approved release workflow; and require final live provenance. Do not deploy ClientApp, Protect, Parfait, the static Website, native iOS/Android, or Cloudflare routing.",
+  "requestId": "founder-engineering-runtime-hardening-final-resume-20261002",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"
