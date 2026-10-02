@@ -1442,10 +1442,14 @@ def cmd_validated_package(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
-def compute_rollback_evidence(repository: str, revision: str):
+def compute_rollback_evidence(repository: str, revision: str, app: str):
+    if app not in RELEASE_TARGETS:
+        raise ValueError(f"Unknown release target: {app}")
     result = {
         "schemaVersion": 1,
         "revision": revision,
+        "app": app,
+        "packageName": RELEASE_TARGETS[app]["package"],
         "runId": None,
         "packageArtifact": None,
         "reusable": False,
@@ -1487,11 +1491,13 @@ def compute_rollback_evidence(repository: str, revision: str):
 
 def cmd_rollback_evidence(args):
     try:
-        result = compute_rollback_evidence(args.repository, args.revision)
+        result = compute_rollback_evidence(args.repository, args.revision, args.app)
     except Exception as exc:
         result = {
             "schemaVersion": 1,
             "revision": args.revision,
+            "app": args.app,
+            "packageName": RELEASE_TARGETS.get(args.app, {}).get("package"),
             "runId": None,
             "packageArtifact": None,
             "reusable": False,
@@ -1898,6 +1904,7 @@ def build_parser():
     rollback_evidence = sub.add_parser("rollback-evidence")
     rollback_evidence.add_argument("--repository", required=True)
     rollback_evidence.add_argument("--revision", required=True)
+    rollback_evidence.add_argument("--app", required=True)
     rollback_evidence.add_argument("--output", required=True)
     rollback_evidence.set_defaults(func=cmd_rollback_evidence)
 
