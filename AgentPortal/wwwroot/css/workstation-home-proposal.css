@@ -71,13 +71,13 @@
 #proposalDialog .hp-form-actions{display:flex;gap:.6rem;flex-wrap:wrap;align-self:flex-end;}
 #proposalDialog .hp-field{display:flex;flex-direction:column;gap:.26rem;flex:1 1 220px;}
 #proposalDialog .hp-field span{font-size:.72rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--legend-app-accent-bright);}
-#proposalDialog .hp-field input,#proposalDialog .hp-field select{min-height:40px;border-radius:10px;border:1.5px solid rgba(166,128,35,.38);background:rgba(255,255,255,.07);color:var(--legend-app-on-dark);padding:0 .75rem;font-size:.9rem;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);} 
+#proposalDialog .hp-field input,#proposalDialog .hp-field select{min-height:40px;border-radius:10px;border:1.5px solid rgba(166,128,35,.38);background:rgba(255,255,255,.07);color:var(--legend-app-on-dark);padding:0 .75rem;font-size:.9rem;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
 #proposalDialog .hp-field input::placeholder{color:#64748b;}
-#proposalDialog .hp-field input:focus,#proposalDialog .hp-field select:focus{outline:none;border-color:#ddb457;box-shadow:0 0 0 3px rgba(221,180,87,.16);} 
+#proposalDialog .hp-field input:focus,#proposalDialog .hp-field select:focus{outline:none;border-color:#ddb457;box-shadow:0 0 0 3px rgba(221,180,87,.16);}
 #proposalDialog .hp-field select option{background:#0f1d38;color:var(--legend-app-on-dark);}
 #proposalDialog .hp-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 1.1rem;border-radius:14px;font-weight:900;font-size:.9rem;letter-spacing:.01em;}
-#proposalDialog .hp-btn-gold{background:linear-gradient(180deg,#f4dc98,#ddb457);color:#0b1529;border:1.6px solid #ddb457;box-shadow:0 10px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.55);} 
-#proposalDialog .hp-btn-ghost{background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));color:var(--legend-app-on-dark);border:1.5px solid rgba(166,128,35,.44);box-shadow:0 8px 18px rgba(0,0,0,.16);} 
+#proposalDialog .hp-btn-gold{background:linear-gradient(180deg,#f4dc98,#ddb457);color:#0b1529;border:1.6px solid #ddb457;box-shadow:0 10px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.55);}
+#proposalDialog .hp-btn-ghost{background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));color:var(--legend-app-on-dark);border:1.5px solid rgba(166,128,35,.44);box-shadow:0 8px 18px rgba(0,0,0,.16);}
 #proposalDialog .hp-buckets{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.65rem;}
 #proposalDialog .hp-bucket{border:1.5px solid rgba(166,128,35,.28);border-radius:16px;padding:.75rem;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));box-shadow:0 10px 24px rgba(0,0,0,.16);display:flex;flex-direction:column;gap:.3rem;}
 #proposalDialog .hp-bucket>.hp-field{flex:0 0 auto;}
