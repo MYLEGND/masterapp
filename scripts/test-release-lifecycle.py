@@ -470,8 +470,9 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual(1, approved_pr.call_count)
         self.assertEqual(newest, approved_pr.call_args.args[1])
 
+    @patch.object(m, "_validated_package_evidence", return_value={"reusable": True, "runId": 77})
     @patch.object(m, "pending_legacy_release_authorization")
-    def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending):
+    def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending, _):
         api = Api()
         target = canonical_name("portal")
         pending.return_value = {
@@ -484,10 +485,49 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         result = m.dispatch_pending_legacy_release(api, "a" * 40)
 
         self.assertIn("directRelease", result)
+        self.assertEqual(77, result["packageEvidenceRunId"])
         self.assertEqual(
             [(m.DIRECT, {"automatic": "false", "merge_sha": "b" * 40})],
             api.dispatched,
         )
+
+    @patch.object(m, "_package_backfill_running", return_value=False)
+    @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
+    @patch.object(m, "pending_legacy_release_authorization")
+    def test_missing_package_dispatches_package_only_architecture_recovery(self, pending, _, __):
+        api = Api()
+        target = canonical_name("portal")
+        pending.return_value = {
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [target],
+            "sourcePr": 42,
+        }
+
+        result = m.dispatch_pending_legacy_release(api, "a" * 40)
+
+        self.assertIn("packageBackfill", result)
+        self.assertEqual(
+            [(m.PACKAGE_VALIDATION, {"package_revision": "c" * 40})],
+            api.dispatched,
+        )
+
+    @patch.object(m, "_package_backfill_running", return_value=True)
+    @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
+    @patch.object(m, "pending_legacy_release_authorization")
+    def test_running_package_backfill_is_preserved_without_duplicate_dispatch(self, pending, _, __):
+        api = Api()
+        pending.return_value = {
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [canonical_name("portal")],
+            "sourcePr": 42,
+        }
+
+        result = m.dispatch_pending_legacy_release(api, "a" * 40)
+
+        self.assertEqual("already queued or running", result["packageBackfill"])
+        self.assertEqual([], api.dispatched)
 
 
 class ReconcileSafety(unittest.TestCase):
@@ -531,6 +571,19 @@ class ReconcileSafety(unittest.TestCase):
             "updated_at": "2026-10-01T12:00:00Z",
         }]
         result = m.reconcile(api)
+        self.assertIn("retained", result)
+        self.assertEqual([], api.dispatched)
+
+    @patch.object(m, "staging_only", return_value=False)
+    def test_failed_package_backfill_trigger_is_not_auto_replayed(self, _):
+        api = Api()
+        api.api_map["actions/runs/100"] = {
+            "path": ".github/workflows/" + m.PACKAGE_VALIDATION,
+            "event": "workflow_dispatch",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        result = m.reconcile(api, 100)
         self.assertIn("retained", result)
         self.assertEqual([], api.dispatched)
 

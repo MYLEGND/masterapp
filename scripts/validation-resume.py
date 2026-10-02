@@ -30,6 +30,7 @@ import urllib.request
 
 TRUSTED_PR_BASE = "legend/approved-changes"
 DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
+PACKAGE_VALIDATION_WORKFLOW = "masterapp-platform-architecture-validation.yml"
 RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
 RELEASE_RESOURCE_GROUP = "masterapp-rg"
 MIGRATION_BUNDLE_NAME = "masterapp-migrations"
@@ -1740,7 +1741,7 @@ def cmd_lifecycle_evidence(args):
 
 
 def _package_canary_proof_runs(repository: str, current_run_id: int, head_branch: str, token: str):
-    workflow = urllib.parse.quote("masterapp-platform-architecture-validation.yml", safe="")
+    workflow = urllib.parse.quote(PACKAGE_VALIDATION_WORKFLOW, safe="")
     branch = urllib.parse.quote(head_branch, safe="")
     payload = api_get(
         repository,
@@ -1848,6 +1849,113 @@ def cmd_package_canary_plan(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def package_backfill_receipt_name(revision: str, package_identity: str) -> str:
+    return f"validated-package-backfill-{revision}-{package_identity}"
+
+
+def compute_package_backfill_plan(repository: str, revision: str, current_sha: str):
+    """Authorize package-only recovery for an already-green historical product head.
+
+    The current approved control plane may package the historical revision only when
+    the exact product head has a successful Architecture PR validation and every
+    change since that revision is release/test/control-only. Any application-source
+    drift fails closed.
+    """
+    result = {
+        "schemaVersion": 1,
+        "revision": revision,
+        "currentSha": current_sha,
+        "allowed": False,
+        "validationRunId": None,
+        "changedApplicationInputs": [],
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", revision, current_sha],
+        text=True,
+        capture_output=True,
+    )
+    if ancestor.returncode != 0:
+        result["reason"] = "revision_not_preserved_in_current_approved_history"
+        return result
+
+    changed = git_changed(revision, current_sha)
+    application_changes = sorted(
+        path for path in changed
+        if not release_control_only_path(path)
+    )
+    result["changedApplicationInputs"] = application_changes
+    if application_changes:
+        result["reason"] = "application_inputs_changed_since_validated_revision"
+        return result
+
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
+    encoded = urllib.parse.quote(revision, safe="")
+    payload = api_get(
+        repository,
+        f"actions/runs?head_sha={encoded}&event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = [
+        run for run in payload.get("workflow_runs", [])
+        if run.get("path") == workflow_path
+        and run.get("event") == "pull_request"
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        and run.get("head_sha") == revision
+        and (run.get("head_repository") or {}).get("full_name") == repository
+    ]
+    pulls = api_get(repository, f"commits/{revision}/pulls", token)
+    bound = [
+        pr for pr in pulls
+        if pr.get("merged_at")
+        and pr.get("base", {}).get("ref") == TRUSTED_PR_BASE
+        and pr.get("head", {}).get("sha") == revision
+        and pr.get("head", {}).get("repo", {}).get("full_name") == repository
+    ]
+    if not runs or len(bound) != 1:
+        result["reason"] = "exact_green_architecture_pr_evidence_missing"
+        return result
+
+    runs.sort(
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    result.update({
+        "allowed": True,
+        "validationRunId": int(runs[0]["id"]),
+        "sourcePr": int(bound[0]["number"]),
+        "reason": "exact_green_revision_with_control_only_descendants",
+    })
+    return result
+
+
+def cmd_package_backfill_plan(args):
+    try:
+        result = compute_package_backfill_plan(
+            args.repository,
+            args.revision,
+            args.current_sha,
+        )
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "revision": args.revision,
+            "currentSha": args.current_sha,
+            "allowed": False,
+            "validationRunId": None,
+            "changedApplicationInputs": [],
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def compute_validated_package_evidence(repository: str, revision: str, package_identity: str):
     result = {
         "schemaVersion": 1,
@@ -1857,28 +1965,44 @@ def compute_validated_package_evidence(repository: str, revision: str, package_i
         "runId": None,
         "reusable": False,
     }
-    token = os.environ.get("GITHUB_TOKEN", "")
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
     if not token:
         result["reason"] = "github_token_unavailable"
         return result
-    workflow_path = ".github/workflows/masterapp-platform-architecture-validation.yml"
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
     for artifact in _artifact_rows(repository, result["artifact"], token):
         run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
         if not run_id:
             continue
         run = api_get(repository, f"actions/runs/{run_id}", token)
-        if (
+        common = (
             run.get("path") == workflow_path
-            and run.get("event") == "pull_request"
             and run.get("status") == "completed"
             and run.get("conclusion") == "success"
-            and run.get("head_sha") == revision
             and (run.get("head_repository") or {}).get("full_name") == repository
+        )
+        exact_pr = (
+            common
+            and run.get("event") == "pull_request"
+            and run.get("head_sha") == revision
+        )
+        backfill = False
+        if (
+            common
+            and run.get("event") == "workflow_dispatch"
+            and run.get("head_branch") == TRUSTED_PR_BASE
         ):
+            receipt = package_backfill_receipt_name(revision, package_identity)
+            backfill = receipt in _run_artifact_names(repository, run_id, token)
+        if exact_pr or backfill:
             result.update({
                 "runId": run_id,
                 "reusable": True,
-                "reason": "exact_validated_application_package",
+                "reason": (
+                    "exact_validated_application_package"
+                    if exact_pr
+                    else "validated_package_backfill_from_exact_green_revision"
+                ),
             })
             return result
     result["reason"] = "exact_validated_package_missing"
@@ -2453,6 +2577,13 @@ def build_parser():
     package_canary.add_argument("--head-branch", required=True)
     package_canary.add_argument("--output", required=True)
     package_canary.set_defaults(func=cmd_package_canary_plan)
+
+    package_backfill = sub.add_parser("package-backfill-plan")
+    package_backfill.add_argument("--repository", required=True)
+    package_backfill.add_argument("--revision", required=True)
+    package_backfill.add_argument("--current-sha", required=True)
+    package_backfill.add_argument("--output", required=True)
+    package_backfill.set_defaults(func=cmd_package_backfill_plan)
 
     validated_package = sub.add_parser("validated-package")
     validated_package.add_argument("--repository", required=True)

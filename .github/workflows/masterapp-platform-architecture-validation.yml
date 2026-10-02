@@ -25,6 +25,11 @@ on:
     branches:
       - legend/approved-changes
   workflow_dispatch:
+    inputs:
+      package_revision:
+        description: Exact already-validated PR head to backfill as an immutable release package
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -37,6 +42,7 @@ concurrency:
 jobs:
   validate:
     name: architecture-validation
+    if: github.event_name != 'workflow_dispatch' || inputs.package_revision == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -293,7 +299,7 @@ jobs:
 
   validated-release-package:
     name: validated-release-package
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -302,10 +308,10 @@ jobs:
       DOTNET_CLI_USE_MSBUILD_SERVER: '0'
       MSBUILDDISABLENODEREUSE: '1'
     steps:
-      - name: Checkout exact validated application revision
+      - name: Checkout exact package authority
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -316,23 +322,45 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          revision="${{ github.event.pull_request.head.sha || inputs.package_revision }}"
+          test -n "$revision"
           plan="$RUNNER_TEMP/package-canary-plan.json"
-          python3 scripts/validation-resume.py package-canary-plan \
-            --repository "${{ github.repository }}" \
-            --current-sha "${{ github.event.pull_request.head.sha }}" \
-            --base-sha "${{ github.event.pull_request.base.sha }}" \
-            --current-run-id "${{ github.run_id }}" \
-            --head-branch "${{ github.head_ref }}" \
-            --output "$plan"
-          python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPACKAGEPLAN'
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python3 scripts/validation-resume.py package-backfill-plan \
+              --repository "${{ github.repository }}" \
+              --revision "$revision" \
+              --current-sha "${{ github.sha }}" \
+              --output "$plan"
+            python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPACKAGEBACKFILL'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          if not data.get('allowed'):
+              raise SystemExit('Package backfill refused: '+str(data.get('reason') or 'unknown'))
+          with open(sys.argv[2],'a') as output:
+              output.write('needed=true\n')
+              output.write(f"revision={data['revision']}\n")
+              output.write(f"validation_run_id={data.get('validationRunId') or ''}\n")
+          print(json.dumps(data,sort_keys=True))
+          PYPACKAGEBACKFILL
+          else
+            python3 scripts/validation-resume.py package-canary-plan \
+              --repository "${{ github.repository }}" \
+              --current-sha "$revision" \
+              --base-sha "${{ github.event.pull_request.base.sha }}" \
+              --current-run-id "${{ github.run_id }}" \
+              --head-branch "${{ github.head_ref }}" \
+              --output "$plan"
+            python3 - "$plan" "$GITHUB_OUTPUT" "$revision" <<'PYPACKAGEPLAN'
           import json,sys
           data=json.load(open(sys.argv[1]))
           with open(sys.argv[2],'a') as output:
               output.write('needed='+str(bool(data.get('needed'))).lower()+'\n')
+              output.write(f"revision={sys.argv[3]}\n")
               output.write(f"evidence_run_id={data.get('evidenceRunId') or ''}\n")
               output.write(f"evidence_head_sha={data.get('evidenceHeadSha') or ''}\n")
           print(json.dumps(data,sort_keys=True))
           PYPACKAGEPLAN
+          fi
 
       - name: Setup .NET for canonical package build
         if: steps.packageplan.outputs.needed == 'true'
@@ -355,7 +383,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/release-package.py build \
-            --revision "${{ github.event.pull_request.head.sha }}" \
+            --revision "${{ steps.packageplan.outputs.revision }}" \
             --directory "$RUNNER_TEMP/validated-release-package" \
             --output "$GITHUB_OUTPUT"
 
@@ -364,7 +392,7 @@ jobs:
         shell: bash
         run: |
           python3 scripts/release-package.py verify \
-            --revision "${{ github.event.pull_request.head.sha }}" \
+            --revision "${{ steps.packageplan.outputs.revision }}" \
             --directory "$RUNNER_TEMP/validated-release-package"
 
       - name: Preserve immutable validated release package
@@ -373,6 +401,36 @@ jobs:
         with:
           name: ${{ steps.package.outputs.artifact }}
           path: ${{ runner.temp }}/validated-release-package/
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Retain exact validated package backfill receipt
+        if: github.event_name == 'workflow_dispatch' && steps.packageplan.outputs.needed == 'true'
+        shell: bash
+        env:
+          REVISION: ${{ steps.packageplan.outputs.revision }}
+          VALIDATION_RUN_ID: ${{ steps.packageplan.outputs.validation_run_id }}
+          PACKAGE_IDENTITY: ${{ steps.package.outputs.identity }}
+        run: |
+          python3 - <<'PYBACKFILL'
+          import json,os
+          data={
+              'schemaVersion':1,
+              'revision':os.environ['REVISION'],
+              'validationRunId':int(os.environ['VALIDATION_RUN_ID']),
+              'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+          }
+          with open('/tmp/validated-package-backfill.json','w') as output:
+              json.dump(data,output,sort_keys=True,indent=2)
+          PYBACKFILL
+
+      - name: Preserve exact validated package backfill receipt
+        if: github.event_name == 'workflow_dispatch' && steps.packageplan.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-package-backfill-${{ steps.packageplan.outputs.revision }}-${{ steps.package.outputs.identity }}
+          path: /tmp/validated-package-backfill.json
           retention-days: 30
           if-no-files-found: error
           overwrite: true
