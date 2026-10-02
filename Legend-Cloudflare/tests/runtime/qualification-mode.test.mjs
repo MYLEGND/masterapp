@@ -97,6 +97,9 @@ test('qualification cannot bypass an exhausted durable budget when candidate cha
 
 function manualFixture() {
   const f = fixture();
+  // Founder conversational baseline defaults to the general route. Specialized
+  // roles are selected only by the server-owned task kind, never a request model ID.
+  f.envelope.task.kind = 'general';
   f.context.roles = ['Founder']; f.envelope.scope.roles = ['Founder'];
   f.policy = { version: 'legend-founder-baseline.v2', accountId: f.context.accountId,
     tenantId: f.context.tenantId, founderUserId: f.context.userId, serviceKeyId: f.context.keyId,
@@ -199,6 +202,9 @@ test('Founder baseline role routing reaches every reviewed model without request
   for (const model of MODEL_REGISTRY) {
     const f = manualFixture();
     f.envelope.task.kind = model.role;
+    // Full-context reservation for GLM/DeepSeek intentionally fits inside the
+    // same $3 lifetime account cap while actual usage is settled/refunded.
+    f.envelope.limits.maxCostMicrousd = 3000000;
     f.envelope.task.modelId = MODEL_REGISTRY[(MODEL_REGISTRY.indexOf(model) + 1) % MODEL_REGISTRY.length].id;
     const result = await orchestrate(f);
     assert.equal(result.status, 'completed');

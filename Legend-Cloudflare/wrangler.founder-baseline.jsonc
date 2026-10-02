@@ -36,7 +36,7 @@
     "LEGEND_RUNTIME_MODE": "founder_manual_test",
     "LEGEND_DEPLOYMENT_ENVIRONMENT": "production",
     "LEGEND_TOOL_CALLBACK_ENABLED": "true",
-    "LEGEND_BUDGET_POLICY_JSON": "{\"period\":\"lifetime\",\"requestMicrousd\":150000,\"userMicrousd\":3000000,\"tenantMicrousd\":3000000,\"accountMicrousd\":3000000,\"requestConcurrency\":1,\"userConcurrency\":1,\"tenantConcurrency\":1,\"accountConcurrency\":1,\"retentionMs\":86400000}"
+    "LEGEND_BUDGET_POLICY_JSON": "{\"period\":\"lifetime\",\"requestMicrousd\":3000000,\"userMicrousd\":3000000,\"tenantMicrousd\":3000000,\"accountMicrousd\":3000000,\"requestConcurrency\":1,\"userConcurrency\":1,\"tenantConcurrency\":1,\"accountConcurrency\":1,\"retentionMs\":86400000}"
   }
 }
 // Deployment must supply LEGEND_SERVICE_KEYS_JSON and
