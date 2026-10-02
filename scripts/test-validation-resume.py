@@ -1090,6 +1090,7 @@ jobs:
             "AgentPortal.Tests/LegendFounderPretrainedAcceptanceTests.cs",
             "scripts/test-validation-resume.py",
             "scripts/validation-resume.py",
+            "tests/layout/modal-content-region.test.mjs",
         ]
 
         def download(_repository, _run_id, _name, directory):
