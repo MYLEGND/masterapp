@@ -23,7 +23,21 @@ APPROVED = 'legend/approved-changes'
 DIRECT = 'all-intentional-direct-release-20260918.yml'
 SECURITY = 'approved-release-security-validation.yml'
 KEEP = {APPROVED}
-SHA = re.compile(r'^[0-9a-f]{40}def git(*args, check=True):
+SHA = re.compile(r'^[0-9a-f]{40}$')
+
+
+def _validation_authority_module():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+VALIDATION_AUTHORITY = _validation_authority_module()
+
+
+def git(*args, check=True):
     return subprocess.run(['git', *args], check=check, text=True, capture_output=True)
 
 
