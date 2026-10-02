@@ -1824,33 +1824,43 @@ def compute_rollback_evidence(repository: str, revision: str, app: str):
     if not token:
         result["reason"] = "github_token_unavailable"
         return result
-    receipt_name = f"legend-approved-release-{revision}"
+    receipt_names = (
+        f"legend-approved-release-{revision}-{app}",
+        f"legend-approved-release-{revision}",
+    )
     workflow_path = ".github/workflows/all-intentional-direct-release-20260918.yml"
-    for artifact in _artifact_rows(repository, receipt_name, token):
-        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
-        if not run_id:
-            continue
-        run = api_get(repository, f"actions/runs/{run_id}", token)
-        if not (
-            run.get("path") == workflow_path
-            and run.get("head_branch") == TRUSTED_PR_BASE
-            and run.get("status") == "completed"
-            and run.get("conclusion") == "success"
-            and (run.get("head_repository") or {}).get("full_name") == repository
-        ):
-            continue
-        names = sorted(
-            name for name in _run_artifact_names(repository, run_id, token)
-            if name.startswith("founder-diagnostics-packages-")
-        )
-        if names:
-            result.update({
-                "runId": run_id,
-                "packageArtifact": names[-1],
-                "reusable": True,
-                "reason": "exact_successful_release_receipt",
-            })
-            return result
+    seen_runs = set()
+    for receipt_name in receipt_names:
+        for artifact in _artifact_rows(repository, receipt_name, token):
+            run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+            if not run_id or run_id in seen_runs:
+                continue
+            seen_runs.add(run_id)
+            run = api_get(repository, f"actions/runs/{run_id}", token)
+            if not (
+                run.get("path") == workflow_path
+                and run.get("head_branch") == TRUSTED_PR_BASE
+                and run.get("status") == "completed"
+                and run.get("conclusion") == "success"
+                and (run.get("head_repository") or {}).get("full_name") == repository
+            ):
+                continue
+            names = sorted(
+                name for name in _run_artifact_names(repository, run_id, token)
+                if name.startswith("founder-diagnostics-packages-")
+            )
+            if names:
+                result.update({
+                    "runId": run_id,
+                    "packageArtifact": names[-1],
+                    "reusable": True,
+                    "reason": (
+                        "exact_target_release_receipt"
+                        if receipt_name.endswith("-" + app)
+                        else "legacy_exact_successful_release_receipt"
+                    ),
+                })
+                return result
     result["reason"] = "no_exact_successful_release_package"
     return result
 
