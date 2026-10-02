@@ -268,10 +268,22 @@ internal static class LegendModelEvidenceAdmission
     }
 }
 
+public sealed record LegendModelCognitionPolicy(
+    string Version,
+    string Mode,
+    int MaxSpecialists,
+    bool IndependentCritique)
+{
+    public const string CurrentVersion = "legend-cognition.v1";
+
+    public static LegendModelCognitionPolicy AdaptiveFounder { get; } =
+        new(CurrentVersion, "adaptive", 2, true);
+}
+
 /// <summary>
-/// Provider-neutral task boundary for a governed LEGEND model. The active
-/// capability authority supplies the instructions and output contract; the
-/// transport only executes that exact task and owns no domain behavior.
+/// Provider-neutral task boundary for a governed LEGEND model. Cognition policy
+/// describes bounded execution topology only; it grants no model, tool, data,
+/// mutation, billing, or release authority.
 /// </summary>
 public sealed record LegendModelTaskRequest(
     string CapabilityKey,
@@ -289,7 +301,8 @@ public sealed record LegendModelTaskRequest(
     LegendConnectExternalProviderPolicy? ProviderPolicy = null,
     string? AdapterVersion = null,
     string? RequestingActorId = null,
-    LegendCloudflareRequestScope? CloudflareScope = null)
+    LegendCloudflareRequestScope? CloudflareScope = null,
+    LegendModelCognitionPolicy? Cognition = null)
 {
     internal static LegendModelTaskRequest Translation(
         string sourceLanguageCode,
