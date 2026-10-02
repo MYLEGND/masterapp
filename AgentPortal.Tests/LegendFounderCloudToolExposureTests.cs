@@ -44,8 +44,9 @@ public sealed class LegendFounderCloudToolExposureTests
         {
             "legend_calculate", "legend_capabilities", "legend_client_lead_portfolio", "legend_configuration_presence",
             "legend_engineering_status", "legend_inspect_repair_validation", "legend_inspect_repository",
-            "legend_prepare_software_repair", "legend_provider_capacity", "legend_software_remediation_status",
-            "legend_system_health", "legend_system_inventory", "legend_system_overview", "legend_verify_repair_deployment"
+            "legend_prepare_repair_packet", "legend_prepare_software_repair", "legend_provider_capacity",
+            "legend_read_masterapp", "legend_software_remediation_status", "legend_system_health",
+            "legend_system_inventory", "legend_system_overview", "legend_verify_repair_deployment"
         }, exposed.Select(value => value.GetProperty("name").GetString()).Order(StringComparer.Ordinal));
         foreach (var schema in exposed)
         {
@@ -110,11 +111,24 @@ public sealed class LegendFounderCloudToolExposureTests
         Assert.Contains("legend_calculate", names);
         Assert.DoesNotContain("legend_metric_detail", names);
         Assert.Contains("legend_prepare_software_repair", names);
-        Assert.Equal(14, names.Length);
+        Assert.Equal(16, names.Length);
         var proposal = output.EnumerateArray().Single(item => item.GetProperty("name").GetString() == "legend_prepare_software_repair");
         Assert.Equal("founder_exact_proposal_review", proposal.GetProperty("access").GetString());
         Assert.False(proposal.GetProperty("canModifyRepository").GetBoolean());
         Assert.False(proposal.GetProperty("canCreateIsolatedRepairBranch").GetBoolean());
+    }
+
+    [Fact]
+    public async Task CloudMasterAppReadCatalogUsesCanonicalProjectionAuthority()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var response = Assert.IsType<OkObjectResult>(await fixture.CallbackAsync(
+            "legend_read_masterapp",
+            "{\"operation\":\"catalog\",\"surface\":null,\"preset\":null}"));
+        var output = JsonSerializer.SerializeToElement(response.Value).GetProperty("output");
+        Assert.Equal("LegendMasterAppReadAuthority", output.GetProperty("authority").GetString());
+        Assert.False(output.GetProperty("providerSpecificRegistry").GetBoolean());
+        Assert.Equal(JsonValueKind.Array, output.GetProperty("projections").ValueKind);
     }
 
     [Fact]
@@ -164,7 +178,7 @@ public sealed class LegendFounderCloudToolExposureTests
             LegendConnectExternalProviderPolicy.CloudflareFoundation).Select(tool => JsonSerializer.SerializeToElement(tool).GetProperty("name").GetString()).ToArray();
         Assert.DoesNotContain("legend_prepare_software_repair", names);
         Assert.DoesNotContain("legend_inspect_repository", names);
-        Assert.Equal(12, names.Length);
+        Assert.Equal(14, names.Length);
         var response = Assert.IsType<OkObjectResult>(await fixture.CallbackAsync("legend_capabilities", "{}"));
         var capabilities = JsonSerializer.SerializeToElement(response.Value).GetProperty("output").EnumerateArray()
             .Select(tool => tool.GetProperty("name").GetString()).ToArray();
@@ -236,6 +250,7 @@ public sealed class LegendFounderCloudToolExposureTests
             var services = new ServiceCollection();
             services.AddSingleton<IConfiguration>(Configuration);
             services.AddScoped(_ => new MasterAppDbContext(options));
+            services.AddScoped<LegendMasterAppReadAuthority>();
             ControllerTestHelpers.AddFounderHistoryServices(services);
             _services = services.BuildServiceProvider();
             Scopes = _services.GetRequiredService<IServiceScopeFactory>();
