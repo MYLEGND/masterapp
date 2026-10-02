@@ -350,7 +350,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PYCLIENTENTRY'
-          import http.client, json, ssl, urllib.parse
+          import http.client, json, os, ssl, urllib.parse
           hosts=tuple(json.loads(os.environ['BROWSER_ENTRY_HOSTS']))
           paths=('/', '/Account/Login')
           rows=[]
