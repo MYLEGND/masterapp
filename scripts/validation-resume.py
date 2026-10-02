@@ -32,10 +32,62 @@ CONTROL_PATHS = {
 TRUSTED_PR_BASE = "legend/approved-changes"
 MAX_HISTORICAL_EVIDENCE_RUNS = 8
 
+# Single canonical web release inventory. Validation, release baseline discovery,
+# deployment reconciliation, live-resume probing, package naming and final
+# enforcement consume this exact definition instead of maintaining parallel maps.
+RELEASE_TARGETS = {
+    "portal": {
+        "releaseName": "masterapp-portal",
+        "host": "portal.mylegnd.com",
+        "azureHost": "masterapp-portal.azurewebsites.net",
+        "project": "AgentPortal/AgentPortal.csproj",
+        "package": "agentportal.zip",
+        "provenancePath": "/api/runtime-provenance",
+        "static": False,
+    },
+    "client": {
+        "releaseName": "masterapp-client",
+        "host": "client.mylegnd.com",
+        "azureHost": "masterapp-client.azurewebsites.net",
+        "project": "ClientApp/ClientApp.csproj",
+        "package": "clientapp.zip",
+        "provenancePath": "/api/runtime-provenance",
+        "static": False,
+    },
+    "protect": {
+        "releaseName": "masterapp-protect",
+        "host": "masterapp-protect.azurewebsites.net",
+        "azureHost": "masterapp-protect.azurewebsites.net",
+        "project": "Protect-Website/ProtectWebsite.csproj",
+        "package": "protect.zip",
+        "provenancePath": "/api/runtime-provenance",
+        "static": False,
+    },
+    "parfait": {
+        "releaseName": "masterapp-parfait",
+        "host": "masterapp-parfait.azurewebsites.net",
+        "azureHost": "masterapp-parfait.azurewebsites.net",
+        "project": "ParfaitApp/ParfaitApp.csproj",
+        "package": "parfait.zip",
+        "provenancePath": "/api/runtime-provenance",
+        "static": False,
+    },
+    "website": {
+        "releaseName": "masterapp-website",
+        "host": "masterapp-website.azurewebsites.net",
+        "azureHost": "masterapp-website.azurewebsites.net",
+        "project": "static",
+        "package": "website.zip",
+        "provenancePath": "/_deployment-provenance.txt",
+        "static": True,
+    },
+}
+
 WORKFLOW_PATHS = {
     name: ".github/workflows/" + name
     for name in (
         "masterapp-platform-architecture-validation.yml",
+        "step5-isolated-conversion-mapping-validation.yml",
         "step6-openai-ads-execution-validation.yml",
         "steps7-8-governed-advertising-validation.yml",
         "approved-release-security-validation.yml",
@@ -324,6 +376,69 @@ WORKFLOWS = {
                     "scripts/test-deploy-approved-app.py",
                     "Docs/releases/direct-release-request.json",
                 ),
+            },
+        },
+    },
+    "step5-isolated-conversion-mapping-validation.yml": {
+        "unmatched_neutral": False,
+        "force_all": (),
+        "neutral": (
+            "Docs/**",
+            "*.md",
+            ".github/workflows/masterapp-platform-architecture-validation.yml",
+            ".github/workflows/step6-openai-ads-execution-validation.yml",
+            ".github/workflows/steps7-8-governed-advertising-validation.yml",
+            ".github/workflows/all-intentional-direct-release-20260918.yml",
+            ".github/workflows/legend-release-lifecycle.yml",
+            "scripts/approved-release-baseline.py",
+            "scripts/release-lifecycle.py",
+            "scripts/release-package.py",
+            "scripts/deploy-approved-app.py",
+            "scripts/test-release-lifecycle.py",
+            "scripts/test-release-policy.py",
+            "scripts/test-deploy-approved-app.py",
+        ),
+        "gates": {
+            "candidate-restore": {
+                "step": "Restore AgentPortal tests",
+                "paths": GLOBAL_DOTNET_INPUTS,
+                "group": "candidate",
+                "runtime": "dotnet",
+            },
+            "candidate-build": {
+                "step": "Build affected test graph",
+                "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
+                "requires": ("candidate-restore",),
+                "group": "candidate",
+                "runtime": "dotnet",
+            },
+            "candidate-focused": {
+                "step": "Run Step 5 focused tests",
+                "paths": (
+                    "AgentPortal.Tests/OpenAiMeasurementDeliveryTests.cs",
+                    "AgentPortal.Tests/MarketingScopeParityContractTests.cs",
+                ) + MARKETING_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "requires": ("candidate-build",),
+                "group": "candidate",
+                "runtime": "dotnet",
+            },
+            "candidate-full": {
+                "step": "Run full AgentPortal candidate suite",
+                "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
+                "requires": ("candidate-build",),
+                "group": "candidate",
+                "runtime": "dotnet",
+                "artifact": "candidate-trx",
+            },
+            "comparison": {
+                "step": "Prove Step 5 adds no full-suite failures",
+                "paths": (
+                    ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+                    "scripts/validation-resume.py",
+                    "scripts/test-validation-resume.py",
+                    "scripts/test-release-policy.py",
+                ),
+                "group": "comparison",
             },
         },
     },
