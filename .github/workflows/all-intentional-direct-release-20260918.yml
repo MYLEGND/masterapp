@@ -235,23 +235,29 @@ jobs:
             [ -n "$candidate_run" ] || continue
             run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
             workflow_path="$(printf '%s' "$run" | jq -r '.path // ""')"
-            head_branch="$(printf '%s' "$run" | jq -r '.head_branch // ""')"
-            if [ "$workflow_path" = ".github/workflows/all-intentional-direct-release-20260918.yml" ] &&
-               [ "$head_branch" = "legend/approved-changes" ]; then
+            event="$(printf '%s' "$run" | jq -r '.event // ""')"
+            status="$(printf '%s' "$run" | jq -r '.status // ""')"
+            conclusion="$(printf '%s' "$run" | jq -r '.conclusion // ""')"
+            head_sha="$(printf '%s' "$run" | jq -r '.head_sha // ""')"
+            head_repo="$(printf '%s' "$run" | jq -r '.head_repository.full_name // ""')"
+            if [ "$workflow_path" = ".github/workflows/masterapp-platform-architecture-validation.yml" ] &&
+               [ "$event" = "pull_request" ] &&
+               [ "$status" = "completed" ] &&
+               [ "$conclusion" = "success" ] &&
+               [ "$head_sha" = "$APPLICATION_RELEASE_SHA" ] &&
+               [ "$head_repo" = "$GITHUB_REPOSITORY" ]; then
               run_id="$candidate_run"
               break
             fi
           done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
+          if [ -z "$run_id" ]; then
+            echo "::error::Exact validated release package is missing for $APPLICATION_RELEASE_SHA. Release refuses to rebuild production bytes."
+            exit 1
+          fi
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
-          if [ -n "$run_id" ]; then
-            echo "REUSE_VALIDATED_PACKAGE=true" >> "$GITHUB_ENV"
-            echo "Exact candidate package and its prerequisite validation are preserved from run $run_id."
-          else
-            echo "REUSE_VALIDATED_PACKAGE=false" >> "$GITHUB_ENV"
-            echo "No exact reusable package evidence exists; validation will execute normally."
-          fi
-
+          echo "REUSE_VALIDATED_PACKAGE=true" >> "$GITHUB_ENV"
+          echo "Exact immutable package preserved from successful architecture validation run $run_id."
       - name: Load exact preserved deployable package
         if: steps.reusevalidated.outputs.run_id != ''
         uses: actions/download-artifact@v4
@@ -260,6 +266,13 @@ jobs:
           path: /tmp/diagnostics-packages
           run-id: ${{ steps.reusevalidated.outputs.run_id }}
           github-token: ${{ github.token }}
+      - name: Verify restored immutable validation package
+        if: steps.reusevalidated.outputs.run_id != ''
+        shell: bash
+        run: |
+          python3 scripts/release-package.py verify \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --directory /tmp/diagnostics-packages
       - name: Verify current live base before publication
         id: base
         run: |
@@ -314,43 +327,15 @@ jobs:
       - name: Build exact selected release candidate
         id: build
         if: env.WEBSITE_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true'
-        continue-on-error: true
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact candidate build validation."
-            exit 0
-          fi
-          set -euo pipefail
-          if [ "$PUBLIC_ONLY" = true ]; then
-            dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            node --test --test-name-pattern='publication compiler process consumes stdin and returns compiled pages' Legend-Website/scripts/render-business.test.mjs
-            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo --filter 'FullyQualifiedName~WebsiteContentEditorRoundTripTests.BusinessPublication_PreservesUtf8AcrossDotNetNodeCompilerTransport'
-            dotnet tool restore
-            ConnectionStrings__MasterAppDb='Server=127.0.0.1;Database=masterapp_ef_design_time;Integrated Security=true;TrustServerCertificate=true;Encrypt=false' \
-              EF_FORCE_SQLSERVER=true \
-              DOTNET_ENVIRONMENT=Development \
-              ASPNETCORE_ENVIRONMENT=Development \
-              dotnet tool run dotnet-ef migrations has-pending-model-changes \
-                --project Infrastructure/Infrastructure.csproj \
-                --startup-project AgentPortal/AgentPortal.csproj \
-                --context MasterAppDbContext \
-                --configuration Release \
-                --no-build
-          elif [ "$PORTAL_ONLY" = true ]; then
-            dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-          else
-            dotnet build MASTERAPP.sln -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-          fi
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          echo "Preserved exact candidate build from immutable validation artifact; production rebuild is forbidden."
       - name: Verify business website routing bridge
         id: routingchecks
         if: env.WEBSITE_ROUTING == 'true' && (steps.build.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true')
         continue-on-error: true
         shell: bash
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact routing validation."
-            exit 0
-          fi
           set -euo pipefail
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo \
             --filter 'FullyQualifiedName~WebsiteDomainImportTests' \
@@ -368,98 +353,30 @@ jobs:
       - name: Verify localization retention privacy limits and original delivery
         id: tests
         if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && steps.build.outcome == 'success'
-        continue-on-error: true
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact .NET validation."
-            exit 0
-          fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
-            --filter 'FullyQualifiedName~ApplicationLocalization|FullyQualifiedName~ApplicationTranslationAdmission|FullyQualifiedName~LegendConnectTrainingDatasetGroupSplitTests|FullyQualifiedName~LegendConnectEntitlementTests|FullyQualifiedName~AzureTranslatorServiceTests|FullyQualifiedName~AzureTranslatorSubscriptionCapacityTests|FullyQualifiedName~MessagingDeferredPresentationTests|FullyQualifiedName~FounderLegendConnectLiveMetricsTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests|FullyQualifiedName~RuntimeDiagnosticCaptureTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~ClientAppDeploymentWorkflowTests|FullyQualifiedName~ClientAppSubscriptionActivationTests|FullyQualifiedName~ClientSubscriptionAdministrationTests.CreatePortalClient|FullyQualifiedName~ClientsControllerTests.Create_WhenLeadCreated_UsesTheDefaultCrmPlacement|FullyQualifiedName~LegendFounderAiContractTests.SoftwareRemediation|FullyQualifiedName~LegendCloudflareTransportTests|FullyQualifiedName~LegendCloudflareToolCallbackTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~LegendFounderCloudActionApprovalTests|FullyQualifiedName~MessagingServiceTests.FounderAiDelegation_|FullyQualifiedName~FounderCandidateValidationTests|FullyQualifiedName~LegendFounderCloudToolExposureTests|FullyQualifiedName~LegendFounderCloudProposalTests|FullyQualifiedName~AuthenticatedRequestBindingTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~ClientProfileControllerTests.BusinessWebsite|FullyQualifiedName~ClientProfileControllerTests.SharedAccountAgent|FullyQualifiedName~IdentityHardeningTests.AccountController_ManageProfile|FullyQualifiedName~ProfileWebsiteFounderTests|FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~ClientWorkspaceRoutingTests|FullyQualifiedName~BillingCentralizationTests.UpdateClientSubscription_RequiresFounderAuthorityAndPreservesTheCurrentSchedule|FullyQualifiedName~ClientBillingNotificationAndSchemaTests|FullyQualifiedName~LaunchAudit|FullyQualifiedName~FounderSubscriberAuditTests|FullyQualifiedName~MetaSignal|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~AnalyticsIngestConfigurationTests|FullyQualifiedName~AnalyticsQueryService|FullyQualifiedName~WebsiteAnalytics|FullyQualifiedName~BusinessAnalyticsDetailTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~WebsiteSignalBindingTests' \
-            --logger 'trx;LogFileName=translation.trx' --results-directory /tmp/translation-results
-          python3 - <<'PYTEST'
-          import xml.etree.ElementTree as ET
-          root=ET.parse('/tmp/translation-results/translation.trx')
-          cases=root.findall('.//{*}UnitTestResult')
-          assert len(cases)>0 and all(c.get('outcome')=='Passed' for c in cases)
-          assert any('ApplicationTranslationAdmissionTests' in c.get('testName','') for c in cases), 'Admission suite did not execute'
-          required=('LegendCloudflareTransportTests','LegendCloudflareToolCallbackTests','LegendFounderToolAuthorizationTests','LegendFounderCloudActionApprovalTests','FounderAiDelegation_','FounderCandidateValidationTests','LegendFounderCloudToolExposureTests','LegendFounderCloudProposalTests','AuthenticatedRequestBindingTests','ClientAppSubscriptionActivationTests','CreatePortalClient_','Create_WhenLeadCreated_UsesTheDefaultCrmPlacement','WebsiteContentEditorRoundTripTests','BusinessWebsite','SharedAccountAgentView_','AccountController_ManageProfile','ProfileWebsiteFounderTests','WebsitePublishingAuthorityTests','WebsiteDomainImportTests','WebsiteInquiryIsolationTests','WebsiteEditorTicketAuthorityIsolationTests','ClientWorkspaceRoutingTests','UpdateClientSubscription_RequiresFounderAuthorityAndPreservesTheCurrentSchedule','NotificationQueue_IsIdempotentAndDeliveryMarksTheNoticeSent')
-          for suite in required:
-              assert any(suite in c.get('testName','') for c in cases), suite+' did not execute'
-          print('Verified passing executions:',len(cases))
-          PYTEST
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          echo "Preserved exact .NET/full-suite validation for the immutable application revision."
       - name: Verify shared web catalog contracts
         id: web
         if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true'
-        continue-on-error: true
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact shared-web validation."
-            exit 0
-          fi
-          node --test tests/analytics/csv-export.test.cjs
-          node tests/analytics/form-tracker.test.cjs .
-          node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
-          node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
-          python3 scripts/test-diagnostic-project-impact.py
-          python3 scripts/test-sync-published-checkout.py
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          echo "Preserved exact release web-contract validation from architecture proof."
       - name: Verify selected website catalog and build
         id: websitechecks
         if: contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && env.EXACT_LIVE != 'true'
-        continue-on-error: true
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact website validation."
-            exit 0
-          fi
-          npm ci --prefix tests/website
-          node --test tests/website/*.test.mjs
-          npm --prefix Legend-Website run build
-          npm --prefix Legend-Website run check
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          echo "Preserved exact website build/check validation from immutable validation artifact."
       - name: Publish exact selected application packages
         id: package
         if: always() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && (env.WEBSITE_ROUTING != 'true' || steps.routingchecks.outcome == 'success') && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') || steps.websitechecks.outcome == 'success')))
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            test -f /tmp/diagnostics-packages/SHA256SUMS
-            (cd /tmp/diagnostics-packages && sha256sum -c SHA256SUMS)
-            echo "Preserved exact deployable package; no duplicate build or validation required."
-            exit 0
-          fi
-          set -euo pipefail
-          apps=()
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-portal"'* ]]; then
-            dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-build --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            apps+=(agentportal)
-          fi
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-client"'* ]]; then
-            dotnet publish ClientApp/ClientApp.csproj -c Release --no-build --no-restore -o /tmp/clientapp-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            apps+=(clientapp)
-          fi
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-protect"'* ]]; then
-            dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-build --no-restore -o /tmp/protect-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            apps+=(protect)
-          fi
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-parfait"'* ]]; then
-            dotnet publish ParfaitApp/ParfaitApp.csproj -c Release --no-build --no-restore -o /tmp/parfait-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            apps+=(parfait)
-          fi
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-website"'* ]]; then
-            printf '%s\n' "$APPLICATION_RELEASE_SHA" > Legend-Website/dist/_deployment-provenance.txt
-            cp Legend-Website/public/web.config Legend-Website/dist/web.config
-          fi
-          for app in "${apps[@]}"; do
-            mkdir -p "/tmp/$app-publish/wwwroot"
-            printf '{"releaseSha":"%s","release":"founder-diagnostics-20260918"}\n' "$APPLICATION_RELEASE_SHA" > "/tmp/$app-publish/wwwroot/_deployment-provenance.json"
-          done
-          mkdir -p /tmp/diagnostics-packages
-          for app in "${apps[@]}"; do
-            (cd "/tmp/$app-publish" && zip -qr "/tmp/diagnostics-packages/$app.zip" .)
-          done
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-website"'* ]]; then
-            (cd Legend-Website/dist && zip -qr /tmp/diagnostics-packages/website.zip .)
-          fi
-          sha256sum /tmp/diagnostics-packages/*.zip > /tmp/diagnostics-packages/SHA256SUMS
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          python3 scripts/release-package.py verify \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --directory /tmp/diagnostics-packages
+          echo "Using exact validated package bytes; release contains no fallback package builder."
       - name: Retain exact deployable candidate packages
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
