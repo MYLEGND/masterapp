@@ -109,7 +109,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git show "${RELEASE_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/validation-resume.py"
+          git show "${GITHUB_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/validation-resume.py"
           python3 "$RUNNER_TEMP/validation-resume.py" --help >/dev/null
 
       - name: Reuse exact retained live package when available
@@ -264,6 +264,15 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
+
+      - name: Load immutable approved release-control authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/legend/approved-changes"
+          git show "${GITHUB_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/validation-resume.py"
+          git show "${GITHUB_SHA}:.github/workflows/all-intentional-direct-release-20260918.yml" > "$RUNNER_TEMP/direct-release.yml"
+          python3 "$RUNNER_TEMP/validation-resume.py" --help >/dev/null
       - uses: actions/setup-dotnet@v4
         if: env.WEBSITE_ONLY != 'true' && env.EXACT_LIVE != 'true'
         with:
@@ -283,11 +292,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 scripts/validation-resume.py verify-release-coverage \
+          python3 "$RUNNER_TEMP/validation-resume.py" verify-release-coverage \
             --workflow all-intentional-direct-release-20260918.yml \
-            --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
+            --workflow-path "$RUNNER_TEMP/direct-release.yml"
           evidence="$RUNNER_TEMP/validated-package-evidence.json"
-          python3 scripts/validation-resume.py validated-package \
+          python3 "$RUNNER_TEMP/validation-resume.py" validated-package \
             --repository "${{ github.repository }}" \
             --revision "$APPLICATION_RELEASE_SHA" \
             --package-identity "$PACKAGE_IDENTITY" \
@@ -434,7 +443,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/validation-resume.py live-state \
+          python3 "$RUNNER_TEMP/validation-resume.py" live-state \
             --revision "$APPLICATION_RELEASE_SHA" \
             --selected-targets "$SELECTED_TARGETS" \
             --output "$RUNNER_TEMP/release-live-state.json" \
@@ -1064,7 +1073,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/translation-results
-          python3 scripts/validation-resume.py verify-live \
+          python3 "$RUNNER_TEMP/validation-resume.py" verify-live \
             --revision "$APPLICATION_RELEASE_SHA" \
             --selected-targets "$SELECTED_TARGETS" \
             --output /tmp/translation-results/live.json
