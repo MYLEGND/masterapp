@@ -209,6 +209,15 @@ def main():
             raise ValueError('websiteRoutingCanaryHost must be an external verified business hostname')
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         rows = list(pool.map(observe, targets))
+    selected_apps = {row['app'] for row in rows}
+    database_baseline = ''
+    if release_mode == 'approved-only' and not selected_apps.issubset({'client', 'website'}):
+        portal_row = next((row for row in rows if row['app'] == 'portal'), None)
+        if portal_row is None:
+            portal_row = observe(TARGETS[0])
+        database_baseline = portal_row['revision']
+        subprocess.run(['git', 'cat-file', '-e', database_baseline + '^{commit}'], check=True)
+        subprocess.run(['git', 'merge-base', '--is-ancestor', database_baseline, head], check=True)
     for row in rows:
         subprocess.run(['git', 'cat-file', '-e', row['revision'] + '^{commit}'], check=True)
         subprocess.run(['git', 'merge-base', '--is-ancestor', row['revision'], head], check=True)
@@ -263,6 +272,7 @@ def main():
             out.write('matrix=' + json.dumps({'include': rows}, separators=(',', ':')) + '\n')
             out.write('baselines=' + json.dumps(rows, separators=(',', ':')) + '\n')
             out.write('portal=' + rows[0]['revision'] + '\n')
+            out.write('database_baseline=' + database_baseline + '\n')
             out.write('targets=' + json.dumps(['masterapp-' + row['app'] for row in rows], separators=(',', ':')) + '\n')
             out.write('public_only=' + str(all(row['app'] in {'protect', 'website'} for row in rows)).lower() + '\n')
             out.write('client_only=' + str(len(rows) == 1 and rows[0]['app'] == 'client').lower() + '\n')
