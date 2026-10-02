@@ -607,6 +607,21 @@ jobs:
           run-id: ${{ needs.baseline-evidence.outputs.run_id }}
           github-token: ${{ github.token }}
 
+      - name: Normalize content-identical approved baseline result
+        if: needs.plan.outputs.mode == 'full' && needs.baseline-evidence.outputs.reusable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/step5-baseline/baseline.trx ]; then
+            test ! -f /tmp/step5-baseline/candidate.trx
+          elif [ -f /tmp/step5-baseline/candidate.trx ]; then
+            mv /tmp/step5-baseline/candidate.trx /tmp/step5-baseline/baseline.trx
+          else
+            echo "::error::Reusable approved-tree evidence contained neither baseline.trx nor candidate.trx."
+            exit 1
+          fi
+          test -f /tmp/step5-baseline/baseline.trx
+
       - name: Checkout only the repaired isolated head
         if: needs.plan.outputs.mode == 'repair'
         uses: actions/checkout@v4
