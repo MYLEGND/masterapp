@@ -438,6 +438,7 @@ WORKFLOWS = {
                     "scripts/test-validation-resume.py",
                     "scripts/test-release-policy.py",
                 ),
+                "requires": ("candidate-full",),
                 "group": "comparison",
             },
         },
@@ -1171,6 +1172,9 @@ def compute_plan(
             run.add(key)
             reasons[key] = "gate_inputs_changed"
 
+    # Close the graph in both directions. A running consumer needs its
+    # prerequisites now; a changed prerequisite also invalidates every preserved
+    # consumer whose evidence was produced from the older prerequisite output.
     changed = True
     while changed:
         changed = False
@@ -1180,6 +1184,17 @@ def compute_plan(
                     run.add(required)
                     reasons[required] = f"required_by:{key}"
                     changed = True
+        for key, gate in gates.items():
+            if key in run:
+                continue
+            invalidated = next(
+                (required for required in gate.get("requires", ()) if required in run),
+                None,
+            )
+            if invalidated:
+                run.add(key)
+                reasons[key] = f"dependency_invalidated:{invalidated}"
+                changed = True
 
     for key, gate in gates.items():
         should_run = key in run
