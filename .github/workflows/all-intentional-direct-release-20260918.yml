@@ -440,7 +440,7 @@ jobs:
           echo "Exact-candidate live targets are preserved; only targets not already live may deploy."
 
       - name: Synchronize selected shared authorization and publisher runtimes
-        id: protectauth
+        id: sharedauth
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_HAS_SHARED_AUTH == 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         run: |
@@ -579,9 +579,9 @@ jobs:
           done < <(jq -r '.[]' <<< "$EDITOR_TARGETS")
           echo "Selected editor runtimes consume the canonical ticket authority."
 
-      - name: Prepare shared business website routing authority
+      - name: Prepare canonical business website routing authority
         id: routingsecret
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.azure.outcome == 'success' && (steps.protectauth.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.azure.outcome == 'success' && (steps.sharedauth.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         env:
           PRIMARY_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
@@ -590,16 +590,15 @@ jobs:
           set -euo pipefail
           token="${PRIMARY_CLOUDFLARE_TOKEN:-}"
           if [ -z "$token" ]; then
-            echo "::error::Central Cloudflare routing authority is not configured. Set the Production secret CLOUDFLARE_WORKERS_API_TOKEN to the scoped LEGEND Cloudflare Production Routing token."
+            echo "::error::Central Cloudflare routing authority is not configured."
             exit 1
           fi
           echo "::add-mask::$token"
           printf 'CLOUDFLARE_API_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
 
-          settings=/tmp/protect-website-routing.json
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
-
-          zone_id="$(jq -r '.[] | select(.name == "WebsiteDomains__CloudflareZoneId" or .name == "WebsiteDomains:CloudflareZoneId") | (.value // empty)' "$settings" | head -n 1)"
+          primary_settings=/tmp/routing-primary.json
+          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$ROUTING_PRIMARY" -o json > "$primary_settings"
+          zone_id="$(jq -r '.[] | select(.name == "WebsiteDomains__CloudflareZoneId" or .name == "WebsiteDomains:CloudflareZoneId") | (.value // empty)' "$primary_settings" | head -n 1)"
           if ! [[ "$zone_id" =~ ^[A-Fa-f0-9]{32}$ ]]; then
             echo "::error::Configured Cloudflare SaaS zone ID is missing or invalid."
             exit 1
@@ -615,20 +614,19 @@ jobs:
             account_id="$(printf '%s' "$response" | jq -r 'select(.success == true) | .result.account.id // empty')"
           fi
           if ! [[ "$account_id" =~ ^[A-Za-z0-9_-]{16,64}$ ]]; then
-            echo "::error::Cloudflare account ID could not be resolved from the deployment token and configured SaaS zone."
+            echo "::error::Cloudflare account ID could not be resolved."
             exit 1
           fi
           echo "::add-mask::$account_id"
           printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
-          bridge_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
+
+          bridge_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$primary_settings" | head -n 1)"
           if [ -z "$bridge_secret" ]; then
             if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
-              echo "::error::Preserve-live routing recovery requires the existing Protect bridge secret; no application setting mutation is authorized."
+              echo "::error::Preserve-live routing recovery requires the existing bridge secret."
               exit 1
             fi
             bridge_secret="$(openssl rand -hex 32)"
-            az webapp config appsettings set -g masterapp-rg -n masterapp-protect \
-              --settings "WebsiteRouting__BridgeSecret=$bridge_secret" --output none
           fi
           if [ "${#bridge_secret}" -lt 32 ]; then
             echo "::error::Website routing bridge secret is missing or too short."
@@ -637,40 +635,28 @@ jobs:
           echo "::add-mask::$bridge_secret"
           printf 'LEGEND_WEBSITE_BRIDGE_SECRET=%s\n' "$bridge_secret" >> "$GITHUB_ENV"
 
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
-          persisted="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
-          [ "$persisted" = "$bridge_secret" ]
-          protect_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)"
-          if [ "$protect_origin" != "masterapp-protect.azurewebsites.net" ]; then
+          while IFS=$'\t' read -r app origin probe_path; do
+            [ -n "$app" ] && [ -n "$origin" ] || continue
+            settings="/tmp/routing-${app}.json"
+            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+            current_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
+            current_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)"
             if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
-              echo "::error::Preserve-live routing recovery requires Protect's existing bridge origin host."
-              exit 1
+              [ "$current_secret" = "$bridge_secret" ] || { echo "::error::Preserve-live routing recovery found bridge-secret drift for $app."; exit 1; }
+              [ "$current_origin" = "$origin" ] || { echo "::error::Preserve-live routing recovery found origin drift for $app."; exit 1; }
+            else
+              updates=()
+              [ "$current_secret" = "$bridge_secret" ] || updates+=("WebsiteRouting__BridgeSecret=$bridge_secret")
+              [ "$current_origin" = "$origin" ] || updates+=("WebsiteRouting__BridgeOriginHost=$origin")
+              if [ "${#updates[@]}" -gt 0 ]; then
+                az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
+                az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+              fi
             fi
-            az webapp config appsettings set -g masterapp-rg -n masterapp-protect \
-              --settings "WebsiteRouting__BridgeOriginHost=masterapp-protect.azurewebsites.net" --output none
-          fi
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
-          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)" = "masterapp-protect.azurewebsites.net" ]
-
-          parfait_settings=/tmp/parfait-website-routing.json
-          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
-          parfait_bridge="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$parfait_settings" | head -n 1)"
-          parfait_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)"
-          if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
-            [ "$parfait_bridge" = "$bridge_secret" ] || { echo "::error::Preserve-live routing recovery requires Parfait to already share the website bridge authority."; exit 1; }
-            [ "$parfait_origin" = "masterapp-parfait.azurewebsites.net" ] || { echo "::error::Preserve-live routing recovery requires Parfait's existing bridge origin host."; exit 1; }
-          else
-            parfait_updates=()
-            if [ "$parfait_bridge" != "$bridge_secret" ]; then parfait_updates+=("WebsiteRouting__BridgeSecret=$bridge_secret"); fi
-            if [ "$parfait_origin" != "masterapp-parfait.azurewebsites.net" ]; then parfait_updates+=("WebsiteRouting__BridgeOriginHost=masterapp-parfait.azurewebsites.net"); fi
-            if [ "${#parfait_updates[@]}" -gt 0 ]; then
-              az webapp config appsettings set -g masterapp-rg -n masterapp-parfait --settings "${parfait_updates[@]}" --output none
-            fi
-          fi
-          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
-          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$parfait_settings" | head -n 1)" = "$bridge_secret" ]
-          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)" = "masterapp-parfait.azurewebsites.net" ]
-          echo "Shared website routing authority is present in Protect and Parfait without exposing its value."
+            [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)" = "$bridge_secret" ]
+            [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)" = "$origin" ]
+          done < <(jq -r '.[] | [.releaseName,.azureHost,.probePath] | @tsv' <<< "$ROUTING_TARGETS")
+          echo "Every canonical routing target shares one bridge authority and its declared origin."
 
       - name: Audit centralized Cloudflare routing authority
         id: routingauthority
@@ -801,7 +787,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Publish selected head as one transaction
         id: transaction
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.rollbackpackages.outcome == 'success' && (steps.protectauth.outcome == 'success' || steps.protectauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.rollbackpackages.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
         continue-on-error: true
         shell: bash
         run: |
