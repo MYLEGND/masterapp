@@ -617,6 +617,14 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn('gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$baseline_name', step5)
         self.assertFalse((ROOT.parent / '.github/workflows/step5-approved-baseline-control.yml').exists())
 
+    def test_release_lifecycle_has_no_parallel_validation_path_registry(self):
+        lifecycle_script=(ROOT / 'release-lifecycle.py').read_text()
+        self.assertIn('VALIDATION_AUTHORITY.required_validation_topology(names)', lifecycle_script)
+        self.assertIn('VALIDATION_AUTHORITY.validation_neutral_path(path)', lifecycle_script)
+        self.assertNotIn('STEP6_VALIDATION_PATHS', lifecycle_script)
+        self.assertNotIn('STEP78_VALIDATION_PATHS', lifecycle_script)
+        self.assertNotIn('VALIDATION_NEUTRAL_PATHS =', lifecycle_script)
+
     def test_release_mutation_authorities_remain_serialized(self):
         for name in (
             'legend-release-lifecycle.yml',
