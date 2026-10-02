@@ -1445,17 +1445,18 @@ MERGE_VALIDATION_NEUTRAL_PATHS = frozenset({
     "AgentPortal.Tests/WebsiteStudioV3ContractTests.cs",
 })
 
-RELEASE_EVIDENCE_PATHS = frozenset({
+STEP5_RELEASE_EVIDENCE_PATHS = frozenset({
     ".github/workflows/all-intentional-direct-release-20260918.yml",
     ".github/workflows/masterapp-platform-architecture-validation.yml",
     "scripts/approved-release-baseline.py",
     "scripts/release-package.py",
-    "scripts/deploy-approved-app.py",
     "scripts/validation-resume.py",
     "scripts/test-validation-resume.py",
-    "scripts/test-release-policy.py",
-    "scripts/test-release-lifecycle.py",
-    "scripts/test-deploy-approved-app.py",
+})
+
+SECURITY_RELEASE_EVIDENCE_PATHS = frozenset({
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
 })
 
 PUBLIC_WEBSITE_EXACT_PATHS = frozenset({
@@ -1501,7 +1502,9 @@ def required_validation_topology(changed_paths):
     security = ".github/workflows/approved-release-security-validation.yml"
 
     required = {architecture}
-    release_evidence_change = any(name in RELEASE_EVIDENCE_PATHS for name in names)
+    step5_release_evidence_change = any(name in STEP5_RELEASE_EVIDENCE_PATHS for name in names)
+    security_release_evidence_change = any(name in SECURITY_RELEASE_EVIDENCE_PATHS for name in names)
+    release_evidence_change = step5_release_evidence_change or security_release_evidence_change
 
     scope_neutral = MERGE_VALIDATION_NEUTRAL_PATHS | {
         "scripts/deploy-approved-app.py",
@@ -1515,7 +1518,7 @@ def required_validation_topology(changed_paths):
         name in PUBLIC_WEBSITE_EXACT_PATHS for name in product_names
     )
 
-    if step5 in names or release_evidence_change:
+    if step5 in names or step5_release_evidence_change:
         required.add(step5)
 
     shared_resume_authority_change = any(
@@ -1558,7 +1561,7 @@ def required_validation_topology(changed_paths):
     if broad_product_change and not public_website_only:
         required.add(step5)
         required.add(security)
-    if security in names or release_evidence_change:
+    if security in names or security_release_evidence_change:
         required.add(security)
 
     return {
