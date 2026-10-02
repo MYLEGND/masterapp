@@ -8,6 +8,7 @@ workflow and is intentionally separate from package identity.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -18,12 +19,18 @@ import zipfile
 
 SCHEMA = "legend-validated-release-package.v1"
 ROOT = Path(__file__).resolve().parents[1]
+def _release_authority_module():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_RELEASE_AUTHORITY = _release_authority_module()
 APPS = {
-    "portal": ("AgentPortal/AgentPortal.csproj", "agentportal.zip", False),
-    "client": ("ClientApp/ClientApp.csproj", "clientapp.zip", False),
-    "protect": ("Protect-Website/ProtectWebsite.csproj", "protect.zip", False),
-    "parfait": ("ParfaitApp/ParfaitApp.csproj", "parfait.zip", False),
-    "website": ("static", "website.zip", True),
+    key: (row["project"], row["package"], row["static"])
+    for key, row in _RELEASE_AUTHORITY.RELEASE_TARGETS.items()
 }
 MIGRATION_BUNDLE = "masterapp-migrations"
 CONTRACT_INPUTS = (
@@ -52,6 +59,10 @@ def validate_revision(value: str) -> str:
 
 def contract_hash() -> str:
     digest = hashlib.sha256()
+    digest.update(
+        json.dumps(APPS, sort_keys=True, separators=(",", ":")).encode()
+    )
+    digest.update(b"\0")
     for relative in CONTRACT_INPUTS:
         path = ROOT / relative
         if not path.exists():
