@@ -312,6 +312,7 @@ def main():
     parser.add_argument('--baselines-json')
     parser.add_argument('--package-root', default='/tmp/diagnostics-packages')
     parser.add_argument('--rollback-root', default='/tmp/rollback-packages')
+    parser.add_argument('--rollback-only', action='store_true')
     args = parser.parse_args()
 
     revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')
@@ -325,6 +326,24 @@ def main():
     if args.baselines_json is None:
         raise SystemExit('--baselines-json is required for transactional deployment')
     names = json.loads(args.targets_json)
+    if args.rollback_only:
+        keys = _RELEASE_AUTHORITY.selected_release_target_keys(names)
+        baselines = _baseline_map(args.baselines_json)
+        missing = [key for key in keys if key not in baselines]
+        if missing:
+            raise ValueError("Missing rollback baseline for canonical targets: " + ", ".join(missing))
+        rollback_transaction(
+            [key for key in keys if baselines[key] != revision],
+            baselines,
+            Path(args.rollback_root),
+        )
+        print(json.dumps({
+            "revision": revision,
+            "targets": [TARGETS[key]["releaseName"] for key in keys],
+            "transaction": "rolled-back",
+        }, sort_keys=True))
+        return
+
     deploy_transaction(
         names,
         args.baselines_json,
