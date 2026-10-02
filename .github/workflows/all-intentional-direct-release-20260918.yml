@@ -366,33 +366,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PYRESUME'
-          import json, os, urllib.request
-          selected=set(json.loads(os.environ['SELECTED_TARGETS']))
-          expected=os.environ['APPLICATION_RELEASE_SHA']
-          inventory={
-              'portal':('masterapp-portal','https://portal.mylegnd.com/api/runtime-provenance',False),
-              'client':('masterapp-client','https://client.mylegnd.com/api/runtime-provenance',False),
-              'protect':('masterapp-protect','https://masterapp-protect.azurewebsites.net/api/runtime-provenance',False),
-              'parfait':('masterapp-parfait','https://masterapp-parfait.azurewebsites.net/api/runtime-provenance',False),
-              'website':('masterapp-website','https://masterapp-website.azurewebsites.net/_deployment-provenance.txt',True),
-          }
-          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              for key,(app,url,is_static) in inventory.items():
-                  live=False
-                  actual=None
-                  if app in selected:
-                      try:
-                          request=urllib.request.Request(url+'?release='+expected,headers={'Cache-Control':'no-cache'})
-                          with urllib.request.urlopen(request,timeout=15) as response:
-                              actual=response.read().decode().strip() if is_static else json.load(response).get('sourceRevision')
-                          live=actual==expected
-                      except Exception as error:
-                          actual=type(error).__name__
-                  output.write(f'{key}_live={str(live).lower()}\n')
-                  print(json.dumps({'target':app,'alreadyLive':live,'actual':actual,'expected':expected if app in selected else None}))
-          PYRESUME
+          python3 scripts/validation-resume.py live-state \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --selected-targets "$SELECTED_TARGETS" \
+            --output "$RUNNER_TEMP/release-live-state.json" \
+            --github-output "$GITHUB_OUTPUT"
           echo "Exact-candidate live targets are preserved; only targets not already live may deploy."
+
       - name: Synchronize Protect shared website authorization and publisher runtime
         id: protectauth
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
@@ -1047,33 +1027,15 @@ jobs:
         id: live
         if: ${{ !cancelled() && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (steps.azure.outcome == 'success' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true' || env.CLIENT_ONLY == 'true' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') }}
         continue-on-error: true
+        shell: bash
         run: |
-          python3 - <<'PYLIVE'
-          import concurrent.futures, json, os, time, urllib.request
-          selected=json.loads(os.environ['SELECTED_TARGETS'])
-          inventory={'masterapp-portal':('portal.mylegnd.com','masterapp-portal.azurewebsites.net'),'masterapp-client':('client.mylegnd.com','masterapp-client.azurewebsites.net'),'masterapp-protect':('masterapp-protect.azurewebsites.net',),'masterapp-parfait':('masterapp-parfait.azurewebsites.net',),'masterapp-website':('masterapp-website.azurewebsites.net','mylegnd.com','www.mylegnd.com')}
-          assert selected and all(app in inventory for app in selected)
-          hosts=tuple(host for app in selected for host in inventory[app])
-          def verify(host):
-              end=time.monotonic()+480
-              actual=None
-              while time.monotonic()<end:
-                  try:
-                      path='/_deployment-provenance.txt' if host in inventory['masterapp-website'] else '/api/runtime-provenance'
-                      expected=os.environ['APPLICATION_RELEASE_SHA']
-                      request=urllib.request.Request('https://'+host+path+'?release='+expected,headers={'Cache-Control':'no-cache'})
-                      with urllib.request.urlopen(request,timeout=15) as response:
-                          actual=response.read().decode().strip() if host in inventory['masterapp-website'] else json.load(response).get('sourceRevision')
-                      if actual==expected: return {'host':host,'passed':True,'actual':actual}
-                  except Exception as error: actual=type(error).__name__
-                  time.sleep(5)
-              return {'host':host,'passed':False,'actual':actual}
-          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool: rows=list(pool.map(verify,hosts))
-          os.makedirs('/tmp/translation-results',exist_ok=True)
-          with open('/tmp/translation-results/live.json','w') as output: json.dump(rows,output,indent=2)
-          for row in rows: print(json.dumps(row))
-          assert all(row['passed'] for row in rows)
-          PYLIVE
+          set -euo pipefail
+          mkdir -p /tmp/translation-results
+          python3 scripts/validation-resume.py verify-live \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --selected-targets "$SELECTED_TARGETS" \
+            --output /tmp/translation-results/live.json
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
