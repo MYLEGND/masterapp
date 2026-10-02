@@ -596,7 +596,8 @@ class HistoricalReleaseRecovery(unittest.TestCase):
 class ReconcileSafety(unittest.TestCase):
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "dispatch_pending_legacy_release", return_value=None)
-    def test_no_pending_release_means_no_release(self, _, __):
+    @patch.object(m, "dispatch_pending_automatic_release", return_value=None)
+    def test_no_pending_release_means_no_release(self, _, __, ___):
         api = Api()
         self.assertEqual(
             {"release": "no application publication required for exact approved head"},
@@ -606,11 +607,31 @@ class ReconcileSafety(unittest.TestCase):
 
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "dispatch_pending_legacy_release")
-    def test_control_only_head_recovers_historical_release(self, recover, _):
+    @patch.object(m, "dispatch_pending_automatic_release", return_value=None)
+    def test_control_only_head_recovers_historical_release(self, _, recover, __):
         api = Api()
         recovered = {
             "directRelease": "recovered nearest still-unreleased historical authorization",
             "authorizationSha": "b" * 40,
+        }
+        recover.return_value = recovered
+        api.pages_map["actions/runs?head_sha=" + "a" * 40] = []
+        api.pages_map["commits/" + "a" * 40 + "/pulls"] = []
+
+        result = m.reconcile(api)
+
+        self.assertEqual(recovered, result)
+        recover.assert_called_once_with(api, "a" * 40)
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "dispatch_pending_automatic_release")
+    def test_control_only_head_recovers_nearest_unreleased_automatic_merge(self, recover, _):
+        api = Api()
+        recovered = {
+            "directRelease": "recovered nearest still-unreleased automatic validated merge",
+            "authorizationSha": "b" * 40,
+            "sourcePr": 385,
+            "targets": [canonical_name("portal")],
         }
         recover.return_value = recovered
         api.pages_map["actions/runs?head_sha=" + "a" * 40] = []
