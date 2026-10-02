@@ -176,19 +176,21 @@ class ReleaseScopeSelection(unittest.TestCase):
         )
 
     def test_automatic_dispatch_does_not_expand_explicit_scope(self):
-        request={'releaseMode':'approved-only','targets':['masterapp-portal','masterapp-client','masterapp-protect']}
+        authority=self.baseline._validation_authority
+        keys=list(authority.RELEASE_TARGETS)[:3]
+        requested=[authority.RELEASE_TARGETS[key]['releaseName'] for key in keys]
+        request={'releaseMode':'approved-only','targets':requested}
         with tempfile.TemporaryDirectory() as directory:
             output=Path(directory)/'outputs'
             with patch('sys.argv',['baseline','--automatic','--output',str(output)]), \
                  patch.object(self.baseline,'read_request',return_value=request), \
-                 patch.object(self.baseline,'observe',side_effect=lambda target:dict(app=target[0],releaseName=self.baseline._validation_authority.RELEASE_TARGETS[target[0]]['releaseName'],revision='a'*40)), \
+                 patch.object(self.baseline,'observe',side_effect=lambda target:dict(app=target[0],releaseName=authority.RELEASE_TARGETS[target[0]]['releaseName'],revision='a'*40)), \
                  patch.object(self.baseline.subprocess,'check_output',return_value='b'*40), \
                  patch.object(self.baseline.subprocess,'run'),patch.dict(os.environ,{'GITHUB_ACTIONS':'false'}):
                 self.baseline.main()
-            text=output.read_text()
-            self.assertIn('masterapp-protect',text)
-            self.assertNotIn('masterapp-parfait',text)
-            self.assertNotIn('masterapp-website',text)
+            outputs=dict(line.split('=',1) for line in output.read_text().splitlines() if '=' in line)
+            self.assertEqual(requested,json.loads(outputs['targets']))
+            self.assertEqual(requested,[row['releaseName'] for row in json.loads(outputs['matrix'])['include']])
 
     def test_complete_inventory_can_include_cloudflare_routing_in_one_release(self):
         request = {
@@ -501,7 +503,7 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
                 raise AssertionError(path)
 
         pending = self.lifecycle.candidate_validation(Api(), pr)
-        self.assertEqual("Exact-head full-suite comparison has not started", pending)
+        self.assertEqual("Awaiting successful exact-head validation: " + step5, pending)
 
     def test_direct_release_authorization_rejects_extra_changed_files(self):
         path = 'Docs/releases/direct-release-request.json'
@@ -581,7 +583,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Load current canonical release authority without changing rollback source', workflow)
         self.assertIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', workflow)
         self.assertIn('EXACT_LIVE', workflow)
-        self.assertIn("'mode':'exact-live-noop'", workflow)
+        self.assertIn("mode='exact-live-noop'", workflow)
         self.assertIn('retention-days: 30', workflow)
 
         def step(name):
@@ -669,7 +671,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_release_lifecycle_has_no_parallel_validation_path_registry(self):
         lifecycle_script=(ROOT / 'release-lifecycle.py').read_text()
         self.assertIn('VALIDATION_AUTHORITY.required_validation_topology(names)', lifecycle_script)
-        self.assertIn('VALIDATION_AUTHORITY.validation_neutral_path(path)', lifecycle_script)
+        self.assertIn("latest[path].get('conclusion') != 'success'", lifecycle_script)
+        self.assertNotIn('validation_neutral_path', lifecycle_script)
+        self.assertNotIn('architecture_product_validation', lifecycle_script)
+        self.assertNotIn('architecture_public_website_validation', lifecycle_script)
         self.assertNotIn('STEP6_VALIDATION_PATHS', lifecycle_script)
         self.assertNotIn('STEP78_VALIDATION_PATHS', lifecycle_script)
         self.assertNotIn('VALIDATION_NEUTRAL_PATHS =', lifecycle_script)
@@ -734,7 +739,7 @@ class ReleasePolicy(unittest.TestCase):
             output = Path(directory) / 'outputs'
             with patch('sys.argv', ['baseline', '--automatic', '--output', str(output)]), \
                  patch.object(baseline, 'read_request', return_value={'releaseMode': 'validate-only'}), \
-                 patch.object(baseline, 'observe', side_effect=lambda target: dict(app=target[0], revision='a' * 40)), \
+                 patch.object(baseline, 'observe', side_effect=lambda target: dict(app=target[0], releaseName=baseline._validation_authority.RELEASE_TARGETS[target[0]]['releaseName'], revision='a' * 40)), \
                  patch.object(baseline.subprocess, 'check_output', return_value='b' * 40), \
                  patch.object(baseline.subprocess, 'run'), patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
                 baseline.main()
