@@ -301,9 +301,19 @@ jobs:
           spec.loader.exec_module(module)
           changed=subprocess.check_output(['git','diff','--name-only',base,head],text=True).splitlines()
           application=[name for name in changed if not module.release_control_only_path(name)]
+          package_authority={
+              'scripts/release-package.py',
+              'scripts/deploy-approved-app.py',
+              '.config/dotnet-tools.json',
+              '.github/workflows/masterapp-platform-architecture-validation.yml',
+          }
+          authority=[name for name in changed if name in package_authority]
+          needed=bool(application or authority)
           with open(output,'a') as stream:
-              stream.write('needed='+str(bool(application)).lower()+'\n')
-          print('Application package inputs changed:' if application else 'Control-only change; package build preserved.', application)
+              stream.write('needed='+str(needed).lower()+'\n')
+          print('Application package inputs changed:',application)
+          print('Package authority inputs changed:',authority)
+          print('Immutable package canary required:',needed)
           PY
 
       - name: Setup .NET for canonical package build
