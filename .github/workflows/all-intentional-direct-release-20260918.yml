@@ -286,8 +286,12 @@ jobs:
           python3 scripts/validation-resume.py verify-release-coverage \
             --workflow all-intentional-direct-release-20260918.yml \
             --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
+          # Deployment remains bound to RELEASE_SHA, but durable evidence
+          # recognition must use the current approved control-plane contract so
+          # later canonical receipt formats can validate older authorized bytes.
+          git show "${GITHUB_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/current-validation-resume.py"
           evidence="$RUNNER_TEMP/validated-package-evidence.json"
-          python3 scripts/validation-resume.py validated-package \
+          python3 "$RUNNER_TEMP/current-validation-resume.py" validated-package \
             --repository "${{ github.repository }}" \
             --revision "$APPLICATION_RELEASE_SHA" \
             --package-identity "$PACKAGE_IDENTITY" \
