@@ -548,6 +548,14 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn('steps.resumestate.outputs.parfait_live', workflow)
         self.assertNotIn('steps.resumestate.outputs.website_live', workflow)
 
+    def test_founder_worker_subdomain_is_explicitly_activated_and_restored(self):
+        deploy=(ROOT.parent / 'scripts/deploy-founder-cloudflare.py').read_text()
+        self.assertIn('/workers/scripts/{worker}/subdomain', deploy)
+        self.assertIn('set_worker_subdomain(account, worker, True)', deploy)
+        self.assertIn('founder_worker_subdomain_not_enabled', deploy)
+        self.assertIn('previousWorkerSubdomainEnabled', deploy)
+        self.assertIn('restore_worker(account, worker, previous_version, previous_subdomain_enabled)', deploy)
+
     def test_release_execution_contains_no_duplicate_target_or_infrastructure_literals(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         authority=(ROOT.parent / 'scripts/validation-resume.py')
