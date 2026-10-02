@@ -46,7 +46,7 @@
 .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings {
     min-height: 48px;
     padding: 0.72rem 1.15rem;
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     font-size: 0.95rem;
     font-weight: 800;
     letter-spacing: 0.02em;
@@ -162,7 +162,7 @@
 }
 
 .legend-modal.carrier-settings-modal .btn-close {
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     border: 1px solid rgba(244, 220, 147, 0.22);
     padding: 0.8rem;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -441,7 +441,7 @@
     align-items: center;
     min-height: 30px;
     padding: 0.24rem 0.65rem;
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     border: 1px solid rgba(244, 220, 147, 0.18);
     background: rgba(244, 220, 147, 0.08);
     color: var(--dcs-gold-1);
@@ -538,7 +538,7 @@
 .carrier-comp-add,
 .carrier-settings-retry,
 .legend-modal.carrier-settings-modal .modal-footer .btn-outline-light {
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     font-weight: 800;
     letter-spacing: 0.02em;
     transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
