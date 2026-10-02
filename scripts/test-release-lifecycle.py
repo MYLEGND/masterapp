@@ -557,6 +557,46 @@ class HistoricalReleaseRecovery(unittest.TestCase):
 
     @patch.object(m, "_package_backfill_running", return_value=False)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
+    @patch.object(m, "pending_automatic_release")
+    def test_missing_automatic_package_dispatches_package_backfill_before_release(self, pending, _, __):
+        api = Api()
+        pending.return_value = {
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [canonical_name("portal")],
+            "sourcePr": 385,
+        }
+
+        result = m.dispatch_pending_automatic_release(api, "a" * 40)
+
+        self.assertEqual(
+            "dispatched for exact green automatic application revision",
+            result["packageBackfill"],
+        )
+        self.assertEqual(
+            [(m.PACKAGE_VALIDATION, {"package_revision": "c" * 40})],
+            api.dispatched,
+        )
+
+    @patch.object(m, "_package_backfill_running", return_value=True)
+    @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
+    @patch.object(m, "pending_automatic_release")
+    def test_running_automatic_package_backfill_does_not_duplicate_dispatch(self, pending, _, __):
+        api = Api()
+        pending.return_value = {
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [canonical_name("portal")],
+            "sourcePr": 385,
+        }
+
+        result = m.dispatch_pending_automatic_release(api, "a" * 40)
+
+        self.assertEqual("already queued or running", result["packageBackfill"])
+        self.assertEqual([], api.dispatched)
+
+    @patch.object(m, "_package_backfill_running", return_value=False)
+    @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_legacy_release_authorization")
     def test_missing_package_dispatches_package_only_architecture_recovery(self, pending, _, __):
         api = Api()
