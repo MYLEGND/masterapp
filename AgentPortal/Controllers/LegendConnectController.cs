@@ -252,6 +252,69 @@ public sealed class LegendConnectController : Controller
     }
 
     [HttpGet]
+    [Route("founder/legend-connect/cloudflare/status")]
+    public async Task<IActionResult> GetCloudflareFoundationStatus(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _service.GetCloudflareFoundationStatusAsync(User, cancellationToken));
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return StatusCode(StatusCodes.Status499ClientClosedRequest);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Founder Cloudflare foundation status failed.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = "Cloudflare foundation status is temporarily unavailable." });
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/cloudflare/canary")]
+    public async Task<IActionResult> RunCloudflareFoundationInferenceCanary(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _service.RunCloudflareFoundationInferenceCanaryAsync(User, cancellationToken));
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Founder Cloudflare live inference canary failed.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = "The live Cloudflare inference canary could not complete." });
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/cloudflare/control")]
+    public async Task<IActionResult> UpdateCloudflareFoundationControl(
+        [FromForm] FounderCloudflareFoundationControlInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _service.UpdateCloudflareFoundationControlAsync(User, input, cancellationToken));
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Founder Cloudflare foundation control failed for {Action}.", input.Action);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = "The requested Cloudflare foundation control could not complete." });
+        }
+    }
+
+    [HttpGet]
     [Route("founder/legend-connect/metric-details")]
     public async Task<IActionResult> GetMetricDetails(
         [FromQuery(Name = "metric")] string? metricKey,

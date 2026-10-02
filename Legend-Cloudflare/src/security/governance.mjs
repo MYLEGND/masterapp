@@ -131,6 +131,8 @@ export class LegendGovernance {
       const ids = await identities(context);
       const now = this.now();
       const result = await this.state.storage.transaction(async tx => {
+        if (op === 'status') return this.status(tx, context, ids, policy, now);
+        if (op === 'control') return this.control(tx, context, ids, policy, now, input);
         if (op === 'claim') return this.claim(tx, context, ids, policy, now);
         const record = await tx.get(`request:${ids.request}`);
         ownRequest(record, context, ids);
@@ -146,6 +148,76 @@ export class LegendGovernance {
       await this.scheduleExpiry();
       return Response.json(result, { headers: { 'Cache-Control': 'no-store, private' } });
     } catch (error) { return securityErrorResponse(error); }
+  }
+
+  async founderControlState(tx, ids, policy) {
+    const stored = await tx.get(`control:${ids.account}`);
+    const spendCapMicrousd = Number.isSafeInteger(stored?.spendCapMicrousd)
+      ? Math.min(Math.max(stored.spendCapMicrousd, 0), policy.accountMicrousd)
+      : policy.accountMicrousd;
+    return {
+      paused: stored?.paused === true,
+      spendCapMicrousd,
+      releaseAuthorizedMicrousd: policy.accountMicrousd,
+      updatedAt: Number.isSafeInteger(stored?.updatedAt) ? stored.updatedAt : null,
+    };
+  }
+
+  async founderStatusSnapshot(tx, ids, policy, now) {
+    const period = accountingPeriod(policy, now);
+    const quota = await tx.get(`quota:${period.id}:${ids.account}`) ?? { chargedMicrousd: 0 };
+    const leases = await tx.get(`leases:${ids.account}`);
+    const active = (leases?.active ?? []).filter(lease => lease.until > now);
+    const control = await this.founderControlState(tx, ids, policy);
+    const chargedMicrousd = Number.isSafeInteger(quota.chargedMicrousd) ? quota.chargedMicrousd : 0;
+    return {
+      period: policy.period,
+      releaseAuthorizedMicrousd: control.releaseAuthorizedMicrousd,
+      spendCapMicrousd: control.spendCapMicrousd,
+      chargedMicrousd,
+      remainingMicrousd: Math.max(0, control.spendCapMicrousd - chargedMicrousd),
+      paused: control.paused,
+      activeConcurrency: active.length,
+      concurrencyLimit: policy.accountConcurrency,
+      controlUpdatedAt: control.updatedAt,
+    };
+  }
+
+  async consumeControlNonce(tx, context, ids) {
+    requireSecurity(!(await tx.get(`nonce:${ids.nonce}`)), 'request_replayed', 409);
+    await retain(tx, `nonce:${ids.nonce}`, {}, context.expiresAt + 5000);
+  }
+
+  async status(tx, context, ids, policy, now) {
+    requireSecurity(this.env.LEGEND_RUNTIME_MODE === 'founder_baseline' &&
+      Array.isArray(context.roles) && context.roles.length === 1 && context.roles[0] === 'Founder',
+    'founder_control_scope_denied');
+    await this.consumeControlNonce(tx, context, ids);
+    return this.founderStatusSnapshot(tx, ids, policy, now);
+  }
+
+  async control(tx, context, ids, policy, now, input) {
+    requireSecurity(this.env.LEGEND_RUNTIME_MODE === 'founder_baseline' &&
+      Array.isArray(context.roles) && context.roles.length === 1 && context.roles[0] === 'Founder',
+    'founder_control_scope_denied');
+    await this.consumeControlNonce(tx, context, ids);
+    const period = accountingPeriod(policy, now);
+    const quota = await tx.get(`quota:${period.id}:${ids.account}`) ?? { chargedMicrousd: 0 };
+    const chargedMicrousd = Number.isSafeInteger(quota.chargedMicrousd) ? quota.chargedMicrousd : 0;
+    const current = await this.founderControlState(tx, ids, policy);
+    let next = current;
+    if (input?.action === 'set_pause') {
+      requireSecurity(typeof input.paused === 'boolean', 'founder_control_invalid', 400);
+      next = { ...current, paused: input.paused, updatedAt: now };
+    } else if (input?.action === 'set_spend_cap') {
+      requireSecurity(Number.isSafeInteger(input.spendCapMicrousd) && input.spendCapMicrousd >= chargedMicrousd &&
+        input.spendCapMicrousd <= policy.accountMicrousd, 'founder_spend_cap_invalid', 400);
+      next = { ...current, spendCapMicrousd: input.spendCapMicrousd, updatedAt: now };
+    } else throw new SecurityError('founder_control_invalid', 400);
+    await tx.put(`control:${ids.account}`, {
+      paused: next.paused, spendCapMicrousd: next.spendCapMicrousd, updatedAt: next.updatedAt,
+    });
+    return this.founderStatusSnapshot(tx, ids, policy, now);
   }
 
   async claim(tx, context, ids, policy, now) {
@@ -182,6 +254,10 @@ export class LegendGovernance {
     requireSecurity(amount <= Math.min(record.costLimitMicrousd, requestBudget.ceilingMicrousd) - record.chargedMicrousd,
       'request_budget_exhausted', 429);
     const period = accountingPeriod(policy, now);
+    const founderRequest = this.env.LEGEND_RUNTIME_MODE === 'founder_baseline' &&
+      Array.isArray(context.roles) && context.roles.length === 1 && context.roles[0] === 'Founder';
+    const founderControl = founderRequest ? await this.founderControlState(tx, ids, policy) : null;
+    if (founderControl) requireSecurity(!founderControl.paused, 'founder_inference_paused', 429);
     const quotaKeys = [];
     // All four concurrency dimensions and all three periodic spend dimensions
     // participate in the same transaction as the request's total spend.
@@ -195,7 +271,10 @@ export class LegendGovernance {
       if (kind === 'request') continue;
       const quotaKey = `quota:${period.id}:${ids[kind]}`;
       const quota = await tx.get(quotaKey) ?? { chargedMicrousd: 0 };
-      requireSecurity(amount <= policy[`${kind}Microusd`] - quota.chargedMicrousd, `${kind}_budget_exhausted`, 429);
+      const spendLimit = kind === 'account' && founderControl
+        ? Math.min(policy.accountMicrousd, founderControl.spendCapMicrousd)
+        : policy[`${kind}Microusd`];
+      requireSecurity(amount <= spendLimit - quota.chargedMicrousd, `${kind}_budget_exhausted`, 429);
       await retain(tx, quotaKey, { chargedMicrousd: quota.chargedMicrousd + amount }, period.expiresAt);
       quotaKeys.push(quotaKey);
     }
@@ -284,6 +363,8 @@ export function createGovernanceClient(env, authenticatedContext) {
     return result;
   }
   return Object.freeze({
+    status: () => call('status', authenticatedContext),
+    control: input => call('control', authenticatedContext, input),
     claim: () => call('claim', authenticatedContext),
     close: () => call('close', authenticatedContext),
     reserve: (context, input) => call('reserve', context, input),

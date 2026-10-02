@@ -19,8 +19,94 @@ public sealed class FounderLegendConnectPageVm
     public FounderSoftwareRemediationStatusSnapshot SoftwareRemediation { get; init; } =
         FounderSoftwareRemediationStatusSnapshot.Unconfigured();
 
+    public FounderCloudflareFoundationShellSnapshot CloudflareFoundation { get; init; } =
+        FounderCloudflareFoundationShellSnapshot.Unconfigured();
+
     public LegendIntelligenceEvaluationDashboardSnapshot IntelligenceEvaluation { get; init; } =
         LegendIntelligenceEvaluationDashboardSnapshot.NotEvaluated();
+}
+
+/// <summary>
+/// Sanitized Founder projection of the Azure-to-Cloudflare foundation binding.
+/// Secrets, API tokens, signing keys, and payment instruments never cross this boundary.
+/// </summary>
+public sealed record FounderCloudflareFoundationShellSnapshot(
+    bool Configured,
+    string State,
+    string HostKind,
+    string Environment,
+    string EndpointHost,
+    string BillingOwner,
+    string PolicyPersistence,
+    string PrimaryModel,
+    bool MutationsEnabled,
+    bool QualificationEnabled,
+    decimal ReleaseAuthorizedUsd,
+    string CloudflareDashboardUrl,
+    string Detail)
+{
+    public static FounderCloudflareFoundationShellSnapshot Unconfigured(string? detail = null) => new(
+        false, "NOT CONFIGURED", "Cloudflare", "production", "Not configured",
+        "Cloudflare Workers AI", "persistent", "@cf/openai/gpt-oss-120b",
+        false, false, 0m, "https://dash.cloudflare.com/",
+        detail ?? "The canonical release has not activated the Founder Cloudflare foundation.");
+}
+
+public sealed record FounderCloudflareFoundationModelSnapshot(
+    string Id,
+    string Role,
+    long ContextTokens,
+    decimal InputUsdPerMillion,
+    decimal OutputUsdPerMillion);
+
+public sealed record FounderCloudflareFoundationBudgetSnapshot(
+    string Period,
+    long ReleaseAuthorizedMicrousd,
+    long SpendCapMicrousd,
+    long ChargedMicrousd,
+    long RemainingMicrousd,
+    bool Paused,
+    int ActiveConcurrency,
+    int ConcurrencyLimit,
+    long? ControlUpdatedAt);
+
+public sealed record FounderCloudflareFoundationLiveSnapshot(
+    bool Reachable,
+    string State,
+    string? ErrorCode,
+    string Provider,
+    string Hosting,
+    string Billing,
+    string ExecutionMode,
+    string PolicyVersion,
+    string PolicyPersistence,
+    string PrimaryModel,
+    IReadOnlyList<FounderCloudflareFoundationModelSnapshot> Models,
+    FounderCloudflareFoundationBudgetSnapshot? Budget,
+    DateTime CheckedUtc)
+{
+    public static FounderCloudflareFoundationLiveSnapshot Unavailable(string errorCode) => new(
+        false, "UNAVAILABLE", errorCode, "Cloudflare Workers AI", "cloudflare",
+        "Cloudflare Workers AI", "unknown", "unknown", "unknown",
+        "@cf/openai/gpt-oss-120b", Array.Empty<FounderCloudflareFoundationModelSnapshot>(),
+        null, DateTime.UtcNow);
+}
+
+public sealed record FounderCloudflareInferenceCanarySnapshot(
+    bool Succeeded,
+    string State,
+    string? ErrorCode,
+    string? Model,
+    string? Hosting,
+    long? CostMicrousd,
+    string? CostEvidence,
+    DateTime CheckedUtc);
+
+public sealed class FounderCloudflareFoundationControlInput
+{
+    public string Action { get; set; } = string.Empty;
+    public bool? Paused { get; set; }
+    public decimal? SpendCapUsd { get; set; }
 }
 
 /// <summary>

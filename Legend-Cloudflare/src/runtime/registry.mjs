@@ -55,6 +55,7 @@ export function resolveModelSettings(env, model) {
 
 export const FOUNDER_BASELINE_MODEL_IDS = Object.freeze(candidates.map(([id]) => id));
 export const FOUNDER_BASELINE_PRIMARY_MODEL = '@cf/openai/gpt-oss-120b';
+export const FOUNDER_BASELINE_POLICY_VERSION = 'legend-founder-baseline.v3';
 const FOUNDER_BASELINE_MAX_COST_MICROUSD = 3_000_000;
 
 function readFounderBaselineConfiguration(env) {
@@ -67,7 +68,7 @@ function readFounderBaselineConfiguration(env) {
     'requiredRole', 'environment', 'modelIds', 'lifetimeCostMicrousd'];
   if (!policy || typeof policy !== 'object' || Array.isArray(policy)
     || Object.keys(policy).length !== fields.length || Object.keys(policy).some(key => !fields.includes(key))
-    || policy.version !== 'legend-founder-baseline.v3'
+    || policy.version !== FOUNDER_BASELINE_POLICY_VERSION
     || !Array.isArray(policy.modelIds) || policy.modelIds.length !== FOUNDER_BASELINE_MODEL_IDS.length
     || policy.modelIds.some((id, index) => id !== FOUNDER_BASELINE_MODEL_IDS[index])
     || !['accountId', 'tenantId', 'founderUserId', 'serviceKeyId', 'environment'].every(key => identifier(policy[key]))
@@ -100,7 +101,8 @@ function resolveFounderBaselinePolicy(env, envelope, context) {
   if (envelope.task.tools?.length && env.LEGEND_TOOL_CALLBACK_ENABLED !== 'true')
     throw new RuntimeFailure('founder_baseline_signed_tools_required');
   return Object.freeze({ mode: 'founder_baseline', modelIds: FOUNDER_BASELINE_MODEL_IDS,
-    primaryModelId: FOUNDER_BASELINE_PRIMARY_MODEL, accountId: policy.accountId });
+    primaryModelId: FOUNDER_BASELINE_PRIMARY_MODEL, policyVersion: FOUNDER_BASELINE_POLICY_VERSION,
+    lifetimeCostMicrousd: policy.lifetimeCostMicrousd, accountId: policy.accountId });
 }
 
 function validateQualificationConfiguration(env, policy, budget, now, permitExpired = false) {
