@@ -319,6 +319,62 @@ jobs:
             policies["Future automatically governed release child"],
         )
 
+    def test_release_inventory_is_single_canonical_source_for_baseline_and_live_proof(self):
+        names = {row["releaseName"] for row in m.RELEASE_TARGETS.values()}
+        self.assertEqual(
+            {
+                "masterapp-portal",
+                "masterapp-client",
+                "masterapp-protect",
+                "masterapp-parfait",
+                "masterapp-website",
+            },
+            names,
+        )
+        self.assertTrue(all(row.get("proofHosts") for row in m.RELEASE_TARGETS.values()))
+
+        baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
+        self.assertIn("_validation_authority.release_target_rows()", baseline)
+        self.assertIn("_validation_authority.ALLOWED_RELEASE_TARGET_SETS", baseline)
+        self.assertNotIn("('portal', 'portal.mylegnd.com'", baseline)
+
+        release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
+        self.assertIn("scripts/validation-resume.py live-state", release)
+        self.assertIn("scripts/validation-resume.py verify-live", release)
+        live_step = release.split("      - name: Preserve targets already live at exact candidate\n", 1)[1].split("      - name:", 1)[0]
+        proof_step = release.split("      - name: Verify every deployed target and collect all failures\n", 1)[1].split("      - uses:", 1)[0]
+        self.assertNotIn("portal.mylegnd.com", live_step)
+        self.assertNotIn("masterapp-website.azurewebsites.net", proof_step)
+
+    def test_lifecycle_and_release_evidence_lookup_are_canonicalized(self):
+        lifecycle = (ROOT / ".github" / "workflows" / "legend-release-lifecycle.yml").read_text()
+        self.assertIn("scripts/validation-resume.py lifecycle-evidence", lifecycle)
+        identity_step = lifecycle.split("      - name: Resolve lifecycle validation authority identity\n", 1)[1].split("      - name:", 1)[0]
+        self.assertNotIn("gh api", identity_step)
+        self.assertNotIn("sha256sum", identity_step)
+
+        release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
+        validated = release.split("      - name: Reuse exact successful validation package when available\n", 1)[1].split("      - name:", 1)[0]
+        rollback = release.split("      - name: Reuse exact retained live package when available\n", 1)[1].split("      - uses:", 1)[0]
+        self.assertIn("scripts/validation-resume.py validated-package", validated)
+        self.assertIn("scripts/validation-resume.py rollback-evidence", rollback)
+        self.assertNotIn("gh api", validated)
+        self.assertNotIn("gh api", rollback)
+
+    def test_consumed_evidence_invalidates_forward_without_invalidating_siblings(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["AgentPortal.Tests/SomeUnrelatedRegressionTests.cs"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["candidate-full"]["run"])
+        self.assertTrue(plan["gates"]["comparison"]["run"])
+        self.assertFalse(plan["gates"]["candidate-focused"]["run"])
+
     def test_step5_workflow_only_change_is_neutral_to_architecture(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
