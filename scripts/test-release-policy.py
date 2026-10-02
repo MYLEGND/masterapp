@@ -518,7 +518,9 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_direct_release_reuses_only_exact_validated_package_evidence(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         self.assertIn('Reuse exact successful validation package when available', workflow)
-        self.assertIn('founder-diagnostics-packages-${PACKAGE_IDENTITY}', workflow)
+        authority=(ROOT.parent / 'scripts/validation-resume.py').read_text()
+        self.assertIn('f"founder-diagnostics-packages-{package_identity}"', authority)
+        self.assertNotIn('founder-diagnostics-packages-${PACKAGE_IDENTITY}', workflow)
         self.assertIn('scripts/validation-resume.py validated-package', workflow)
         self.assertIn('rollback-evidence', workflow)
         self.assertIn('scripts/validation-resume.py live-state', workflow)
