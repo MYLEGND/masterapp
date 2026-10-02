@@ -438,7 +438,7 @@ class HistoricalReleaseRecovery(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertEqual(1, approved_pr.call_count)
-        approved_pr.assert_called_once_with(unittest.mock.ANY, newest)
+        self.assertEqual(newest, approved_pr.call_args.args[1])
 
     @patch.object(m, "pending_legacy_release_authorization")
     def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending):
