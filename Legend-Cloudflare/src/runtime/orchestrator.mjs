@@ -1,6 +1,13 @@
 import { MODEL_REGISTRY, REGISTRY_VERSION, RuntimeFailure, estimateCostMicrousd, routeModel, resolveExecutionPolicy, resolveModelSettings } from './registry.mjs';
 import { generate } from './adapter.mjs';
 import { CircuitBreaker, abortable, requestSignal } from './reliability.mjs';
+import {
+  resolveCognition,
+  plannerMessages,
+  parseCognitivePlan,
+  specialistMessages,
+  synthesisMessages,
+} from './cognition.mjs';
 
 const health = new CircuitBreaker();
 const encoder = new TextEncoder();
@@ -33,7 +40,8 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
   registry = MODEL_REGISTRY, circuit = health }) {
   const result = { version: 'legend-cloudflare.v1', requestId: envelope?.requestId ?? null, status: 'failed', text: '', toolResults: [],
     provider: null, registryVersion: REGISTRY_VERSION,
-    usage: { inputTokens: 0, outputTokens: 0, costMicrousd: 0, costEvidence: 'provider_usage' }, error: null };
+    usage: { inputTokens: 0, outputTokens: 0, costMicrousd: 0, costEvidence: 'provider_usage' }, error: null,
+    cognition: null };
   let deadline;
   try {
     validate(envelope, budget);
@@ -43,37 +51,49 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
     deadline = requestSignal(parentSignal, envelope.limits.deadlineUnixMs);
     const { signal } = deadline;
     const emit = event => onEvent ? abortable(() => onEvent(event), signal) : Promise.resolve();
-    const messages = structuredClone(envelope.task.messages);
+    const baseMessages = structuredClone(envelope.task.messages);
+    let messages = baseMessages;
     const tools = envelope.task.tools ?? [];
     const permittedNames = new Set(tools.map(tool => tool.function?.name ?? tool.name));
     const completedCalls = new Set();
+    const cognition = resolveCognition(envelope.task);
+    const cognitiveCalls = [];
     let modelCalls = 0;
     let toolCalls = 0;
-    for (let iteration = 0; iteration < envelope.limits.maxIterations; iteration++) {
+
+    const executeModelCall = async ({ routingTask, callMessages, callTools, stage }) => {
       if (signal.aborted) throw signal.reason;
       if (++modelCalls > envelope.limits.maxModelCalls) throw new RuntimeFailure('model_call_limit');
-      // UTF-8 bytes plus template allowance is deliberately conservative for context routing.
-      const inputBound = encoder.encode(JSON.stringify({ messages, tools })).length + 1024;
+      const inputBound = encoder.encode(JSON.stringify({ messages: callMessages, tools: callTools })).length + 1024;
       const remaining = envelope.limits.maxCostMicrousd - result.usage.costMicrousd;
-      const model = routeModel({ task: envelope.task, accountId: envelope.scope.accountId, inputTokens: inputBound, maxOutputTokens: envelope.limits.maxOutputTokens,
-        remainingCostMicrousd: remaining, registry, excluded: circuit.unavailable(), executionPolicy });
+      const model = routeModel({
+        task: routingTask,
+        accountId: envelope.scope.accountId,
+        inputTokens: inputBound,
+        maxOutputTokens: envelope.limits.maxOutputTokens,
+        remainingCostMicrousd: remaining,
+        registry,
+        excluded: circuit.unavailable(),
+        executionPolicy
+      });
       const modelSettings = resolveModelSettings(env, model);
-      result.modelSettings = modelSettings;
       const reserved = estimateCostMicrousd(model, model.contextTokens, envelope.limits.maxOutputTokens);
       if (reserved > remaining) throw new RuntimeFailure('request_budget_exhausted');
-      result.provider = { name: model.provider, modelId: model.id, hosting: model.hosting };
-      await emit({ type: 'progress', stage: 'model', iteration: iteration + 1 });
+      await emit({ type: 'progress', stage, modelRole: model.role });
       const reservationId = await opaqueId(`${envelope.requestId}:model:${modelCalls}`);
-      // Do not race an atomic reservation against cancellation: wait for its receipt,
-      // then settle it if cancellation arrived before provider dispatch.
-      await budget.reserve(context, { requestId: envelope.requestId, reservationId, maxCostMicrousd: reserved, deadlineUnixMs: envelope.limits.deadlineUnixMs });
+      await budget.reserve(context, {
+        requestId: envelope.requestId,
+        reservationId,
+        maxCostMicrousd: reserved,
+        deadlineUnixMs: envelope.limits.deadlineUnixMs
+      });
       let output;
       let dispatched = false;
       let operationError;
       try {
         output = await abortable(() => {
           dispatched = true;
-          return generate(env, model, messages, envelope.task, envelope.limits.maxOutputTokens, signal, modelSettings);
+          return generate(env, model, callMessages, { ...routingTask, tools: callTools }, envelope.limits.maxOutputTokens, signal, modelSettings);
         }, signal);
         circuit.success(model.id);
       } catch (error) {
@@ -87,8 +107,6 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
         result.usage.inputTokens += providerUsage.inputTokens;
         result.usage.outputTokens += providerUsage.outputTokens;
       }
-      // A provider reporting more than the reservation is an accounting incident,
-      // never a reason to silently cap the observed charge or continue generation.
       let receipt;
       try {
         receipt = await budget.settle(context, { reservationId, actualCostMicrousd: actual, usageKnown: known });
@@ -99,8 +117,6 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
           result.usage.costMicrousd += usage.costMicrousd;
           if (usage.costEvidence === 'reserved_upper_bound') result.usage.costEvidence = 'reserved_upper_bound';
         } else {
-          // Reservation was already debited. A lost settlement acknowledgment
-          // cannot establish a refund, even for a cancelled pre-dispatch call.
           result.usage.costMicrousd += Math.max(reserved, actual);
           result.usage.costEvidence = 'reserved_upper_bound';
         }
@@ -111,17 +127,117 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
       if (operationError) throw operationError;
       if (actual > reserved) throw new RuntimeFailure('provider_usage_exceeded_reservation');
       if (!known) throw new RuntimeFailure('provider_usage_unavailable');
+      cognitiveCalls.push(Object.freeze({ stage, role: model.role, modelId: model.id }));
+      return { output, model, modelSettings };
+    };
+
+    let plan = Object.freeze({
+      version: 'legend-cognition-plan.v1',
+      complexity: 0,
+      specialists: Object.freeze([]),
+      verification: false,
+    });
+    let planStatus = cognition.mode === 'adaptive' ? 'not_run' : 'direct';
+
+    // Adaptive multi-brain execution is a Founder-baseline capability. Qualification
+    // remains single-candidate by design so held-out evidence cannot be contaminated
+    // by other models.
+    if (cognition.mode === 'adaptive' && executionPolicy.mode === 'founder_baseline') {
+      const plannerTask = {
+        ...envelope.task,
+        kind: 'general',
+        tools: [],
+        requiredCapabilities: ['text'],
+      };
+      const planner = await executeModelCall({
+        routingTask: plannerTask,
+        callMessages: plannerMessages(baseMessages, cognition),
+        callTools: [],
+        stage: 'cognition_planner'
+      });
+      if (planner.output.toolCalls.length) throw new RuntimeFailure('cognition_planner_tool_call');
+      try {
+        plan = parseCognitivePlan(planner.output.text, cognition);
+        planStatus = 'planned';
+      } catch (error) {
+        if (!(error instanceof RuntimeFailure) || error.code !== 'cognition_plan_invalid') throw error;
+        // Invalid planning text grants no authority and selects no specialist.
+        // Continue transparently through the ordinary general path.
+        planStatus = 'invalid_direct_fallback';
+      }
+
+      if (planStatus === 'planned' && plan.specialists.length) {
+        const findings = [];
+        for (let index = 0; index < plan.specialists.length; index++) {
+          const role = plan.specialists[index];
+          const specialistTask = {
+            ...envelope.task,
+            kind: role,
+            tools: [],
+            requiredCapabilities: ['text'],
+          };
+          const specialist = await executeModelCall({
+            routingTask: specialistTask,
+            callMessages: specialistMessages(baseMessages, role, index, plan.specialists.length),
+            callTools: [],
+            stage: `cognition_specialist_${role}`
+          });
+          if (specialist.output.toolCalls.length) throw new RuntimeFailure('cognition_specialist_tool_call');
+          if (typeof specialist.output.text !== 'string' || !specialist.output.text.trim())
+            throw new RuntimeFailure('cognition_specialist_empty');
+          findings.push(specialist.output.text);
+        }
+        messages = synthesisMessages(baseMessages, findings, plan);
+      }
+    }
+
+    result.cognition = {
+      version: cognition.version,
+      mode: cognition.mode,
+      planStatus,
+      complexity: plan.complexity,
+      specialistRoles: [...plan.specialists],
+      verification: plan.verification,
+      calls: cognitiveCalls
+    };
+
+    for (let iteration = 0; iteration < envelope.limits.maxIterations; iteration++) {
+      if (signal.aborted) throw signal.reason;
+      const finalTask = {
+        ...envelope.task,
+        kind: cognition.mode === 'adaptive' ? 'general' : envelope.task.kind,
+      };
+      const generated = await executeModelCall({
+        routingTask: finalTask,
+        callMessages: messages,
+        callTools: tools,
+        stage: 'model'
+      });
+      const { output, model, modelSettings } = generated;
+      result.modelSettings = modelSettings;
+      result.provider = { name: model.provider, modelId: model.id, hosting: model.hosting };
       if (!output.toolCalls.length) {
-        result.status = 'completed'; result.text = output.text;
+        result.status = 'completed';
+        result.text = output.text;
+        result.cognition = { ...result.cognition, calls: [...cognitiveCalls] };
         await emit({ type: 'final', response: result });
         return result;
       }
       if (!toolBroker?.execute) throw new RuntimeFailure('tools_unavailable');
-      if (iteration + 1 >= envelope.limits.maxIterations || modelCalls >= envelope.limits.maxModelCalls) throw new RuntimeFailure('iteration_limit');
-      // Validate the complete batch before executing any side effect.
+      if (iteration + 1 >= envelope.limits.maxIterations || modelCalls >= envelope.limits.maxModelCalls)
+        throw new RuntimeFailure('iteration_limit');
       if (toolCalls + output.toolCalls.length > envelope.limits.maxToolCalls) throw new RuntimeFailure('tool_call_limit');
-      if (output.toolCalls.some(call => !permittedNames.has(call.name) || completedCalls.has(call.id))) throw new RuntimeFailure('unpermitted_or_duplicate_tool');
-      messages.push({ role: 'assistant', content: output.text, tool_calls: output.toolCalls.map(call => ({ id: call.id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) });
+      if (output.toolCalls.some(call => !permittedNames.has(call.name) || completedCalls.has(call.id)))
+        throw new RuntimeFailure('unpermitted_or_duplicate_tool');
+      messages.push({
+        role: 'assistant',
+        content: output.text,
+        tool_calls: output.toolCalls.map(call => ({
+          id: call.id,
+          type: 'function',
+          function: { name: call.name, arguments: JSON.stringify(call.arguments) }
+        }))
+      });
       for (const call of output.toolCalls) {
         toolCalls++;
         completedCalls.add(call.id);
@@ -129,8 +245,6 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
         await emit({ type: 'progress', stage: 'tool', iteration: iteration + 1 });
         let toolReceipt;
         try {
-          // Broker observes this signal itself and settles reserved execution
-          // cost before returning/throwing; an outer race would lose that debit.
           toolReceipt = await toolBroker.execute({ context, call, idempotencyKey, signal });
         } catch (error) {
           if (Number.isSafeInteger(error?.usage?.costMicrousd) && error.usage.costMicrousd >= 0) {
@@ -140,22 +254,27 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
           throw error;
         }
         if (!Number.isSafeInteger(toolReceipt?.usage?.costMicrousd) || toolReceipt.usage.costMicrousd < 0
-          || !['provider_usage', 'reserved_upper_bound'].includes(toolReceipt.usage.costEvidence)) throw new RuntimeFailure('tool_usage_unavailable');
+          || !['provider_usage', 'reserved_upper_bound'].includes(toolReceipt.usage.costEvidence))
+          throw new RuntimeFailure('tool_usage_unavailable');
         result.usage.costMicrousd += toolReceipt.usage.costMicrousd;
         if (toolReceipt.usage.costEvidence === 'reserved_upper_bound') result.usage.costEvidence = 'reserved_upper_bound';
         if (result.usage.costMicrousd > envelope.limits.maxCostMicrousd) throw new RuntimeFailure('request_budget_exhausted');
-        const output = toolReceipt.output;
-        const content = JSON.stringify(output);
+        const toolOutput = toolReceipt.output;
+        const content = JSON.stringify(toolOutput);
         if (typeof content !== 'string' || encoder.encode(content).length > 32768) throw new RuntimeFailure('tool_output_too_large');
-        result.toolResults.push({ id: call.id, name: call.name, output });
+        result.toolResults.push({ id: call.id, name: call.name, output: toolOutput });
         messages.push({ role: 'tool', tool_call_id: call.id, content });
       }
     }
     throw new RuntimeFailure('iteration_limit');
   } catch (error) {
-    result.status = 'failed'; result.text = ''; result.error = failure(error);
+    result.status = 'failed';
+    result.text = '';
+    result.error = failure(error);
     return result;
-  } finally { deadline?.dispose(); }
+  } finally {
+    deadline?.dispose();
+  }
 }
 
 /** Backpressure-aware events; no token deltas are replayed after a disconnect. */
