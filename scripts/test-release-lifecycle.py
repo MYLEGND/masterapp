@@ -183,6 +183,43 @@ class PendingUpdateFairness(unittest.TestCase):
         self.assertEqual(10, integrate.call_args_list[0].args[1])
         self.assertEqual(11, integrate.call_args_list[1].args[1])
 
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "ancestor", side_effect=[False, True])
+    def test_blocked_correction_pr_does_not_starve_release_recovery(self, _, __):
+        api = Api()
+        api.refs[m.APPROVED] = "a" * 40
+        api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = []
+        api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = [{
+            "number": 12,
+            "state": "closed",
+            "merged_at": "2026-10-01T00:00:00Z",
+            "author_association": "OWNER",
+            "head": {
+                "ref": "retained-work",
+                "sha": "b" * 40,
+                "repo": {"full_name": api.repo},
+            },
+        }]
+        api.pages_map["branches"] = [{
+            "name": "retained-work",
+            "commit": {"sha": "c" * 40},
+        }]
+
+        def blocked_pull(_data, _method):
+            raise RuntimeError("GitHub POST pulls: HTTP 403")
+
+        api.api_map["pulls"] = blocked_pull
+        result = m.pending_updates(api)
+
+        self.assertEqual(
+            "no validated ready changes or retained-branch corrections",
+            result["integration"],
+        )
+        self.assertEqual(1, len(result["retainedCandidates"]))
+        self.assertEqual("retained-work", result["retainedCandidates"][0]["branch"])
+        self.assertIn("blocked", result["retainedCandidates"][0]["reason"].lower())
+
 class AutomaticMergeRelease(unittest.TestCase):
     @patch.object(m, "candidate_validation", return_value=None)
     @patch.object(m, "automatic_release_targets")
