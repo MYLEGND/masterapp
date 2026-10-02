@@ -1083,6 +1083,40 @@ jobs:
           name: translation-direct-release-${{ github.sha }}
           path: /tmp/translation-results/
           if-no-files-found: warn
+      - name: Retain exact release step-state receipt
+        if: always()
+        env:
+          STEP_STATE_JSON: ${{ toJSON(steps) }}
+        shell: bash
+        run: |
+          python3 - <<'PYSTATE'
+          import json, os
+          state={
+              'schemaVersion':1,
+              'releaseHeadSha':os.environ['RELEASE_SHA'],
+              'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
+              'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+              'selectedTargets':json.loads(os.environ['SELECTED_TARGETS']),
+              'steps':json.loads(os.environ['STEP_STATE_JSON']),
+          }
+          with open('/tmp/legend-release-step-state.json','w') as output:
+              json.dump(state,output,sort_keys=True,indent=2)
+          print(json.dumps({
+              'applicationReleaseSha':state['applicationReleaseSha'],
+              'selectedTargets':state['selectedTargets'],
+              'stepOutcomes':{key:value.get('outcome') for key,value in state['steps'].items()},
+          },sort_keys=True))
+          PYSTATE
+
+      - name: Preserve exact release step-state receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-release-step-state-${{ env.APPLICATION_RELEASE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/legend-release-step-state.json
+          retention-days: 30
+          if-no-files-found: error
+
       - name: Enforce complete direct deployment outcome
         if: always()
         env:
