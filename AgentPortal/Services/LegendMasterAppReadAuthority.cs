@@ -3,6 +3,7 @@ using AgentPortal.Security;
 using AgentPortal.Services.Tracking;
 using Infrastructure.Analytics;
 using Shared.Analytics;
+using Shared.Diagnostics;
 
 namespace AgentPortal.Services;
 
@@ -26,6 +27,13 @@ internal sealed class LegendMasterAppReadAuthority(IEnumerable<ILegendMasterAppR
         authority = nameof(LegendMasterAppReadAuthority),
         sourceOfTruth = "canonical_page_service_projections",
         providerSpecificRegistry = false,
+        structuralPageAuthority = new
+        {
+            tool = LegendSiteToolDisclosureAuthority.CurrentPageToolName,
+            sharedBridge = "/api/legend-site-tools",
+            inventory = LegendSiteToolDisclosureAuthority.SystemInventory(),
+            coverage = "all_registered_masterapp_web_surfaces"
+        },
         projections = _projections.Values
             .OrderBy(value => value.Application, StringComparer.Ordinal)
             .ThenBy(value => value.Key, StringComparer.Ordinal)
