@@ -5578,6 +5578,7 @@ function renderLaneCards(rowsForStage){
           <button type="button"
                   class="crm-star-toggle ${isStarred ? "is-starred" : ""}"
                   data-star-contact="${safeHtml(r.dataset.clientId)}"
+                  draggable="false"
                   aria-pressed="${isStarred ? "true" : "false"}"
                   aria-label="${isStarred ? "Unstar" : "Star"} ${safeHtml(displayName)}"
                   title="${isStarred ? "Unstar contact" : "Keep contact at top"}">★</button>
