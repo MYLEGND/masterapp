@@ -71,46 +71,45 @@ jobs:
         id: retained
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           REVISION: ${{ matrix.revision }}
           APP: ${{ matrix.app }}
         run: |
           set -euo pipefail
+          evidence="$RUNNER_TEMP/rollback-evidence.json"
+          python3 scripts/validation-resume.py rollback-evidence \
+            --repository "${{ github.repository }}" \
+            --revision "$REVISION" \
+            --app "$APP" \
+            --output "$evidence"
+
+          read -r reusable run_id package_artifact package_name < <(
+            python3 - "$evidence" <<'PYROLLBACKDECISION'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          print(
+              str(bool(data.get('reusable'))).lower(),
+              data.get('runId') or '',
+              data.get('packageArtifact') or '',
+              data.get('packageName') or '',
+          )
+          PYROLLBACKDECISION
+          )
           echo "reused=false" >> "$GITHUB_OUTPUT"
-          receipt_name="legend-approved-release-$REVISION"
-          receipts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$receipt_name&per_page=100")"
-          case "$APP" in
-            portal) package_name=agentportal.zip ;;
-            client) package_name=clientapp.zip ;;
-            protect) package_name=protect.zip ;;
-            parfait) package_name=parfait.zip ;;
-            website) package_name=website.zip ;;
-            *) echo "::error::Unknown rollback app $APP"; exit 1 ;;
-          esac
+          if [ "$reusable" != true ]; then
+            echo "No retained canonical package covers $APP at $REVISION; source-equivalent rollback rebuild remains required."
+            exit 0
+          fi
 
-          while read -r run_id; do
-            [[ -n "$run_id" ]] || continue
-            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
-            run_path="$(printf '%s' "$run" | jq -r '.path // ""')"
-            run_branch="$(printf '%s' "$run" | jq -r '.head_branch // ""')"
-            run_status="$(printf '%s' "$run" | jq -r '.status // ""')"
-            run_conclusion="$(printf '%s' "$run" | jq -r '.conclusion // ""')"
-            [[ "$run_path" == ".github/workflows/all-intentional-direct-release-20260918.yml" ]] || continue
-            [[ "$run_branch" == "legend/approved-changes" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] || continue
-
-            artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100")"
-            while read -r package_artifact; do
-              [[ -n "$package_artifact" ]] || continue
-              rm -rf /tmp/retained-package
-              mkdir -p /tmp/retained-package
-              if ! gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$package_artifact" --dir /tmp/retained-package; then
-                continue
-              fi
-              candidate="$(find /tmp/retained-package -type f -name "$package_name" -print -quit)"
-              [[ -n "$candidate" ]] || continue
-              sums="$(find "$(dirname "$candidate")" -maxdepth 1 -type f -name SHA256SUMS -print -quit)"
-              [[ -n "$sums" ]] || continue
-              if ! python3 - "$candidate" "$sums" "$REVISION" "$APP" <<'PYROLLBACK'
+          rm -rf /tmp/retained-package
+          mkdir -p /tmp/retained-package
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$package_artifact" --dir /tmp/retained-package
+          candidate="$(find /tmp/retained-package -type f -name "$package_name" -print -quit)"
+          [ -n "$candidate" ]
+          sums="$(find "$(dirname "$candidate")" -maxdepth 1 -type f -name SHA256SUMS -print -quit)"
+          [ -n "$sums" ]
+          python3 - "$candidate" "$sums" "$REVISION" "$APP" <<'PYROLLBACK'
           import hashlib,json,pathlib,sys,zipfile
           package=pathlib.Path(sys.argv[1])
           sums=pathlib.Path(sys.argv[2])
@@ -131,24 +130,13 @@ jobs:
           if embedded != revision:
               raise SystemExit('Retained rollback package revision mismatch')
           PYROLLBACK
-              then
-                continue
-              fi
-              mkdir -p /tmp/rollback
-              cp "$candidate" /tmp/rollback/package.zip
-              printf '%s %s retained canonical package from release run %s\n' "$APP" "$REVISION" "$run_id" > /tmp/rollback/manifest.txt
-              sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
-              echo "reused=true" >> "$GITHUB_OUTPUT"
-              echo "Reused exact verified rollback package for $APP at $REVISION from direct release run $run_id."
-              exit 0
-            done < <(
-              printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false and (.name | startswith("founder-diagnostics-packages-"))) | .name'
-            )
-          done < <(
-            printf '%s' "$receipts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++'
-          )
 
-          echo "No retained canonical package covers $APP at $REVISION; source-equivalent rollback rebuild remains required."
+          mkdir -p /tmp/rollback
+          cp "$candidate" /tmp/rollback/package.zip
+          printf '%s %s retained canonical package from release run %s\n' "$APP" "$REVISION" "$run_id" > /tmp/rollback/manifest.txt
+          sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+          echo "Reused exact verified rollback package for $APP at $REVISION from direct release run $run_id."
 
       - uses: actions/setup-dotnet@v4
         if: matrix.project != 'static' && steps.retained.outputs.reused != 'true'
@@ -224,42 +212,33 @@ jobs:
         if: env.EXACT_LIVE != 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 scripts/validation-resume.py verify-release-coverage \
             --workflow all-intentional-direct-release-20260918.yml \
             --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
-          artifact_name="founder-diagnostics-packages-${PACKAGE_IDENTITY}"
-          run_id=""
-          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
-          while read -r candidate_run; do
-            [ -n "$candidate_run" ] || continue
-            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
-            workflow_path="$(printf '%s' "$run" | jq -r '.path // ""')"
-            event="$(printf '%s' "$run" | jq -r '.event // ""')"
-            status="$(printf '%s' "$run" | jq -r '.status // ""')"
-            conclusion="$(printf '%s' "$run" | jq -r '.conclusion // ""')"
-            head_sha="$(printf '%s' "$run" | jq -r '.head_sha // ""')"
-            head_repo="$(printf '%s' "$run" | jq -r '.head_repository.full_name // ""')"
-            if [ "$workflow_path" = ".github/workflows/masterapp-platform-architecture-validation.yml" ] &&
-               [ "$event" = "pull_request" ] &&
-               [ "$status" = "completed" ] &&
-               [ "$conclusion" = "success" ] &&
-               [ "$head_sha" = "$APPLICATION_RELEASE_SHA" ] &&
-               [ "$head_repo" = "$GITHUB_REPOSITORY" ]; then
-              run_id="$candidate_run"
-              break
-            fi
-          done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
-          if [ -z "$run_id" ]; then
-            echo "::error::Exact validated release package is missing for $APPLICATION_RELEASE_SHA. Release refuses to rebuild production bytes."
-            exit 1
-          fi
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-          echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
-          echo "REUSE_VALIDATED_PACKAGE=true" >> "$GITHUB_ENV"
-          echo "Exact immutable package preserved from successful architecture validation run $run_id."
+          evidence="$RUNNER_TEMP/validated-package-evidence.json"
+          python3 scripts/validation-resume.py validated-package \
+            --repository "${{ github.repository }}" \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --package-identity "$PACKAGE_IDENTITY" \
+            --output "$evidence"
+          python3 - "$evidence" "$GITHUB_OUTPUT" "$GITHUB_ENV" <<'PYVALIDATED'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          if not data.get('reusable') or not data.get('runId') or not data.get('artifact'):
+              raise SystemExit(
+                  f"Exact validated release package is missing for {data.get('revision')}; "
+                  "release refuses to rebuild production bytes."
+              )
+          with open(sys.argv[2],'a') as output:
+              output.write(f"run_id={data['runId']}\n")
+              output.write(f"artifact={data['artifact']}\n")
+          with open(sys.argv[3],'a') as env:
+              env.write("REUSE_VALIDATED_PACKAGE=true\n")
+          print(f"Exact immutable package preserved from successful architecture validation run {data['runId']}.")
+          PYVALIDATED
       - name: Load exact preserved deployable package
         if: steps.reusevalidated.outputs.run_id != ''
         uses: actions/download-artifact@v4
