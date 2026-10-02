@@ -272,6 +272,53 @@ jobs:
         )
 
 
+    def test_step5_candidate_change_invalidates_comparison_but_preserves_unrelated_children(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["AgentPortal.Tests/SomeUnrelatedRegressionTests.cs"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["candidate-build"]["run"])
+        self.assertTrue(plan["gates"]["candidate-full"]["run"])
+        self.assertTrue(plan["gates"]["comparison"]["run"])
+        self.assertEqual(
+            "evidence_dependency_invalidated:candidate-full",
+            plan["gates"]["comparison"]["reason"],
+        )
+        self.assertFalse(plan["gates"]["candidate-focused"]["run"])
+
+    def test_step5_workflow_delegates_resume_and_baseline_decisions_to_canonical_authority(self):
+        path = ROOT / ".github" / "workflows" / "step5-isolated-conversion-mapping-validation.yml"
+        workflow = path.read_text()
+        self.assertIn("scripts/validation-resume.py plan", workflow)
+        self.assertIn("scripts/validation-resume.py step5-decision", workflow)
+        self.assertIn("scripts/validation-resume.py step5-baseline", workflow)
+        self.assertNotIn('gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$baseline_name', workflow)
+        self.assertIn("candidate_restore_run", workflow)
+        self.assertIn("candidate_build_run", workflow)
+        self.assertIn("candidate_focused_run", workflow)
+        self.assertIn("candidate_full_run", workflow)
+        self.assertIn("comparison_run", workflow)
+
+    def test_new_release_step_is_automatically_fail_closed_without_registry_edit(self):
+        path = ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
+        workflow = path.read_text() + """
+      - name: Future automatically governed release child
+        run: echo future
+"""
+        policies = m.verify_release_policy_coverage(
+            "all-intentional-direct-release-20260918.yml",
+            workflow,
+        )
+        self.assertEqual(
+            "fail_closed_execute",
+            policies["Future automatically governed release child"],
+        )
+
     def test_step5_workflow_only_change_is_neutral_to_architecture(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
