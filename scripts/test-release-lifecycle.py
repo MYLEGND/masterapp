@@ -364,6 +364,10 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual("c" * 40, result["applicationRevision"])
         self.assertEqual([target], result["targets"])
         self.assertEqual(42, result["sourcePr"])
+        history_args = git.call_args.args
+        self.assertEqual("log", history_args[0])
+        self.assertIn(m.VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH, history_args)
+        self.assertNotIn("-n", history_args)
 
     @patch.object(m, "pending_legacy_release_authorization")
     def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending):
