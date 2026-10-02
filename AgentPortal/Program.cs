@@ -173,6 +173,8 @@ builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringFou
 builder.Services.AddHttpClient("FounderRuntimeProvenance", client => client.Timeout = TimeSpan.FromSeconds(8))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<LegendFounderAiConversationService>();
+builder.Services.AddScoped<LegendMasterAppReadAuthority>();
+builder.Services.AddScoped<ILegendMasterAppReadProjection, WebsiteAnalyticsLegendReadProjection>();
 builder.Services.AddSingleton<LegendFounderAiProgressBroker>();
 builder.Services.AddScoped<FounderImpersonationService>();
 builder.Services.AddScoped<ProductionService>();
