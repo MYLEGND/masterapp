@@ -620,6 +620,7 @@ WORKFLOWS = {
             "scripts/test-release-policy.py",
             "scripts/test-deploy-approved-app.py",
             "Legend-Cloudflare/tests/**",
+            "tests/layout/**",
         ),
         "gates": {
             "candidate-restore": {
