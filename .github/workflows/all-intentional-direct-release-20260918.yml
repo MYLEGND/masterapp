@@ -719,9 +719,11 @@ jobs:
           git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"
 
           python3 - <<'PYBASELINE'
-          import importlib.util, os
+          import importlib.util, os, sys
           from pathlib import Path
-          path=Path('scripts/release-lifecycle.py')
+          scripts=Path('scripts').resolve()
+          sys.path.insert(0,str(scripts))
+          path=scripts / 'release-lifecycle.py'
           spec=importlib.util.spec_from_file_location('release_lifecycle',path)
           module=importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
