@@ -45,6 +45,14 @@ jobs:
       prior_head_sha: ${{ steps.plan.outputs.prior_head_sha }}
       repair_filter: ${{ steps.plan.outputs.repair_filter }}
       repair_classes: ${{ steps.plan.outputs.repair_classes }}
+      candidate_restore_run: ${{ steps.plan.outputs.candidate_restore_run }}
+      candidate_build_run: ${{ steps.plan.outputs.candidate_build_run }}
+      candidate_focused_run: ${{ steps.plan.outputs.candidate_focused_run }}
+      candidate_full_run: ${{ steps.plan.outputs.candidate_full_run }}
+      candidate_any_run: ${{ steps.plan.outputs.candidate_any_run }}
+      candidate_full_evidence_run_id: ${{ steps.plan.outputs.candidate_full_evidence_run_id }}
+      candidate_full_evidence_head_sha: ${{ steps.plan.outputs.candidate_full_evidence_head_sha }}
+      comparison_run: ${{ steps.plan.outputs.comparison_run }}
     steps:
       - name: Checkout exact isolated head for diff planning
         uses: actions/checkout@v4
@@ -57,281 +65,58 @@ jobs:
         id: plan
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          CURRENT_HEAD: ${{ github.event.pull_request.head.sha }}
-          CURRENT_BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD_BRANCH: ${{ github.head_ref }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          echo "mode=full" >> "$GITHUB_OUTPUT"
-          echo "prior_run_id=" >> "$GITHUB_OUTPUT"
-          echo "prior_head_sha=" >> "$GITHUB_OUTPUT"
-          echo "repair_filter=" >> "$GITHUB_OUTPUT"
-          echo "repair_classes=" >> "$GITHUB_OUTPUT"
+          plan="$RUNNER_TEMP/validation-resume.json"
+          decision="$RUNNER_TEMP/step5-decision.json"
 
-          workflow_name="step5-isolated-conversion-mapping-validation.yml"
-          workflow_path=".github/workflows/$workflow_name"
-          mkdir -p /tmp/step5-prior/candidate /tmp/step5-prior/baseline
+          python3 scripts/validation-resume.py plan \
+            --workflow step5-isolated-conversion-mapping-validation.yml \
+            --current-sha "${{ github.event.pull_request.head.sha }}" \
+            --current-run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --head-branch "${{ github.head_ref }}" \
+            --event "${{ github.event_name }}" \
+            --repository "${{ github.repository }}" \
+            --output "$plan"
 
-          prior_run_id=""
-          prior_head_sha=""
-          candidate_name=""
-          baseline_name="step5-baseline-$CURRENT_BASE"
+          python3 scripts/validation-resume.py step5-decision \
+            --current-sha "${{ github.event.pull_request.head.sha }}" \
+            --base-sha "${{ github.event.pull_request.base.sha }}" \
+            --current-run-id "${{ github.run_id }}" \
+            --head-branch "${{ github.head_ref }}" \
+            --repository "${{ github.repository }}" \
+            --output "$decision"
 
-          # Start from durable baseline artifacts, not the workflow-runs index.
-          # GitHub can expose the artifact before a filtered workflow-run listing
-          # becomes consistent. The artifact's owning run then supplies the exact
-          # candidate SHA, branch and workflow identity.
-          baseline_artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$baseline_name&per_page=100")"
-          while read -r candidate_run; do
-            [[ -n "$candidate_run" ]] || continue
-            run_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
-            candidate_head="$(printf '%s' "$run_json" | jq -r '.head_sha // ""')"
-            run_path="$(printf '%s' "$run_json" | jq -r '.path // ""')"
-            run_branch="$(printf '%s' "$run_json" | jq -r '.head_branch // ""')"
-            run_event="$(printf '%s' "$run_json" | jq -r '.event // ""')"
-            run_status="$(printf '%s' "$run_json" | jq -r '.status // ""')"
-            [[ "$candidate_head" =~ ^[0-9a-f]{40}$ ]] || continue
-            [[ "$run_path" == "$workflow_path" && "$run_branch" == "$HEAD_BRANCH" && "$run_event" == "pull_request" && "$run_status" == "completed" ]] || continue
-
-            artifacts_json="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run/artifacts?per_page=100")"
-            candidate_artifact="step5-candidate-$candidate_head"
-            if printf '%s' "$artifacts_json" | jq -e --arg name "$candidate_artifact" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null &&
-               printf '%s' "$artifacts_json" | jq -e --arg name "$baseline_name" '.artifacts[] | select(.name == $name and .expired == false)' >/dev/null; then
-              prior_run_id="$candidate_run"
-              prior_head_sha="$candidate_head"
-              candidate_name="$candidate_artifact"
-              break
-            fi
-          done < <(
-            printf '%s' "$baseline_artifacts" | jq -r \
-              --arg current "$GITHUB_RUN_ID" \
-              '.artifacts[]
-               | select(.expired == false)
-               | select((.workflow_run.id|tostring) != $current)
-               | .workflow_run.id' |
-            awk '!seen[$0]++'
-          )
-
-          if [[ -z "$prior_run_id" ]]; then
-            echo "No completed prior Step 5 run owns a reusable candidate/baseline evidence pair; full validation is required."
-            exit 0
-          fi
-
-          gh run download "$prior_run_id" --repo "$GITHUB_REPOSITORY" --name "$candidate_name" --dir /tmp/step5-prior/candidate
-          gh run download "$prior_run_id" --repo "$GITHUB_REPOSITORY" --name "$baseline_name" --dir /tmp/step5-prior/baseline
-
-          git diff --name-only "$prior_head_sha" "$CURRENT_HEAD" > /tmp/step5-prior/path-changes.txt
-          candidate_baseline_jobs_unchanged() {
-            python3 - "$workflow_path" "$prior_head_sha" <<'PY'
-          from pathlib import Path
-          import subprocess
-          import sys
-
-          workflow_path, prior_sha = sys.argv[1:3]
-
-          def job_blocks(text):
-              lines = text.splitlines(keepends=True)
-              jobs_line = next((i for i, line in enumerate(lines) if line.rstrip() == "jobs:"), None)
-              if jobs_line is None:
-                  return {}
-              blocks = {}
-              index = jobs_line + 1
-              while index < len(lines):
-                  line = lines[index]
-                  if not line.strip():
-                      index += 1
-                      continue
-                  if not line.startswith(" "):
-                      break
-                  if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":"):
-                      name = line.strip()[:-1]
-                      end = index + 1
-                      while end < len(lines):
-                          candidate = lines[end]
-                          if not candidate.strip():
-                              end += 1
-                              continue
-                          if not candidate.startswith(" "):
-                              break
-                          if candidate.startswith("  ") and not candidate.startswith("    ") and candidate.strip().endswith(":"):
-                              break
-                          end += 1
-                      blocks[name] = "".join(lines[index:end])
-                      index = end
-                      continue
-                  index += 1
-              return blocks
-
-          prior = subprocess.run(
-              ["git", "show", f"{prior_sha}:{workflow_path}"],
-              check=True, text=True, capture_output=True
-          ).stdout
-          current = Path(workflow_path).read_text()
-          prior_jobs = job_blocks(prior)
-          current_jobs = job_blocks(current)
-          wanted = ("candidate", "baseline")
-          missing = [name for name in wanted if name not in prior_jobs or name not in current_jobs]
-          if missing:
-              raise SystemExit("Missing workflow jobs: " + ", ".join(missing))
-          changed = [name for name in wanted if prior_jobs[name] != current_jobs[name]]
-          if changed:
-              raise SystemExit("Changed workflow jobs: " + ", ".join(changed))
-          print("Preserved workflow job definitions: candidate, baseline")
-          PY
-          }
-
-          if [[ "$(wc -l < /tmp/step5-prior/path-changes.txt | tr -d ' ')" == "1" ]] &&
-             grep -Fxq "$workflow_path" /tmp/step5-prior/path-changes.txt &&
-             candidate_baseline_jobs_unchanged; then
-            echo "mode=reuse" >> "$GITHUB_OUTPUT"
-            echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
-            echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
-            echo "Comparison-only repair: preserved the expensive candidate/baseline evidence pair; only final Step 5 comparison is invalidated."
-            exit 0
-          fi
-
-          # Step 5 planner/test-policy-only changes cannot alter either full-suite
-          # execution job. Compare those jobs byte-for-byte and rerun only the final
-          # comparison so planner repairs never repay the suite cost.
-          if python3 - "$workflow_path" <<'PY'
-          from pathlib import Path
-          import sys
-          workflow_path = sys.argv[1]
-          changed = {
-              line.strip()
-              for line in Path("/tmp/step5-prior/path-changes.txt").read_text().splitlines()
-              if line.strip()
-          }
-          allowed = {workflow_path, "scripts/test-release-policy.py"}
-          if workflow_path not in changed or not changed <= allowed:
-              raise SystemExit(1)
-          PY
-          then
-            if candidate_baseline_jobs_unchanged; then
-              echo "mode=reuse" >> "$GITHUB_OUTPUT"
-              echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
-              echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
-              echo "Planner-only repair: preserved exact candidate/baseline evidence; only final comparison is invalidated."
-              exit 0
-            fi
-          fi
-
-          # Release-security workflow changes do not alter product/runtime code,
-          # but AgentPortal contract tests intentionally read that YAML. Reuse the
-          # expensive full-suite pair only when candidate/baseline job definitions
-          # are byte-identical, then rerun exactly the two invalidated contract
-          # classes before the final comparison.
-          if python3 - "$workflow_path" <<'PY'
-          from pathlib import Path
-          import sys
-          workflow_path = sys.argv[1]
-          changed = {
-              line.strip()
-              for line in Path("/tmp/step5-prior/path-changes.txt").read_text().splitlines()
-              if line.strip()
-          }
-          security = ".github/workflows/approved-release-security-validation.yml"
-          allowed = {workflow_path, security}
-          if security not in changed or not changed <= allowed:
-              raise SystemExit(1)
-          PY
-          then
-            if candidate_baseline_jobs_unchanged; then
-              echo "mode=repair" >> "$GITHUB_OUTPUT"
-              echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
-              echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
-              echo "repair_classes=AgentPortal.Tests.ClientAppDeploymentWorkflowTests;AgentPortal.Tests.LegendFounderAiContractTests" >> "$GITHUB_OUTPUT"
-              echo "repair_filter=FullyQualifiedName~AgentPortal.Tests.ClientAppDeploymentWorkflowTests|FullyQualifiedName~AgentPortal.Tests.LegendFounderAiContractTests" >> "$GITHUB_OUTPUT"
-              echo "Security-workflow-only repair: preserved full candidate/baseline evidence and invalidated only the contract classes that consume that workflow."
-              exit 0
-            fi
-          fi
-          python3 - <<'PY'
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-
-          def failed(path):
-              root = ET.parse(path).getroot()
-              return {
-                  node.attrib.get("testName", "")
-                  for node in root.iter()
-                  if node.tag.endswith("UnitTestResult") and node.attrib.get("outcome") == "Failed"
-              }
-
-          candidate = failed("/tmp/step5-prior/candidate/candidate.trx")
-          baseline = failed("/tmp/step5-prior/baseline/baseline.trx")
-          introduced = sorted(candidate - baseline)
-          classes = sorted({name.rsplit(".", 1)[0] for name in introduced if "." in name})
-          Path("/tmp/step5-prior/introduced.txt").write_text("\n".join(introduced) + ("\n" if introduced else ""))
-          Path("/tmp/step5-prior/classes.txt").write_text("\n".join(classes) + ("\n" if classes else ""))
-          PY
-
-          if [[ ! -s /tmp/step5-prior/introduced.txt || ! -s /tmp/step5-prior/classes.txt ]]; then
-            echo "Prior run did not expose a bounded introduced test failure; full validation is required."
-            exit 0
-          fi
-
-          git diff --name-status "$prior_head_sha" "$CURRENT_HEAD" > /tmp/step5-prior/changes.txt
-
-          if ! python3 - "$workflow_path" <<'PY'
-          from pathlib import Path
-          import sys
-
-          workflow_path = sys.argv[1]
-          classes = [line.strip() for line in Path("/tmp/step5-prior/classes.txt").read_text().splitlines() if line.strip()]
-          expected = {
-              f"AgentPortal.Tests/{class_name.rsplit('.', 1)[-1]}.cs"
-              for class_name in classes
-              if class_name.startswith("AgentPortal.Tests.")
-          }
-          if len(expected) != len(classes) or not expected:
-              raise SystemExit(1)
-
-          rows = []
-          for line in Path("/tmp/step5-prior/changes.txt").read_text().splitlines():
-              parts = line.split("\t")
-              if len(parts) != 2:
-                  raise SystemExit(1)
-              rows.append((parts[0], parts[1]))
-
-          if not rows:
-              raise SystemExit(1)
-
-          allowed = expected | {workflow_path}
-          changed = {path for _, path in rows}
-          if not changed <= allowed:
-              raise SystemExit(1)
-
-          changed_tests = {path for status, path in rows if path in expected and status == "M"}
-          if changed_tests != expected:
-              raise SystemExit(1)
-
-          for status, path in rows:
-              if path in expected and status != "M":
-                  raise SystemExit(1)
-              if path == workflow_path and status not in {"M", "A"}:
-                  raise SystemExit(1)
-          PY
-          then
-            echo "New head changes more than the exact previously failing test authority; full validation is required."
-            exit 0
-          fi
-
-          repair_classes="$(paste -sd';' /tmp/step5-prior/classes.txt)"
-          repair_filter="$(python3 - <<'PY'
-          from pathlib import Path
-          classes = [line.strip() for line in Path('/tmp/step5-prior/classes.txt').read_text().splitlines() if line.strip()]
-          print('|'.join(f'FullyQualifiedName~{name}' for name in classes))
-          PY
-          )"
-
-          echo "mode=repair" >> "$GITHUB_OUTPUT"
-          echo "prior_run_id=$prior_run_id" >> "$GITHUB_OUTPUT"
-          echo "prior_head_sha=$prior_head_sha" >> "$GITHUB_OUTPUT"
-          echo "repair_filter=$repair_filter" >> "$GITHUB_OUTPUT"
-          echo "repair_classes=$repair_classes" >> "$GITHUB_OUTPUT"
-          echo "Safe repair mode: prior candidate/baseline evidence is preserved; only the repaired failing class is invalidated."
+          python3 - "$plan" "$decision" "$GITHUB_OUTPUT" <<'PYPLAN'
+          import json,sys
+          plan=json.load(open(sys.argv[1]))
+          decision=json.load(open(sys.argv[2]))
+          gates=plan.get('gates',{})
+          mode=decision.get('mode') or 'full'
+          def gate(name):
+              return gates.get(name,{})
+          candidate_keys=('candidate-restore','candidate-build','candidate-focused','candidate-full')
+          comparison_run = True if mode in {'repair','reuse'} else bool(gate('comparison').get('run'))
+          with open(sys.argv[3],'a') as output:
+              output.write(f"mode={mode}\n")
+              output.write(f"prior_run_id={decision.get('priorRunId') or ''}\n")
+              output.write(f"prior_head_sha={decision.get('priorHeadSha') or ''}\n")
+              output.write(f"repair_filter={decision.get('repairFilter') or ''}\n")
+              output.write("repair_classes="+';'.join(decision.get('repairClasses') or [])+"\n")
+              for key,out_name in (
+                  ('candidate-restore','candidate_restore_run'),
+                  ('candidate-build','candidate_build_run'),
+                  ('candidate-focused','candidate_focused_run'),
+                  ('candidate-full','candidate_full_run'),
+              ):
+                  output.write(f"{out_name}={str(bool(gate(key).get('run'))).lower()}\n")
+              output.write("candidate_any_run="+str(any(gate(key).get('run') for key in candidate_keys)).lower()+"\n")
+              output.write(f"candidate_full_evidence_run_id={gate('candidate-full').get('evidenceRunId') or ''}\n")
+              output.write(f"candidate_full_evidence_head_sha={gate('candidate-full').get('evidenceHeadSha') or ''}\n")
+              output.write("comparison_run="+str(comparison_run).lower()+"\n")
+          PYPLAN
 
       - name: Retain exact Step 5 resume decision
         if: always() && steps.plan.outcome == 'success'
@@ -354,6 +139,15 @@ jobs:
               'priorHeadSha':os.environ.get('PRIOR_HEAD_SHA') or None,
               'repairClasses':[x for x in os.environ.get('REPAIR_CLASSES','').split(';') if x],
               'repairFilter':os.environ.get('REPAIR_FILTER') or None,
+              'gateRuns':{
+                  'candidate-restore':'${{ steps.plan.outputs.candidate_restore_run }}'=='true',
+                  'candidate-build':'${{ steps.plan.outputs.candidate_build_run }}'=='true',
+                  'candidate-focused':'${{ steps.plan.outputs.candidate_focused_run }}'=='true',
+                  'candidate-full':'${{ steps.plan.outputs.candidate_full_run }}'=='true',
+                  'comparison':'${{ steps.plan.outputs.comparison_run }}'=='true',
+              },
+              'candidateFullEvidenceRunId':'${{ steps.plan.outputs.candidate_full_evidence_run_id }}' or None,
+              'candidateFullEvidenceHeadSha':'${{ steps.plan.outputs.candidate_full_evidence_head_sha }}' or None,
           }
           with open('/tmp/step5-resume-decision.json','w') as output:
               json.dump(data,output,sort_keys=True,indent=2)
@@ -371,7 +165,7 @@ jobs:
 
   baseline-evidence:
     needs: plan
-    if: needs.plan.outputs.mode == 'full'
+    if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -390,47 +184,22 @@ jobs:
         id: lookup
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          CURRENT_BASE: ${{ github.event.pull_request.base.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          echo "reusable=false" >> "$GITHUB_OUTPUT"
-          echo "run_id=" >> "$GITHUB_OUTPUT"
-          echo "artifact=" >> "$GITHUB_OUTPUT"
-
-          workflow_path=".github/workflows/step5-isolated-conversion-mapping-validation.yml"
-          base_tree="$(git rev-parse "$CURRENT_BASE^{tree}")"
-          for artifact_name in "step5-tree-candidate-$base_tree" "step5-tree-baseline-$base_tree"; do
-            artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
-            while read -r run_id; do
-              [[ -n "$run_id" ]] || continue
-              run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
-              run_path="$(printf '%s' "$run" | jq -r '.path // ""')"
-              run_event="$(printf '%s' "$run" | jq -r '.event // ""')"
-              run_status="$(printf '%s' "$run" | jq -r '.status // ""')"
-              run_head="$(printf '%s' "$run" | jq -r '.head_sha // ""')"
-              run_repo="$(printf '%s' "$run" | jq -r '.head_repository.full_name // ""')"
-              [[ "$run_path" == "$workflow_path" && "$run_event" == "pull_request" && "$run_status" == "completed" ]] || continue
-              [[ "$run_repo" == "$GITHUB_REPOSITORY" && "$run_head" =~ ^[0-9a-f]{40}$ ]] || continue
-              if ! python3 scripts/validation-resume.py job-unchanged \
-                --workflow-path "$workflow_path" \
-                --prior-sha "$run_head" \
-                --job candidate \
-                --job baseline; then
-                continue
-              fi
-              echo "reusable=true" >> "$GITHUB_OUTPUT"
-              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-              echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
-              echo "Reusing full-suite baseline by exact Git tree identity $base_tree from run $run_id."
-              exit 0
-            done < <(
-              printf '%s' "$artifacts" | jq -r \
-                '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++'
-            )
-          done
-
-          echo "No content-identical full-suite baseline artifact exists; baseline suite will execute."
+          evidence="$RUNNER_TEMP/step5-baseline-evidence.json"
+          python3 scripts/validation-resume.py step5-baseline \
+            --base-sha "${{ github.event.pull_request.base.sha }}" \
+            --repository "${{ github.repository }}" \
+            --output "$evidence"
+          python3 - "$evidence" "$GITHUB_OUTPUT" <<'PYBASE'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          with open(sys.argv[2],'a') as output:
+              output.write('reusable='+str(bool(data.get('reusable'))).lower()+'\n')
+              output.write(f"run_id={data.get('evidenceRunId') or ''}\n")
+              output.write(f"artifact={data.get('evidenceArtifact') or ''}\n")
+          PYBASE
 
       - name: Retain exact Step 5 baseline reuse decision
         if: always() && steps.lookup.outcome == 'success'
@@ -465,7 +234,10 @@ jobs:
 
   candidate:
     needs: plan
-    if: needs.plan.outputs.mode == 'full'
+    if: >-
+      needs.plan.outputs.mode == 'full' &&
+      (needs.plan.outputs.candidate_any_run == 'true' ||
+       needs.plan.outputs.comparison_run == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -473,6 +245,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Capture candidate tree identity
         id: tree
@@ -480,21 +254,26 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
 
       - name: Setup .NET 10
+        if: needs.plan.outputs.candidate_any_run == 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.401'
 
       - name: Restore AgentPortal tests
+        if: needs.plan.outputs.candidate_restore_run == 'true'
         run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
 
       - name: Build affected test graph
+        if: needs.plan.outputs.candidate_build_run == 'true'
         run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
 
       - name: Run Step 5 focused tests
+        if: needs.plan.outputs.candidate_focused_run == 'true'
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~MarketingScopeParityContractTests"
 
       - name: Run full AgentPortal candidate suite
         id: full
+        if: needs.plan.outputs.candidate_full_run == 'true'
         shell: bash
         run: |
           set +e
@@ -502,8 +281,23 @@ jobs:
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --logger "trx;LogFileName=candidate.trx" --results-directory /tmp/step5-candidate
           exit 0
 
+      - name: Load preserved full candidate suite evidence
+        id: preservedcandidate
+        if: needs.plan.outputs.candidate_full_run != 'true' && needs.plan.outputs.comparison_run == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-candidate-${{ needs.plan.outputs.candidate_full_evidence_head_sha }}
+          path: /tmp/step5-candidate
+          run-id: ${{ needs.plan.outputs.candidate_full_evidence_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify exact candidate comparison evidence
+        if: needs.plan.outputs.comparison_run == 'true'
+        shell: bash
+        run: test -f /tmp/step5-candidate/candidate.trx
+
       - name: Preserve completed candidate results
-        if: always() && steps.full.outcome == 'success'
+        if: needs.plan.outputs.comparison_run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: step5-candidate-${{ github.event.pull_request.head.sha }}
@@ -512,7 +306,7 @@ jobs:
           retention-days: 7
 
       - name: Preserve content-addressed candidate suite evidence
-        if: always() && steps.full.outcome == 'success'
+        if: needs.plan.outputs.comparison_run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: step5-tree-candidate-${{ steps.tree.outputs.sha }}
@@ -520,9 +314,10 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+
   baseline:
     needs: [plan, baseline-evidence]
-    if: needs.plan.outputs.mode == 'full' && needs.baseline-evidence.outputs.reusable != 'true'
+    if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -579,27 +374,30 @@ jobs:
       needs.plan.result == 'success' &&
       (needs.plan.outputs.mode == 'repair' ||
        needs.plan.outputs.mode == 'reuse' ||
-       (needs.candidate.result == 'success' &&
+       (needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'false') ||
+       (needs.plan.outputs.mode == 'full' &&
+        needs.plan.outputs.comparison_run == 'true' &&
+        needs.candidate.result == 'success' &&
         (needs.baseline.result == 'success' || needs.baseline-evidence.outputs.reusable == 'true')))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Load exact current candidate results
-        if: needs.plan.outputs.mode == 'full'
+        if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
         uses: actions/download-artifact@v4
         with:
           name: step5-candidate-${{ github.event.pull_request.head.sha }}
           path: /tmp/step5-candidate
 
       - name: Load exact current approved baseline results
-        if: needs.plan.outputs.mode == 'full' && needs.baseline.result == 'success'
+        if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true' && needs.baseline.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: step5-baseline-${{ github.event.pull_request.base.sha }}
           path: /tmp/step5-baseline
 
       - name: Load content-identical approved baseline results
-        if: needs.plan.outputs.mode == 'full' && needs.baseline-evidence.outputs.reusable == 'true'
+        if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable == 'true'
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.baseline-evidence.outputs.artifact }}
@@ -608,7 +406,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Normalize content-identical approved baseline result
-        if: needs.plan.outputs.mode == 'full' && needs.baseline-evidence.outputs.reusable == 'true'
+        if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -682,7 +480,12 @@ jobs:
         env:
           VALIDATION_MODE: ${{ needs.plan.outputs.mode }}
           REPAIR_CLASSES: ${{ needs.plan.outputs.repair_classes }}
+          COMPARISON_RUN: ${{ needs.plan.outputs.comparison_run }}
         run: |
+          if [ "$COMPARISON_RUN" != "true" ]; then
+            echo "PRESERVED comparison: canonical child evidence remains valid and unchanged."
+            exit 0
+          fi
           python3 - <<'PY'
           import os
           import xml.etree.ElementTree as ET
