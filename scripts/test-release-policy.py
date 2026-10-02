@@ -559,6 +559,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_architecture_validation_publishes_canonical_immutable_package(self):
         workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
         self.assertIn('validated-release-package:', workflow)
+        self.assertIn('scripts/validation-resume.py package-canary-plan', workflow)
+        package_plan = workflow.split('      - name: Resolve whether application bytes changed\n', 1)[1].split('      - name:', 1)[0]
+        self.assertNotIn("git diff --name-only", package_plan)
+        self.assertNotIn("release_control_only_path", package_plan)
         self.assertNotIn('needs: validate\n    if: github.event_name', workflow)
         self.assertIn('scripts/release-package.py build', workflow)
         self.assertIn('scripts/release-package.py verify', workflow)
