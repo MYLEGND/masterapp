@@ -131,13 +131,13 @@ internal sealed partial class LegendFounderToolAuthority
     // actions, or release/control requests rather than bounded MasterApp reads.
     private static bool IsCloudReadableTool(string name) =>
         IsSiteReadableTool(name) &&
-        name is not
-            "legend_metric_detail" and
-            "legend_search_retained_knowledge" and
-            "legend_operational_diagnostics" and
-            "legend_research_internet" and
-            "legend_request_teacher_escalation" and
-            "legend_request_repair_release";
+        name is not (
+            "legend_metric_detail" or
+            "legend_search_retained_knowledge" or
+            "legend_operational_diagnostics" or
+            "legend_research_internet" or
+            "legend_request_teacher_escalation" or
+            "legend_request_repair_release");
 
     private static bool IsSiteReadableTool(string name) =>
         IsReadOnlyFounderTool(name) && name is
