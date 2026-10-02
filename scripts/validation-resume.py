@@ -34,8 +34,8 @@ CONTROL_PATHS = {
 
 TRUSTED_PR_BASE = "legend/approved-changes"
 DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
+RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
 MAX_HISTORICAL_EVIDENCE_RUNS = 8
-MAX_RELEASE_HISTORY_COMMITS = 64
 RELEASE_RESOURCE_GROUP = "masterapp-rg"
 MIGRATION_BUNDLE_NAME = "masterapp-migrations"
 ROUTING_WORKER_NAME = "legend-business-website-router"
