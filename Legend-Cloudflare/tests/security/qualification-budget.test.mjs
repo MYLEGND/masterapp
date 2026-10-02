@@ -21,9 +21,9 @@ function fixture() {
     userMicrousd: 3000000, tenantMicrousd: 3000000, accountMicrousd: 3000000,
     requestConcurrency: 1, userConcurrency: 1, tenantConcurrency: 1, accountConcurrency: 1 });
   Object.assign(h.env, { LEGEND_RUNTIME_MODE: 'founder_manual_test', LEGEND_DEPLOYMENT_ENVIRONMENT: 'production' });
-  const manual = { version: 'legend-founder-manual-test.v1', accountId: 'account-1',
+  const manual = { version: 'legend-founder-baseline.v2', accountId: 'account-1',
     tenantId: 'founder-tenant', founderUserId: 'founder-user', serviceKeyId: 'founder-key', requiredRole: 'Founder',
-    environment: 'production', modelId: candidates[1][0], expiresAt: NOW + 3600000, lifetimeCostMicrousd: 3000000 };
+    environment: 'production', modelIds: candidates.map(([modelId]) => modelId), expiresAt: NOW + 3600000, lifetimeCostMicrousd: 3000000 };
   const policies = candidates.map(([modelId], i) => ({ version: 'legend-qualification.v1', accountId: 'account-1', modelId,
     tenantId: `test-tenant-${i}`, allowedUserIds: [`test-user-${i}`], requiredRole: 'LegendQualification', serviceKeyId: `qual-key-${i}`,
     suiteSha256: String(i + 1).repeat(64), expiresAt: NOW + 3600000, lifetimeCostMicrousd: 3000000 }));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL_REGISTRY, estimateCostMicrousd } from '../../src/runtime/registry.mjs';
+import { FOUNDER_BASELINE_MODEL_IDS, FOUNDER_BASELINE_PRIMARY_MODEL, MODEL_REGISTRY, estimateCostMicrousd } from '../../src/runtime/registry.mjs';
 import { orchestrate } from '../../src/runtime/orchestrator.mjs';
 import { CircuitBreaker } from '../../src/runtime/reliability.mjs';
 
@@ -13,9 +13,9 @@ function fixture() {
     task: { kind: 'general', messages: [{ role: 'user', content: 'Synthetic fixture.' }], tools: [], requiredCapabilities: [] },
     limits: { deadlineUnixMs: now + 10000, maxOutputTokens: 1024, maxIterations: 1, maxModelCalls: 1, maxToolCalls: 0, maxCostMicrousd: 3000000 }, stream: false };
   const context = { ...scope, keyId: 'founder-key', requestId: envelope.requestId };
-  const manual = { version: 'legend-founder-manual-test.v1', accountId: scope.accountId,
+  const manual = { version: 'legend-founder-baseline.v2', accountId: scope.accountId,
     tenantId: scope.tenantId, founderUserId: scope.userId, serviceKeyId: context.keyId, requiredRole: 'Founder',
-    environment: 'production', modelId: '@cf/openai/gpt-oss-120b', expiresAt: now + 60000, lifetimeCostMicrousd: 3000000 };
+    environment: 'production', modelIds: FOUNDER_BASELINE_MODEL_IDS, expiresAt: now + 60000, lifetimeCostMicrousd: 3000000 };
   const policies = MODEL_REGISTRY.map((model, i) => ({ version: 'legend-qualification.v1', accountId: scope.accountId,
     modelId: model.id, tenantId: 'test-tenant', allowedUserIds: ['test-user-' + i], requiredRole: 'LegendQualification',
     serviceKeyId: 'test-key-' + i, suiteSha256: 'a'.repeat(64), expiresAt: now + 60000, lifetimeCostMicrousd: 3000000 }));
@@ -36,14 +36,14 @@ function fixture() {
   return f;
 }
 
-test('default Founder baseline stays fixed GPT with no list and with a valid operator list', async () => {
+test('default Founder baseline stays on GPT-OSS general routing with or without qualification grants', async () => {
   for (const configured of [false, true]) {
     const f = fixture(); if (configured) f.configure();
     f.envelope.task.modelId = MODEL_REGISTRY[4].id;
     f.envelope.qualificationSuiteSha256 = 'f'.repeat(64);
     const result = await orchestrate(f);
     assert.equal(result.status, 'completed'); assert.equal(result.executionMode, 'founder_manual_test');
-    assert.equal(result.provider.modelId, f.manual.modelId);
+    assert.equal(result.provider.modelId, FOUNDER_BASELINE_PRIMARY_MODEL);
     assert.equal(Object.hasOwn(result, 'qualificationSuiteSha256'), false);
   }
 });
@@ -104,7 +104,7 @@ test('an expired unrelated qualification policy leaves Founder baseline and othe
     if (selected >= 0) f.select(selected);
     const result = await orchestrate(f);
     assert.equal(result.status, 'completed');
-    assert.equal(result.provider.modelId, selected < 0 ? f.manual.modelId : f.policies[selected].modelId);
+    assert.equal(result.provider.modelId, selected < 0 ? FOUNDER_BASELINE_PRIMARY_MODEL : f.policies[selected].modelId);
   }
   const expired = fixture(); expired.policies[4].expiresAt = Date.now() - 1; expired.configure(); expired.select(4);
   assert.equal((await orchestrate(expired)).error.code, 'qualification_configuration_invalid');

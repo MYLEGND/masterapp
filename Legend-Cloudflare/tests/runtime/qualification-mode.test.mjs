@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL_REGISTRY } from '../../src/runtime/registry.mjs';
+import { FOUNDER_BASELINE_MODEL_IDS, FOUNDER_BASELINE_PRIMARY_MODEL, MODEL_REGISTRY } from '../../src/runtime/registry.mjs';
 import { orchestrate } from '../../src/runtime/orchestrator.mjs';
 import { CircuitBreaker } from '../../src/runtime/reliability.mjs';
 
@@ -98,9 +98,9 @@ test('qualification cannot bypass an exhausted durable budget when candidate cha
 function manualFixture() {
   const f = fixture();
   f.context.roles = ['Founder']; f.envelope.scope.roles = ['Founder'];
-  f.policy = { version: 'legend-founder-manual-test.v1', accountId: f.context.accountId,
+  f.policy = { version: 'legend-founder-baseline.v2', accountId: f.context.accountId,
     tenantId: f.context.tenantId, founderUserId: f.context.userId, serviceKeyId: f.context.keyId,
-    requiredRole: 'Founder', environment: 'production', modelId: '@cf/openai/gpt-oss-120b',
+    requiredRole: 'Founder', environment: 'production', modelIds: FOUNDER_BASELINE_MODEL_IDS,
     expiresAt: Date.now() + 60000, lifetimeCostMicrousd: 3000000 };
   f.env.LEGEND_RUNTIME_MODE = 'founder_manual_test';
   f.env.LEGEND_DEPLOYMENT_ENVIRONMENT = 'production';
@@ -109,13 +109,13 @@ function manualFixture() {
   return f;
 }
 
-test('Founder manual baseline uses fixed model and explicit receipt without fabricating qualification', async () => {
+test('Founder baseline uses operator-owned five-model router and explicit receipt without fabricating qualification', async () => {
   const f = manualFixture();
   f.envelope.task.modelId = MODEL_REGISTRY[0].id;
   const result = await orchestrate(f);
   assert.equal(result.status, 'completed');
   assert.equal(result.executionMode, 'founder_manual_test');
-  assert.deepEqual(f.dispatches, ['@cf/openai/gpt-oss-120b']);
+  assert.deepEqual(f.dispatches, [FOUNDER_BASELINE_PRIMARY_MODEL]);
   assert.equal(f.reservations.length, 1);
   assert.equal(Object.hasOwn(result, 'heldOutPassed'), false);
   assert.equal(Object.hasOwn(result, 'qualificationSuiteSha256'), false);
@@ -143,9 +143,10 @@ test('manual baseline rejects other actors and changed current authenticated sco
   }
 });
 
-test('manual baseline requires exact operator schema, fixed model and at most one day expiry', async () => {
+test('manual baseline requires the exact operator-owned five-model set and at most one day expiry', async () => {
   for (const changes of [{ version: 'other' }, { accountId: 'other-account' }, { environment: 'other' },
-    { modelId: MODEL_REGISTRY[0].id }, { requiredRole: 'LegendQualification' }, { founderUserId: '' },
+    { modelIds: MODEL_REGISTRY.slice(0, 4).map(model => model.id) }, { modelIds: [...FOUNDER_BASELINE_MODEL_IDS].reverse() },
+    { modelIds: [...FOUNDER_BASELINE_MODEL_IDS, 'external/model'] }, { requiredRole: 'LegendQualification' }, { founderUserId: '' },
     { lifetimeCostMicrousd: 3000001 }, { lifetimeCostMicrousd: 0 }, { expiresAt: Date.now() - 1 },
     { expiresAt: Date.now() + 2 * 86400000 }, { unreviewedFlag: true }]) {
     const f = manualFixture(); f.env.LEGEND_MANUAL_TEST_POLICY_JSON = JSON.stringify({ ...f.policy, ...changes });
@@ -191,12 +192,31 @@ test('manual tools require existing signed callback enablement and existing brok
   const result = await orchestrate(f);
   assert.equal(result.status, 'completed'); assert.equal(result.executionMode, 'founder_manual_test');
   assert.equal(seen.length, 1); assert.equal(seen[0].context, f.context); assert.equal(seen[0].call.name, 'calculate');
-  assert.deepEqual(f.dispatches, ['@cf/openai/gpt-oss-120b', '@cf/openai/gpt-oss-120b']);
+  assert.deepEqual(f.dispatches, [FOUNDER_BASELINE_PRIMARY_MODEL, FOUNDER_BASELINE_PRIMARY_MODEL]);
 });
 
-test('manual baseline has no alternate model fallback when its fixed model circuit is unavailable', async () => {
-  const f = manualFixture();
-  f.circuit = { unavailable: () => ['@cf/openai/gpt-oss-120b'] };
-  assert.equal((await orchestrate(f)).error.code, 'no_qualified_model');
-  assert.equal(f.dispatches.length, 0); assert.equal(f.reservations.length, 0);
+test('Founder baseline role routing reaches every reviewed model without request-selected model IDs', async () => {
+  for (const model of MODEL_REGISTRY) {
+    const f = manualFixture();
+    f.envelope.task.kind = model.role;
+    f.envelope.task.modelId = MODEL_REGISTRY[(MODEL_REGISTRY.indexOf(model) + 1) % MODEL_REGISTRY.length].id;
+    const result = await orchestrate(f);
+    assert.equal(result.status, 'completed');
+    assert.equal(result.provider.modelId, model.id);
+    assert.deepEqual(f.dispatches, [model.id]);
+  }
+});
+
+test('Founder baseline fallback stays inside the exact five-model set and fails closed when all are unavailable', async () => {
+  const fallback = manualFixture();
+  fallback.circuit = { unavailable: () => [FOUNDER_BASELINE_PRIMARY_MODEL] };
+  const result = await orchestrate(fallback);
+  assert.equal(result.status, 'completed');
+  assert(FOUNDER_BASELINE_MODEL_IDS.includes(result.provider.modelId));
+  assert.notEqual(result.provider.modelId, FOUNDER_BASELINE_PRIMARY_MODEL);
+
+  const blocked = manualFixture();
+  blocked.circuit = { unavailable: () => [...FOUNDER_BASELINE_MODEL_IDS] };
+  assert.equal((await orchestrate(blocked)).error.code, 'no_qualified_model');
+  assert.equal(blocked.dispatches.length, 0); assert.equal(blocked.reservations.length, 0);
 });
