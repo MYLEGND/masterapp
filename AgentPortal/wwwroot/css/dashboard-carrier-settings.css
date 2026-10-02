@@ -4,7 +4,7 @@
     --dcs-navy-3: #0a121f;
     --dcs-navy-4: #070d17;
     --dcs-gold-1: var(--legend-gold-bright, #d5b24d);
-    --dcs-gold-2: var(--legend-gold, #a68023);
+    --dcs-gold-2: var(--legend-gold, var(--legend-app-accent));
     --dcs-gold-3: var(--legend-gold-deep, #8b6f1f);
     --dcs-ivory: #f7f1e3;
     --dcs-muted: rgba(247, 241, 227, 0.72);
