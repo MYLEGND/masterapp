@@ -237,9 +237,10 @@ class IntegrationReplaySafety(unittest.TestCase):
 
 class PendingUpdateFairness(unittest.TestCase):
     @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
     @patch.object(m, "ready", return_value=True)
     @patch.object(m, "integrate")
-    def test_retained_older_pr_does_not_starve_later_validated_pr(self, integrate, _, __):
+    def test_retained_older_pr_does_not_starve_later_validated_pr(self, integrate, _, __, ___):
         api = Api()
         older = {"number": 10}
         newer = {"number": 11}
@@ -260,8 +261,9 @@ class PendingUpdateFairness(unittest.TestCase):
 
 
     @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
     @patch.object(m, "ancestor", side_effect=[False, True])
-    def test_blocked_correction_pr_does_not_starve_release_recovery(self, _, __):
+    def test_blocked_correction_pr_does_not_starve_release_recovery(self, _, __, ___):
         api = Api()
         api.refs[m.APPROVED] = "a" * 40
         api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = []
@@ -462,6 +464,59 @@ class ReleaseTruth(unittest.TestCase):
         api.pages_map["actions/runs?head_sha=" + revision] = [mismatched]
         api.pages_map["actions/runs/12/jobs?filter=latest"] = successful_jobs()
         self.assertFalse(m.release_proven(api, revision, app="portal"))
+
+
+class AutomaticReleaseRecovery(unittest.TestCase):
+    @patch.object(m, "candidate_validation", return_value=None)
+    @patch.object(m, "release_proven", return_value=False)
+    @patch.object(m, "_validated_package_evidence")
+    @patch.object(m, "git")
+    def test_unpackaged_control_correction_does_not_supersede_packaged_founder_source(
+        self, git, package, _, __
+    ):
+        api = Api()
+        approved = "a" * 40
+        newest_merge = "b" * 40
+        older_merge = "c" * 40
+        newest_revision = "d" * 40
+        older_revision = "e" * 40
+        git.return_value = SimpleNamespace(
+            returncode=0,
+            stdout=approved + "\n" + newest_merge + "\n" + older_merge + "\n",
+            stderr="",
+        )
+        api.pages_map["commits/" + approved + "/pulls"] = []
+        api.pages_map["commits/" + newest_merge + "/pulls"] = [{
+            "number": 391,
+            "merged_at": "2026-10-02T19:20:00Z",
+            "merge_commit_sha": newest_merge,
+            "base": {"ref": m.APPROVED},
+            "head": {"sha": newest_revision},
+        }]
+        api.pages_map["pulls/391/files"] = [
+            {"filename": "scripts/deploy-founder-cloudflare.py"},
+            {"filename": "scripts/test-release-policy.py"},
+        ]
+        api.pages_map["commits/" + older_merge + "/pulls"] = [{
+            "number": 385,
+            "merged_at": "2026-10-02T17:47:47Z",
+            "merge_commit_sha": older_merge,
+            "base": {"ref": m.APPROVED},
+            "head": {"sha": older_revision},
+        }]
+        api.pages_map["pulls/385/files"] = [
+            {"filename": "scripts/deploy-founder-cloudflare.py"},
+        ]
+        package.side_effect = lambda _api, revision: {
+            "reusable": revision == older_revision,
+            "runId": 77 if revision == older_revision else None,
+        }
+
+        result = m.pending_automatic_release(api, approved)
+
+        self.assertEqual(385, result["sourcePr"])
+        self.assertEqual(older_revision, result["applicationRevision"])
+        self.assertEqual([canonical_name("portal")], result["targets"])
 
 
 class HistoricalReleaseRecovery(unittest.TestCase):
