@@ -401,7 +401,7 @@ jobs:
         with:
           name: ${{ steps.package.outputs.artifact }}
           path: ${{ runner.temp }}/validated-release-package/
-          retention-days: 30
+          retention-days: 90
           if-no-files-found: error
           overwrite: true
 

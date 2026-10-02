@@ -278,13 +278,19 @@ def deploy_transaction(target_names, baselines_raw: str, package_root: Path, rol
         for key in keys:
             deploy_one(key, revision, package_root)
 
-        # Commit only after the complete selected set is stable at one revision.
-        for key in keys:
-            result = reconcile(
-                target_azure(key, package_root / TARGETS[key]["package"], revision)
-            )
-            if result not in {"preserved", "deployed"}:
-                raise RuntimeError("Unrecognized deployment reconciliation result")
+        # A single-target release has already been proven terminal-success,
+        # exact-live and free of pending Azure deployment work by deploy_one().
+        # The workflow performs its independent post-publication live proof next,
+        # so repeating the same reconciliation here adds latency without adding
+        # transactional coverage. Multi-target releases retain this final pass
+        # because earlier targets may have changed while later targets deployed.
+        if len(keys) > 1:
+            for key in keys:
+                result = reconcile(
+                    target_azure(key, package_root / TARGETS[key]["package"], revision)
+                )
+                if result not in {"preserved", "deployed"}:
+                    raise RuntimeError("Unrecognized deployment reconciliation result")
     except Exception as release_error:
         rollback_keys = [key for key in keys if baselines[key] != revision]
         try:
