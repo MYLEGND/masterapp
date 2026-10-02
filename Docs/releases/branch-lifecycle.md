@@ -8,8 +8,8 @@
 2. Owning validators run for the changed scope. Architecture is always required; Step 5, Step 6, Steps 7–8, and approved-release security are required when their owned inputs change. The resume planner preserves unrelated successful evidence.
 3. The lifecycle merges only the exact validated PR head. Protected-branch requirements and conflicts fail closed. Source integration alone never deploys.
 4. An application release requires an exact changed `Docs/releases/direct-release-request.json` with `releaseMode: approved-only` and explicit targets.
-5. The sole web deploy workflow, `all-intentional-direct-release-20260918.yml`, verifies the approved source, current live baselines, rollback artifacts, reusable package identity, expected migrations, exact target provenance, and complete final outcome.
-6. Targets already live at the exact application revision are preserved. A retry deploys only targets that are not already proven live. A failed direct release is not automatically replayed without a correction or explicit rerun.
+5. The sole web deploy workflow, `all-intentional-direct-release-20260918.yml`, resolves the exact validated application PR head, restores the immutable package set produced by architecture validation, verifies its manifest/checksums, proves the separate Portal database baseline, applies only the validated migration bundle, deploys selected stale targets, and requires complete final live provenance. It has no production package rebuild fallback.
+6. Targets already live at the exact application revision are preserved. A retry deploys only targets that are not already proven live. Each attempt retains a durable step-state receipt; immutable evidence is reused, while current-state and mutation steps re-reconcile safely. A failed direct release is not automatically replayed without a correction or explicit rerun.
 7. After successful applicable releases, cleanup evaluates temporary branches against fresh approved-history, live-provenance, direct-release-receipt, PR, workflow, and protection evidence.
 
 ## Mandatory branch deletion conditions
