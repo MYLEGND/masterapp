@@ -16,6 +16,10 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 
+def canonical_name(key):
+    return m.VALIDATION_AUTHORITY.RELEASE_TARGETS[key]["releaseName"]
+
+
 def successful_jobs(target_step="Publish selected head as one transaction"):
     return [
         {"name": "discover-live", "conclusion": "success", "steps": []},
@@ -81,7 +85,7 @@ class DirectAuthorization(unittest.TestCase):
     def authorize(self):
         path = Path("Docs/releases/direct-release-request.json")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"releaseMode": "approved-only", "targets": ["masterapp-portal"]}))
+        path.write_text(json.dumps({"releaseMode": "approved-only", "targets": [canonical_name("portal")]}))
         m.git("add", str(path))
         m.git("commit", "-m", "authorize release")
         return m.git("rev-parse", "HEAD").stdout.strip()
@@ -211,7 +215,7 @@ class AutomaticMergeRelease(unittest.TestCase):
 
 class ReleaseTruth(unittest.TestCase):
     def setUp(self):
-        request = json.dumps({"releaseMode": "approved-only", "targets": ["masterapp-portal"]})
+        request = json.dumps({"releaseMode": "approved-only", "targets": [canonical_name("portal")]})
         self.git_patch = patch.object(
             m, "git", return_value=SimpleNamespace(returncode=0, stdout=request, stderr="")
         )
@@ -263,10 +267,10 @@ class ReleaseTruth(unittest.TestCase):
         api = Api()
         revision = "c" * 40
         passed = self.release_run(id=10, head_sha="d" * 40)
-        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-portal"] = [
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-" + canonical_name("portal")] = [
             {"expired": False, "workflow_run": {"id": 10}}
         ]
-        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-client"] = []
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-" + canonical_name("client")] = []
         api.api_map["actions/runs/10"] = passed
         api.pages_map["actions/runs/10/jobs?filter=latest"] = successful_jobs()
         self.assertTrue(m.release_proven(api, revision, app="portal"))
@@ -276,7 +280,7 @@ class ReleaseTruth(unittest.TestCase):
         api = Api()
         revision = "c" * 40
         passed = self.release_run(id=10, head_sha="d" * 40)
-        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-portal"] = [
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-" + canonical_name("portal")] = [
             {"expired": False, "workflow_run": {"id": 10}}
         ]
         api.api_map["actions/runs/10"] = passed
@@ -288,7 +292,7 @@ class ReleaseTruth(unittest.TestCase):
         api = Api()
         revision = "c" * 40
         passed = self.release_run(id=11, head_sha=revision)
-        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-portal"] = []
+        api.pages_map["actions/artifacts?name=legend-approved-release-" + revision + "-" + canonical_name("portal")] = []
         api.pages_map["actions/runs?head_sha=" + revision] = [passed]
         api.pages_map["actions/runs/11/jobs?filter=latest"] = successful_jobs()
         self.assertTrue(m.release_proven(api, revision, app="portal"))
