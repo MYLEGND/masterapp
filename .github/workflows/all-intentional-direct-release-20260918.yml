@@ -800,6 +800,26 @@ jobs:
             --baselines-json "$LIVE_BASELINES" \
             --package-root /tmp/diagnostics-packages \
             --rollback-root /tmp/rollback-packages
+      - name: Deploy and activate LEGEND Founder Cloudflare baseline
+        id: foundercloud
+        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && steps.transaction.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          set -euo pipefail
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Central Cloudflare Workers authority is not configured."; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Central Cloudflare account authority is not configured."; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          mkdir -p /tmp/translation-results
+          python3 scripts/deploy-founder-cloudflare.py deploy \
+            --state /tmp/legend-founder-cloudflare-state.json \
+            --receipt /tmp/translation-results/legend-founder-cloudflare.json
+
       - name: Reconcile public custom-hostname Cloudflare policy
         id: routingpolicy
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
