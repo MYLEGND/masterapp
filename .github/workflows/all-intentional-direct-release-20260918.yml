@@ -675,18 +675,15 @@ jobs:
         run: |
           set -euo pipefail
           echo "Azure front-door summaries (no secrets):"
-          for app in masterapp-protect masterapp-parfait; do
+          while IFS=$'\t' read -r app origin probe_path; do
+            [ -n "$app" ] && [ -n "$origin" ] && [ -n "$probe_path" ] || continue
             echo "=== $app ==="
-            az webapp show -g masterapp-rg -n "$app" --query '{publicNetworkAccess:publicNetworkAccess,httpsOnly:httpsOnly,state:state}' -o json
-            az webapp config access-restriction show -g masterapp-rg -n "$app" \
+            az webapp show -g "$RELEASE_RESOURCE_GROUP" -n "$app" --query '{publicNetworkAccess:publicNetworkAccess,httpsOnly:httpsOnly,state:state}' -o json
+            az webapp config access-restriction show -g "$RELEASE_RESOURCE_GROUP" -n "$app" \
               --query '{mainSiteAccessRestrictions:ipSecurityRestrictions,mainSiteDefaultAction:ipSecurityRestrictionsDefaultAction,scmSiteDefaultAction:scmIpSecurityRestrictionsDefaultAction}' -o json
-            az webapp auth show -g masterapp-rg -n "$app" \
+            az webapp auth show -g "$RELEASE_RESOURCE_GROUP" -n "$app" \
               --query '{enabled:platform.enabled,requireAuthentication:globalValidation.requireAuthentication,unauthenticatedClientAction:globalValidation.unauthenticatedClientAction,excludedPaths:globalValidation.excludedPaths}' -o json || true
-          done
 
-          probe() {
-            app="$1"
-            path="$2"
             body="/tmp/${app}-origin-body"
             headers="/tmp/${app}-origin-headers"
             status="$(curl --silent --show-error --max-time 30 \
@@ -694,8 +691,8 @@ jobs:
               -H "X-Legend-Original-Host: $WEBSITE_ROUTING_CANARY" \
               -H "X-Legend-Website-Bridge: $LEGEND_WEBSITE_BRIDGE_SECRET" \
               -H "User-Agent: LEGEND-routing-origin-diagnostic/1.0" \
-              "https://${app}.azurewebsites.net${path}")"
-            echo "${app}${path} direct-origin status=${status} bytes=$(wc -c < "$body")"
+              "https://${origin}${probe_path}")"
+            echo "${app}${probe_path} direct-origin status=${status} bytes=$(wc -c < "$body")"
             grep -Ei '^(server|x-|location|content-type|date):' "$headers" || true
             sha256sum "$body"
             python3 - "$body" <<'PYORIGIN'
@@ -704,15 +701,12 @@ jobs:
           text=raw.decode('utf-8','replace').replace('\r',' ').replace('\n',' ')
           print('body-prefix:',text)
           PYORIGIN
-          }
-          probe masterapp-protect /
-          probe masterapp-parfait /store
-
+          done < <(jq -r '.[] | [.releaseName,.azureHost,.probePath] | @tsv' <<< "$ROUTING_TARGETS")
 
 
       - name: Apply additive diagnostics migrations before restarting apps
         id: migrate
-        if: env.PRESERVE_LIVE_TARGETS != 'true' && env.CLIENT_ONLY != 'true' && env.WEBSITE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
+        if: env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_DATABASE_DEPENDENT == 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -731,8 +725,9 @@ jobs:
           module=importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
           base=os.environ['EXPECTED_DB_BASE_SHA']
-          if not module.release_proven(module.GitHub(),base,app='portal'):
-              raise SystemExit('Live database baseline lacks a successful canonical Portal release receipt; no migration authorized.')
+          authority=os.environ['DATABASE_AUTHORITY']
+          if not module.release_proven(module.GitHub(),base,app=authority):
+              raise SystemExit('Live database baseline lacks a successful canonical release receipt; no migration authorized.')
           print('Database baseline release receipt verified:',base)
           PYBASELINE
 
@@ -747,25 +742,29 @@ jobs:
           fi
           printf '%s\n' "$changed"
 
-          test -x /tmp/diagnostics-packages/masterapp-migrations
+          bundle="/tmp/diagnostics-packages/$MIGRATION_BUNDLE"
+          test -x "$bundle"
           python3 scripts/release-package.py verify \
             --revision "$APPLICATION_RELEASE_SHA" \
             --directory /tmp/diagnostics-packages
 
           python3 - <<'PYMIGRATE'
-          import json, os, subprocess
+          import json, os, pathlib, subprocess
           def az(*args):
               return json.loads(subprocess.check_output(['az',*args,'-o','json'],text=True))
-          rows=az('webapp','config','connection-string','list','-g','masterapp-rg','-n','masterapp-portal')
+          resource_group=os.environ['RELEASE_RESOURCE_GROUP']
+          authority=os.environ['DATABASE_AUTHORITY']
+          rows=az('webapp','config','connection-string','list','-g',resource_group,'-n',authority)
           connection=next((x['value'] for x in rows if x['name']=='MasterAppDb'),None)
           if not connection:
-              settings={x['name']:x['value'] for x in az('webapp','config','appsettings','list','-g','masterapp-rg','-n','masterapp-portal')}
+              settings={x['name']:x['value'] for x in az('webapp','config','appsettings','list','-g',resource_group,'-n',authority)}
               connection=next((settings[k] for k in ('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb') if settings.get(k)),None)
           if not connection or '\n' in connection or not any(x in connection.lower() for x in ('server=tcp:','.database.windows.net','initial catalog=')):
               raise SystemExit('Production SQL connection unavailable; no restart authorized.')
           print('::add-mask::'+connection,flush=True)
+          bundle=pathlib.Path('/tmp/diagnostics-packages') / os.environ['MIGRATION_BUNDLE']
           subprocess.run(
-              ['/tmp/diagnostics-packages/masterapp-migrations','--connection',connection],
+              [str(bundle),'--connection',connection],
               check=True,
               env=os.environ | {'DOTNET_ENVIRONMENT':'Development','ASPNETCORE_ENVIRONMENT':'Development'},
           )
