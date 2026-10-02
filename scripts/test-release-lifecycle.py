@@ -108,6 +108,36 @@ class DirectAuthorization(unittest.TestCase):
         self.assertFalse(m.direct_only_request(m.git("rev-parse", "HEAD").stdout.strip()))
 
 
+    def test_product_merge_can_carry_release_authorization_with_application_files(self):
+        m.git("checkout", "-b", "product")
+        path = Path("Docs/releases/direct-release-request.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "releaseMode": "approved-only",
+            "targets": [canonical_name("portal")],
+        }))
+        Path("product.txt").write_text("validated product change")
+        m.git("add", ".")
+        m.git("commit", "-m", "validated product plus release request")
+        m.git("checkout", m.APPROVED)
+        m.git("merge", "--no-ff", "product", "-m", "merge validated product")
+        merged = m.git("rev-parse", "HEAD").stdout.strip()
+
+        self.assertTrue(m.direct_only_request(merged))
+
+    def test_product_merge_without_request_change_is_not_new_authorization(self):
+        self.authorize()
+        m.git("checkout", "-b", "product")
+        Path("product.txt").write_text("validated product change")
+        m.git("add", ".")
+        m.git("commit", "-m", "validated product only")
+        m.git("checkout", m.APPROVED)
+        m.git("merge", "--no-ff", "product", "-m", "merge validated product")
+        merged = m.git("rev-parse", "HEAD").stdout.strip()
+
+        self.assertFalse(m.direct_only_request(merged))
+
+
 class BranchSafety(unittest.TestCase):
     def branch(self, name="work", sha="b" * 40, protected=False):
         return {"name": name, "commit": {"sha": sha}, "protected": protected}
@@ -253,14 +283,10 @@ class AutomaticMergeRelease(unittest.TestCase):
     @patch.object(m, "candidate_validation", return_value=None)
     @patch.object(m, "automatic_release_targets", return_value=())
     @patch.object(m, "dispatch_pending_legacy_release")
-    def test_control_only_green_merge_recovers_pending_release_without_second_command(
+    def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(
         self, recover, _, __
     ):
         api = Api()
-        recover.return_value = {
-            "directRelease": "recovered nearest still-unreleased historical authorization",
-            "authorizationSha": "d" * 40,
-        }
         pr = {"number": 78, "head": {"sha": "e" * 40}}
         api.api_map["pulls/78/merge"] = {
             "merged": True,
@@ -270,9 +296,13 @@ class AutomaticMergeRelease(unittest.TestCase):
 
         result = m.merge_validated(api, pr)
 
-        self.assertTrue(result["releaseDispatched"])
+        self.assertFalse(result["releaseDispatched"])
         self.assertFalse(result["automaticRelease"])
-        recover.assert_called_once_with(api, "f" * 40)
+        self.assertEqual(
+            "deferred until refreshed approved checkout",
+            result["release"]["releaseRecovery"],
+        )
+        recover.assert_not_called()
 
 
 class ReleaseTruth(unittest.TestCase):
@@ -402,12 +432,47 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual([target], result["targets"])
         self.assertEqual(42, result["sourcePr"])
         history_args = git.call_args.args
-        self.assertEqual("log", history_args[0])
-        self.assertIn(m.VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH, history_args)
+        self.assertEqual("rev-list", history_args[0])
+        self.assertIn("--first-parent", history_args)
+        self.assertNotIn(m.VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH, history_args)
         self.assertNotIn("-n", history_args)
 
+
+    @patch.object(m, "authorization_release_proven", return_value=True)
+    @patch.object(m, "release_proven", return_value=False)
+    @patch.object(m, "release_targets")
+    @patch.object(m, "candidate_validation", return_value=None)
+    @patch.object(m, "direct_release_approved_pr")
+    @patch.object(m, "direct_only_request")
+    @patch.object(m, "git")
+    def test_newest_satisfied_authorization_never_resurrects_older_release(
+        self, git, direct_only, approved_pr, _, targets, __, ___
+    ):
+        approved = "a" * 40
+        newest = "b" * 40
+        older = "c" * 40
+        target = canonical_name("portal")
+        git.return_value = SimpleNamespace(
+            returncode=0,
+            stdout=approved + "\n" + newest + "\n" + older + "\n",
+            stderr="",
+        )
+        direct_only.side_effect = lambda sha: sha in {newest, older}
+        approved_pr.return_value = {
+            "number": 42,
+            "head": {"sha": "d" * 40},
+        }
+        targets.return_value = {target}
+
+        result = m.pending_legacy_release_authorization(Api(), approved)
+
+        self.assertIsNone(result)
+        self.assertEqual(1, approved_pr.call_count)
+        self.assertEqual(newest, approved_pr.call_args.args[1])
+
+    @patch.object(m, "_validated_package_evidence", return_value={"reusable": True, "runId": 77})
     @patch.object(m, "pending_legacy_release_authorization")
-    def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending):
+    def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending, _):
         api = Api()
         target = canonical_name("portal")
         pending.return_value = {
@@ -420,10 +485,49 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         result = m.dispatch_pending_legacy_release(api, "a" * 40)
 
         self.assertIn("directRelease", result)
+        self.assertEqual(77, result["packageEvidenceRunId"])
         self.assertEqual(
             [(m.DIRECT, {"automatic": "false", "merge_sha": "b" * 40})],
             api.dispatched,
         )
+
+    @patch.object(m, "_package_backfill_running", return_value=False)
+    @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
+    @patch.object(m, "pending_legacy_release_authorization")
+    def test_missing_package_dispatches_package_only_architecture_recovery(self, pending, _, __):
+        api = Api()
+        target = canonical_name("portal")
+        pending.return_value = {
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [target],
+            "sourcePr": 42,
+        }
+
+        result = m.dispatch_pending_legacy_release(api, "a" * 40)
+
+        self.assertIn("packageBackfill", result)
+        self.assertEqual(
+            [(m.PACKAGE_VALIDATION, {"package_revision": "c" * 40})],
+            api.dispatched,
+        )
+
+    @patch.object(m, "_package_backfill_running", return_value=True)
+    @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
+    @patch.object(m, "pending_legacy_release_authorization")
+    def test_running_package_backfill_is_preserved_without_duplicate_dispatch(self, pending, _, __):
+        api = Api()
+        pending.return_value = {
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [canonical_name("portal")],
+            "sourcePr": 42,
+        }
+
+        result = m.dispatch_pending_legacy_release(api, "a" * 40)
+
+        self.assertEqual("already queued or running", result["packageBackfill"])
+        self.assertEqual([], api.dispatched)
 
 
 class ReconcileSafety(unittest.TestCase):
@@ -467,6 +571,19 @@ class ReconcileSafety(unittest.TestCase):
             "updated_at": "2026-10-01T12:00:00Z",
         }]
         result = m.reconcile(api)
+        self.assertIn("retained", result)
+        self.assertEqual([], api.dispatched)
+
+    @patch.object(m, "staging_only", return_value=False)
+    def test_failed_package_backfill_trigger_is_not_auto_replayed(self, _):
+        api = Api()
+        api.api_map["actions/runs/100"] = {
+            "path": ".github/workflows/" + m.PACKAGE_VALIDATION,
+            "event": "workflow_dispatch",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        result = m.reconcile(api, 100)
         self.assertIn("retained", result)
         self.assertEqual([], api.dispatched)
 
@@ -544,6 +661,17 @@ class SingleBranchTopology(unittest.TestCase):
         self.assertNotIn("Validate, merge, and deploy AgentPortal to production", workflow)
         self.assertNotIn("production gates", workflow.lower())
 
+
+    def test_validation_completions_do_not_run_full_branch_cleanup(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()
+        cleanup = workflow.split(
+            "      - name: Retire only preserved successfully deployed branches\n", 1
+        )[1].split("      - name:", 1)[0]
+        self.assertIn("github.event.workflow_run.name == 'LEGEND approved direct release'", cleanup)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", cleanup)
+        self.assertIn("github.event_name == 'schedule'", cleanup)
+        self.assertIn("github.event_name == 'workflow_dispatch'", cleanup)
+        self.assertNotIn("github.event_name != 'workflow_run'", cleanup)
 
     def test_lifecycle_refreshes_to_newly_merged_approved_code_before_recovery(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()

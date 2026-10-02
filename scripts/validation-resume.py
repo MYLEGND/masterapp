@@ -30,8 +30,8 @@ import urllib.request
 
 TRUSTED_PR_BASE = "legend/approved-changes"
 DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
+PACKAGE_VALIDATION_WORKFLOW = "masterapp-platform-architecture-validation.yml"
 RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
-MAX_HISTORICAL_EVIDENCE_RUNS = 8
 RELEASE_RESOURCE_GROUP = "masterapp-rg"
 MIGRATION_BUNDLE_NAME = "masterapp-migrations"
 ROUTING_WORKER_NAME = "legend-business-website-router"
@@ -1157,10 +1157,29 @@ def _trusted_historical_runs(args, token):
             continue
         if (run.get("head_repository") or {}).get("full_name") != args.repository:
             continue
-        pulls = run.get("pull_requests") or []
-        if not any((row.get("base") or {}).get("ref") == TRUSTED_PR_BASE for row in pulls):
+        head_sha = run.get("head_sha")
+        if not head_sha:
             continue
-        if not run.get("head_sha"):
+        pulls = run.get("pull_requests") or []
+        trusted = any(
+            (row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+            and (row.get("head") or {}).get("sha") == head_sha
+            and ((row.get("head") or {}).get("repo") or {}).get("full_name") == args.repository
+            for row in pulls
+        )
+        if not trusted:
+            associated = api_get(
+                args.repository,
+                f"commits/{head_sha}/pulls?per_page=100",
+                token,
+            )
+            trusted = any(
+                (row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+                and (row.get("head") or {}).get("sha") == head_sha
+                and ((row.get("head") or {}).get("repo") or {}).get("full_name") == args.repository
+                for row in associated
+            )
+        if not trusted:
             continue
         rows.append(run)
     rows.sort(
@@ -1192,8 +1211,6 @@ def _apply_content_equivalent_evidence(args, plan):
         return plan
 
     for run in runs:
-        if examined >= MAX_HISTORICAL_EVIDENCE_RUNS:
-            break
         head_sha = run["head_sha"]
         if head_sha in seen_heads:
             continue
@@ -1439,17 +1456,18 @@ MERGE_VALIDATION_NEUTRAL_PATHS = frozenset({
     "AgentPortal.Tests/WebsiteStudioV3ContractTests.cs",
 })
 
-RELEASE_EVIDENCE_PATHS = frozenset({
+STEP5_RELEASE_EVIDENCE_PATHS = frozenset({
     ".github/workflows/all-intentional-direct-release-20260918.yml",
     ".github/workflows/masterapp-platform-architecture-validation.yml",
     "scripts/approved-release-baseline.py",
     "scripts/release-package.py",
-    "scripts/deploy-approved-app.py",
     "scripts/validation-resume.py",
     "scripts/test-validation-resume.py",
-    "scripts/test-release-policy.py",
-    "scripts/test-release-lifecycle.py",
-    "scripts/test-deploy-approved-app.py",
+})
+
+SECURITY_RELEASE_EVIDENCE_PATHS = frozenset({
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
 })
 
 PUBLIC_WEBSITE_EXACT_PATHS = frozenset({
@@ -1495,7 +1513,9 @@ def required_validation_topology(changed_paths):
     security = ".github/workflows/approved-release-security-validation.yml"
 
     required = {architecture}
-    release_evidence_change = any(name in RELEASE_EVIDENCE_PATHS for name in names)
+    step5_release_evidence_change = any(name in STEP5_RELEASE_EVIDENCE_PATHS for name in names)
+    security_release_evidence_change = any(name in SECURITY_RELEASE_EVIDENCE_PATHS for name in names)
+    release_evidence_change = step5_release_evidence_change or security_release_evidence_change
 
     scope_neutral = MERGE_VALIDATION_NEUTRAL_PATHS | {
         "scripts/deploy-approved-app.py",
@@ -1509,7 +1529,7 @@ def required_validation_topology(changed_paths):
         name in PUBLIC_WEBSITE_EXACT_PATHS for name in product_names
     )
 
-    if step5 in names or release_evidence_change:
+    if step5 in names or step5_release_evidence_change:
         required.add(step5)
 
     shared_resume_authority_change = any(
@@ -1552,7 +1572,7 @@ def required_validation_topology(changed_paths):
     if broad_product_change and not public_website_only:
         required.add(step5)
         required.add(security)
-    if security in names or release_evidence_change:
+    if security in names or security_release_evidence_change:
         required.add(security)
 
     return {
@@ -1735,7 +1755,7 @@ def cmd_lifecycle_evidence(args):
 
 
 def _package_canary_proof_runs(repository: str, current_run_id: int, head_branch: str, token: str):
-    workflow = urllib.parse.quote("masterapp-platform-architecture-validation.yml", safe="")
+    workflow = urllib.parse.quote(PACKAGE_VALIDATION_WORKFLOW, safe="")
     branch = urllib.parse.quote(head_branch, safe="")
     payload = api_get(
         repository,
@@ -1843,6 +1863,113 @@ def cmd_package_canary_plan(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def package_backfill_receipt_name(revision: str, package_identity: str) -> str:
+    return f"validated-package-backfill-{revision}-{package_identity}"
+
+
+def compute_package_backfill_plan(repository: str, revision: str, current_sha: str):
+    """Authorize package-only recovery for an already-green historical product head.
+
+    The current approved control plane may package the historical revision only when
+    the exact product head has a successful Architecture PR validation and every
+    change since that revision is release/test/control-only. Any application-source
+    drift fails closed.
+    """
+    result = {
+        "schemaVersion": 1,
+        "revision": revision,
+        "currentSha": current_sha,
+        "allowed": False,
+        "validationRunId": None,
+        "changedApplicationInputs": [],
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", revision, current_sha],
+        text=True,
+        capture_output=True,
+    )
+    if ancestor.returncode != 0:
+        result["reason"] = "revision_not_preserved_in_current_approved_history"
+        return result
+
+    changed = git_changed(revision, current_sha)
+    application_changes = sorted(
+        path for path in changed
+        if not release_control_only_path(path)
+    )
+    result["changedApplicationInputs"] = application_changes
+    if application_changes:
+        result["reason"] = "application_inputs_changed_since_validated_revision"
+        return result
+
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
+    encoded = urllib.parse.quote(revision, safe="")
+    payload = api_get(
+        repository,
+        f"actions/runs?head_sha={encoded}&event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = [
+        run for run in payload.get("workflow_runs", [])
+        if run.get("path") == workflow_path
+        and run.get("event") == "pull_request"
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        and run.get("head_sha") == revision
+        and (run.get("head_repository") or {}).get("full_name") == repository
+    ]
+    pulls = api_get(repository, f"commits/{revision}/pulls", token)
+    bound = [
+        pr for pr in pulls
+        if pr.get("merged_at")
+        and pr.get("base", {}).get("ref") == TRUSTED_PR_BASE
+        and pr.get("head", {}).get("sha") == revision
+        and pr.get("head", {}).get("repo", {}).get("full_name") == repository
+    ]
+    if not runs or len(bound) != 1:
+        result["reason"] = "exact_green_architecture_pr_evidence_missing"
+        return result
+
+    runs.sort(
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    result.update({
+        "allowed": True,
+        "validationRunId": int(runs[0]["id"]),
+        "sourcePr": int(bound[0]["number"]),
+        "reason": "exact_green_revision_with_control_only_descendants",
+    })
+    return result
+
+
+def cmd_package_backfill_plan(args):
+    try:
+        result = compute_package_backfill_plan(
+            args.repository,
+            args.revision,
+            args.current_sha,
+        )
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "revision": args.revision,
+            "currentSha": args.current_sha,
+            "allowed": False,
+            "validationRunId": None,
+            "changedApplicationInputs": [],
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def compute_validated_package_evidence(repository: str, revision: str, package_identity: str):
     result = {
         "schemaVersion": 1,
@@ -1852,28 +1979,44 @@ def compute_validated_package_evidence(repository: str, revision: str, package_i
         "runId": None,
         "reusable": False,
     }
-    token = os.environ.get("GITHUB_TOKEN", "")
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
     if not token:
         result["reason"] = "github_token_unavailable"
         return result
-    workflow_path = ".github/workflows/masterapp-platform-architecture-validation.yml"
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
     for artifact in _artifact_rows(repository, result["artifact"], token):
         run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
         if not run_id:
             continue
         run = api_get(repository, f"actions/runs/{run_id}", token)
-        if (
+        common = (
             run.get("path") == workflow_path
-            and run.get("event") == "pull_request"
             and run.get("status") == "completed"
             and run.get("conclusion") == "success"
-            and run.get("head_sha") == revision
             and (run.get("head_repository") or {}).get("full_name") == repository
+        )
+        exact_pr = (
+            common
+            and run.get("event") == "pull_request"
+            and run.get("head_sha") == revision
+        )
+        backfill = False
+        if (
+            common
+            and run.get("event") == "workflow_dispatch"
+            and run.get("head_branch") == TRUSTED_PR_BASE
         ):
+            receipt = package_backfill_receipt_name(revision, package_identity)
+            backfill = receipt in _run_artifact_names(repository, run_id, token)
+        if exact_pr or backfill:
             result.update({
                 "runId": run_id,
                 "reusable": True,
-                "reason": "exact_validated_application_package",
+                "reason": (
+                    "exact_validated_application_package"
+                    if exact_pr
+                    else "validated_package_backfill_from_exact_green_revision"
+                ),
             })
             return result
     result["reason"] = "exact_validated_package_missing"
@@ -2254,49 +2397,109 @@ def cmd_step5_decision(args):
     print(json.dumps(decision, indent=2, sort_keys=True))
 
 
+def _step5_baseline_inputs_equivalent(prior_base_sha: str, current_base_sha: str) -> bool:
+    """Compare only inputs that can change the full Step 5 baseline result."""
+    if prior_base_sha == current_base_sha:
+        return True
+    gate = WORKFLOWS["step5-isolated-conversion-mapping-validation.yml"]["gates"]["candidate-full"]
+    return not any(
+        gate_matches(path, gate)
+        for path in git_changed(prior_base_sha, current_base_sha)
+    )
+
+
 def compute_step5_baseline_evidence(repository: str, base_sha: str):
     result = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "approvedBaseSha": base_sha,
         "reusable": False,
         "evidenceRunId": None,
         "evidenceArtifact": None,
+        "evidenceBaseSha": None,
     }
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
         result["reason"] = "github_token_unavailable"
         return result
-    tree = subprocess.check_output(
-        ["git", "rev-parse", f"{base_sha}^{{tree}}"],
-        text=True,
-    ).strip()
-    workflow_path = WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
-    for artifact_name in (f"step5-tree-candidate-{tree}", f"step5-tree-baseline-{tree}"):
-        for artifact in _artifact_rows(repository, artifact_name, token):
-            run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
-            if not run_id:
-                continue
-            run = api_get(repository, f"actions/runs/{run_id}", token)
-            run_head = run.get("head_sha") or ""
-            if not (
-                run.get("path") == workflow_path
-                and run.get("event") == "pull_request"
-                and run.get("status") == "completed"
-                and (run.get("head_repository") or {}).get("full_name") == repository
-                and len(run_head) == 40
-            ):
-                continue
-            if not _step5_jobs_unchanged(run_head, workflow_path):
-                continue
-            result.update({
-                "reusable": True,
-                "evidenceRunId": run_id,
-                "evidenceArtifact": artifact_name,
-                "tree": tree,
-                "reason": "content_identical_approved_tree",
-            })
+
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+
+    def accept(run, artifact_name, evidence_base_sha):
+        run_id = int(run.get("id") or 0)
+        run_head = run.get("head_sha") or ""
+        if not (
+            run_id
+            and run.get("path") == workflow_path
+            and run.get("event") == "pull_request"
+            and run.get("status") == "completed"
+            and (run.get("head_repository") or {}).get("full_name") == repository
+            and len(run_head) == 40
+            and len(evidence_base_sha) == 40
+        ):
+            return False
+        if not _step5_jobs_unchanged(run_head, workflow_path):
+            return False
+        if not _step5_baseline_inputs_equivalent(evidence_base_sha, base_sha):
+            return False
+        result.update({
+            "reusable": True,
+            "evidenceRunId": run_id,
+            "evidenceArtifact": artifact_name,
+            "evidenceBaseSha": evidence_base_sha,
+            "reason": (
+                "exact_approved_baseline_evidence"
+                if evidence_base_sha == base_sha
+                else "content_identical_step5_inputs"
+            ),
+        })
+        return True
+
+    # Fast path: an artifact already keyed to the exact approved base.
+    exact_name = f"step5-baseline-{base_sha}"
+    for artifact in _artifact_rows(repository, exact_name, token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        if accept(run, exact_name, base_sha):
             return result
-    result["tree"] = tree
+
+    # Control-only commits must not invalidate a full baseline suite. Search recent
+    # completed Step 5 runs for a durable baseline artifact whose declared test
+    # inputs are tree-equivalent to the current approved base.
+    workflow = urllib.parse.quote(workflow_name, safe="")
+    payload = api_get(
+        repository,
+        f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = sorted(
+        payload.get("workflow_runs", []),
+        key=lambda row: (row.get("updated_at") or row.get("created_at", ""), int(row.get("id", 0))),
+        reverse=True,
+    )
+    for run in runs:
+        run_id = int(run.get("id") or 0)
+        if not run_id:
+            continue
+        try:
+            names = _run_artifact_names(repository, run_id, token)
+        except Exception:
+            continue
+        for artifact_name in sorted(names):
+            prefix = "step5-baseline-"
+            if not artifact_name.startswith(prefix):
+                continue
+            evidence_base_sha = artifact_name[len(prefix):]
+            if len(evidence_base_sha) != 40 or any(ch not in "0123456789abcdef" for ch in evidence_base_sha):
+                continue
+            try:
+                if accept(run, artifact_name, evidence_base_sha):
+                    return result
+            except Exception:
+                continue
+
     result["reason"] = "no_content_identical_baseline_artifact"
     return result
 
@@ -2388,6 +2591,13 @@ def build_parser():
     package_canary.add_argument("--head-branch", required=True)
     package_canary.add_argument("--output", required=True)
     package_canary.set_defaults(func=cmd_package_canary_plan)
+
+    package_backfill = sub.add_parser("package-backfill-plan")
+    package_backfill.add_argument("--repository", required=True)
+    package_backfill.add_argument("--revision", required=True)
+    package_backfill.add_argument("--current-sha", required=True)
+    package_backfill.add_argument("--output", required=True)
+    package_backfill.set_defaults(func=cmd_package_backfill_plan)
 
     validated_package = sub.add_parser("validated-package")
     validated_package.add_argument("--repository", required=True)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -402,6 +403,37 @@ jobs:
         self.assertNotIn("STEP78_VALIDATION_PATHS", lifecycle)
         self.assertNotIn("VALIDATION_NEUTRAL_PATHS =", lifecycle)
 
+    def test_lifecycle_only_change_requires_architecture_only(self):
+        topology = m.required_validation_topology([
+            "scripts/release-lifecycle.py",
+            "scripts/test-release-lifecycle.py",
+        ])
+        self.assertEqual(
+            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            set(topology["required"]),
+        )
+
+    def test_release_package_change_requires_step5_but_not_security(self):
+        topology = m.required_validation_topology([
+            "scripts/release-package.py",
+        ])
+        self.assertEqual(
+            {
+                ".github/workflows/masterapp-platform-architecture-validation.yml",
+                ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            },
+            set(topology["required"]),
+        )
+
+    def test_deploy_control_test_change_requires_architecture_only(self):
+        topology = m.required_validation_topology([
+            "scripts/test-deploy-approved-app.py",
+        ])
+        self.assertEqual(
+            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            set(topology["required"]),
+        )
+
     def test_public_website_only_scope_does_not_expand_into_unrelated_validations(self):
         topology = m.required_validation_topology([
             "Infrastructure/WebsiteEditing/WebsiteSiteSource.cs",
@@ -451,6 +483,87 @@ jobs:
         self.assertTrue(plan["needed"])
         self.assertEqual(["AgentPortal/Program.cs"], plan["changedInputs"])
         self.assertEqual("package_or_application_inputs_changed_since_proof", plan["reason"])
+
+    def test_package_backfill_requires_green_exact_revision_and_control_only_descendants(self):
+        revision = "a" * 40
+        current = "b" * 40
+        run = {
+            "id": 123,
+            "path": ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+            "event": "pull_request",
+            "status": "completed",
+            "conclusion": "success",
+            "head_sha": revision,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+            "updated_at": "2026-10-02T00:00:00Z",
+        }
+        pr = {
+            "number": 364,
+            "merged_at": "2026-10-02T01:10:41Z",
+            "base": {"ref": m.TRUSTED_PR_BASE},
+            "head": {
+                "sha": revision,
+                "repo": {"full_name": "MYLEGND/masterapp"},
+            },
+        }
+        def api_get(_repository, path, _token):
+            if path.startswith("actions/runs?"):
+                return {"workflow_runs": [run]}
+            if path == f"commits/{revision}/pulls":
+                return [pr]
+            raise AssertionError(path)
+
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")), \
+             patch.object(m, "git_changed", return_value=["scripts/release-lifecycle.py"]), \
+             patch.object(m, "api_get", side_effect=api_get), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            plan = m.compute_package_backfill_plan("MYLEGND/masterapp", revision, current)
+
+        self.assertTrue(plan["allowed"])
+        self.assertEqual(123, plan["validationRunId"])
+        self.assertEqual(364, plan["sourcePr"])
+        self.assertEqual([], plan["changedApplicationInputs"])
+
+    def test_package_backfill_fails_closed_on_application_drift(self):
+        revision = "a" * 40
+        current = "b" * 40
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")), \
+             patch.object(m, "git_changed", return_value=["AgentPortal/Program.cs"]), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            plan = m.compute_package_backfill_plan("MYLEGND/masterapp", revision, current)
+
+        self.assertFalse(plan["allowed"])
+        self.assertEqual(["AgentPortal/Program.cs"], plan["changedApplicationInputs"])
+        self.assertEqual("application_inputs_changed_since_validated_revision", plan["reason"])
+
+    def test_validated_package_accepts_receipt_backed_approved_backfill(self):
+        revision = "a" * 40
+        identity = "b" * 64
+        artifact = f"founder-diagnostics-packages-{identity}"
+        receipt = m.package_backfill_receipt_name(revision, identity)
+        run = {
+            "id": 77,
+            "path": ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+            "event": "workflow_dispatch",
+            "status": "completed",
+            "conclusion": "success",
+            "head_branch": m.TRUSTED_PR_BASE,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+        }
+        with patch.object(m, "_artifact_rows", return_value=[{"workflow_run": {"id": 77}}]), \
+             patch.object(m, "api_get", return_value=run), \
+             patch.object(m, "_run_artifact_names", return_value={artifact, receipt}), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            evidence = m.compute_validated_package_evidence(
+                "MYLEGND/masterapp", revision, identity
+            )
+
+        self.assertTrue(evidence["reusable"])
+        self.assertEqual(77, evidence["runId"])
+        self.assertEqual(
+            "validated_package_backfill_from_exact_green_revision",
+            evidence["reason"],
+        )
 
     def test_founder_cloudflare_release_trigger_is_canonical_and_narrow(self):
         self.assertTrue(m.founder_cloudflare_release_required([
@@ -680,6 +793,114 @@ jobs:
         self.assertFalse(plan["gates"]["build"]["run"])
         self.assertFalse(plan["gates"]["restore"]["run"])
 
+
+    @patch.object(m, "api_get")
+    def test_trusted_historical_run_recovers_pr_identity_when_github_omits_linkage(self, api_get):
+        head = "c" * 40
+        args = SimpleNamespace(
+            event="pull_request",
+            workflow="masterapp-platform-architecture-validation.yml",
+            repository="MYLEGND/masterapp",
+            current_run_id=99,
+        )
+
+        def response(repository, path, token):
+            self.assertEqual(args.repository, repository)
+            self.assertEqual("token", token)
+            if path.startswith("actions/workflows/"):
+                return {
+                    "workflow_runs": [{
+                        "id": 88,
+                        "event": "pull_request",
+                        "conclusion": "success",
+                        "head_repository": {"full_name": args.repository},
+                        "pull_requests": [],
+                        "head_sha": head,
+                        "updated_at": "2026-10-02T00:00:00Z",
+                    }]
+                }
+            if path == f"commits/{head}/pulls?per_page=100":
+                return [{
+                    "base": {"ref": m.TRUSTED_PR_BASE},
+                    "head": {
+                        "sha": head,
+                        "repo": {"full_name": args.repository},
+                    },
+                }]
+            raise AssertionError(path)
+
+        api_get.side_effect = response
+        runs = m._trusted_historical_runs(args, "token")
+
+        self.assertEqual([88], [run["id"] for run in runs])
+        self.assertEqual(head, runs[0]["head_sha"])
+
+    def test_step5_baseline_reuses_prior_artifact_for_control_only_base_change(self):
+        prior_base = "a" * 40
+        current_base = "b" * 40
+        run_head = "c" * 40
+        artifact = "step5-baseline-" + prior_base
+        run = {
+            "id": 77,
+            "path": ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            "event": "pull_request",
+            "status": "completed",
+            "head_sha": run_head,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+            "updated_at": "2026-10-02T00:00:00Z",
+        }
+
+        def api_get(repository, path, token):
+            if path.startswith("actions/artifacts?name="):
+                return {"artifacts": []}
+            if path.startswith("actions/workflows/"):
+                return {"workflow_runs": [run]}
+            raise AssertionError(path)
+
+        with patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}, clear=False), \
+             patch.object(m, "api_get", side_effect=api_get), \
+             patch.object(m, "_run_artifact_names", return_value={artifact}), \
+             patch.object(m, "_step5_jobs_unchanged", return_value=True), \
+             patch.object(m, "git_changed", return_value=["scripts/release-lifecycle.py"]):
+            result = m.compute_step5_baseline_evidence("MYLEGND/masterapp", current_base)
+
+        self.assertTrue(result["reusable"])
+        self.assertEqual(77, result["evidenceRunId"])
+        self.assertEqual(artifact, result["evidenceArtifact"])
+        self.assertEqual(prior_base, result["evidenceBaseSha"])
+        self.assertEqual("content_identical_step5_inputs", result["reason"])
+
+    def test_step5_baseline_rejects_prior_artifact_when_test_inputs_changed(self):
+        prior_base = "a" * 40
+        current_base = "b" * 40
+        run_head = "c" * 40
+        artifact = "step5-baseline-" + prior_base
+        run = {
+            "id": 78,
+            "path": ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            "event": "pull_request",
+            "status": "completed",
+            "head_sha": run_head,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+            "updated_at": "2026-10-02T00:00:00Z",
+        }
+
+        def api_get(repository, path, token):
+            if path.startswith("actions/artifacts?name="):
+                return {"artifacts": []}
+            if path.startswith("actions/workflows/"):
+                return {"workflow_runs": [run]}
+            raise AssertionError(path)
+
+        with patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}, clear=False), \
+             patch.object(m, "api_get", side_effect=api_get), \
+             patch.object(m, "_run_artifact_names", return_value={artifact}), \
+             patch.object(m, "_step5_jobs_unchanged", return_value=True), \
+             patch.object(m, "git_changed", return_value=["AgentPortal/Program.cs"]):
+            result = m.compute_step5_baseline_evidence("MYLEGND/masterapp", current_base)
+
+        self.assertFalse(result["reusable"])
+        self.assertEqual("no_content_identical_baseline_artifact", result["reason"])
 
     def test_content_equivalent_evidence_reuses_only_proven_gates_and_keeps_runtime_requirements(self):
         workflow = "masterapp-platform-architecture-validation.yml"

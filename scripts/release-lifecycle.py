@@ -30,8 +30,20 @@ def _validation_authority_module():
     return module
 
 VALIDATION_AUTHORITY = _validation_authority_module()
+
+
+def _release_package_module():
+    path = Path(__file__).with_name("release-package.py")
+    spec = importlib.util.spec_from_file_location("release_package_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+PACKAGE_AUTHORITY = _release_package_module()
 APPROVED = VALIDATION_AUTHORITY.TRUSTED_PR_BASE
 DIRECT = VALIDATION_AUTHORITY.DIRECT_RELEASE_WORKFLOW
+PACKAGE_VALIDATION = VALIDATION_AUTHORITY.PACKAGE_VALIDATION_WORKFLOW
 KEEP = {APPROVED}
 
 
@@ -194,7 +206,13 @@ def merge_validated(api, pr):
             'targets': list(targets),
         }
     else:
-        release_result = dispatch_pending_legacy_release(api, result['sha'])
+        # The merge commit does not exist in this runner's local checkout yet.
+        # Historical recovery is intentionally deferred to the workflow's
+        # refresh -> reconcile phase, which fetches and resets to the newly
+        # approved commit before inspecting first-parent authorization history.
+        release_result = {
+            'releaseRecovery': 'deferred until refreshed approved checkout',
+        }
 
     if any(f['filename'] == '.github/workflows/deployment-diagnostics.yml' for f in api.pages(f"pulls/{pr['number']}/files")):
         api.dispatch('deployment-diagnostics.yml')
@@ -355,19 +373,29 @@ def direct_only_request(sha):
     if not parts or parts[0] != sha or len(parts) not in {2, 3}:
         return False
 
-    changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, check=False)
-    if changed.returncode:
-        return False
-    names = changed.stdout.splitlines()
-    if path not in names:
-        return False
-    if len(parts) == 2 and names != [path]:
-        return False
-
     result = git('show', sha + ':' + path, check=False)
     if result.returncode:
         return False
-    return json.loads(result.stdout).get('releaseMode') == 'approved-only'
+    try:
+        request = json.loads(result.stdout)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    if request.get('releaseMode') != 'approved-only':
+        return False
+
+    if len(parts) == 2:
+        changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, check=False)
+        if changed.returncode or changed.stdout.splitlines() != [path]:
+            return False
+        return True
+
+    # Product merge authorization: compare the request object directly against
+    # the first parent. This avoids merge diff simplification hiding a request
+    # change when the same merge also carries application/migration files.
+    prior = git('show', sha + '^1:' + path, check=False)
+    if prior.returncode:
+        return True
+    return prior.stdout != result.stdout
 
 
 def direct_release_approved_pr(api, sha):
@@ -429,20 +457,43 @@ def direct_release_approved_pr(api, sha):
     return None
 
 
+def authorization_release_proven(api, authorization_sha, targets):
+    """Accept a successful direct release bound to the exact authorization commit.
+
+    Older release workflow generations wrote a generic receipt keyed by the
+    approved merge/authorization SHA rather than the application source SHA.
+    The workflow run itself is durable proof only when it is the sole canonical
+    direct-release workflow, targets this approved authorization, and its final
+    live verification and enforcement both succeeded.
+    """
+    runs = api.pages(
+        'actions/runs?head_sha=' + urllib.parse.quote(authorization_sha, safe=''),
+        'workflow_runs',
+    )
+    for run in runs:
+        if run.get('head_sha') != authorization_sha:
+            continue
+        if not successful_release(api, run):
+            continue
+        authorized = release_targets(authorization_sha)
+        if targets <= authorized:
+            return True
+    return False
+
+
 def pending_legacy_release_authorization(api, approved):
-    """Find the nearest still-unreleased explicit authorization in first-parent history.
+    """Resolve only the newest valid explicit authorization on first-parent history.
 
     Automatic application PRs do not use this path. It exists only to carry a
     previously authorized release across release-control-only correction merges.
-    A successful receipt closes the authorization; a fresh control correction may
-    retry a failed attempt, while reconcile on an unchanged head still refuses to
-    replay the same failed direct-release run.
+
+    Scan the literal first-parent commit chain rather than path-filtered history:
+    Git path simplification must never hide a merge that imports a new release
+    request from its second parent. Once the newest valid authorization is found,
+    it is authoritative. If already released, stop; never resurrect an older
+    superseded authorization.
     """
-    history = git(
-        'log', '--first-parent', '--format=%H', approved, '--',
-        VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH,
-        check=False,
-    )
+    history = git('rev-list', '--first-parent', approved, check=False)
     if history.returncode:
         raise RuntimeError('Unable to inspect approved first-parent release authorization history')
 
@@ -465,7 +516,10 @@ def pending_legacy_release_authorization(api, approved):
             return {'retained': 'Historical release authorization has no canonical target scope'}
 
         revision = pr['head']['sha']
-        if all(release_proven(api, revision, app=target) for target in targets):
+        if (
+            all(release_proven(api, revision, app=target) for target in targets)
+            or authorization_release_proven(api, sha, targets)
+        ):
             return None
 
         return {
@@ -478,18 +532,58 @@ def pending_legacy_release_authorization(api, approved):
     return None
 
 
+def _validated_package_evidence(api, revision):
+    identity = PACKAGE_AUTHORITY.package_identity(revision)
+    return VALIDATION_AUTHORITY.compute_validated_package_evidence(
+        api.repo,
+        revision,
+        identity,
+    )
+
+
+def _package_backfill_running(api, approved):
+    runs = api.pages(
+        'actions/runs?head_sha=' + urllib.parse.quote(approved, safe=''),
+        'workflow_runs',
+    )
+    return any(
+        run.get('path', '').split('@')[0] == '.github/workflows/' + PACKAGE_VALIDATION
+        and run.get('event') == 'workflow_dispatch'
+        and run.get('status') != 'completed'
+        for run in runs
+    )
+
+
 def dispatch_pending_legacy_release(api, approved):
     pending = pending_legacy_release_authorization(api, approved)
     if not pending:
         return None
     if 'retained' in pending:
         return pending
+
+    package = _validated_package_evidence(api, pending['applicationRevision'])
+    if not package.get('reusable'):
+        if _package_backfill_running(api, approved):
+            return {
+                'packageBackfill': 'already queued or running',
+                **pending,
+            }
+        api.dispatch(PACKAGE_VALIDATION, {
+            'package_revision': pending['applicationRevision'],
+        })
+        return {
+            'packageBackfill': 'dispatched for exact green historical application revision',
+            'packageReason': package.get('reason'),
+            **pending,
+        }
+
     api.dispatch(DIRECT, {
         'automatic': 'false',
         'merge_sha': pending['authorizationSha'],
     })
     return {
         'directRelease': 'recovered nearest still-unreleased historical authorization',
+        'packageEvidenceRunId': package.get('runId'),
         **pending,
     }
 
@@ -500,10 +594,17 @@ def reconcile(api, trigger=None):
         return {'release': 'disabled while validation-only staging hold is active'}
     if trigger:
         run = api.api(f'actions/runs/{trigger}')
-        if run.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT:
+        trigger_path = run.get('path', '').split('@')[0]
+        if trigger_path == '.github/workflows/' + DIRECT:
             if successful_release(api, run):
                 return {'release': 'exact approved direct release already successful'}
             return {'retained': 'Triggered direct release did not complete successfully; no automatic replay'}
+        if (
+            trigger_path == '.github/workflows/' + PACKAGE_VALIDATION
+            and run.get('event') == 'workflow_dispatch'
+            and (run.get('status') != 'completed' or run.get('conclusion') != 'success')
+        ):
+            return {'retained': 'Triggered package backfill did not complete successfully; no automatic replay'}
 
     approved = api.ref(APPROVED)
 
