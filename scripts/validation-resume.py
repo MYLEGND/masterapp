@@ -1848,6 +1848,46 @@ def cmd_package_canary_plan(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def _validated_package_backfill_run(
+    repository: str,
+    run: dict,
+    revision: str,
+    package_identity: str,
+    token: str,
+) -> bool:
+    """Accept only a guarded Architecture backfill bound to one exact validated revision."""
+    pulls = run.get("pull_requests") or []
+    if not any((row.get("base") or {}).get("ref") == TRUSTED_PR_BASE for row in pulls):
+        return False
+    receipt = f"validated-package-backfill-{revision}-{package_identity}"
+    if receipt not in _run_artifact_names(repository, int(run["id"]), token):
+        return False
+    jobs = api_get(
+        repository,
+        f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
+        token,
+    ).get("jobs", [])
+    matches = [
+        job for job in jobs
+        if job.get("name") == "historical-validated-package-backfill"
+    ]
+    if len(matches) != 1 or matches[0].get("conclusion") != "success":
+        return False
+    steps = {
+        step.get("name"): step.get("conclusion")
+        for step in (matches[0].get("steps") or [])
+        if step.get("name")
+    }
+    required = (
+        "Resolve pending validated historical application revision",
+        "Build immutable validated release package for preserved revision",
+        "Verify immutable validated release package for preserved revision",
+        "Preserve immutable validated release package for preserved revision",
+        "Preserve historical package backfill receipt",
+    )
+    return all(steps.get(name) == "success" for name in required)
+
+
 def compute_validated_package_evidence(repository: str, revision: str, package_identity: str):
     result = {
         "schemaVersion": 1,
@@ -1867,18 +1907,29 @@ def compute_validated_package_evidence(repository: str, revision: str, package_i
         if not run_id:
             continue
         run = api_get(repository, f"actions/runs/{run_id}", token)
-        if (
+        trusted_architecture_run = (
             run.get("path") == workflow_path
             and run.get("event") == "pull_request"
             and run.get("status") == "completed"
             and run.get("conclusion") == "success"
-            and run.get("head_sha") == revision
             and (run.get("head_repository") or {}).get("full_name") == repository
-        ):
+        )
+        if not trusted_architecture_run:
+            continue
+        if run.get("head_sha") == revision:
             result.update({
                 "runId": run_id,
                 "reusable": True,
                 "reason": "exact_validated_application_package",
+            })
+            return result
+        if _validated_package_backfill_run(
+            repository, run, revision, package_identity, token
+        ):
+            result.update({
+                "runId": run_id,
+                "reusable": True,
+                "reason": "historical_validated_package_backfill",
             })
             return result
     result["reason"] = "exact_validated_package_missing"
