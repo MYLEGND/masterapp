@@ -46,12 +46,40 @@ class ReleaseScopeSelection(unittest.TestCase):
             [row[0] for row in selected],
             ['portal', 'protect', 'parfait', 'website'])
 
-    def test_unreviewed_scope_still_fails_closed(self):
+    def test_any_unique_inventory_subset_is_selected_without_a_parallel_scope_registry(self):
+        names = [
+            self.baseline._validation_authority.RELEASE_TARGETS[key]['releaseName']
+            for key in list(self.baseline._validation_authority.RELEASE_TARGETS)[::2]
+        ]
+        selected = self.baseline.selected_targets({
+            'releaseMode': 'approved-only',
+            'targets': names,
+        })
+        self.assertEqual(
+            names,
+            [self.baseline._validation_authority.RELEASE_TARGETS[row[0]]['releaseName'] for row in selected],
+        )
+
+    def test_unknown_target_still_fails_closed(self):
         with self.assertRaises(ValueError):
             self.baseline.selected_targets({
                 'releaseMode': 'approved-only',
-                'targets': ['masterapp-client', 'masterapp-parfait']
+                'targets': ['not-a-canonical-target'],
             })
+
+
+    def test_target_scope_is_derived_from_canonical_source_roots_and_shared_changes_expand_fail_closed(self):
+        authority = self.baseline._validation_authority
+        first_key = next(iter(authority.RELEASE_TARGETS))
+        first = authority.RELEASE_TARGETS[first_key]
+        specific = authority.release_targets_for_paths([first['sourceRoot'] + '/example.txt'])
+        self.assertEqual((first['releaseName'],), specific)
+        shared = authority.release_targets_for_paths(['SHARED/example.txt'])
+        self.assertEqual(
+            tuple(row['releaseName'] for row in authority.RELEASE_TARGETS.values()),
+            shared,
+        )
+        self.assertEqual(tuple(), authority.release_targets_for_paths(['scripts/test-release-policy.py']))
 
 
     def test_release_control_only_changes_preserve_live_application_identity(self):
@@ -153,7 +181,7 @@ class ReleaseScopeSelection(unittest.TestCase):
             output=Path(directory)/'outputs'
             with patch('sys.argv',['baseline','--automatic','--output',str(output)]), \
                  patch.object(self.baseline,'read_request',return_value=request), \
-                 patch.object(self.baseline,'observe',side_effect=lambda target:dict(app=target[0],revision='a'*40)), \
+                 patch.object(self.baseline,'observe',side_effect=lambda target:dict(app=target[0],releaseName=self.baseline._validation_authority.RELEASE_TARGETS[target[0]]['releaseName'],revision='a'*40)), \
                  patch.object(self.baseline.subprocess,'check_output',return_value='b'*40), \
                  patch.object(self.baseline.subprocess,'run'),patch.dict(os.environ,{'GITHUB_ACTIONS':'false'}):
                 self.baseline.main()
@@ -174,7 +202,7 @@ class ReleaseScopeSelection(unittest.TestCase):
             output = Path(directory) / 'release-outputs'
             with patch('sys.argv', ['baseline', '--output', str(output)]), \
                  patch.object(self.baseline, 'read_request', return_value=request), \
-                 patch.object(self.baseline, 'observe', side_effect=lambda target: dict(app=target[0], revision='a' * 40)), \
+                 patch.object(self.baseline, 'observe', side_effect=lambda target: dict(app=target[0], releaseName=self.baseline._validation_authority.RELEASE_TARGETS[target[0]]['releaseName'], revision='a' * 40)), \
                  patch.object(self.baseline.subprocess, 'check_output', return_value='b' * 40), \
                  patch.object(self.baseline.subprocess, 'run'), patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
                 self.baseline.main()
