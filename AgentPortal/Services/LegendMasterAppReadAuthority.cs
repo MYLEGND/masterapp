@@ -7,13 +7,21 @@ using Shared.Diagnostics;
 
 namespace AgentPortal.Services;
 
+internal sealed record LegendMasterAppReadRequest(
+    string? Preset,
+    string? TimeZoneId,
+    int? TimeZoneOffsetMinutes);
+
 internal interface ILegendMasterAppReadProjection
 {
     string Key { get; }
     string Application { get; }
     IReadOnlyList<string> Routes { get; }
     string Description { get; }
-    Task<object> ReadAsync(ClaimsPrincipal founder, string? preset, CancellationToken cancellationToken);
+    Task<object> ReadAsync(
+        ClaimsPrincipal founder,
+        LegendMasterAppReadRequest request,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class LegendMasterAppReadAuthority(IEnumerable<ILegendMasterAppReadProjection> projections)
@@ -60,7 +68,7 @@ internal sealed class LegendMasterAppReadAuthority(IEnumerable<ILegendMasterAppR
     internal async Task<object> ReadAsync(
         ClaimsPrincipal founder,
         string surface,
-        string? preset,
+        LegendMasterAppReadRequest request,
         CancellationToken cancellationToken)
     {
         FounderGuard.EnsureFounderOrThrow(founder);
@@ -73,7 +81,7 @@ internal sealed class LegendMasterAppReadAuthority(IEnumerable<ILegendMasterAppR
                 catalog = Catalog()
             };
 
-        return await projection.ReadAsync(founder, preset, cancellationToken);
+        return await projection.ReadAsync(founder, request, cancellationToken);
     }
 }
 
@@ -89,18 +97,21 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
 
     public async Task<object> ReadAsync(
         ClaimsPrincipal founder,
-        string? preset,
+        LegendMasterAppReadRequest request,
         CancellationToken cancellationToken)
     {
         FounderGuard.EnsureFounderOrThrow(founder);
         var profile = await tracking.GetByUserIdAsync(FounderGuard.FounderOid, cancellationToken)
             ?? throw new InvalidOperationException("Founder analytics scope is unavailable.");
 
-        var normalizedPreset = preset?.Trim().ToLowerInvariant();
+        var normalizedPreset = request.Preset?.Trim().ToLowerInvariant();
         if (normalizedPreset is not ("today" or "7d" or "30d" or "month" or "year"))
             normalizedPreset = "7d";
 
-        var range = TimeRangeRequest.FromPreset(normalizedPreset, viewerTz: TimeZoneInfo.Utc);
+        var viewerTimeZone = AnalyticsViewerTimeZoneResolver.Resolve(
+            request.TimeZoneId,
+            request.TimeZoneOffsetMinutes);
+        var range = TimeRangeRequest.FromPreset(normalizedPreset, viewerTz: viewerTimeZone);
         var scope = ScopeContext.ForFounder(profile.Id);
         var payload = await dataBuilder.BuildAsync(
             range,
@@ -153,5 +164,22 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
                 credentialsIncluded = false
             }
         };
+    }
+}
+
+
+internal static class LegendMasterAppReadServiceCollectionExtensions
+{
+    internal static IServiceCollection AddLegendMasterAppReadAuthority(this IServiceCollection services)
+    {
+        services.AddScoped<LegendMasterAppReadAuthority>();
+        var contract = typeof(ILegendMasterAppReadProjection);
+        var implementations = contract.Assembly.GetTypes()
+            .Where(type => type is { IsAbstract: false, IsInterface: false } && contract.IsAssignableFrom(type))
+            .OrderBy(type => type.FullName, StringComparer.Ordinal)
+            .ToArray();
+        foreach (var implementation in implementations)
+            services.AddScoped(contract, implementation);
+        return services;
     }
 }
