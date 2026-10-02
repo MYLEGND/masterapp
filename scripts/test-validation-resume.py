@@ -452,6 +452,19 @@ jobs:
         self.assertEqual(["AgentPortal/Program.cs"], plan["changedInputs"])
         self.assertEqual("package_or_application_inputs_changed_since_proof", plan["reason"])
 
+    def test_founder_cloudflare_release_trigger_is_canonical_and_narrow(self):
+        self.assertTrue(m.founder_cloudflare_release_required([
+            "Legend-Cloudflare/src/runtime/registry.mjs",
+        ]))
+        self.assertTrue(m.founder_cloudflare_release_required([
+            "Legend-Cloudflare/wrangler.founder-baseline.jsonc",
+        ]))
+        self.assertFalse(m.founder_cloudflare_release_required([
+            "Legend-Cloudflare/tests/runtime/qualification-mode.test.mjs",
+            "Legend-Cloudflare/scripts/founder-canary.mjs",
+            "AgentPortal/Program.cs",
+        ]))
+
     def test_release_baseline_delegates_application_identity_classification(self):
         baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
         self.assertIn("_validation_authority.release_control_only_path(path)", baseline)
