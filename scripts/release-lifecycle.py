@@ -291,23 +291,49 @@ def candidate_validation(api, pr):
     return 'Awaiting successful exact-head validation: ' + ', '.join(failed)
 
 
+def automatic_release_targets(api, pr):
+    files = api.pages(f"pulls/{pr['number']}/files")
+    names = [row.get('filename') for row in files if row.get('filename')]
+    return VALIDATION_AUTHORITY.release_targets_for_paths(names)
+
+
+def automatic_release_inputs(pr, merge_sha, targets):
+    return {
+        'automatic': 'true',
+        'source_pr': str(pr['number']),
+        'validated_sha': pr['head']['sha'],
+        'merge_sha': merge_sha,
+        'targets_json': json.dumps(list(targets), separators=(',', ':')),
+    }
+
+
 def merge_validated(api, pr):
     pending = candidate_validation(api, pr)
     if pending:
         return {'retained': pending}
-    # Merge permission is not deployment permission. Only an exact changed release
-    # request authorizes publication; maintenance commits never expand to all apps.
-    publish = direct_only_request(pr['head']['sha'])
+
+    targets = automatic_release_targets(api, pr)
     result = api.api(f"pulls/{pr['number']}/merge",
         {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
     if not result.get('merged'):
         raise RuntimeError('Merge did not complete; source branch retained')
-    if publish:
-        api.dispatch(DIRECT, {'automatic': 'false'})
+
+    # Validation success is the publication handoff. Application-affecting merges
+    # immediately enter the sole direct-release workflow with scope derived from
+    # the validated PR. No second authorization command or hand-maintained target
+    # table exists between merge and deployment.
+    if targets:
+        api.dispatch(DIRECT, automatic_release_inputs(pr, result['sha'], targets))
+
     if any(f['filename'] == '.github/workflows/deployment-diagnostics.yml' for f in api.pages(f"pulls/{pr['number']}/files")):
         api.dispatch('deployment-diagnostics.yml')
-    return {'mergedPr': pr['number'], 'sha': result['sha'], 'releaseDispatched': publish,
-            'automaticRelease': False}
+    return {
+        'mergedPr': pr['number'],
+        'sha': result['sha'],
+        'releaseDispatched': bool(targets),
+        'automaticRelease': bool(targets),
+        'targets': list(targets),
+    }
 
 
 def integrate(api, number):
@@ -545,8 +571,6 @@ def reconcile(api, trigger=None):
             return {'retained': 'Triggered direct release did not complete successfully; no automatic replay'}
 
     approved = api.ref(APPROVED)
-    if not direct_only_request(approved):
-        return {'release': 'no exact approved-only release authorization'}
 
     runs = api.pages('actions/runs?head_sha=' + approved, 'workflow_runs')
     direct_runs = [
@@ -566,6 +590,25 @@ def reconcile(api, trigger=None):
         if successful_release(api, latest):
             return {'release': 'exact approved direct release already successful'}
         return {'retained': 'Exact approved release already attempted; correction or explicit rerun required'}
+
+    merged_prs = [
+        pr for pr in api.pages('commits/' + approved + '/pulls')
+        if pr.get('merged_at')
+        and pr.get('merge_commit_sha') == approved
+        and pr.get('base', {}).get('ref') == APPROVED
+    ]
+    if len(merged_prs) == 1:
+        pr = merged_prs[0]
+        pending = candidate_validation(api, pr)
+        if pending:
+            return {'retained': pending}
+        targets = automatic_release_targets(api, pr)
+        if targets:
+            api.dispatch(DIRECT, automatic_release_inputs(pr, approved, targets))
+            return {'directRelease': 'recovered automatic validated-merge release', 'targets': list(targets)}
+
+    if not direct_only_request(approved):
+        return {'release': 'no application publication required for exact approved head'}
 
     pr = direct_release_approved_pr(api, approved)
     if pr is None:
