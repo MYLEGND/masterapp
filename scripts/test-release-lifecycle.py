@@ -364,6 +364,10 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual("c" * 40, result["applicationRevision"])
         self.assertEqual([target], result["targets"])
         self.assertEqual(42, result["sourcePr"])
+        history_args = git.call_args.args
+        self.assertEqual("log", history_args[0])
+        self.assertIn(m.VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH, history_args)
+        self.assertNotIn("-n", history_args)
 
     @patch.object(m, "pending_legacy_release_authorization")
     def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending):
@@ -502,6 +506,20 @@ class SingleBranchTopology(unittest.TestCase):
         self.assertIn("LEGEND approved release security validation", workflow)
         self.assertNotIn("Validate, merge, and deploy AgentPortal to production", workflow)
         self.assertNotIn("production gates", workflow.lower())
+
+
+    def test_lifecycle_refreshes_to_newly_merged_approved_code_before_recovery(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()
+        refresh = workflow.split(
+            "      - name: Refresh after automatically integrated corrections\n", 1
+        )[1].split("      - name:", 1)[0]
+        self.assertIn("github.event.repository.default_branch", refresh)
+        self.assertIn("module.TRUSTED_PR_BASE", refresh)
+        self.assertIn('git reset --hard "origin/$APPROVED_REF"', refresh)
+        self.assertLess(
+            workflow.index("Refresh after automatically integrated corrections"),
+            workflow.index("Recover authorized direct release when needed"),
+        )
 
 
 class StagingSafety(unittest.TestCase):

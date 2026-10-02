@@ -531,18 +531,37 @@ jobs:
             if key != "release-web-contracts":
                 self.assertFalse(gate["run"], key)
 
-    def test_validation_authority_change_fails_closed_to_full(self):
-        workflow = "masterapp-platform-architecture-validation.yml"
-        plan = m.compute_plan(
-            workflow,
+    def test_validation_authority_change_reruns_only_declared_consumers(self):
+        architecture = "masterapp-platform-architecture-validation.yml"
+        architecture_plan = m.compute_plan(
+            architecture,
             "b" * 40,
             self.prior(),
-            self.successful_steps(workflow),
+            self.successful_steps(architecture),
             ["scripts/validation-resume.py"],
             "prior_run",
         )
-        self.assertEqual("full", plan["mode"])
-        self.assertTrue(all(gate["run"] for gate in plan["gates"].values()))
+        self.assertEqual("incremental", architecture_plan["mode"])
+        self.assertTrue(architecture_plan["gates"]["lifecycle"]["run"])
+        for key, gate in architecture_plan["gates"].items():
+            if key != "lifecycle":
+                self.assertFalse(gate["run"], key)
+
+        step5 = "step5-isolated-conversion-mapping-validation.yml"
+        step5_plan = m.compute_plan(
+            step5,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(step5),
+            ["scripts/validation-resume.py"],
+            "prior_run",
+        )
+        self.assertEqual("incremental", step5_plan["mode"])
+        self.assertTrue(step5_plan["gates"]["comparison"]["run"])
+        self.assertFalse(step5_plan["gates"]["candidate-restore"]["run"])
+        self.assertFalse(step5_plan["gates"]["candidate-build"]["run"])
+        self.assertFalse(step5_plan["gates"]["candidate-focused"]["run"])
+        self.assertFalse(step5_plan["gates"]["candidate-full"]["run"])
 
     def test_unknown_change_fails_closed_to_full(self):
         workflow = "masterapp-platform-architecture-validation.yml"

@@ -111,7 +111,22 @@ jobs:
         run: python3 scripts/release-lifecycle.py pending-updates
       - name: Refresh after automatically integrated corrections
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request')
-        run: git fetch --no-tags --prune origin
+        env:
+          APPROVED_REF: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          test -n "$APPROVED_REF"
+          python3 - "$APPROVED_REF" <<'PYAPPROVED'
+          import importlib.util, pathlib, sys
+          path=pathlib.Path('scripts/validation-resume.py')
+          spec=importlib.util.spec_from_file_location('validation_authority',path)
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          if sys.argv[1] != module.TRUSTED_PR_BASE:
+              raise SystemExit('Repository default branch is not the canonical approved release authority')
+          PYAPPROVED
+          git fetch --no-tags --prune origin "+refs/heads/$APPROVED_REF:refs/remotes/origin/$APPROVED_REF"
+          git reset --hard "origin/$APPROVED_REF"
       - name: Recover authorized direct release when needed
         if: github.event_name != 'pull_request_target'
         env:
