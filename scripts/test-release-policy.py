@@ -105,26 +105,41 @@ class ReleaseScopeSelection(unittest.TestCase):
             self.baseline.exact_live_release([], "a" * 40, "approved-only", False)
         )
 
-    def test_package_identity_is_scope_and_contract_bound(self):
+    def test_package_identity_is_source_bound_not_release_scope_bound(self):
         targets = (
             ("portal", "portal.mylegnd.com", "AgentPortal/AgentPortal.csproj"),
         )
-        with patch.object(self.baseline, "release_package_contract_hash", return_value="c" * 64):
-            first = self.baseline.release_package_identity("a" * 40, targets, False, "")
-            second = self.baseline.release_package_identity(
+        first = self.baseline.release_package_identity("a" * 40, targets, False, "")
+        second = self.baseline.release_package_identity(
+            "a" * 40,
+            targets + (("client", "client.mylegnd.com", "ClientApp/ClientApp.csproj"),),
+            False,
+            "",
+        )
+        routing = self.baseline.release_package_identity(
+            "a" * 40,
+            targets,
+            True,
+            "camoexterior.com",
+        )
+        other_revision = self.baseline.release_package_identity("b" * 40, targets, False, "")
+        self.assertEqual(first, second)
+        self.assertEqual(first, routing)
+        self.assertNotEqual(first, other_revision)
+
+    def test_validated_application_revision_rejects_post_validation_product_changes(self):
+        with patch.object(self.baseline, "validate_revision", side_effect=lambda value: value), \
+             patch.object(self.baseline.subprocess, "run"), \
+             patch.object(self.baseline.subprocess, "check_output", return_value="Docs/releases/direct-release-request.json\n"):
+            self.assertEqual(
                 "a" * 40,
-                targets + (("client", "client.mylegnd.com", "ClientApp/ClientApp.csproj"),),
-                False,
-                "",
+                self.baseline.validated_application_revision("a" * 40, "b" * 40),
             )
-            routing = self.baseline.release_package_identity(
-                "a" * 40,
-                targets,
-                True,
-                "camoexterior.com",
-            )
-        self.assertNotEqual(first, second)
-        self.assertNotEqual(first, routing)
+        with patch.object(self.baseline, "validate_revision", side_effect=lambda value: value), \
+             patch.object(self.baseline.subprocess, "run"), \
+             patch.object(self.baseline.subprocess, "check_output", return_value="AgentPortal/Program.cs\n"):
+            with self.assertRaisesRegex(ValueError, "application changes after the validated PR head"):
+                self.baseline.validated_application_revision("a" * 40, "b" * 40)
 
     def test_different_live_target_revisions_cannot_share_application_identity(self):
         rows = [{"revision": "a" * 40}, {"revision": "b" * 40}]
@@ -504,11 +519,14 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         self.assertIn('Reuse exact successful validation package when available', workflow)
         self.assertIn('founder-diagnostics-packages-${PACKAGE_IDENTITY}', workflow)
+        self.assertIn('.github/workflows/masterapp-platform-architecture-validation.yml', workflow)
+        self.assertIn('[ "$head_sha" = "$APPLICATION_RELEASE_SHA" ]', workflow)
         self.assertIn('REUSE_VALIDATED_PACKAGE=true', workflow)
-        self.assertIn('sha256sum -c SHA256SUMS', workflow)
-        self.assertIn('overwrite: true', workflow)
-        self.assertIn('SourceRevisionId="$APPLICATION_RELEASE_SHA"', workflow)
+        self.assertIn('Release refuses to rebuild production bytes', workflow)
+        self.assertIn('scripts/release-package.py verify', workflow)
         self.assertIn('verify-release-coverage', workflow)
+        self.assertIn('Retain exact release step-state receipt', workflow)
+        self.assertIn('Preserve exact release step-state receipt', workflow)
         self.assertIn('Retain exact approved release receipt', workflow)
         self.assertIn('legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}', workflow)
         self.assertIn("'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA']", workflow)
@@ -516,6 +534,21 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('EXACT_LIVE', workflow)
         self.assertIn("'mode':'exact-live-noop'", workflow)
         self.assertIn('retention-days: 30', workflow)
+
+        def step(name):
+            return workflow.split('      - name: ' + name + '\n', 1)[1].split('      - name:', 1)[0]
+
+        self.assertNotIn('dotnet build', step('Build exact selected release candidate'))
+        self.assertNotIn('dotnet publish', step('Publish exact selected application packages'))
+        self.assertNotIn('npm ', step('Publish exact selected application packages'))
+
+    def test_architecture_validation_publishes_canonical_immutable_package(self):
+        workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        self.assertIn('validated-release-package:', workflow)
+        self.assertIn('scripts/release-package.py build', workflow)
+        self.assertIn('scripts/release-package.py verify', workflow)
+        self.assertIn('Preserve immutable validated release package', workflow)
+        self.assertIn('Run release web contract regressions', workflow)
 
     def test_approved_security_validation_preserves_static_release_safety_gates(self):
         workflow=(ROOT.parent / '.github/workflows/approved-release-security-validation.yml').read_text()
