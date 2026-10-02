@@ -31,7 +31,7 @@
 }
 }
 #rbShell .hp-proposal-menu-head,
-#proposalMenu .hp-proposal-menu-head{display:flex;align-items:center;justify-content:space-between;font-weight:800;margin-bottom:10px;color:#f4d890;}
+#proposalMenu .hp-proposal-menu-head{display:flex;align-items:center;justify-content:space-between;font-weight:800;margin-bottom:10px;color:var(--legend-app-accent-bright);}
 #rbShell .hp-proposal-menu-list,
 #proposalMenu .hp-proposal-menu-list{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow:visible;}
 #rbShell .hp-proposal-item,
@@ -41,7 +41,7 @@
 #rbShell .hp-proposal-name-wrap,
 #proposalMenu .hp-proposal-name-wrap{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;cursor:pointer;}
 #rbShell .hp-proposal-name,
-#proposalMenu .hp-proposal-name{font-weight:800;color:#f8fafc;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#proposalMenu .hp-proposal-name{font-weight:800;color:var(--legend-app-on-dark);max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #rbShell .hp-proposal-meta-line,
 #proposalMenu .hp-proposal-meta-line{font-size:12px;color:#b9c5d8;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #rbShell .hp-proposal-actions,
@@ -49,7 +49,7 @@
 #rbShell .hp-ellipsis-wrap,
 #proposalMenu .hp-ellipsis-wrap{position:relative;}
 #rbShell .hp-ellipsis-btn,
-#proposalMenu .hp-ellipsis-btn{background:rgba(255,255,255,.07);color:#f8fafc;border:1px solid rgba(166,128,35,.34);border-radius:8px;font-weight:800;}
+#proposalMenu .hp-ellipsis-btn{background:rgba(255,255,255,.07);color:var(--legend-app-on-dark);border:1px solid rgba(166,128,35,.34);border-radius:8px;font-weight:800;}
 #rbShell .hp-ellipsis-menu,
 #proposalMenu .hp-ellipsis-menu{position:absolute;top:110%;right:0;background:linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));border:1px solid rgba(166,128,35,.44);border-radius:10px;box-shadow:0 12px 26px rgba(0,0,0,.34);padding:6px;display:flex;flex-direction:column;gap:4px;min-width:140px;z-index:5000;}
 #rbShell .hp-proposal-empty,
@@ -57,36 +57,36 @@
 
 #proposalOverlay.hp-overlay{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:1.5rem 1rem;}
 #proposalOverlay.hp-overlay[hidden]{display:none !important;}
-#proposalDialog.hp-dialog{border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:#f8fafc;box-shadow:0 40px 100px rgba(0,0,0,.52);}
+#proposalDialog.hp-dialog{border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:var(--legend-app-on-dark);box-shadow:0 40px 100px rgba(0,0,0,.52);}
 
 #proposalDialog .hp-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding-bottom:.7rem;border-bottom:1px solid rgba(166,128,35,.22);margin-bottom:.8rem;}
 #proposalDialog .hp-dialog-brand{display:flex;align-items:center;gap:.9rem;}
 #proposalDialog .hp-dialog-icon{font-size:1.8rem;line-height:1;flex-shrink:0;}
-#proposalDialog .hp-dialog-title{font-weight:950;font-size:1.55rem;color:#f4d890;line-height:1.15;}
+#proposalDialog .hp-dialog-title{font-weight:950;font-size:1.55rem;color:var(--legend-app-accent-bright);line-height:1.15;}
 #proposalDialog .hp-dialog-sub{color:#b9c5d8;font-weight:600;margin-top:.25rem;}
-#proposalDialog .hp-dialog-close{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:2px solid rgba(221,180,87,.78);background:linear-gradient(180deg,rgba(15,26,50,.98),rgba(11,21,41,.98));color:#f8fafc;font-size:1.7rem;line-height:1;flex-shrink:0;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.35);}
+#proposalDialog .hp-dialog-close{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:2px solid rgba(221,180,87,.78);background:linear-gradient(180deg,rgba(15,26,50,.98),rgba(11,21,41,.98));color:var(--legend-app-on-dark);font-size:1.7rem;line-height:1;flex-shrink:0;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.35);}
 #proposalDialog .hp-dialog-close:hover{border-color:#f2cf7f;background:linear-gradient(180deg,rgba(20,35,66,.98),rgba(15,29,56,.98));}
 #proposalDialog .hp-form{display:flex;flex-direction:column;gap:.55rem;}
 #proposalDialog .hp-form-meta{display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-end;padding:.65rem .75rem;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(166,128,35,.2);}
 #proposalDialog .hp-form-actions{display:flex;gap:.6rem;flex-wrap:wrap;align-self:flex-end;}
 #proposalDialog .hp-field{display:flex;flex-direction:column;gap:.26rem;flex:1 1 220px;}
-#proposalDialog .hp-field span{font-size:.72rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#f4d890;}
-#proposalDialog .hp-field input,#proposalDialog .hp-field select{min-height:40px;border-radius:10px;border:1.5px solid rgba(166,128,35,.38);background:rgba(255,255,255,.07);color:#f8fafc;padding:0 .75rem;font-size:.9rem;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);} 
+#proposalDialog .hp-field span{font-size:.72rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--legend-app-accent-bright);}
+#proposalDialog .hp-field input,#proposalDialog .hp-field select{min-height:40px;border-radius:10px;border:1.5px solid rgba(166,128,35,.38);background:rgba(255,255,255,.07);color:var(--legend-app-on-dark);padding:0 .75rem;font-size:.9rem;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);} 
 #proposalDialog .hp-field input::placeholder{color:#64748b;}
 #proposalDialog .hp-field input:focus,#proposalDialog .hp-field select:focus{outline:none;border-color:#ddb457;box-shadow:0 0 0 3px rgba(221,180,87,.16);} 
-#proposalDialog .hp-field select option{background:#0f1d38;color:#f8fafc;}
+#proposalDialog .hp-field select option{background:#0f1d38;color:var(--legend-app-on-dark);}
 #proposalDialog .hp-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 1.1rem;border-radius:14px;font-weight:900;font-size:.9rem;letter-spacing:.01em;}
 #proposalDialog .hp-btn-gold{background:linear-gradient(180deg,#f4dc98,#ddb457);color:#0b1529;border:1.6px solid #ddb457;box-shadow:0 10px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.55);} 
-#proposalDialog .hp-btn-ghost{background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));color:#f8fafc;border:1.5px solid rgba(166,128,35,.44);box-shadow:0 8px 18px rgba(0,0,0,.16);} 
+#proposalDialog .hp-btn-ghost{background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));color:var(--legend-app-on-dark);border:1.5px solid rgba(166,128,35,.44);box-shadow:0 8px 18px rgba(0,0,0,.16);} 
 #proposalDialog .hp-buckets{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.65rem;}
 #proposalDialog .hp-bucket{border:1.5px solid rgba(166,128,35,.28);border-radius:16px;padding:.75rem;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));box-shadow:0 10px 24px rgba(0,0,0,.16);display:flex;flex-direction:column;gap:.3rem;}
 #proposalDialog .hp-bucket>.hp-field{flex:0 0 auto;}
-#proposalDialog .hp-bucket-head{font-weight:900;font-size:.9rem;color:#f4d890;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid rgba(166,128,35,.22);padding-bottom:.3rem;margin-bottom:.1rem;}
+#proposalDialog .hp-bucket-head{font-weight:900;font-size:.9rem;color:var(--legend-app-accent-bright);letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid rgba(166,128,35,.22);padding-bottom:.3rem;margin-bottom:.1rem;}
 #proposalDialog .hp-row{display:grid;grid-template-columns:3fr 2fr;gap:.4rem;align-items:end;}
 #proposalDialog .hp-row>.hp-field{min-width:0;flex:unset;}
 #proposalDialog .hp-currency-wrap{display:flex;align-items:center;gap:.4rem;min-height:40px;padding:0 .65rem;border-radius:12px;border:1.5px solid rgba(166,128,35,.5);background:linear-gradient(180deg,rgba(212,180,90,.22),rgba(166,128,35,.18));box-shadow:inset 0 2px 4px rgba(255,255,255,.08),inset 0 -2px 4px rgba(0,0,0,.18),0 8px 16px rgba(0,0,0,.14);width:100%;min-width:0;box-sizing:border-box;overflow:hidden;}
-#proposalDialog .hp-currency-sym,#proposalDialog .hp-currency-sfx{font-weight:900;color:#f4d890;flex-shrink:0;}
-#proposalDialog .hp-currency-input{flex:1 1 auto;background:transparent !important;border:none !important;box-shadow:none !important;color:#f8fafc !important;font-weight:700;font-size:.9rem;min-width:0;padding:0;}
+#proposalDialog .hp-currency-sym,#proposalDialog .hp-currency-sfx{font-weight:900;color:var(--legend-app-accent-bright);flex-shrink:0;}
+#proposalDialog .hp-currency-input{flex:1 1 auto;background:transparent !important;border:none !important;box-shadow:none !important;color:var(--legend-app-on-dark) !important;font-weight:700;font-size:.9rem;min-width:0;padding:0;}
 #proposalDialog .hp-currency-input:focus{outline:none;}
 
 @media (max-width: 900px){
@@ -104,7 +104,7 @@
     justify-content: space-between !important;
     font-weight: 900 !important;
     font-size: 1rem !important;
-    color: #f4d890 !important;
+    color: var(--legend-app-accent-bright) !important;
     letter-spacing: .02em !important;
     margin-bottom: 14px !important;
     padding-bottom: 12px !important;
@@ -127,7 +127,7 @@
 #uwMenu .hp-menu-head-actions .btn-mini {
     min-width: 74px !important;
     background: linear-gradient(155deg, #0f2246 0%, #0b1731 100%) !important;
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
     border: 1.25px solid rgba(146,182,255,.34) !important;
     box-shadow: 0 8px 18px rgba(0,0,0,.22) !important;
 }
@@ -259,7 +259,7 @@
     font-weight: 900;
     letter-spacing: .08em;
     text-transform: uppercase;
-    color: #f4d890;
+    color: var(--legend-app-accent-bright);
 }
 
 .hp-builder-context-value,
@@ -336,7 +336,7 @@
     font-weight: 900;
     letter-spacing: .12em;
     text-transform: uppercase;
-    color: #f4d890;
+    color: var(--legend-app-accent-bright);
 }
 
 .ws-client-picker-title {
@@ -362,7 +362,7 @@
     border-radius: 14px;
     border: 1px solid rgba(244,216,144,.42);
     background: rgba(255,255,255,.05);
-    color: #f4d890;
+    color: var(--legend-app-accent-bright);
     font-size: 1.65rem;
     line-height: 1;
     font-weight: 700;
@@ -527,7 +527,7 @@
 #rbShell .ellipsis-btn,
 #uwMenu .ellipsis-btn {
     background: rgba(255,255,255,.07) !important;
-    color: #f4d890 !important;
+    color: var(--legend-app-accent-bright) !important;
     border: 1px solid rgba(199,153,49,.40) !important;
     border-radius: 8px !important;
     font-weight: 800 !important;
@@ -583,7 +583,7 @@
 #rbShell .hero-actions .hp-proposal-trigger:hover,
 #rbShell .hero-actions .hero-underwrite:hover,
 #rbShell .hero-actions .btn.gold:hover {
-    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    background: linear-gradient(155deg, #152848 0%, var(--legend-app-surface-elevated) 100%) !important;
     border-color: rgba(199,153,49,.95) !important;
     color: #ffffff !important;
     transform: translateY(-1px) !important;
@@ -636,7 +636,7 @@
 #rbShell .rb-link-bar .btn:hover,
 #rbShell .rb-link-bar .btn.gold:hover,
 #rbShell .rb-link-bar .rb-link:hover {
-    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    background: linear-gradient(155deg, #152848 0%, var(--legend-app-surface-elevated) 100%) !important;
     border-color: rgba(199,153,49,.95) !important;
     color: #ffffff !important;
     transform: translateY(-1px) !important;
@@ -667,7 +667,7 @@
 
 /* Title & subtitle */
 #uwDialog .uw-name {
-    color: #f4d890 !important;
+    color: var(--legend-app-accent-bright) !important;
     font-weight: 950 !important;
     font-size: 1.45rem !important;
     letter-spacing: .02em !important;
@@ -697,7 +697,7 @@
     margin-top: 8px !important;
 }
 #uwDialog .uw-section-title {
-    color: #f4d890 !important;
+    color: var(--legend-app-accent-bright) !important;
     font-weight: 900 !important;
     font-size: .78rem !important;
     letter-spacing: .06em !important;
@@ -712,7 +712,7 @@
     background: rgba(255,255,255,.05) !important;
     border: 1.5px solid rgba(166,128,35,.30) !important;
     border-radius: 10px !important;
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
 }
 #uwDialog .uw-field label,
@@ -721,7 +721,7 @@
     font-weight: 900 !important;
     letter-spacing: .06em !important;
     text-transform: uppercase !important;
-    color: #f4d890 !important;
+    color: var(--legend-app-accent-bright) !important;
 }
 
 /* Inputs, selects, textareas */
@@ -731,8 +731,8 @@
     background: rgba(255,255,255,.07) !important;
     border: 1.5px solid rgba(166,128,35,.34) !important;
     border-radius: 8px !important;
-    color: #f8fafc !important;
-    caret-color: #f4d890 !important;
+    color: var(--legend-app-on-dark) !important;
+    caret-color: var(--legend-app-accent-bright) !important;
 }
 #uwDialog .uw-field input::placeholder,
 #uwDialog .uw-field textarea::placeholder {
@@ -740,7 +740,7 @@
 }
 #uwDialog .uw-field select option {
     background: #0f1d38 !important;
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
 }
 #uwDialog .uw-field input:focus,
 #uwDialog .uw-field select:focus,
@@ -787,7 +787,7 @@
 }
 #uwDialog .uw-actions .btn:hover,
 #uwDialog .proposal-actions-inline .btn:hover {
-    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    background: linear-gradient(155deg, #152848 0%, var(--legend-app-surface-elevated) 100%) !important;
     border-color: rgba(199,153,49,.95) !important;
     transform: translateY(-1px) !important;
 }
