@@ -1262,6 +1262,137 @@ def cmd_preserved(args):
 
 
 
+MERGE_VALIDATION_NEUTRAL_PATHS = frozenset({
+    ".github/workflows/masterapp-platform-architecture-validation.yml",
+    ".github/workflows/approved-release-security-validation.yml",
+    ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+    ".github/workflows/all-intentional-direct-release-20260918.yml",
+    "Docs/releases/direct-release-request.json",
+    "scripts/approved-release-baseline.py",
+    "scripts/release-package.py",
+    "scripts/validation-resume.py",
+    "scripts/release-lifecycle.py",
+    "scripts/test-release-policy.py",
+    "scripts/test-release-lifecycle.py",
+    "scripts/test-deploy-approved-app.py",
+    "tests/website/legend-public-cms.test.mjs",
+    "AgentPortal.Tests/WebsiteStudioV3ContractTests.cs",
+})
+
+RELEASE_EVIDENCE_PATHS = frozenset({
+    ".github/workflows/all-intentional-direct-release-20260918.yml",
+    ".github/workflows/masterapp-platform-architecture-validation.yml",
+    "scripts/approved-release-baseline.py",
+    "scripts/release-package.py",
+    "scripts/deploy-approved-app.py",
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
+    "scripts/test-release-policy.py",
+    "scripts/test-release-lifecycle.py",
+    "scripts/test-deploy-approved-app.py",
+})
+
+PUBLIC_WEBSITE_EXACT_PATHS = frozenset({
+    "AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs",
+    "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
+    "Legend-Design/legend-web-foundation.css",
+    "Legend-Website/scripts/build.mjs",
+    "Legend-Website/public/web.config",
+    "Protect-Website/Views/Shared/_Layout.cshtml",
+    "SHARED/WebsitePlatform/legend-public-cms.js",
+    "SHARED/WebsitePlatform/legend-public-web.css",
+    "Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs",
+    "Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs",
+    "Infrastructure/WebsiteEditing/WebsitePlatformController.cs",
+    "Infrastructure/WebsiteEditing/WebsiteSiteSource.cs",
+    "Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs",
+    "Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs",
+})
+
+
+def validation_neutral_path(path: str) -> bool:
+    return path in MERGE_VALIDATION_NEUTRAL_PATHS or path.startswith("tests/")
+
+
+def _workflow_affected_by_path(workflow_name: str, path: str) -> bool:
+    config = WORKFLOWS[workflow_name]
+    if matches(path, config.get("force_all", ())):
+        return True
+    return any(gate_matches(path, gate) for gate in config["gates"].values())
+
+
+def required_validation_topology(changed_paths):
+    """Return the exact validation workflows required before integration.
+
+    This is the single merge-readiness topology. Release lifecycle consumes the
+    answer; it does not maintain subsystem path registries of its own.
+    """
+    names = tuple(dict.fromkeys(changed_paths))
+    architecture = ".github/workflows/masterapp-platform-architecture-validation.yml"
+    step5 = ".github/workflows/step5-isolated-conversion-mapping-validation.yml"
+    step6 = ".github/workflows/step6-openai-ads-execution-validation.yml"
+    step78 = ".github/workflows/steps7-8-governed-advertising-validation.yml"
+    security = ".github/workflows/approved-release-security-validation.yml"
+
+    required = {architecture}
+    release_evidence_change = any(name in RELEASE_EVIDENCE_PATHS for name in names)
+
+    scope_neutral = MERGE_VALIDATION_NEUTRAL_PATHS | {
+        "scripts/deploy-approved-app.py",
+        "scripts/release-package.py",
+    }
+    product_names = [
+        name for name in names
+        if name not in scope_neutral and not name.startswith("tests/")
+    ]
+    public_website_only = bool(product_names) and all(
+        name in PUBLIC_WEBSITE_EXACT_PATHS for name in product_names
+    )
+
+    if step5 in names or release_evidence_change:
+        required.add(step5)
+
+    step6_name = "step6-openai-ads-execution-validation.yml"
+    if step6 in names or any(_workflow_affected_by_path(step6_name, name) for name in names):
+        required.add(step6)
+
+    step78_name = "steps7-8-governed-advertising-validation.yml"
+    if (
+        not public_website_only
+        and (
+            step78 in names
+            or any(_workflow_affected_by_path(step78_name, name) for name in names)
+        )
+    ):
+        required.add(step78)
+
+    broad_product_change = any(
+        name.startswith((
+            "AgentPortal/",
+            "ClientApp/",
+            "Protect-Website/",
+            "ParfaitApp/",
+            "SHARED/",
+            "Infrastructure/",
+            "Domain/",
+        ))
+        or name == step5
+        for name in product_names
+    )
+    if broad_product_change and not public_website_only:
+        required.add(step5)
+        required.add(security)
+    if security in names or release_evidence_change:
+        required.add(security)
+
+    return {
+        "required": tuple(sorted(required)),
+        "publicWebsiteOnly": public_website_only,
+        "releaseEvidenceChange": release_evidence_change,
+        "broadProductChange": broad_product_change,
+    }
+
+
 def _selected_release_targets(raw: str):
     names = json.loads(raw)
     by_name = {row["releaseName"]: key for key, row in RELEASE_TARGETS.items()}
