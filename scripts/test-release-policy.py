@@ -527,6 +527,33 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
             self.assertIsNone(self.lifecycle.direct_release_approved_pr(Api(), head))
 
 
+class FounderCloudflareCommandExecution(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location(
+            'founder_cloudflare_deploy',
+            ROOT / 'deploy-founder-cloudflare.py',
+        )
+        self.deploy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.deploy)
+
+    @patch('subprocess.run')
+    def test_non_capture_command_still_executes(self, run):
+        run.return_value = SimpleNamespace(stdout=None)
+        result = self.deploy.run('wrangler', 'deploy', capture=False)
+        self.assertIsNone(result)
+        run.assert_called_once()
+        self.assertEqual(['wrangler', 'deploy'], run.call_args.args[0])
+        self.assertTrue(run.call_args.kwargs['check'])
+
+    @patch('subprocess.run')
+    def test_capture_command_executes_and_returns_stdout(self, run):
+        run.return_value = SimpleNamespace(stdout='ok')
+        result = self.deploy.run('wrangler', 'deploy', capture=True)
+        self.assertEqual('ok', result)
+        run.assert_called_once()
+        self.assertEqual(subprocess.PIPE, run.call_args.kwargs['stdout'])
+
+
 class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_exact_live_targets_are_preserved_by_one_transactional_authority(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
