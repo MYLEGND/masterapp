@@ -118,24 +118,32 @@ internal sealed partial class LegendFounderToolAuthority
     }
 
     private static bool IsCloudExposedTool(string name, bool mutationsEnabled, bool repositoryEnabled) =>
-        name == CloudRepairTool ? mutationsEnabled : name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name);
+        name == CloudRepairTool ? mutationsEnabled
+        : name == "legend_inspect_repository" ? repositoryEnabled
+        : IsCloudReadableTool(name);
 
-    private static bool IsCloudReadableTool(string name) => name is
-        "legend_calculate" or "legend_capabilities" or
-        "legend_system_inventory" or "legend_system_health" or "legend_configuration_presence" or
-        "legend_software_remediation_status" or "legend_engineering_status" or
-        "legend_system_overview" or "legend_provider_capacity" or "legend_client_lead_portfolio" or
-        "legend_inspect_repair_validation" or "legend_verify_repair_deployment" or
-        // Source inspection reuses the same GPT/Codex authority and keeps its
-        // regular-file, immutable-revision, sensitive-path and credential
-        // material checks before returning text. Private retained knowledge,
-        // unrestricted diagnostic drilldowns and raw CRM/user content remain
-        // excluded from Cloudflare disclosure.
-        "legend_inspect_repository";
+    // Cloudflare consumes the same canonical read projection exposed by the
+    // Founder GPT/site-tool path. This is intentionally a deny-classification,
+    // not a second hand-maintained allowlist: adding a new privacy-safe read to
+    // the one executable registry must not require a second Cloudflare string.
+    // The excluded reads are those whose existing payloads can contain private
+    // retained text, unrestricted record-level drilldowns, external-provider
+    // actions, or release/control requests rather than bounded MasterApp reads.
+    private static bool IsCloudReadableTool(string name) =>
+        IsSiteReadableTool(name) &&
+        name is not (
+            "legend_metric_detail" or
+            "legend_search_retained_knowledge" or
+            "legend_operational_diagnostics" or
+            "legend_research_internet" or
+            "legend_request_teacher_escalation" or
+            "legend_request_repair_release");
 
     private static bool IsSiteReadableTool(string name) =>
         IsReadOnlyFounderTool(name) && name is
+            "legend_calculate" or
             "legend_capabilities" or
+            "legend_read_masterapp" or
             "legend_system_inventory" or
             "legend_system_health" or
             "legend_configuration_presence" or
@@ -200,6 +208,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_search_retained_knowledge" or
             "legend_metric_detail" or
             "legend_client_lead_portfolio" or
+            "legend_read_masterapp" or
             "legend_language_state";
 
     private static bool IsReadOnlyFounderTool(
@@ -229,6 +238,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_research_internet" or
             "legend_metric_detail" or
             "legend_client_lead_portfolio" or
+            "legend_read_masterapp" or
             "legend_language_state";
 
     /// <summary>
@@ -495,6 +505,52 @@ internal sealed partial class LegendFounderToolAuthority
                 return SerializeUnbounded(DescribeFounderCapabilitiesCore(cloudExposureOnly,
                     cloudExposureOnly && CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled"),
                     cloudExposureOnly && CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled")));
+            }
+
+            case "legend_read_masterapp":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"masterapp_read_authority_unavailable"}""";
+                if (string.IsNullOrWhiteSpace(call.Arguments) || call.Arguments.Length > MaximumNativeReadArgumentsCharacters)
+                    return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                try
+                {
+                    using var arguments = JsonDocument.Parse(call.Arguments);
+                    var root = arguments.RootElement;
+                    if (!TryResolveFounderFunctionParameters(call.Name, out var schema) ||
+                        !IsStrictSchemaInstance(schema, root))
+                        return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+
+                    var operation = root.GetProperty("operation").GetString();
+                    var surface = root.GetProperty("surface").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("surface").GetString();
+                    var preset = root.GetProperty("preset").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("preset").GetString();
+                    var timeZoneId = root.GetProperty("timezone_id").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("timezone_id").GetString();
+                    int? timeZoneOffsetMinutes = root.GetProperty("timezone_offset_minutes").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("timezone_offset_minutes").GetInt32();
+
+                    await using var readScope = _authorizationScopes.CreateAsyncScope();
+                    var authority = readScope.ServiceProvider.GetRequiredService<LegendMasterAppReadAuthority>();
+                    if (operation == "catalog")
+                    {
+                        if (surface is not null || preset is not null || timeZoneId is not null || timeZoneOffsetMinutes is not null)
+                            return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                        return SerializeUnbounded(authority.Catalog());
+                    }
+                    if (operation != "read" || string.IsNullOrWhiteSpace(surface))
+                        return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                    return SerializeUnbounded(await authority.ReadAsync(
+                        founder,
+                        surface,
+                        new LegendMasterAppReadRequest(preset, timeZoneId, timeZoneOffsetMinutes),
+                        cancellationToken));
+                }
+                catch (JsonException)
+                {
+                    return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                }
             }
 
             case "legend_remember_conversation_facts":
@@ -2276,6 +2332,42 @@ internal sealed partial class LegendFounderToolAuthority
                     type = "object",
                     properties = new { },
                     required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_read_masterapp",
+                description =
+                    "Discover or read privacy-safe canonical MasterApp page/data projections across applications. Use operation=catalog first when the relevant surface is unknown. Read projections are owned by the same page/service authorities used by the product and GPT/site-tool path; this tool does not scrape HTML, run SQL, expose credentials, or create a provider-specific data registry.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        operation = new { type = "string", @enum = new[] { "catalog", "read" } },
+                        surface = new { type = new[] { "string", "null" }, minLength = 1, maxLength = 120 },
+                        preset = new
+                        {
+                            type = new[] { "string", "null" },
+                            @enum = new string?[] { "today", "7d", "30d", "month", "year", null }
+                        },
+                        timezone_id = new
+                        {
+                            type = new[] { "string", "null" },
+                            minLength = 1,
+                            maxLength = 128
+                        },
+                        timezone_offset_minutes = new
+                        {
+                            type = new[] { "integer", "null" },
+                            minimum = -840,
+                            maximum = 840
+                        }
+                    },
+                    required = new[] { "operation", "surface", "preset", "timezone_id", "timezone_offset_minutes" },
                     additionalProperties = false
                 },
                 strict = true
