@@ -12,14 +12,20 @@ import subprocess
 import urllib.request
 from release_policy import read_request
 
-# Existing deployment topology, not application-discovery or diagnostics policy.
-TARGETS = (
-    ('portal', 'portal.mylegnd.com', 'AgentPortal/AgentPortal.csproj'),
-    ('client', 'client.mylegnd.com', 'ClientApp/ClientApp.csproj'),
-    ('protect', 'masterapp-protect.azurewebsites.net', 'Protect-Website/ProtectWebsite.csproj'),
-    ('parfait', 'masterapp-parfait.azurewebsites.net', 'ParfaitApp/ParfaitApp.csproj'),
-    ('website', 'masterapp-website.azurewebsites.net', 'static'),
-)
+def _validation_resume_module():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_validation_authority = _validation_resume_module()
+
+# The validation/release authority owns deployment topology and supported scope.
+# Baseline discovery consumes it; it never maintains a second inventory.
+TARGETS = _validation_authority.release_target_rows()
+ALLOWED_RELEASE_TARGET_SETS = _validation_authority.ALLOWED_RELEASE_TARGET_SETS
 
 
 def selected_targets(request):
@@ -35,7 +41,7 @@ def selected_targets(request):
         raise ValueError('Release targets must be unique names from the existing deployment inventory')
     # Static-only releases have no database or .NET app changes. Other scoped
     # releases retain Portal as the shared migration baseline.
-    if set(names) not in ({'masterapp-website'}, {'masterapp-protect'}, {'masterapp-client'}, {'masterapp-client', 'masterapp-protect'}, {'masterapp-protect', 'masterapp-website'}, {'masterapp-parfait'}, {'masterapp-protect', 'masterapp-parfait'}, {'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}, {'masterapp-portal'}, {'masterapp-portal', 'masterapp-protect'}, {'masterapp-portal', 'masterapp-client'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect'}, {'masterapp-portal', 'masterapp-client', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-protect', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}):
+    if frozenset(names) not in ALLOWED_RELEASE_TARGET_SETS:
         raise ValueError('Unsupported scoped release; migration and packaging policy must be reviewed')
     return tuple(row for row in TARGETS if 'masterapp-' + row[0] in names)
 
