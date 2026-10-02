@@ -176,6 +176,6 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Assert.Null(result.ResearchOutcome);
         Assert.InRange(handler.RequestCount, 1, 3);
         operations.Verify(item => item.ExecuteResearchAsync(It.IsAny<LegendConnectResearchRequest>(),
-            It.IsAny<CancellationToken>(), It.IsAny<LegendConnectExternalProviderPolicy?>()), Times.Once);
+            It.IsAny<CancellationToken>(), It.IsAny<LegendConnectExternalProviderPolicy?>()), Times.Never);
     }
 }

@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -604,6 +605,7 @@ WORKFLOWS = {
             "scripts/test-release-lifecycle.py",
             "scripts/test-release-policy.py",
             "scripts/test-deploy-approved-app.py",
+            "Legend-Cloudflare/tests/**",
         ),
         "gates": {
             "candidate-restore": {
@@ -2207,6 +2209,70 @@ def _git_name_status(prior: str, current: str):
     return rows
 
 
+def _step5_prior_candidate_evidence(
+    repository: str,
+    current_run_id: int,
+    head_branch: str,
+    token: str,
+):
+    """Find the newest durable full-candidate TRX for this retained PR branch."""
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+    workflow = urllib.parse.quote(workflow_name, safe="")
+    branch = urllib.parse.quote(head_branch, safe="")
+    payload = api_get(
+        repository,
+        f"actions/workflows/{workflow}/runs?branch={branch}&event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = sorted(
+        payload.get("workflow_runs", []),
+        key=lambda row: (row.get("updated_at") or row.get("created_at", ""), int(row.get("id", 0))),
+        reverse=True,
+    )
+    for run in runs:
+        run_id = int(run.get("id") or 0)
+        head_sha = run.get("head_sha") or ""
+        if (
+            not run_id
+            or run_id == current_run_id
+            or len(head_sha) != 40
+            or run.get("path") != workflow_path
+            or run.get("head_branch") != head_branch
+            or run.get("event") != "pull_request"
+            or run.get("status") != "completed"
+            or (run.get("head_repository") or {}).get("full_name") != repository
+        ):
+            continue
+        artifact = f"step5-candidate-{head_sha}"
+        try:
+            names = _run_artifact_names(repository, run_id, token)
+        except Exception:
+            continue
+        if artifact in names:
+            return {
+                "runId": run_id,
+                "headSha": head_sha,
+                "artifact": artifact,
+            }
+    return None
+
+
+def _step5_class_source_files(class_name: str):
+    """Resolve all source files declaring a test class, including partial classes."""
+    short_name = class_name.rsplit(".", 1)[-1]
+    declaration = re.compile(rf"\bclass\s+{re.escape(short_name)}\b")
+    matches = set()
+    for path in Path("AgentPortal.Tests").glob("*.cs"):
+        try:
+            source = path.read_text()
+        except (OSError, UnicodeError):
+            continue
+        if declaration.search(source):
+            matches.add(path.as_posix())
+    return matches
+
+
 def compute_step5_decision(
     repository: str,
     current_sha: str,
@@ -2216,16 +2282,20 @@ def compute_step5_decision(
 ):
     """Choose only Step 5's cross-run comparison mode.
 
-    Gate-level invalidation remains owned by compute_plan. This function only
-    handles the one semantic optimization that cannot be expressed as a normal
-    source gate: reuse of durable candidate/baseline TRX evidence, including
-    replacing only a previously introduced failing test class.
+    Candidate full-suite evidence and approved-baseline evidence are independent
+    canonical artifacts. A final-comparison repair therefore never requires both
+    artifacts to have originated from the same historical run. When the prior
+    comparison identified bounded failing classes, only source files declaring
+    those classes may be repaired; the full candidate TRX and content-identical
+    baseline TRX remain preserved.
     """
     decision = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "mode": "full",
         "priorRunId": None,
         "priorHeadSha": None,
+        "baselineEvidenceRunId": None,
+        "baselineEvidenceArtifact": None,
         "repairClasses": [],
         "repairFilter": None,
     }
@@ -2236,36 +2306,34 @@ def compute_step5_decision(
 
     workflow_name = "step5-isolated-conversion-mapping-validation.yml"
     workflow_path = WORKFLOW_PATHS[workflow_name]
-    baseline_name = f"step5-baseline-{base_sha}"
-    prior_run_id = None
-    prior_head_sha = None
-    candidate_name = None
 
-    for artifact in _artifact_rows(repository, baseline_name, token):
-        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
-        if not run_id or run_id == current_run_id:
-            continue
-        run = api_get(repository, f"actions/runs/{run_id}", token)
-        candidate_head = run.get("head_sha") or ""
-        if not (
-            len(candidate_head) == 40
-            and run.get("path") == workflow_path
-            and run.get("head_branch") == head_branch
-            and run.get("event") == "pull_request"
-            and run.get("status") == "completed"
-        ):
-            continue
-        candidate_artifact = f"step5-candidate-{candidate_head}"
-        names = _run_artifact_names(repository, run_id, token)
-        if candidate_artifact in names and baseline_name in names:
-            prior_run_id = run_id
-            prior_head_sha = candidate_head
-            candidate_name = candidate_artifact
-            break
-
-    if not prior_run_id:
-        decision["reason"] = "no_reusable_candidate_baseline_pair"
+    candidate_evidence = _step5_prior_candidate_evidence(
+        repository,
+        current_run_id,
+        head_branch,
+        token,
+    )
+    if not candidate_evidence:
+        decision["reason"] = "no_reusable_candidate_evidence"
         return decision
+
+    baseline_evidence = compute_step5_baseline_evidence(repository, base_sha)
+    if not baseline_evidence.get("reusable"):
+        decision["reason"] = "no_reusable_baseline_evidence"
+        return decision
+
+    prior_run_id = int(candidate_evidence["runId"])
+    prior_head_sha = candidate_evidence["headSha"]
+    candidate_name = candidate_evidence["artifact"]
+    baseline_run_id = int(baseline_evidence["evidenceRunId"])
+    baseline_name = baseline_evidence["evidenceArtifact"]
+
+    decision.update({
+        "priorRunId": prior_run_id,
+        "priorHeadSha": prior_head_sha,
+        "baselineEvidenceRunId": baseline_run_id,
+        "baselineEvidenceArtifact": baseline_name,
+    })
 
     changed = git_changed(prior_head_sha, current_sha)
     jobs_unchanged = _step5_jobs_unchanged(prior_head_sha, workflow_path)
@@ -2273,36 +2341,31 @@ def compute_step5_decision(
     if changed == [workflow_path] and jobs_unchanged:
         decision.update({
             "mode": "reuse",
-            "priorRunId": prior_run_id,
-            "priorHeadSha": prior_head_sha,
             "reason": "comparison_only_workflow_change",
         })
         return decision
 
-    allowed_planner_only = {workflow_path, "scripts/test-release-policy.py"}
-    if (
-        workflow_path in changed
-        and set(changed) <= allowed_planner_only
-        and jobs_unchanged
-    ):
+    allowed_planner_only = {
+        workflow_path,
+        "scripts/validation-resume.py",
+        "scripts/test-validation-resume.py",
+        "scripts/test-release-policy.py",
+    }
+    if changed and set(changed) <= allowed_planner_only and jobs_unchanged:
         decision.update({
             "mode": "reuse",
-            "priorRunId": prior_run_id,
-            "priorHeadSha": prior_head_sha,
             "reason": "comparison_only_policy_change",
         })
         return decision
 
     security = ".github/workflows/approved-release-security-validation.yml"
-    if security in changed and set(changed) <= {workflow_path, security} and jobs_unchanged:
+    if security in changed and set(changed) <= allowed_planner_only | {security} and jobs_unchanged:
         classes = [
             "AgentPortal.Tests.ClientAppDeploymentWorkflowTests",
             "AgentPortal.Tests.LegendFounderAiContractTests",
         ]
         decision.update({
             "mode": "repair",
-            "priorRunId": prior_run_id,
-            "priorHeadSha": prior_head_sha,
             "repairClasses": classes,
             "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes),
             "reason": "security_contract_consumers_only",
@@ -2319,14 +2382,28 @@ def compute_step5_decision(
         candidate_dir = root / "candidate"
         baseline_dir = root / "baseline"
         try:
-            _download_run_artifact(repository, prior_run_id, candidate_name, candidate_dir)
-            _download_run_artifact(repository, prior_run_id, baseline_name, baseline_dir)
+            _download_run_artifact(
+                repository,
+                prior_run_id,
+                candidate_name,
+                candidate_dir,
+            )
+            _download_run_artifact(
+                repository,
+                baseline_run_id,
+                baseline_name,
+                baseline_dir,
+            )
         except Exception:
             decision["reason"] = "prior_artifact_download_failed"
             return decision
 
         candidate_path = candidate_dir / "candidate.trx"
         baseline_path = baseline_dir / "baseline.trx"
+        if not baseline_path.exists():
+            legacy = baseline_dir / "candidate.trx"
+            if legacy.exists():
+                baseline_path = legacy
         if not candidate_path.exists() or not baseline_path.exists():
             decision["reason"] = "prior_artifact_pair_incomplete"
             return decision
@@ -2337,12 +2414,11 @@ def compute_step5_decision(
             decision["reason"] = "no_bounded_introduced_failure"
             return decision
 
-    expected = {
-        f"AgentPortal.Tests/{class_name.rsplit('.', 1)[-1]}.cs"
+    class_sources = {
+        class_name: _step5_class_source_files(class_name)
         for class_name in classes
-        if class_name.startswith("AgentPortal.Tests.")
     }
-    if len(expected) != len(classes) or not expected:
+    if any(not paths for paths in class_sources.values()):
         decision["reason"] = "unbounded_failure_authority"
         return decision
 
@@ -2350,22 +2426,27 @@ def compute_step5_decision(
     if not rows:
         decision["reason"] = "no_exact_repair_diff"
         return decision
-    allowed = expected | {workflow_path}
+
     changed_files = {path for _, path in rows}
-    changed_tests = {path for status, path in rows if path in expected and status == "M"}
+    changed_tests = {
+        path for status, path in rows
+        if path.startswith("AgentPortal.Tests/") and path.endswith(".cs")
+    }
+    allowed_test_files = set().union(*class_sources.values())
+    allowed = allowed_test_files | allowed_planner_only
     if (
         not changed_files <= allowed
-        or changed_tests != expected
-        or any(status != "M" for status, path in rows if path in expected)
-        or any(status not in {"M", "A"} for status, path in rows if path == workflow_path)
+        or not changed_tests
+        or not changed_tests <= allowed_test_files
+        or any(status != "M" for status, path in rows if path in changed_tests)
+        or any(not (changed_tests & source_files) for source_files in class_sources.values())
+        or any(status not in {"M", "A"} for status, path in rows if path in allowed_planner_only)
     ):
         decision["reason"] = "repair_diff_not_exact"
         return decision
 
     decision.update({
         "mode": "repair",
-        "priorRunId": prior_run_id,
-        "priorHeadSha": prior_head_sha,
         "repairClasses": classes,
         "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes),
         "reason": "replace_only_previously_failing_classes",
