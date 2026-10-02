@@ -8,6 +8,7 @@ verified immutable ZIP. The approved release workflow remains the only authority
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,13 +18,31 @@ import time
 import urllib.request
 import zipfile
 
-TARGETS = {
-    'portal': ('masterapp-portal', 'agentportal.zip', 'https://portal.mylegnd.com/api/runtime-provenance'),
-    'client': ('masterapp-client', 'clientapp.zip', 'https://client.mylegnd.com/api/runtime-provenance'),
-    'protect': ('masterapp-protect', 'protect.zip', 'https://masterapp-protect.azurewebsites.net/api/runtime-provenance'),
-    'parfait': ('masterapp-parfait', 'parfait.zip', 'https://masterapp-parfait.azurewebsites.net/api/runtime-provenance'),
-    'website': ('masterapp-website', 'website.zip', 'https://masterapp-website.azurewebsites.net/_deployment-provenance.txt'),
-}
+def _release_authority_module():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_RELEASE_AUTHORITY = _release_authority_module()
+TARGETS = _RELEASE_AUTHORITY.RELEASE_TARGETS
+
+
+def target_url(target):
+    return "https://" + target["host"] + target["provenancePath"]
+
+
+def target_azure(key, package, revision):
+    target = TARGETS[key]
+    return Azure(
+        target["releaseName"],
+        package,
+        target_url(target),
+        revision,
+        target["static"],
+    )
 
 
 def verify_package(package, revision, static=False):
@@ -181,17 +200,138 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
     raise RuntimeError('Deployment remains unverified at the deadline. Azure was not cancelled or restarted; inspect status before resuming.')
 
 
+def _rollback_package(root: Path, key: str):
+    matches = sorted(root.glob(f"diagnostics-rollback-{key}-*/package.zip"))
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Expected exactly one preserved rollback package for {key}; found {len(matches)}"
+        )
+    return matches[0]
+
+
+def _baseline_map(raw: str):
+    rows = json.loads(raw)
+    if not isinstance(rows, list):
+        raise ValueError("Release baselines must be a list")
+    result = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("Malformed release baseline")
+        key = row.get("app")
+        revision = row.get("revision")
+        if key not in TARGETS or key in result or not re.fullmatch(r"[0-9a-f]{40}", revision or ""):
+            raise ValueError("Release baselines do not match canonical target inventory")
+        result[key] = revision
+    return result
+
+
+def deploy_one(key: str, revision: str, package_root: Path):
+    target = TARGETS[key]
+    package = package_root / target["package"]
+    digest = verify_package(package, revision, target["static"])
+    print(
+        f'{target["releaseName"]}: approved revision {revision}, ZIP sha256 {digest}',
+        flush=True,
+    )
+    result = reconcile(target_azure(key, package, revision))
+    print(
+        f'{target["releaseName"]}: {result}; exact revision healthy and no Azure deployment pending.',
+        flush=True,
+    )
+    return result
+
+
+def rollback_transaction(keys, baselines, rollback_root: Path):
+    failures = []
+    for key in reversed(keys):
+        revision = baselines[key]
+        target = TARGETS[key]
+        try:
+            package = _rollback_package(rollback_root, key)
+            verify_package(package, revision, target["static"])
+            reconcile(target_azure(key, package, revision))
+        except Exception as exc:
+            failures.append(f"{target['releaseName']}:{type(exc).__name__}:{exc}")
+    if failures:
+        raise RuntimeError(
+            "Automatic rollback could not restore the complete pre-release state: "
+            + "; ".join(failures)
+        )
+
+
+def deploy_transaction(target_names, baselines_raw: str, package_root: Path, rollback_root: Path, revision: str):
+    keys = _RELEASE_AUTHORITY.selected_release_target_keys(target_names)
+    baselines = _baseline_map(baselines_raw)
+    missing = [key for key in keys if key not in baselines]
+    if missing:
+        raise ValueError("Missing rollback baseline for canonical targets: " + ", ".join(missing))
+
+    # Prove every candidate and every compensation package before the first write.
+    for key in keys:
+        target = TARGETS[key]
+        verify_package(package_root / target["package"], revision, target["static"])
+        baseline = baselines[key]
+        if baseline != revision:
+            verify_package(_rollback_package(rollback_root, key), baseline, target["static"])
+
+    try:
+        for key in keys:
+            deploy_one(key, revision, package_root)
+
+        # Commit only after the complete selected set is stable at one revision.
+        for key in keys:
+            result = reconcile(
+                target_azure(key, package_root / TARGETS[key]["package"], revision)
+            )
+            if result not in {"preserved", "deployed"}:
+                raise RuntimeError("Unrecognized deployment reconciliation result")
+    except Exception as release_error:
+        rollback_keys = [key for key in keys if baselines[key] != revision]
+        try:
+            rollback_transaction(rollback_keys, baselines, rollback_root)
+        except Exception as rollback_error:
+            raise RuntimeError(
+                f"Release transaction failed ({release_error}); rollback also failed ({rollback_error})"
+            ) from rollback_error
+        raise RuntimeError(
+            f"Release transaction failed and every changed target was restored to its preserved baseline: {release_error}"
+        ) from release_error
+
+    print(json.dumps({
+        "revision": revision,
+        "targets": [TARGETS[key]["releaseName"] for key in keys],
+        "transaction": "committed",
+    }, sort_keys=True))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--target', choices=TARGETS, required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--target', choices=TARGETS)
+    mode.add_argument('--targets-json')
+    parser.add_argument('--baselines-json')
+    parser.add_argument('--package-root', default='/tmp/diagnostics-packages')
+    parser.add_argument('--rollback-root', default='/tmp/rollback-packages')
     args = parser.parse_args()
-    app, filename, url = TARGETS[args.target]
-    revision = os.environ['RELEASE_SHA']
-    package = Path('/tmp/diagnostics-packages') / filename
-    digest = verify_package(package, revision, args.target == 'website')
-    print(f'{app}: approved revision {revision}, ZIP sha256 {digest}', flush=True)
-    result = reconcile(Azure(app, package, url, revision, args.target == 'website'))
-    print(f'{app}: {result}; exact revision healthy and no Azure deployment pending.', flush=True)
+
+    revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')
+    if not revision:
+        raise SystemExit('APPLICATION_RELEASE_SHA is required')
+
+    if args.target:
+        deploy_one(args.target, revision, Path(args.package_root))
+        return
+
+    if args.baselines_json is None:
+        raise SystemExit('--baselines-json is required for transactional deployment')
+    names = json.loads(args.targets_json)
+    deploy_transaction(
+        names,
+        args.baselines_json,
+        Path(args.package_root),
+        Path(args.rollback_root),
+        revision,
+    )
 
 
 if __name__ == '__main__':
