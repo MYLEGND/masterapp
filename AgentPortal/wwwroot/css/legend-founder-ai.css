@@ -51,8 +51,8 @@
     --legend-ai-navy-850: var(--legend-design-navyElevated, #3159bf);
     --legend-ai-response: var(--legend-design-aiResponseRoyal, var(--legend-ai-navy-850));
     --legend-ai-on-response: var(--legend-design-onNavy, #fff);
-    --legend-ai-gold-800: var(--legend-design-gold, #a68023);
-    --legend-ai-gold-700: var(--legend-design-gold, #a68023);
+    --legend-ai-gold-800: var(--legend-design-gold, var(--legend-app-accent));
+    --legend-ai-gold-700: var(--legend-design-gold, var(--legend-app-accent));
     --legend-ai-gold-600: var(--legend-design-goldBright, #e0b853);
     --legend-ai-gold-500: var(--legend-design-goldBright, #e0b853);
     --legend-ai-gold-400: var(--legend-design-goldBright, #e0b853);
