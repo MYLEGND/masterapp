@@ -339,8 +339,8 @@ jobs:
         self.assertNotIn("ALLOWED_RELEASE_TARGET_SETS", baseline)
 
         release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
-        self.assertIn("scripts/validation-resume.py live-state", release)
-        self.assertIn("scripts/validation-resume.py verify-live", release)
+        self.assertIn('"$RUNNER_TEMP/validation-resume.py" live-state', release)
+        self.assertIn('"$RUNNER_TEMP/validation-resume.py" verify-live', release)
         self.assertIn("Publish selected head as one transaction", release)
         for row in m.RELEASE_TARGETS.values():
             self.assertNotIn(row["releaseName"], release)
@@ -360,7 +360,7 @@ jobs:
         release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
         validated = release.split("      - name: Reuse exact successful validation package when available\n", 1)[1].split("      - name:", 1)[0]
         rollback = release.split("      - name: Reuse exact retained live package when available\n", 1)[1].split("      - uses:", 1)[0]
-        self.assertIn("scripts/validation-resume.py validated-package", validated)
+        self.assertIn('"$RUNNER_TEMP/validation-resume.py" validated-package', validated)
         self.assertIn("rollback-evidence", rollback)
         self.assertIn('git show "${GITHUB_SHA}:scripts/validation-resume.py"', release)
         self.assertNotIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', release)
