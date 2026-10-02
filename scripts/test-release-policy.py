@@ -346,41 +346,32 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
         self.assertEqual(resolved['number'], 310)
         self.assertEqual(api.path, 'pulls/310/files')
 
-    def test_architecture_product_validation_accepts_only_release_policy_failure(self):
-        run = {'id': 77, 'status': 'completed', 'conclusion': 'failure'}
-        steps = [
-            {'name': name, 'conclusion': 'success'}
-            for name in self.lifecycle.ARCHITECTURE_PRODUCT_STEPS
-        ]
-        steps.append({
-            'name': 'Verify consolidated release scope and routing policy',
-            'conclusion': 'failure',
-        })
+    def test_candidate_validation_never_reinterprets_a_failed_required_workflow(self):
+        head = 'a' * 40
+        workflow = next(iter(self.lifecycle.VALIDATION_AUTHORITY.required_validation_topology(
+            ['scripts/validation-resume.py']
+        )['required']))
+        pr = {'number': 44, 'head': {'sha': head}}
 
         class Api:
             def pages(self, path, key=None):
-                self.path = path
-                return [{'name': 'validate', 'steps': steps}]
+                if path == 'actions/runs?head_sha=' + head:
+                    return [{
+                        'id': 77,
+                        'head_sha': head,
+                        'event': 'pull_request',
+                        'created_at': '1',
+                        'path': workflow,
+                        'status': 'completed',
+                        'conclusion': 'failure',
+                    }]
+                if path == 'pulls/44/files':
+                    return [{'filename': 'scripts/validation-resume.py'}]
+                return []
 
-        self.assertTrue(self.lifecycle.architecture_product_validation(Api(), run))
+        pending = self.lifecycle.candidate_validation(Api(), pr)
+        self.assertIn(workflow, pending)
 
-    def test_architecture_product_validation_rejects_failed_product_step(self):
-        run = {'id': 78, 'status': 'completed', 'conclusion': 'failure'}
-        steps = [
-            {'name': name, 'conclusion': 'success'}
-            for name in self.lifecycle.ARCHITECTURE_PRODUCT_STEPS
-        ]
-        steps[0]['conclusion'] = 'failure'
-        steps.append({
-            'name': 'Verify consolidated release scope and routing policy',
-            'conclusion': 'failure',
-        })
-
-        class Api:
-            def pages(self, path, key=None):
-                return [{'name': 'validate', 'steps': steps}]
-
-        self.assertFalse(self.lifecycle.architecture_product_validation(Api(), run))
 
     def test_chained_release_resolution_rejects_intervening_product_commit(self):
         head = 'a' * 40
