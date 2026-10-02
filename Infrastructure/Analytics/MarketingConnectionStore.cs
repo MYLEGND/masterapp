@@ -191,6 +191,7 @@ public static class MarketingServiceRegistration
         services.TryAddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
         services.TryAddScoped<MarketingBrowserConfigurationService>();
         services.TryAddScoped<MarketingMeasurementEvidenceService>();
+        services.TryAddScoped<IPlatformConnectionHealthAuthority, PlatformConnectionHealthAuthority>();
         services.TryAddScoped<MarketingProviderSetupProjection>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, MetaMarketingDestination>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, OpenAiMarketingDestination>());

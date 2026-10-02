@@ -37,7 +37,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("[HttpPost(\"marketing-setup\")]", controller, StringComparison.Ordinal);
         Assert.Contains("AgentMarketingProfileService", controller, StringComparison.Ordinal);
         Assert.Contains("ResolveMarketingSetupTrackingAsync", controller, StringComparison.Ordinal);
-        Assert.Contains("MarketingConnections.GetAdsAsync(owner", controller, StringComparison.Ordinal);
+        Assert.Contains("IPlatformConnectionHealthAuthority", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingConnections.GetAdsAsync(owner", controller, StringComparison.Ordinal);
         Assert.Contains("var adsConnected = setup.Meta.Connected;", controller, StringComparison.Ordinal);
         Assert.Contains("var secureCapi = setup.Meta.CapiConfigured;", controller, StringComparison.Ordinal);
         Assert.Contains("profile.BookingEnabled = request.BookingEnabled", controller, StringComparison.Ordinal);
@@ -161,7 +162,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("IOpenAiAdsAccountConnectionAuthority", business, StringComparison.Ordinal);
         Assert.Contains("IOpenAiAdsDirectConnectionService", business, StringComparison.Ordinal);
         Assert.Contains("MarketingProviderSetupProjection", business, StringComparison.Ordinal);
-        Assert.Contains("IOpenAiMeasurementHealthService", Read("Infrastructure", "Analytics", "MarketingProviderSetupProjection.cs"), StringComparison.Ordinal);
+        Assert.Contains("IPlatformConnectionHealthAuthority", Read("Infrastructure", "Analytics", "MarketingProviderSetupProjection.cs"), StringComparison.Ordinal);
+        Assert.DoesNotContain("GetAdsAsync(owner", Read("Infrastructure", "Analytics", "MarketingProviderSetupProjection.cs"), StringComparison.Ordinal);
         Assert.Contains("canonical_business_marketing_setup", business, StringComparison.Ordinal);
         Assert.Contains("evidenceError = setup.EvidenceError", business, StringComparison.Ordinal);
         Assert.Contains("OpenAiClickReference.Normalize", Read("Infrastructure", "Analytics", "MarketingMeasurementEvidenceService.cs"), StringComparison.Ordinal);
@@ -220,10 +222,12 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("TryImportFounderApplicationConnectionAsync", authority, StringComparison.Ordinal);
         Assert.Contains("IMicrosoftCalendarConnectionAuthority", registration, StringComparison.Ordinal);
 
-        Assert.Contains("calendarLinked = calendarConnection.Connected", controller, StringComparison.Ordinal);
+        Assert.Contains("calendarLinked = runtime.Calendar.ProviderVerified", controller, StringComparison.Ordinal);
+        Assert.Contains("var runtime = setup.RuntimeHealth;", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"calendar-connect\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"calendar-disconnect\")]", controller, StringComparison.Ordinal);
-        Assert.Contains("calendarLinked = calendarConnection.Connected", business, StringComparison.Ordinal);
+        Assert.Contains("calendarLinked = runtime.Calendar.ProviderVerified", business, StringComparison.Ordinal);
+        Assert.Contains("var runtime = setup.RuntimeHealth;", business, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/calendar-connect\")]", business, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"analytics/calendar-disconnect\")]", business, StringComparison.Ordinal);
 

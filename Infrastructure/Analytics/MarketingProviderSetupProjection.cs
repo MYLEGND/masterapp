@@ -9,71 +9,143 @@ public sealed record MarketingMetaSetupSnapshot(bool Available, bool Connected, 
 public sealed record MarketingProviderSetupSnapshot(MarketingMetaSetupSnapshot Meta,
     OpenAiAdsConnectionSnapshot Connection, OpenAiAdsProviderAccountSnapshot? Account,
     OpenAiAdsMeasurementCapabilitySnapshot? Capability, OpenAiMeasurementHealthSnapshot Health,
-    MarketingMeasurementEvidenceSnapshot? Evidence, string? OpenAiError, string? EvidenceError);
+    MarketingMeasurementEvidenceSnapshot? Evidence, string? OpenAiError, string? EvidenceError,
+    PlatformConnectionHealthSnapshot RuntimeHealth);
 
-/// <summary>Public-safe, independently available projections of canonical provider authorities.</summary>
-public sealed class MarketingProviderSetupProjection(MarketingConnectionStore connections,
-    IMetaPixelResolutionService pixels, IOpenAiAdsAccountConnectionAuthority openAi,
-    IOpenAiAdsDirectConnectionService direct, IOpenAiMeasurementHealthService health,
-    MarketingMeasurementEvidenceService evidence)
+/// <summary>
+/// Public-safe projection of the canonical provider health authority.
+///
+/// Configuration and stored credentials are never promoted to "connected" on their own.
+/// Meta, OpenAI, and Microsoft status come from live provider verification; analytics
+/// evidence comes from durable canonical delivery/source records.
+/// </summary>
+public sealed class MarketingProviderSetupProjection(
+    IMetaPixelResolutionService pixels,
+    IPlatformConnectionHealthAuthority runtimeHealth)
 {
-    public async Task<MarketingProviderSetupSnapshot> ReadAsync(MarketingOwnerScope owner, CancellationToken ct = default)
+    public async Task<MarketingProviderSetupSnapshot> ReadAsync(
+        MarketingOwnerScope owner,
+        CancellationToken ct = default)
     {
-        var meta = new MarketingMetaSetupSnapshot(false, false, null, null, null, false, null, "Meta status unavailable.");
+        var runtime = await runtimeHealth.ReadAsync(owner, ct);
+
+        ResolvedMetaPixelContext pixel;
+        string? pixelError = null;
         try
         {
-            var ads = await connections.GetAdsAsync(owner, ct);
-            var pixel = await pixels.ResolveForOwnerAsync(owner, ct);
-            meta = new(true, ads is not null, ads?.AccountId, ads?.AccountName, pixel.PixelId,
-                pixel.HasServerCapiCredentials, pixel.TestEventCode, null);
+            pixel = await pixels.ResolveForOwnerAsync(owner, ct);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception) { /* One unavailable destination does not hide the other. */ }
-        var connection = new OpenAiAdsConnectionSnapshot(owner, false, false, Guid.Empty, null, null, null, null, null, null, null, [], null, null, false, false, null, null, null);
-        OpenAiAdsProviderAccountSnapshot? account = null;
-        OpenAiAdsMeasurementCapabilitySnapshot? capability = null;
-        var measurement = new OpenAiMeasurementHealthSnapshot(owner, false, false, false, null, 0, 0, 0, 0, null, false, 0, "unavailable");
-        string? openAiError = null;
-        try { connection = await openAi.GetAsync(owner, ct); }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception) { openAiError = "OpenAI connection status unavailable."; }
-        if (connection.Connected)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            try
-            {
-                account = await direct.InspectAsync(owner, ct);
-                capability = await direct.InspectMeasurementAsync(owner, ct);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-            catch (Exception) { openAiError = "Provider status unavailable; stored connection shown."; }
+            throw;
         }
-        try { measurement = await health.GetAsync(owner, ct); }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception) { openAiError = "OpenAI delivery health unavailable; stored connection shown."; }
-        MarketingMeasurementEvidenceSnapshot? observed = null;
-        string? evidenceError = null;
-        try { observed = await evidence.GetAsync(owner, ct); }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception) { evidenceError = "Measurement evidence unavailable."; }
-        return new(meta, connection, account, capability, measurement, observed, openAiError, evidenceError);
+        catch (Exception)
+        {
+            pixel = new ResolvedMetaPixelContext();
+            pixelError = "Meta measurement configuration is unavailable.";
+        }
+
+        var metaError = runtime.Meta.Error ?? pixelError;
+        var meta = new MarketingMetaSetupSnapshot(
+            Available: runtime.Meta.Exists || runtime.Meta.Status == "not_configured",
+            Connected: runtime.Meta.ProviderVerified,
+            AccountId: runtime.Meta.AccountId,
+            AccountName: runtime.Meta.AccountName,
+            PixelId: pixel.PixelId,
+            CapiConfigured: pixel.HasServerCapiCredentials,
+            TestEventCode: pixel.TestEventCode,
+            Error: metaError);
+
+        var openAi = runtime.OpenAi;
+        var signals = runtime.Signals;
+        return new(
+            meta,
+            openAi.Connection,
+            openAi.Account,
+            openAi.Capability,
+            openAi.Delivery,
+            signals.Evidence,
+            openAi.Error,
+            signals.Status == "evidence_unavailable"
+                ? "Measurement evidence unavailable."
+                : null,
+            runtime);
     }
 
     public async Task<object> GetAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
         var setup = await ReadAsync(owner, ct);
         var connection = setup.Connection;
+        var runtime = setup.RuntimeHealth;
+
         return new
         {
             ownerKey = owner.Key,
-            meta = new { setup.Meta.Available, setup.Meta.Connected, setup.Meta.AccountId, setup.Meta.AccountName,
-                setup.Meta.PixelId, setup.Meta.CapiConfigured, testModeConfigured = !string.IsNullOrWhiteSpace(setup.Meta.TestEventCode), setup.Meta.Error },
-            openAi = new { connection.Exists, connection.Connected, connection.Revision, connection.AccountId, connection.AccountName,
-                connection.PixelId, connection.ConversionDataSourceId, connection.PixelConfigured,
-                connection.ConversionsApiConfigured, connection.LastVerifiedUtc,
-                accountStatus = setup.Account?.Status, reviewStatus = setup.Account?.ReviewStatus ?? connection.ReviewStatus,
-                providerStatusFresh = setup.Account is not null, providerError = setup.OpenAiError,
-                capabilityStatus = setup.Capability?.Status, health = setup.Health },
-            evidence = setup.Evidence, evidenceError = setup.EvidenceError
+            meta = new
+            {
+                setup.Meta.Available,
+                setup.Meta.Connected,
+                setup.Meta.AccountId,
+                setup.Meta.AccountName,
+                setup.Meta.PixelId,
+                setup.Meta.CapiConfigured,
+                testModeConfigured = !string.IsNullOrWhiteSpace(setup.Meta.TestEventCode),
+                setup.Meta.Error,
+                providerVerified = runtime.Meta.ProviderVerified,
+                providerStatus = runtime.Meta.Status,
+                checkedUtc = runtime.Meta.CheckedUtc,
+                providerHttpStatus = runtime.Meta.HttpStatusCode
+            },
+            openAi = new
+            {
+                connection.Exists,
+                connected = runtime.OpenAi.ProviderVerified,
+                storedConnected = connection.Connected,
+                connection.Revision,
+                connection.AccountId,
+                connection.AccountName,
+                connection.PixelId,
+                connection.ConversionDataSourceId,
+                connection.PixelConfigured,
+                connection.ConversionsApiConfigured,
+                connection.LastVerifiedUtc,
+                accountStatus = setup.Account?.Status,
+                reviewStatus = setup.Account?.ReviewStatus ?? connection.ReviewStatus,
+                providerStatusFresh = runtime.OpenAi.ProviderVerified,
+                providerStatus = runtime.OpenAi.Status,
+                providerCheckedUtc = runtime.OpenAi.CheckedUtc,
+                providerError = setup.OpenAiError,
+                capabilityStatus = setup.Capability?.Status,
+                health = setup.Health
+            },
+            calendar = new
+            {
+                connected = runtime.Calendar.ProviderVerified,
+                storedConnected = runtime.Calendar.Connection.Connected,
+                runtime.Calendar.Connection.Revision,
+                runtime.Calendar.Connection.AccountName,
+                runtime.Calendar.Connection.Email,
+                runtime.Calendar.Connection.AuthorizationMethod,
+                runtime.Calendar.Connection.Permissions,
+                runtime.Calendar.Connection.ConnectedUtc,
+                runtime.Calendar.Connection.LastVerifiedUtc,
+                runtime.Calendar.Connection.AccessTokenExpiresUtc,
+                providerStatus = runtime.Calendar.Status,
+                providerCheckedUtc = runtime.Calendar.CheckedUtc,
+                providerHttpStatus = runtime.Calendar.HttpStatusCode,
+                providerError = runtime.Calendar.Error
+            },
+            signals = new
+            {
+                operational = runtime.Signals.Operational,
+                status = runtime.Signals.Status,
+                runtime.Signals.FailedDeliveries,
+                runtime.Signals.RetryableDeliveries,
+                runtime.Signals.PendingDeliveries,
+                runtime.Signals.CheckedUtc
+            },
+            evidence = setup.Evidence,
+            evidenceError = setup.EvidenceError
         };
     }
 }

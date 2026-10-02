@@ -207,24 +207,41 @@ public class WebsiteAnalyticsInitialQualityModeTests
         var pixels = new Mock<Infrastructure.Analytics.IMetaPixelResolutionService>();
         pixels.Setup(service => service.ResolveForOwnerAsync(owner, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Infrastructure.Analytics.ResolvedMetaPixelContext());
-        var openAi = new Mock<Infrastructure.Analytics.IOpenAiAdsAccountConnectionAuthority>();
-        openAi.Setup(service => service.GetAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(
-            new Shared.Analytics.OpenAiAdsConnectionSnapshot(owner, false, false, Guid.Empty, null, null, null, null, null, null, null, [], null, null, false, false, null, null, null));
-        var health = new Mock<Infrastructure.Analytics.IOpenAiMeasurementHealthService>();
-        health.Setup(service => service.GetAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(
-            new Shared.Analytics.OpenAiMeasurementHealthSnapshot(owner, false, false, false, null, 0, 0, 0, 0, null, false, 0, "not_connected"));
-        var calendar = new Mock<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
-        calendar.Setup(service => service.GetAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(
-            new Infrastructure.Bookings.MicrosoftCalendarConnectionSnapshot(
-                owner, false, false, Guid.Empty, null, null, null, null, [], null, null, null, null));
-        controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(store).AddSingleton(pixels.Object)
-            .AddSingleton(openAi.Object).AddSingleton(health.Object).AddSingleton(calendar.Object)
+        var evidence = new Infrastructure.Analytics.MarketingMeasurementEvidenceSnapshot(
+            owner.Key,
+            DateTime.UtcNow.AddDays(-30),
+            false,
+            null,
+            new Infrastructure.Analytics.ProviderMeasurementEvidence(0, 0, 0, 0, 0, false, null, "not_observed"),
+            new Infrastructure.Analytics.ProviderMeasurementEvidence(0, 0, 0, 0, 0, false, null, "not_observed"));
+        var openAiConnection = new Shared.Analytics.OpenAiAdsConnectionSnapshot(
+            owner, false, false, Guid.Empty, null, null, null, null, null, null, null, [], null, null, false, false, null, null, null);
+        var openAiDelivery = new Shared.Analytics.OpenAiMeasurementHealthSnapshot(
+            owner, false, false, false, null, 0, 0, 0, 0, null, false, 0, "not_connected");
+        var calendarConnection = new Infrastructure.Bookings.MicrosoftCalendarConnectionSnapshot(
+            owner, false, false, Guid.Empty, null, null, null, null, [], null, null, null, null);
+        var runtime = new Infrastructure.Analytics.PlatformConnectionHealthSnapshot(
+            owner,
+            new Infrastructure.Analytics.MetaProviderRuntimeHealth(
+                true, true, false, "provider_unavailable", "account", null, DateTime.UtcNow, 503, "Provider verification failed."),
+            new Infrastructure.Analytics.OpenAiProviderRuntimeHealth(
+                openAiConnection, null, null, openAiDelivery, false, "not_configured", DateTime.UtcNow, null),
+            new Infrastructure.Analytics.CalendarProviderRuntimeHealth(
+                calendarConnection, false, "not_configured", DateTime.UtcNow, null, null),
+            new Infrastructure.Analytics.SignalRuntimeHealth(
+                evidence, true, "quiet", 0, 0, 0, DateTime.UtcNow));
+        var runtimeHealth = new Mock<Infrastructure.Analytics.IPlatformConnectionHealthAuthority>();
+        runtimeHealth.Setup(service => service.ReadAsync(owner, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(runtime);
+        controller.HttpContext.RequestServices = new ServiceCollection()
+            .AddSingleton(store)
+            .AddSingleton(pixels.Object)
+            .AddSingleton(runtimeHealth.Object)
             .AddSingleton<Infrastructure.Analytics.MarketingProviderSetupProjection>()
-            .AddSingleton(Mock.Of<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>())
-            .AddSingleton(new Infrastructure.Analytics.MarketingMeasurementEvidenceService(db, new ConfigurationBuilder().Build(), store, openAi.Object)).BuildServiceProvider();
+            .BuildServiceProvider();
         var result = Assert.IsType<JsonResult>(await controller.MarketingSetup(profile.Id));
         var json = JsonSerializer.SerializeToElement(result.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        Assert.True(json.GetProperty("marketing").GetProperty("metaAdsConnected").GetBoolean());
+        Assert.False(json.GetProperty("marketing").GetProperty("metaAdsConnected").GetBoolean());
         Assert.False(json.GetProperty("marketing").GetProperty("metaCapiConfiguredSecurely").GetBoolean());
         Assert.False(json.GetProperty("evidence").GetProperty("receivingEvents").GetBoolean());
         Assert.Equal(0, json.GetProperty("evidence").GetProperty("meta").GetProperty("accepted").GetInt32());
