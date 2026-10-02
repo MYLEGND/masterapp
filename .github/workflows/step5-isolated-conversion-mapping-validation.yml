@@ -15,6 +15,10 @@ on:
       - 'AgentPortal.Tests/**'
       - '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
       - 'scripts/validation-resume.py'
+      - 'scripts/release-package.py'
+      - 'scripts/approved-release-baseline.py'
+      - '.github/workflows/all-intentional-direct-release-20260918.yml'
+      - '.github/workflows/masterapp-platform-architecture-validation.yml'
       - 'scripts/test-validation-resume.py'
 
 concurrency:
