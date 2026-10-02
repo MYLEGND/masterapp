@@ -355,19 +355,29 @@ def direct_only_request(sha):
     if not parts or parts[0] != sha or len(parts) not in {2, 3}:
         return False
 
-    changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, check=False)
-    if changed.returncode:
-        return False
-    names = changed.stdout.splitlines()
-    if path not in names:
-        return False
-    if len(parts) == 2 and names != [path]:
-        return False
-
     result = git('show', sha + ':' + path, check=False)
     if result.returncode:
         return False
-    return json.loads(result.stdout).get('releaseMode') == 'approved-only'
+    try:
+        request = json.loads(result.stdout)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    if request.get('releaseMode') != 'approved-only':
+        return False
+
+    if len(parts) == 2:
+        changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, check=False)
+        if changed.returncode or changed.stdout.splitlines() != [path]:
+            return False
+        return True
+
+    # Product merge authorization: compare the request object directly against
+    # the first parent. This avoids merge diff simplification hiding a request
+    # change when the same merge also carries application/migration files.
+    prior = git('show', sha + '^1:' + path, check=False)
+    if prior.returncode:
+        return True
+    return prior.stdout != result.stdout
 
 
 def direct_release_approved_pr(api, sha):
