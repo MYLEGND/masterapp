@@ -276,6 +276,13 @@ def integrate(api, number):
 def pending_updates(api):
     if staging_only():
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
+    # GitHub state may advance while a serialized lifecycle run is waiting.
+    # Refresh the canonical approved ref before any ancestry decision so a newly
+    # merged trusted PR can never appear as an unknown local commit.
+    refreshed = git('fetch', '--no-tags', '--prune', 'origin',
+                    f'+refs/heads/{APPROVED}:refs/remotes/origin/{APPROVED}', check=False)
+    if refreshed.returncode:
+        raise RuntimeError(refreshed.stderr)
     # Scheduled reconciliation also covers bot-created PR events and corrections
     # pushed to a retained branch after its previous approved PR was merged.
     #
@@ -617,17 +624,31 @@ def pending_automatic_release(api, approved):
         if len(matches) != 1:
             continue
         pr = matches[0]
-        targets = automatic_release_targets(api, pr)
+        files = api.pages(f"pulls/{pr['number']}/files")
+        names = [row.get('filename') for row in files if row.get('filename')]
+        targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
         if not targets:
             continue
-
-        pending = candidate_validation(api, pr)
-        if pending:
-            return {'retained': pending, 'sourcePr': pr['number'], 'authorizationSha': sha}
 
         revision = pr.get('head', {}).get('sha')
         if not SHA.fullmatch(revision or ''):
             return {'retained': 'Automatic release source PR has invalid validated head identity'}
+
+        control_only = bool(names) and all(
+            VALIDATION_AUTHORITY.release_control_only_path(name)
+            for name in names
+        )
+        if control_only:
+            package = _validated_package_evidence(api, revision)
+            if not package.get('reusable'):
+                # A later control correction can change how the release is
+                # executed, but without an immutable package it must not replace
+                # an older already-packaged, still-unreleased product source.
+                continue
+
+        pending = candidate_validation(api, pr)
+        if pending:
+            return {'retained': pending, 'sourcePr': pr['number'], 'authorizationSha': sha}
 
         if all(release_proven(api, revision, app=target) for target in targets):
             return None
@@ -773,11 +794,17 @@ def reconcile(api, trigger=None):
     ]
     if len(merged_prs) == 1:
         pr = merged_prs[0]
+        files = api.pages(f"pulls/{pr['number']}/files")
+        names = [row.get('filename') for row in files if row.get('filename')]
         pending = candidate_validation(api, pr)
         if pending:
             return {'retained': pending}
-        targets = automatic_release_targets(api, pr)
-        if targets:
+        targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
+        current_is_control_only = bool(names) and all(
+            VALIDATION_AUTHORITY.release_control_only_path(name)
+            for name in names
+        )
+        if targets and not current_is_control_only:
             api.dispatch(DIRECT, automatic_release_inputs(pr, approved, targets))
             return {'directRelease': 'recovered automatic validated-merge release', 'targets': list(targets)}
 
