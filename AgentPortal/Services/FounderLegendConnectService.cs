@@ -6,6 +6,7 @@ using AgentPortal.Models;
 using AgentPortal.Security;
 using Domain.Entities;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
 using Shared.Auth;
 
