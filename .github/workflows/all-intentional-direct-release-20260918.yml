@@ -51,6 +51,7 @@ jobs:
       validate_only: ${{ steps.live.outputs.validate_only }}
       website_routing: ${{ steps.live.outputs.website_routing }}
       website_routing_canary: ${{ steps.live.outputs.website_routing_canary }}
+      founder_cloudflare: ${{ steps.live.outputs.founder_cloudflare }}
       preserve_live_targets: ${{ steps.live.outputs.preserve_live_targets }}
       exact_live: ${{ steps.live.outputs.exact_live }}
       application_release_sha: ${{ steps.live.outputs.application_release_sha }}
@@ -237,6 +238,7 @@ jobs:
       VALIDATE_ONLY: ${{ needs.discover-live.outputs.validate_only }}
       WEBSITE_ROUTING: ${{ needs.discover-live.outputs.website_routing }}
       WEBSITE_ROUTING_CANARY: ${{ needs.discover-live.outputs.website_routing_canary }}
+      FOUNDER_CLOUDFLARE: ${{ needs.discover-live.outputs.founder_cloudflare }}
       PRESERVE_LIVE_TARGETS: ${{ needs.discover-live.outputs.preserve_live_targets }}
       EXACT_LIVE: ${{ needs.discover-live.outputs.exact_live }}
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
@@ -269,7 +271,7 @@ jobs:
         with:
           dotnet-version: '10.x'
       - uses: actions/setup-node@v4
-        if: env.WEBSITE_ROUTING == 'true' && env.EXACT_LIVE != 'true'
+        if: (env.WEBSITE_ROUTING == 'true' || env.FOUNDER_CLOUDFLARE == 'true') && env.EXACT_LIVE != 'true'
         with:
           node-version: '24'
           cache: npm
