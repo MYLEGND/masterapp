@@ -199,6 +199,15 @@ def selected_release_target_keys(names, *, allow_empty=False):
     )
 
 
+def founder_cloudflare_release_required(paths):
+    """True only when validated source changes the canonical Founder Worker runtime."""
+    return any(
+        path.startswith("Legend-Cloudflare/src/")
+        or path == "Legend-Cloudflare/wrangler.founder-baseline.jsonc"
+        for path in dict.fromkeys(paths)
+    )
+
+
 def release_targets_for_paths(paths):
     """Derive publication scope from the validated PR without a parallel scope table.
 
@@ -240,6 +249,7 @@ LIFECYCLE_AUTHORITY_PATHS = (
     "scripts/test-validation-resume.py",
     "scripts/test-release-policy.py",
     "scripts/test-release-lifecycle.py",
+    "scripts/deploy-founder-cloudflare.py",
 )
 
 # Application identity excludes release/test/control-only edits. This authority is
@@ -255,6 +265,7 @@ RELEASE_CONTROL_ONLY_EXACT = frozenset({
     "scripts/test-release-policy.py",
     "scripts/test-release-lifecycle.py",
     "scripts/test-deploy-approved-app.py",
+    "scripts/deploy-founder-cloudflare.py",
 })
 
 PACKAGE_AUTHORITY_PATHS = frozenset({
