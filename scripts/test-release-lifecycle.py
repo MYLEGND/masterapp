@@ -305,6 +305,24 @@ class AutomaticMergeRelease(unittest.TestCase):
         recover.assert_not_called()
 
 
+    @patch.object(m, "candidate_validation", return_value=None)
+    @patch.object(m, "automatic_release_targets", return_value=())
+    def test_nonmergeable_validated_pr_is_retained_not_fatal(self, _, __):
+        api = Api()
+        pr = {"number": 323, "head": {"sha": "b" * 40}}
+
+        def blocked_merge(_data, _method):
+            raise RuntimeError("GitHub PUT pulls/323/merge: HTTP 405")
+
+        api.api_map["pulls/323/merge"] = blocked_merge
+        api.pages_map["pulls/323/files"] = []
+
+        result = m.merge_validated(api, pr)
+
+        self.assertIn("retained", result)
+        self.assertEqual(323, result["pr"])
+        self.assertIn("not currently mergeable", result["retained"])
+
 class ReleaseTruth(unittest.TestCase):
     def setUp(self):
         request = json.dumps({"releaseMode": "approved-only", "targets": [canonical_name("portal")]})
