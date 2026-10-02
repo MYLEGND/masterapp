@@ -19,29 +19,6 @@
     z-index:1085;
 }
 
-@media (min-width:901px){
-.qv-booking-modal-shell .modal-dialog{
-    width:min(92vw, 1260px);
-    max-width:1260px;
-    margin:22px auto;
-}
-
-.qv-booking-modal-shell .modal-content{
-    max-height:calc(100vh - 44px);
-    overflow:auto;
-    border-radius:24px;
-    color:var(--qv-text);
-    background:
-        radial-gradient(circle at 18% -10%, rgba(37,99,235,.52), transparent 34%),
-        radial-gradient(circle at 84% 0%, rgba(59,130,246,.20), transparent 26%),
-        linear-gradient(135deg, var(--qv-bg-1) 0%, var(--qv-bg-2) 44%, var(--qv-bg-3) 100%);
-    border:1px solid var(--qv-line-strong);
-    box-shadow:
-        0 34px 100px rgba(0,0,0,.72),
-        0 0 54px rgba(37,99,235,.28),
-        inset 0 1px 0 rgba(255,255,255,.10);
-}
-}
 
 /* Header */
 .qv-booking-head{
@@ -740,19 +717,6 @@
    Keeps scheduler inside visible modal without scroll.
 ========================================================= */
 
-@media (min-width:901px){
-.qv-booking-modal-shell .modal-dialog{
-    width:min(91vw, 1250px);
-    max-width:1250px;
-    margin:clamp(10px, 2vh, 22px) auto;
-}
-
-.qv-booking-modal-shell .modal-content{
-    height:calc(100vh - clamp(20px, 4vh, 44px));
-    max-height:calc(100vh - clamp(20px, 4vh, 44px));
-    overflow:hidden;
-}
-}
 
 .qv-booking-head{
     padding:
