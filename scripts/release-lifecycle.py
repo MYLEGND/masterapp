@@ -307,14 +307,27 @@ def candidate_validation(api, pr):
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [f['filename'] for f in files]
 
+    release_evidence_paths = {
+        '.github/workflows/all-intentional-direct-release-20260918.yml',
+        '.github/workflows/masterapp-platform-architecture-validation.yml',
+        'scripts/approved-release-baseline.py',
+        'scripts/release-package.py',
+        'scripts/deploy-approved-app.py',
+        'scripts/validation-resume.py',
+        'scripts/test-validation-resume.py',
+        'scripts/test-release-policy.py',
+        'scripts/test-release-lifecycle.py',
+        'scripts/test-deploy-approved-app.py',
+    }
+    release_evidence_change = any(name in release_evidence_paths for name in names)
     if (step5 in names or
-        'scripts/validation-resume.py' in names or
-        'scripts/test-validation-resume.py' in names):
+        release_evidence_change):
         required.add(step5)
     if any(name in STEP6_VALIDATION_PATHS for name in names):
         required.add(step6)
     scope_neutral = VALIDATION_NEUTRAL_PATHS | {
         'scripts/deploy-approved-app.py',
+        'scripts/release-package.py',
     }
     product_names = [name for name in names
                      if name not in scope_neutral and not name.startswith('tests/')]
@@ -352,7 +365,7 @@ def candidate_validation(api, pr):
     if broad_product_change and not public_website_only:
         required.add(step5)
         required.add(security)
-    if security in names or 'scripts/validation-resume.py' in names or 'scripts/test-validation-resume.py' in names:
+    if security in names or release_evidence_change:
         required.add(security)
 
     failed = []
