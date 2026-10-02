@@ -48,25 +48,8 @@ def selected_targets(request):
 
 
 def release_control_only_path(path):
-    """Paths that can change release control/evidence without changing app bits."""
-    return (
-        path.startswith(".github/workflows/")
-        or path.startswith("Docs/")
-        or path.startswith("AgentPortal.Tests/")
-        or path.startswith("tests/")
-        or path in {
-            "scripts/approved-release-baseline.py",
-            "scripts/release-lifecycle.py",
-            "scripts/release_policy.py",
-            "scripts/deploy-approved-app.py",
-            "scripts/release-package.py",
-            "scripts/validation-resume.py",
-            "scripts/test-validation-resume.py",
-            "scripts/test-release-policy.py",
-            "scripts/test-release-lifecycle.py",
-            "scripts/test-deploy-approved-app.py",
-        }
-    )
+    """Consume the canonical application-identity classification."""
+    return _validation_authority.release_control_only_path(path)
 
 
 def reusable_live_application_revision(rows, head):
