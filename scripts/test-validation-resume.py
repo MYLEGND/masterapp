@@ -451,8 +451,15 @@ jobs:
             "head_sha": "a" * 40,
             "updated_at": "2026-10-02T00:00:00Z",
         }
+        identity = "c" * 64
         with patch.object(m, "_package_canary_proof_runs", return_value=[proof]), \
              patch.object(m, "git_changed", return_value=["scripts/test-release-policy.py"]), \
+             patch.object(m, "package_identity_for_revision", return_value=identity), \
+             patch.object(m, "compute_validated_package_evidence", return_value={
+                 "reusable": True,
+                 "runId": 90,
+                 "artifact": "founder-diagnostics-packages-" + identity,
+             }), \
              patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
             plan = m.compute_package_canary_plan(
                 "MYLEGND/masterapp",
@@ -463,7 +470,41 @@ jobs:
             )
         self.assertFalse(plan["needed"])
         self.assertEqual(91, plan["evidenceRunId"])
+        self.assertEqual(90, plan["exactPackageRunId"])
+        self.assertEqual(identity, plan["packageIdentity"])
         self.assertEqual("preserved_prior_package_canary", plan["reason"])
+
+    def test_package_canary_builds_exact_current_revision_when_preserved_inputs_lack_artifact(self):
+        proof = {
+            "id": 93,
+            "head_sha": "a" * 40,
+            "updated_at": "2026-10-02T00:00:00Z",
+        }
+        identity = "d" * 64
+        with patch.object(m, "_package_canary_proof_runs", return_value=[proof]), \
+             patch.object(m, "git_changed", return_value=["scripts/test-release-policy.py"]), \
+             patch.object(m, "package_identity_for_revision", return_value=identity), \
+             patch.object(m, "compute_validated_package_evidence", return_value={
+                 "reusable": False,
+                 "runId": None,
+                 "artifact": "founder-diagnostics-packages-" + identity,
+                 "reason": "exact_validated_package_missing",
+             }), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            plan = m.compute_package_canary_plan(
+                "MYLEGND/masterapp",
+                "b" * 40,
+                "0" * 40,
+                102,
+                "hardening/example",
+            )
+        self.assertTrue(plan["needed"])
+        self.assertEqual(identity, plan["packageIdentity"])
+        self.assertEqual(
+            "exact_revision_package_missing_despite_preserved_inputs",
+            plan["reason"],
+        )
+        self.assertEqual([], plan["changedInputs"])
 
     def test_package_canary_invalidates_only_for_package_or_application_inputs(self):
         proof = {
