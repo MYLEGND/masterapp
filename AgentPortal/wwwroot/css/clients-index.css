@@ -1567,27 +1567,6 @@
     overflow-y: auto !important;
 }
 
-@media (min-width:901px){
-.actions-hub-modal .modal-dialog{
-    width: min(96vw, 1100px);
-    max-width: min(96vw, 1100px);
-    margin: clamp(18px, 4vh, 42px) auto !important;
-}
-
-.actions-hub-content{
-    max-height: calc(100vh - clamp(42px, 8vh, 88px));
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border-radius: 28px;
-    border: 1px solid rgba(180, 205, 255, .18) !important;
-    background:
-        radial-gradient(circle at top right, rgba(104, 146, 235, .16), transparent 28%),
-        linear-gradient(180deg, rgba(14, 28, 60, .99), rgba(8, 18, 39, .99)) !important;
-    box-shadow: 0 38px 90px rgba(2, 6, 23, .56), inset 0 1px 0 rgba(255,255,255,.05);
-    color: #eff5ff;
-}
-}
 
 .actions-hub-header{
     display: flex;
@@ -2063,27 +2042,6 @@
     text-transform: uppercase;
 }
 
-@media (min-width:901px){
-.quick-entry-shell .modal-dialog{
-    margin: clamp(18px, 6vh, 64px) auto !important;
-    max-width: min(92vw, 640px) !important;
-    min-height: 0 !important;
-}
-
-.quick-entry-shell .modal-content{
-    max-height: min(86vh, 760px);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border-radius: 24px;
-    border: 1px solid rgba(180, 205, 255, .18) !important;
-    background:
-        radial-gradient(circle at top right, rgba(104, 146, 235, .16), transparent 28%),
-        linear-gradient(180deg, rgba(14, 28, 60, .99), rgba(8, 18, 39, .99)) !important;
-    box-shadow: 0 34px 82px rgba(2, 6, 23, .48), inset 0 1px 0 rgba(255,255,255,.05);
-    color: #eff5ff !important;
-}
-}
 
 .quick-entry-shell .modal-header{
     padding: 18px 20px 16px;
@@ -4487,9 +4445,6 @@
     border-radius: 16px;
     box-shadow: 0 26px 80px rgba(0,0,0,.52);
     overflow: hidden;
-}
-@media (min-width:901px){
-    .note-self-modal{width:min(1180px,96vw);max-height:92vh;}
 }
 
 .note-self-head{
