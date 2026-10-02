@@ -717,7 +717,18 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$EXPECTED_DB_BASE_SHA"
-          git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"
+          if git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"; then
+            echo "Live database baseline is an ancestor of the validated application revision."
+          elif git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"; then
+            # A live provenance revision may be the approved merge commit whose
+            # tree is byte-for-byte identical to the validated PR head. Accept
+            # that merge alias only when there is no source drift at all.
+            git diff --quiet "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA" --
+            echo "Live database baseline is a source-identical approved merge alias of the validated application revision."
+          else
+            echo "::error::Live database baseline and validated application revision do not share a safe ancestry relationship."
+            exit 1
+          fi
 
           python3 - <<'PYBASELINE'
           import importlib.util, os, sys

@@ -599,6 +599,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn("DATABASE_AUTHORITY", migration)
         self.assertIn("RELEASE_RESOURCE_GROUP", migration)
         self.assertIn("release_proven", migration)
+        self.assertIn('git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"', migration)
+        self.assertIn('git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"', migration)
+        self.assertIn('git diff --quiet "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA" --', migration)
+        self.assertIn('source-identical approved merge alias', migration)
         self.assertNotIn("dotnet-ef','database','update", migration)
         self.assertNotIn("dotnet-ef database update", migration)
 
