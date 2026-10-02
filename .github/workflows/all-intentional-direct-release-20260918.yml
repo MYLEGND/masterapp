@@ -725,9 +725,42 @@ jobs:
         id: migrate
         if: env.PRESERVE_LIVE_TARGETS != 'true' && env.CLIENT_ONLY != 'true' && env.WEBSITE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          dotnet tool restore
+          test -n "$EXPECTED_DB_BASE_SHA"
+          git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"
+
+          python3 - <<'PYBASELINE'
+          import importlib.util, os
+          from pathlib import Path
+          path=Path('scripts/release-lifecycle.py')
+          spec=importlib.util.spec_from_file_location('release_lifecycle',path)
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          base=os.environ['EXPECTED_DB_BASE_SHA']
+          if not module.release_proven(module.GitHub(),base,app='portal'):
+              raise SystemExit('Live database baseline lacks a successful canonical Portal release receipt; no migration authorized.')
+          print('Database baseline release receipt verified:',base)
+          PYBASELINE
+
+          changed="$(
+            git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
+            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs$' |
+            grep -v '\.Designer\.cs$' || true
+          )"
+          if [ -z "$changed" ]; then
+            echo "No candidate migration source changed from the proven database baseline."
+            exit 0
+          fi
+          printf '%s\n' "$changed"
+
+          test -x /tmp/diagnostics-packages/masterapp-migrations
+          python3 scripts/release-package.py verify \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --directory /tmp/diagnostics-packages
+
           python3 - <<'PYMIGRATE'
           import json, os, subprocess
           def az(*args):
@@ -740,17 +773,12 @@ jobs:
           if not connection or '\n' in connection or not any(x in connection.lower() for x in ('server=tcp:','.database.windows.net','initial catalog=')):
               raise SystemExit('Production SQL connection unavailable; no restart authorized.')
           print('::add-mask::'+connection,flush=True)
-          env=os.environ | {'ConnectionStrings__MasterAppDb':connection,'EF_FORCE_SQLSERVER':'true','DOTNET_ENVIRONMENT':'Development','ASPNETCORE_ENVIRONMENT':'Development'}
-          common=['--project','Infrastructure/Infrastructure.csproj','--startup-project','AgentPortal/AgentPortal.csproj','--context','MasterAppDbContext','--configuration','Release','--no-build']
-          listing=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
-          pending=[x.split()[0] for x in listing.splitlines() if '(Pending)' in x]
-          changed=subprocess.check_output(['git','diff','--name-only',os.environ['EXPECTED_BASE_SHA'],'HEAD','--','Infrastructure/Migrations'],text=True).splitlines()
-          allowed={p.rsplit('/',1)[-1][:-3] for p in changed if p.endswith('.cs') and not p.endswith('.Designer.cs') and 'ModelSnapshot' not in p}
-          if not set(pending)<=allowed: raise SystemExit('Unexpected pending migrations; no restart authorized.')
-          subprocess.run(['dotnet','tool','run','dotnet-ef','database','update',*common],env=env,check=True)
-          after=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
-          if '(Pending)' in after: raise SystemExit('Pending migrations remain; no restart authorized.')
-          print('Schema ready. Applied candidate migrations only; no down migrations.')
+          subprocess.run(
+              ['/tmp/diagnostics-packages/masterapp-migrations','--connection',connection],
+              check=True,
+              env=os.environ | {'DOTNET_ENVIRONMENT':'Development','ASPNETCORE_ENVIRONMENT':'Development'},
+          )
+          print('Schema ready. Executed the exact validated migration bundle from the proven live database baseline.')
           PYMIGRATE
       - name: Direct deploy AgentPortal
         id: portal
