@@ -459,7 +459,8 @@ def successful_release(api, run, app=None):
     # A selected target may have been intentionally preserved because it was
     # already live at APPLICATION_RELEASE_SHA. Final live proof + enforcement is
     # authoritative; requiring the deploy step itself would reject safe retries.
-    return 'masterapp-' + app in release_targets(run.get('head_sha', ''))
+    release_name = _canonical_release_name(app)
+    return bool(release_name and release_name in release_targets(run.get('head_sha', '')))
 
 def direct_only_request(sha):
     # A one-release exception bound to the exact commit that changes the request.
@@ -620,6 +621,16 @@ def reconcile(api, trigger=None):
     return {'directRelease': 'recovered exact scoped approved request'}
 
 
+def _canonical_release_name(app):
+    if app is None:
+        return None
+    if app in VALIDATION_AUTHORITY.RELEASE_TARGETS:
+        return VALIDATION_AUTHORITY.RELEASE_TARGETS[app]["releaseName"]
+    if app in VALIDATION_AUTHORITY.release_name_map():
+        return app
+    return None
+
+
 def release_proven(api, revision, app=None):
     """Require a durable successful direct-release receipt for a live app revision.
 
@@ -628,7 +639,10 @@ def release_proven(api, revision, app=None):
     artifact name binds proof to APPLICATION_RELEASE_SHA instead of guessing from
     the workflow head.
     """
-    name = 'legend-approved-release-' + revision + (('-' + app) if app else '')
+    release_name = _canonical_release_name(app)
+    if app is not None and release_name is None:
+        return False
+    name = 'legend-approved-release-' + revision + (('-' + release_name) if release_name else '')
     artifacts = api.pages(
         'actions/artifacts?name=' + urllib.parse.quote(name, safe=''),
         'artifacts',
