@@ -25,25 +25,14 @@ _validation_authority = _validation_resume_module()
 # The validation/release authority owns deployment topology and supported scope.
 # Baseline discovery consumes it; it never maintains a second inventory.
 TARGETS = _validation_authority.release_target_rows()
-ALLOWED_RELEASE_TARGET_SETS = _validation_authority.ALLOWED_RELEASE_TARGET_SETS
-
 
 def selected_targets(request):
     if not isinstance(request, dict):
         raise ValueError('Release request must be an object')
     if 'targets' not in request:
         return TARGETS
-    names = request['targets']
-    inventory = {'masterapp-' + row[0]: row for row in TARGETS}
-    if (not isinstance(names, list) or not names or
-            any(not isinstance(name, str) or name not in inventory for name in names) or
-            len(set(names)) != len(names)):
-        raise ValueError('Release targets must be unique names from the existing deployment inventory')
-    # Static-only releases have no database or .NET app changes. Other scoped
-    # releases retain Portal as the shared migration baseline.
-    if frozenset(names) not in ALLOWED_RELEASE_TARGET_SETS:
-        raise ValueError('Unsupported scoped release; migration and packaging policy must be reviewed')
-    return tuple(row for row in TARGETS if 'masterapp-' + row[0] in names)
+    keys = set(_validation_authority.selected_release_target_keys(request['targets']))
+    return tuple(row for row in TARGETS if row[0] in keys)
 
 
 
@@ -150,17 +139,55 @@ def main():
     args = parser.parse_args()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     github_release_context = os.environ.get('GITHUB_ACTIONS') == 'true'
+    expected_release_sha = os.environ.get('RELEASE_SHA') or os.environ.get('GITHUB_SHA')
     if github_release_context:
-        if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != os.environ.get('GITHUB_SHA'):
-            raise SystemExit('Only the exact approved branch revision can be released')
-    request = read_request()
+        if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != expected_release_sha:
+            raise SystemExit('Only the exact approved release revision can be released')
+
+    automatic = bool(args.automatic and github_release_context)
     validated_source_sha = head
+    if automatic:
+        spec = importlib.util.spec_from_file_location('release_lifecycle', Path(__file__).with_name('release-lifecycle.py'))
+        lifecycle = importlib.util.module_from_spec(spec); spec.loader.exec_module(lifecycle)
+        api = lifecycle.GitHub()
+        try:
+            pr_number = int(os.environ['AUTOMATIC_SOURCE_PR'])
+        except (KeyError, ValueError):
+            raise ValueError('Automatic release requires the validated source PR number')
+        validated_sha = validate_revision(os.environ.get('AUTOMATIC_VALIDATED_SHA'))
+        merge_sha = validate_revision(os.environ.get('AUTOMATIC_MERGE_SHA'))
+        if merge_sha != head:
+            raise ValueError('Automatic release checkout is not the exact validated merge revision')
+        pr = api.api(f'pulls/{pr_number}')
+        if (
+            not pr.get('merged_at')
+            or pr.get('merge_commit_sha') != merge_sha
+            or pr.get('base', {}).get('ref') != lifecycle.APPROVED
+            or pr.get('head', {}).get('sha') != validated_sha
+        ):
+            raise ValueError('Automatic release inputs do not bind to one merged validated PR')
+        pending = lifecycle.candidate_validation(api, pr)
+        if pending:
+            raise ValueError(pending)
+        names = [row.get('filename') for row in api.pages(f'pulls/{pr_number}/files') if row.get('filename')]
+        derived = list(_validation_authority.release_targets_for_paths(names))
+        try:
+            supplied = json.loads(os.environ['AUTOMATIC_TARGETS_JSON'])
+        except (KeyError, json.JSONDecodeError):
+            raise ValueError('Automatic release targets are missing or malformed')
+        if supplied != derived or not derived:
+            raise ValueError('Automatic release target scope does not match canonical validated-PR derivation')
+        request = {'releaseMode': 'approved-only', 'targets': derived}
+        validated_source_sha = validated_sha
+    else:
+        request = read_request()
+
     release_mode = request['releaseMode']
     if release_mode not in {'approved-only', 'validate-only'}:
         raise ValueError('releaseMode must be approved-only or validate-only')
     if release_mode == 'approved-only' and 'targets' not in request:
         raise ValueError('An approved release requires an explicit target list')
-    if github_release_context and release_mode == 'approved-only':
+    if github_release_context and release_mode == 'approved-only' and not automatic:
         spec = importlib.util.spec_from_file_location('release_lifecycle', Path(__file__).with_name('release-lifecycle.py'))
         lifecycle = importlib.util.module_from_spec(spec); spec.loader.exec_module(lifecycle)
         if not lifecycle.direct_only_request(head):
@@ -173,7 +200,7 @@ def main():
         if pending:
             raise ValueError(pending)
         validated_source_sha = validate_revision(pr['head']['sha'])
-    website_routing = request.get('cloudflareWebsiteRouting', False)
+    website_routing = False if automatic else request.get('cloudflareWebsiteRouting', False)
     if not isinstance(website_routing, bool):
         raise ValueError('cloudflareWebsiteRouting must be a boolean when supplied')
     preserve_live_targets = request.get('preserveLiveTargets', False)
