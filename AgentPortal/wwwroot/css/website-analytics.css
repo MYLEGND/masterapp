@@ -1,22 +1,22 @@
 :root {
-    --legend-navy: #0e1b3d;
-    --legend-navy-deep: #0b1530;
-    --legend-ink: #eef2f8;
-    --legend-silver: #d8deea;
+    --legend-navy: var(--legend-app-surface-elevated);
+    --legend-navy-deep: var(--legend-app-surface);
+    --legend-ink: var(--legend-app-on-dark);
+    --legend-silver: var(--legend-app-on-dark-muted);
     --legend-gold: var(--legend-app-accent);
     --legend-gold-border: var(--legend-app-accent);
     --legend-shadow: 0 18px 38px rgba(0,0,0,.35);
-    --legend-ink-dark: #0e1b3d;
+    --legend-ink-dark: var(--web-ink);
 }
 
-body { background: #f7f8fb; color: var(--legend-ink-dark); }
+body { background: var(--legend-app-panel-soft); color: var(--legend-ink-dark); }
 
 .fa-shell { color: var(--legend-ink-dark); }
 .fa-shell .fa-muted { color: var(--legend-silver); }
 .section-subtext { color: rgba(15,23,42,0.72); }
 
 .page-bg {
-    background: #f7f8fb;
+    background: var(--legend-app-panel-soft);
     min-height: 100vh;
     padding-bottom: 48px;
 }
