@@ -271,18 +271,6 @@
     inset: 0;
 }
 
-@media (min-width:901px) {
-.home-clients-dialog,
-.home-zoom-dialog {
-    position: relative;
-    z-index: 1;
-    min-height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem 1rem;
-}
-}
 
 .home-clients-shell,
 .home-zoom-shell {
