@@ -320,19 +320,19 @@ jobs:
                   actual=response.read().decode().strip() if row['project']=='static' else json.load(response)['sourceRevision']
               print(host,actual)
               assert actual == row['revision'], 'Live revision changed; rebuild the release baseline'
-              if os.environ['CLIENT_ONLY'] == 'true' and row['app'] == 'client':
+              if os.environ['CLIENT_ONLY'] == 'true':
                   subprocess.run(['git','diff','--quiet',row['revision'],'HEAD','--','Infrastructure/Migrations'],check=True)
           PYBASE
       - name: Verify ClientApp browser entry routes
         id: cliententry
-        if: contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client')
+        if: env.SELECTED_HAS_BROWSER_ENTRY == 'true'
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PYCLIENTENTRY'
           import http.client, json, ssl, urllib.parse
-          hosts=('client.mylegnd.com','masterapp-client.azurewebsites.net')
+          hosts=tuple(json.loads(os.environ['BROWSER_ENTRY_HOSTS']))
           paths=('/', '/Account/Login')
           rows=[]
           context=ssl.create_default_context()
@@ -386,13 +386,13 @@ jobs:
           echo "Preserved exact release web-contract validation from architecture proof."
       - name: Verify selected website catalog and build
         id: websitechecks
-        if: contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && env.EXACT_LIVE != 'true'
+        if: env.SELECTED_HAS_STATIC == 'true' && env.EXACT_LIVE != 'true'
         run: |
           test "$REUSE_VALIDATED_PACKAGE" = true
           echo "Preserved exact website build/check validation from immutable validation artifact."
       - name: Publish exact selected application packages
         id: package
-        if: always() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && (env.WEBSITE_ROUTING != 'true' || steps.routingchecks.outcome == 'success') && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') || steps.websitechecks.outcome == 'success')))
+        if: always() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && (env.WEBSITE_ROUTING != 'true' || steps.routingchecks.outcome == 'success') && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (env.SELECTED_HAS_STATIC != 'true' || steps.websitechecks.outcome == 'success')))
         run: |
           test "$REUSE_VALIDATED_PACKAGE" = true
           python3 scripts/release-package.py verify \
