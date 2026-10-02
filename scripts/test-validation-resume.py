@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("validation_resume", ROOT / "scripts" / "validation-resume.py")
@@ -220,6 +221,35 @@ jobs:
         self.assertIn("baseline", blocks)
         self.assertNotEqual(blocks["candidate"], blocks["baseline"])
 
+    def test_job_definition_parser_preserves_blank_separated_jobs(self):
+        text = """jobs:
+  plan:
+    runs-on: ubuntu-latest
+
+  candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo candidate
+
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo baseline
+
+  validate:
+    runs-on: ubuntu-latest
+"""
+        blocks = m._job_blocks(text)
+        self.assertEqual({"plan", "candidate", "baseline", "validate"}, set(blocks))
+
+    def test_real_step5_workflow_exposes_candidate_and_baseline_jobs(self):
+        path = ROOT / ".github" / "workflows" / "step5-isolated-conversion-mapping-validation.yml"
+        blocks = m._job_blocks(path.read_text())
+        for name in ("plan", "baseline-evidence", "candidate", "baseline", "validate"):
+            self.assertIn(name, blocks)
+        self.assertIn("Run full AgentPortal candidate suite", blocks["candidate"])
+        self.assertIn("Run identical suite on approved baseline", blocks["baseline"])
+
     def test_release_workflow_policy_covers_every_named_direct_release_step(self):
         path = ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
         policies = m.verify_release_policy_coverage(
@@ -242,6 +272,190 @@ jobs:
             set(policies),
         )
 
+
+    def test_step5_candidate_change_invalidates_comparison_but_preserves_unrelated_children(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["AgentPortal.Tests/SomeUnrelatedRegressionTests.cs"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["candidate-build"]["run"])
+        self.assertTrue(plan["gates"]["candidate-full"]["run"])
+        self.assertTrue(plan["gates"]["comparison"]["run"])
+        self.assertEqual(
+            "evidence_dependency_invalidated:candidate-full",
+            plan["gates"]["comparison"]["reason"],
+        )
+        self.assertFalse(plan["gates"]["candidate-focused"]["run"])
+
+    def test_step5_workflow_delegates_resume_and_baseline_decisions_to_canonical_authority(self):
+        path = ROOT / ".github" / "workflows" / "step5-isolated-conversion-mapping-validation.yml"
+        workflow = path.read_text()
+        self.assertIn("scripts/validation-resume.py plan", workflow)
+        self.assertIn("scripts/validation-resume.py step5-decision", workflow)
+        self.assertIn("scripts/validation-resume.py step5-baseline", workflow)
+        self.assertNotIn('gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$baseline_name', workflow)
+        self.assertIn("candidate_restore_run", workflow)
+        self.assertIn("candidate_build_run", workflow)
+        self.assertIn("candidate_focused_run", workflow)
+        self.assertIn("candidate_full_run", workflow)
+        self.assertIn("comparison_run", workflow)
+        self.assertIn("Preserve effective Step 5 candidate evidence", workflow)
+        self.assertIn("Preserve effective Step 5 baseline evidence", workflow)
+        self.assertIn("/tmp/step5-effective/candidate.trx", workflow)
+        self.assertIn("/tmp/step5-effective/baseline.trx", workflow)
+
+    def test_new_release_step_is_automatically_fail_closed_without_registry_edit(self):
+        path = ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
+        workflow = path.read_text() + """
+      - name: Future automatically governed release child
+        run: echo future
+"""
+        policies = m.verify_release_policy_coverage(
+            "all-intentional-direct-release-20260918.yml",
+            workflow,
+        )
+        self.assertEqual(
+            "fail_closed_execute",
+            policies["Future automatically governed release child"],
+        )
+
+    def test_release_inventory_is_single_canonical_source_for_baseline_and_live_proof(self):
+        self.assertTrue(m.RELEASE_TARGETS)
+        names = [row["releaseName"] for row in m.RELEASE_TARGETS.values()]
+        self.assertEqual(len(names), len(set(names)))
+        self.assertTrue(all(row.get("proofHosts") for row in m.RELEASE_TARGETS.values()))
+        self.assertTrue(all(row.get("sourceRoot") for row in m.RELEASE_TARGETS.values()))
+        self.assertTrue(all(row.get("package") for row in m.RELEASE_TARGETS.values()))
+
+        baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
+        self.assertIn("_validation_authority.release_target_rows()", baseline)
+        self.assertIn("_validation_authority.selected_release_target_keys", baseline)
+        self.assertNotIn("ALLOWED_RELEASE_TARGET_SETS", baseline)
+
+        release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
+        self.assertIn("scripts/validation-resume.py live-state", release)
+        self.assertIn("scripts/validation-resume.py verify-live", release)
+        self.assertIn("Publish selected head as one transaction", release)
+        for row in m.RELEASE_TARGETS.values():
+            self.assertNotIn(row["releaseName"], release)
+            self.assertNotIn(row["azureHost"], release)
+        self.assertNotIn(m.RELEASE_RESOURCE_GROUP, release)
+        self.assertNotIn(m.MIGRATION_BUNDLE_NAME, release)
+        self.assertNotIn(m.ROUTING_WORKER_NAME, release)
+        self.assertNotIn(m.DOMAIN_REFRESH_PROJECT, release)
+
+    def test_lifecycle_and_release_evidence_lookup_are_canonicalized(self):
+        lifecycle = (ROOT / ".github" / "workflows" / "legend-release-lifecycle.yml").read_text()
+        self.assertIn("scripts/validation-resume.py lifecycle-evidence", lifecycle)
+        identity_step = lifecycle.split("      - name: Resolve lifecycle validation authority identity\n", 1)[1].split("      - name:", 1)[0]
+        self.assertNotIn("gh api", identity_step)
+        self.assertNotIn("sha256sum", identity_step)
+
+        release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
+        validated = release.split("      - name: Reuse exact successful validation package when available\n", 1)[1].split("      - name:", 1)[0]
+        rollback = release.split("      - name: Reuse exact retained live package when available\n", 1)[1].split("      - uses:", 1)[0]
+        self.assertIn("scripts/validation-resume.py validated-package", validated)
+        self.assertIn("rollback-evidence", rollback)
+        self.assertIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', release)
+        self.assertNotIn("gh api", validated)
+        self.assertNotIn("gh api", rollback)
+
+    def test_consumed_evidence_invalidates_forward_without_invalidating_siblings(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["AgentPortal.Tests/SomeUnrelatedRegressionTests.cs"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["candidate-full"]["run"])
+        self.assertTrue(plan["gates"]["comparison"]["run"])
+        self.assertFalse(plan["gates"]["candidate-focused"]["run"])
+
+    def test_merge_readiness_consumes_one_canonical_validation_topology(self):
+        topology = m.required_validation_topology(["scripts/validation-resume.py"])
+        self.assertEqual(
+            {
+                ".github/workflows/masterapp-platform-architecture-validation.yml",
+                ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+                ".github/workflows/step6-openai-ads-execution-validation.yml",
+                ".github/workflows/steps7-8-governed-advertising-validation.yml",
+                ".github/workflows/approved-release-security-validation.yml",
+            },
+            set(topology["required"]),
+        )
+
+        lifecycle = (ROOT / "scripts" / "release-lifecycle.py").read_text()
+        self.assertIn("VALIDATION_AUTHORITY.required_validation_topology(names)", lifecycle)
+        self.assertIn("latest[path].get('conclusion') != 'success'", lifecycle)
+        self.assertNotIn("validation_neutral_path", lifecycle)
+        self.assertNotIn("architecture_product_validation", lifecycle)
+        self.assertNotIn("architecture_public_website_validation", lifecycle)
+        self.assertNotIn("STEP6_VALIDATION_PATHS", lifecycle)
+        self.assertNotIn("STEP78_VALIDATION_PATHS", lifecycle)
+        self.assertNotIn("VALIDATION_NEUTRAL_PATHS =", lifecycle)
+
+    def test_public_website_only_scope_does_not_expand_into_unrelated_validations(self):
+        topology = m.required_validation_topology([
+            "Infrastructure/WebsiteEditing/WebsiteSiteSource.cs",
+        ])
+        self.assertTrue(topology["publicWebsiteOnly"])
+        self.assertEqual(
+            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            set(topology["required"]),
+        )
+
+    def test_package_canary_preserves_prior_child_proof_for_control_only_change(self):
+        proof = {
+            "id": 91,
+            "head_sha": "a" * 40,
+            "updated_at": "2026-10-02T00:00:00Z",
+        }
+        with patch.object(m, "_package_canary_proof_runs", return_value=[proof]), \
+             patch.object(m, "git_changed", return_value=["scripts/test-release-policy.py"]), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            plan = m.compute_package_canary_plan(
+                "MYLEGND/masterapp",
+                "b" * 40,
+                "0" * 40,
+                100,
+                "hardening/example",
+            )
+        self.assertFalse(plan["needed"])
+        self.assertEqual(91, plan["evidenceRunId"])
+        self.assertEqual("preserved_prior_package_canary", plan["reason"])
+
+    def test_package_canary_invalidates_only_for_package_or_application_inputs(self):
+        proof = {
+            "id": 92,
+            "head_sha": "a" * 40,
+            "updated_at": "2026-10-02T00:00:00Z",
+        }
+        with patch.object(m, "_package_canary_proof_runs", return_value=[proof]), \
+             patch.object(m, "git_changed", return_value=["AgentPortal/Program.cs"]), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            plan = m.compute_package_canary_plan(
+                "MYLEGND/masterapp",
+                "b" * 40,
+                "0" * 40,
+                101,
+                "hardening/example",
+            )
+        self.assertTrue(plan["needed"])
+        self.assertEqual(["AgentPortal/Program.cs"], plan["changedInputs"])
+        self.assertEqual("package_or_application_inputs_changed_since_proof", plan["reason"])
+
+    def test_release_baseline_delegates_application_identity_classification(self):
+        baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
+        self.assertIn("_validation_authority.release_control_only_path(path)", baseline)
+        self.assertNotIn('path.startswith(".github/workflows/")', baseline)
 
     def test_step5_workflow_only_change_is_neutral_to_architecture(self):
         workflow = "masterapp-platform-architecture-validation.yml"
@@ -285,6 +499,37 @@ jobs:
         self.assertTrue(plan["gates"]["lifecycle"]["run"])
         self.assertFalse(plan["gates"]["build-hosts"]["run"])
         self.assertFalse(plan["gates"]["meta-regressions"]["run"])
+
+    def test_release_package_change_reruns_only_release_authority_gates(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["scripts/release-package.py"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["lifecycle"]["run"])
+        self.assertTrue(plan["gates"]["release-policy"]["run"])
+        for key, gate in plan["gates"].items():
+            if key not in {"lifecycle", "release-policy"}:
+                self.assertFalse(gate["run"], key)
+
+    def test_release_web_contract_change_invalidates_only_release_web_gate(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["tests/legend-connect/example.test.mjs"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["release-web-contracts"]["run"])
+        for key, gate in plan["gates"].items():
+            if key != "release-web-contracts":
+                self.assertFalse(gate["run"], key)
 
     def test_validation_authority_change_fails_closed_to_full(self):
         workflow = "masterapp-platform-architecture-validation.yml"

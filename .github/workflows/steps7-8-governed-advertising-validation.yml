@@ -112,3 +112,12 @@ jobs:
           cd tests/website
           npm ci
           npm test
+
+      - name: Preserve exact validation resume plan
+        if: always() && steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-resume-step78-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/validation-resume.json
+          retention-days: 30
+          if-no-files-found: error

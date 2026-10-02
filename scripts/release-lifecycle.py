@@ -19,11 +19,20 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_policy import staging_only
 
-APPROVED = 'legend/approved-changes'
-DIRECT = 'all-intentional-direct-release-20260918.yml'
-SECURITY = 'approved-release-security-validation.yml'
-KEEP = {APPROVED}
 SHA = re.compile(r'^[0-9a-f]{40}$')
+
+
+def _validation_authority_module():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+VALIDATION_AUTHORITY = _validation_authority_module()
+APPROVED = VALIDATION_AUTHORITY.TRUSTED_PR_BASE
+DIRECT = VALIDATION_AUTHORITY.DIRECT_RELEASE_WORKFLOW
+KEEP = {APPROVED}
 
 
 def git(*args, check=True):
@@ -111,293 +120,83 @@ def ready(pr, repo, base):
         and pr['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'})
 
 
-PUBLIC_WEBSITE_ARCHITECTURE_STEPS = {
-    'Run branch lifecycle safety contracts',
-    'Restore .NET graph',
-    'Build shared infrastructure',
-    'Build Protect host',
-    'Verify Protect serves the exact shared tracking assets',
-    'Install shared website renderer dependencies',
-    'Build shared website renderer',
-    'Verify renderer authority parity',
-    'Run business renderer tests with approved-baseline no-regression proof',
-    'Install canonical shared CMS test dependencies',
-    'Run canonical shared CMS tests',
-}
-
-
-def architecture_public_website_validation(api, run):
-    """Validate only the canonical public Website Studio/runtime subsystem.
-
-    A public-site-only candidate must prove its own renderer, Protect host, shared
-    CMS, and lifecycle contracts. Failures in unrelated app/test projects do not
-    invalidate this subsystem evidence.
-    """
-    if run.get('status') != 'completed':
-        return False
-    if run.get('conclusion') == 'success':
-        return True
-    if run.get('conclusion') != 'failure':
-        return False
-
-    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
-    steps = {step.get('name'): step.get('conclusion')
-             for job in jobs for step in (job.get('steps') or [])}
-    return all(steps.get(name) == 'success' for name in PUBLIC_WEBSITE_ARCHITECTURE_STEPS)
-
-
-ARCHITECTURE_PRODUCT_STEPS = {
-    'Run branch lifecycle safety contracts',
-    'Run authenticated mobile authority tests',
-    'Restore .NET graph',
-    'Build shared infrastructure',
-    'Build AgentPortal and ClientApp hosts',
-    'Build Protect host',
-    'Verify Protect serves the exact shared tracking assets',
-    'Compile full regression test project',
-    'Compile shared domain release refresh',
-    'Run website ownership and publishing regressions',
-    'Run Meta authority regressions',
-}
-
-
-def architecture_product_validation(api, run):
-    """Accept a failed architecture run only when product validation is complete.
-
-    The release-policy check is a release-control concern. A product candidate
-    remains valid when every product/build/mobile step completed successfully and
-    the sole blocking step is the release-policy boundary. This preserves strict
-    product evidence without allowing unrelated control-policy drift to erase it.
-    """
-    if run.get('status') != 'completed':
-        return False
-    if run.get('conclusion') == 'success':
-        return True
-    if run.get('conclusion') != 'failure':
-        return False
-
-    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
-    steps = {step.get('name'): step.get('conclusion')
-             for job in jobs for step in (job.get('steps') or [])}
-    if any(steps.get(name) != 'success' for name in ARCHITECTURE_PRODUCT_STEPS):
-        return False
-    if steps.get('Verify consolidated release scope and routing policy') != 'failure':
-        return False
-
-    # Fail closed if any step before the release-policy boundary failed/cancelled,
-    # or if an unexpected executed step after it failed for a product reason.
-    for name, conclusion in steps.items():
-        if name in ARCHITECTURE_PRODUCT_STEPS or name == 'Verify consolidated release scope and routing policy':
-            continue
-        if conclusion in {'failure', 'cancelled'}:
-            return False
-    return True
-
-
-VALIDATION_NEUTRAL_PATHS = {
-    '.github/workflows/masterapp-platform-architecture-validation.yml',
-    'Docs/releases/direct-release-request.json',
-    'scripts/approved-release-baseline.py',
-    'scripts/release-lifecycle.py',
-    'scripts/test-release-policy.py',
-    'scripts/test-release-lifecycle.py',
-    'scripts/test-deploy-approved-app.py',
-    'tests/website/legend-public-cms.test.mjs',
-    'AgentPortal.Tests/WebsiteStudioV3ContractTests.cs',
-}
-
-
-
-STEP6_VALIDATION_PATHS = {
-    'SHARED/Analytics/OpenAiAdsExecutionContracts.cs',
-    'Infrastructure/Analytics/OpenAiAdsExecutionService.cs',
-    'Infrastructure/Analytics/MarketingConnectionStore.cs',
-    'AgentPortal.Tests/OpenAiAdsExecutionServiceTests.cs',
-    'AgentPortal.Tests/OpenAiAdsAccountConnectionAuthorityTests.cs',
-    'AgentPortal.Tests/MarketingDestinationLayerTests.cs',
-    'AgentPortal.Tests/MarketingScopeParityContractTests.cs',
-    '.github/workflows/step6-openai-ads-execution-validation.yml',
-    'scripts/validation-resume.py',
-    'scripts/test-validation-resume.py',
-}
-
-STEP78_VALIDATION_PATHS = {
-    'Domain/Entities/AdvertisingActionAuthorization.cs',
-    'SHARED/Analytics/AdvertisingActionContracts.cs',
-    'Infrastructure/Analytics/AdvertisingActionAuthorizationService.cs',
-    'Infrastructure/Analytics/MarketingConnectionStore.cs',
-    'Infrastructure/WebsiteEditing/PromotionOrchestrationService.cs',
-    'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
-    'Infrastructure/Data/MasterAppDbContext.cs',
-    'Infrastructure/Migrations/20260927053000_AddAdvertisingActionAuthorizations.cs',
-    'Legend-Design/legend-website-management.js',
-    'AgentPortal.Tests/AdvertisingActionAuthorizationServiceTests.cs',
-    'AgentPortal.Tests/PromotionOrchestrationTests.cs',
-    'AgentPortal.Tests/MarketingScopeParityContractTests.cs',
-    'Infrastructure/Analytics/AdvertisingCommandCenterService.cs',
-    'AgentPortal/Controllers/WebsiteAnalyticsController.cs',
-    'AgentPortal/Views/WebsiteAnalytics/Index.cshtml',
-    'AgentPortal/wwwroot/js/website-analytics.js',
-    'AgentPortal/wwwroot/css/website-analytics.css',
-    'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
-    'AgentPortal.Tests/AdvertisingCommandCenterCentralizationTests.cs',
-    '.github/workflows/steps7-8-governed-advertising-validation.yml',
-    'scripts/validation-resume.py',
-    'scripts/test-validation-resume.py',
-}
-
-
-def validation_neutral_commit(api, sha):
-    commit = api.api('commits/' + sha)
-    files = [row.get('filename') for row in (commit or {}).get('files', [])]
-    return bool(files) and all(
-        path in VALIDATION_NEUTRAL_PATHS or path.startswith('tests/')
-        for path in files if path)
-
-
-def architecture_run_for_sha(api, sha, architecture):
-    runs = api.pages('actions/runs?head_sha=' + sha, 'workflow_runs')
-    candidates = [
-        run for run in runs
-        if run.get('head_sha') == sha and run.get('event') == 'pull_request'
-        and run['path'].split('@')[0] == architecture
-    ]
-    if not candidates:
-        return None
-    return sorted(
-        candidates,
-        key=lambda run: (run.get('created_at', ''), run.get('id', 0)),
-        reverse=True)[0]
-
-
-def inherited_architecture_product_validation(api, pr, architecture):
-    """Reuse product evidence only across validation/control-only trailing commits."""
-    head = pr['head']['sha']
-    commits = api.pages(f"pulls/{pr['number']}/commits")
-    shas = [row.get('sha') for row in commits if row.get('sha')]
-    if head not in shas:
-        shas.append(head)
-
-    for sha in reversed(shas):
-        run = architecture_run_for_sha(api, sha, architecture)
-        if run is not None and architecture_product_validation(api, run):
-            return True
-        if not validation_neutral_commit(api, sha):
-            return False
-    return False
-
-
 def candidate_validation(api, pr):
-    """Require subsystem-owned validation; neutral trailing commits may reuse product evidence."""
+    """Require every workflow selected by the canonical topology to be green.
+
+    Child-level preservation belongs to validation-resume.py. Lifecycle never
+    reinterprets a failed parent workflow, carries a second step list, or accepts
+    partial validation as merge-ready.
+    """
     head = pr['head']['sha']
     runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
     latest = {}
-    for run in sorted(runs, key=lambda r: (r.get('created_at', ''), r.get('id', 0)), reverse=True):
+    for run in sorted(
+        runs,
+        key=lambda row: (row.get('created_at', ''), row.get('id', 0)),
+        reverse=True,
+    ):
         if run.get('head_sha') != head or run.get('event') != 'pull_request':
             continue
         latest.setdefault(run['path'].split('@')[0], run)
 
-    architecture = '.github/workflows/masterapp-platform-architecture-validation.yml'
-    step5 = '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
-    step6 = '.github/workflows/step6-openai-ads-execution-validation.yml'
-    step78 = '.github/workflows/steps7-8-governed-advertising-validation.yml'
-    security = '.github/workflows/' + SECURITY
-    required = {architecture}
-
     files = api.pages(f"pulls/{pr['number']}/files")
-    names = [f['filename'] for f in files]
+    names = [row['filename'] for row in files if row.get('filename')]
+    required = VALIDATION_AUTHORITY.required_validation_topology(names)['required']
 
-    if (step5 in names or
-        'scripts/validation-resume.py' in names or
-        'scripts/test-validation-resume.py' in names):
-        required.add(step5)
-    if any(name in STEP6_VALIDATION_PATHS for name in names):
-        required.add(step6)
-    scope_neutral = VALIDATION_NEUTRAL_PATHS | {
-        'scripts/deploy-approved-app.py',
-    }
-    product_names = [name for name in names
-                     if name not in scope_neutral and not name.startswith('tests/')]
-
-    # Website Studio has its own architecture/shared-CMS validation authority.
-    # Release/test-control files never convert it into a Step 5 marketing release.
-    public_website_exact = {
-        'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
-        'AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs',
-        'Legend-Design/legend-web-foundation.css',
-        'Legend-Website/scripts/build.mjs',
-        'Legend-Website/public/web.config',
-        'Protect-Website/Views/Shared/_Layout.cshtml',
-        'SHARED/WebsitePlatform/legend-public-cms.js',
-        'SHARED/WebsitePlatform/legend-public-web.css',
-        'Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs',
-        'Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs',
-        'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
-        'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs',
-        'Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs',
-        'Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs',
-    }
-    public_website_only = bool(product_names) and all(
-        name in public_website_exact for name in product_names)
-
-    if not public_website_only and any(name in STEP78_VALIDATION_PATHS for name in names):
-        required.add(step78)
-
-    broad_product_change = any(
-        name.startswith(('AgentPortal/', 'ClientApp/', 'Protect-Website/',
-                         'ParfaitApp/', 'SHARED/', 'Infrastructure/', 'Domain/'))
-        or name == step5
-        for name in product_names
-    )
-    if broad_product_change and not public_website_only:
-        required.add(step5)
-        required.add(security)
-    if security in names or 'scripts/validation-resume.py' in names or 'scripts/test-validation-resume.py' in names:
-        required.add(security)
-
-    failed = []
-    for path in sorted(required):
-        run = latest.get(path)
-        if path == architecture:
-            if run is not None:
-                if public_website_only and architecture_public_website_validation(api, run):
-                    continue
-                if not public_website_only and architecture_product_validation(api, run):
-                    continue
-            if not public_website_only and inherited_architecture_product_validation(api, pr, architecture):
-                continue
-            failed.append(path)
-        elif run is None:
-            failed.append(path)
-        elif run.get('status') != 'completed' or run.get('conclusion') != 'success':
-            failed.append(path)
-
+    failed = [
+        path for path in required
+        if path not in latest
+        or latest[path].get('status') != 'completed'
+        or latest[path].get('conclusion') != 'success'
+    ]
     if not failed:
         return None
-    if architecture in failed and architecture not in latest:
-        return 'Exact-head architecture validation has not started'
-    if step5 in failed and step5 not in latest:
-        return 'Exact-head full-suite comparison has not started'
-    return 'Awaiting successful exact-head validation: ' + ', '.join(failed)
+    return 'Awaiting successful exact-head validation: ' + ', '.join(sorted(failed))
+
+
+def automatic_release_targets(api, pr):
+    files = api.pages(f"pulls/{pr['number']}/files")
+    names = [row.get('filename') for row in files if row.get('filename')]
+    return VALIDATION_AUTHORITY.release_targets_for_paths(names)
+
+
+def automatic_release_inputs(pr, merge_sha, targets):
+    return {
+        'automatic': 'true',
+        'source_pr': str(pr['number']),
+        'validated_sha': pr['head']['sha'],
+        'merge_sha': merge_sha,
+        'targets_json': json.dumps(list(targets), separators=(',', ':')),
+    }
 
 
 def merge_validated(api, pr):
     pending = candidate_validation(api, pr)
     if pending:
         return {'retained': pending}
-    # Merge permission is not deployment permission. Only an exact changed release
-    # request authorizes publication; maintenance commits never expand to all apps.
-    publish = direct_only_request(pr['head']['sha'])
+
+    targets = automatic_release_targets(api, pr)
     result = api.api(f"pulls/{pr['number']}/merge",
         {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
     if not result.get('merged'):
         raise RuntimeError('Merge did not complete; source branch retained')
-    if publish:
-        api.dispatch(DIRECT, {'automatic': 'false'})
+
+    # Validation success is the publication handoff. Application-affecting merges
+    # immediately enter the sole direct-release workflow with scope derived from
+    # the validated PR. No second authorization command or hand-maintained target
+    # table exists between merge and deployment.
+    if targets:
+        api.dispatch(DIRECT, automatic_release_inputs(pr, result['sha'], targets))
+
     if any(f['filename'] == '.github/workflows/deployment-diagnostics.yml' for f in api.pages(f"pulls/{pr['number']}/files")):
         api.dispatch('deployment-diagnostics.yml')
-    return {'mergedPr': pr['number'], 'sha': result['sha'], 'releaseDispatched': publish,
-            'automaticRelease': False}
+    return {
+        'mergedPr': pr['number'],
+        'sha': result['sha'],
+        'releaseDispatched': bool(targets),
+        'automaticRelease': bool(targets),
+        'targets': list(targets),
+    }
 
 
 def integrate(api, number):
@@ -414,11 +213,23 @@ def pending_updates(api):
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     # Scheduled reconciliation also covers bot-created PR events and corrections
     # pushed to a retained branch after its previous approved PR was merged.
+    #
+    # A retained/unvalidated PR must never starve another fully validated PR.
+    # Preserve its reason and continue scanning; stop only after a mutation
+    # actually succeeds.
     pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
     closed = api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe=''))
+    retained_candidates = []
     for pr in reversed(pulls):
         if ready(pr, api.repo, APPROVED):
-            return integrate(api, pr['number'])
+            result = integrate(api, pr['number'])
+            if 'retained' not in result:
+                return result
+            retained_candidates.append({
+                'pr': pr['number'],
+                'reason': result['retained'],
+            })
+            continue
         if (pr['state'] == 'open' and not pr['draft'] and pr['user']['login'] == 'github-actions[bot]'
             and pr['head']['repo'] and pr['head']['repo']['full_name'] == api.repo
             and pr['head']['ref'] not in KEEP):
@@ -427,7 +238,13 @@ def pending_updates(api):
                 old['head']['repo'] and old['head']['repo']['full_name'] == api.repo and
                 old['head']['ref'] == pr['head']['ref']]
             if any(ancestor(old['head']['sha'], pr['head']['sha']) for old in prior):
-                return merge_validated(api, pr)
+                result = merge_validated(api, pr)
+                if 'retained' not in result:
+                    return result
+                retained_candidates.append({
+                    'pr': pr['number'],
+                    'reason': result['retained'],
+                })
     open_names = {p['head']['ref'] for p in pulls if p['head']['repo'] and p['head']['repo']['full_name'] == api.repo}
     branches = {b['name']: b for b in api.pages('branches')}
     approved = api.ref(APPROVED)
@@ -449,7 +266,10 @@ def pending_updates(api):
                     'Owning validation and the approved direct-release authority will re-evaluate only invalidated evidence; branch deletion remains gated.'})
         # The previous collaborator PR authorizes review, not skipping fresh CI.
         return {'correctionPr': correction['number'], 'retained': 'Fresh exact-head validation required'}
-    return {'integration': 'no ready changes or retained-branch corrections'}
+    result = {'integration': 'no validated ready changes or retained-branch corrections'}
+    if retained_candidates:
+        result['retainedCandidates'] = retained_candidates
+    return result
 
 
 def release_targets(revision):
@@ -502,7 +322,8 @@ def successful_release(api, run, app=None):
     # A selected target may have been intentionally preserved because it was
     # already live at APPLICATION_RELEASE_SHA. Final live proof + enforcement is
     # authoritative; requiring the deploy step itself would reject safe retries.
-    return 'masterapp-' + app in release_targets(run.get('head_sha', ''))
+    release_name = _canonical_release_name(app)
+    return bool(release_name and release_name in release_targets(run.get('head_sha', '')))
 
 def direct_only_request(sha):
     # A one-release exception bound to the exact commit that changes the request.
@@ -545,16 +366,6 @@ def direct_release_approved_pr(api, sha):
 
     current = sha
     request_path = 'Docs/releases/direct-release-request.json'
-    release_control_files = {
-        request_path,
-        '.github/workflows/masterapp-platform-architecture-validation.yml',
-        '.github/workflows/approved-release-security-validation.yml',
-        'scripts/approved-release-baseline.py',
-        'scripts/release-lifecycle.py',
-        'scripts/test-release-policy.py',
-        'scripts/test-release-lifecycle.py',
-    }
-
     for _ in range(16):
         lineage = git('rev-list', '--parents', '-n', '1', current, check=False)
         parts = lineage.stdout.strip().split() if not lineage.returncode else []
@@ -584,7 +395,10 @@ def direct_release_approved_pr(api, sha):
         pr = matches[0]
         files = api.pages(f"pulls/{pr['number']}/files")
         names = {row.get('filename') for row in files}
-        if names and names <= release_control_files:
+        if names and all(
+            VALIDATION_AUTHORITY.release_control_only_path(name)
+            for name in names if name
+        ):
             merge_lineage = git('rev-list', '--parents', '-n', '1', merged, check=False)
             merge_parts = merge_lineage.stdout.strip().split() if not merge_lineage.returncode else []
             if len(merge_parts) != 3 or merge_parts[0] != merged:
@@ -608,8 +422,6 @@ def reconcile(api, trigger=None):
             return {'retained': 'Triggered direct release did not complete successfully; no automatic replay'}
 
     approved = api.ref(APPROVED)
-    if not direct_only_request(approved):
-        return {'release': 'no exact approved-only release authorization'}
 
     runs = api.pages('actions/runs?head_sha=' + approved, 'workflow_runs')
     direct_runs = [
@@ -630,6 +442,25 @@ def reconcile(api, trigger=None):
             return {'release': 'exact approved direct release already successful'}
         return {'retained': 'Exact approved release already attempted; correction or explicit rerun required'}
 
+    merged_prs = [
+        pr for pr in api.pages('commits/' + approved + '/pulls')
+        if pr.get('merged_at')
+        and pr.get('merge_commit_sha') == approved
+        and pr.get('base', {}).get('ref') == APPROVED
+    ]
+    if len(merged_prs) == 1:
+        pr = merged_prs[0]
+        pending = candidate_validation(api, pr)
+        if pending:
+            return {'retained': pending}
+        targets = automatic_release_targets(api, pr)
+        if targets:
+            api.dispatch(DIRECT, automatic_release_inputs(pr, approved, targets))
+            return {'directRelease': 'recovered automatic validated-merge release', 'targets': list(targets)}
+
+    if not direct_only_request(approved):
+        return {'release': 'no application publication required for exact approved head'}
+
     pr = direct_release_approved_pr(api, approved)
     if pr is None:
         return {'retained': 'Exact release authorization cannot be bound to a validated approved PR'}
@@ -640,6 +471,16 @@ def reconcile(api, trigger=None):
     return {'directRelease': 'recovered exact scoped approved request'}
 
 
+def _canonical_release_name(app):
+    if app is None:
+        return None
+    if app in VALIDATION_AUTHORITY.RELEASE_TARGETS:
+        return VALIDATION_AUTHORITY.RELEASE_TARGETS[app]["releaseName"]
+    if app in VALIDATION_AUTHORITY.release_name_map():
+        return app
+    return None
+
+
 def release_proven(api, revision, app=None):
     """Require a durable successful direct-release receipt for a live app revision.
 
@@ -648,7 +489,10 @@ def release_proven(api, revision, app=None):
     artifact name binds proof to APPLICATION_RELEASE_SHA instead of guessing from
     the workflow head.
     """
-    name = 'legend-approved-release-' + revision
+    release_name = _canonical_release_name(app)
+    if app is not None and release_name is None:
+        return False
+    name = 'legend-approved-release-' + revision + (('-' + release_name) if release_name else '')
     artifacts = api.pages(
         'actions/artifacts?name=' + urllib.parse.quote(name, safe=''),
         'artifacts',
@@ -662,7 +506,10 @@ def release_proven(api, revision, app=None):
             run_ids.append(run_id)
     for run_id in run_ids:
         run = api.api(f'actions/runs/{run_id}')
-        if successful_release(api, run, app=app):
+        # Target-specific artifact names are the scope proof for modern
+        # transactional releases. Legacy generic receipts still fall back to the
+        # committed request check below.
+        if successful_release(api, run):
             return True
 
     # Bootstrap durable proof for exact-head direct releases that completed before

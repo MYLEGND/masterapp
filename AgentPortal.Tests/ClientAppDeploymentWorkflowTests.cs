@@ -17,7 +17,7 @@ public sealed class ClientAppDeploymentWorkflowTests
     {
         var workflow = DirectRelease();
         Assert.Contains("name: LEGEND approved direct release", workflow, StringComparison.Ordinal);
-        Assert.Contains("branches: [legend/approved-changes]", workflow, StringComparison.Ordinal);
+        Assert.Contains("github.ref == 'refs/heads/legend/approved-changes'", workflow, StringComparison.Ordinal);
         Assert.Contains("Preserve targets already live at exact candidate", workflow, StringComparison.Ordinal);
         Assert.Contains("Verify every deployed target and collect all failures", workflow, StringComparison.Ordinal);
         Assert.Contains("Enforce complete direct deployment outcome", workflow, StringComparison.Ordinal);
@@ -25,43 +25,43 @@ public sealed class ClientAppDeploymentWorkflowTests
     }
 
     [Fact]
-    public void ClientAndPortalRemainIndependentTargetsInsideOneReleaseAuthority()
+    public void SelectedTargetsPublishThroughOneCanonicalTransaction()
     {
         var workflow = DirectRelease();
-        Assert.Contains("Direct deploy AgentPortal", workflow, StringComparison.Ordinal);
-        Assert.Contains("Direct deploy ClientApp", workflow, StringComparison.Ordinal);
-        Assert.Contains("contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal')", workflow, StringComparison.Ordinal);
-        Assert.Contains("contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client')", workflow, StringComparison.Ordinal);
-        Assert.Contains("steps.resumestate.outputs.portal_live != 'true'", workflow, StringComparison.Ordinal);
-        Assert.Contains("steps.resumestate.outputs.client_live != 'true'", workflow, StringComparison.Ordinal);
+        Assert.Contains("Publish selected head as one transaction", workflow, StringComparison.Ordinal);
+        Assert.Contains("--targets-json \"$SELECTED_TARGETS\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("--baselines-json \"$LIVE_BASELINES\"", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Direct deploy AgentPortal", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Direct deploy ClientApp", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Direct deploy Protect immutable ZIP", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Direct deploy Parfait", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Direct deploy Website immutable ZIP", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
     public void ReleasePackagesAllSelectedDotnetAppsFromOneApprovedCheckout()
     {
         var workflow = DirectRelease();
+        Assert.Contains("Load exact preserved deployable package", workflow, StringComparison.Ordinal);
         Assert.Contains("Publish exact selected application packages", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet publish AgentPortal/AgentPortal.csproj", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet publish ClientApp/ClientApp.csproj", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet publish Protect-Website/ProtectWebsite.csproj", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet publish ParfaitApp/ParfaitApp.csproj", workflow, StringComparison.Ordinal);
-        Assert.Contains("SourceRevisionId=\"$APPLICATION_RELEASE_SHA\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/release-package.py verify", workflow, StringComparison.Ordinal);
+        Assert.Contains("production rebuild is forbidden", workflow, StringComparison.Ordinal);
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet publish AgentPortal/AgentPortal.csproj", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet publish ClientApp/ClientApp.csproj", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet publish Protect-Website/ProtectWebsite.csproj", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet publish ParfaitApp/ParfaitApp.csproj", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void MigrationGateRunsBeforeAnyDatabaseDependentDeployment()
+    public void MigrationGateRunsBeforeTheApplicationTransaction()
     {
         var workflow = DirectRelease();
         var migration = workflow.IndexOf("Apply additive diagnostics migrations before restarting apps", StringComparison.Ordinal);
-        var portal = workflow.IndexOf("Direct deploy AgentPortal", StringComparison.Ordinal);
-        var protect = workflow.IndexOf("Direct deploy Protect immutable ZIP", StringComparison.Ordinal);
-        var parfait = workflow.IndexOf("Direct deploy Parfait", StringComparison.Ordinal);
+        var transaction = workflow.IndexOf("Publish selected head as one transaction", StringComparison.Ordinal);
         Assert.True(migration >= 0);
-        Assert.True(portal > migration);
-        Assert.True(protect > migration);
-        Assert.True(parfait > migration);
-        Assert.Contains("steps.migrate.outcome == 'success'", workflow, StringComparison.Ordinal);
+        Assert.True(transaction > migration);
+        Assert.Contains("steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped'", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -79,11 +79,14 @@ public sealed class ClientAppDeploymentWorkflowTests
     }
 
     [Fact]
-    public void ProtectDirectReleaseUsesOneImmutableZipTransportAndNoDirectoryDeploy()
+    public void DirectReleaseUsesOneTransactionalImmutableZipTransport()
     {
         var workflow = DirectRelease();
-        Assert.Contains("Direct deploy Protect immutable ZIP", workflow, StringComparison.Ordinal);
-        Assert.Contains("python3 scripts/deploy-approved-app.py --target protect", workflow, StringComparison.Ordinal);
+        Assert.Contains("python3 scripts/deploy-approved-app.py", workflow, StringComparison.Ordinal);
+        Assert.Contains("--rollback-root /tmp/rollback-packages", workflow, StringComparison.Ordinal);
+        Assert.Contains("Restore complete application baseline after downstream release failure", workflow, StringComparison.Ordinal);
+        Assert.Contains("--rollback-only", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("python3 scripts/deploy-approved-app.py --target", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("azure/webapps-deploy@v3", workflow, StringComparison.Ordinal);
     }
 
@@ -91,9 +94,10 @@ public sealed class ClientAppDeploymentWorkflowTests
     public void PublishedTargetsAreProvenByRuntimeProvenanceNotBranchPromotion()
     {
         var workflow = DirectRelease();
-        Assert.Contains("api/runtime-provenance", workflow, StringComparison.Ordinal);
-        Assert.Contains("_deployment-provenance.txt", workflow, StringComparison.Ordinal);
-        Assert.Contains("preservedExactLiveTargets", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/validation-resume.py live-state", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/validation-resume.py verify-live", workflow, StringComparison.Ordinal);
+        Assert.Contains("APPLICATION_RELEASE_SHA", workflow, StringComparison.Ordinal);
+        Assert.Contains("target-release-receipts", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("refs/heads/production", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("base=production", workflow, StringComparison.Ordinal);
     }

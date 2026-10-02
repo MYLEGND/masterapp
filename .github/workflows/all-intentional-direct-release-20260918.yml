@@ -4,12 +4,26 @@ on:
   workflow_dispatch:
     inputs:
       automatic:
-        description: Compatibility input; the committed release request always controls target scope
+        description: Canonical lifecycle handoff from one fully validated merged PR
         type: boolean
         default: false
-  push:
-    branches: [legend/approved-changes]
-    paths: ['Docs/releases/direct-release-request.json']
+      source_pr:
+        description: Validated source PR number for automatic publication
+        type: string
+        default: ''
+      validated_sha:
+        description: Exact validated PR head SHA
+        type: string
+        default: ''
+      merge_sha:
+        description: Exact approved merge SHA to execute
+        type: string
+        default: ''
+      targets_json:
+        description: Canonically derived target scope; revalidated before publication
+        type: string
+        default: ''
+
 permissions:
   contents: read
   actions: read
@@ -19,7 +33,7 @@ concurrency:
   group: legend-approved-release
   cancel-in-progress: false
 env:
-  RELEASE_SHA: ${{ github.sha }}
+  RELEASE_SHA: ${{ inputs.merge_sha || github.sha }}
 jobs:
   discover-live:
     if: github.ref == 'refs/heads/legend/approved-changes'
@@ -28,6 +42,7 @@ jobs:
       matrix: ${{ steps.live.outputs.matrix }}
       baselines: ${{ steps.live.outputs.baselines }}
       portal: ${{ steps.live.outputs.portal }}
+      database_baseline: ${{ steps.live.outputs.database_baseline }}
       targets: ${{ steps.live.outputs.targets }}
       portal_only: ${{ steps.live.outputs.portal_only }}
       website_only: ${{ steps.live.outputs.website_only }}
@@ -40,14 +55,37 @@ jobs:
       exact_live: ${{ steps.live.outputs.exact_live }}
       application_release_sha: ${{ steps.live.outputs.application_release_sha }}
       package_identity: ${{ steps.live.outputs.package_identity }}
+      resource_group: ${{ steps.live.outputs.resource_group }}
+      migration_bundle: ${{ steps.live.outputs.migration_bundle }}
+      routing_worker: ${{ steps.live.outputs.routing_worker }}
+      routing_pass_through_hosts: ${{ steps.live.outputs.routing_pass_through_hosts }}
+      domain_refresh_project: ${{ steps.live.outputs.domain_refresh_project }}
+      database_authority: ${{ steps.live.outputs.database_authority }}
+      browser_entry_hosts: ${{ steps.live.outputs.browser_entry_hosts }}
+      shared_auth_targets: ${{ steps.live.outputs.shared_auth_targets }}
+      editor_targets: ${{ steps.live.outputs.editor_targets }}
+      marketing_targets: ${{ steps.live.outputs.marketing_targets }}
+      routing_targets: ${{ steps.live.outputs.routing_targets }}
+      routing_primary: ${{ steps.live.outputs.routing_primary }}
+      routing_primary_host: ${{ steps.live.outputs.routing_primary_host }}
+      selected_has_browser_entry: ${{ steps.live.outputs.selected_has_browser_entry }}
+      selected_has_static: ${{ steps.live.outputs.selected_has_static }}
+      selected_has_shared_auth: ${{ steps.live.outputs.selected_has_shared_auth }}
+      selected_has_editor: ${{ steps.live.outputs.selected_has_editor }}
+      selected_database_dependent: ${{ steps.live.outputs.selected_database_dependent }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
       - name: Pin approved source and actual live rollback revisions
         id: live
         env:
           AUTOMATIC_RELEASE: ${{ inputs.automatic }}
+          AUTOMATIC_SOURCE_PR: ${{ inputs.source_pr }}
+          AUTOMATIC_VALIDATED_SHA: ${{ inputs.validated_sha }}
+          AUTOMATIC_MERGE_SHA: ${{ inputs.merge_sha }}
+          AUTOMATIC_TARGETS_JSON: ${{ inputs.targets_json }}
           GH_TOKEN: ${{ github.token }}
         run: |
           args=()
@@ -65,56 +103,64 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ matrix.revision }}
+          fetch-depth: 0
+
+      - name: Load current canonical release authority without changing rollback source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show "${RELEASE_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/validation-resume.py"
+          python3 "$RUNNER_TEMP/validation-resume.py" --help >/dev/null
 
       - name: Reuse exact retained live package when available
         id: retained
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           REVISION: ${{ matrix.revision }}
           APP: ${{ matrix.app }}
+          STATIC_TARGET: ${{ matrix.static }}
         run: |
           set -euo pipefail
+          evidence="$RUNNER_TEMP/rollback-evidence.json"
+          python3 "$RUNNER_TEMP/validation-resume.py" rollback-evidence \
+            --repository "${{ github.repository }}" \
+            --revision "$REVISION" \
+            --app "$APP" \
+            --output "$evidence"
+
+          read -r reusable run_id package_artifact package_name < <(
+            python3 - "$evidence" <<'PYROLLBACKDECISION'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          print(
+              str(bool(data.get('reusable'))).lower(),
+              data.get('runId') or '',
+              data.get('packageArtifact') or '',
+              data.get('packageName') or '',
+          )
+          PYROLLBACKDECISION
+          )
           echo "reused=false" >> "$GITHUB_OUTPUT"
-          receipt_name="legend-approved-release-$REVISION"
-          receipts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$receipt_name&per_page=100")"
-          case "$APP" in
-            portal) package_name=agentportal.zip ;;
-            client) package_name=clientapp.zip ;;
-            protect) package_name=protect.zip ;;
-            parfait) package_name=parfait.zip ;;
-            website) package_name=website.zip ;;
-            *) echo "::error::Unknown rollback app $APP"; exit 1 ;;
-          esac
+          if [ "$reusable" != true ]; then
+            echo "No retained canonical package covers $APP at $REVISION; source-equivalent rollback rebuild remains required."
+            exit 0
+          fi
 
-          while read -r run_id; do
-            [[ -n "$run_id" ]] || continue
-            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
-            run_path="$(printf '%s' "$run" | jq -r '.path // ""')"
-            run_branch="$(printf '%s' "$run" | jq -r '.head_branch // ""')"
-            run_status="$(printf '%s' "$run" | jq -r '.status // ""')"
-            run_conclusion="$(printf '%s' "$run" | jq -r '.conclusion // ""')"
-            [[ "$run_path" == ".github/workflows/all-intentional-direct-release-20260918.yml" ]] || continue
-            [[ "$run_branch" == "legend/approved-changes" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] || continue
-
-            artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100")"
-            while read -r package_artifact; do
-              [[ -n "$package_artifact" ]] || continue
-              rm -rf /tmp/retained-package
-              mkdir -p /tmp/retained-package
-              if ! gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$package_artifact" --dir /tmp/retained-package; then
-                continue
-              fi
-              candidate="$(find /tmp/retained-package -type f -name "$package_name" -print -quit)"
-              [[ -n "$candidate" ]] || continue
-              sums="$(find "$(dirname "$candidate")" -maxdepth 1 -type f -name SHA256SUMS -print -quit)"
-              [[ -n "$sums" ]] || continue
-              if ! python3 - "$candidate" "$sums" "$REVISION" "$APP" <<'PYROLLBACK'
+          rm -rf /tmp/retained-package
+          mkdir -p /tmp/retained-package
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$package_artifact" --dir /tmp/retained-package
+          candidate="$(find /tmp/retained-package -type f -name "$package_name" -print -quit)"
+          [ -n "$candidate" ]
+          sums="$(find "$(dirname "$candidate")" -maxdepth 1 -type f -name SHA256SUMS -print -quit)"
+          [ -n "$sums" ]
+          python3 - "$candidate" "$sums" "$REVISION" "$STATIC_TARGET" <<'PYROLLBACK'
           import hashlib,json,pathlib,sys,zipfile
           package=pathlib.Path(sys.argv[1])
           sums=pathlib.Path(sys.argv[2])
           revision=sys.argv[3]
-          app=sys.argv[4]
+          static=sys.argv[4].lower()=='true'
           rows=[line.split() for line in sums.read_text().splitlines()]
           expected=[row[0] for row in rows if len(row)==2 and pathlib.Path(row[1]).name==package.name]
           with package.open('rb') as stream:
@@ -124,49 +170,42 @@ jobs:
           with zipfile.ZipFile(package) as archive:
               if archive.testzip() is not None:
                   raise SystemExit('Retained rollback package is corrupt')
-              entry='_deployment-provenance.txt' if app=='website' else 'wwwroot/_deployment-provenance.json'
+              entry='_deployment-provenance.txt' if static else 'wwwroot/_deployment-provenance.json'
               raw=archive.read(entry).decode().strip()
-              embedded=raw if app=='website' else json.loads(raw)['releaseSha']
+              embedded=raw if static else json.loads(raw)['releaseSha']
           if embedded != revision:
               raise SystemExit('Retained rollback package revision mismatch')
           PYROLLBACK
-              then
-                continue
-              fi
-              mkdir -p /tmp/rollback
-              cp "$candidate" /tmp/rollback/package.zip
-              printf '%s %s retained canonical package from release run %s\n' "$APP" "$REVISION" "$run_id" > /tmp/rollback/manifest.txt
-              sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
-              echo "reused=true" >> "$GITHUB_OUTPUT"
-              echo "Reused exact verified rollback package for $APP at $REVISION from direct release run $run_id."
-              exit 0
-            done < <(
-              printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false and (.name | startswith("founder-diagnostics-packages-"))) | .name'
-            )
-          done < <(
-            printf '%s' "$receipts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++'
-          )
 
-          echo "No retained canonical package covers $APP at $REVISION; source-equivalent rollback rebuild remains required."
+          mkdir -p /tmp/rollback
+          cp "$candidate" /tmp/rollback/package.zip
+          printf '%s %s retained canonical package from release run %s\n' "$APP" "$REVISION" "$run_id" > /tmp/rollback/manifest.txt
+          sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+          echo "Reused exact verified rollback package for $APP at $REVISION from direct release run $run_id."
 
       - uses: actions/setup-dotnet@v4
-        if: matrix.project != 'static' && steps.retained.outputs.reused != 'true'
+        if: matrix.static != true && steps.retained.outputs.reused != 'true'
         with:
           dotnet-version: '10.x'
       - name: Preserve source-equivalent rollback without production data
         if: steps.retained.outputs.reused != 'true'
         env:
           PROJECT: ${{ matrix.project }}
+          SOURCE_ROOT: ${{ matrix.sourceRoot }}
+          PACKAGE_NAME: ${{ matrix.package }}
+          STATIC_TARGET: ${{ matrix.static }}
           REVISION: ${{ matrix.revision }}
           APP: ${{ matrix.app }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/rollback
-          if [ "$PROJECT" = static ]; then
-            npm --prefix Legend-Website run build
-            cp Legend-Website/public/web.config Legend-Website/dist/web.config
-            printf '%s\n' "$REVISION" > Legend-Website/dist/_deployment-provenance.txt
-            (cd Legend-Website/dist && zip -qr /tmp/rollback/package.zip .)
+          if [ "$STATIC_TARGET" = true ]; then
+            npm ci --prefix "$SOURCE_ROOT" --ignore-scripts --no-audit --no-fund
+            npm --prefix "$SOURCE_ROOT" run build
+            cp "$SOURCE_ROOT/public/web.config" "$SOURCE_ROOT/dist/web.config"
+            printf '%s\n' "$REVISION" > "$SOURCE_ROOT/dist/_deployment-provenance.txt"
+            (cd "$SOURCE_ROOT/dist" && zip -qr /tmp/rollback/package.zip .)
           else
             dotnet publish "$PROJECT" -c Release -o /tmp/rollback-publish -p:SourceRevisionId="$REVISION" --nologo
             printf '{"releaseSha":"%s"}\n' "$REVISION" > /tmp/rollback-publish/wwwroot/_deployment-provenance.json
@@ -176,7 +215,7 @@ jobs:
           sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: diagnostics-rollback-${{ matrix.app }}-${{ github.sha }}
+          name: diagnostics-rollback-${{ matrix.app }}-${{ env.RELEASE_SHA }}
           path: /tmp/rollback/
           retention-days: 1
           if-no-files-found: error
@@ -188,6 +227,7 @@ jobs:
     environment: Production
     env:
       EXPECTED_BASE_SHA: ${{ needs.discover-live.outputs.portal }}
+      EXPECTED_DB_BASE_SHA: ${{ needs.discover-live.outputs.database_baseline }}
       LIVE_BASELINES: ${{ needs.discover-live.outputs.baselines }}
       SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
       PORTAL_ONLY: ${{ needs.discover-live.outputs.portal_only }}
@@ -201,10 +241,28 @@ jobs:
       EXACT_LIVE: ${{ needs.discover-live.outputs.exact_live }}
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
       PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
+      RELEASE_RESOURCE_GROUP: ${{ needs.discover-live.outputs.resource_group }}
+      MIGRATION_BUNDLE: ${{ needs.discover-live.outputs.migration_bundle }}
+      ROUTING_WORKER: ${{ needs.discover-live.outputs.routing_worker }}
+      ROUTING_PASS_THROUGH_HOSTS: ${{ needs.discover-live.outputs.routing_pass_through_hosts }}
+      DOMAIN_REFRESH_PROJECT: ${{ needs.discover-live.outputs.domain_refresh_project }}
+      DATABASE_AUTHORITY: ${{ needs.discover-live.outputs.database_authority }}
+      BROWSER_ENTRY_HOSTS: ${{ needs.discover-live.outputs.browser_entry_hosts }}
+      SHARED_AUTH_TARGETS: ${{ needs.discover-live.outputs.shared_auth_targets }}
+      EDITOR_TARGETS: ${{ needs.discover-live.outputs.editor_targets }}
+      MARKETING_TARGETS: ${{ needs.discover-live.outputs.marketing_targets }}
+      ROUTING_TARGETS: ${{ needs.discover-live.outputs.routing_targets }}
+      ROUTING_PRIMARY: ${{ needs.discover-live.outputs.routing_primary }}
+      ROUTING_PRIMARY_HOST: ${{ needs.discover-live.outputs.routing_primary_host }}
+      SELECTED_HAS_BROWSER_ENTRY: ${{ needs.discover-live.outputs.selected_has_browser_entry }}
+      SELECTED_HAS_STATIC: ${{ needs.discover-live.outputs.selected_has_static }}
+      SELECTED_HAS_SHARED_AUTH: ${{ needs.discover-live.outputs.selected_has_shared_auth }}
+      SELECTED_HAS_EDITOR: ${{ needs.discover-live.outputs.selected_has_editor }}
+      SELECTED_DATABASE_DEPENDENT: ${{ needs.discover-live.outputs.selected_database_dependent }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         if: env.WEBSITE_ONLY != 'true' && env.EXACT_LIVE != 'true'
@@ -222,36 +280,33 @@ jobs:
         if: env.EXACT_LIVE != 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 scripts/validation-resume.py verify-release-coverage \
             --workflow all-intentional-direct-release-20260918.yml \
             --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
-          artifact_name="founder-diagnostics-packages-${PACKAGE_IDENTITY}"
-          run_id=""
-          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100")"
-          while read -r candidate_run; do
-            [ -n "$candidate_run" ] || continue
-            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
-            workflow_path="$(printf '%s' "$run" | jq -r '.path // ""')"
-            head_branch="$(printf '%s' "$run" | jq -r '.head_branch // ""')"
-            if [ "$workflow_path" = ".github/workflows/all-intentional-direct-release-20260918.yml" ] &&
-               [ "$head_branch" = "legend/approved-changes" ]; then
-              run_id="$candidate_run"
-              break
-            fi
-          done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-          echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
-          if [ -n "$run_id" ]; then
-            echo "REUSE_VALIDATED_PACKAGE=true" >> "$GITHUB_ENV"
-            echo "Exact candidate package and its prerequisite validation are preserved from run $run_id."
-          else
-            echo "REUSE_VALIDATED_PACKAGE=false" >> "$GITHUB_ENV"
-            echo "No exact reusable package evidence exists; validation will execute normally."
-          fi
-
+          evidence="$RUNNER_TEMP/validated-package-evidence.json"
+          python3 scripts/validation-resume.py validated-package \
+            --repository "${{ github.repository }}" \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --package-identity "$PACKAGE_IDENTITY" \
+            --output "$evidence"
+          python3 - "$evidence" "$GITHUB_OUTPUT" "$GITHUB_ENV" <<'PYVALIDATED'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          if not data.get('reusable') or not data.get('runId') or not data.get('artifact'):
+              raise SystemExit(
+                  f"Exact validated release package is missing for {data.get('revision')}; "
+                  "release refuses to rebuild production bytes."
+              )
+          with open(sys.argv[2],'a') as output:
+              output.write(f"run_id={data['runId']}\n")
+              output.write(f"artifact={data['artifact']}\n")
+          with open(sys.argv[3],'a') as env:
+              env.write("REUSE_VALIDATED_PACKAGE=true\n")
+          print(f"Exact immutable package preserved from successful architecture validation run {data['runId']}.")
+          PYVALIDATED
       - name: Load exact preserved deployable package
         if: steps.reusevalidated.outputs.run_id != ''
         uses: actions/download-artifact@v4
@@ -260,6 +315,13 @@ jobs:
           path: /tmp/diagnostics-packages
           run-id: ${{ steps.reusevalidated.outputs.run_id }}
           github-token: ${{ github.token }}
+      - name: Verify restored immutable validation package
+        if: steps.reusevalidated.outputs.run_id != ''
+        shell: bash
+        run: |
+          python3 scripts/release-package.py verify \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --directory /tmp/diagnostics-packages
       - name: Verify current live base before publication
         id: base
         run: |
@@ -271,19 +333,19 @@ jobs:
                   actual=response.read().decode().strip() if row['project']=='static' else json.load(response)['sourceRevision']
               print(host,actual)
               assert actual == row['revision'], 'Live revision changed; rebuild the release baseline'
-              if os.environ['CLIENT_ONLY'] == 'true' and row['app'] == 'client':
+              if os.environ['CLIENT_ONLY'] == 'true':
                   subprocess.run(['git','diff','--quiet',row['revision'],'HEAD','--','Infrastructure/Migrations'],check=True)
           PYBASE
       - name: Verify ClientApp browser entry routes
         id: cliententry
-        if: contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client')
+        if: env.SELECTED_HAS_BROWSER_ENTRY == 'true'
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PYCLIENTENTRY'
           import http.client, json, ssl, urllib.parse
-          hosts=('client.mylegnd.com','masterapp-client.azurewebsites.net')
+          hosts=tuple(json.loads(os.environ['BROWSER_ENTRY_HOSTS']))
           paths=('/', '/Account/Login')
           rows=[]
           context=ssl.create_default_context()
@@ -314,152 +376,42 @@ jobs:
       - name: Build exact selected release candidate
         id: build
         if: env.WEBSITE_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true'
-        continue-on-error: true
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact candidate build validation."
-            exit 0
-          fi
-          set -euo pipefail
-          if [ "$PUBLIC_ONLY" = true ]; then
-            dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            node --test --test-name-pattern='publication compiler process consumes stdin and returns compiled pages' Legend-Website/scripts/render-business.test.mjs
-            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo --filter 'FullyQualifiedName~WebsiteContentEditorRoundTripTests.BusinessPublication_PreservesUtf8AcrossDotNetNodeCompilerTransport'
-            dotnet tool restore
-            ConnectionStrings__MasterAppDb='Server=127.0.0.1;Database=masterapp_ef_design_time;Integrated Security=true;TrustServerCertificate=true;Encrypt=false' \
-              EF_FORCE_SQLSERVER=true \
-              DOTNET_ENVIRONMENT=Development \
-              ASPNETCORE_ENVIRONMENT=Development \
-              dotnet tool run dotnet-ef migrations has-pending-model-changes \
-                --project Infrastructure/Infrastructure.csproj \
-                --startup-project AgentPortal/AgentPortal.csproj \
-                --context MasterAppDbContext \
-                --configuration Release \
-                --no-build
-          elif [ "$PORTAL_ONLY" = true ]; then
-            dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-          else
-            dotnet build MASTERAPP.sln -c Release --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-          fi
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          echo "Preserved exact candidate build from immutable validation artifact; production rebuild is forbidden."
       - name: Verify business website routing bridge
         id: routingchecks
         if: env.WEBSITE_ROUTING == 'true' && (steps.build.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true')
-        continue-on-error: true
-        shell: bash
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact routing validation."
-            exit 0
-          fi
-          set -euo pipefail
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo \
-            --filter 'FullyQualifiedName~WebsiteDomainImportTests' \
-            -p:TreatWarningsAsErrors=true
-          dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
-          npm ci --prefix Legend-Cloudflare
-          npm --prefix Legend-Cloudflare run test:website-routing
-          npm --prefix Legend-Cloudflare run check:website-routing
-          python3 -m py_compile scripts/cloudflare-routing-authority.py
-          legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
-          if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
-            echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
-            exit 1
-          fi
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          echo "Preserved exact routing source-contract validation from architecture proof; release will perform only current-state routing checks."
       - name: Verify localization retention privacy limits and original delivery
         id: tests
         if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && steps.build.outcome == 'success'
-        continue-on-error: true
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact .NET validation."
-            exit 0
-          fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
-            --filter 'FullyQualifiedName~ApplicationLocalization|FullyQualifiedName~ApplicationTranslationAdmission|FullyQualifiedName~LegendConnectTrainingDatasetGroupSplitTests|FullyQualifiedName~LegendConnectEntitlementTests|FullyQualifiedName~AzureTranslatorServiceTests|FullyQualifiedName~AzureTranslatorSubscriptionCapacityTests|FullyQualifiedName~MessagingDeferredPresentationTests|FullyQualifiedName~FounderLegendConnectLiveMetricsTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests|FullyQualifiedName~RuntimeDiagnosticCaptureTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~ClientAppDeploymentWorkflowTests|FullyQualifiedName~ClientAppSubscriptionActivationTests|FullyQualifiedName~ClientSubscriptionAdministrationTests.CreatePortalClient|FullyQualifiedName~ClientsControllerTests.Create_WhenLeadCreated_UsesTheDefaultCrmPlacement|FullyQualifiedName~LegendFounderAiContractTests.SoftwareRemediation|FullyQualifiedName~LegendCloudflareTransportTests|FullyQualifiedName~LegendCloudflareToolCallbackTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~LegendFounderCloudActionApprovalTests|FullyQualifiedName~MessagingServiceTests.FounderAiDelegation_|FullyQualifiedName~FounderCandidateValidationTests|FullyQualifiedName~LegendFounderCloudToolExposureTests|FullyQualifiedName~LegendFounderCloudProposalTests|FullyQualifiedName~AuthenticatedRequestBindingTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~ClientProfileControllerTests.BusinessWebsite|FullyQualifiedName~ClientProfileControllerTests.SharedAccountAgent|FullyQualifiedName~IdentityHardeningTests.AccountController_ManageProfile|FullyQualifiedName~ProfileWebsiteFounderTests|FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~ClientWorkspaceRoutingTests|FullyQualifiedName~BillingCentralizationTests.UpdateClientSubscription_RequiresFounderAuthorityAndPreservesTheCurrentSchedule|FullyQualifiedName~ClientBillingNotificationAndSchemaTests|FullyQualifiedName~LaunchAudit|FullyQualifiedName~FounderSubscriberAuditTests|FullyQualifiedName~MetaSignal|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~AnalyticsIngestConfigurationTests|FullyQualifiedName~AnalyticsQueryService|FullyQualifiedName~WebsiteAnalytics|FullyQualifiedName~BusinessAnalyticsDetailTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~WebsiteSignalBindingTests' \
-            --logger 'trx;LogFileName=translation.trx' --results-directory /tmp/translation-results
-          python3 - <<'PYTEST'
-          import xml.etree.ElementTree as ET
-          root=ET.parse('/tmp/translation-results/translation.trx')
-          cases=root.findall('.//{*}UnitTestResult')
-          assert len(cases)>0 and all(c.get('outcome')=='Passed' for c in cases)
-          assert any('ApplicationTranslationAdmissionTests' in c.get('testName','') for c in cases), 'Admission suite did not execute'
-          required=('LegendCloudflareTransportTests','LegendCloudflareToolCallbackTests','LegendFounderToolAuthorizationTests','LegendFounderCloudActionApprovalTests','FounderAiDelegation_','FounderCandidateValidationTests','LegendFounderCloudToolExposureTests','LegendFounderCloudProposalTests','AuthenticatedRequestBindingTests','ClientAppSubscriptionActivationTests','CreatePortalClient_','Create_WhenLeadCreated_UsesTheDefaultCrmPlacement','WebsiteContentEditorRoundTripTests','BusinessWebsite','SharedAccountAgentView_','AccountController_ManageProfile','ProfileWebsiteFounderTests','WebsitePublishingAuthorityTests','WebsiteDomainImportTests','WebsiteInquiryIsolationTests','WebsiteEditorTicketAuthorityIsolationTests','ClientWorkspaceRoutingTests','UpdateClientSubscription_RequiresFounderAuthorityAndPreservesTheCurrentSchedule','NotificationQueue_IsIdempotentAndDeliveryMarksTheNoticeSent')
-          for suite in required:
-              assert any(suite in c.get('testName','') for c in cases), suite+' did not execute'
-          print('Verified passing executions:',len(cases))
-          PYTEST
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          echo "Preserved exact .NET/full-suite validation for the immutable application revision."
       - name: Verify shared web catalog contracts
         id: web
         if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true'
-        continue-on-error: true
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact shared-web validation."
-            exit 0
-          fi
-          node --test tests/analytics/csv-export.test.cjs
-          node tests/analytics/form-tracker.test.cjs .
-          node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
-          node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
-          python3 scripts/test-diagnostic-project-impact.py
-          python3 scripts/test-sync-published-checkout.py
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          echo "Preserved exact release web-contract validation from architecture proof."
       - name: Verify selected website catalog and build
         id: websitechecks
-        if: contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && env.EXACT_LIVE != 'true'
-        continue-on-error: true
+        if: env.SELECTED_HAS_STATIC == 'true' && env.EXACT_LIVE != 'true'
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            echo "Preserved exact website validation."
-            exit 0
-          fi
-          npm ci --prefix tests/website
-          node --test tests/website/*.test.mjs
-          npm --prefix Legend-Website run build
-          npm --prefix Legend-Website run check
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          echo "Preserved exact website build/check validation from immutable validation artifact."
       - name: Publish exact selected application packages
         id: package
-        if: always() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && (env.WEBSITE_ROUTING != 'true' || steps.routingchecks.outcome == 'success') && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') || steps.websitechecks.outcome == 'success')))
+        if: always() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && (env.WEBSITE_ROUTING != 'true' || steps.routingchecks.outcome == 'success') && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (env.SELECTED_HAS_STATIC != 'true' || steps.websitechecks.outcome == 'success')))
         run: |
-          if [ "$REUSE_VALIDATED_PACKAGE" = true ]; then
-            test -f /tmp/diagnostics-packages/SHA256SUMS
-            (cd /tmp/diagnostics-packages && sha256sum -c SHA256SUMS)
-            echo "Preserved exact deployable package; no duplicate build or validation required."
-            exit 0
-          fi
-          set -euo pipefail
-          apps=()
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-portal"'* ]]; then
-            dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-build --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            apps+=(agentportal)
-          fi
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-client"'* ]]; then
-            dotnet publish ClientApp/ClientApp.csproj -c Release --no-build --no-restore -o /tmp/clientapp-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            apps+=(clientapp)
-          fi
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-protect"'* ]]; then
-            dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-build --no-restore -o /tmp/protect-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            apps+=(protect)
-          fi
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-parfait"'* ]]; then
-            dotnet publish ParfaitApp/ParfaitApp.csproj -c Release --no-build --no-restore -o /tmp/parfait-publish -p:SourceRevisionId="$APPLICATION_RELEASE_SHA"
-            apps+=(parfait)
-          fi
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-website"'* ]]; then
-            printf '%s\n' "$APPLICATION_RELEASE_SHA" > Legend-Website/dist/_deployment-provenance.txt
-            cp Legend-Website/public/web.config Legend-Website/dist/web.config
-          fi
-          for app in "${apps[@]}"; do
-            mkdir -p "/tmp/$app-publish/wwwroot"
-            printf '{"releaseSha":"%s","release":"founder-diagnostics-20260918"}\n' "$APPLICATION_RELEASE_SHA" > "/tmp/$app-publish/wwwroot/_deployment-provenance.json"
-          done
-          mkdir -p /tmp/diagnostics-packages
-          for app in "${apps[@]}"; do
-            (cd "/tmp/$app-publish" && zip -qr "/tmp/diagnostics-packages/$app.zip" .)
-          done
-          if [[ "$SELECTED_TARGETS" == *'"masterapp-website"'* ]]; then
-            (cd Legend-Website/dist && zip -qr /tmp/diagnostics-packages/website.zip .)
-          fi
-          sha256sum /tmp/diagnostics-packages/*.zip > /tmp/diagnostics-packages/SHA256SUMS
+          test "$REUSE_VALIDATED_PACKAGE" = true
+          python3 scripts/release-package.py verify \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --directory /tmp/diagnostics-packages
+          echo "Using exact validated package bytes; release contains no fallback package builder."
       - name: Retain exact deployable candidate packages
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
@@ -482,44 +434,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PYRESUME'
-          import json, os, urllib.request
-          selected=set(json.loads(os.environ['SELECTED_TARGETS']))
-          expected=os.environ['APPLICATION_RELEASE_SHA']
-          inventory={
-              'portal':('masterapp-portal','https://portal.mylegnd.com/api/runtime-provenance',False),
-              'client':('masterapp-client','https://client.mylegnd.com/api/runtime-provenance',False),
-              'protect':('masterapp-protect','https://masterapp-protect.azurewebsites.net/api/runtime-provenance',False),
-              'parfait':('masterapp-parfait','https://masterapp-parfait.azurewebsites.net/api/runtime-provenance',False),
-              'website':('masterapp-website','https://masterapp-website.azurewebsites.net/_deployment-provenance.txt',True),
-          }
-          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              for key,(app,url,is_static) in inventory.items():
-                  live=False
-                  actual=None
-                  if app in selected:
-                      try:
-                          request=urllib.request.Request(url+'?release='+expected,headers={'Cache-Control':'no-cache'})
-                          with urllib.request.urlopen(request,timeout=15) as response:
-                              actual=response.read().decode().strip() if is_static else json.load(response).get('sourceRevision')
-                          live=actual==expected
-                      except Exception as error:
-                          actual=type(error).__name__
-                  output.write(f'{key}_live={str(live).lower()}\n')
-                  print(json.dumps({'target':app,'alreadyLive':live,'actual':actual,'expected':expected if app in selected else None}))
-          PYRESUME
+          python3 scripts/validation-resume.py live-state \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --selected-targets "$SELECTED_TARGETS" \
+            --output "$RUNNER_TEMP/release-live-state.json" \
+            --github-output "$GITHUB_OUTPUT"
           echo "Exact-candidate live targets are preserved; only targets not already live may deploy."
-      - name: Synchronize Protect shared website authorization and publisher runtime
-        id: protectauth
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+
+      - name: Synchronize selected shared authorization and publisher runtimes
+        id: sharedauth
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_HAS_SHARED_AUTH == 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          portal_settings=/tmp/portal-shared-auth.json
-          protect_settings=/tmp/protect-shared-auth.json
-          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
+          source_settings=/tmp/shared-auth-source.json
+          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json > "$source_settings"
 
+          selected() {
+            jq -e --arg app "$1" 'index($app) != null' <<< "$SELECTED_TARGETS" >/dev/null
+          }
           resolve_value() {
             local file="$1"; shift
             local key value
@@ -539,93 +472,78 @@ jobs:
             return 1
           }
 
-          founder="$(resolve_value "$portal_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
-          founder_upn="$(resolve_value "$portal_settings" Founder__Upn 'Founder:Upn')"
-          blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
-          [ -n "$founder" ] && [ -n "$founder_upn" ] && [ -n "$blob" ] && [ -n "$keyvault" ]
-          echo "::add-mask::$founder"
-          echo "::add-mask::$founder_upn"
-          echo "::add-mask::$blob"
-          echo "::add-mask::$keyvault"
+          founder="$(resolve_value "$source_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
+          founder_upn="$(resolve_value "$source_settings" Founder__Upn 'Founder:Upn')"
+          blob="$(resolve_value "$source_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(resolve_value "$source_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          ingest_secret="$(resolve_value "$source_settings" Analytics__SharedSecret 'Analytics:SharedSecret' LeadIngest__SharedSecret 'LeadIngest:SharedSecret')"
+          [ -n "$founder" ] && [ -n "$founder_upn" ] && [ -n "$blob" ] && [ -n "$keyvault" ] && [ -n "$ingest_secret" ]
+          for value in "$founder" "$founder_upn" "$blob" "$keyvault" "$ingest_secret"; do echo "::add-mask::$value"; done
 
-          protect_founder_key="$(resolve_key "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
-          protect_founder_upn_key="$(resolve_key "$protect_settings" Founder__Upn 'Founder:Upn' || true)"
-          protect_blob_key="$(resolve_key "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-          protect_keyvault_key="$(resolve_key "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
-          protect_founder="$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
-          protect_founder_upn="$(resolve_value "$protect_settings" Founder__Upn 'Founder:Upn' || true)"
-          protect_blob="$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-          protect_keyvault="$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
+          while IFS= read -r app; do
+            [ -n "$app" ] || continue
+            selected "$app" || continue
+            settings="/tmp/shared-auth-${app}.json"
+            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
 
-          updates=()
-          if [ "$protect_founder" != "$founder" ]; then updates+=("${protect_founder_key:-FOUNDER_OID}=$founder"); fi
-          if [ "$protect_founder_upn" != "$founder_upn" ]; then updates+=("${protect_founder_upn_key:-Founder__Upn}=$founder_upn"); fi
-          if [ "$protect_blob" != "$blob" ]; then updates+=("${protect_blob_key:-DataProtection__BlobUri}=$blob"); fi
-          if [ "$protect_keyvault" != "$keyvault" ]; then updates+=("${protect_keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault"); fi
-          protect_node="$(resolve_value "$protect_settings" WEBSITE_NODE_DEFAULT_VERSION || true)"
-          if [ "$protect_node" != "~24" ]; then updates+=("WEBSITE_NODE_DEFAULT_VERSION=~24"); fi
-          if [ "${#updates[@]}" -gt 0 ]; then
-            az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings "${updates[@]}" --output none
-          fi
-
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
-          [ "$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder" ]
-          [ "$(resolve_value "$protect_settings" Founder__Upn 'Founder:Upn')" = "$founder_upn" ]
-          [ "$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
-          [ "$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
-          [ "$(resolve_value "$protect_settings" WEBSITE_NODE_DEFAULT_VERSION)" = "~24" ]
-          # AgentPortal owns the receiver secret. Keep Protect's sender and legacy
-          # aliases on that exact value, without printing settings or secret values.
-          ingest_secret="$(resolve_value "$portal_settings" Analytics__SharedSecret 'Analytics:SharedSecret' LeadIngest__SharedSecret 'LeadIngest:SharedSecret')"
-          [ -n "$ingest_secret" ]
-          echo "::add-mask::$ingest_secret"
-          ingest_updates=()
-          for key in Analytics__SharedSecret Tracking__SharedSecret; do
-            current="$(resolve_value "$protect_settings" "$key" || true)"
-            if [ "$current" != "$ingest_secret" ]; then ingest_updates+=("$key=$ingest_secret"); fi
-          done
-          for alias in 'Analytics:SharedSecret' 'LeadIngest:SharedSecret' LeadIngest__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET; do
-            if jq -e --arg key "$alias" 'any(.[]; .name == $key)' "$protect_settings" >/dev/null; then
-              current="$(resolve_value "$protect_settings" "$alias" || true)"
-              if [ "$current" != "$ingest_secret" ]; then ingest_updates+=("$alias=$ingest_secret"); fi
-            fi
-          done
-          if [ "${#ingest_updates[@]}" -gt 0 ]; then
-            az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings "${ingest_updates[@]}" --output none
-          fi
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
-          [ "$(resolve_value "$protect_settings" Analytics__SharedSecret 'Analytics:SharedSecret')" = "$ingest_secret" ]
-          [ "$(resolve_value "$protect_settings" Tracking__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET)" = "$ingest_secret" ]
-          echo "Protect website and analytics ingest authority match AgentPortal."
-          for app in masterapp-portal masterapp-protect masterapp-client masterapp-parfait; do
-            if [[ "$SELECTED_TARGETS" != *"\"$app\""* ]]; then continue; fi
-            settings_file="/tmp/$app-marketing-authority.json"
-            az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings_file"
-            marketing_updates=()
-            for pair in BlobUri KeyVaultKeyId; do
-              expected="$blob"; if [ "$pair" = KeyVaultKeyId ]; then expected="$keyvault"; fi
-              key="$(resolve_key "$settings_file" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
-              current="$(resolve_value "$settings_file" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
-              if [ "$current" != "$expected" ]; then marketing_updates+=("${key:-MarketingDataProtection__$pair}=$expected"); fi
+            founder_key="$(resolve_key "$settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
+            founder_upn_key="$(resolve_key "$settings" Founder__Upn 'Founder:Upn' || true)"
+            blob_key="$(resolve_key "$settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
+            keyvault_key="$(resolve_key "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
+            updates=()
+            [ "$(resolve_value "$settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)" = "$founder" ] || updates+=("${founder_key:-FOUNDER_OID}=$founder")
+            [ "$(resolve_value "$settings" Founder__Upn 'Founder:Upn' || true)" = "$founder_upn" ] || updates+=("${founder_upn_key:-Founder__Upn}=$founder_upn")
+            [ "$(resolve_value "$settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)" = "$blob" ] || updates+=("${blob_key:-DataProtection__BlobUri}=$blob")
+            [ "$(resolve_value "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)" = "$keyvault" ] || updates+=("${keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault")
+            [ "$(resolve_value "$settings" WEBSITE_NODE_DEFAULT_VERSION || true)" = "~24" ] || updates+=("WEBSITE_NODE_DEFAULT_VERSION=~24")
+            for key in Analytics__SharedSecret Tracking__SharedSecret; do
+              [ "$(resolve_value "$settings" "$key" || true)" = "$ingest_secret" ] || updates+=("$key=$ingest_secret")
             done
-            if [ "${#marketing_updates[@]}" -gt 0 ]; then
-              az webapp config appsettings set -g masterapp-rg -n "$app" --settings "${marketing_updates[@]}" --output none
+            for alias in 'Analytics:SharedSecret' 'LeadIngest:SharedSecret' LeadIngest__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET; do
+              if jq -e --arg key "$alias" 'any(.[]; .name == $key)' "$settings" >/dev/null; then
+                [ "$(resolve_value "$settings" "$alias" || true)" = "$ingest_secret" ] || updates+=("$alias=$ingest_secret")
+              fi
+            done
+            if [ "${#updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
+              az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
             fi
-            az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings_file"
-            [ "$(resolve_value "$settings_file" MarketingDataProtection__BlobUri 'MarketingDataProtection:BlobUri')" = "$blob" ]
-            [ "$(resolve_value "$settings_file" MarketingDataProtection__KeyVaultKeyId 'MarketingDataProtection:KeyVaultKeyId')" = "$keyvault" ]
-          done
-          echo "Selected marketing consumers use the shared key authority."
+            [ "$(resolve_value "$settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder" ]
+            [ "$(resolve_value "$settings" Founder__Upn 'Founder:Upn')" = "$founder_upn" ]
+            [ "$(resolve_value "$settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
+            [ "$(resolve_value "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
+            [ "$(resolve_value "$settings" Analytics__SharedSecret 'Analytics:SharedSecret')" = "$ingest_secret" ]
+            [ "$(resolve_value "$settings" Tracking__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET)" = "$ingest_secret" ]
+          done < <(jq -r '.[]' <<< "$SHARED_AUTH_TARGETS")
 
-      - name: Synchronize shared website editor ticket authority
+          while IFS= read -r app; do
+            [ -n "$app" ] || continue
+            selected "$app" || continue
+            settings="/tmp/marketing-authority-${app}.json"
+            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+            updates=()
+            for pair in BlobUri KeyVaultKeyId; do
+              expected="$blob"; [ "$pair" = KeyVaultKeyId ] && expected="$keyvault"
+              key="$(resolve_key "$settings" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
+              current="$(resolve_value "$settings" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
+              [ "$current" = "$expected" ] || updates+=("${key:-MarketingDataProtection__$pair}=$expected")
+            done
+            if [ "${#updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
+              az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+            fi
+            [ "$(resolve_value "$settings" MarketingDataProtection__BlobUri 'MarketingDataProtection:BlobUri')" = "$blob" ]
+            [ "$(resolve_value "$settings" MarketingDataProtection__KeyVaultKeyId 'MarketingDataProtection:KeyVaultKeyId')" = "$keyvault" ]
+          done < <(jq -r '.[]' <<< "$MARKETING_TARGETS")
+          echo "Selected shared-auth and marketing runtimes consume the canonical authority."
+      - name: Synchronize selected editor ticket authority
         id: editorauth
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' && (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait')) }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_HAS_EDITOR == 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          portal_settings=/tmp/portal-editor-ticket-authority.json
-          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
+          source_settings=/tmp/editor-ticket-source.json
+          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json > "$source_settings"
           value() {
             local file="$1"; shift
             local key found
@@ -635,33 +553,37 @@ jobs:
             done
             return 1
           }
-          blob="$(value "$portal_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri' DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(value "$portal_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId' DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          selected() {
+            jq -e --arg app "$1" 'index($app) != null' <<< "$SELECTED_TARGETS" >/dev/null
+          }
+          blob="$(value "$source_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri' DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(value "$source_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId' DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
           [ -n "$blob" ] && [ -n "$keyvault" ]
           echo "::add-mask::$blob"
           echo "::add-mask::$keyvault"
-          for app in masterapp-protect masterapp-parfait; do
-            if [[ "$SELECTED_TARGETS" != *"\"$app\""* ]]; then continue; fi
-            settings="/tmp/$app-editor-ticket-authority.json"
-            az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings"
-            editor_updates=()
+          while IFS= read -r app; do
+            [ -n "$app" ] || continue
+            selected "$app" || continue
+            settings="/tmp/editor-ticket-${app}.json"
+            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+            updates=()
             for pair in BlobUri KeyVaultKeyId; do
-              expected="$blob"; if [ "$pair" = KeyVaultKeyId ]; then expected="$keyvault"; fi
+              expected="$blob"; [ "$pair" = KeyVaultKeyId ] && expected="$keyvault"
               current="$(value "$settings" "WebsiteEditorDataProtection__$pair" "WebsiteEditorDataProtection:$pair" || true)"
-              if [ "$current" != "$expected" ]; then editor_updates+=("WebsiteEditorDataProtection__$pair=$expected"); fi
+              [ "$current" = "$expected" ] || updates+=("WebsiteEditorDataProtection__$pair=$expected")
             done
-            if [ "${#editor_updates[@]}" -gt 0 ]; then
-              az webapp config appsettings set -g masterapp-rg -n "$app" --settings "${editor_updates[@]}" --output none
-              az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings"
+            if [ "${#updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
+              az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
             fi
             [ "$(value "$settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri')" = "$blob" ]
             [ "$(value "$settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId')" = "$keyvault" ]
-          done
-          echo "Selected website and commerce runtimes share one editor-ticket key authority."
+          done < <(jq -r '.[]' <<< "$EDITOR_TARGETS")
+          echo "Selected editor runtimes consume the canonical ticket authority."
 
-      - name: Prepare shared business website routing authority
+      - name: Prepare canonical business website routing authority
         id: routingsecret
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.azure.outcome == 'success' && (steps.protectauth.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.azure.outcome == 'success' && (steps.sharedauth.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         env:
           PRIMARY_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
@@ -670,16 +592,15 @@ jobs:
           set -euo pipefail
           token="${PRIMARY_CLOUDFLARE_TOKEN:-}"
           if [ -z "$token" ]; then
-            echo "::error::Central Cloudflare routing authority is not configured. Set the Production secret CLOUDFLARE_WORKERS_API_TOKEN to the scoped LEGEND Cloudflare Production Routing token."
+            echo "::error::Central Cloudflare routing authority is not configured."
             exit 1
           fi
           echo "::add-mask::$token"
           printf 'CLOUDFLARE_API_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
 
-          settings=/tmp/protect-website-routing.json
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
-
-          zone_id="$(jq -r '.[] | select(.name == "WebsiteDomains__CloudflareZoneId" or .name == "WebsiteDomains:CloudflareZoneId") | (.value // empty)' "$settings" | head -n 1)"
+          primary_settings=/tmp/routing-primary.json
+          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$ROUTING_PRIMARY" -o json > "$primary_settings"
+          zone_id="$(jq -r '.[] | select(.name == "WebsiteDomains__CloudflareZoneId" or .name == "WebsiteDomains:CloudflareZoneId") | (.value // empty)' "$primary_settings" | head -n 1)"
           if ! [[ "$zone_id" =~ ^[A-Fa-f0-9]{32}$ ]]; then
             echo "::error::Configured Cloudflare SaaS zone ID is missing or invalid."
             exit 1
@@ -695,20 +616,19 @@ jobs:
             account_id="$(printf '%s' "$response" | jq -r 'select(.success == true) | .result.account.id // empty')"
           fi
           if ! [[ "$account_id" =~ ^[A-Za-z0-9_-]{16,64}$ ]]; then
-            echo "::error::Cloudflare account ID could not be resolved from the deployment token and configured SaaS zone."
+            echo "::error::Cloudflare account ID could not be resolved."
             exit 1
           fi
           echo "::add-mask::$account_id"
           printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
-          bridge_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
+
+          bridge_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$primary_settings" | head -n 1)"
           if [ -z "$bridge_secret" ]; then
             if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
-              echo "::error::Preserve-live routing recovery requires the existing Protect bridge secret; no application setting mutation is authorized."
+              echo "::error::Preserve-live routing recovery requires the existing bridge secret."
               exit 1
             fi
             bridge_secret="$(openssl rand -hex 32)"
-            az webapp config appsettings set -g masterapp-rg -n masterapp-protect \
-              --settings "WebsiteRouting__BridgeSecret=$bridge_secret" --output none
           fi
           if [ "${#bridge_secret}" -lt 32 ]; then
             echo "::error::Website routing bridge secret is missing or too short."
@@ -717,40 +637,28 @@ jobs:
           echo "::add-mask::$bridge_secret"
           printf 'LEGEND_WEBSITE_BRIDGE_SECRET=%s\n' "$bridge_secret" >> "$GITHUB_ENV"
 
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
-          persisted="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
-          [ "$persisted" = "$bridge_secret" ]
-          protect_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)"
-          if [ "$protect_origin" != "masterapp-protect.azurewebsites.net" ]; then
+          while IFS=$'\t' read -r app origin probe_path; do
+            [ -n "$app" ] && [ -n "$origin" ] || continue
+            settings="/tmp/routing-${app}.json"
+            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+            current_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
+            current_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)"
             if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
-              echo "::error::Preserve-live routing recovery requires Protect's existing bridge origin host."
-              exit 1
+              [ "$current_secret" = "$bridge_secret" ] || { echo "::error::Preserve-live routing recovery found bridge-secret drift for $app."; exit 1; }
+              [ "$current_origin" = "$origin" ] || { echo "::error::Preserve-live routing recovery found origin drift for $app."; exit 1; }
+            else
+              updates=()
+              [ "$current_secret" = "$bridge_secret" ] || updates+=("WebsiteRouting__BridgeSecret=$bridge_secret")
+              [ "$current_origin" = "$origin" ] || updates+=("WebsiteRouting__BridgeOriginHost=$origin")
+              if [ "${#updates[@]}" -gt 0 ]; then
+                az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
+                az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+              fi
             fi
-            az webapp config appsettings set -g masterapp-rg -n masterapp-protect \
-              --settings "WebsiteRouting__BridgeOriginHost=masterapp-protect.azurewebsites.net" --output none
-          fi
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
-          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)" = "masterapp-protect.azurewebsites.net" ]
-
-          parfait_settings=/tmp/parfait-website-routing.json
-          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
-          parfait_bridge="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$parfait_settings" | head -n 1)"
-          parfait_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)"
-          if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
-            [ "$parfait_bridge" = "$bridge_secret" ] || { echo "::error::Preserve-live routing recovery requires Parfait to already share the website bridge authority."; exit 1; }
-            [ "$parfait_origin" = "masterapp-parfait.azurewebsites.net" ] || { echo "::error::Preserve-live routing recovery requires Parfait's existing bridge origin host."; exit 1; }
-          else
-            parfait_updates=()
-            if [ "$parfait_bridge" != "$bridge_secret" ]; then parfait_updates+=("WebsiteRouting__BridgeSecret=$bridge_secret"); fi
-            if [ "$parfait_origin" != "masterapp-parfait.azurewebsites.net" ]; then parfait_updates+=("WebsiteRouting__BridgeOriginHost=masterapp-parfait.azurewebsites.net"); fi
-            if [ "${#parfait_updates[@]}" -gt 0 ]; then
-              az webapp config appsettings set -g masterapp-rg -n masterapp-parfait --settings "${parfait_updates[@]}" --output none
-            fi
-          fi
-          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
-          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$parfait_settings" | head -n 1)" = "$bridge_secret" ]
-          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)" = "masterapp-parfait.azurewebsites.net" ]
-          echo "Shared website routing authority is present in Protect and Parfait without exposing its value."
+            [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)" = "$bridge_secret" ]
+            [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)" = "$origin" ]
+          done < <(jq -r '.[] | [.releaseName,.azureHost,.probePath] | @tsv' <<< "$ROUTING_TARGETS")
+          echo "Every canonical routing target shares one bridge authority and its declared origin."
 
       - name: Audit centralized Cloudflare routing authority
         id: routingauthority
@@ -767,18 +675,15 @@ jobs:
         run: |
           set -euo pipefail
           echo "Azure front-door summaries (no secrets):"
-          for app in masterapp-protect masterapp-parfait; do
+          while IFS=$'\t' read -r app origin probe_path; do
+            [ -n "$app" ] && [ -n "$origin" ] && [ -n "$probe_path" ] || continue
             echo "=== $app ==="
-            az webapp show -g masterapp-rg -n "$app" --query '{publicNetworkAccess:publicNetworkAccess,httpsOnly:httpsOnly,state:state}' -o json
-            az webapp config access-restriction show -g masterapp-rg -n "$app" \
+            az webapp show -g "$RELEASE_RESOURCE_GROUP" -n "$app" --query '{publicNetworkAccess:publicNetworkAccess,httpsOnly:httpsOnly,state:state}' -o json
+            az webapp config access-restriction show -g "$RELEASE_RESOURCE_GROUP" -n "$app" \
               --query '{mainSiteAccessRestrictions:ipSecurityRestrictions,mainSiteDefaultAction:ipSecurityRestrictionsDefaultAction,scmSiteDefaultAction:scmIpSecurityRestrictionsDefaultAction}' -o json
-            az webapp auth show -g masterapp-rg -n "$app" \
+            az webapp auth show -g "$RELEASE_RESOURCE_GROUP" -n "$app" \
               --query '{enabled:platform.enabled,requireAuthentication:globalValidation.requireAuthentication,unauthenticatedClientAction:globalValidation.unauthenticatedClientAction,excludedPaths:globalValidation.excludedPaths}' -o json || true
-          done
 
-          probe() {
-            app="$1"
-            path="$2"
             body="/tmp/${app}-origin-body"
             headers="/tmp/${app}-origin-headers"
             status="$(curl --silent --show-error --max-time 30 \
@@ -786,8 +691,8 @@ jobs:
               -H "X-Legend-Original-Host: $WEBSITE_ROUTING_CANARY" \
               -H "X-Legend-Website-Bridge: $LEGEND_WEBSITE_BRIDGE_SECRET" \
               -H "User-Agent: LEGEND-routing-origin-diagnostic/1.0" \
-              "https://${app}.azurewebsites.net${path}")"
-            echo "${app}${path} direct-origin status=${status} bytes=$(wc -c < "$body")"
+              "https://${origin}${probe_path}")"
+            echo "${app}${probe_path} direct-origin status=${status} bytes=$(wc -c < "$body")"
             grep -Ei '^(server|x-|location|content-type|date):' "$headers" || true
             sha256sum "$body"
             python3 - "$body" <<'PYORIGIN'
@@ -796,75 +701,103 @@ jobs:
           text=raw.decode('utf-8','replace').replace('\r',' ').replace('\n',' ')
           print('body-prefix:',text)
           PYORIGIN
-          }
-          probe masterapp-protect /
-          probe masterapp-parfait /store
-
+          done < <(jq -r '.[] | [.releaseName,.azureHost,.probePath] | @tsv' <<< "$ROUTING_TARGETS")
 
 
       - name: Apply additive diagnostics migrations before restarting apps
         id: migrate
-        if: env.PRESERVE_LIVE_TARGETS != 'true' && env.CLIENT_ONLY != 'true' && env.WEBSITE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
+        if: env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_DATABASE_DEPENDENT == 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          dotnet tool restore
+          test -n "$EXPECTED_DB_BASE_SHA"
+          git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"
+
+          python3 - <<'PYBASELINE'
+          import importlib.util, os, sys
+          from pathlib import Path
+          scripts=Path('scripts').resolve()
+          sys.path.insert(0,str(scripts))
+          path=scripts / 'release-lifecycle.py'
+          spec=importlib.util.spec_from_file_location('release_lifecycle',path)
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          base=os.environ['EXPECTED_DB_BASE_SHA']
+          authority=os.environ['DATABASE_AUTHORITY']
+          if not module.release_proven(module.GitHub(),base,app=authority):
+              raise SystemExit('Live database baseline lacks a successful canonical release receipt; no migration authorized.')
+          print('Database baseline release receipt verified:',base)
+          PYBASELINE
+
+          changed="$(
+            git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
+            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs$' |
+            grep -v '\.Designer\.cs$' || true
+          )"
+          if [ -z "$changed" ]; then
+            echo "No candidate migration source changed from the proven database baseline."
+            exit 0
+          fi
+          printf '%s\n' "$changed"
+
+          bundle="/tmp/diagnostics-packages/$MIGRATION_BUNDLE"
+          test -x "$bundle"
+          python3 scripts/release-package.py verify \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --directory /tmp/diagnostics-packages
+
           python3 - <<'PYMIGRATE'
-          import json, os, subprocess
+          import json, os, pathlib, subprocess
           def az(*args):
               return json.loads(subprocess.check_output(['az',*args,'-o','json'],text=True))
-          rows=az('webapp','config','connection-string','list','-g','masterapp-rg','-n','masterapp-portal')
+          resource_group=os.environ['RELEASE_RESOURCE_GROUP']
+          authority=os.environ['DATABASE_AUTHORITY']
+          rows=az('webapp','config','connection-string','list','-g',resource_group,'-n',authority)
           connection=next((x['value'] for x in rows if x['name']=='MasterAppDb'),None)
           if not connection:
-              settings={x['name']:x['value'] for x in az('webapp','config','appsettings','list','-g','masterapp-rg','-n','masterapp-portal')}
+              settings={x['name']:x['value'] for x in az('webapp','config','appsettings','list','-g',resource_group,'-n',authority)}
               connection=next((settings[k] for k in ('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb') if settings.get(k)),None)
           if not connection or '\n' in connection or not any(x in connection.lower() for x in ('server=tcp:','.database.windows.net','initial catalog=')):
               raise SystemExit('Production SQL connection unavailable; no restart authorized.')
           print('::add-mask::'+connection,flush=True)
-          env=os.environ | {'ConnectionStrings__MasterAppDb':connection,'EF_FORCE_SQLSERVER':'true','DOTNET_ENVIRONMENT':'Development','ASPNETCORE_ENVIRONMENT':'Development'}
-          common=['--project','Infrastructure/Infrastructure.csproj','--startup-project','AgentPortal/AgentPortal.csproj','--context','MasterAppDbContext','--configuration','Release','--no-build']
-          listing=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
-          pending=[x.split()[0] for x in listing.splitlines() if '(Pending)' in x]
-          changed=subprocess.check_output(['git','diff','--name-only',os.environ['EXPECTED_BASE_SHA'],'HEAD','--','Infrastructure/Migrations'],text=True).splitlines()
-          allowed={p.rsplit('/',1)[-1][:-3] for p in changed if p.endswith('.cs') and not p.endswith('.Designer.cs') and 'ModelSnapshot' not in p}
-          if not set(pending)<=allowed: raise SystemExit('Unexpected pending migrations; no restart authorized.')
-          subprocess.run(['dotnet','tool','run','dotnet-ef','database','update',*common],env=env,check=True)
-          after=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
-          if '(Pending)' in after: raise SystemExit('Pending migrations remain; no restart authorized.')
-          print('Schema ready. Applied candidate migrations only; no down migrations.')
+          bundle=pathlib.Path('/tmp/diagnostics-packages') / os.environ['MIGRATION_BUNDLE']
+          subprocess.run(
+              [str(bundle),'--connection',connection],
+              check=True,
+              env=os.environ | {'DOTNET_ENVIRONMENT':'Development','ASPNETCORE_ENVIRONMENT':'Development'},
+          )
+          print('Schema ready. Executed the exact validated migration bundle from the proven live database baseline.')
           PYMIGRATE
-      - name: Direct deploy AgentPortal
-        id: portal
-        if: ${{ env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') && steps.resumestate.outputs.portal_live != 'true' && !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
-        continue-on-error: true
-        shell: bash
-        run: python3 scripts/deploy-approved-app.py --target portal
-      - name: Direct deploy ClientApp
-        id: client
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.resumestate.outputs.client_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
-        continue-on-error: true
-        shell: bash
-        run: python3 scripts/deploy-approved-app.py --target client
-      - name: Refresh Azure OIDC before late deployments
+      - name: Load preserved rollback packages for transactional publication
+        id: rollbackpackages
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: diagnostics-rollback-*-${{ env.RELEASE_SHA }}
+          path: /tmp/rollback-packages
+          merge-multiple: false
+      - name: Refresh Azure OIDC before transactional publication
         id: azuredeploy
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website')) }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Direct deploy Protect immutable ZIP
-        id: protect
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.resumestate.outputs.protect_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
+      - name: Publish selected head as one transaction
+        id: transaction
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.rollbackpackages.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
         continue-on-error: true
         shell: bash
-        run: python3 scripts/deploy-approved-app.py --target protect
-      - name: Direct deploy Parfait
-        id: parfait
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.resumestate.outputs.parfait_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
-        continue-on-error: true
-        shell: bash
-        run: python3 scripts/deploy-approved-app.py --target parfait
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py \
+            --targets-json "$SELECTED_TARGETS" \
+            --baselines-json "$LIVE_BASELINES" \
+            --package-root /tmp/diagnostics-packages \
+            --rollback-root /tmp/rollback-packages
       - name: Reconcile public custom-hostname Cloudflare policy
         id: routingpolicy
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
@@ -876,7 +809,7 @@ jobs:
 
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || steps.resumestate.outputs.protect_live == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || steps.resumestate.outputs.parfait_live == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -887,7 +820,7 @@ jobs:
           deployments_status="$(curl --silent --show-error \
             -o "$deployments_file" -w '%{http_code}' \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/legend-business-website-router/deployments?per_page=1")"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$ROUTING_WORKER/deployments?per_page=1")"
           case "$deployments_status" in
             200)
               previous_version="$(jq -r 'select(.success == true) | .result.deployments[0].versions[0].version_id // empty' "$deployments_file")"
@@ -914,7 +847,7 @@ jobs:
                 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
                 -H "Content-Type: application/json" \
                 --data "$payload" \
-                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/legend-business-website-router/deployments")"
+                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$ROUTING_WORKER/deployments")"
               if [ "$(printf '%s' "$response" | jq -r '.success // false')" = true ]; then
                 echo "Restored previous Cloudflare Worker version."
                 return 0
@@ -924,7 +857,7 @@ jobs:
             routes="$(curl --silent --show-error \
               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
               "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes")"
-            printf '%s' "$routes" | jq -r '.result[]? | select(.script=="legend-business-website-router") | .id' | while read -r route_id; do
+            printf '%s' "$routes" | jq -r --arg worker "$ROUTING_WORKER" '.result[]? | select(.script==$worker) | .id' | while read -r route_id; do
               [ -z "$route_id" ] && continue
               curl --silent --show-error -X DELETE \
                 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -937,8 +870,8 @@ jobs:
           printf '%s' "$LEGEND_WEBSITE_BRIDGE_SECRET" | npx wrangler secret put LEGEND_WEBSITE_BRIDGE_SECRET --config wrangler.website-routing.jsonc
 
           if ! python3 - <<'PYFIRSTPARTY'
-          import http.client, ssl, time
-          hosts=('mylegnd.com','www.mylegnd.com','protect.mylegnd.com','portal.mylegnd.com','client.mylegnd.com')
+          import http.client, json, os, ssl, time
+          hosts=tuple(json.loads(os.environ['ROUTING_PASS_THROUGH_HOSTS']))
           context=ssl.create_default_context()
           failures=[]
           for host in hosts:
@@ -969,15 +902,9 @@ jobs:
             exit 1
           fi
           echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
-      - name: Direct deploy Website immutable ZIP
-        id: website
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.resumestate.outputs.website_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
-        continue-on-error: true
-        shell: bash
-        run: python3 scripts/deploy-approved-app.py --target website
       - name: Verify custom-domain bridge end to end
         id: routinglive
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -990,7 +917,7 @@ jobs:
                 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
                 -H "Content-Type: application/json" \
                 --data "$payload" \
-                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/legend-business-website-router/deployments")"
+                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$ROUTING_WORKER/deployments")"
               if [ "$(printf '%s' "$response" | jq -r '.success // false')" = true ]; then
                 echo "Restored previous Cloudflare Worker version."
                 return 0
@@ -999,7 +926,7 @@ jobs:
             routes="$(curl --silent --show-error \
               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
               "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes")"
-            printf '%s' "$routes" | jq -r '.result[]? | select(.script=="legend-business-website-router") | .id' | while read -r route_id; do
+            printf '%s' "$routes" | jq -r --arg worker "$ROUTING_WORKER" '.result[]? | select(.script==$worker) | .id' | while read -r route_id; do
               [ -z "$route_id" ] && continue
               curl --silent --show-error -X DELETE \
                 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -1007,29 +934,29 @@ jobs:
             done
           }
 
-          portal_connection="$(az webapp config connection-string list -g masterapp-rg -n masterapp-portal -o json | jq -r '.[] | select(.name=="MasterAppDb") | .value' | head -n 1)"
-          if [ -z "$portal_connection" ] || [ "$portal_connection" = null ]; then
-            portal_connection="$(az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json | jq -r '.[] | select(.name=="ConnectionStrings__MasterAppDb" or .name=="MasterAppDb" or .name=="SQLCONNSTR_MasterAppDb") | .value' | head -n 1)"
+          db_connection="$(az webapp config connection-string list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json | jq -r '.[] | select(.name=="MasterAppDb") | .value' | head -n 1)"
+          if [ -z "$db_connection" ] || [ "$db_connection" = null ]; then
+            db_connection="$(az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json | jq -r '.[] | select(.name=="ConnectionStrings__MasterAppDb" or .name=="MasterAppDb" or .name=="SQLCONNSTR_MasterAppDb") | .value' | head -n 1)"
           fi
-          protect_settings=/tmp/protect-domain-refresh.json
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
-          domain_token="$(jq -r '.[] | select(.name=="WebsiteDomains__ApiToken" or .name=="WebsiteDomains:ApiToken") | .value' "$protect_settings" | head -n 1)"
-          cname_target="$(jq -r '.[] | select(.name=="WebsiteDomains__CnameTarget" or .name=="WebsiteDomains:CnameTarget") | .value' "$protect_settings" | head -n 1)"
-          if [ -z "$portal_connection" ] || [ "$portal_connection" = null ] ||
+          routing_settings=/tmp/routing-domain-refresh.json
+          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$ROUTING_PRIMARY" -o json > "$routing_settings"
+          domain_token="$(jq -r '.[] | select(.name=="WebsiteDomains__ApiToken" or .name=="WebsiteDomains:ApiToken") | .value' "$routing_settings" | head -n 1)"
+          cname_target="$(jq -r '.[] | select(.name=="WebsiteDomains__CnameTarget" or .name=="WebsiteDomains:CnameTarget") | .value' "$routing_settings" | head -n 1)"
+          if [ -z "$db_connection" ] || [ "$db_connection" = null ] ||
              [ -z "$domain_token" ] || [ "$domain_token" = null ] ||
              [ -z "$cname_target" ] || [ "$cname_target" = null ]; then
             echo "::error::Shared domain authority configuration is unavailable."
             restore_router
             exit 1
           fi
-          echo "::add-mask::$portal_connection"
+          echo "::add-mask::$db_connection"
           echo "::add-mask::$domain_token"
           if ! LEGEND_RELEASE_DOMAIN="$WEBSITE_ROUTING_CANARY" \
-               LEGEND_RELEASE_DB_CONNECTION="$portal_connection" \
+               LEGEND_RELEASE_DB_CONNECTION="$db_connection" \
                LEGEND_RELEASE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
                LEGEND_RELEASE_DOMAIN_TOKEN="$domain_token" \
                LEGEND_RELEASE_CNAME_TARGET="$cname_target" \
-               dotnet run --project scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --no-restore; then
+               dotnet run --project "$DOMAIN_REFRESH_PROJECT" -c Release --no-restore; then
             restore_router
             exit 1
           fi
@@ -1131,175 +1058,103 @@ jobs:
 
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (steps.azure.outcome == 'success' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true' || env.CLIENT_ONLY == 'true' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') }}
+        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') }}
         continue-on-error: true
+        shell: bash
         run: |
-          python3 - <<'PYLIVE'
-          import concurrent.futures, json, os, time, urllib.request
-          selected=json.loads(os.environ['SELECTED_TARGETS'])
-          inventory={'masterapp-portal':('portal.mylegnd.com','masterapp-portal.azurewebsites.net'),'masterapp-client':('client.mylegnd.com','masterapp-client.azurewebsites.net'),'masterapp-protect':('masterapp-protect.azurewebsites.net',),'masterapp-parfait':('masterapp-parfait.azurewebsites.net',),'masterapp-website':('masterapp-website.azurewebsites.net','mylegnd.com','www.mylegnd.com')}
-          assert selected and all(app in inventory for app in selected)
-          hosts=tuple(host for app in selected for host in inventory[app])
-          def verify(host):
-              end=time.monotonic()+480
-              actual=None
-              while time.monotonic()<end:
-                  try:
-                      path='/_deployment-provenance.txt' if host in inventory['masterapp-website'] else '/api/runtime-provenance'
-                      expected=os.environ['APPLICATION_RELEASE_SHA']
-                      request=urllib.request.Request('https://'+host+path+'?release='+expected,headers={'Cache-Control':'no-cache'})
-                      with urllib.request.urlopen(request,timeout=15) as response:
-                          actual=response.read().decode().strip() if host in inventory['masterapp-website'] else json.load(response).get('sourceRevision')
-                      if actual==expected: return {'host':host,'passed':True,'actual':actual}
-                  except Exception as error: actual=type(error).__name__
-                  time.sleep(5)
-              return {'host':host,'passed':False,'actual':actual}
-          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool: rows=list(pool.map(verify,hosts))
-          os.makedirs('/tmp/translation-results',exist_ok=True)
-          with open('/tmp/translation-results/live.json','w') as output: json.dump(rows,output,indent=2)
-          for row in rows: print(json.dumps(row))
-          assert all(row['passed'] for row in rows)
-          PYLIVE
+          set -euo pipefail
+          mkdir -p /tmp/translation-results
+          python3 scripts/validation-resume.py verify-live \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --selected-targets "$SELECTED_TARGETS" \
+            --output /tmp/translation-results/live.json
+
+      - name: Restore complete application baseline after downstream release failure
+        id: transactionrollback
+        if: ${{ always() && steps.transaction.outcome == 'success' && (steps.live.outcome != 'success' || (env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome != 'success')) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py \
+            --targets-json "$SELECTED_TARGETS" \
+            --baselines-json "$LIVE_BASELINES" \
+            --rollback-root /tmp/rollback-packages \
+            --rollback-only
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: translation-direct-release-${{ github.sha }}
+          name: translation-direct-release-${{ env.RELEASE_SHA }}
           path: /tmp/translation-results/
           if-no-files-found: warn
       - name: Enforce complete direct deployment outcome
         if: always()
         env:
           BASE: ${{ steps.base.outcome }}
-          BUILD: ${{ steps.build.outcome }}
-          TESTS: ${{ steps.tests.outcome }}
-          WEB: ${{ steps.web.outcome }}
           PACKAGE: ${{ steps.package.outcome }}
           AZURE: ${{ steps.azure.outcome }}
-          PORTAL: ${{ steps.portal.outcome }}
-          CLIENT: ${{ steps.client.outcome }}
+          TRANSACTION: ${{ steps.transaction.outcome }}
+          TRANSACTION_ROLLBACK: ${{ steps.transactionrollback.outcome }}
           LIVE: ${{ steps.live.outcome }}
-          MIGRATE: ${{ steps.migrate.outcome }}
-          PROTECT: ${{ steps.protect.outcome }}
-          PROTECTAUTH: ${{ steps.protectauth.outcome }}
-          EDITORAUTH: ${{ steps.editorauth.outcome }}
-          PARFAIT: ${{ steps.parfait.outcome }}
-          WEBSITE: ${{ steps.website.outcome }}
-          WEBSITECHECKS: ${{ steps.websitechecks.outcome }}
-          ROUTINGCHECKS: ${{ steps.routingchecks.outcome }}
-          ROUTINGSECRET: ${{ steps.routingsecret.outcome }}
-          ROUTINGAUTH: ${{ steps.routingauthority.outcome }}
-          ROUTINGPOLICY: ${{ steps.routingpolicy.outcome }}
-          ROUTINGDEPLOY: ${{ steps.routingdeploy.outcome }}
-          ROUTINGLIVE: ${{ steps.routinglive.outcome }}
+          ROUTING_LIVE: ${{ steps.routinglive.outcome }}
           VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
-          CLIENT_ONLY: ${{ env.CLIENT_ONLY }}
           WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
           PRESERVE_LIVE_TARGETS: ${{ env.PRESERVE_LIVE_TARGETS }}
           EXACT_LIVE: ${{ env.EXACT_LIVE }}
-          RESUME_PORTAL: ${{ steps.resumestate.outputs.portal_live }}
-          RESUME_CLIENT: ${{ steps.resumestate.outputs.client_live }}
-          RESUME_PROTECT: ${{ steps.resumestate.outputs.protect_live }}
-          RESUME_PARFAIT: ${{ steps.resumestate.outputs.parfait_live }}
-          RESUME_WEBSITE: ${{ steps.resumestate.outputs.website_live }}
         run: |
           python3 - <<'PYRESULT'
           import json,os
           selected=json.loads(os.environ['SELECTED_TARGETS'])
-          apps={'masterapp-portal':'PORTAL','masterapp-client':'CLIENT','masterapp-protect':'PROTECT','masterapp-parfait':'PARFAIT','masterapp-website':'WEBSITE'}
-          assert selected and len(selected)==len(set(selected)) and all(app in apps for app in selected)
+          assert isinstance(selected,list) and selected and len(selected)==len(set(selected))
           validate_only=os.environ.get('VALIDATE_ONLY')=='true'
           website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
-          preserve_live_targets=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
+          preserve_live=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
           exact_live=os.environ.get('EXACT_LIVE')=='true'
-          routing_steps=['ROUTINGCHECKS','ROUTINGSECRET','ROUTINGAUTH','ROUTINGPOLICY','ROUTINGDEPLOY','ROUTINGLIVE']
-          if exact_live:
-              assert not validate_only and not website_routing and not preserve_live_targets
-              required=['BASE','LIVE']
-              skipped=['BUILD','TESTS','WEB','PACKAGE','AZURE','MIGRATE','PROTECTAUTH','EDITORAUTH','WEBSITECHECKS']+routing_steps+list(apps.values())
-              results={key:os.environ[key] for key in required}
-              skipped_results={key:os.environ[key] for key in skipped}
-              print(json.dumps({'mode':'exact-live-noop','required':results,'skippedPublicationSteps':skipped_results},indent=2))
-              assert all(value=='success' for value in results.values())
-              assert all(value=='skipped' for value in skipped_results.values()), 'Exact-live release executed publication work'
-          elif preserve_live_targets:
-              assert not validate_only and website_routing
-              required=['BASE','AZURE','LIVE']+routing_steps
-              skipped=['BUILD','TESTS','WEB','PACKAGE','MIGRATE','PROTECTAUTH','EDITORAUTH','PORTAL','CLIENT','PROTECT','PARFAIT','WEBSITE']
-              if 'masterapp-website' in selected:
-                  required.append('WEBSITECHECKS')
-              else:
-                  skipped.append('WEBSITECHECKS')
-              results={key:os.environ[key] for key in required}
-              skipped_results={key:os.environ[key] for key in skipped}
-              print(json.dumps({'mode':'preserve-live-routing-recovery','required':results,'preservedSteps':skipped_results},indent=2))
-              assert all(value=='success' for value in results.values())
-              assert all(value=='skipped' for value in skipped_results.values()), 'Preserve-live recovery redeployed or mutated an application target'
-          elif validate_only:
-              if website_routing:
-                  required=['BASE','BUILD','ROUTINGCHECKS','PACKAGE']
-                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH','EDITORAUTH','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']+list(apps.values())
-              elif set(selected) <= {'masterapp-protect','masterapp-website'}:
-                  required=['BASE','BUILD','PACKAGE']
-                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH']+routing_steps+list(apps.values())
-              else:
-                  required=['BASE','BUILD','TESTS','WEB','PACKAGE']
-                  skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH','EDITORAUTH']+routing_steps+list(apps.values())
-              if 'masterapp-website' in selected:
-                  required.append('WEBSITECHECKS')
-              else:
-                  skipped.append('WEBSITECHECKS')
-              results={key:os.environ[key] for key in required}
-              skipped_results={key:os.environ[key] for key in skipped}
-              print(json.dumps({'mode':'validate-only','required':results,'skippedSteps':skipped_results},indent=2))
-              assert all(value=='success' for value in results.values())
-              assert all(value=='skipped' for value in skipped_results.values()), 'Validation-only run executed a publish or deployment step'
+          base=os.environ['BASE']
+          package=os.environ['PACKAGE']
+          azure=os.environ['AZURE']
+          transaction=os.environ['TRANSACTION']
+          rollback=os.environ['TRANSACTION_ROLLBACK']
+          live=os.environ['LIVE']
+          routing_live=os.environ['ROUTING_LIVE']
+
+          if validate_only:
+              assert not preserve_live and not exact_live
+              assert base=='success' and package=='success'
+              assert transaction=='skipped' and live=='skipped'
+              mode='validate-only'
+          elif exact_live:
+              assert not preserve_live and not website_routing
+              assert base=='success' and live=='success'
+              assert transaction=='skipped' and rollback=='skipped'
+              mode='exact-live-noop'
+          elif preserve_live:
+              assert website_routing
+              assert base=='success' and azure=='success' and live=='success'
+              assert transaction=='skipped' and rollback=='skipped'
+              mode='preserve-live-routing-recovery'
           else:
-              required=['BASE','PACKAGE','AZURE','LIVE']
-              excluded=[step for app,step in apps.items() if app not in selected]
-              resume={
-                  'masterapp-portal':os.environ.get('RESUME_PORTAL')=='true',
-                  'masterapp-client':os.environ.get('RESUME_CLIENT')=='true',
-                  'masterapp-protect':os.environ.get('RESUME_PROTECT')=='true',
-                  'masterapp-parfait':os.environ.get('RESUME_PARFAIT')=='true',
-                  'masterapp-website':os.environ.get('RESUME_WEBSITE')=='true',
-              }
-              for app in selected:
-                  step=apps[app]
-                  if resume[app]:
-                      assert os.environ[step]=='skipped', f'{app} was already live at the exact candidate but redeployed'
-                  else:
-                      required.append(step)
-              (required if 'masterapp-protect' in selected else excluded).append('PROTECTAUTH')
-              (required if any(app in selected for app in ('masterapp-protect','masterapp-parfait')) else excluded).append('EDITORAUTH')
-              (excluded if selected == ['masterapp-website'] else required).append('BUILD')
-              if os.environ.get('CLIENT_ONLY') == 'true':
-                  required.extend(['TESTS','WEB'])
-                  excluded.append('MIGRATE')
-              elif set(selected) <= {'masterapp-protect','masterapp-website'}:
-                  excluded.extend(['TESTS','WEB'])
-                  (excluded if selected == ['masterapp-website'] else required).append('MIGRATE')
-              else:
-                  required.extend(['TESTS','WEB','MIGRATE'])
-              (required if 'masterapp-website' in selected else excluded).append('WEBSITECHECKS')
-              if website_routing:
-                  required.extend(routing_steps)
-              else:
-                  excluded.extend(routing_steps)
-              results={key:os.environ[key] for key in required}
-              skipped={key:os.environ[key] for key in excluded}
-              preserved={app:resume[app] for app in selected if resume[app]}
-              print(json.dumps({'mode':'approved-only','required':results,'unselected':skipped,'preservedExactLiveTargets':preserved},indent=2))
-              assert all(value=='success' for value in results.values())
-              assert all(value=='skipped' for value in skipped.values()), 'Unselected release step unexpectedly executed'
+              assert base=='success' and package=='success' and azure=='success'
+              assert transaction=='success'
+              assert rollback=='skipped', 'Downstream release failure forced complete application rollback'
+              assert live=='success'
+              mode='approved-transaction'
+
+          if website_routing and not validate_only:
+              assert routing_live=='success'
+
           receipt={
-              'schemaVersion':1,
+              'schemaVersion':2,
+              'mode':mode,
               'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
               'releaseHeadSha':os.environ['RELEASE_SHA'],
               'selectedTargets':selected,
               'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+              'transaction':'committed' if transaction=='success' else 'preserved',
           }
           with open('/tmp/approved-release-receipt.json','w') as output:
               json.dump(receipt,output,sort_keys=True,indent=2)
+          print(json.dumps(receipt,sort_keys=True))
           PYRESULT
       - name: Retain exact approved release receipt
         if: success() && env.VALIDATE_ONLY != 'true'
@@ -1308,4 +1163,116 @@ jobs:
           name: legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}
           path: /tmp/approved-release-receipt.json
           retention-days: 90
+          if-no-files-found: error
+
+  target-release-receipts:
+    name: target-release-receipts (${{ matrix.app }})
+    needs: [discover-live, release]
+    if: needs.release.result == 'success' && needs.discover-live.outputs.validate_only != 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover-live.outputs.matrix) }}
+    steps:
+      - name: Bind successful transaction receipt to canonical target
+        shell: bash
+        env:
+          APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+          SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
+          TARGET_NAME: ${{ matrix.releaseName }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTARGETRECEIPT'
+          import json,os,pathlib
+          names=json.loads(os.environ['SELECTED_TARGETS'])
+          release_name=os.environ['TARGET_NAME']
+          if release_name not in names:
+              raise SystemExit('Target receipt is not part of the canonical selected release set')
+          payload={
+              'schemaVersion':1,
+              'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
+              'target':release_name,
+              'transaction':'committed-or-preserved',
+          }
+          pathlib.Path('/tmp/target-release-receipt.json').write_text(json.dumps(payload,sort_keys=True,indent=2)+'\n')
+          PYTARGETRECEIPT
+      - name: Preserve target-specific successful release receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-release-${{ needs.discover-live.outputs.application_release_sha }}-${{ matrix.releaseName }}
+          path: /tmp/target-release-receipt.json
+          retention-days: 90
+          if-no-files-found: error
+
+  release-state-receipt:
+    name: release-state-receipt
+    needs: [discover-live, release]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    env:
+      APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+      PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
+      SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
+    steps:
+      - name: Capture exact release step-state receipt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100")"
+          printf '%s' "$jobs" > "$RUNNER_TEMP/release-jobs.json"
+          python3 - "$RUNNER_TEMP/release-jobs.json" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$APPLICATION_RELEASE_SHA" "$PACKAGE_IDENTITY" "$SELECTED_TARGETS" <<'PYSTATE'
+          import json,sys
+          jobs_path,run_id,attempt,release_sha,application_sha,package_identity,targets=sys.argv[1:]
+          with open(jobs_path) as source:
+              payload=json.load(source)
+          release_jobs=[row for row in payload.get('jobs',[]) if row.get('name')=='release']
+          if len(release_jobs)!=1:
+              raise SystemExit('Expected exactly one terminal release job')
+          job=release_jobs[0]
+          if job.get('status')!='completed':
+              raise SystemExit('Release job is not terminal; refusing partial state receipt')
+          steps=[
+              {
+                  'number':step.get('number'),
+                  'name':step.get('name'),
+                  'status':step.get('status'),
+                  'conclusion':step.get('conclusion'),
+              }
+              for step in job.get('steps',[])
+          ]
+          if any(not row['name'] for row in steps):
+              raise SystemExit('Release step inventory malformed')
+          if not steps and job.get('conclusion')!='skipped':
+              raise SystemExit('Terminal non-skipped release job has no step inventory')
+          state={
+              'schemaVersion':2,
+              'runId':int(run_id),
+              'runAttempt':int(attempt),
+              'releaseHeadSha':release_sha,
+              'applicationReleaseSha':application_sha or None,
+              'packageIdentity':package_identity or None,
+              'selectedTargets':json.loads(targets) if targets else [],
+              'releaseJobConclusion':job.get('conclusion'),
+              'steps':steps,
+          }
+          with open('/tmp/legend-release-step-state.json','w') as output:
+              json.dump(state,output,sort_keys=True,indent=2)
+          print(json.dumps({
+              'releaseJobConclusion':state['releaseJobConclusion'],
+              'applicationReleaseSha':state['applicationReleaseSha'],
+              'stepOutcomes':{row['name']:row['conclusion'] for row in steps},
+          },sort_keys=True))
+          PYSTATE
+
+      - name: Preserve exact release step-state receipt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-release-step-state-${{ needs.discover-live.outputs.application_release_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/legend-release-step-state.json
+          retention-days: 30
           if-no-files-found: error

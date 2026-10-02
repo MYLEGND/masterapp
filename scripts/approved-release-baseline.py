@@ -12,54 +12,33 @@ import subprocess
 import urllib.request
 from release_policy import read_request
 
-# Existing deployment topology, not application-discovery or diagnostics policy.
-TARGETS = (
-    ('portal', 'portal.mylegnd.com', 'AgentPortal/AgentPortal.csproj'),
-    ('client', 'client.mylegnd.com', 'ClientApp/ClientApp.csproj'),
-    ('protect', 'masterapp-protect.azurewebsites.net', 'Protect-Website/ProtectWebsite.csproj'),
-    ('parfait', 'masterapp-parfait.azurewebsites.net', 'ParfaitApp/ParfaitApp.csproj'),
-    ('website', 'masterapp-website.azurewebsites.net', 'static'),
-)
+def _validation_resume_module():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
+
+_validation_authority = _validation_resume_module()
+
+# The validation/release authority owns deployment topology and supported scope.
+# Baseline discovery consumes it; it never maintains a second inventory.
+TARGETS = _validation_authority.release_target_rows()
 
 def selected_targets(request):
     if not isinstance(request, dict):
         raise ValueError('Release request must be an object')
     if 'targets' not in request:
         return TARGETS
-    names = request['targets']
-    inventory = {'masterapp-' + row[0]: row for row in TARGETS}
-    if (not isinstance(names, list) or not names or
-            any(not isinstance(name, str) or name not in inventory for name in names) or
-            len(set(names)) != len(names)):
-        raise ValueError('Release targets must be unique names from the existing deployment inventory')
-    # Static-only releases have no database or .NET app changes. Other scoped
-    # releases retain Portal as the shared migration baseline.
-    if set(names) not in ({'masterapp-website'}, {'masterapp-protect'}, {'masterapp-client'}, {'masterapp-client', 'masterapp-protect'}, {'masterapp-protect', 'masterapp-website'}, {'masterapp-parfait'}, {'masterapp-protect', 'masterapp-parfait'}, {'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}, {'masterapp-portal'}, {'masterapp-portal', 'masterapp-protect'}, {'masterapp-portal', 'masterapp-client'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect'}, {'masterapp-portal', 'masterapp-client', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-protect', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait'}, {'masterapp-portal', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website'}):
-        raise ValueError('Unsupported scoped release; migration and packaging policy must be reviewed')
-    return tuple(row for row in TARGETS if 'masterapp-' + row[0] in names)
+    keys = set(_validation_authority.selected_release_target_keys(request['targets']))
+    return tuple(row for row in TARGETS if row[0] in keys)
 
 
 
 def release_control_only_path(path):
-    """Paths that can change release control/evidence without changing app bits."""
-    return (
-        path.startswith(".github/workflows/")
-        or path.startswith("Docs/")
-        or path.startswith("AgentPortal.Tests/")
-        or path.startswith("tests/")
-        or path in {
-            "scripts/approved-release-baseline.py",
-            "scripts/release-lifecycle.py",
-            "scripts/release_policy.py",
-            "scripts/deploy-approved-app.py",
-            "scripts/validation-resume.py",
-            "scripts/test-validation-resume.py",
-            "scripts/test-release-policy.py",
-            "scripts/test-release-lifecycle.py",
-            "scripts/test-deploy-approved-app.py",
-        }
-    )
+    """Consume the canonical application-identity classification."""
+    return _validation_authority.release_control_only_path(path)
 
 
 def reusable_live_application_revision(rows, head):
@@ -93,41 +72,45 @@ def exact_live_release(rows, application_release_sha, release_mode, website_rout
     )
 
 
+def _release_package_module():
+    path = Path(__file__).with_name("release-package.py")
+    spec = importlib.util.spec_from_file_location("release_package", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def release_package_contract_hash():
-    resume_path = Path(__file__).with_name("validation-resume.py")
-    spec = importlib.util.spec_from_file_location("validation_resume", resume_path)
-    resume = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(resume)
-    workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
-    blocks = resume.named_step_blocks(workflow.read_text())
-    names = (
-        "Build exact selected release candidate",
-        "Verify business website routing bridge",
-        "Verify localization retention privacy limits and original delivery",
-        "Verify shared web catalog contracts",
-        "Verify selected website catalog and build",
-        "Publish exact selected application packages",
-    )
-    if any(name not in blocks for name in names):
-        raise ValueError("Release package contract step is missing")
-    payload = "\n".join(name + "\n" + blocks[name] for name in names).encode()
-    return hashlib.sha256(payload).hexdigest()
+    return _release_package_module().contract_hash()
 
 
-def release_package_identity(application_release_sha, targets, website_routing, website_routing_canary):
-    payload = json.dumps(
-        {
-            "applicationReleaseSha": application_release_sha,
-            "targets": ["masterapp-" + row[0] for row in targets],
-            "websiteRouting": bool(website_routing),
-            "websiteRoutingCanary": website_routing_canary or "",
-            "packageContractSha256": release_package_contract_hash(),
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return hashlib.sha256(payload).hexdigest()
+def release_package_identity(application_release_sha, targets=None, website_routing=False, website_routing_canary=""):
+    """Package identity is source/contract bound, never authorization-scope bound.
 
+    Target/routing authorization remains in direct-release-request.json. The
+    immutable package bytes are built once for the exact validated application
+    revision and may be selected by any later authorized scoped release without
+    recompilation.
+    """
+    return _release_package_module().package_identity(application_release_sha)
+
+
+def validated_application_revision(validated_sha, approved_head):
+    """Return the exact validated PR head when later commits are control-only."""
+    validated_sha = validate_revision(validated_sha)
+    approved_head = validate_revision(approved_head)
+    subprocess.run(["git", "merge-base", "--is-ancestor", validated_sha, approved_head], check=True)
+    changed = subprocess.check_output(
+        ["git", "diff", "--name-only", validated_sha, approved_head],
+        text=True,
+    ).splitlines()
+    unexpected = sorted(path for path in changed if not release_control_only_path(path))
+    if unexpected:
+        raise ValueError(
+            "Approved release contains application changes after the validated PR head: "
+            + ", ".join(unexpected)
+        )
+    return validated_sha
 
 def validate_revision(value):
     if not isinstance(value, str) or not re.fullmatch(r'[a-fA-F0-9]{40}', value):
@@ -146,7 +129,18 @@ def observe(target):
         if len(body) > 8192:
             raise ValueError('Oversized provenance response')
         revision = body.decode().strip() if project == 'static' else json.loads(body)['sourceRevision']
-    return dict(app=app, host=host, project=project, path=path, revision=validate_revision(revision))
+    canonical = _validation_authority.RELEASE_TARGETS[app]
+    return dict(
+        app=app,
+        releaseName=canonical["releaseName"],
+        host=host,
+        project=project,
+        sourceRoot=canonical["sourceRoot"],
+        package=canonical["package"],
+        static=canonical["static"],
+        path=path,
+        revision=validate_revision(revision),
+    )
 
 
 def main():
@@ -155,16 +149,56 @@ def main():
     parser.add_argument('--automatic', action='store_true', help='Compatibility flag; committed target scope remains authoritative')
     args = parser.parse_args()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-    if os.environ.get('GITHUB_ACTIONS') == 'true':
-        if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != os.environ.get('GITHUB_SHA'):
-            raise SystemExit('Only the exact approved branch revision can be released')
-    request = read_request()
+    github_release_context = os.environ.get('GITHUB_ACTIONS') == 'true'
+    expected_release_sha = os.environ.get('RELEASE_SHA') or os.environ.get('GITHUB_SHA')
+    if github_release_context:
+        if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != expected_release_sha:
+            raise SystemExit('Only the exact approved release revision can be released')
+
+    automatic = bool(args.automatic and github_release_context)
+    validated_source_sha = head
+    if automatic:
+        spec = importlib.util.spec_from_file_location('release_lifecycle', Path(__file__).with_name('release-lifecycle.py'))
+        lifecycle = importlib.util.module_from_spec(spec); spec.loader.exec_module(lifecycle)
+        api = lifecycle.GitHub()
+        try:
+            pr_number = int(os.environ['AUTOMATIC_SOURCE_PR'])
+        except (KeyError, ValueError):
+            raise ValueError('Automatic release requires the validated source PR number')
+        validated_sha = validate_revision(os.environ.get('AUTOMATIC_VALIDATED_SHA'))
+        merge_sha = validate_revision(os.environ.get('AUTOMATIC_MERGE_SHA'))
+        if merge_sha != head:
+            raise ValueError('Automatic release checkout is not the exact validated merge revision')
+        pr = api.api(f'pulls/{pr_number}')
+        if (
+            not pr.get('merged_at')
+            or pr.get('merge_commit_sha') != merge_sha
+            or pr.get('base', {}).get('ref') != lifecycle.APPROVED
+            or pr.get('head', {}).get('sha') != validated_sha
+        ):
+            raise ValueError('Automatic release inputs do not bind to one merged validated PR')
+        pending = lifecycle.candidate_validation(api, pr)
+        if pending:
+            raise ValueError(pending)
+        names = [row.get('filename') for row in api.pages(f'pulls/{pr_number}/files') if row.get('filename')]
+        derived = list(_validation_authority.release_targets_for_paths(names))
+        try:
+            supplied = json.loads(os.environ['AUTOMATIC_TARGETS_JSON'])
+        except (KeyError, json.JSONDecodeError):
+            raise ValueError('Automatic release targets are missing or malformed')
+        if supplied != derived or not derived:
+            raise ValueError('Automatic release target scope does not match canonical validated-PR derivation')
+        request = {'releaseMode': 'approved-only', 'targets': derived}
+        validated_source_sha = validated_sha
+    else:
+        request = read_request()
+
     release_mode = request['releaseMode']
     if release_mode not in {'approved-only', 'validate-only'}:
         raise ValueError('releaseMode must be approved-only or validate-only')
     if release_mode == 'approved-only' and 'targets' not in request:
         raise ValueError('An approved release requires an explicit target list')
-    if os.environ.get('GITHUB_ACTIONS') == 'true' and release_mode == 'approved-only':
+    if github_release_context and release_mode == 'approved-only' and not automatic:
         spec = importlib.util.spec_from_file_location('release_lifecycle', Path(__file__).with_name('release-lifecycle.py'))
         lifecycle = importlib.util.module_from_spec(spec); spec.loader.exec_module(lifecycle)
         if not lifecycle.direct_only_request(head):
@@ -176,7 +210,8 @@ def main():
         pending = lifecycle.candidate_validation(api, pr)
         if pending:
             raise ValueError(pending)
-    website_routing = request.get('cloudflareWebsiteRouting', False)
+        validated_source_sha = validate_revision(pr['head']['sha'])
+    website_routing = False if automatic else request.get('cloudflareWebsiteRouting', False)
     if not isinstance(website_routing, bool):
         raise ValueError('cloudflareWebsiteRouting must be a boolean when supplied')
     preserve_live_targets = request.get('preserveLiveTargets', False)
@@ -188,12 +223,17 @@ def main():
             raise ValueError('preserveLiveTargets is only valid for an approved Cloudflare routing recovery')
         preserve_live_revision = validate_revision(request.get('preserveLiveRevision'))
     targets = selected_targets(request)
+    selected_names = [
+        _validation_authority.RELEASE_TARGETS[row[0]]["releaseName"]
+        for row in targets
+    ]
+    runtime_profile = _validation_authority.release_runtime_profile(selected_names)
     if website_routing:
-        routing_apps = {row[0] for row in targets}
-        if not {'protect', 'parfait'}.issubset(routing_apps):
-            raise ValueError('Cloudflare website commerce routing releases must include masterapp-protect and masterapp-parfait')
-        if not (routing_apps.issubset({'portal', 'client', 'protect', 'parfait'}) or routing_apps == {row[0] for row in TARGETS}):
-            raise ValueError('Cloudflare website routing requires the reviewed commerce scope or the complete web release inventory')
+        required_routing = {
+            row["releaseName"] for row in runtime_profile["routingTargets"]
+        }
+        if not required_routing.issubset(set(selected_names)):
+            raise ValueError('Cloudflare website routing requires every canonical routing target')
     website_routing_canary = ''
     if website_routing:
         website_routing_canary = str(request.get('websiteRoutingCanaryHost') or '').strip().lower().rstrip('.')
@@ -202,6 +242,18 @@ def main():
             raise ValueError('websiteRoutingCanaryHost must be an external verified business hostname')
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         rows = list(pool.map(observe, targets))
+    selected_apps = {row['app'] for row in rows}
+    database_baseline = ''
+    if release_mode == 'approved-only' and runtime_profile["selectedDatabaseDependent"]:
+        database_name = runtime_profile["databaseAuthority"]
+        database_row = next((row for row in rows if row['releaseName'] == database_name), None)
+        if database_row is None:
+            database_key = _validation_authority.release_name_map()[database_name]
+            database_target = next(row for row in TARGETS if row[0] == database_key)
+            database_row = observe(database_target)
+        database_baseline = database_row['revision']
+        subprocess.run(['git', 'cat-file', '-e', database_baseline + '^{commit}'], check=True)
+        subprocess.run(['git', 'merge-base', '--is-ancestor', database_baseline, head], check=True)
     for row in rows:
         subprocess.run(['git', 'cat-file', '-e', row['revision'] + '^{commit}'], check=True)
         subprocess.run(['git', 'merge-base', '--is-ancestor', row['revision'], head], check=True)
@@ -222,6 +274,15 @@ def main():
             raise ValueError('Preserve-live recovery contains application changes: ' + ', '.join(unexpected))
     if preserve_live_targets:
         application_release_sha = preserve_live_revision
+    elif release_mode == 'approved-only' and github_release_context:
+        application_release_sha = validated_application_revision(validated_source_sha, head)
+        if application_release_sha != head:
+            print(
+                "Using exact validated PR head as application provenance:",
+                application_release_sha,
+            )
+    elif release_mode == 'approved-only':
+        application_release_sha = head
     else:
         application_release_sha = reusable_live_application_revision(rows, head) or head
         if application_release_sha != head:
@@ -248,12 +309,31 @@ def main():
         with args.output.open('a') as out:
             out.write('matrix=' + json.dumps({'include': rows}, separators=(',', ':')) + '\n')
             out.write('baselines=' + json.dumps(rows, separators=(',', ':')) + '\n')
-            out.write('portal=' + rows[0]['revision'] + '\n')
-            out.write('targets=' + json.dumps(['masterapp-' + row['app'] for row in rows], separators=(',', ':')) + '\n')
-            out.write('public_only=' + str(all(row['app'] in {'protect', 'website'} for row in rows)).lower() + '\n')
-            out.write('client_only=' + str(len(rows) == 1 and rows[0]['app'] == 'client').lower() + '\n')
-            out.write('website_only=' + str(len(rows) == 1 and rows[0]['app'] == 'website').lower() + '\n')
-            out.write('portal_only=' + str(len(rows) == 1 and rows[0]['app'] == 'portal').lower() + '\n')
+            out.write('portal=' + (database_baseline or rows[0]['revision']) + '\n')
+            out.write('database_baseline=' + database_baseline + '\n')
+            out.write('targets=' + json.dumps([row['releaseName'] for row in rows], separators=(',', ':')) + '\n')
+            out.write('public_only=' + str(runtime_profile['publicOnly']).lower() + '\n')
+            out.write('client_only=' + str(runtime_profile['clientOnly']).lower() + '\n')
+            out.write('website_only=' + str(runtime_profile['websiteOnly']).lower() + '\n')
+            out.write('portal_only=' + str(runtime_profile['portalOnly']).lower() + '\n')
+            out.write('resource_group=' + runtime_profile['resourceGroup'] + '\n')
+            out.write('migration_bundle=' + runtime_profile['migrationBundle'] + '\n')
+            out.write('routing_worker=' + runtime_profile['routingWorker'] + '\n')
+            out.write('routing_pass_through_hosts=' + json.dumps(runtime_profile['routingPassThroughHosts'], separators=(',', ':')) + '\n')
+            out.write('domain_refresh_project=' + runtime_profile['domainRefreshProject'] + '\n')
+            out.write('database_authority=' + runtime_profile['databaseAuthority'] + '\n')
+            out.write('browser_entry_hosts=' + json.dumps(runtime_profile['browserEntryHosts'], separators=(',', ':')) + '\n')
+            out.write('shared_auth_targets=' + json.dumps(runtime_profile['sharedAuthTargets'], separators=(',', ':')) + '\n')
+            out.write('editor_targets=' + json.dumps(runtime_profile['editorTargets'], separators=(',', ':')) + '\n')
+            out.write('marketing_targets=' + json.dumps(runtime_profile['marketingTargets'], separators=(',', ':')) + '\n')
+            out.write('routing_targets=' + json.dumps(runtime_profile['routingTargets'], separators=(',', ':')) + '\n')
+            out.write('routing_primary=' + runtime_profile['routingPrimary'] + '\n')
+            out.write('routing_primary_host=' + runtime_profile['routingPrimaryHost'] + '\n')
+            out.write('selected_has_browser_entry=' + str(runtime_profile['selectedHasBrowserEntry']).lower() + '\n')
+            out.write('selected_has_static=' + str(runtime_profile['selectedHasStatic']).lower() + '\n')
+            out.write('selected_has_shared_auth=' + str(runtime_profile['selectedHasSharedAuth']).lower() + '\n')
+            out.write('selected_has_editor=' + str(runtime_profile['selectedHasEditor']).lower() + '\n')
+            out.write('selected_database_dependent=' + str(runtime_profile['selectedDatabaseDependent']).lower() + '\n')
             out.write('validate_only=' + str(release_mode == 'validate-only').lower() + '\n')
             out.write('website_routing=' + str(website_routing).lower() + '\n')
             out.write('website_routing_canary=' + website_routing_canary + '\n')

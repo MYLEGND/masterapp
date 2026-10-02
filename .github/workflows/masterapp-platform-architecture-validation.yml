@@ -251,9 +251,128 @@ jobs:
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate form-tracking; then exit 0; fi
           node --test tests/analytics/form-tracker.test.cjs
+
+      - name: Run release web contract regressions
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-web-contracts; then exit 0; fi
+          node --test tests/analytics/csv-export.test.cjs
+          node tests/analytics/form-tracker.test.cjs .
+          node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
+          node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
+            --filter 'FullyQualifiedName~WebsiteDomainImportTests'
+          dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
+          npm ci --prefix Legend-Cloudflare
+          npm --prefix Legend-Cloudflare run test:website-routing
+          npm --prefix Legend-Cloudflare run check:website-routing
+          python3 -m py_compile scripts/cloudflare-routing-authority.py
+          legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
+          if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
+            echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
+            exit 1
+          fi
+          python3 scripts/test-diagnostic-project-impact.py
+          python3 scripts/test-sync-published-checkout.py
+
       - name: Verify consolidated release scope and routing policy
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-policy; then exit 0; fi
           python3 scripts/test-release-policy.py
           python3 scripts/test-deploy-approved-app.py
 
+
+      - name: Preserve exact validation resume plan
+        if: always() && steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-resume-architecture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/validation-resume.json
+          retention-days: 30
+          if-no-files-found: error
+
+  validated-release-package:
+    name: validated-release-package
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+      - name: Checkout exact validated application revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve whether application bytes changed
+        id: packageplan
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          plan="$RUNNER_TEMP/package-canary-plan.json"
+          python3 scripts/validation-resume.py package-canary-plan \
+            --repository "${{ github.repository }}" \
+            --current-sha "${{ github.event.pull_request.head.sha }}" \
+            --base-sha "${{ github.event.pull_request.base.sha }}" \
+            --current-run-id "${{ github.run_id }}" \
+            --head-branch "${{ github.head_ref }}" \
+            --output "$plan"
+          python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPACKAGEPLAN'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          with open(sys.argv[2],'a') as output:
+              output.write('needed='+str(bool(data.get('needed'))).lower()+'\n')
+              output.write(f"evidence_run_id={data.get('evidenceRunId') or ''}\n")
+              output.write(f"evidence_head_sha={data.get('evidenceHeadSha') or ''}\n")
+          print(json.dumps(data,sort_keys=True))
+          PYPACKAGEPLAN
+
+      - name: Setup .NET for canonical package build
+        if: steps.packageplan.outputs.needed == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Setup Node for canonical static package build
+        if: steps.packageplan.outputs.needed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Legend-Website/package-lock.json
+
+      - name: Build immutable validated release package
+        id: package
+        if: steps.packageplan.outputs.needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release-package.py build \
+            --revision "${{ github.event.pull_request.head.sha }}" \
+            --directory "$RUNNER_TEMP/validated-release-package" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Verify immutable validated release package
+        if: steps.packageplan.outputs.needed == 'true'
+        shell: bash
+        run: |
+          python3 scripts/release-package.py verify \
+            --revision "${{ github.event.pull_request.head.sha }}" \
+            --directory "$RUNNER_TEMP/validated-release-package"
+
+      - name: Preserve immutable validated release package
+        if: steps.packageplan.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.artifact }}
+          path: ${{ runner.temp }}/validated-release-package/
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
