@@ -129,11 +129,15 @@ def observe(target):
         if len(body) > 8192:
             raise ValueError('Oversized provenance response')
         revision = body.decode().strip() if project == 'static' else json.loads(body)['sourceRevision']
+    canonical = _validation_authority.RELEASE_TARGETS[app]
     return dict(
         app=app,
-        releaseName=_validation_authority.RELEASE_TARGETS[app]["releaseName"],
+        releaseName=canonical["releaseName"],
         host=host,
         project=project,
+        sourceRoot=canonical["sourceRoot"],
+        package=canonical["package"],
+        static=canonical["static"],
         path=path,
         revision=validate_revision(revision),
     )
@@ -314,6 +318,9 @@ def main():
             out.write('portal_only=' + str(runtime_profile['portalOnly']).lower() + '\n')
             out.write('resource_group=' + runtime_profile['resourceGroup'] + '\n')
             out.write('migration_bundle=' + runtime_profile['migrationBundle'] + '\n')
+            out.write('routing_worker=' + runtime_profile['routingWorker'] + '\n')
+            out.write('routing_pass_through_hosts=' + json.dumps(runtime_profile['routingPassThroughHosts'], separators=(',', ':')) + '\n')
+            out.write('domain_refresh_project=' + runtime_profile['domainRefreshProject'] + '\n')
             out.write('database_authority=' + runtime_profile['databaseAuthority'] + '\n')
             out.write('browser_entry_hosts=' + json.dumps(runtime_profile['browserEntryHosts'], separators=(',', ':')) + '\n')
             out.write('shared_auth_targets=' + json.dumps(runtime_profile['sharedAuthTargets'], separators=(',', ':')) + '\n')
