@@ -103,6 +103,24 @@ public sealed class LegendFounderAiInspectionRegressionTests
             method!.Invoke(null, new object[] { allowTools, requireToolCall })));
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, true)]
+    public void CloudflareGovernedInspection_RequiresExecutableReadReceipt(
+        bool requiresGovernedInspection,
+        bool hasCloudTools,
+        bool expected)
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("ResolveCloudflareToolRequirement", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        Assert.Equal(expected, Assert.IsType<bool>(
+            method!.Invoke(null, new object[] { requiresGovernedInspection, hasCloudTools })));
+    }
+
     [Fact]
     public void ConfiguredProviderReasoning_PreservesSupportedMaximumEffort()
     {
