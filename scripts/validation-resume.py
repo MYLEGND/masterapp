@@ -633,60 +633,10 @@ WORKFLOWS = {
 
 
 
-RELEASE_STEP_POLICIES = {
-    "all-intentional-direct-release-20260918.yml": {
-        "Pin approved source and actual live rollback revisions": "current_state",
-        "Reuse exact retained live package when available": "rollback_artifact",
-        "Preserve source-equivalent rollback without production data": "rollback_artifact",
-        "Reuse exact successful validation package when available": "evidence_lookup",
-        "Load exact preserved deployable package": "artifact_restore",
-        "Verify restored immutable validation package": "artifact_restore",
-        "Verify current live base before publication": "current_state",
-        "Verify ClientApp browser entry routes": "current_state",
-        "Build exact selected release candidate": "artifact_reusable",
-        "Verify business website routing bridge": "artifact_reusable",
-        "Verify localization retention privacy limits and original delivery": "artifact_reusable",
-        "Verify shared web catalog contracts": "artifact_reusable",
-        "Verify selected website catalog and build": "artifact_reusable",
-        "Publish exact selected application packages": "artifact_reusable",
-        "Retain exact deployable candidate packages": "artifact_receipt",
-        "Preserve targets already live at exact candidate": "live_identity",
-        "Synchronize Protect shared website authorization and publisher runtime": "current_state",
-        "Synchronize shared website editor ticket authority": "current_state",
-        "Prepare shared business website routing authority": "current_state",
-        "Audit centralized Cloudflare routing authority": "current_state",
-        "Diagnose preserve-live routing origin acceptance": "current_state",
-        "Apply additive diagnostics migrations before restarting apps": "idempotent_external",
-        "Direct deploy AgentPortal": "live_identity",
-        "Direct deploy ClientApp": "live_identity",
-        "Refresh Azure OIDC before late deployments": "ephemeral_auth",
-        "Direct deploy Protect immutable ZIP": "live_identity",
-        "Direct deploy Parfait": "live_identity",
-        "Reconcile public custom-hostname Cloudflare policy": "current_state",
-        "Deploy shared Cloudflare business website router": "live_identity",
-        "Direct deploy Website immutable ZIP": "live_identity",
-        "Verify custom-domain bridge end to end": "current_state",
-        "Capture exact Cloudflare challenge event after failed live proof": "diagnostic_on_failure",
-        "Verify every deployed target and collect all failures": "final_live_proof",
-        "Enforce complete direct deployment outcome": "finalize",
-        "Retain exact approved release receipt": "artifact_receipt",
-        "Capture exact release step-state receipt": "artifact_receipt",
-        "Preserve exact release step-state receipt artifact": "artifact_receipt",
-    },
-    "legend-release-lifecycle.yml": {
-        "Resolve lifecycle validation authority identity": "evidence_lookup",
-        "Check lifecycle safety contracts": "artifact_reusable",
-        "Retain lifecycle validation authority receipt": "artifact_receipt",
-        "Preserve lifecycle validation authority receipt": "artifact_receipt",
-        "Integrate ready approved change and start direct release": "idempotent_external",
-        "Resume ready changes and corrections on retained branches": "idempotent_external",
-        "Refresh after automatically integrated corrections": "current_state",
-        "Recover authorized direct release when needed": "idempotent_external",
-        "Refresh approved references before cleanup": "current_state",
-        "Retire only preserved successfully deployed branches": "idempotent_external",
-        "Retain exact cleanup decisions": "artifact_receipt",
-    },
-}
+RELEASE_WORKFLOWS = frozenset({
+    "all-intentional-direct-release-20260918.yml",
+    "legend-release-lifecycle.yml",
+})
 
 
 def _named_step_spans(text: str):
@@ -820,18 +770,13 @@ def _dynamic_release_policy(step_name: str, block: str) -> str:
 
 
 def verify_release_policy_coverage(workflow_name: str, workflow_text: str):
-    explicit = RELEASE_STEP_POLICIES.get(workflow_name)
-    if explicit is None:
+    if workflow_name not in RELEASE_WORKFLOWS:
         raise ValueError(f"Unsupported release workflow coverage: {workflow_name}")
     blocks = named_step_blocks(workflow_text)
-    stale = sorted(set(explicit) - set(blocks))
-    if stale:
-        raise ValueError(
-            "Release resume policy contains stale step names; "
-            f"stale={stale}"
-        )
+    if not blocks:
+        raise ValueError(f"Release workflow has no discoverable named steps: {workflow_name}")
     return {
-        name: explicit.get(name, _dynamic_release_policy(name, block))
+        name: _dynamic_release_policy(name, block)
         for name, block in blocks.items()
     }
 
