@@ -20,16 +20,16 @@ function fixture() {
   const h = harness({ period: 'lifetime', requestMicrousd: 150000,
     userMicrousd: 3000000, tenantMicrousd: 3000000, accountMicrousd: 3000000,
     requestConcurrency: 1, userConcurrency: 1, tenantConcurrency: 1, accountConcurrency: 1 });
-  Object.assign(h.env, { LEGEND_RUNTIME_MODE: 'founder_manual_test', LEGEND_DEPLOYMENT_ENVIRONMENT: 'production' });
-  const manual = { version: 'legend-founder-baseline.v2', accountId: 'account-1',
+  Object.assign(h.env, { LEGEND_RUNTIME_MODE: 'founder_baseline', LEGEND_DEPLOYMENT_ENVIRONMENT: 'production' });
+  const baseline = { version: 'legend-founder-baseline.v3', accountId: 'account-1',
     tenantId: 'founder-tenant', founderUserId: 'founder-user', serviceKeyId: 'founder-key', requiredRole: 'Founder',
-    environment: 'production', modelIds: candidates.map(([modelId]) => modelId), expiresAt: NOW + 3600000, lifetimeCostMicrousd: 3000000 };
+    environment: 'production', modelIds: candidates.map(([modelId]) => modelId), lifetimeCostMicrousd: 3000000 };
   const policies = candidates.map(([modelId], i) => ({ version: 'legend-qualification.v1', accountId: 'account-1', modelId,
     tenantId: `test-tenant-${i}`, allowedUserIds: [`test-user-${i}`], requiredRole: 'LegendQualification', serviceKeyId: `qual-key-${i}`,
     suiteSha256: String(i + 1).repeat(64), expiresAt: NOW + 3600000, lifetimeCostMicrousd: 3000000 }));
   const keys = Object.fromEntries(['founder-key', 'unlisted-key', ...policies.map(p => p.serviceKeyId)]
     .map((key, i) => [key, Buffer.alloc(32, i + 20).toString('base64')]));
-  h.env.LEGEND_MANUAL_TEST_POLICY_JSON = JSON.stringify(manual);
+  h.env.LEGEND_FOUNDER_BASELINE_POLICY_JSON = JSON.stringify(baseline);
   h.env.LEGEND_SERVICE_KEYS_JSON = JSON.stringify(keys);
   const writePolicies = () => { h.env.LEGEND_QUALIFICATION_POLICIES_JSON = JSON.stringify({
     version: 'legend-qualification-policies.v1', policies }); };
@@ -37,19 +37,19 @@ function fixture() {
   let sequence = 0;
   async function open({ index = 0, founder = false, keyId, change } = {}) {
     const selected = policies[index];
-    const scope = { ...envelope().scope, tenantId: founder ? manual.tenantId : selected.tenantId,
-      userId: founder ? manual.founderUserId : selected.allowedUserIds[0], roles: [founder ? 'Founder' : 'LegendQualification'] };
+    const scope = { ...envelope().scope, tenantId: founder ? baseline.tenantId : selected.tenantId,
+      userId: founder ? baseline.founderUserId : selected.allowedUserIds[0], roles: [founder ? 'Founder' : 'LegendQualification'] };
     const body = envelope({ requestId: `scoped-request-${++sequence}`, issuedAt: h.now(), expiresAt: h.now() + 120000, scope,
       limits: { ...envelope().limits, deadlineUnixMs: h.now() + 120000, maxOutputTokens: 1024, maxCostMicrousd: 2000000 } });
     if (change) change(body);
-    const signingKey = keyId ?? (founder ? manual.serviceKeyId : selected.serviceKeyId);
+    const signingKey = keyId ?? (founder ? baseline.serviceKeyId : selected.serviceKeyId);
     const { context } = await authenticateRequest(signedRequest(body, { nonce: crypto.randomUUID().replaceAll('-', ''),
       keyId: signingKey, key: keys[signingKey] }), h.env, { now: h.now });
     const budget = createGovernanceClient(h.env, context);
     await budget.claim();
     return { context, budget, envelope: body };
   }
-  return { ...h, manual, policies, writePolicies, open };
+  return { ...h, baseline, policies, writePolicies, open };
 }
 
 for (const [index, [modelId, ceiling]] of candidates.entries()) {
@@ -133,18 +133,18 @@ test('valid service signatures cannot substitute qualification actor, role, key 
 });
 
 test('other runtime modes and absent grants never enable the elevated qualification ceiling', async () => {
-  for (const mode of ['production', 'qualification', 'founder_manual_test']) {
+  for (const mode of ['production', 'qualification', 'founder_baseline']) {
     const h = fixture();
     h.env.LEGEND_RUNTIME_MODE = mode;
-    if (mode === 'founder_manual_test') delete h.env.LEGEND_QUALIFICATION_POLICIES_JSON;
+    if (mode === 'founder_baseline') delete h.env.LEGEND_QUALIFICATION_POLICIES_JSON;
     const session = await h.open({ index: 3 });
     await assert.rejects(reserve(session, 'not-enabled', candidates[3][1]), { code: 'request_budget_exhausted' });
   }
 });
 
 test('malformed, over-budget and overlapping operator grants fail before durable admission', async () => {
-  for (const mutate of [h => { h.policies[3].serviceKeyId = h.manual.serviceKeyId; },
-    h => { h.policies[3].tenantId = h.manual.tenantId; }, h => { h.policies[3].allowedUserIds = [h.manual.founderUserId]; },
+  for (const mutate of [h => { h.policies[3].serviceKeyId = h.baseline.serviceKeyId; },
+    h => { h.policies[3].tenantId = h.baseline.tenantId; }, h => { h.policies[3].allowedUserIds = [h.baseline.founderUserId]; },
     h => { h.policies[3].suiteSha256 = ''; }, h => { h.policies[3].lifetimeCostMicrousd = 3000001; },
     h => { h.policies[3].lifetimeCostMicrousd = 2999999; }, h => { h.policies[3].expiresAt = NOW - 1; }]) {
     const h = fixture(); mutate(h); h.writePolicies();

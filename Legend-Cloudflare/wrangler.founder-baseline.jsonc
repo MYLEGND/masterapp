@@ -31,11 +31,11 @@
     }
   ],
   "vars": {
-    "LEGEND_RUNTIME_MODE": "founder_manual_test",
+    "LEGEND_RUNTIME_MODE": "founder_baseline",
     "LEGEND_DEPLOYMENT_ENVIRONMENT": "production",
     "LEGEND_TOOL_CALLBACK_ENABLED": "true",
     "LEGEND_BUDGET_POLICY_JSON": "{\"period\":\"lifetime\",\"requestMicrousd\":3000000,\"userMicrousd\":3000000,\"tenantMicrousd\":3000000,\"accountMicrousd\":3000000,\"requestConcurrency\":1,\"userConcurrency\":1,\"tenantConcurrency\":1,\"accountConcurrency\":1,\"retentionMs\":86400000}"
   }
 }
 // Account identity is injected by the canonical release authority from CLOUDFLARE_ACCOUNT_ID.
-// Deployment must supply LEGEND_SERVICE_KEYS_JSON and LEGEND_MANUAL_TEST_POLICY_JSON as protected Worker secrets.
+// Deployment must supply LEGEND_SERVICE_KEYS_JSON and LEGEND_FOUNDER_BASELINE_POLICY_JSON as protected Worker secrets.

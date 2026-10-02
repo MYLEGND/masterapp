@@ -11,7 +11,7 @@ async function requestBudgetFor(context, env, policy, now) {
   const ordinary = { ceilingMicrousd: policy.requestMicrousd, qualificationDigest: null };
   // Only the reviewed colocated qualification grants can raise a request's
   // ceiling. Other modes and missing grants retain the existing operator cap.
-  if (env.LEGEND_RUNTIME_MODE !== 'founder_manual_test' || env.LEGEND_QUALIFICATION_POLICIES_JSON === undefined)
+  if (env.LEGEND_RUNTIME_MODE !== 'founder_baseline' || env.LEGEND_QUALIFICATION_POLICIES_JSON === undefined)
     return ordinary;
   requireSecurity(Array.isArray(context.allowedTools) && context.allowedTools.every(isIdentifier), 'governance_context_invalid');
   // Reuse the runtime's policy authority. Every reconstructed field is already

@@ -95,29 +95,29 @@ test('qualification cannot bypass an exhausted durable budget when candidate cha
   assert.equal(reserves, 2); assert.equal(f.dispatches.length, 0);
 });
 
-function manualFixture() {
+function baselineFixture() {
   const f = fixture();
   // Founder conversational baseline defaults to the general route. Specialized
   // roles are selected only by the server-owned task kind, never a request model ID.
   f.envelope.task.kind = 'general';
   f.context.roles = ['Founder']; f.envelope.scope.roles = ['Founder'];
-  f.policy = { version: 'legend-founder-baseline.v2', accountId: f.context.accountId,
+  f.policy = { version: 'legend-founder-baseline.v3', accountId: f.context.accountId,
     tenantId: f.context.tenantId, founderUserId: f.context.userId, serviceKeyId: f.context.keyId,
     requiredRole: 'Founder', environment: 'production', modelIds: FOUNDER_BASELINE_MODEL_IDS,
-    expiresAt: Date.now() + 60000, lifetimeCostMicrousd: 3000000 };
-  f.env.LEGEND_RUNTIME_MODE = 'founder_manual_test';
+    lifetimeCostMicrousd: 3000000 };
+  f.env.LEGEND_RUNTIME_MODE = 'founder_baseline';
   f.env.LEGEND_DEPLOYMENT_ENVIRONMENT = 'production';
-  f.env.LEGEND_MANUAL_TEST_POLICY_JSON = JSON.stringify(f.policy);
+  f.env.LEGEND_FOUNDER_BASELINE_POLICY_JSON = JSON.stringify(f.policy);
   f.env.LEGEND_BUDGET_POLICY_JSON = JSON.stringify({ period: 'lifetime', accountMicrousd: 3000000 });
   return f;
 }
 
 test('Founder baseline uses operator-owned five-model router and explicit receipt without fabricating qualification', async () => {
-  const f = manualFixture();
+  const f = baselineFixture();
   f.envelope.task.modelId = MODEL_REGISTRY[0].id;
   const result = await orchestrate(f);
   assert.equal(result.status, 'completed');
-  assert.equal(result.executionMode, 'founder_manual_test');
+  assert.equal(result.executionMode, 'founder_baseline');
   assert.deepEqual(f.dispatches, [FOUNDER_BASELINE_PRIMARY_MODEL]);
   assert.equal(f.reservations.length, 1);
   assert.equal(Object.hasOwn(result, 'heldOutPassed'), false);
@@ -125,65 +125,58 @@ test('Founder baseline uses operator-owned five-model router and explicit receip
   assert(MODEL_REGISTRY.every(model => model.enabled === false && model.qualification === null));
 });
 
-test('manual baseline cannot be enabled by request flags or leftover binding in production', async () => {
+test('Founder baseline cannot be enabled by request flags or leftover binding in production', async () => {
   for (const mode of [undefined, 'production', 'invalid-mode']) {
-    const f = manualFixture(); f.env.LEGEND_RUNTIME_MODE = mode;
-    f.envelope.executionMode = 'founder_manual_test'; f.envelope.manualTestPolicy = f.policy;
+    const f = baselineFixture(); f.env.LEGEND_RUNTIME_MODE = mode;
+    f.envelope.executionMode = 'founder_baseline'; f.envelope.manualTestPolicy = f.policy;
     const result = await orchestrate(f);
     assert.equal(result.error.code, mode === 'invalid-mode' ? 'runtime_mode_invalid' : 'no_qualified_model');
     assert.equal(f.dispatches.length, 0); assert.equal(f.reservations.length, 0);
   }
 });
 
-test('manual baseline rejects other actors and changed current authenticated scope before spend', async () => {
+test('Founder baseline rejects other actors and changed current authenticated scope before spend', async () => {
   for (const changes of [{ userId: 'other-founder' }, { tenantId: 'other-tenant' }, { accountId: 'other-account' },
     { keyId: 'other-service-key' }, { roles: ['LegendQualification'] }, { roles: ['Founder', 'Founder'] },
     { roles: 'Founder' }, { sessionId: 'other-session' }, { conversationId: 'other-thread' },
     { authorizationVersion: 'other-version' }, { requestId: 'other-request' }, { sessionId: '' }]) {
-    const f = manualFixture(); Object.assign(f.context, changes);
-    assert.equal((await orchestrate(f)).error.code, 'manual_test_scope_denied');
+    const f = baselineFixture(); Object.assign(f.context, changes);
+    assert.equal((await orchestrate(f)).error.code, 'founder_baseline_scope_denied');
     assert.equal(f.dispatches.length, 0); assert.equal(f.reservations.length, 0);
   }
 });
 
-test('manual baseline requires the exact operator-owned five-model set and at most one day expiry', async () => {
+test('Founder baseline requires the exact persistent operator-owned five-model schema', async () => {
   for (const changes of [{ version: 'other' }, { accountId: 'other-account' }, { environment: 'other' },
     { modelIds: MODEL_REGISTRY.slice(0, 4).map(model => model.id) }, { modelIds: [...FOUNDER_BASELINE_MODEL_IDS].reverse() },
     { modelIds: [...FOUNDER_BASELINE_MODEL_IDS, 'external/model'] }, { requiredRole: 'LegendQualification' }, { founderUserId: '' },
-    { lifetimeCostMicrousd: 3000001 }, { lifetimeCostMicrousd: 0 }, { expiresAt: Date.now() - 1 },
-    { expiresAt: Date.now() + 2 * 86400000 }, { unreviewedFlag: true }]) {
-    const f = manualFixture(); f.env.LEGEND_MANUAL_TEST_POLICY_JSON = JSON.stringify({ ...f.policy, ...changes });
-    assert.equal((await orchestrate(f)).error.code, 'manual_test_configuration_invalid');
+    { lifetimeCostMicrousd: 3000001 }, { lifetimeCostMicrousd: 0 },
+    { expiresAt: Date.now() + 86400000 }, { unreviewedFlag: true }]) {
+    const f = baselineFixture(); f.env.LEGEND_FOUNDER_BASELINE_POLICY_JSON = JSON.stringify({ ...f.policy, ...changes });
+    assert.equal((await orchestrate(f)).error.code, 'founder_baseline_configuration_invalid');
     assert.equal(f.dispatches.length, 0); assert.equal(f.reservations.length, 0);
   }
-  const f = manualFixture(); delete f.env.LEGEND_MANUAL_TEST_POLICY_JSON;
-  assert.equal((await orchestrate(f)).error.code, 'manual_test_configuration_missing');
+  const f = baselineFixture(); delete f.env.LEGEND_FOUNDER_BASELINE_POLICY_JSON;
+  assert.equal((await orchestrate(f)).error.code, 'founder_baseline_configuration_missing');
 });
 
-test('manual baseline preserves lifetime cap and never resets exhausted durable allowance', async () => {
+test('Founder baseline preserves lifetime cap and never resets exhausted durable allowance', async () => {
   for (const budget of [{ period: 'calendar-month', accountMicrousd: 3000000 },
     { period: 'lifetime', accountMicrousd: 3000001 }, { period: 'lifetime', accountMicrousd: 0 }]) {
-    const f = manualFixture(); f.env.LEGEND_BUDGET_POLICY_JSON = JSON.stringify(budget);
-    assert.equal((await orchestrate(f)).error.code, 'manual_test_lifetime_budget_required');
+    const f = baselineFixture(); f.env.LEGEND_BUDGET_POLICY_JSON = JSON.stringify(budget);
+    assert.equal((await orchestrate(f)).error.code, 'founder_baseline_lifetime_budget_required');
     assert.equal(f.reservations.length, 0); assert.equal(f.dispatches.length, 0);
   }
-  const f = manualFixture(); let calls = 0;
+  const f = baselineFixture(); let calls = 0;
   f.budget.reserve = async () => { calls++; throw Object.assign(new Error(), { name: 'SecurityError', code: 'account_budget_exhausted' }); };
   assert.equal((await orchestrate(f)).error.code, 'account_budget_exhausted');
   assert.equal(calls, 1); assert.equal(f.dispatches.length, 0);
 });
 
-test('manual request deadline cannot exceed operator expiry', async () => {
-  const f = manualFixture();
-  f.env.LEGEND_MANUAL_TEST_POLICY_JSON = JSON.stringify({ ...f.policy, expiresAt: Date.now() + 500 });
-  assert.equal((await orchestrate(f)).error.code, 'manual_test_deadline_exceeded');
-  assert.equal(f.reservations.length, 0); assert.equal(f.dispatches.length, 0);
-});
-
-test('manual tools require existing signed callback enablement and existing broker execution', async () => {
-  const f = manualFixture(); f.envelope.task.tools = [{ type: 'function', name: 'calculate' }];
+test('Founder tools require existing signed callback enablement and existing broker execution', async () => {
+  const f = baselineFixture(); f.envelope.task.tools = [{ type: 'function', name: 'calculate' }];
   f.envelope.limits.maxToolCalls = 1;
-  assert.equal((await orchestrate(f)).error.code, 'manual_test_signed_tools_required');
+  assert.equal((await orchestrate(f)).error.code, 'founder_baseline_signed_tools_required');
   assert.equal(f.dispatches.length, 0);
   f.env.LEGEND_TOOL_CALLBACK_ENABLED = 'true';
   let calls = 0;
@@ -193,14 +186,14 @@ test('manual tools require existing signed callback enablement and existing brok
   const seen = [];
   f.toolBroker = { async execute(call) { seen.push(call); return { output: { result: 2 }, usage: { costMicrousd: 0, costEvidence: 'provider_usage' } }; } };
   const result = await orchestrate(f);
-  assert.equal(result.status, 'completed'); assert.equal(result.executionMode, 'founder_manual_test');
+  assert.equal(result.status, 'completed'); assert.equal(result.executionMode, 'founder_baseline');
   assert.equal(seen.length, 1); assert.equal(seen[0].context, f.context); assert.equal(seen[0].call.name, 'calculate');
   assert.deepEqual(f.dispatches, [FOUNDER_BASELINE_PRIMARY_MODEL, FOUNDER_BASELINE_PRIMARY_MODEL]);
 });
 
 test('Founder baseline role routing reaches every reviewed model without request-selected model IDs', async () => {
   for (const model of MODEL_REGISTRY) {
-    const f = manualFixture();
+    const f = baselineFixture();
     f.envelope.task.kind = model.role;
     // Full-context reservation for GLM/DeepSeek intentionally fits inside the
     // same $3 lifetime account cap while actual usage is settled/refunded.
@@ -214,14 +207,14 @@ test('Founder baseline role routing reaches every reviewed model without request
 });
 
 test('Founder baseline fallback stays inside the exact five-model set and fails closed when all are unavailable', async () => {
-  const fallback = manualFixture();
+  const fallback = baselineFixture();
   fallback.circuit = { unavailable: () => [FOUNDER_BASELINE_PRIMARY_MODEL] };
   const result = await orchestrate(fallback);
   assert.equal(result.status, 'completed');
   assert(FOUNDER_BASELINE_MODEL_IDS.includes(result.provider.modelId));
   assert.notEqual(result.provider.modelId, FOUNDER_BASELINE_PRIMARY_MODEL);
 
-  const blocked = manualFixture();
+  const blocked = baselineFixture();
   blocked.circuit = { unavailable: () => [...FOUNDER_BASELINE_MODEL_IDS] };
   assert.equal((await orchestrate(blocked)).error.code, 'no_qualified_model');
   assert.equal(blocked.dispatches.length, 0); assert.equal(blocked.reservations.length, 0);

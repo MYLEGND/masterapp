@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deploy/rollback the validated LEGEND Founder Cloudflare baseline inside the canonical release job."""
 from __future__ import annotations
-import argparse, base64, json, os, re, secrets, subprocess, sys, time, urllib.request, urllib.error
+import argparse, base64, json, os, re, secrets, subprocess, sys, urllib.request, urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,12 +154,10 @@ def deploy(state_path, receipt_path):
     for secret in (founder, service_key, callback_key, tenant, account): mask(secret)
 
     models = exact_models()
-    expires_at = int(time.time() * 1000) + 23 * 60 * 60 * 1000
     policy = {
-        "version": "legend-founder-baseline.v2", "accountId": account, "tenantId": tenant,
+        "version": "legend-founder-baseline.v3", "accountId": account, "tenantId": tenant,
         "founderUserId": founder, "serviceKeyId": service_key_id, "requiredRole": "Founder",
-        "environment": "production", "modelIds": models, "expiresAt": expires_at,
-        "lifetimeCostMicrousd": 3_000_000,
+        "environment": "production", "modelIds": models, "lifetimeCostMicrousd": 3_000_000,
     }
     service_keys = {service_key_id: service_key}
     worker = worker_name()
@@ -188,7 +186,7 @@ def deploy(state_path, receipt_path):
         state["workerModified"] = True; write_state(state_path, state)
         for name, secret_value in (
             ("LEGEND_SERVICE_KEYS_JSON", json.dumps(service_keys, separators=(",", ":"))),
-            ("LEGEND_MANUAL_TEST_POLICY_JSON", json.dumps(policy, separators=(",", ":"))),
+            ("LEGEND_FOUNDER_BASELINE_POLICY_JSON", json.dumps(policy, separators=(",", ":"))),
             ("LEGEND_TOOL_CALLBACK_SECRET", callback_key),
         ):
             run("npx", "wrangler", "secret", "put", name, "--config", release_config.name,
@@ -232,7 +230,8 @@ def deploy(state_path, receipt_path):
         receipt.update({
             "worker": worker, "endpointHost": urllib.request.urlparse(endpoint).hostname if False else endpoint.split("/")[2],
             "portal": app, "mutationsEnabled": False, "modelCount": len(models),
-            "policyExpiresAt": expires_at, "releaseSha": os.environ.get("APPLICATION_RELEASE_SHA", ""),
+            "policyPersistence": "persistent", "budgetPeriod": "lifetime",
+            "releaseSha": os.environ.get("APPLICATION_RELEASE_SHA", ""),
         })
         receipt_path.write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
         print(json.dumps({k: receipt[k] for k in ("provider","foundationHosting","foundationModel","billing","openAiApiUsed","modelCount")}, sort_keys=True))
