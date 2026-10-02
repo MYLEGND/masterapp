@@ -4,9 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       automatic:
-        description: Compatibility input; the committed release request always controls target scope
+        description: Canonical lifecycle handoff from one fully validated merged PR
         type: boolean
         default: false
+      source_pr:
+        description: Validated source PR number for automatic publication
+        type: string
+        default: ''
+      validated_sha:
+        description: Exact validated PR head SHA
+        type: string
+        default: ''
+      merge_sha:
+        description: Exact approved merge SHA to execute
+        type: string
+        default: ''
+      targets_json:
+        description: Canonically derived target scope; revalidated before publication
+        type: string
+        default: ''
   push:
     branches: [legend/approved-changes]
     paths: ['Docs/releases/direct-release-request.json']
@@ -19,7 +35,7 @@ concurrency:
   group: legend-approved-release
   cancel-in-progress: false
 env:
-  RELEASE_SHA: ${{ github.sha }}
+  RELEASE_SHA: ${{ inputs.merge_sha || github.sha }}
 jobs:
   discover-live:
     if: github.ref == 'refs/heads/legend/approved-changes'
@@ -44,11 +60,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
       - name: Pin approved source and actual live rollback revisions
         id: live
         env:
           AUTOMATIC_RELEASE: ${{ inputs.automatic }}
+          AUTOMATIC_SOURCE_PR: ${{ inputs.source_pr }}
+          AUTOMATIC_VALIDATED_SHA: ${{ inputs.validated_sha }}
+          AUTOMATIC_MERGE_SHA: ${{ inputs.merge_sha }}
+          AUTOMATIC_TARGETS_JSON: ${{ inputs.targets_json }}
           GH_TOKEN: ${{ github.token }}
         run: |
           args=()
@@ -72,7 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git show "${GITHUB_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/validation-resume.py"
+          git show "${RELEASE_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/validation-resume.py"
           python3 "$RUNNER_TEMP/validation-resume.py" --help >/dev/null
 
       - name: Reuse exact retained live package when available
@@ -173,7 +194,7 @@ jobs:
           sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: diagnostics-rollback-${{ matrix.app }}-${{ github.sha }}
+          name: diagnostics-rollback-${{ matrix.app }}-${{ env.RELEASE_SHA }}
           path: /tmp/rollback/
           retention-days: 1
           if-no-files-found: error
@@ -202,7 +223,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         if: env.WEBSITE_ONLY != 'true' && env.EXACT_LIVE != 'true'
