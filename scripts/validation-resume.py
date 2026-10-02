@@ -1805,6 +1805,27 @@ def _package_canary_proof_runs(repository: str, current_run_id: int, head_branch
     return rows
 
 
+def package_identity_for_revision(revision: str) -> str:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("release-package.py")),
+            "identity",
+            "--revision",
+            revision,
+        ],
+        text=True,
+        capture_output=True,
+    )
+    if completed.returncode:
+        raise RuntimeError(completed.stderr or "package_identity_failed")
+    payload = json.loads(completed.stdout)
+    identity = payload.get("identity")
+    if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{64}", identity):
+        raise RuntimeError("package_identity_invalid")
+    return identity
+
+
 def compute_package_canary_plan(
     repository: str,
     current_sha: str,
@@ -1840,6 +1861,27 @@ def compute_package_canary_plan(
         result["evidenceRunId"] = proof.get("id")
         result["evidenceHeadSha"] = prior_sha
     if not inputs:
+        if proof:
+            # Preserving package-input evidence is not sufficient to publish the
+            # current revision. Production provenance is revision-bound, so the
+            # current head must still own an exact immutable package artifact.
+            # A reconciled head with identical package inputs therefore rebuilds
+            # only when its exact package is absent; it never reuses prior-head
+            # bytes under a new revision receipt.
+            identity = package_identity_for_revision(current_sha)
+            exact = compute_validated_package_evidence(
+                repository,
+                current_sha,
+                identity,
+            )
+            if not exact.get("reusable"):
+                result["needed"] = True
+                result["reason"] = "exact_revision_package_missing_despite_preserved_inputs"
+                result["packageIdentity"] = identity
+                return result
+            result["packageIdentity"] = identity
+            result["exactPackageRunId"] = exact.get("runId")
+            result["exactPackageArtifact"] = exact.get("artifact")
         result["needed"] = False
         result["reason"] = (
             "preserved_prior_package_canary"
