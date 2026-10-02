@@ -238,6 +238,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_research_internet" or
             "legend_metric_detail" or
             "legend_client_lead_portfolio" or
+            "legend_read_masterapp" or
             "legend_language_state";
 
     /// <summary>
