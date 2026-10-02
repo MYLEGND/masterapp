@@ -122,173 +122,38 @@ def ready(pr, repo, base):
         and pr['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'})
 
 
-PUBLIC_WEBSITE_ARCHITECTURE_STEPS = {
-    'Run branch lifecycle safety contracts',
-    'Restore .NET graph',
-    'Build shared infrastructure',
-    'Build Protect host',
-    'Verify Protect serves the exact shared tracking assets',
-    'Install shared website renderer dependencies',
-    'Build shared website renderer',
-    'Verify renderer authority parity',
-    'Run business renderer tests with approved-baseline no-regression proof',
-    'Install canonical shared CMS test dependencies',
-    'Run canonical shared CMS tests',
-}
-
-
-def architecture_public_website_validation(api, run):
-    """Validate only the canonical public Website Studio/runtime subsystem.
-
-    A public-site-only candidate must prove its own renderer, Protect host, shared
-    CMS, and lifecycle contracts. Failures in unrelated app/test projects do not
-    invalidate this subsystem evidence.
-    """
-    if run.get('status') != 'completed':
-        return False
-    if run.get('conclusion') == 'success':
-        return True
-    if run.get('conclusion') != 'failure':
-        return False
-
-    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
-    steps = {step.get('name'): step.get('conclusion')
-             for job in jobs for step in (job.get('steps') or [])}
-    return all(steps.get(name) == 'success' for name in PUBLIC_WEBSITE_ARCHITECTURE_STEPS)
-
-
-ARCHITECTURE_PRODUCT_STEPS = {
-    'Run branch lifecycle safety contracts',
-    'Run authenticated mobile authority tests',
-    'Restore .NET graph',
-    'Build shared infrastructure',
-    'Build AgentPortal and ClientApp hosts',
-    'Build Protect host',
-    'Verify Protect serves the exact shared tracking assets',
-    'Compile full regression test project',
-    'Compile shared domain release refresh',
-    'Run website ownership and publishing regressions',
-    'Run Meta authority regressions',
-}
-
-
-def architecture_product_validation(api, run):
-    """Accept a failed architecture run only when product validation is complete.
-
-    The release-policy check is a release-control concern. A product candidate
-    remains valid when every product/build/mobile step completed successfully and
-    the sole blocking step is the release-policy boundary. This preserves strict
-    product evidence without allowing unrelated control-policy drift to erase it.
-    """
-    if run.get('status') != 'completed':
-        return False
-    if run.get('conclusion') == 'success':
-        return True
-    if run.get('conclusion') != 'failure':
-        return False
-
-    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
-    steps = {step.get('name'): step.get('conclusion')
-             for job in jobs for step in (job.get('steps') or [])}
-    if any(steps.get(name) != 'success' for name in ARCHITECTURE_PRODUCT_STEPS):
-        return False
-    if steps.get('Verify consolidated release scope and routing policy') != 'failure':
-        return False
-
-    # Fail closed if any step before the release-policy boundary failed/cancelled,
-    # or if an unexpected executed step after it failed for a product reason.
-    for name, conclusion in steps.items():
-        if name in ARCHITECTURE_PRODUCT_STEPS or name == 'Verify consolidated release scope and routing policy':
-            continue
-        if conclusion in {'failure', 'cancelled'}:
-            return False
-    return True
-
-
-def validation_neutral_commit(api, sha):
-    commit = api.api('commits/' + sha)
-    files = [row.get('filename') for row in (commit or {}).get('files', [])]
-    return bool(files) and all(
-        VALIDATION_AUTHORITY.validation_neutral_path(path)
-        for path in files if path)
-
-
-def architecture_run_for_sha(api, sha, architecture):
-    runs = api.pages('actions/runs?head_sha=' + sha, 'workflow_runs')
-    candidates = [
-        run for run in runs
-        if run.get('head_sha') == sha and run.get('event') == 'pull_request'
-        and run['path'].split('@')[0] == architecture
-    ]
-    if not candidates:
-        return None
-    return sorted(
-        candidates,
-        key=lambda run: (run.get('created_at', ''), run.get('id', 0)),
-        reverse=True)[0]
-
-
-def inherited_architecture_product_validation(api, pr, architecture):
-    """Reuse product evidence only across validation/control-only trailing commits."""
-    head = pr['head']['sha']
-    commits = api.pages(f"pulls/{pr['number']}/commits")
-    shas = [row.get('sha') for row in commits if row.get('sha')]
-    if head not in shas:
-        shas.append(head)
-
-    for sha in reversed(shas):
-        run = architecture_run_for_sha(api, sha, architecture)
-        if run is not None and architecture_product_validation(api, run):
-            return True
-        if not validation_neutral_commit(api, sha):
-            return False
-    return False
-
-
 def candidate_validation(api, pr):
-    """Require subsystem-owned validation; neutral trailing commits may reuse product evidence."""
+    """Require every workflow selected by the canonical topology to be green.
+
+    Child-level preservation belongs to validation-resume.py. Lifecycle never
+    reinterprets a failed parent workflow, carries a second step list, or accepts
+    partial validation as merge-ready.
+    """
     head = pr['head']['sha']
     runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
     latest = {}
-    for run in sorted(runs, key=lambda r: (r.get('created_at', ''), r.get('id', 0)), reverse=True):
+    for run in sorted(
+        runs,
+        key=lambda row: (row.get('created_at', ''), row.get('id', 0)),
+        reverse=True,
+    ):
         if run.get('head_sha') != head or run.get('event') != 'pull_request':
             continue
         latest.setdefault(run['path'].split('@')[0], run)
 
-    architecture = '.github/workflows/masterapp-platform-architecture-validation.yml'
-    step5 = '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
-    security = '.github/workflows/' + SECURITY
-
     files = api.pages(f"pulls/{pr['number']}/files")
-    names = [f['filename'] for f in files]
-    topology = VALIDATION_AUTHORITY.required_validation_topology(names)
-    required = set(topology['required'])
-    public_website_only = topology['publicWebsiteOnly']
+    names = [row['filename'] for row in files if row.get('filename')]
+    required = VALIDATION_AUTHORITY.required_validation_topology(names)['required']
 
-    failed = []
-    for path in sorted(required):
-        run = latest.get(path)
-        if path == architecture:
-            if run is not None:
-                if public_website_only and architecture_public_website_validation(api, run):
-                    continue
-                if not public_website_only and architecture_product_validation(api, run):
-                    continue
-            if not public_website_only and inherited_architecture_product_validation(api, pr, architecture):
-                continue
-            failed.append(path)
-        elif run is None:
-            failed.append(path)
-        elif run.get('status') != 'completed' or run.get('conclusion') != 'success':
-            failed.append(path)
-
+    failed = [
+        path for path in required
+        if path not in latest
+        or latest[path].get('status') != 'completed'
+        or latest[path].get('conclusion') != 'success'
+    ]
     if not failed:
         return None
-    if architecture in failed and architecture not in latest:
-        return 'Exact-head architecture validation has not started'
-    if step5 in failed and step5 not in latest:
-        return 'Exact-head full-suite comparison has not started'
-    return 'Awaiting successful exact-head validation: ' + ', '.join(failed)
+    return 'Awaiting successful exact-head validation: ' + ', '.join(sorted(failed))
 
 
 def automatic_release_targets(api, pr):
