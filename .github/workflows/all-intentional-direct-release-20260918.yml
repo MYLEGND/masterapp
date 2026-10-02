@@ -1165,13 +1165,13 @@ jobs:
         env:
           APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
           SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
-          TARGET_APP: ${{ matrix.app }}
+          TARGET_NAME: ${{ matrix.releaseName }}
         run: |
           set -euo pipefail
           python3 - <<'PYTARGETRECEIPT'
           import json,os,pathlib
           names=json.loads(os.environ['SELECTED_TARGETS'])
-          release_name='masterapp-'+os.environ['TARGET_APP']
+          release_name=os.environ['TARGET_NAME']
           if release_name not in names:
               raise SystemExit('Target receipt is not part of the canonical selected release set')
           payload={
