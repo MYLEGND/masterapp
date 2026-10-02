@@ -219,12 +219,17 @@ def main():
             raise ValueError('preserveLiveTargets is only valid for an approved Cloudflare routing recovery')
         preserve_live_revision = validate_revision(request.get('preserveLiveRevision'))
     targets = selected_targets(request)
+    selected_names = [
+        _validation_authority.RELEASE_TARGETS[row[0]]["releaseName"]
+        for row in targets
+    ]
+    runtime_profile = _validation_authority.release_runtime_profile(selected_names)
     if website_routing:
-        routing_apps = {row[0] for row in targets}
-        if not {'protect', 'parfait'}.issubset(routing_apps):
-            raise ValueError('Cloudflare website commerce routing releases must include masterapp-protect and masterapp-parfait')
-        if not (routing_apps.issubset({'portal', 'client', 'protect', 'parfait'}) or routing_apps == {row[0] for row in TARGETS}):
-            raise ValueError('Cloudflare website routing requires the reviewed commerce scope or the complete web release inventory')
+        required_routing = {
+            row["releaseName"] for row in runtime_profile["routingTargets"]
+        }
+        if not required_routing.issubset(set(selected_names)):
+            raise ValueError('Cloudflare website routing requires every canonical routing target')
     website_routing_canary = ''
     if website_routing:
         website_routing_canary = str(request.get('websiteRoutingCanaryHost') or '').strip().lower().rstrip('.')
@@ -235,11 +240,14 @@ def main():
         rows = list(pool.map(observe, targets))
     selected_apps = {row['app'] for row in rows}
     database_baseline = ''
-    if release_mode == 'approved-only' and not selected_apps.issubset({'client', 'website'}):
-        portal_row = next((row for row in rows if row['app'] == 'portal'), None)
-        if portal_row is None:
-            portal_row = observe(TARGETS[0])
-        database_baseline = portal_row['revision']
+    if release_mode == 'approved-only' and runtime_profile["selectedDatabaseDependent"]:
+        database_name = runtime_profile["databaseAuthority"]
+        database_row = next((row for row in rows if row['releaseName'] == database_name), None)
+        if database_row is None:
+            database_key = _validation_authority.release_name_map()[database_name]
+            database_target = next(row for row in TARGETS if row[0] == database_key)
+            database_row = observe(database_target)
+        database_baseline = database_row['revision']
         subprocess.run(['git', 'cat-file', '-e', database_baseline + '^{commit}'], check=True)
         subprocess.run(['git', 'merge-base', '--is-ancestor', database_baseline, head], check=True)
     for row in rows:
@@ -297,13 +305,27 @@ def main():
         with args.output.open('a') as out:
             out.write('matrix=' + json.dumps({'include': rows}, separators=(',', ':')) + '\n')
             out.write('baselines=' + json.dumps(rows, separators=(',', ':')) + '\n')
-            out.write('portal=' + rows[0]['revision'] + '\n')
+            out.write('portal=' + (database_baseline or rows[0]['revision']) + '\n')
             out.write('database_baseline=' + database_baseline + '\n')
             out.write('targets=' + json.dumps([row['releaseName'] for row in rows], separators=(',', ':')) + '\n')
-            out.write('public_only=' + str(all(row['app'] in {'protect', 'website'} for row in rows)).lower() + '\n')
-            out.write('client_only=' + str(len(rows) == 1 and rows[0]['app'] == 'client').lower() + '\n')
-            out.write('website_only=' + str(len(rows) == 1 and rows[0]['app'] == 'website').lower() + '\n')
-            out.write('portal_only=' + str(len(rows) == 1 and rows[0]['app'] == 'portal').lower() + '\n')
+            out.write('public_only=' + str(runtime_profile['publicOnly']).lower() + '\n')
+            out.write('client_only=' + str(runtime_profile['clientOnly']).lower() + '\n')
+            out.write('website_only=' + str(runtime_profile['websiteOnly']).lower() + '\n')
+            out.write('portal_only=' + str(runtime_profile['portalOnly']).lower() + '\n')
+            out.write('resource_group=' + runtime_profile['resourceGroup'] + '\n')
+            out.write('migration_bundle=' + runtime_profile['migrationBundle'] + '\n')
+            out.write('database_authority=' + runtime_profile['databaseAuthority'] + '\n')
+            out.write('browser_entry_hosts=' + json.dumps(runtime_profile['browserEntryHosts'], separators=(',', ':')) + '\n')
+            out.write('shared_auth_targets=' + json.dumps(runtime_profile['sharedAuthTargets'], separators=(',', ':')) + '\n')
+            out.write('editor_targets=' + json.dumps(runtime_profile['editorTargets'], separators=(',', ':')) + '\n')
+            out.write('marketing_targets=' + json.dumps(runtime_profile['marketingTargets'], separators=(',', ':')) + '\n')
+            out.write('routing_targets=' + json.dumps(runtime_profile['routingTargets'], separators=(',', ':')) + '\n')
+            out.write('routing_primary=' + runtime_profile['routingPrimary'] + '\n')
+            out.write('routing_primary_host=' + runtime_profile['routingPrimaryHost'] + '\n')
+            out.write('selected_has_browser_entry=' + str(runtime_profile['selectedHasBrowserEntry']).lower() + '\n')
+            out.write('selected_has_static=' + str(runtime_profile['selectedHasStatic']).lower() + '\n')
+            out.write('selected_has_shared_auth=' + str(runtime_profile['selectedHasSharedAuth']).lower() + '\n')
+            out.write('selected_has_editor=' + str(runtime_profile['selectedHasEditor']).lower() + '\n')
             out.write('validate_only=' + str(release_mode == 'validate-only').lower() + '\n')
             out.write('website_routing=' + str(website_routing).lower() + '\n')
             out.write('website_routing_canary=' + website_routing_canary + '\n')
