@@ -471,6 +471,28 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual(newest, approved_pr.call_args.args[1])
 
     @patch.object(m, "pending_legacy_release_authorization")
+    @patch.object(m, "staging_only", return_value=False)
+    def test_package_backfill_candidate_reuses_pending_validated_revision(self, _, pending):
+        api = Api()
+        api.refs[m.APPROVED] = "a" * 40
+        target = canonical_name("portal")
+        pending.return_value = {
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [target],
+            "sourcePr": 42,
+        }
+
+        result = m.package_backfill_candidate(api)
+
+        self.assertTrue(result["needed"])
+        self.assertEqual("a" * 40, result["approvedSha"])
+        self.assertEqual("b" * 40, result["authorizationSha"])
+        self.assertEqual("c" * 40, result["applicationRevision"])
+        self.assertEqual([target], result["targets"])
+        self.assertEqual(42, result["sourcePr"])
+
+    @patch.object(m, "pending_legacy_release_authorization")
     def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending):
         api = Api()
         target = canonical_name("portal")
