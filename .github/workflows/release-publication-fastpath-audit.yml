@@ -52,6 +52,15 @@ jobs:
               "masterapp-parfait",
               "masterapp-website",
           ]
+          slot_tiers = {
+              "standard",
+              "premium",
+              "premiumv2",
+              "premiumv3",
+              "premiumv4",
+              "isolated",
+              "isolatedv2",
+          }
 
           def az(*args):
               result = subprocess.run(
@@ -111,11 +120,14 @@ jobs:
                   "--query",
                   "[].name",
               )
+              plan = plans[plan_id]
+              tier = str(plan.get("skuTier") or "").lower()
               report.append({
                   "app": app,
                   "state": site.get("state"),
                   "kind": site.get("kind"),
-                  "plan": plans[plan_id],
+                  "plan": plan,
+                  "slotsSupportedByPlan": tier in slot_tiers,
                   "alwaysOn": config.get("alwaysOn"),
                   "healthCheckPath": config.get("healthCheckPath"),
                   "http20Enabled": config.get("http20Enabled"),
@@ -130,9 +142,9 @@ jobs:
                   ),
               })
 
-          # This audit deliberately does not assert eligibility. Standard/Premium
-          # plan capability is necessary but not sufficient: runtime side-effect
-          # isolation must also be proven before a pre-warmed slot can be authorized.
+          # Plan capability is necessary but never sufficient. A future pre-warm
+          # path must separately prove that starting a candidate cannot duplicate
+          # production background work or provider side effects.
           print(json.dumps({"resourceGroup": resource_group, "apps": report}, sort_keys=True, indent=2))
           PY
 
@@ -143,6 +155,7 @@ jobs:
           python3 - <<'PY'
           import pathlib
           workflow = pathlib.Path(".github/workflows/release-publication-fastpath-audit.yml").read_text()
+          audited = workflow.split("      - name: Assert audit remained read-only", 1)[0].lower()
           forbidden = (
               "slot create",
               "slot swap",
@@ -151,9 +164,8 @@ jobs:
               "webapp restart",
               "deployment source config-zip",
           )
-          lowered = workflow.lower()
           for token in forbidden:
-              if token in lowered:
+              if token in audited:
                   raise SystemExit("Mutation token present in read-only audit: " + token)
           print("Read-only publication topology audit confirmed.")
           PY
