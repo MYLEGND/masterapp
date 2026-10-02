@@ -201,10 +201,11 @@ def selected_release_target_keys(names, *, allow_empty=False):
 
 
 def founder_cloudflare_release_required(paths):
-    """True only when validated source changes the canonical Founder Worker runtime."""
+    """True only when validated source changes the canonical Founder Worker runtime or deploy authority."""
     return any(
         path.startswith("Legend-Cloudflare/src/")
         or path == "Legend-Cloudflare/wrangler.founder-baseline.jsonc"
+        or path == "scripts/deploy-founder-cloudflare.py"
         for path in dict.fromkeys(paths)
     )
 
@@ -212,19 +213,32 @@ def founder_cloudflare_release_required(paths):
 def release_targets_for_paths(paths):
     """Derive publication scope from the validated PR without a parallel scope table.
 
-    A target owns its canonical sourceRoot. Release-control/test-only changes need
-    no application publication. Any application path not owned by exactly one
-    target is treated as shared/unknown and expands fail-closed to the complete
-    inventory so a new shared source cannot be silently omitted.
+    A target owns its canonical sourceRoot. Founder Cloudflare runtime/deploy
+    authority is activated through the Founder Portal control boundary, so it
+    selects only the Portal target rather than expanding to every application.
+    Other release-control/test-only changes need no application publication. Any
+    remaining application path not owned by exactly one target is treated as
+    shared/unknown and expands fail-closed to the complete inventory so a new
+    shared source cannot be silently omitted.
     """
+    unique_paths = tuple(dict.fromkeys(paths))
+    founder_cloudflare = founder_cloudflare_release_required(unique_paths)
     application_paths = [
-        path for path in dict.fromkeys(paths)
+        path for path in unique_paths
         if not release_control_only_path(path)
+        and not (
+            path.startswith("Legend-Cloudflare/src/")
+            or path == "Legend-Cloudflare/wrangler.founder-baseline.jsonc"
+        )
     ]
-    if not application_paths:
-        return tuple()
 
-    selected = set()
+    selected = {"portal"} if founder_cloudflare else set()
+    if not application_paths:
+        return tuple(
+            row["releaseName"] for key, row in RELEASE_TARGETS.items()
+            if key in selected
+        )
+
     for path in application_paths:
         owners = [
             key for key, row in RELEASE_TARGETS.items()

@@ -635,11 +635,31 @@ jobs:
         self.assertTrue(m.founder_cloudflare_release_required([
             "Legend-Cloudflare/wrangler.founder-baseline.jsonc",
         ]))
+        self.assertTrue(m.founder_cloudflare_release_required([
+            "scripts/deploy-founder-cloudflare.py",
+        ]))
         self.assertFalse(m.founder_cloudflare_release_required([
             "Legend-Cloudflare/tests/runtime/qualification-mode.test.mjs",
             "Legend-Cloudflare/scripts/founder-canary.mjs",
             "AgentPortal/Program.cs",
         ]))
+
+    def test_founder_cloudflare_release_scope_is_portal_only(self):
+        self.assertEqual(
+            ("masterapp-portal",),
+            m.release_targets_for_paths(["scripts/deploy-founder-cloudflare.py"]),
+        )
+        self.assertEqual(
+            ("masterapp-portal",),
+            m.release_targets_for_paths(["Legend-Cloudflare/src/runtime/registry.mjs"]),
+        )
+        self.assertEqual(
+            ("masterapp-portal", "masterapp-client"),
+            m.release_targets_for_paths([
+                "scripts/deploy-founder-cloudflare.py",
+                "ClientApp/Program.cs",
+            ]),
+        )
 
     def test_release_baseline_delegates_application_identity_classification(self):
         baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
