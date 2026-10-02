@@ -129,6 +129,42 @@ LIFECYCLE_AUTHORITY_PATHS = (
     "scripts/test-release-lifecycle.py",
 )
 
+# Application identity excludes release/test/control-only edits. This authority is
+# shared by release baseline resolution and package-canary preservation.
+RELEASE_CONTROL_ONLY_EXACT = frozenset({
+    "scripts/approved-release-baseline.py",
+    "scripts/release-lifecycle.py",
+    "scripts/release_policy.py",
+    "scripts/deploy-approved-app.py",
+    "scripts/release-package.py",
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
+    "scripts/test-release-policy.py",
+    "scripts/test-release-lifecycle.py",
+    "scripts/test-deploy-approved-app.py",
+})
+
+PACKAGE_AUTHORITY_PATHS = frozenset({
+    "scripts/release-package.py",
+    "scripts/deploy-approved-app.py",
+    ".config/dotnet-tools.json",
+    ".github/workflows/masterapp-platform-architecture-validation.yml",
+})
+
+
+def release_control_only_path(path: str) -> bool:
+    return (
+        path.startswith(".github/workflows/")
+        or path.startswith("Docs/")
+        or path.startswith("AgentPortal.Tests/")
+        or path.startswith("tests/")
+        or path in RELEASE_CONTROL_ONLY_EXACT
+    )
+
+
+def package_canary_input_path(path: str) -> bool:
+    return path in PACKAGE_AUTHORITY_PATHS or not release_control_only_path(path)
+
 WORKFLOW_PATHS = {
     name: ".github/workflows/" + name
     for name in (
@@ -1583,6 +1619,115 @@ def cmd_lifecycle_evidence(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def _package_canary_proof_runs(repository: str, current_run_id: int, head_branch: str, token: str):
+    workflow = urllib.parse.quote("masterapp-platform-architecture-validation.yml", safe="")
+    branch = urllib.parse.quote(head_branch, safe="")
+    payload = api_get(
+        repository,
+        f"actions/workflows/{workflow}/runs?branch={branch}&event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    rows = []
+    for run in payload.get("workflow_runs", []):
+        if int(run.get("id", 0)) == current_run_id or not run.get("head_sha"):
+            continue
+        jobs = api_get(
+            repository,
+            f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
+            token,
+        ).get("jobs", [])
+        package_jobs = [job for job in jobs if job.get("name") == "validated-release-package"]
+        if len(package_jobs) != 1 or package_jobs[0].get("conclusion") != "success":
+            continue
+        steps = {
+            step.get("name"): step.get("conclusion")
+            for step in package_jobs[0].get("steps", [])
+            if step.get("name")
+        }
+        if steps.get("Build immutable validated release package") != "success":
+            continue
+        rows.append(run)
+    rows.sort(
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    return rows
+
+
+def compute_package_canary_plan(
+    repository: str,
+    current_sha: str,
+    base_sha: str,
+    current_run_id: int,
+    head_branch: str,
+):
+    result = {
+        "schemaVersion": 1,
+        "needed": True,
+        "currentSha": current_sha,
+        "evidenceRunId": None,
+        "evidenceHeadSha": None,
+        "changedInputs": [],
+        "reason": "no_prior_package_canary_proof",
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    proof = None
+    if token:
+        try:
+            proofs = _package_canary_proof_runs(
+                repository, current_run_id, head_branch, token
+            )
+            proof = proofs[0] if proofs else None
+        except Exception as exc:
+            result["evidenceLookupError"] = type(exc).__name__
+
+    prior_sha = proof.get("head_sha") if proof else base_sha
+    changed = git_changed(prior_sha, current_sha)
+    inputs = sorted(path for path in changed if package_canary_input_path(path))
+    result["changedInputs"] = inputs
+    if proof:
+        result["evidenceRunId"] = proof.get("id")
+        result["evidenceHeadSha"] = prior_sha
+    if not inputs:
+        result["needed"] = False
+        result["reason"] = (
+            "preserved_prior_package_canary"
+            if proof
+            else "no_package_or_application_inputs_changed"
+        )
+    else:
+        result["reason"] = (
+            "package_or_application_inputs_changed_since_proof"
+            if proof
+            else "package_or_application_inputs_changed"
+        )
+    return result
+
+
+def cmd_package_canary_plan(args):
+    try:
+        result = compute_package_canary_plan(
+            args.repository,
+            args.current_sha,
+            args.base_sha,
+            args.current_run_id,
+            args.head_branch,
+        )
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "needed": True,
+            "currentSha": args.current_sha,
+            "evidenceRunId": None,
+            "evidenceHeadSha": None,
+            "changedInputs": [],
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def compute_validated_package_evidence(repository: str, revision: str, package_identity: str):
     result = {
         "schemaVersion": 1,
@@ -2108,6 +2253,15 @@ def build_parser():
     lifecycle_evidence.add_argument("--repository", required=True)
     lifecycle_evidence.add_argument("--output", required=True)
     lifecycle_evidence.set_defaults(func=cmd_lifecycle_evidence)
+
+    package_canary = sub.add_parser("package-canary-plan")
+    package_canary.add_argument("--repository", required=True)
+    package_canary.add_argument("--current-sha", required=True)
+    package_canary.add_argument("--base-sha", required=True)
+    package_canary.add_argument("--current-run-id", required=True, type=int)
+    package_canary.add_argument("--head-branch", required=True)
+    package_canary.add_argument("--output", required=True)
+    package_canary.set_defaults(func=cmd_package_canary_plan)
 
     validated_package = sub.add_parser("validated-package")
     validated_package.add_argument("--repository", required=True)
