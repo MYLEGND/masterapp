@@ -504,6 +504,20 @@ class SingleBranchTopology(unittest.TestCase):
         self.assertNotIn("production gates", workflow.lower())
 
 
+    def test_lifecycle_refreshes_to_newly_merged_approved_code_before_recovery(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()
+        refresh = workflow.split(
+            "      - name: Refresh after automatically integrated corrections\n", 1
+        )[1].split("      - name:", 1)[0]
+        self.assertIn("github.event.repository.default_branch", refresh)
+        self.assertIn("module.TRUSTED_PR_BASE", refresh)
+        self.assertIn('git reset --hard "origin/$APPROVED_REF"', refresh)
+        self.assertLess(
+            workflow.index("Refresh after automatically integrated corrections"),
+            workflow.index("Recover authorized direct release when needed"),
+        )
+
+
 class StagingSafety(unittest.TestCase):
     @patch.object(m, "staging_only", return_value=True)
     def test_hold_blocks_automatic_mutations(self, _):
