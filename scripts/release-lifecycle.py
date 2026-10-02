@@ -269,10 +269,20 @@ def pending_updates(api):
         # Force-rewritten/unrelated work never inherits the prior PR's readiness.
         if not ancestor(pr['head']['sha'], head):
             continue
-        correction = api.api('pulls', {'head': name, 'base': APPROVED,
-            'title': 'Continue approved release corrections from ' + name,
-            'body': 'Automatically carries new commits on the retained source branch after its previous approved PR. '
-                    'Owning validation and the approved direct-release authority will re-evaluate only invalidated evidence; branch deletion remains gated.'})
+        try:
+            correction = api.api('pulls', {'head': name, 'base': APPROVED,
+                'title': 'Continue approved release corrections from ' + name,
+                'body': 'Automatically carries new commits on the retained source branch after its previous approved PR. '
+                        'Owning validation and the approved direct-release authority will re-evaluate only invalidated evidence; branch deletion remains gated.'})
+        except RuntimeError as exc:
+            if 'HTTP 403' not in str(exc):
+                raise
+            retained_candidates.append({
+                'pr': pr['number'],
+                'branch': name,
+                'reason': 'Correction PR creation blocked; unique branch history retained without integration',
+            })
+            continue
         # The previous collaborator PR authorizes review, not skipping fresh CI.
         return {'correctionPr': correction['number'], 'retained': 'Fresh exact-head validation required'}
     result = {'integration': 'no validated ready changes or retained-branch corrections'}
