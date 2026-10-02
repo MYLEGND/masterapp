@@ -282,7 +282,7 @@ body { background: var(--legend-app-panel-soft); color: var(--legend-ink-dark); 
     background-image: none !important;
     color: #f7e4b0 !important;
     border: 1px solid rgba(199,153,49,.48) !important;
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     font-weight: 780;
     font-size: .94rem;
     letter-spacing: .01em;
@@ -4673,7 +4673,7 @@ body {
     min-height: 34px;
     padding: .38rem .7rem;
     border: 0;
-    border-radius: 999px !important;
+    border-radius: var(--legend-app-radius-compact) !important;
     background: transparent;
     color: #b9d8ea;
     font-size: .76rem;
@@ -6327,7 +6327,7 @@ body {
   gap: .45rem;
   flex: 0 0 auto;
   padding: .55rem .8rem;
-  border-radius: 999px;
+  border-radius: var(--legend-app-radius-compact);
   border: 1px solid rgba(245,180,45,.44);
   background: rgba(245,180,45,.10);
   color: #ffe08a;
@@ -6401,7 +6401,7 @@ body {
   flex: 0 0 auto;
   min-height: 40px;
   padding: .6rem .95rem;
-  border-radius: 999px;
+  border-radius: var(--legend-app-radius-compact);
   background: linear-gradient(135deg, #8be28c, #39bb68);
   color: #071329;
   font-size: .76rem;
@@ -7171,7 +7171,7 @@ body {
 .hero-link-command-actions .btn {
   flex: 0 0 auto;
   white-space: nowrap;
-  border-radius: 999px;
+  border-radius: var(--legend-app-radius-compact);
   padding: .52rem .9rem;
   font-size: .78rem;
   font-weight: 900;
@@ -7212,7 +7212,7 @@ body {
   color: #041527;
   font-weight: 950;
   letter-spacing: .025em;
-  border-radius: 999px;
+  border-radius: var(--legend-app-radius-compact);
   padding: .52rem .95rem;
   box-shadow: 0 10px 24px rgba(14, 165, 233, .26), inset 0 1px 0 rgba(255,255,255,.56);
 }
@@ -8404,7 +8404,7 @@ body {
 .event-map-back-trigger {
   flex: 0 0 auto;
   border: 1px solid rgba(103,232,249,.6);
-  border-radius: 999px;
+  border-radius: var(--legend-app-radius-compact);
   padding: .55rem .95rem;
   background: linear-gradient(135deg, rgba(14,165,233,.24), rgba(99,102,241,.22));
   color: #d9f7ff;
