@@ -19,11 +19,15 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_policy import staging_only
 
-SHA = re.compile(r'^[0-9a-f]{40}    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+SHA = re.compile(r'^[0-9a-f]{40}$')
+
+
+def _validation_authority_module():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
 
 VALIDATION_AUTHORITY = _validation_authority_module()
 APPROVED = VALIDATION_AUTHORITY.TRUSTED_PR_BASE
