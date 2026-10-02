@@ -121,7 +121,7 @@ def set_worker_subdomain(account, worker, enabled):
         {"enabled": bool(enabled)},
     )
     observed = result.get("enabled")
-    if observed is not bool(enabled):
+    if observed != bool(enabled):
         raise RuntimeError("founder_worker_subdomain_activation_failed")
 
 def restore_worker(account, worker, version, subdomain_enabled=False):
