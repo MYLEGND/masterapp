@@ -402,9 +402,43 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual([target], result["targets"])
         self.assertEqual(42, result["sourcePr"])
         history_args = git.call_args.args
-        self.assertEqual("log", history_args[0])
-        self.assertIn(m.VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH, history_args)
+        self.assertEqual("rev-list", history_args[0])
+        self.assertIn("--first-parent", history_args)
+        self.assertNotIn(m.VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH, history_args)
         self.assertNotIn("-n", history_args)
+
+
+    @patch.object(m, "authorization_release_proven", return_value=True)
+    @patch.object(m, "release_proven", return_value=False)
+    @patch.object(m, "release_targets")
+    @patch.object(m, "candidate_validation", return_value=None)
+    @patch.object(m, "direct_release_approved_pr")
+    @patch.object(m, "direct_only_request")
+    @patch.object(m, "git")
+    def test_newest_satisfied_authorization_never_resurrects_older_release(
+        self, git, direct_only, approved_pr, _, targets, __, ___
+    ):
+        approved = "a" * 40
+        newest = "b" * 40
+        older = "c" * 40
+        target = canonical_name("portal")
+        git.return_value = SimpleNamespace(
+            returncode=0,
+            stdout=approved + "\n" + newest + "\n" + older + "\n",
+            stderr="",
+        )
+        direct_only.side_effect = lambda sha: sha in {newest, older}
+        approved_pr.return_value = {
+            "number": 42,
+            "head": {"sha": "d" * 40},
+        }
+        targets.return_value = {target}
+
+        result = m.pending_legacy_release_authorization(Api(), approved)
+
+        self.assertIsNone(result)
+        self.assertEqual(1, approved_pr.call_count)
+        approved_pr.assert_called_once_with(unittest.mock.ANY, newest)
 
     @patch.object(m, "pending_legacy_release_authorization")
     def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending):
