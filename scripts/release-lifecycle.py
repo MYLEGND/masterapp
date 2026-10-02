@@ -19,9 +19,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_policy import staging_only
 
-APPROVED = 'legend/approved-changes'
-DIRECT = 'all-intentional-direct-release-20260918.yml'
-SECURITY = 'approved-release-security-validation.yml'
+APPROVED = VALIDATION_AUTHORITY.TRUSTED_PR_BASE
+DIRECT = VALIDATION_AUTHORITY.DIRECT_RELEASE_WORKFLOW
 KEEP = {APPROVED}
 SHA = re.compile(r'^[0-9a-f]{40}$')
 
@@ -368,22 +367,6 @@ def direct_release_approved_pr(api, sha):
 
     current = sha
     request_path = 'Docs/releases/direct-release-request.json'
-    release_control_files = {
-        request_path,
-        '.github/workflows/masterapp-platform-architecture-validation.yml',
-        '.github/workflows/approved-release-security-validation.yml',
-        '.github/workflows/step5-isolated-conversion-mapping-validation.yml',
-        '.github/workflows/all-intentional-direct-release-20260918.yml',
-        'scripts/approved-release-baseline.py',
-        'scripts/release-package.py',
-        'scripts/validation-resume.py',
-        'scripts/release-lifecycle.py',
-        'scripts/test-validation-resume.py',
-        'scripts/test-release-policy.py',
-        'scripts/test-release-lifecycle.py',
-        'scripts/test-deploy-approved-app.py',
-    }
-
     for _ in range(16):
         lineage = git('rev-list', '--parents', '-n', '1', current, check=False)
         parts = lineage.stdout.strip().split() if not lineage.returncode else []
@@ -413,7 +396,10 @@ def direct_release_approved_pr(api, sha):
         pr = matches[0]
         files = api.pages(f"pulls/{pr['number']}/files")
         names = {row.get('filename') for row in files}
-        if names and names <= release_control_files:
+        if names and all(
+            VALIDATION_AUTHORITY.release_control_only_path(name)
+            for name in names if name
+        ):
             merge_lineage = git('rev-list', '--parents', '-n', '1', merged, check=False)
             merge_parts = merge_lineage.stdout.strip().split() if not merge_lineage.returncode else []
             if len(merge_parts) != 3 or merge_parts[0] != merged:
