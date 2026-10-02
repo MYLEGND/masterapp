@@ -53,7 +53,13 @@ namespace Infrastructure.Migrations
                     [ProviderErrorCode] nvarchar(128) NULL,
                     [ProviderErrorParam] nvarchar(160) NULL,
                     [ProviderRequestId] nvarchar(160) NULL;
+                """);
 
+            // SQL Server compiles a raw SQL batch before executing it. Keep the
+            // legacy backfill in a separate batch so the newly added columns are
+            // resolvable when the UPDATE is compiled.
+            migrationBuilder.Sql(
+                """
                 UPDATE [LegendEngineeringUsage]
                 SET [ProviderAttempted]=CAST(1 AS bit),
                     [LogicalAttemptCompleted]=CASE WHEN [UsageObserved]=CAST(1 AS bit) THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END,
