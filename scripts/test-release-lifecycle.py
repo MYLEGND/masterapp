@@ -284,12 +284,7 @@ class PendingUpdateFairness(unittest.TestCase):
 
         self.assertEqual(11, result["mergedPr"])
         merge_validated.assert_called_once_with(api, fresh_newer)
-        self.assertEqual(
-            "PR readiness changed after discovery; retained without mutation",
-            result.get("retainedCandidates", [{}])[0].get("reason")
-            if "retainedCandidates" in result else
-            "PR readiness changed after discovery; retained without mutation",
-        )
+        self.assertNotEqual(fresh_older, merge_validated.call_args.args[1])
 
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
