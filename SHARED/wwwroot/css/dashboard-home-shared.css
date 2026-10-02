@@ -69,6 +69,11 @@ body.legend-app.legend-modal-active > .modal-backdrop {
  * viewport placement, sizing, chrome, and background shielding.
  */
 @media (min-width: 901px) {
+    /* Semantic wide-dialog variant remains centrally owned. */
+    html[data-legend-modal-region] body.legend-app .lc-limits-modal {
+        --legend-desktop-modal-width:min(1760px,calc(100vw - (2 * var(--legend-desktop-modal-gutter))));
+    }
+
     html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface],
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal)[data-legend-modal-open="true"] {
         position: fixed;
