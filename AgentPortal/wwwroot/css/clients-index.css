@@ -3926,7 +3926,7 @@
 
     .crm-command-modal-queues #btnMyDayBack{
         padding:10px 14px;
-        border-radius:999px;
+        border-radius: var(--legend-app-radius-compact);
     }
 
     .crm-command-modal-queues .myday-focus .pill{
@@ -5120,7 +5120,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 .leads-crm .pipeline-command-dock a.btn,
 .clients-crm .pipeline-command-dock a.btn{
     padding:10px 12px !important;
-    border-radius:999px !important;
+    border-radius: var(--legend-app-radius-compact) !important;
     box-shadow:none !important;
     font-size:.88rem;
 }
