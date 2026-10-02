@@ -195,6 +195,37 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(1, run.call_count)
 
 
+class TransactionTests(unittest.TestCase):
+    def test_failure_rolls_every_changed_target_back_to_preserved_baseline(self):
+        keys = list(deploy.TARGETS)[:2]
+        names = [deploy.TARGETS[key]["releaseName"] for key in keys]
+        baseline = "b" * 40
+        baselines = json.dumps([
+            {"app": key, "revision": baseline}
+            for key in keys
+        ])
+        with patch.object(deploy, "verify_package"), \
+             patch.object(deploy, "_rollback_package", return_value=Path("/tmp/rollback.zip")), \
+             patch.object(deploy, "deploy_one", side_effect=["deployed", RuntimeError("boom")]), \
+             patch.object(deploy, "rollback_transaction") as rollback:
+            with self.assertRaisesRegex(RuntimeError, "every changed target was restored"):
+                deploy.deploy_transaction(
+                    names,
+                    baselines,
+                    Path("/tmp/candidate"),
+                    Path("/tmp/rollback"),
+                    "a" * 40,
+                )
+        rollback.assert_called_once()
+        self.assertEqual(keys, rollback.call_args.args[0])
+
+    def test_transaction_scope_comes_only_from_canonical_inventory(self):
+        names = [row["releaseName"] for row in deploy.TARGETS.values()]
+        keys = deploy._RELEASE_AUTHORITY.selected_release_target_keys(names)
+        self.assertEqual(tuple(deploy.TARGETS), keys)
+
+
+
 
 class SettingsIdempotenceTests(unittest.TestCase):
     def run_settings(self, drift=False):
@@ -211,7 +242,7 @@ class SettingsIdempotenceTests(unittest.TestCase):
                       'WebsiteEditorDataProtection__KeyVaultKeyId': 'test-key',
                       'Analytics__SharedSecret': 'test-secret', 'Tracking__SharedSecret': 'test-secret',
                       'Tracking:SharedSecret': 'test-secret', 'WEBSITE_NODE_DEFAULT_VERSION': '~24'}
-            state = {app: dict(common) for app, _, _ in deploy.TARGETS.values()}
+            state = {row['releaseName']: dict(common) for row in deploy.TARGETS.values()}
             if drift:
                 state['masterapp-protect']['Tracking:SharedSecret'] = 'stale'
                 state['masterapp-parfait']['WebsiteEditorDataProtection__BlobUri'] = 'stale'
