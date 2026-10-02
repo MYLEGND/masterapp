@@ -1080,7 +1080,7 @@ jobs:
 
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') }}
+        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1091,9 +1091,21 @@ jobs:
             --selected-targets "$SELECTED_TARGETS" \
             --output /tmp/translation-results/live.json
 
+      - name: Restore Founder Cloudflare baseline after downstream release failure
+        id: foundercloudrollback
+        if: ${{ always() && env.FOUNDER_CLOUDFLARE == 'true' && steps.foundercloud.outcome == 'success' && steps.live.outcome != 'success' }}
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          python3 scripts/deploy-founder-cloudflare.py rollback \
+            --state /tmp/legend-founder-cloudflare-state.json
+
       - name: Restore complete application baseline after downstream release failure
         id: transactionrollback
-        if: ${{ always() && steps.transaction.outcome == 'success' && (steps.live.outcome != 'success' || (env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome != 'success')) }}
+        if: ${{ always() && steps.transaction.outcome == 'success' && (steps.live.outcome != 'success' || (env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome != 'success') || (env.FOUNDER_CLOUDFLARE == 'true' && steps.foundercloud.outcome != 'success')) }}
         shell: bash
         run: |
           set -euo pipefail
