@@ -1044,7 +1044,7 @@ jobs:
 
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (steps.azure.outcome == 'success' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true' || env.CLIENT_ONLY == 'true' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') }}
+        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1055,146 +1055,92 @@ jobs:
             --selected-targets "$SELECTED_TARGETS" \
             --output /tmp/translation-results/live.json
 
+      - name: Restore complete application baseline after downstream release failure
+        id: transactionrollback
+        if: ${{ always() && steps.transaction.outcome == 'success' && (steps.live.outcome != 'success' || (env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome != 'success')) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py \
+            --targets-json "$SELECTED_TARGETS" \
+            --baselines-json "$LIVE_BASELINES" \
+            --rollback-root /tmp/rollback-packages \
+            --rollback-only
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: translation-direct-release-${{ github.sha }}
+          name: translation-direct-release-${{ env.RELEASE_SHA }}
           path: /tmp/translation-results/
           if-no-files-found: warn
       - name: Enforce complete direct deployment outcome
         if: always()
         env:
           BASE: ${{ steps.base.outcome }}
-          BUILD: ${{ steps.build.outcome }}
-          TESTS: ${{ steps.tests.outcome }}
-          WEB: ${{ steps.web.outcome }}
           PACKAGE: ${{ steps.package.outcome }}
           AZURE: ${{ steps.azure.outcome }}
-          PORTAL: ${{ steps.portal.outcome }}
-          CLIENT: ${{ steps.client.outcome }}
+          TRANSACTION: ${{ steps.transaction.outcome }}
+          TRANSACTION_ROLLBACK: ${{ steps.transactionrollback.outcome }}
           LIVE: ${{ steps.live.outcome }}
-          MIGRATE: ${{ steps.migrate.outcome }}
-          PROTECT: ${{ steps.protect.outcome }}
-          PROTECTAUTH: ${{ steps.protectauth.outcome }}
-          EDITORAUTH: ${{ steps.editorauth.outcome }}
-          PARFAIT: ${{ steps.parfait.outcome }}
-          WEBSITE: ${{ steps.website.outcome }}
-          WEBSITECHECKS: ${{ steps.websitechecks.outcome }}
-          ROUTINGCHECKS: ${{ steps.routingchecks.outcome }}
-          ROUTINGSECRET: ${{ steps.routingsecret.outcome }}
-          ROUTINGAUTH: ${{ steps.routingauthority.outcome }}
-          ROUTINGPOLICY: ${{ steps.routingpolicy.outcome }}
-          ROUTINGDEPLOY: ${{ steps.routingdeploy.outcome }}
-          ROUTINGLIVE: ${{ steps.routinglive.outcome }}
+          ROUTING_LIVE: ${{ steps.routinglive.outcome }}
           VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
-          CLIENT_ONLY: ${{ env.CLIENT_ONLY }}
           WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
           PRESERVE_LIVE_TARGETS: ${{ env.PRESERVE_LIVE_TARGETS }}
           EXACT_LIVE: ${{ env.EXACT_LIVE }}
-          RESUME_PORTAL: ${{ steps.resumestate.outputs.portal_live }}
-          RESUME_CLIENT: ${{ steps.resumestate.outputs.client_live }}
-          RESUME_PROTECT: ${{ steps.resumestate.outputs.protect_live }}
-          RESUME_PARFAIT: ${{ steps.resumestate.outputs.parfait_live }}
-          RESUME_WEBSITE: ${{ steps.resumestate.outputs.website_live }}
         run: |
           python3 - <<'PYRESULT'
           import json,os
           selected=json.loads(os.environ['SELECTED_TARGETS'])
-          apps={'masterapp-portal':'PORTAL','masterapp-client':'CLIENT','masterapp-protect':'PROTECT','masterapp-parfait':'PARFAIT','masterapp-website':'WEBSITE'}
-          assert selected and len(selected)==len(set(selected)) and all(app in apps for app in selected)
+          assert isinstance(selected,list) and selected and len(selected)==len(set(selected))
           validate_only=os.environ.get('VALIDATE_ONLY')=='true'
           website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
-          preserve_live_targets=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
+          preserve_live=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
           exact_live=os.environ.get('EXACT_LIVE')=='true'
-          routing_steps=['ROUTINGCHECKS','ROUTINGSECRET','ROUTINGAUTH','ROUTINGPOLICY','ROUTINGDEPLOY','ROUTINGLIVE']
-          if exact_live:
-              assert not validate_only and not website_routing and not preserve_live_targets
-              required=['BASE','LIVE']
-              skipped=['BUILD','TESTS','WEB','PACKAGE','AZURE','MIGRATE','PROTECTAUTH','EDITORAUTH','WEBSITECHECKS']+routing_steps+list(apps.values())
-              results={key:os.environ[key] for key in required}
-              skipped_results={key:os.environ[key] for key in skipped}
-              print(json.dumps({'mode':'exact-live-noop','required':results,'skippedPublicationSteps':skipped_results},indent=2))
-              assert all(value=='success' for value in results.values())
-              assert all(value=='skipped' for value in skipped_results.values()), 'Exact-live release executed publication work'
-          elif preserve_live_targets:
-              assert not validate_only and website_routing
-              required=['BASE','AZURE','LIVE']+routing_steps
-              skipped=['BUILD','TESTS','WEB','PACKAGE','MIGRATE','PROTECTAUTH','EDITORAUTH','PORTAL','CLIENT','PROTECT','PARFAIT','WEBSITE']
-              if 'masterapp-website' in selected:
-                  required.append('WEBSITECHECKS')
-              else:
-                  skipped.append('WEBSITECHECKS')
-              results={key:os.environ[key] for key in required}
-              skipped_results={key:os.environ[key] for key in skipped}
-              print(json.dumps({'mode':'preserve-live-routing-recovery','required':results,'preservedSteps':skipped_results},indent=2))
-              assert all(value=='success' for value in results.values())
-              assert all(value=='skipped' for value in skipped_results.values()), 'Preserve-live recovery redeployed or mutated an application target'
-          elif validate_only:
-              if website_routing:
-                  required=['BASE','BUILD','ROUTINGCHECKS','PACKAGE']
-                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH','EDITORAUTH','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']+list(apps.values())
-              elif set(selected) <= {'masterapp-protect','masterapp-website'}:
-                  required=['BASE','BUILD','PACKAGE']
-                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH']+routing_steps+list(apps.values())
-              else:
-                  required=['BASE','BUILD','TESTS','WEB','PACKAGE']
-                  skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH','EDITORAUTH']+routing_steps+list(apps.values())
-              if 'masterapp-website' in selected:
-                  required.append('WEBSITECHECKS')
-              else:
-                  skipped.append('WEBSITECHECKS')
-              results={key:os.environ[key] for key in required}
-              skipped_results={key:os.environ[key] for key in skipped}
-              print(json.dumps({'mode':'validate-only','required':results,'skippedSteps':skipped_results},indent=2))
-              assert all(value=='success' for value in results.values())
-              assert all(value=='skipped' for value in skipped_results.values()), 'Validation-only run executed a publish or deployment step'
+          base=os.environ['BASE']
+          package=os.environ['PACKAGE']
+          azure=os.environ['AZURE']
+          transaction=os.environ['TRANSACTION']
+          rollback=os.environ['TRANSACTION_ROLLBACK']
+          live=os.environ['LIVE']
+          routing_live=os.environ['ROUTING_LIVE']
+
+          if validate_only:
+              assert not preserve_live and not exact_live
+              assert base=='success' and package=='success'
+              assert transaction=='skipped' and live=='skipped'
+              mode='validate-only'
+          elif exact_live:
+              assert not preserve_live and not website_routing
+              assert base=='success' and live=='success'
+              assert transaction=='skipped' and rollback=='skipped'
+              mode='exact-live-noop'
+          elif preserve_live:
+              assert website_routing
+              assert base=='success' and azure=='success' and live=='success'
+              assert transaction=='skipped' and rollback=='skipped'
+              mode='preserve-live-routing-recovery'
           else:
-              required=['BASE','PACKAGE','AZURE','LIVE']
-              excluded=[step for app,step in apps.items() if app not in selected]
-              resume={
-                  'masterapp-portal':os.environ.get('RESUME_PORTAL')=='true',
-                  'masterapp-client':os.environ.get('RESUME_CLIENT')=='true',
-                  'masterapp-protect':os.environ.get('RESUME_PROTECT')=='true',
-                  'masterapp-parfait':os.environ.get('RESUME_PARFAIT')=='true',
-                  'masterapp-website':os.environ.get('RESUME_WEBSITE')=='true',
-              }
-              for app in selected:
-                  step=apps[app]
-                  if resume[app]:
-                      assert os.environ[step]=='skipped', f'{app} was already live at the exact candidate but redeployed'
-                  else:
-                      required.append(step)
-              (required if 'masterapp-protect' in selected else excluded).append('PROTECTAUTH')
-              (required if any(app in selected for app in ('masterapp-protect','masterapp-parfait')) else excluded).append('EDITORAUTH')
-              (excluded if selected == ['masterapp-website'] else required).append('BUILD')
-              if os.environ.get('CLIENT_ONLY') == 'true':
-                  required.extend(['TESTS','WEB'])
-                  excluded.append('MIGRATE')
-              elif set(selected) <= {'masterapp-protect','masterapp-website'}:
-                  excluded.extend(['TESTS','WEB'])
-                  (excluded if selected == ['masterapp-website'] else required).append('MIGRATE')
-              else:
-                  required.extend(['TESTS','WEB','MIGRATE'])
-              (required if 'masterapp-website' in selected else excluded).append('WEBSITECHECKS')
-              if website_routing:
-                  required.extend(routing_steps)
-              else:
-                  excluded.extend(routing_steps)
-              results={key:os.environ[key] for key in required}
-              skipped={key:os.environ[key] for key in excluded}
-              preserved={app:resume[app] for app in selected if resume[app]}
-              print(json.dumps({'mode':'approved-only','required':results,'unselected':skipped,'preservedExactLiveTargets':preserved},indent=2))
-              assert all(value=='success' for value in results.values())
-              assert all(value=='skipped' for value in skipped.values()), 'Unselected release step unexpectedly executed'
+              assert base=='success' and package=='success' and azure=='success'
+              assert transaction=='success'
+              assert rollback=='skipped', 'Downstream release failure forced complete application rollback'
+              assert live=='success'
+              mode='approved-transaction'
+
+          if website_routing and not validate_only:
+              assert routing_live=='success'
+
           receipt={
-              'schemaVersion':1,
+              'schemaVersion':2,
+              'mode':mode,
               'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
               'releaseHeadSha':os.environ['RELEASE_SHA'],
               'selectedTargets':selected,
               'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+              'transaction':'committed' if transaction=='success' else 'preserved',
           }
           with open('/tmp/approved-release-receipt.json','w') as output:
               json.dump(receipt,output,sort_keys=True,indent=2)
+          print(json.dumps(receipt,sort_keys=True))
           PYRESULT
       - name: Retain exact approved release receipt
         if: success() && env.VALIDATE_ONLY != 'true'
