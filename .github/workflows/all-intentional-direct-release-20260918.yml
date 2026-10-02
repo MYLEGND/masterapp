@@ -1151,6 +1151,45 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+  target-release-receipts:
+    name: target-release-receipts (${{ matrix.app }})
+    needs: [discover-live, release]
+    if: needs.release.result == 'success' && needs.discover-live.outputs.validate_only != 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover-live.outputs.matrix) }}
+    steps:
+      - name: Bind successful transaction receipt to canonical target
+        shell: bash
+        env:
+          APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+          SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
+          TARGET_APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTARGETRECEIPT'
+          import json,os,pathlib
+          names=json.loads(os.environ['SELECTED_TARGETS'])
+          release_name='masterapp-'+os.environ['TARGET_APP']
+          if release_name not in names:
+              raise SystemExit('Target receipt is not part of the canonical selected release set')
+          payload={
+              'schemaVersion':1,
+              'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
+              'target':release_name,
+              'transaction':'committed-or-preserved',
+          }
+          pathlib.Path('/tmp/target-release-receipt.json').write_text(json.dumps(payload,sort_keys=True,indent=2)+'\n')
+          PYTARGETRECEIPT
+      - name: Preserve target-specific successful release receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-release-${{ needs.discover-live.outputs.application_release_sha }}-${{ matrix.app }}
+          path: /tmp/target-release-receipt.json
+          retention-days: 90
+          if-no-files-found: error
+
   release-state-receipt:
     name: release-state-receipt
     needs: [discover-live, release]
