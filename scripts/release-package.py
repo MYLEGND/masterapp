@@ -38,9 +38,14 @@ def sha256_file(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def validate_revision(value: str) -> str:
+def normalize_revision(value: str) -> str:
     if not re.fullmatch(r"[0-9a-f]{40}", value or ""):
         raise ValueError("Expected exact lowercase Git commit SHA")
+    return value
+
+
+def validate_revision(value: str) -> str:
+    value = normalize_revision(value)
     subprocess.run(["git", "cat-file", "-e", value + "^{commit}"], cwd=ROOT, check=True)
     return value
 
@@ -58,7 +63,7 @@ def contract_hash() -> str:
 
 
 def package_identity(revision: str) -> str:
-    revision = validate_revision(revision)
+    revision = normalize_revision(revision)
     payload = json.dumps(
         {
             "schema": SCHEMA,
