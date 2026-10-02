@@ -8803,3 +8803,167 @@ header .legend-global-nav .container-fluid {
         border-radius: var(--legend-app-radius, var(--web-radius-md));
     }
 }
+
+/*
+ * Canonical desktop modal family coverage.
+ * These selectors replace former page-owned geometry in AgentPortal feature CSS.
+ * Feature files retain only their unique internal composition/content states.
+ */
+@media (min-width: 901px) {
+    html[data-legend-modal-region] body.legend-app :is(
+        .actions-hub-modal.show,
+        .quick-entry-shell.show,
+        .qv-booking-modal-shell.show,
+        .lc-section-modal.show,
+        .legend-connect-composition-modal.show,
+        .wa-standalone-modal[data-legend-modal-open="true"],
+        #proposalOverlay.hp-overlay:not([hidden]),
+        #uwOverlay.uw-overlay:not([hidden]),
+        .proposal-overlay:not([hidden]),
+        .note-self-overlay:not([hidden]),
+        #captureDecisionModal.legend-popout-modal.show
+    ) {
+        box-sizing: border-box;
+        width: 100vw;
+        max-width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        margin: 0;
+        padding: var(--legend-desktop-modal-gutter, 48px);
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: var(--legend-modal-backdrop);
+        isolation: isolate;
+        z-index: var(--legend-modal-surface-z);
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(
+        .actions-hub-modal,
+        .quick-entry-shell,
+        .qv-booking-modal-shell,
+        .lc-section-modal,
+        .legend-connect-composition-modal,
+        #captureDecisionModal.legend-popout-modal
+    ) > .modal-dialog,
+    html[data-legend-modal-region] body.legend-app :is(
+        .wa-standalone-modal,
+        #proposalOverlay.hp-overlay,
+        #uwOverlay.uw-overlay,
+        .proposal-overlay,
+        .note-self-overlay
+    ) :is(
+        .wa-modal-dialog,
+        #proposalDialog.hp-dialog,
+        #uwDialog.uw-dialog,
+        .proposal-dialog,
+        .uw-dialog,
+        .note-self-modal
+    ),
+    html[data-legend-modal-region] body.legend-app #drawer.drawer[data-workstation-drawer="1"] {
+        box-sizing: border-box;
+        width: var(--legend-desktop-modal-width);
+        max-width: var(--legend-desktop-modal-width);
+        min-width: 0;
+        max-height: var(--legend-desktop-modal-height);
+        margin: 0 auto;
+        overflow: hidden;
+        border: 1px solid var(--legend-app-control-line);
+        border-radius: var(--legend-app-radius);
+        background: var(--legend-app-surface-elevated);
+        color: var(--legend-app-on-dark);
+        box-shadow: 0 30px 80px rgba(2,8,23,.42);
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(
+        .actions-hub-modal,
+        .quick-entry-shell,
+        .qv-booking-modal-shell,
+        .lc-section-modal,
+        .legend-connect-composition-modal
+    ) > .modal-dialog > .modal-content,
+    html[data-legend-modal-region] body.legend-app :is(
+        .wa-modal-shell,
+        #proposalDialog.hp-dialog,
+        #uwDialog.uw-dialog,
+        .proposal-dialog,
+        .uw-dialog,
+        .note-self-modal
+    ) {
+        max-height: var(--legend-desktop-modal-height);
+        overflow: hidden;
+        border: 1px solid var(--legend-app-control-line);
+        border-radius: var(--legend-app-radius);
+        background: var(--legend-app-surface-elevated);
+        color: var(--legend-app-on-dark);
+        box-shadow: 0 30px 80px rgba(2,8,23,.42);
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(
+        .actions-hub-content,
+        .quick-entry-shell .modal-body,
+        .qv-booking-modal-shell .modal-body,
+        .lc-section-modal .modal-body,
+        .wa-modal-body,
+        #proposalDialog .hp-body,
+        #uwDialog .uw-body,
+        .proposal-dialog .modal-body,
+        .uw-dialog .modal-body,
+        .note-self-modal .note-self-body
+    ) {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(
+        #rbShell .hp-proposal-menu:not([hidden]),
+        #proposalMenu.hp-proposal-menu:not([hidden]),
+        #rbShell .proposal-menu:not([hidden]),
+        #uwMenu.proposal-menu:not([hidden])
+    ) {
+        position: fixed;
+        inset: 50% auto auto 50%;
+        transform: translate(-50%,-50%);
+        display: flex;
+        flex-direction: column;
+        width: min(680px, var(--legend-desktop-modal-width));
+        max-width: var(--legend-desktop-modal-width);
+        max-height: var(--legend-desktop-modal-height);
+        margin: 0;
+        padding: var(--legend-desktop-card-pad);
+        overflow: hidden;
+        z-index: var(--legend-modal-surface-z);
+        border: 1px solid var(--legend-app-control-line);
+        border-radius: var(--legend-app-radius);
+        background: var(--legend-app-surface-elevated);
+        color: var(--legend-app-on-dark);
+        box-shadow: 0 30px 80px rgba(2,8,23,.42);
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(
+        #rbShell .hp-proposal-menu-list,
+        #proposalMenu .hp-proposal-menu-list,
+        #rbShell .proposal-menu-list,
+        #uwMenu .proposal-menu-list
+    ) {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(
+        .home-clients-dialog,
+        .home-zoom-dialog
+    ) {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        min-height: 100%;
+        align-items: center;
+        justify-content: center;
+    }
+}
