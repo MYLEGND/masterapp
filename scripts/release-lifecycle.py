@@ -645,7 +645,7 @@ def release_proven(api, revision, app=None):
         # Target-specific artifact names are the scope proof for modern
         # transactional releases. Legacy generic receipts still fall back to the
         # committed request check below.
-        if successful_release(api, run, app=None if app else app):
+        if successful_release(api, run):
             return True
 
     # Bootstrap durable proof for exact-head direct releases that completed before
