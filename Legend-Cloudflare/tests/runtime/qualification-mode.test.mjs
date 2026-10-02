@@ -208,14 +208,16 @@ test('Founder baseline role routing reaches every reviewed model without request
 
 test('Founder baseline fallback stays inside the exact five-model set and fails closed when all are unavailable', async () => {
   const fallback = baselineFixture();
-  fallback.circuit = { unavailable: () => [FOUNDER_BASELINE_PRIMARY_MODEL] };
+  fallback.circuit = new CircuitBreaker({ threshold: 1, cooldownMs: 60000 });
+  fallback.circuit.failure(FOUNDER_BASELINE_PRIMARY_MODEL);
   const result = await orchestrate(fallback);
   assert.equal(result.status, 'completed');
   assert(FOUNDER_BASELINE_MODEL_IDS.includes(result.provider.modelId));
   assert.notEqual(result.provider.modelId, FOUNDER_BASELINE_PRIMARY_MODEL);
 
   const blocked = baselineFixture();
-  blocked.circuit = { unavailable: () => [...FOUNDER_BASELINE_MODEL_IDS] };
+  blocked.circuit = new CircuitBreaker({ threshold: 1, cooldownMs: 60000 });
+  for (const modelId of FOUNDER_BASELINE_MODEL_IDS) blocked.circuit.failure(modelId);
   assert.equal((await orchestrate(blocked)).error.code, 'no_qualified_model');
   assert.equal(blocked.dispatches.length, 0); assert.equal(blocked.reservations.length, 0);
 });

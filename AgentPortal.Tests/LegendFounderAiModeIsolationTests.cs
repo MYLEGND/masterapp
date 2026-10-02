@@ -2209,7 +2209,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         var policy = nativeOnly
             ? LegendConnectExternalProviderPolicy.NativeOnly
-            : LegendConnectExternalProviderPolicy.ProviderEnabled;
+            : LegendConnectExternalProviderPolicy.IndependentAnswering;
         var request = ReadOnlyContentRequest() with
         {
             ToolName = "legend_provider_capacity",
@@ -2217,7 +2217,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         };
         operations.Setup(operation => operation.TryInferConversationWithDiscourseAsync(
                 It.IsAny<string>(), It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
-                It.IsAny<LegendConnectDiscourseStateSnapshot?>(), It.IsAny<CancellationToken>(), "en", LegendConnectExternalProviderPolicy.NativeOnly))
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(), It.IsAny<CancellationToken>(), "en", policy))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false, 0m, null, "read_only_content_binding_required", 3,
                 "One scoped read is required.", false, ReadOnlyContentRequest: request));
@@ -2230,7 +2230,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
                 It.IsAny<string>(), It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.Is<LegendConnectReadOnlyContentBindingReceipt>(receipt => receipt.SemanticValue == "100"),
-                It.IsAny<CancellationToken>(), "en", LegendConnectExternalProviderPolicy.NativeOnly))
+                It.IsAny<CancellationToken>(), "en", policy))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 true, 1m, "The governed consumption is 100.", "governed", 4, "Scoped read receipt.", false,
                 ReadOnlyContentRequest: request));
@@ -2244,9 +2244,9 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Assert.Equal("LegendAi", response.ResponseAuthority);
         Assert.Equal(0, handler.RequestCount);
         operations.Verify(operation => operation.GetProviderCapacityAsync(
-            It.IsAny<CancellationToken>(), policy), nativeOnly ? Times.Once() : Times.Never());
+            It.IsAny<CancellationToken>(), policy), Times.Once());
         operations.Verify(operation => operation.GetProviderCapacityAsync(
-            It.IsAny<CancellationToken>()), nativeOnly ? Times.Never() : Times.Once());
+            It.IsAny<CancellationToken>()), Times.Never());
     }
 
     [Fact]

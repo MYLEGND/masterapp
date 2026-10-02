@@ -1368,12 +1368,12 @@ public sealed class LegendFounderAiContractTests
             Path.Combine(AppContext.BaseDirectory, "legend-connect-index.cshtml"));
 
         // The Founder requested direct access to every inspector, not a hidden Explore menu.
-        // Six fixed launchers plus one Razor loop render nineteen section launchers.
+        // Seven fixed launchers (including the Founder Cloudflare console) plus one Razor loop render the section launchers.
         // This checks presentation only; intelligence evidence and native gates are unchanged.
         Assert.Contains("<section class=\"lc-hero\"", page, StringComparison.Ordinal);
         Assert.Contains("FOUNDER LANGUAGE INTELLIGENCE", page, StringComparison.Ordinal);
         Assert.DoesNotContain("<details class=\"lc-hero", page, StringComparison.Ordinal);
-        Assert.Equal(7, page.Split("class=\"lc-section-launch ", StringSplitOptions.None).Length - 1);
+        Assert.Equal(8, page.Split("class=\"lc-section-launch ", StringSplitOptions.None).Length - 1);
         for (var index = 0; index < 6; index++)
         {
             Assert.Contains($"data-bs-target=\"#lcSection{index}\"", page, StringComparison.Ordinal);

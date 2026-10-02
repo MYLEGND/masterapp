@@ -10,6 +10,9 @@ function fixture() {
     tenantMicrousd: 3000000, accountMicrousd: 3000000,
     requestConcurrency: 1, userConcurrency: 1, tenantConcurrency: 1, accountConcurrency: 1
   });
+  // Worker authentication uses the wall clock; align the deterministic
+  // governance fixture before signing these control-plane requests.
+  h.advance(Date.now() - NOW);
   Object.assign(h.env, {
     LEGEND_RUNTIME_MODE: 'founder_baseline',
     LEGEND_DEPLOYMENT_ENVIRONMENT: 'production',

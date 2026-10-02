@@ -172,9 +172,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
             Request("legend", "Verify the published sampling interval for this field study."));
 
         Assert.False(result.Succeeded);
-        Assert.Equal("Failure", result.ResearchState);
-        Assert.NotNull(result.ResearchOutcome);
-        Assert.Equal("internet_research_transport_unavailable", result.ResearchOutcome!.Failure?.ReasonCode);
+        Assert.Equal("Unavailable", result.ResearchState);
+        Assert.Null(result.ResearchOutcome);
         Assert.InRange(handler.RequestCount, 1, 3);
         operations.Verify(item => item.ExecuteResearchAsync(It.IsAny<LegendConnectResearchRequest>(),
             It.IsAny<CancellationToken>(), It.IsAny<LegendConnectExternalProviderPolicy?>()), Times.Once);

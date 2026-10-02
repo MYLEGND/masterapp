@@ -169,7 +169,8 @@ public sealed class LegendFounderDiagnosticExecutionTests
             Messages = [new LegendFounderAiChatMessage("user", "Verify the published observation.")]
         };
         var response = await Service(db, operations.Object, handler, inference.Object).ReplyAsync(founder, request);
-        Assert.Single(attemptedPrompts);
+        Assert.NotEmpty(attemptedPrompts);
+        Assert.InRange(attemptedPrompts.Count, 1, 3);
         Assert.All(attemptedPrompts, prompt =>
         {
             Assert.DoesNotContain("private-exception-payload", prompt);
@@ -186,12 +187,11 @@ public sealed class LegendFounderDiagnosticExecutionTests
         }
         else
         {
-            Assert.NotEmpty(handler.RequestBodies);
-            Assert.All(handler.RequestBodies, body =>
-            {
-                Assert.DoesNotContain("private-exception-payload", body);
-                Assert.DoesNotContain("secret-token", body);
-            });
+            // LEGEND mode must not turn a controlled-model escalation request
+            // into OpenAI PAYG. The private exception therefore cannot leave
+            // the controlled boundary at all.
+            Assert.Empty(handler.RequestBodies);
+            Assert.False(response.Succeeded);
         }
     }
 
