@@ -394,7 +394,10 @@ jobs:
 
         lifecycle = (ROOT / "scripts" / "release-lifecycle.py").read_text()
         self.assertIn("VALIDATION_AUTHORITY.required_validation_topology(names)", lifecycle)
-        self.assertIn("VALIDATION_AUTHORITY.validation_neutral_path(path)", lifecycle)
+        self.assertIn("latest[path].get('conclusion') != 'success'", lifecycle)
+        self.assertNotIn("validation_neutral_path", lifecycle)
+        self.assertNotIn("architecture_product_validation", lifecycle)
+        self.assertNotIn("architecture_public_website_validation", lifecycle)
         self.assertNotIn("STEP6_VALIDATION_PATHS", lifecycle)
         self.assertNotIn("STEP78_VALIDATION_PATHS", lifecycle)
         self.assertNotIn("VALIDATION_NEUTRAL_PATHS =", lifecycle)
