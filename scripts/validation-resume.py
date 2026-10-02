@@ -31,7 +31,6 @@ import urllib.request
 TRUSTED_PR_BASE = "legend/approved-changes"
 DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
 RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
-MAX_HISTORICAL_EVIDENCE_RUNS = 8
 RELEASE_RESOURCE_GROUP = "masterapp-rg"
 MIGRATION_BUNDLE_NAME = "masterapp-migrations"
 ROUTING_WORKER_NAME = "legend-business-website-router"
@@ -1146,10 +1145,29 @@ def _trusted_historical_runs(args, token):
             continue
         if (run.get("head_repository") or {}).get("full_name") != args.repository:
             continue
-        pulls = run.get("pull_requests") or []
-        if not any((row.get("base") or {}).get("ref") == TRUSTED_PR_BASE for row in pulls):
+        head_sha = run.get("head_sha")
+        if not head_sha:
             continue
-        if not run.get("head_sha"):
+        pulls = run.get("pull_requests") or []
+        trusted = any(
+            (row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+            and (row.get("head") or {}).get("sha") == head_sha
+            and ((row.get("head") or {}).get("repo") or {}).get("full_name") == args.repository
+            for row in pulls
+        )
+        if not trusted:
+            associated = api_get(
+                args.repository,
+                f"commits/{head_sha}/pulls?per_page=100",
+                token,
+            )
+            trusted = any(
+                (row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+                and (row.get("head") or {}).get("sha") == head_sha
+                and ((row.get("head") or {}).get("repo") or {}).get("full_name") == args.repository
+                for row in associated
+            )
+        if not trusted:
             continue
         rows.append(run)
     rows.sort(
@@ -1181,8 +1199,6 @@ def _apply_content_equivalent_evidence(args, plan):
         return plan
 
     for run in runs:
-        if examined >= MAX_HISTORICAL_EVIDENCE_RUNS:
-            break
         head_sha = run["head_sha"]
         if head_sha in seen_heads:
             continue
