@@ -1188,18 +1188,26 @@ public sealed class LegendFounderAiConversationService
                 return LegendFounderAiChatResponse.ModeFailure(mode,
                     "The authenticated cloud request has no active delegation.",
                     "authorization", "cloudflare_scope", "cloudflare_session_scope_unavailable");
-            if (requiresGovernedInspection || request.FounderCommandConfirmed)
+            if (request.FounderCommandConfirmed)
                 return LegendFounderAiChatResponse.ModeFailure(mode,
-                    "The cloud tool connection has not completed qualification. This operation was not executed.",
-                    "governed_tool", "cloudflare_tools", "cloudflare_tool_callback_not_qualified");
+                    "Cloudflare consequential actions require the separate reviewed-action approval path. This operation was not executed.",
+                    "governed_tool", "cloudflare_tools", "cloudflare_reviewed_action_required");
             var cloudTools = _configuration.GetValue<bool>("LegendConnect:Foundation:Cloudflare:ToolCallbackEnabled")
                 ? _toolAuthority.GetAvailableCloudTools(request.ConversationId, providerPolicy)
                 : Array.Empty<object>();
+            var requireCloudToolCall = ResolveCloudflareToolRequirement(
+                requiresGovernedInspection,
+                cloudTools.Count > 0);
+            if (requiresGovernedInspection && !requireCloudToolCall)
+                return LegendFounderAiChatResponse.ModeFailure(mode,
+                    "The governed Cloudflare read catalog is unavailable for this request.",
+                    "governed_tool", "cloudflare_tools", "cloudflare_governed_read_catalog_unavailable");
             var generated = await _modelInference!.GenerateAsync(model,
                 new LegendModelTaskRequest("conversation", instructions,
-                    conversation[^1].Content ?? string.Empty, "governed_response",
+                    conversation[^1].Content ?? string.Empty, "governed_response_or_tool_request",
                     ConversationInput: JsonSerializer.SerializeToElement(input, JsonOptions),
                     Tools: JsonSerializer.SerializeToElement(cloudTools, JsonOptions), AllowTools: cloudTools.Count > 0,
+                    RequireToolCall: requireCloudToolCall,
                     ProviderPolicy: providerPolicy, RequestingActorId: cloudDelegation.UserId,
                     CloudflareScope: new(operationId.Value.ToString("D"), cloudDelegation.TenantId, cloudDelegation.UserId, cloudDelegation.SessionId,
                         request.ConversationId!, cloudDelegation.Roles, cloudDelegation.AuthorizationVersion, cloudDelegation.ExpiresUtc),
@@ -4288,6 +4296,11 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             : requireToolCall
                 ? "required"
                 : "auto";
+
+    private static bool ResolveCloudflareToolRequirement(
+        bool requiresGovernedInspection,
+        bool hasCloudTools) =>
+        requiresGovernedInspection && hasCloudTools;
 
     private static string NormalizeReasoningEffort(
         string? value)
