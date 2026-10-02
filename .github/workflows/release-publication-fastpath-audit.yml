@@ -1,0 +1,159 @@
+name: LEGEND release publication fast-path audit
+
+on:
+  push:
+    branches: [perf/release-publication-fastpath-20261002]
+    paths:
+      - .github/workflows/release-publication-fastpath-audit.yml
+      - scripts/deploy-approved-app.py
+      - scripts/validation-resume.py
+      - scripts/test-deploy-approved-app.py
+      - .github/workflows/all-intentional-direct-release-20260918.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: legend-release-publication-fastpath-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: read-only Azure publication topology
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: Production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prove slot capability without mutating Azure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import subprocess
+
+          resource_group = "masterapp-rg"
+          apps = [
+              "masterapp-portal",
+              "masterapp-client",
+              "masterapp-protect",
+              "masterapp-parfait",
+              "masterapp-website",
+          ]
+
+          def az(*args):
+              result = subprocess.run(
+                  ["az", *args, "--only-show-errors", "-o", "json"],
+                  capture_output=True,
+                  text=True,
+                  timeout=60,
+              )
+              if result.returncode:
+                  raise SystemExit(
+                      "Read-only Azure inspection failed for "
+                      + " ".join(args[:4])
+                      + ": "
+                      + result.stderr[-1000:]
+                  )
+              return json.loads(result.stdout or "null")
+
+          plans = {}
+          report = []
+          for app in apps:
+              site = az(
+                  "webapp", "show",
+                  "-g", resource_group,
+                  "-n", app,
+                  "--query",
+                  "{name:name,state:state,kind:kind,serverFarmId:serverFarmId,enabledHostNames:enabledHostNames}",
+              )
+              plan_id = site.get("serverFarmId")
+              if not isinstance(plan_id, str) or not plan_id:
+                  raise SystemExit(f"{app}: App Service plan identity missing")
+              if plan_id not in plans:
+                  plans[plan_id] = az(
+                      "appservice", "plan", "show",
+                      "--ids", plan_id,
+                      "--query",
+                      "{name:name,skuName:sku.name,skuTier:sku.tier,capacity:sku.capacity,reserved:reserved,kind:kind}",
+                  )
+
+              config = az(
+                  "webapp", "config", "show",
+                  "-g", resource_group,
+                  "-n", app,
+                  "--query",
+                  "{alwaysOn:alwaysOn,healthCheckPath:healthCheckPath,http20Enabled:http20Enabled,linuxFxVersion:linuxFxVersion,minimumElasticInstanceCount:minimumElasticInstanceCount}",
+              )
+              slots = az(
+                  "webapp", "deployment", "slot", "list",
+                  "-g", resource_group,
+                  "-n", app,
+                  "--query",
+                  "[].{name:name,state:state}",
+              )
+              setting_names = az(
+                  "webapp", "config", "appsettings", "list",
+                  "-g", resource_group,
+                  "-n", app,
+                  "--query",
+                  "[].name",
+              )
+              report.append({
+                  "app": app,
+                  "state": site.get("state"),
+                  "kind": site.get("kind"),
+                  "plan": plans[plan_id],
+                  "alwaysOn": config.get("alwaysOn"),
+                  "healthCheckPath": config.get("healthCheckPath"),
+                  "http20Enabled": config.get("http20Enabled"),
+                  "linuxFxVersionConfigured": bool(config.get("linuxFxVersion")),
+                  "existingSlots": slots if isinstance(slots, list) else [],
+                  "slotRelatedSettingNames": sorted(
+                      name for name in (setting_names or [])
+                      if isinstance(name, str)
+                      and any(token in name.upper() for token in (
+                          "SLOT", "WARMUP", "HEALTH", "BACKGROUND", "WORKER", "JOB"
+                      ))
+                  ),
+              })
+
+          # This audit deliberately does not assert eligibility. Standard/Premium
+          # plan capability is necessary but not sufficient: runtime side-effect
+          # isolation must also be proven before a pre-warmed slot can be authorized.
+          print(json.dumps({"resourceGroup": resource_group, "apps": report}, sort_keys=True, indent=2))
+          PY
+
+      - name: Assert audit remained read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          workflow = pathlib.Path(".github/workflows/release-publication-fastpath-audit.yml").read_text()
+          forbidden = (
+              "slot create",
+              "slot swap",
+              "webapp deploy",
+              "config appsettings set",
+              "webapp restart",
+              "deployment source config-zip",
+          )
+          lowered = workflow.lower()
+          for token in forbidden:
+              if token in lowered:
+                  raise SystemExit("Mutation token present in read-only audit: " + token)
+          print("Read-only publication topology audit confirmed.")
+          PY
