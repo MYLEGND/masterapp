@@ -105,13 +105,33 @@ def current_worker_version(account, worker):
     versions = deployments[0].get("versions") if deployments else []
     return str(versions[0].get("version_id") or "") if versions else ""
 
-def restore_worker(account, worker, version):
+def worker_subdomain_enabled(account, worker):
+    result = cloudflare(f"/accounts/{account}/workers/scripts/{worker}/subdomain", allow_404=True)
+    if result is None:
+        return False
+    enabled = result.get("enabled")
+    if not isinstance(enabled, bool):
+        raise RuntimeError("founder_worker_subdomain_state_invalid")
+    return enabled
+
+def set_worker_subdomain(account, worker, enabled):
+    result = cloudflare(
+        f"/accounts/{account}/workers/scripts/{worker}/subdomain",
+        "POST",
+        {"enabled": bool(enabled)},
+    )
+    observed = result.get("enabled")
+    if observed != bool(enabled):
+        raise RuntimeError("founder_worker_subdomain_activation_failed")
+
+def restore_worker(account, worker, version, subdomain_enabled=False):
     if version:
         cloudflare(f"/accounts/{account}/workers/scripts/{worker}/deployments", "POST", {
             "strategy": "percentage",
             "versions": [{"version_id": version, "percentage": 100}],
             "annotations": {"workers/message": "Automatic LEGEND Founder baseline rollback"},
         })
+        set_worker_subdomain(account, worker, subdomain_enabled)
     else:
         cloudflare(f"/accounts/{account}/workers/scripts/{worker}", "DELETE", allow_404=True)
 
@@ -184,9 +204,12 @@ def deploy(state_path, receipt_path):
     service_keys = {service_key_id: service_key}
     worker = worker_name()
     previous_version = current_worker_version(account, worker)
+    previous_subdomain_enabled = worker_subdomain_enabled(account, worker) if previous_version else False
     state = {
         "schemaVersion": 1, "resourceGroup": group, "app": app, "accountId": account,
-        "worker": worker, "previousWorkerVersion": previous_version, "previousSettings": snapshot(rows),
+        "worker": worker, "previousWorkerVersion": previous_version,
+        "previousWorkerSubdomainEnabled": previous_subdomain_enabled,
+        "previousSettings": snapshot(rows),
         "portalModified": False, "workerModified": False,
     }
     write_state(state_path, state)
@@ -213,6 +236,11 @@ def deploy(state_path, receipt_path):
         ):
             run("npx", "wrangler", "secret", "put", name, "--config", release_config.name,
                 input_text=secret_value, cwd=CF)
+
+        if not worker_subdomain_enabled(account, worker):
+            set_worker_subdomain(account, worker, True)
+        if not worker_subdomain_enabled(account, worker):
+            raise RuntimeError("founder_worker_subdomain_not_enabled")
 
         subdomain = cloudflare(f"/accounts/{account}/workers/subdomain").get("subdomain")
         if not isinstance(subdomain, str) or not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", subdomain):
@@ -262,7 +290,8 @@ def deploy(state_path, receipt_path):
         try:
             if state.get("portalModified"): restore_settings(group, app, state["previousSettings"])
         finally:
-            if state.get("workerModified"): restore_worker(account, worker, previous_version)
+            if state.get("workerModified"):
+                restore_worker(account, worker, previous_version, previous_subdomain_enabled)
         raise
     finally:
         release_config.unlink(missing_ok=True)
@@ -272,7 +301,13 @@ def rollback(state_path):
     state = json.loads(state_path.read_text())
     group, app, account, worker = (state[k] for k in ("resourceGroup","app","accountId","worker"))
     if state.get("portalModified"): restore_settings(group, app, state.get("previousSettings") or [])
-    if state.get("workerModified"): restore_worker(account, worker, state.get("previousWorkerVersion") or "")
+    if state.get("workerModified"):
+        restore_worker(
+            account,
+            worker,
+            state.get("previousWorkerVersion") or "",
+            bool(state.get("previousWorkerSubdomainEnabled", False)),
+        )
     print("Restored the pre-release LEGEND Founder Cloudflare state.")
 
 def main():
