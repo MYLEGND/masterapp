@@ -1099,14 +1099,6 @@ jobs:
           name: translation-direct-release-${{ github.sha }}
           path: /tmp/translation-results/
           if-no-files-found: warn
-      - name: Retain exact release step-state receipt
-        if: always()
-        run: |
-          echo "Release step state is captured by the post-release receipt job after this job reaches a terminal outcome."
-      - name: Preserve exact release step-state receipt
-        if: always()
-        run: |
-          echo "Deferred to post-release receipt job so every named release step has a terminal status."
       - name: Enforce complete direct deployment outcome
         if: always()
         env:
@@ -1271,10 +1263,12 @@ jobs:
         run: |
           set -euo pipefail
           jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100")"
-          printf '%s' "$jobs" | python3 - "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$APPLICATION_RELEASE_SHA" "$PACKAGE_IDENTITY" "$SELECTED_TARGETS" <<'PYSTATE'
+          printf '%s' "$jobs" > "$RUNNER_TEMP/release-jobs.json"
+          python3 - "$RUNNER_TEMP/release-jobs.json" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$APPLICATION_RELEASE_SHA" "$PACKAGE_IDENTITY" "$SELECTED_TARGETS" <<'PYSTATE'
           import json,sys
-          payload=json.load(sys.stdin)
-          run_id,attempt,release_sha,application_sha,package_identity,targets=sys.argv[1:]
+          jobs_path,run_id,attempt,release_sha,application_sha,package_identity,targets=sys.argv[1:]
+          with open(jobs_path) as source:
+              payload=json.load(source)
           release_jobs=[row for row in payload.get('jobs',[]) if row.get('name')=='release']
           if len(release_jobs)!=1:
               raise SystemExit('Expected exactly one terminal release job')
@@ -1290,8 +1284,10 @@ jobs:
               }
               for step in job.get('steps',[])
           ]
-          if not steps or any(not row['name'] for row in steps):
-              raise SystemExit('Release step inventory missing or malformed')
+          if any(not row['name'] for row in steps):
+              raise SystemExit('Release step inventory malformed')
+          if not steps and job.get('conclusion')!='skipped':
+              raise SystemExit('Terminal non-skipped release job has no step inventory')
           state={
               'schemaVersion':2,
               'runId':int(run_id),
