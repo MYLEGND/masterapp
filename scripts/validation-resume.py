@@ -44,6 +44,7 @@ RELEASE_TARGETS = {
         "host": "portal.mylegnd.com",
         "azureHost": "masterapp-portal.azurewebsites.net",
         "project": "AgentPortal/AgentPortal.csproj",
+        "sourceRoot": "AgentPortal",
         "package": "agentportal.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("portal.mylegnd.com", "masterapp-portal.azurewebsites.net"),
@@ -54,6 +55,7 @@ RELEASE_TARGETS = {
         "host": "client.mylegnd.com",
         "azureHost": "masterapp-client.azurewebsites.net",
         "project": "ClientApp/ClientApp.csproj",
+        "sourceRoot": "ClientApp",
         "package": "clientapp.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("client.mylegnd.com", "masterapp-client.azurewebsites.net"),
@@ -64,6 +66,7 @@ RELEASE_TARGETS = {
         "host": "masterapp-protect.azurewebsites.net",
         "azureHost": "masterapp-protect.azurewebsites.net",
         "project": "Protect-Website/ProtectWebsite.csproj",
+        "sourceRoot": "Protect-Website",
         "package": "protect.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("masterapp-protect.azurewebsites.net",),
@@ -74,6 +77,7 @@ RELEASE_TARGETS = {
         "host": "masterapp-parfait.azurewebsites.net",
         "azureHost": "masterapp-parfait.azurewebsites.net",
         "project": "ParfaitApp/ParfaitApp.csproj",
+        "sourceRoot": "ParfaitApp",
         "package": "parfait.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("masterapp-parfait.azurewebsites.net",),
@@ -84,6 +88,7 @@ RELEASE_TARGETS = {
         "host": "masterapp-website.azurewebsites.net",
         "azureHost": "masterapp-website.azurewebsites.net",
         "project": "static",
+        "sourceRoot": "Legend-Website",
         "package": "website.zip",
         "provenancePath": "/_deployment-provenance.txt",
         "proofHosts": ("masterapp-website.azurewebsites.net", "mylegnd.com", "www.mylegnd.com"),
@@ -91,29 +96,54 @@ RELEASE_TARGETS = {
     },
 }
 
-# Scope combinations are authorization policy, not deployment discovery. Keep them
-# beside the inventory so validation, baseline resolution and deployment cannot
-# drift into separate notions of what a selectable application is.
-ALLOWED_RELEASE_TARGET_SETS = frozenset({
-    frozenset({"masterapp-website"}),
-    frozenset({"masterapp-protect"}),
-    frozenset({"masterapp-client"}),
-    frozenset({"masterapp-client", "masterapp-protect"}),
-    frozenset({"masterapp-protect", "masterapp-website"}),
-    frozenset({"masterapp-parfait"}),
-    frozenset({"masterapp-protect", "masterapp-parfait"}),
-    frozenset({"masterapp-protect", "masterapp-parfait", "masterapp-website"}),
-    frozenset({"masterapp-portal"}),
-    frozenset({"masterapp-portal", "masterapp-protect"}),
-    frozenset({"masterapp-portal", "masterapp-client"}),
-    frozenset({"masterapp-portal", "masterapp-client", "masterapp-protect"}),
-    frozenset({"masterapp-portal", "masterapp-client", "masterapp-parfait"}),
-    frozenset({"masterapp-portal", "masterapp-protect", "masterapp-website"}),
-    frozenset({"masterapp-portal", "masterapp-client", "masterapp-protect", "masterapp-website"}),
-    frozenset({"masterapp-portal", "masterapp-client", "masterapp-protect", "masterapp-parfait"}),
-    frozenset({"masterapp-portal", "masterapp-protect", "masterapp-parfait", "masterapp-website"}),
-    frozenset({"masterapp-portal", "masterapp-client", "masterapp-protect", "masterapp-parfait", "masterapp-website"}),
-})
+def release_name_map():
+    return {row["releaseName"]: key for key, row in RELEASE_TARGETS.items()}
+
+
+def selected_release_target_keys(names, *, allow_empty=False):
+    by_name = release_name_map()
+    if (
+        not isinstance(names, list)
+        or (not allow_empty and not names)
+        or len(names) != len(set(names))
+        or any(not isinstance(name, str) or name not in by_name for name in names)
+    ):
+        raise ValueError("Selected release targets do not match canonical inventory")
+    selected = set(names)
+    return tuple(
+        key for key, row in RELEASE_TARGETS.items()
+        if row["releaseName"] in selected
+    )
+
+
+def release_targets_for_paths(paths):
+    """Derive publication scope from the validated PR without a parallel scope table.
+
+    A target owns its canonical sourceRoot. Release-control/test-only changes need
+    no application publication. Any application path not owned by exactly one
+    target is treated as shared/unknown and expands fail-closed to the complete
+    inventory so a new shared source cannot be silently omitted.
+    """
+    application_paths = [
+        path for path in dict.fromkeys(paths)
+        if not release_control_only_path(path)
+    ]
+    if not application_paths:
+        return tuple()
+
+    selected = set()
+    for path in application_paths:
+        owners = [
+            key for key, row in RELEASE_TARGETS.items()
+            if path == row["sourceRoot"] or path.startswith(row["sourceRoot"] + "/")
+        ]
+        if len(owners) != 1:
+            return tuple(row["releaseName"] for row in RELEASE_TARGETS.values())
+        selected.add(owners[0])
+    return tuple(
+        row["releaseName"] for key, row in RELEASE_TARGETS.items()
+        if key in selected
+    )
 
 LIFECYCLE_AUTHORITY_PATHS = (
     ".github/workflows/legend-release-lifecycle.yml",
@@ -1440,16 +1470,7 @@ def required_validation_topology(changed_paths):
 
 
 def _selected_release_targets(raw: str):
-    names = json.loads(raw)
-    by_name = {row["releaseName"]: key for key, row in RELEASE_TARGETS.items()}
-    if (
-        not isinstance(names, list)
-        or not names
-        or len(names) != len(set(names))
-        or any(name not in by_name for name in names)
-    ):
-        raise ValueError("Selected release targets do not match canonical inventory")
-    return tuple(by_name[name] for name in names)
+    return selected_release_target_keys(json.loads(raw))
 
 
 def _read_provenance(host: str, target, revision: str):
