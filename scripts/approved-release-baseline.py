@@ -129,7 +129,14 @@ def observe(target):
         if len(body) > 8192:
             raise ValueError('Oversized provenance response')
         revision = body.decode().strip() if project == 'static' else json.loads(body)['sourceRevision']
-    return dict(app=app, host=host, project=project, path=path, revision=validate_revision(revision))
+    return dict(
+        app=app,
+        releaseName=_validation_authority.RELEASE_TARGETS[app]["releaseName"],
+        host=host,
+        project=project,
+        path=path,
+        revision=validate_revision(revision),
+    )
 
 
 def main():
