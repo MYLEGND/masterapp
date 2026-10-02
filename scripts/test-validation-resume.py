@@ -304,6 +304,10 @@ jobs:
         self.assertIn("candidate_focused_run", workflow)
         self.assertIn("candidate_full_run", workflow)
         self.assertIn("comparison_run", workflow)
+        self.assertIn("Preserve effective Step 5 candidate evidence", workflow)
+        self.assertIn("Preserve effective Step 5 baseline evidence", workflow)
+        self.assertIn("/tmp/step5-effective/candidate.trx", workflow)
+        self.assertIn("/tmp/step5-effective/baseline.trx", workflow)
 
     def test_new_release_step_is_automatically_fail_closed_without_registry_edit(self):
         path = ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
