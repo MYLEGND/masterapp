@@ -72,6 +72,7 @@ jobs:
       selected_has_static: ${{ steps.live.outputs.selected_has_static }}
       selected_has_shared_auth: ${{ steps.live.outputs.selected_has_shared_auth }}
       selected_has_editor: ${{ steps.live.outputs.selected_has_editor }}
+      selected_database_dependent: ${{ steps.live.outputs.selected_database_dependent }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -257,6 +258,7 @@ jobs:
       SELECTED_HAS_STATIC: ${{ needs.discover-live.outputs.selected_has_static }}
       SELECTED_HAS_SHARED_AUTH: ${{ needs.discover-live.outputs.selected_has_shared_auth }}
       SELECTED_HAS_EDITOR: ${{ needs.discover-live.outputs.selected_has_editor }}
+      SELECTED_DATABASE_DEPENDENT: ${{ needs.discover-live.outputs.selected_database_dependent }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1198,7 +1200,7 @@ jobs:
       - name: Preserve target-specific successful release receipt
         uses: actions/upload-artifact@v4
         with:
-          name: legend-approved-release-${{ needs.discover-live.outputs.application_release_sha }}-${{ matrix.app }}
+          name: legend-approved-release-${{ needs.discover-live.outputs.application_release_sha }}-${{ matrix.releaseName }}
           path: /tmp/target-release-receipt.json
           retention-days: 90
           if-no-files-found: error
