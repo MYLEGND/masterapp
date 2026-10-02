@@ -453,6 +453,81 @@ jobs:
         self.assertEqual(["AgentPortal/Program.cs"], plan["changedInputs"])
         self.assertEqual("package_or_application_inputs_changed_since_proof", plan["reason"])
 
+    def test_validated_package_accepts_guarded_historical_backfill(self):
+        revision = "a" * 40
+        identity = "b" * 64
+        artifact = f"founder-diagnostics-packages-{identity}"
+        receipt = f"validated-package-backfill-{revision}-{identity}"
+        run = {
+            "id": 77,
+            "path": ".github/workflows/masterapp-platform-architecture-validation.yml",
+            "event": "pull_request",
+            "status": "completed",
+            "conclusion": "success",
+            "head_sha": "c" * 40,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+            "pull_requests": [{"base": {"ref": m.TRUSTED_PR_BASE}}],
+        }
+        required = (
+            "Resolve pending validated historical application revision",
+            "Build immutable validated release package for preserved revision",
+            "Verify immutable validated release package for preserved revision",
+            "Preserve immutable validated release package for preserved revision",
+            "Preserve historical package backfill receipt",
+        )
+        jobs = {
+            "jobs": [{
+                "name": "historical-validated-package-backfill",
+                "conclusion": "success",
+                "steps": [{"name": name, "conclusion": "success"} for name in required],
+            }]
+        }
+        def api(_repository, path, _token):
+            if path == "actions/runs/77":
+                return run
+            if path == "actions/runs/77/jobs?filter=latest&per_page=100":
+                return jobs
+            raise AssertionError(path)
+
+        with patch.object(m, "_artifact_rows", return_value=[
+            {"workflow_run": {"id": 77}, "expired": False}
+        ]), patch.object(m, "_run_artifact_names", return_value={artifact, receipt}), \
+             patch.object(m, "api_get", side_effect=api), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            result = m.compute_validated_package_evidence(
+                "MYLEGND/masterapp", revision, identity
+            )
+
+        self.assertTrue(result["reusable"])
+        self.assertEqual(77, result["runId"])
+        self.assertEqual("historical_validated_package_backfill", result["reason"])
+
+    def test_validated_package_rejects_backfill_without_bound_receipt(self):
+        revision = "a" * 40
+        identity = "b" * 64
+        artifact = f"founder-diagnostics-packages-{identity}"
+        run = {
+            "id": 78,
+            "path": ".github/workflows/masterapp-platform-architecture-validation.yml",
+            "event": "pull_request",
+            "status": "completed",
+            "conclusion": "success",
+            "head_sha": "c" * 40,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+            "pull_requests": [{"base": {"ref": m.TRUSTED_PR_BASE}}],
+        }
+        with patch.object(m, "_artifact_rows", return_value=[
+            {"workflow_run": {"id": 78}, "expired": False}
+        ]), patch.object(m, "_run_artifact_names", return_value={artifact}), \
+             patch.object(m, "api_get", return_value=run), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            result = m.compute_validated_package_evidence(
+                "MYLEGND/masterapp", revision, identity
+            )
+
+        self.assertFalse(result["reusable"])
+        self.assertEqual("exact_validated_package_missing", result["reason"])
+
     def test_release_baseline_delegates_application_identity_classification(self):
         baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
         self.assertIn("_validation_authority.release_control_only_path(path)", baseline)
