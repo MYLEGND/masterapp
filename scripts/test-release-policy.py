@@ -13,6 +13,30 @@ from release_policy import read_request, staging_only
 ROOT = Path(__file__).resolve().parent
 
 
+class FounderCloudflareCommandExecution(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location(
+            'founder_cloudflare_deploy',
+            ROOT / 'deploy-founder-cloudflare.py',
+        )
+        self.deploy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.deploy)
+
+    def test_non_capture_run_executes_command(self):
+        completed = SimpleNamespace(stdout='ignored')
+        with patch.object(self.deploy.subprocess, 'run', return_value=completed) as run:
+            result = self.deploy.run('echo', 'hello', capture=False)
+        run.assert_called_once()
+        self.assertIsNone(result)
+
+    def test_capture_run_executes_command_and_returns_stdout(self):
+        completed = SimpleNamespace(stdout='captured')
+        with patch.object(self.deploy.subprocess, 'run', return_value=completed) as run:
+            result = self.deploy.run('echo', 'hello', capture=True)
+        run.assert_called_once()
+        self.assertEqual('captured', result)
+
+
 class ReleaseScopeSelection(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location('baseline_scope', ROOT / 'approved-release-baseline.py')
