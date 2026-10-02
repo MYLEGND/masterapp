@@ -2259,49 +2259,109 @@ def cmd_step5_decision(args):
     print(json.dumps(decision, indent=2, sort_keys=True))
 
 
+def _step5_baseline_inputs_equivalent(prior_base_sha: str, current_base_sha: str) -> bool:
+    """Compare only inputs that can change the full Step 5 baseline result."""
+    if prior_base_sha == current_base_sha:
+        return True
+    gate = WORKFLOWS["step5-isolated-conversion-mapping-validation.yml"]["gates"]["candidate-full"]
+    return not any(
+        gate_matches(path, gate)
+        for path in git_changed(prior_base_sha, current_base_sha)
+    )
+
+
 def compute_step5_baseline_evidence(repository: str, base_sha: str):
     result = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "approvedBaseSha": base_sha,
         "reusable": False,
         "evidenceRunId": None,
         "evidenceArtifact": None,
+        "evidenceBaseSha": None,
     }
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
         result["reason"] = "github_token_unavailable"
         return result
-    tree = subprocess.check_output(
-        ["git", "rev-parse", f"{base_sha}^{{tree}}"],
-        text=True,
-    ).strip()
-    workflow_path = WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
-    for artifact_name in (f"step5-tree-candidate-{tree}", f"step5-tree-baseline-{tree}"):
-        for artifact in _artifact_rows(repository, artifact_name, token):
-            run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
-            if not run_id:
-                continue
-            run = api_get(repository, f"actions/runs/{run_id}", token)
-            run_head = run.get("head_sha") or ""
-            if not (
-                run.get("path") == workflow_path
-                and run.get("event") == "pull_request"
-                and run.get("status") == "completed"
-                and (run.get("head_repository") or {}).get("full_name") == repository
-                and len(run_head) == 40
-            ):
-                continue
-            if not _step5_jobs_unchanged(run_head, workflow_path):
-                continue
-            result.update({
-                "reusable": True,
-                "evidenceRunId": run_id,
-                "evidenceArtifact": artifact_name,
-                "tree": tree,
-                "reason": "content_identical_approved_tree",
-            })
+
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+
+    def accept(run, artifact_name, evidence_base_sha):
+        run_id = int(run.get("id") or 0)
+        run_head = run.get("head_sha") or ""
+        if not (
+            run_id
+            and run.get("path") == workflow_path
+            and run.get("event") == "pull_request"
+            and run.get("status") == "completed"
+            and (run.get("head_repository") or {}).get("full_name") == repository
+            and len(run_head) == 40
+            and len(evidence_base_sha) == 40
+        ):
+            return False
+        if not _step5_jobs_unchanged(run_head, workflow_path):
+            return False
+        if not _step5_baseline_inputs_equivalent(evidence_base_sha, base_sha):
+            return False
+        result.update({
+            "reusable": True,
+            "evidenceRunId": run_id,
+            "evidenceArtifact": artifact_name,
+            "evidenceBaseSha": evidence_base_sha,
+            "reason": (
+                "exact_approved_baseline_evidence"
+                if evidence_base_sha == base_sha
+                else "content_identical_step5_inputs"
+            ),
+        })
+        return True
+
+    # Fast path: an artifact already keyed to the exact approved base.
+    exact_name = f"step5-baseline-{base_sha}"
+    for artifact in _artifact_rows(repository, exact_name, token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        if accept(run, exact_name, base_sha):
             return result
-    result["tree"] = tree
+
+    # Control-only commits must not invalidate a full baseline suite. Search recent
+    # completed Step 5 runs for a durable baseline artifact whose declared test
+    # inputs are tree-equivalent to the current approved base.
+    workflow = urllib.parse.quote(workflow_name, safe="")
+    payload = api_get(
+        repository,
+        f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = sorted(
+        payload.get("workflow_runs", []),
+        key=lambda row: (row.get("updated_at") or row.get("created_at", ""), int(row.get("id", 0))),
+        reverse=True,
+    )
+    for run in runs:
+        run_id = int(run.get("id") or 0)
+        if not run_id:
+            continue
+        try:
+            names = _run_artifact_names(repository, run_id, token)
+        except Exception:
+            continue
+        for artifact_name in sorted(names):
+            prefix = "step5-baseline-"
+            if not artifact_name.startswith(prefix):
+                continue
+            evidence_base_sha = artifact_name[len(prefix):]
+            if len(evidence_base_sha) != 40 or any(ch not in "0123456789abcdef" for ch in evidence_base_sha):
+                continue
+            try:
+                if accept(run, artifact_name, evidence_base_sha):
+                    return result
+            except Exception:
+                continue
+
     result["reason"] = "no_content_identical_baseline_artifact"
     return result
 
