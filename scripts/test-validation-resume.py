@@ -325,31 +325,29 @@ jobs:
         )
 
     def test_release_inventory_is_single_canonical_source_for_baseline_and_live_proof(self):
-        names = {row["releaseName"] for row in m.RELEASE_TARGETS.values()}
-        self.assertEqual(
-            {
-                "masterapp-portal",
-                "masterapp-client",
-                "masterapp-protect",
-                "masterapp-parfait",
-                "masterapp-website",
-            },
-            names,
-        )
+        self.assertTrue(m.RELEASE_TARGETS)
+        names = [row["releaseName"] for row in m.RELEASE_TARGETS.values()]
+        self.assertEqual(len(names), len(set(names)))
         self.assertTrue(all(row.get("proofHosts") for row in m.RELEASE_TARGETS.values()))
+        self.assertTrue(all(row.get("sourceRoot") for row in m.RELEASE_TARGETS.values()))
+        self.assertTrue(all(row.get("package") for row in m.RELEASE_TARGETS.values()))
 
         baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
         self.assertIn("_validation_authority.release_target_rows()", baseline)
-        self.assertIn("_validation_authority.ALLOWED_RELEASE_TARGET_SETS", baseline)
-        self.assertNotIn("('portal', 'portal.mylegnd.com'", baseline)
+        self.assertIn("_validation_authority.selected_release_target_keys", baseline)
+        self.assertNotIn("ALLOWED_RELEASE_TARGET_SETS", baseline)
 
         release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
         self.assertIn("scripts/validation-resume.py live-state", release)
         self.assertIn("scripts/validation-resume.py verify-live", release)
-        live_step = release.split("      - name: Preserve targets already live at exact candidate\n", 1)[1].split("      - name:", 1)[0]
-        proof_step = release.split("      - name: Verify every deployed target and collect all failures\n", 1)[1].split("      - uses:", 1)[0]
-        self.assertNotIn("portal.mylegnd.com", live_step)
-        self.assertNotIn("masterapp-website.azurewebsites.net", proof_step)
+        self.assertIn("Publish selected head as one transaction", release)
+        for row in m.RELEASE_TARGETS.values():
+            self.assertNotIn(row["releaseName"], release)
+            self.assertNotIn(row["azureHost"], release)
+        self.assertNotIn(m.RELEASE_RESOURCE_GROUP, release)
+        self.assertNotIn(m.MIGRATION_BUNDLE_NAME, release)
+        self.assertNotIn(m.ROUTING_WORKER_NAME, release)
+        self.assertNotIn(m.DOMAIN_REFRESH_PROJECT, release)
 
     def test_lifecycle_and_release_evidence_lookup_are_canonicalized(self):
         lifecycle = (ROOT / ".github" / "workflows" / "legend-release-lifecycle.yml").read_text()
