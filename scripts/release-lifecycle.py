@@ -300,7 +300,19 @@ def pending_updates(api):
     retained_candidates = []
     for pr in reversed(pulls):
         if ready(pr, api.repo, APPROVED):
-            result = integrate(api, pr['number'])
+            # The open-PR collection is only a discovery snapshot. A serialized
+            # lifecycle can wait behind another merge long enough for that PR's
+            # draft/state/association/base/head readiness to change. Re-read the
+            # exact PR before mutation; stale discovery must retain and continue,
+            # never abort reconciliation or starve a later validated candidate.
+            fresh = api.api(f"pulls/{pr['number']}")
+            if not ready(fresh, api.repo, APPROVED):
+                retained_candidates.append({
+                    'pr': pr['number'],
+                    'reason': 'PR readiness changed after discovery; retained without mutation',
+                })
+                continue
+            result = merge_validated(api, fresh)
             if 'retained' not in result:
                 return result
             retained_candidates.append({
