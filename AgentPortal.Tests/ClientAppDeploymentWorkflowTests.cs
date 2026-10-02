@@ -40,13 +40,15 @@ public sealed class ClientAppDeploymentWorkflowTests
     public void ReleasePackagesAllSelectedDotnetAppsFromOneApprovedCheckout()
     {
         var workflow = DirectRelease();
+        Assert.Contains("Load exact preserved deployable package", workflow, StringComparison.Ordinal);
         Assert.Contains("Publish exact selected application packages", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet publish AgentPortal/AgentPortal.csproj", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet publish ClientApp/ClientApp.csproj", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet publish Protect-Website/ProtectWebsite.csproj", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet publish ParfaitApp/ParfaitApp.csproj", workflow, StringComparison.Ordinal);
-        Assert.Contains("SourceRevisionId=\"$APPLICATION_RELEASE_SHA\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/release-package.py verify", workflow, StringComparison.Ordinal);
+        Assert.Contains("production rebuild is forbidden", workflow, StringComparison.Ordinal);
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet publish AgentPortal/AgentPortal.csproj", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet publish ClientApp/ClientApp.csproj", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet publish Protect-Website/ProtectWebsite.csproj", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet publish ParfaitApp/ParfaitApp.csproj", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -91,8 +93,9 @@ public sealed class ClientAppDeploymentWorkflowTests
     public void PublishedTargetsAreProvenByRuntimeProvenanceNotBranchPromotion()
     {
         var workflow = DirectRelease();
-        Assert.Contains("api/runtime-provenance", workflow, StringComparison.Ordinal);
-        Assert.Contains("_deployment-provenance.txt", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/validation-resume.py live-state", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/validation-resume.py verify-live", workflow, StringComparison.Ordinal);
+        Assert.Contains("APPLICATION_RELEASE_SHA", workflow, StringComparison.Ordinal);
         Assert.Contains("preservedExactLiveTargets", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("refs/heads/production", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("base=production", workflow, StringComparison.Ordinal);
