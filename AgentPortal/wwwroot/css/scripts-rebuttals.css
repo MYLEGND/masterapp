@@ -1455,9 +1455,9 @@ details.section{
     border-color: rgba(166,128,35,.9);
     box-shadow: 0 0 0 4px rgba(166,128,35,.12), 0 14px 28px rgba(166,128,35,.10);
 }
-    
 
-    
+
+
 
     #mpShell .hero-actions{
         display:grid;
@@ -1509,183 +1509,183 @@ details.section{
         transform: translateY(-1px);
     }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* ===== LEFT NAV — SAME COLOR LOGIC STRUCTURE AS REBUTTALS ===== */
-    
 
-    
 
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* ===== SECTION STYLING ===== */
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     #mpShell .script{
         margin: 0;
@@ -1702,7 +1702,7 @@ details.section{
         box-shadow: 0 12px 28px rgba(0,0,0,.08);
     }
 
-    
+
 
     #mpShell .script .fill{
         color:#0b5ed7;
@@ -1731,74 +1731,74 @@ details.section{
         font-weight: 800;
     }
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* ===== CURRENT / ACTIVE STEP — VERY OBVIOUS ===== */
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* === DisabilityInsuranceRebuttals.cshtml === */
 
-    
 
-    
+
+
 
 #rbShell .rb-hero{
     width:min(100%, 1120px);
@@ -1818,13 +1818,13 @@ details.section{
     flex-wrap:wrap;
 }
 
-    
+
 
     #rbShell .rb-back{
         position:static;
     }
 
-    
+
 
     #rbShell .rb-hero-top{
         display:flex;
@@ -1844,7 +1844,7 @@ details.section{
         width:100%;
     }
 
-    
+
 
 #rbShell .hero-actions,
 #mpShell .hero-actions{
@@ -2700,18 +2700,18 @@ details.section{
         transform: translateY(-1px);
     }
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
+
+
+
+
+
+
+
+
 
 
 
@@ -2736,21 +2736,21 @@ details.section{
         background: transparent;
     }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
 
     #rbShell .cat-btn{
         position:relative;
@@ -2767,27 +2767,27 @@ details.section{
         box-shadow: 0 8px 18px rgba(166,128,35,.06);
     }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
         50%{
             box-shadow:
                 0 0 0 6px rgba(255,216,107,.34),
@@ -2798,40 +2798,40 @@ details.section{
         }
     }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     #rbShell .cat-note{
         margin-top:4px;
@@ -2846,78 +2846,78 @@ details.section{
         overflow:hidden;
     }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     #rbShell pre.script{
         margin:0;
@@ -2936,305 +2936,305 @@ details.section{
         box-shadow: 0 12px 28px rgba(0,0,0,.08);
     }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* === FinalExpense.cshtml === */
 
-    
 
-    
+
+
 
     /* ===== LEFT NAV — SAME COLOR LOGIC STRUCTURE AS REBUTTALS ===== */
-    
 
-    
 
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* ===== SECTION STYLING ===== */
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* ===== CURRENT / ACTIVE STEP — VERY OBVIOUS ===== */
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* === FinalExpenseRebuttals.cshtml === */
 
-    
 
-    
+
+
 
     #rbShell .rb-hero{
         width: 100%;
@@ -3250,30 +3250,30 @@ details.section{
         position: relative;
     }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         50%{
             box-shadow:
                 0 0 0 6px rgba(255,216,107,.34),
@@ -3284,35 +3284,20 @@ details.section{
         }
     }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
 
 
@@ -3321,165 +3306,180 @@ details.section{
 
 
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* === Index.cshtml === */
 
@@ -4034,247 +4034,247 @@ details.section{
 
 /* === LifeInsurance.cshtml === */
 
-    
 
-    
+
+
 
     /* ===== LEFT NAV — SAME COLOR LOGIC STRUCTURE AS REBUTTALS ===== */
-    
 
-    
 
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* ===== SECTION STYLING ===== */
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* ===== CURRENT / ACTIVE STEP — VERY OBVIOUS ===== */
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* === LifeInsuranceRebuttals.cshtml === */
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         50%{
             box-shadow:
                 0 0 0 6px rgba(255,216,107,.34),
@@ -4285,40 +4285,40 @@ details.section{
         }
     }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #rbShell .cat-note{
     margin-top:4px;
@@ -4336,165 +4336,165 @@ details.section{
     overflow:hidden;
 }
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
-    
-    
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* === ProsperAgedMortgageProtection.cshtml === */
 
