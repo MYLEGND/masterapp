@@ -108,6 +108,36 @@ class DirectAuthorization(unittest.TestCase):
         self.assertFalse(m.direct_only_request(m.git("rev-parse", "HEAD").stdout.strip()))
 
 
+    def test_product_merge_can_carry_release_authorization_with_application_files(self):
+        m.git("checkout", "-b", "product")
+        path = Path("Docs/releases/direct-release-request.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "releaseMode": "approved-only",
+            "targets": [canonical_name("portal")],
+        }))
+        Path("product.txt").write_text("validated product change")
+        m.git("add", ".")
+        m.git("commit", "-m", "validated product plus release request")
+        m.git("checkout", m.APPROVED)
+        m.git("merge", "--no-ff", "product", "-m", "merge validated product")
+        merged = m.git("rev-parse", "HEAD").stdout.strip()
+
+        self.assertTrue(m.direct_only_request(merged))
+
+    def test_product_merge_without_request_change_is_not_new_authorization(self):
+        self.authorize()
+        m.git("checkout", "-b", "product")
+        Path("product.txt").write_text("validated product change")
+        m.git("add", ".")
+        m.git("commit", "-m", "validated product only")
+        m.git("checkout", m.APPROVED)
+        m.git("merge", "--no-ff", "product", "-m", "merge validated product")
+        merged = m.git("rev-parse", "HEAD").stdout.strip()
+
+        self.assertFalse(m.direct_only_request(merged))
+
+
 class BranchSafety(unittest.TestCase):
     def branch(self, name="work", sha="b" * 40, protected=False):
         return {"name": name, "commit": {"sha": sha}, "protected": protected}
