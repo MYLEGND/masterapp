@@ -756,38 +756,34 @@ jobs:
           )
           print('Schema ready. Executed the exact validated migration bundle from the proven live database baseline.')
           PYMIGRATE
-      - name: Direct deploy AgentPortal
-        id: portal
-        if: ${{ env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') && steps.resumestate.outputs.portal_live != 'true' && !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
-        continue-on-error: true
-        shell: bash
-        run: python3 scripts/deploy-approved-app.py --target portal
-      - name: Direct deploy ClientApp
-        id: client
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.resumestate.outputs.client_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
-        continue-on-error: true
-        shell: bash
-        run: python3 scripts/deploy-approved-app.py --target client
-      - name: Refresh Azure OIDC before late deployments
+      - name: Load preserved rollback packages for transactional publication
+        id: rollbackpackages
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: diagnostics-rollback-*-${{ env.RELEASE_SHA }}
+          path: /tmp/rollback-packages
+          merge-multiple: false
+      - name: Refresh Azure OIDC before transactional publication
         id: azuredeploy
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website')) }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Direct deploy Protect immutable ZIP
-        id: protect
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.resumestate.outputs.protect_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
+      - name: Publish selected head as one transaction
+        id: transaction
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.rollbackpackages.outcome == 'success' && (steps.protectauth.outcome == 'success' || steps.protectauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
         continue-on-error: true
         shell: bash
-        run: python3 scripts/deploy-approved-app.py --target protect
-      - name: Direct deploy Parfait
-        id: parfait
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.resumestate.outputs.parfait_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.editorauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
-        continue-on-error: true
-        shell: bash
-        run: python3 scripts/deploy-approved-app.py --target parfait
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py \
+            --targets-json "$SELECTED_TARGETS" \
+            --baselines-json "$LIVE_BASELINES" \
+            --package-root /tmp/diagnostics-packages \
+            --rollback-root /tmp/rollback-packages
       - name: Reconcile public custom-hostname Cloudflare policy
         id: routingpolicy
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
@@ -799,7 +795,7 @@ jobs:
 
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || steps.resumestate.outputs.protect_live == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || steps.resumestate.outputs.parfait_live == 'true' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -892,15 +888,9 @@ jobs:
             exit 1
           fi
           echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
-      - name: Direct deploy Website immutable ZIP
-        id: website
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.resumestate.outputs.website_live != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
-        continue-on-error: true
-        shell: bash
-        run: python3 scripts/deploy-approved-app.py --target website
       - name: Verify custom-domain bridge end to end
         id: routinglive
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
         continue-on-error: true
         shell: bash
         run: |
