@@ -530,6 +530,27 @@ def dispatch_pending_legacy_release(api, approved):
     }
 
 
+def package_backfill_candidate(api):
+    """Resolve the exact validated historical application revision missing release bytes.
+
+    This is read-only. It reuses the same monotonic authorization and validation
+    authority as release recovery; it never grants deployment authorization.
+    """
+    if staging_only():
+        return {'needed': False, 'reason': 'validation-only staging hold is active'}
+    approved = api.ref(APPROVED)
+    pending = pending_legacy_release_authorization(api, approved)
+    if not pending:
+        return {'needed': False, 'reason': 'no pending historical release authorization'}
+    if 'retained' in pending:
+        return {'needed': False, 'reason': pending['retained']}
+    return {
+        'needed': True,
+        'approvedSha': approved,
+        **pending,
+    }
+
+
 def reconcile(api, trigger=None):
     """Recover only the exact approved direct release; never create a second branch path."""
     if staging_only():
@@ -715,7 +736,7 @@ def cleanup(api, apply=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup'])
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'package-backfill', 'cleanup'])
     parser.add_argument('--pr', type=int)
     parser.add_argument('--run', type=int)
     parser.add_argument('--apply', action='store_true')
@@ -728,6 +749,8 @@ def main():
         result = pending_updates(api)
     elif args.command == 'reconcile':
         result = reconcile(api, args.run)
+    elif args.command == 'package-backfill':
+        result = package_backfill_candidate(api)
     else:
         result = cleanup(api, args.apply)
     if args.output:
