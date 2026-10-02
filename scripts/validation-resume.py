@@ -34,6 +34,8 @@ CONTROL_PATHS = {
 
 TRUSTED_PR_BASE = "legend/approved-changes"
 MAX_HISTORICAL_EVIDENCE_RUNS = 8
+RELEASE_RESOURCE_GROUP = "masterapp-rg"
+MIGRATION_BUNDLE_NAME = "masterapp-migrations"
 
 # Single canonical web release inventory. Validation, release baseline discovery,
 # deployment reconciliation, live-resume probing, package naming and final
@@ -45,6 +47,7 @@ RELEASE_TARGETS = {
         "azureHost": "masterapp-portal.azurewebsites.net",
         "project": "AgentPortal/AgentPortal.csproj",
         "sourceRoot": "AgentPortal",
+        "roles": ("database-authority", "database-dependent", "shared-settings-source", "marketing-settings-target"),
         "package": "agentportal.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("portal.mylegnd.com", "masterapp-portal.azurewebsites.net"),
@@ -56,6 +59,7 @@ RELEASE_TARGETS = {
         "azureHost": "masterapp-client.azurewebsites.net",
         "project": "ClientApp/ClientApp.csproj",
         "sourceRoot": "ClientApp",
+        "roles": ("browser-entry", "marketing-settings-target"),
         "package": "clientapp.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("client.mylegnd.com", "masterapp-client.azurewebsites.net"),
@@ -67,6 +71,7 @@ RELEASE_TARGETS = {
         "azureHost": "masterapp-protect.azurewebsites.net",
         "project": "Protect-Website/ProtectWebsite.csproj",
         "sourceRoot": "Protect-Website",
+        "roles": ("database-dependent", "shared-auth-target", "editor-target", "marketing-settings-target", "routing-target", "routing-primary", "public-release"),
         "package": "protect.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("masterapp-protect.azurewebsites.net",),
@@ -78,6 +83,7 @@ RELEASE_TARGETS = {
         "azureHost": "masterapp-parfait.azurewebsites.net",
         "project": "ParfaitApp/ParfaitApp.csproj",
         "sourceRoot": "ParfaitApp",
+        "roles": ("database-dependent", "editor-target", "marketing-settings-target", "routing-target"),
         "package": "parfait.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("masterapp-parfait.azurewebsites.net",),
@@ -89,6 +95,7 @@ RELEASE_TARGETS = {
         "azureHost": "masterapp-website.azurewebsites.net",
         "project": "static",
         "sourceRoot": "Legend-Website",
+        "roles": ("static-target", "public-release"),
         "package": "website.zip",
         "provenancePath": "/_deployment-provenance.txt",
         "proofHosts": ("masterapp-website.azurewebsites.net", "mylegnd.com", "www.mylegnd.com"),
@@ -98,6 +105,69 @@ RELEASE_TARGETS = {
 
 def release_name_map():
     return {row["releaseName"]: key for key, row in RELEASE_TARGETS.items()}
+
+
+def target_keys_with_role(role: str):
+    return tuple(
+        key for key, row in RELEASE_TARGETS.items()
+        if role in row.get("roles", ())
+    )
+
+
+def unique_target_with_role(role: str):
+    keys = target_keys_with_role(role)
+    if len(keys) != 1:
+        raise ValueError(f"Canonical release role {role!r} must resolve to exactly one target")
+    return keys[0]
+
+
+def release_runtime_profile(selected_names):
+    keys = selected_release_target_keys(selected_names)
+    selected = set(keys)
+    def names_for(role):
+        return [
+            RELEASE_TARGETS[key]["releaseName"]
+            for key in target_keys_with_role(role)
+        ]
+    def selected_has(role):
+        return any(key in selected for key in target_keys_with_role(role))
+
+    database_key = unique_target_with_role("database-authority")
+    browser_keys = target_keys_with_role("browser-entry")
+    static_keys = target_keys_with_role("static-target")
+    routing_primary = unique_target_with_role("routing-primary")
+    return {
+        "resourceGroup": RELEASE_RESOURCE_GROUP,
+        "migrationBundle": MIGRATION_BUNDLE_NAME,
+        "databaseAuthority": RELEASE_TARGETS[database_key]["releaseName"],
+        "browserEntryTargets": names_for("browser-entry"),
+        "browserEntryHosts": [
+            host
+            for key in browser_keys
+            for host in RELEASE_TARGETS[key]["proofHosts"]
+        ],
+        "sharedAuthTargets": names_for("shared-auth-target"),
+        "editorTargets": names_for("editor-target"),
+        "marketingTargets": names_for("marketing-settings-target"),
+        "routingTargets": [
+            {
+                "releaseName": RELEASE_TARGETS[key]["releaseName"],
+                "azureHost": RELEASE_TARGETS[key]["azureHost"],
+            }
+            for key in target_keys_with_role("routing-target")
+        ],
+        "routingPrimary": RELEASE_TARGETS[routing_primary]["releaseName"],
+        "routingPrimaryHost": RELEASE_TARGETS[routing_primary]["azureHost"],
+        "selectedHasBrowserEntry": selected_has("browser-entry"),
+        "selectedHasStatic": selected_has("static-target"),
+        "selectedHasSharedAuth": selected_has("shared-auth-target"),
+        "selectedHasEditor": selected_has("editor-target"),
+        "selectedDatabaseDependent": selected_has("database-dependent"),
+        "clientOnly": len(keys) == 1 and keys[0] in browser_keys,
+        "websiteOnly": len(keys) == 1 and keys[0] in static_keys,
+        "portalOnly": len(keys) == 1 and keys[0] == database_key,
+        "publicOnly": bool(keys) and all("public-release" in RELEASE_TARGETS[key].get("roles", ()) for key in keys),
+    }
 
 
 def selected_release_target_keys(names, *, allow_empty=False):
