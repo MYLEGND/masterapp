@@ -31,8 +31,15 @@ ALIASES = {
 ALL_SETTING_NAMES = tuple(dict.fromkeys(name for names in ALIASES.values() for name in names))
 
 def run(*args, input_text=None, cwd=None, capture=False):
-    return subprocess.run(list(args), input=input_text, text=True, cwd=cwd, check=True,
-                          stdout=subprocess.PIPE if capture else None).stdout if capture else None
+    result = subprocess.run(
+        list(args),
+        input=input_text,
+        text=True,
+        cwd=cwd,
+        check=True,
+        stdout=subprocess.PIPE if capture else None,
+    )
+    return result.stdout if capture else None
 
 def az_json(*args):
     return json.loads(subprocess.check_output(["az", *args, "-o", "json"], text=True))
