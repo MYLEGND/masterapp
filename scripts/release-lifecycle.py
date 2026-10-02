@@ -196,8 +196,13 @@ def architecture_product_validation(api, run):
 
 VALIDATION_NEUTRAL_PATHS = {
     '.github/workflows/masterapp-platform-architecture-validation.yml',
+    '.github/workflows/approved-release-security-validation.yml',
+    '.github/workflows/step5-isolated-conversion-mapping-validation.yml',
+    '.github/workflows/all-intentional-direct-release-20260918.yml',
     'Docs/releases/direct-release-request.json',
     'scripts/approved-release-baseline.py',
+    'scripts/release-package.py',
+    'scripts/validation-resume.py',
     'scripts/release-lifecycle.py',
     'scripts/test-release-policy.py',
     'scripts/test-release-lifecycle.py',
@@ -562,10 +567,16 @@ def direct_release_approved_pr(api, sha):
         request_path,
         '.github/workflows/masterapp-platform-architecture-validation.yml',
         '.github/workflows/approved-release-security-validation.yml',
+        '.github/workflows/step5-isolated-conversion-mapping-validation.yml',
+        '.github/workflows/all-intentional-direct-release-20260918.yml',
         'scripts/approved-release-baseline.py',
+        'scripts/release-package.py',
+        'scripts/validation-resume.py',
         'scripts/release-lifecycle.py',
+        'scripts/test-validation-resume.py',
         'scripts/test-release-policy.py',
         'scripts/test-release-lifecycle.py',
+        'scripts/test-deploy-approved-app.py',
     }
 
     for _ in range(16):
