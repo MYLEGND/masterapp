@@ -1,18 +1,19 @@
 :root {
-    --dash-gold: var(--web-gold, #d4aa47);
-    --dash-gold-deep: #8f6a1d;
-    --dash-gold-soft: rgba(212, 170, 71, 0.18);
-    --dash-royal-950: var(--web-navy-deep, #091225);
-    --dash-royal-925: #0d1c38;
-    --dash-royal-900: var(--web-navy, #10254c);
-    --dash-royal-860: #17356d;
-    --dash-royal-820: #21448d;
-    --dash-line: rgba(150, 182, 255, 0.16);
-    --dash-line-strong: rgba(212, 170, 71, 0.34);
-    --dash-text: #f8fbff;
-    --dash-text-soft: rgba(226, 232, 240, 0.78);
-    --dash-shadow: 0 28px 60px rgba(4, 10, 28, 0.26);
-    --dash-shadow-strong: 0 34px 80px rgba(3, 8, 22, 0.38);
+    /* Dashboard aliases consume the same canonical app palette as mobile + desktop. */
+    --dash-gold: var(--legend-app-accent, var(--web-gold));
+    --dash-gold-deep: color-mix(in srgb,var(--legend-app-accent, var(--web-gold)) 68%,var(--web-navy-deep));
+    --dash-gold-soft: color-mix(in srgb,var(--legend-app-accent, var(--web-gold)) 18%,transparent);
+    --dash-royal-950: var(--legend-app-surface, var(--web-navy-deep));
+    --dash-royal-925: color-mix(in srgb,var(--web-navy-deep) 88%,var(--web-navy));
+    --dash-royal-900: var(--web-navy);
+    --dash-royal-860: color-mix(in srgb,var(--web-navy) 88%,var(--web-white));
+    --dash-royal-820: color-mix(in srgb,var(--web-navy) 78%,var(--web-white));
+    --dash-line: color-mix(in srgb,var(--web-white) 14%,transparent);
+    --dash-line-strong: color-mix(in srgb,var(--legend-app-accent, var(--web-gold)) 34%,transparent);
+    --dash-text: var(--legend-app-on-dark, var(--web-white));
+    --dash-text-soft: var(--legend-app-on-dark-muted, color-mix(in srgb,var(--web-white) 72%,var(--web-navy)));
+    --dash-shadow: 0 28px 60px color-mix(in srgb,var(--web-navy-deep) 26%,transparent);
+    --dash-shadow-strong: 0 34px 80px color-mix(in srgb,var(--web-navy-deep) 38%,transparent);
     --legend-modal-safe-margin: 24px;
     --legend-modal-area-start: 24px;
     --legend-modal-area-end: 24px;
@@ -60,6 +61,58 @@ body.legend-app.legend-modal-active > .modal-backdrop {
     pointer-events: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+}
+
+/*
+ * Canonical authenticated desktop modal authority.
+ * Behavior/open-close ownership remains in existing controllers; CSS owns only
+ * viewport placement, sizing, chrome, and background shielding.
+ */
+@media (min-width: 901px) {
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface],
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal)[data-legend-modal-open="true"] {
+        position: fixed;
+        inset: 0;
+        box-sizing: border-box;
+        width: 100vw;
+        height: 100dvh;
+        margin: 0;
+        padding: var(--legend-desktop-modal-gutter, 48px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: var(--legend-modal-backdrop);
+        z-index: var(--legend-modal-surface-z);
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] > .modal-dialog[data-legend-modal-panel],
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal)[data-legend-modal-open="true"] > [data-legend-modal-panel] {
+        box-sizing: border-box;
+        width: var(--legend-desktop-modal-width, min(1120px, calc(100vw - 96px)));
+        max-width: var(--legend-desktop-modal-width, min(1120px, calc(100vw - 96px)));
+        min-width: 0;
+        max-height: var(--legend-desktop-modal-height, calc(100dvh - 96px));
+        margin: 0 auto;
+        overflow: hidden;
+        border: 1px solid var(--legend-app-control-line, var(--web-border));
+        border-radius: var(--legend-app-radius, var(--web-radius-md));
+        background: var(--legend-app-panel, var(--web-white));
+        box-shadow: 0 30px 80px rgba(2, 8, 23, .42);
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] > .modal-dialog[data-legend-modal-panel] > .modal-content,
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal)[data-legend-modal-open="true"] > [data-legend-modal-panel] {
+        max-height: var(--legend-desktop-modal-height, calc(100dvh - 96px));
+        overflow: hidden;
+    }
+
+    html[data-legend-modal-region] body.legend-app .modal .modal-body,
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel] > :where(.modal-body,.drawer-body,.panel-body,[data-legend-modal-scroll]) {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
 }
 
 /* One shared content-region boundary; backdrop and focus ownership stay with
@@ -8625,3 +8678,129 @@ header .legend-global-nav .container-fluid {
 .messaging-journey-content::-webkit-scrollbar {
         display: none;
     }
+
+/*
+ * Canonical authenticated desktop shell + component geometry.
+ * This is the single desktop viewport layer paired with the protected mobile
+ * layer above. It does not own routes, events, visibility state, or behavior.
+ */
+@media (min-width: 901px) {
+    body.legend-app .legend-global-nav {
+        min-height: 76px;
+        padding: .6rem var(--app-shell-gutter, 28px);
+    }
+
+    body.legend-app .legend-global-nav .navbar-brand img {
+        max-height: 64px;
+    }
+
+    body.legend-app header .legend-global-nav .container-fluid {
+        width: 100%;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        column-gap: clamp(.65rem,1.15vw,1.2rem);
+        row-gap: 0;
+    }
+
+    body.legend-app .legend-global-nav .navbar-left,
+    body.legend-app .legend-global-nav .navbar-right {
+        min-width: 0;
+    }
+
+    body.legend-app .legend-global-nav .navbar-left .nav-row,
+    body.legend-app .legend-global-nav .navbar-right {
+        flex-wrap: nowrap;
+        gap: clamp(.35rem,.65vw,.7rem);
+    }
+
+    body.legend-app .legend-global-nav :is(.nav-link,.explore-trigger,.profile-chip,.legend-founder-ai-nav-button) {
+        min-height: var(--legend-desktop-control-height, 40px);
+    }
+
+    body.legend-app .legend-global-nav .nav-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: .45rem .68rem;
+        border-radius: var(--legend-app-radius-compact, 12px);
+        white-space: nowrap;
+    }
+
+    body.legend-app .legend-global-nav .profile-chip {
+        max-width: min(260px,22vw);
+        padding: .34rem .52rem;
+        border-color: var(--legend-app-control-line, var(--web-border));
+        border-radius: var(--legend-app-radius-compact, 12px);
+    }
+
+    body.legend-app .legend-global-nav .profile-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    body.legend-app .legend-app-content > main > :not(script):not(style):not(link) {
+        box-sizing: border-box;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .dashboard-page-shell,
+        .home-container,
+        .legend-workspace-page,
+        .client-create-page,
+        .resources-page,
+        .training-page,
+        .snapshot-page,
+        .finance-shell,
+        .factfinder-page-shell,
+        .legend-connect-page,
+        .subscription-activation-shell
+    ) {
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+        margin-inline: 0;
+    }
+
+    body.legend-app .legend-app-content :is(
+        .dashboard-command-actions,
+        .dashboard-hero-actions,
+        .home-command-actions,
+        .home-hero-actions,
+        .client-create-actions,
+        .preview-actions,
+        .activation-actions,
+        .activation-notice-actions,
+        .pipeline-head-actions,
+        .drawer-top-actions,
+        .queue-record-actions,
+        .hero-link-meta-actions,
+        .uw-actions,
+        .side-actions
+    ) {
+        gap: var(--legend-desktop-gap, .85rem);
+    }
+
+    body.legend-app .legend-app-content :is(
+        button,
+        .btn,
+        a.btn,
+        .dashboard-command-action
+    ) {
+        border-radius: var(--legend-app-radius-compact, 12px);
+    }
+
+    body.legend-app .legend-app-content :is(
+        .dashboard-surface-panel,
+        .dashboard-command-center-panel,
+        .dashboard-analytics-panel,
+        .home-command-panel,
+        .factfinder-page-shell .card,
+        .legend-connect-page .card
+    ) {
+        border-color: var(--legend-app-border, var(--web-border));
+        border-radius: var(--legend-app-radius, var(--web-radius-md));
+    }
+}
+
