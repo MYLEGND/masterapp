@@ -1202,7 +1202,7 @@ public sealed class LegendFounderAiConversationService
                     Tools: JsonSerializer.SerializeToElement(cloudTools, JsonOptions), AllowTools: cloudTools.Count > 0,
                     ProviderPolicy: providerPolicy, RequestingActorId: cloudDelegation.UserId,
                     CloudflareScope: new(operationId.Value.ToString("D"), cloudDelegation.TenantId, cloudDelegation.UserId, cloudDelegation.SessionId,
-                        request.ConversationId!, cloudDelegation.Roles, cloudDelegation.AuthorizationVersion, cloudDelegation.ExpiresUtc)), effectiveToken);
+                        request.ConversationId!, cloudDelegation.Roles, cloudDelegation.AuthorizationVersion, cloudDelegation.ExpiresUtc)), Cognition: LegendModelCognitionPolicy.AdaptiveFounder, effectiveToken);
             if (!generated.Succeeded)
                 return LegendFounderAiChatResponse.ModeFailure(mode,
                     "Escalation required. LEGEND could not complete the Cloudflare request. OpenAI API fallback is forbidden in LEGEND mode.",
@@ -1368,7 +1368,7 @@ public sealed class LegendFounderAiConversationService
                                 AllowTools: allowTools, RequireToolCall: requireToolCall,
                                 ProviderPolicy: providerPolicy,
                                 AdapterVersion: localModelSelection?.AdapterVersion,
-                                RequestingActorId: founder.GetCanonicalUserId()), effectiveToken);
+                                RequestingActorId: founder.GetCanonicalUserId(), Cognition: LegendModelCognitionPolicy.AdaptiveFounder), effectiveToken);
                         if (!generated.Succeeded || generated.Output is not { } localOutput)
                             throw new LocalFoundationExecutionException(generated.ErrorCode ?? "local_foundation_no_response");
                         return JsonDocument.Parse(localOutput.GetRawText());
