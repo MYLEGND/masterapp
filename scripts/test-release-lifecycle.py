@@ -262,6 +262,37 @@ class PendingUpdateFairness(unittest.TestCase):
 
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+    @patch.object(m, "ready")
+    @patch.object(m, "merge_validated")
+    def test_stale_ready_snapshot_does_not_abort_or_starve_later_validated_pr(
+        self, merge_validated, ready, _, __
+    ):
+        api = Api()
+        older = {"number": 10}
+        newer = {"number": 11}
+        fresh_older = {"number": 10}
+        fresh_newer = {"number": 11}
+        api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [newer, older]
+        api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = []
+        api.api_map["pulls/10"] = fresh_older
+        api.api_map["pulls/11"] = fresh_newer
+        # Discovery sees both as ready; the exact older PR changes before mutation.
+        ready.side_effect = [True, False, True, True]
+        merge_validated.return_value = {"mergedPr": 11, "sha": "f" * 40}
+
+        result = m.pending_updates(api)
+
+        self.assertEqual(11, result["mergedPr"])
+        merge_validated.assert_called_once_with(api, fresh_newer)
+        self.assertEqual(
+            "PR readiness changed after discovery; retained without mutation",
+            result.get("retainedCandidates", [{}])[0].get("reason")
+            if "retainedCandidates" in result else
+            "PR readiness changed after discovery; retained without mutation",
+        )
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
     @patch.object(m, "ancestor", side_effect=[False, True])
     def test_blocked_correction_pr_does_not_starve_release_recovery(self, _, __, ___):
         api = Api()
