@@ -312,32 +312,27 @@ jobs:
       - name: Resolve whether application bytes changed
         id: packageplan
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 - "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" "$GITHUB_OUTPUT" <<'PY'
-          import importlib.util, pathlib, subprocess, sys
-          base, head, output = sys.argv[1:]
-          scripts=pathlib.Path('scripts').resolve()
-          sys.path.insert(0,str(scripts))
-          path=scripts / 'approved-release-baseline.py'
-          spec=importlib.util.spec_from_file_location('release_baseline',path)
-          module=importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(module)
-          changed=subprocess.check_output(['git','diff','--name-only',base,head],text=True).splitlines()
-          application=[name for name in changed if not module.release_control_only_path(name)]
-          package_authority={
-              'scripts/release-package.py',
-              'scripts/deploy-approved-app.py',
-              '.config/dotnet-tools.json',
-              '.github/workflows/masterapp-platform-architecture-validation.yml',
-          }
-          authority=[name for name in changed if name in package_authority]
-          needed=bool(application or authority)
-          with open(output,'a') as stream:
-              stream.write('needed='+str(needed).lower()+'\n')
-          print('Application package inputs changed:',application)
-          print('Package authority inputs changed:',authority)
-          print('Immutable package canary required:',needed)
-          PY
+          set -euo pipefail
+          plan="$RUNNER_TEMP/package-canary-plan.json"
+          python3 scripts/validation-resume.py package-canary-plan \
+            --repository "${{ github.repository }}" \
+            --current-sha "${{ github.event.pull_request.head.sha }}" \
+            --base-sha "${{ github.event.pull_request.base.sha }}" \
+            --current-run-id "${{ github.run_id }}" \
+            --head-branch "${{ github.head_ref }}" \
+            --output "$plan"
+          python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPACKAGEPLAN'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          with open(sys.argv[2],'a') as output:
+              output.write('needed='+str(bool(data.get('needed'))).lower()+'\n')
+              output.write(f"evidence_run_id={data.get('evidenceRunId') or ''}\n")
+              output.write(f"evidence_head_sha={data.get('evidenceHeadSha') or ''}\n")
+          print(json.dumps(data,sort_keys=True))
+          PYPACKAGEPLAN
 
       - name: Setup .NET for canonical package build
         if: steps.packageplan.outputs.needed == 'true'
