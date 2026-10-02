@@ -95,8 +95,9 @@ class GitHub:
         raise RuntimeError('Pagination limit reached; refusing incomplete branch evidence')
 
     def ref(self, name):
-        value = self.api('git/ref/heads/' + urllib.parse.quote(name, safe=''))['object']['sha']
-        if not SHA.fullmatch(value):
+        branch = self.api('branches/' + urllib.parse.quote(name, safe=''))
+        value = (branch.get('commit') or {}).get('sha')
+        if not SHA.fullmatch(value or ''):
             raise RuntimeError('Malformed branch revision')
         return value
 
