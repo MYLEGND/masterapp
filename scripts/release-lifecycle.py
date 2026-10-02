@@ -649,6 +649,22 @@ def dispatch_pending_automatic_release(api, approved):
     if 'retained' in pending:
         return pending
 
+    package = _validated_package_evidence(api, pending['applicationRevision'])
+    if not package.get('reusable'):
+        if _package_backfill_running(api, approved):
+            return {
+                'packageBackfill': 'already queued or running',
+                **pending,
+            }
+        api.dispatch(PACKAGE_VALIDATION, {
+            'package_revision': pending['applicationRevision'],
+        })
+        return {
+            'packageBackfill': 'dispatched for exact green automatic application revision',
+            'packageReason': package.get('reason'),
+            **pending,
+        }
+
     pr = api.api(f"pulls/{pending['sourcePr']}")
     if not pr:
         pulls = api.pages('commits/' + pending['authorizationSha'] + '/pulls')
