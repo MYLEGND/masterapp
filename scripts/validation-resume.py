@@ -1909,8 +1909,9 @@ def compute_rollback_evidence(repository: str, revision: str, app: str):
     if not token:
         result["reason"] = "github_token_unavailable"
         return result
+    release_name = RELEASE_TARGETS[app]["releaseName"]
     receipt_names = (
-        f"legend-approved-release-{revision}-{app}",
+        f"legend-approved-release-{revision}-{release_name}",
         f"legend-approved-release-{revision}",
     )
     workflow_path = ".github/workflows/all-intentional-direct-release-20260918.yml"
@@ -1941,7 +1942,7 @@ def compute_rollback_evidence(repository: str, revision: str, app: str):
                     "reusable": True,
                     "reason": (
                         "exact_target_release_receipt"
-                        if receipt_name.endswith("-" + app)
+                        if receipt_name.endswith("-" + release_name)
                         else "legacy_exact_successful_release_receipt"
                     ),
                 })
