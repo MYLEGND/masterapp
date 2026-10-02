@@ -264,6 +264,7 @@ jobs:
             --filter 'FullyQualifiedName~WebsiteDomainImportTests'
           dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
           npm ci --prefix Legend-Cloudflare
+          npm --prefix Legend-Cloudflare run check:founder-baseline
           npm --prefix Legend-Cloudflare run test:website-routing
           npm --prefix Legend-Cloudflare run check:website-routing
           python3 -m py_compile scripts/cloudflare-routing-authority.py

@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "legend-founder-foundation",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "account_id": "84bf137174ac3966d6d24e9806f0c392",
+  "ai": {
+    "binding": "AI"
+  },
+  "limits": {
+    "cpu_ms": 1000
+  },
+  "observability": {
+    "enabled": false
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LEGEND_GOVERNANCE",
+        "class_name": "LegendGovernance"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "governance-v1",
+      "new_sqlite_classes": [
+        "LegendGovernance"
+      ]
+    }
+  ],
+  "vars": {
+    "LEGEND_ACCOUNT_ID": "84bf137174ac3966d6d24e9806f0c392",
+    "LEGEND_RUNTIME_MODE": "founder_manual_test",
+    "LEGEND_DEPLOYMENT_ENVIRONMENT": "production",
+    "LEGEND_TOOL_CALLBACK_ENABLED": "true",
+    "LEGEND_BUDGET_POLICY_JSON": "{\"period\":\"lifetime\",\"requestMicrousd\":150000,\"userMicrousd\":3000000,\"tenantMicrousd\":3000000,\"accountMicrousd\":3000000,\"requestConcurrency\":1,\"userConcurrency\":1,\"tenantConcurrency\":1,\"accountConcurrency\":1,\"retentionMs\":86400000}"
+  }
+}
+// Deployment must supply LEGEND_SERVICE_KEYS_JSON and
+// LEGEND_MANUAL_TEST_POLICY_JSON through protected Worker secrets.
+// The application separately enables read callbacks while
+// LegendConnect:Foundation:Cloudflare:MutationsEnabled remains false.

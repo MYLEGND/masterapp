@@ -20,6 +20,7 @@ using Domain.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -233,6 +234,12 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("externalAnsweringBlocked: conversation.externalAnsweringBlocked === true", script, StringComparison.Ordinal);
         Assert.Contains("responseAuthority === 'LocalFoundation'", script, StringComparison.Ordinal);
         Assert.Contains("'LEGEND-controlled model'", script, StringComparison.Ordinal);
+        Assert.Contains("metadata?.foundationHosting === 'CloudflareHosted'", script, StringComparison.Ordinal);
+        Assert.Contains("'LEGEND · Cloudflare Workers AI'", script, StringComparison.Ordinal);
+        Assert.Contains("'Provider: Cloudflare Workers AI'", script, StringComparison.Ordinal);
+        Assert.Contains("'Billing: Cloudflare Workers AI'", script, StringComparison.Ordinal);
+        Assert.Contains("'OpenAI API used: No'", script, StringComparison.Ordinal);
+        Assert.Contains("'OpenAI Teacher escalation: No'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
     }
 
@@ -501,6 +508,50 @@ public sealed class LegendFounderAiContractTests
             required);
     }
 
+
+    [Fact]
+    public void CloudflareLegendBaseline_ExposesCanonicalProtectedReadsButNoPaygOrMutationTools()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FounderSoftwareRemediation:Enabled"] = "true",
+                ["FounderSoftwareRemediation:CandidateValidation:Enabled"] = "true",
+                ["LegendConnect:Foundation:Cloudflare:MutationsEnabled"] = "false"
+            })
+            .Build();
+        using var services = new ServiceCollection()
+            .AddSingleton<IConfiguration>(configuration)
+            .BuildServiceProvider();
+
+        var authority = new LegendFounderToolAuthority(
+            null!,
+            null,
+            null,
+            services.GetRequiredService<IServiceScopeFactory>());
+
+        var tools = authority.GetAvailableCloudTools(
+            Guid.NewGuid().ToString("D"),
+            LegendConnectExternalProviderPolicy.CloudflareFoundation);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(tools));
+        var names = document.RootElement.EnumerateArray()
+            .Select(tool => tool.GetProperty("name").GetString())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.True(LegendConnectExternalProviderPolicy.CloudflareFoundation.ForbidsOpenAiPayg);
+        Assert.DoesNotContain("legend_request_teacher_escalation", names);
+        Assert.DoesNotContain("legend_research_internet", names);
+        Assert.DoesNotContain("legend_prepare_software_repair", names);
+        Assert.Contains("legend_system_inventory", names);
+        Assert.Contains("legend_system_health", names);
+        Assert.Contains("legend_configuration_presence", names);
+        Assert.Contains("legend_engineering_status", names);
+        Assert.Contains("legend_inspect_repository", names);
+        Assert.Contains("legend_inspect_repair_validation", names);
+        Assert.Contains("legend_verify_repair_deployment", names);
+    }
 
     [Fact]
     public void FounderTools_ExposeOneGovernedResearchFunctionAndNoRawProviderSearch()

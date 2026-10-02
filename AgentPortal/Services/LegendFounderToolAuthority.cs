@@ -103,7 +103,12 @@ internal sealed partial class LegendFounderToolAuthority
         // Reuse the executable registry's original schemas. Read-only does not
         // imply suitable for cloud disclosure: drilldowns can contain another
         // account's identity, retained private text or unrestricted evidence.
-        var mutationsEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled");
+        // Read callbacks can be live while every cloud mutation remains
+        // independently fail-closed. Future write enablement reuses this same
+        // registry and still requires the existing exact-action approval gates.
+        var mutationsEnabled =
+            CloudToolFeatureEnabled("LegendConnect:Foundation:Cloudflare:MutationsEnabled") &&
+            CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled");
         var repositoryEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled");
         return GetAvailableTools(false, conversationId, providerPolicy, externalTeacher: false)
             .Concat(Tools.Where(tool => mutationsEnabled && JsonSerializer.SerializeToElement(tool, JsonOptions)
