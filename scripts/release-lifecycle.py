@@ -591,6 +591,85 @@ def _package_backfill_running(api, approved):
     )
 
 
+def pending_automatic_release(api, approved):
+    """Carry the nearest still-unreleased validated automatic product change across control-only corrections.
+
+    A correction merge may intentionally contain only lifecycle/release-control files.
+    In that case the current merge has no application targets of its own, but it must
+    not erase the most recent validated product/Founder publication that still lacks
+    a successful release receipt.
+    """
+    history = git('rev-list', '--first-parent', approved, check=False)
+    if history.returncode:
+        raise RuntimeError('Unable to inspect approved first-parent automatic release history')
+
+    for sha in history.stdout.splitlines():
+        if not SHA.fullmatch(sha):
+            continue
+        pulls = api.pages('commits/' + sha + '/pulls')
+        matches = [
+            pr for pr in pulls
+            if pr.get('merged_at')
+            and pr.get('merge_commit_sha') == sha
+            and pr.get('base', {}).get('ref') == APPROVED
+        ]
+        if len(matches) != 1:
+            continue
+        pr = matches[0]
+        targets = automatic_release_targets(api, pr)
+        if not targets:
+            continue
+
+        pending = candidate_validation(api, pr)
+        if pending:
+            return {'retained': pending, 'sourcePr': pr['number'], 'authorizationSha': sha}
+
+        revision = pr.get('head', {}).get('sha')
+        if not SHA.fullmatch(revision or ''):
+            return {'retained': 'Automatic release source PR has invalid validated head identity'}
+
+        if all(release_proven(api, revision, app=target) for target in targets):
+            return None
+
+        return {
+            'authorizationSha': sha,
+            'applicationRevision': revision,
+            'targets': list(targets),
+            'sourcePr': pr['number'],
+        }
+
+    return None
+
+
+def dispatch_pending_automatic_release(api, approved):
+    pending = pending_automatic_release(api, approved)
+    if not pending:
+        return None
+    if 'retained' in pending:
+        return pending
+
+    pr = api.api(f"pulls/{pending['sourcePr']}")
+    if not pr:
+        pulls = api.pages('commits/' + pending['authorizationSha'] + '/pulls')
+        matches = [
+            row for row in pulls
+            if row.get('number') == pending['sourcePr']
+            and row.get('merge_commit_sha') == pending['authorizationSha']
+        ]
+        if len(matches) != 1:
+            return {'retained': 'Automatic release recovery could not reload source PR'}
+        pr = matches[0]
+
+    api.dispatch(
+        DIRECT,
+        automatic_release_inputs(pr, pending['authorizationSha'], tuple(pending['targets'])),
+    )
+    return {
+        'directRelease': 'recovered nearest still-unreleased automatic validated merge',
+        **pending,
+    }
+
+
 def dispatch_pending_legacy_release(api, approved):
     pending = pending_legacy_release_authorization(api, approved)
     if not pending:
@@ -679,6 +758,10 @@ def reconcile(api, trigger=None):
         if targets:
             api.dispatch(DIRECT, automatic_release_inputs(pr, approved, targets))
             return {'directRelease': 'recovered automatic validated-merge release', 'targets': list(targets)}
+
+    automatic_pending = dispatch_pending_automatic_release(api, approved)
+    if automatic_pending:
+        return automatic_pending
 
     historical = dispatch_pending_legacy_release(api, approved)
     if historical:
