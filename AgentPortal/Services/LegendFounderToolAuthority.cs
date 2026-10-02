@@ -206,6 +206,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_search_retained_knowledge" or
             "legend_metric_detail" or
             "legend_client_lead_portfolio" or
+            "legend_read_masterapp" or
             "legend_language_state";
 
     private static bool IsReadOnlyFounderTool(
@@ -501,6 +502,44 @@ internal sealed partial class LegendFounderToolAuthority
                 return SerializeUnbounded(DescribeFounderCapabilitiesCore(cloudExposureOnly,
                     cloudExposureOnly && CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled"),
                     cloudExposureOnly && CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled")));
+            }
+
+            case "legend_read_masterapp":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"masterapp_read_authority_unavailable"}""";
+                if (string.IsNullOrWhiteSpace(call.Arguments) || call.Arguments.Length > MaximumNativeReadArgumentsCharacters)
+                    return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                try
+                {
+                    using var arguments = JsonDocument.Parse(call.Arguments);
+                    var root = arguments.RootElement;
+                    if (!TryResolveFounderFunctionParameters(call.Name, out var schema) ||
+                        !IsStrictSchemaInstance(schema, root))
+                        return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+
+                    var operation = root.GetProperty("operation").GetString();
+                    var surface = root.GetProperty("surface").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("surface").GetString();
+                    var preset = root.GetProperty("preset").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("preset").GetString();
+
+                    await using var readScope = _authorizationScopes.CreateAsyncScope();
+                    var authority = readScope.ServiceProvider.GetRequiredService<LegendMasterAppReadAuthority>();
+                    if (operation == "catalog")
+                    {
+                        if (surface is not null || preset is not null)
+                            return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                        return SerializeUnbounded(authority.Catalog());
+                    }
+                    if (operation != "read" || string.IsNullOrWhiteSpace(surface))
+                        return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                    return SerializeUnbounded(await authority.ReadAsync(founder, surface, preset, cancellationToken));
+                }
+                catch (JsonException)
+                {
+                    return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                }
             }
 
             case "legend_remember_conversation_facts":
@@ -2282,6 +2321,30 @@ internal sealed partial class LegendFounderToolAuthority
                     type = "object",
                     properties = new { },
                     required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_read_masterapp",
+                description =
+                    "Discover or read privacy-safe canonical MasterApp page/data projections across applications. Use operation=catalog first when the relevant surface is unknown. Read projections are owned by the same page/service authorities used by the product and GPT/site-tool path; this tool does not scrape HTML, run SQL, expose credentials, or create a provider-specific data registry.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        operation = new { type = "string", @enum = new[] { "catalog", "read" } },
+                        surface = new { type = new[] { "string", "null" }, minLength = 1, maxLength = 120 },
+                        preset = new
+                        {
+                            type = new[] { "string", "null" },
+                            @enum = new string?[] { "today", "7d", "30d", "month", "year", null }
+                        }
+                    },
+                    required = new[] { "operation", "surface", "preset" },
                     additionalProperties = false
                 },
                 strict = true
