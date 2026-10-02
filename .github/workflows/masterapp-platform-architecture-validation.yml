@@ -376,3 +376,167 @@ jobs:
           retention-days: 30
           if-no-files-found: error
           overwrite: true
+
+  historical-validated-package-backfill:
+    name: historical-validated-package-backfill
+    needs: validate
+    if: github.event_name == 'pull_request' && needs.validate.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+      - name: Checkout trusted package authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve pending validated historical application revision
+        id: backfill
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/package-backfill-candidate.json"
+          python3 scripts/release-lifecycle.py package-backfill --output "$candidate"
+          python3 - "$candidate" "$GITHUB_OUTPUT" <<'PYBACKFILL'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          needed=bool(data.get('needed'))
+          with open(sys.argv[2],'a') as output:
+              output.write('needed='+str(needed).lower()+'\n')
+              output.write(f"revision={data.get('applicationRevision') or ''}\n")
+              output.write(f"authorization_sha={data.get('authorizationSha') or ''}\n")
+              output.write(f"source_pr={data.get('sourcePr') or ''}\n")
+          print(json.dumps(data,sort_keys=True))
+          PYBACKFILL
+
+      - name: Resolve historical package identity
+        id: identity
+        if: steps.backfill.outputs.needed == 'true'
+        shell: bash
+        env:
+          REVISION: ${{ steps.backfill.outputs.revision }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release-package.py identity             --revision "$REVISION"             --output "$GITHUB_OUTPUT"
+
+      - name: Check preserved historical package evidence
+        id: existing
+        if: steps.backfill.outputs.needed == 'true'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REVISION: ${{ steps.backfill.outputs.revision }}
+          PACKAGE_IDENTITY: ${{ steps.identity.outputs.identity }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/historical-package-evidence.json"
+          python3 scripts/validation-resume.py validated-package             --repository "${{ github.repository }}"             --revision "$REVISION"             --package-identity "$PACKAGE_IDENTITY"             --output "$evidence"
+          python3 - "$evidence" "$GITHUB_OUTPUT" <<'PYEXISTING'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          with open(sys.argv[2],'a') as output:
+              output.write('reusable='+str(bool(data.get('reusable'))).lower()+'\n')
+          print(json.dumps(data,sort_keys=True))
+          PYEXISTING
+
+      - name: Setup .NET for historical package backfill
+        if: steps.backfill.outputs.needed == 'true' && steps.existing.outputs.reusable != 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Setup Node for historical package backfill
+        if: steps.backfill.outputs.needed == 'true' && steps.existing.outputs.reusable != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Legend-Website/package-lock.json
+
+      - name: Prepare preserved historical application tree
+        if: steps.backfill.outputs.needed == 'true' && steps.existing.outputs.reusable != 'true'
+        shell: bash
+        env:
+          REVISION: ${{ steps.backfill.outputs.revision }}
+        run: |
+          set -euo pipefail
+          source="$RUNNER_TEMP/historical-application-source"
+          git worktree add --detach "$source" "$REVISION"
+          cp scripts/release-package.py "$source/scripts/release-package.py"
+          cp scripts/validation-resume.py "$source/scripts/validation-resume.py"
+          cp scripts/deploy-approved-app.py "$source/scripts/deploy-approved-app.py"
+          mkdir -p "$source/.config"
+          cp .config/dotnet-tools.json "$source/.config/dotnet-tools.json"
+
+      - name: Build immutable validated release package for preserved revision
+        id: historicalpackage
+        if: steps.backfill.outputs.needed == 'true' && steps.existing.outputs.reusable != 'true'
+        working-directory: ${{ runner.temp }}/historical-application-source
+        shell: bash
+        env:
+          REVISION: ${{ steps.backfill.outputs.revision }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release-package.py build             --revision "$REVISION"             --directory "$RUNNER_TEMP/historical-validated-release-package"             --output "$GITHUB_OUTPUT"
+
+      - name: Verify immutable validated release package for preserved revision
+        if: steps.historicalpackage.outcome == 'success'
+        working-directory: ${{ runner.temp }}/historical-application-source
+        shell: bash
+        env:
+          REVISION: ${{ steps.backfill.outputs.revision }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release-package.py verify             --revision "$REVISION"             --directory "$RUNNER_TEMP/historical-validated-release-package"
+
+      - name: Preserve immutable validated release package for preserved revision
+        if: steps.historicalpackage.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.historicalpackage.outputs.artifact }}
+          path: ${{ runner.temp }}/historical-validated-release-package/
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Write historical package backfill receipt
+        if: steps.historicalpackage.outcome == 'success'
+        shell: bash
+        env:
+          REVISION: ${{ steps.backfill.outputs.revision }}
+          AUTHORIZATION_SHA: ${{ steps.backfill.outputs.authorization_sha }}
+          SOURCE_PR: ${{ steps.backfill.outputs.source_pr }}
+          PACKAGE_IDENTITY: ${{ steps.historicalpackage.outputs.identity }}
+        run: |
+          python3 - <<'PYRECEIPT'
+          import json,os
+          receipt={
+              'schemaVersion':1,
+              'revision':os.environ['REVISION'],
+              'authorizationSha':os.environ['AUTHORIZATION_SHA'],
+              'sourcePr':int(os.environ['SOURCE_PR']),
+              'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+          }
+          with open('/tmp/historical-package-backfill-receipt.json','w') as output:
+              json.dump(receipt,output,sort_keys=True,indent=2)
+          print(json.dumps(receipt,sort_keys=True))
+          PYRECEIPT
+
+      - name: Preserve historical package backfill receipt
+        if: steps.historicalpackage.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-package-backfill-${{ steps.backfill.outputs.revision }}-${{ steps.historicalpackage.outputs.identity }}
+          path: /tmp/historical-package-backfill-receipt.json
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+
