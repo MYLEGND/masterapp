@@ -416,15 +416,6 @@ jobs:
             --revision "$APPLICATION_RELEASE_SHA" \
             --directory /tmp/diagnostics-packages
           echo "Using exact validated package bytes; release contains no fallback package builder."
-      - name: Retain exact deployable candidate packages
-        if: steps.package.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: founder-diagnostics-packages-${{ needs.discover-live.outputs.package_identity }}
-          path: /tmp/diagnostics-packages/
-          retention-days: 30
-          if-no-files-found: error
-          overwrite: true
       - uses: azure/login@v2
         id: azure
         if: (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true'
@@ -1290,4 +1281,47 @@ jobs:
           name: legend-release-step-state-${{ needs.discover-live.outputs.application_release_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/legend-release-step-state.json
           retention-days: 30
+          if-no-files-found: error
+
+      - name: Bind successful release to canonical validated package
+        if: >-
+          needs.release.result == 'success' &&
+          needs.discover-live.outputs.validate_only != 'true' &&
+          needs.discover-live.outputs.exact_live != 'true' &&
+          needs.discover-live.outputs.preserve_live_targets != 'true' &&
+          needs.discover-live.outputs.package_identity != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYPACKAGELINK'
+          import json,os,pathlib,re
+          revision=os.environ['APPLICATION_RELEASE_SHA']
+          identity=os.environ['PACKAGE_IDENTITY']
+          if not re.fullmatch(r'[0-9a-f]{40}',revision):
+              raise SystemExit('Package-link release revision is malformed')
+          if not re.fullmatch(r'[0-9a-f]{64}',identity):
+              raise SystemExit('Package-link identity is malformed')
+          payload={
+              'schemaVersion':1,
+              'applicationReleaseSha':revision,
+              'packageIdentity':identity,
+              'source':'canonical-validated-package',
+          }
+          pathlib.Path('/tmp/legend-approved-package-link.json').write_text(
+              json.dumps(payload,sort_keys=True,indent=2)+'\n'
+          )
+          PYPACKAGELINK
+
+      - name: Preserve validated package release binding
+        if: >-
+          needs.release.result == 'success' &&
+          needs.discover-live.outputs.validate_only != 'true' &&
+          needs.discover-live.outputs.exact_live != 'true' &&
+          needs.discover-live.outputs.preserve_live_targets != 'true' &&
+          needs.discover-live.outputs.package_identity != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-package-link-${{ needs.discover-live.outputs.application_release_sha }}-${{ needs.discover-live.outputs.package_identity }}
+          path: /tmp/legend-approved-package-link.json
+          retention-days: 90
           if-no-files-found: error
