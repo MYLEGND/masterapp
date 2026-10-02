@@ -608,7 +608,14 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         package_plan = workflow.split('      - name: Resolve whether application bytes changed\n', 1)[1].split('      - name:', 1)[0]
         self.assertNotIn("git diff --name-only", package_plan)
         self.assertNotIn("release_control_only_path", package_plan)
-        self.assertNotIn('needs: validate\n    if: github.event_name', workflow)
+        package_job = workflow.split('  validated-release-package:\n', 1)[1].split(
+            '\n  historical-validated-package-backfill:', 1
+        )[0]
+        self.assertNotIn('needs: validate', package_job)
+        self.assertIn('historical-validated-package-backfill:', workflow)
+        historical_job = workflow.split('  historical-validated-package-backfill:\n', 1)[1]
+        self.assertIn('needs: validate', historical_job)
+        self.assertIn("needs.validate.result == 'success'", historical_job)
         self.assertIn('scripts/release-package.py build', workflow)
         self.assertIn('scripts/release-package.py verify', workflow)
         self.assertIn('Preserve immutable validated release package', workflow)
