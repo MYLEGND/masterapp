@@ -7,9 +7,9 @@
         --muted: rgba(16,16,16,.68);
         --muted2: rgba(16,16,16,.52);
 
-        --gold:#a68023;
+        --gold:var(--legend-app-accent);
         --gold2:#d1a642;
-        --brand:#a68023;
+        --brand:var(--legend-app-accent);
 
         --line: rgba(166,128,35,.42);
         --line2: rgba(166,128,35,.22);
@@ -132,7 +132,7 @@ body{
     background: linear-gradient(180deg,#0e1729,#0b1424);
 }
 
-.note-self-title{ margin: 0; font-weight: 900; color: #f8fafc; letter-spacing: .01em; }
+.note-self-title{ margin: 0; font-weight: 900; color: var(--legend-app-on-dark); letter-spacing: .01em; }
 .note-self-sub{ margin: 4px 0 0; color: #9fb0cd; font-size: 13px; }
 
 .note-self-close{
@@ -213,7 +213,7 @@ body{
     font-weight: 800;
     line-height: 1.2;
     letter-spacing: .01em;
-    color: #d1a034;
+    color: var(--legend-app-accent);
     opacity: 0;
 }
 
@@ -226,7 +226,7 @@ body{
     padding: 12px 14px;
     font-size: 14px;
     font-weight: 800;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     background: #0f1b31;
     position: sticky;
     top: 0;
@@ -235,7 +235,7 @@ body{
 }
 
 .note-self-col:first-child{
-    border-right: 3px solid #d1a034;
+    border-right: 3px solid var(--legend-app-accent);
 }
 
 .note-self-col textarea{
@@ -256,8 +256,8 @@ body{
 }
 
 .note-self-col textarea.note-self-prefix-only{
-    color: #d1a034 !important;
-    -webkit-text-fill-color: #d1a034 !important;
+    color: var(--legend-app-accent) !important;
+    -webkit-text-fill-color: var(--legend-app-accent) !important;
 }
 
 .note-self-col textarea::placeholder{
@@ -288,7 +288,7 @@ body{
 @media (max-width: 900px){
     .note-self-toolbar{ grid-template-columns: 1fr; }
     .note-self-doc{ grid-template-columns: 1fr; max-height: 62vh; }
-    .note-self-col:first-child{ border-right: 0; border-bottom: 3px solid #d1a034; }
+    .note-self-col:first-child{ border-right: 0; border-bottom: 3px solid var(--legend-app-accent); }
 }
 
 @media (max-width: 900px){
@@ -562,7 +562,7 @@ body{
 .uw-field input:focus,
 .uw-field select:focus,
 .uw-field textarea:focus{
-    border-color: #a68023;
+    border-color: var(--legend-app-accent);
     box-shadow: 0 0 0 3px rgba(166,128,35,.16);
 }
 
@@ -774,7 +774,7 @@ body{
     opacity: 1 !important;
     background: linear-gradient(180deg, #142744 0%, #0b1529 100%) !important;
     border: 2px solid #e4b859 !important;
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.14),
         0 8px 16px rgba(2,6,23,.38) !important;
@@ -785,7 +785,7 @@ body{
     filter: none !important;
 }
 .lead-bridge-mobile #rbShell .lb-actions .lb-dials .lb-dials-label{
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
     font-weight: 900 !important;
     letter-spacing: 0.12px !important;
 }
@@ -1090,7 +1090,7 @@ body{
 .lb-actions [data-lb-call]{
     background: linear-gradient(180deg, #1fb664 0%, #15803d 100%);
     border-color: #166534;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 12px 22px rgba(21,128,61,.30);
 }
 .lb-actions [data-lb-text]{
@@ -1479,7 +1479,7 @@ details.section{
         letter-spacing:.25px;
         border: 2px solid #0f172a;
         background: #0f172a;
-        color: #f8fafc;
+        color: var(--legend-app-on-dark);
         box-shadow: 0 14px 28px rgba(15,23,42,.22);
         border-radius: 999px;
         white-space: nowrap;
@@ -1939,7 +1939,7 @@ details.section{
     border-color: #166534;
     box-shadow: 0 12px 26px rgba(22,101,52,.22);
     background: linear-gradient(180deg, #071e12, #0a2b18);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
 }
 .theme-mp .rb-link,
 .theme-mp .hero-proposal,
@@ -2027,7 +2027,7 @@ details.section{
 .theme-life .count-pill{ background:#f5f3ff; color:#6d28d9; }
 
 .theme-di .rb-hero{
-    background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+    background: linear-gradient(180deg, var(--legend-app-on-dark) 0%, #e2e8f0 100%);
     border-color: #334155;
 }
 .theme-di .rb-wrap{ background: #f9fafb; }
@@ -2036,7 +2036,7 @@ details.section{
 .theme-di .prosper-nav-card{
     border-color:#334155;
     box-shadow: 0 12px 26px rgba(51,65,85,.14);
-    background: linear-gradient(180deg, #f8fafc, #e2e8f0);
+    background: linear-gradient(180deg, var(--legend-app-on-dark), #e2e8f0);
 }
 .theme-di .rb-link,
 .theme-di .hero-proposal,
@@ -2192,7 +2192,7 @@ details.section{
     justify-content:space-between;
     font-weight:800;
     margin-bottom:10px;
-    color:#f4d890;
+    color:var(--legend-app-accent-bright);
 }
 
 .proposal-menu-list{
@@ -2223,7 +2223,7 @@ details.section{
 }
 
 .proposal-item.is-current{
-    border-color:#a68023;
+    border-color:var(--legend-app-accent);
     box-shadow: 0 0 0 2px rgba(166,128,35,.18);
 }
 
@@ -2275,7 +2275,7 @@ details.section{
 .proposal-name{
     font-weight: 800;
     cursor:pointer;
-    color:#f8fafc;
+    color:var(--legend-app-on-dark);
     max-width: 70%;
     white-space: nowrap;
     overflow: hidden;
@@ -2302,7 +2302,7 @@ details.section{
 
 .ellipsis-btn{
     background:rgba(255,255,255,.07);
-    color:#f8fafc;
+    color:var(--legend-app-on-dark);
     border:1px solid rgba(166,128,35,.34);
     border-radius:8px;
     font-weight:800;
@@ -2364,7 +2364,7 @@ details.section{
         linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
     box-shadow: 0 40px 100px rgba(0,0,0,.52);
     padding: 1rem 1.1rem;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
 }
 
 .proposal-dialog .uw-head{
@@ -2382,7 +2382,7 @@ details.section{
 }
 
 .proposal-dialog .uw-name{
-    color:#f4d890;
+    color:var(--legend-app-accent-bright);
     font-weight:950;
     font-size:1.55rem;
     line-height:1.15;
@@ -2401,7 +2401,7 @@ details.section{
     border-radius:12px;
     border:2px solid rgba(221,180,87,.82);
     background:linear-gradient(180deg,rgba(15,26,50,.98),rgba(11,21,41,.98));
-    color:#f8fafc;
+    color:var(--legend-app-on-dark);
     font-size:1.7rem;
     line-height:1;
     box-shadow:none;
@@ -2421,10 +2421,10 @@ details.section{
 }
 #captureDecisionModal.legend-popout-modal .modal-content{
     background: linear-gradient(180deg,#0b1529,#0d1a33);
-    border: 2px solid var(--legend-gold-deep, #a68023);
+    border: 2px solid var(--legend-gold-deep, var(--legend-app-accent));
     border-radius: 16px;
     box-shadow: 0 30px 80px rgba(0,0,0,.46);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     max-height: min(86vh, 760px);
     display: flex;
     flex-direction: column;
@@ -2464,7 +2464,7 @@ details.section{
 #captureDecisionModal.legend-popout-modal .form-control,
 #captureDecisionModal.legend-popout-modal .form-select{
     background: #0f172a;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     border: 1px solid #334155;
 }
 #captureDecisionModal.legend-popout-modal .form-control::placeholder{
@@ -2523,7 +2523,7 @@ details.section{
 
 .proposal-meta .uw-field{
     flex: 1 1 220px;
-    color:#f4d890;
+    color:var(--legend-app-accent-bright);
     font-size:.72rem;
     font-weight:900;
     letter-spacing:.06em;
@@ -2534,7 +2534,7 @@ details.section{
     display:flex;
     flex-direction:column;
     gap:.26rem;
-    color:#f4d890;
+    color:var(--legend-app-accent-bright);
     font-size:.72rem;
     font-weight:900;
     letter-spacing:.06em;
@@ -2547,7 +2547,7 @@ details.section{
     border-radius:10px;
     border:1.5px solid rgba(166,128,35,.38) !important;
     background:rgba(255,255,255,.07) !important;
-    color:#f8fafc !important;
+    color:var(--legend-app-on-dark) !important;
     padding:0 .75rem;
     font-size:.9rem;
     font-weight:600;
@@ -2568,7 +2568,7 @@ details.section{
 
 .proposal-form .uw-field select option{
     background:#0f1d38;
-    color:#f8fafc;
+    color:var(--legend-app-on-dark);
 }
 
 .proposal-actions-inline{
@@ -2593,7 +2593,7 @@ details.section{
 
 .proposal-dialog .proposal-actions-inline .btn.btn-ghost{
     background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03)) !important;
-    color:#f8fafc !important;
+    color:var(--legend-app-on-dark) !important;
     border:1.5px solid rgba(166,128,35,.44) !important;
     box-shadow:0 8px 18px rgba(0,0,0,.16);
 }
@@ -2626,7 +2626,7 @@ details.section{
 .pb-head{
     font-weight:900;
     letter-spacing:.04em;
-    color:#f4d890;
+    color:var(--legend-app-accent-bright);
     text-transform:uppercase;
     border-bottom:1px solid rgba(166,128,35,.22);
     padding-bottom:.3rem;
@@ -2663,12 +2663,12 @@ details.section{
 
 .currency-wrap span{
     font-weight: 900;
-    color:#f4d890;
+    color:var(--legend-app-accent-bright);
 }
 
 .currency-wrap .suffix{
     font-weight: 800;
-    color:#f4d890;
+    color:var(--legend-app-accent-bright);
     letter-spacing:.4px;
 }
 
@@ -2678,7 +2678,7 @@ details.section{
     border:none;
     background:transparent;
     font-weight:700;
-    color:#f8fafc !important;
+    color:var(--legend-app-on-dark) !important;
     outline:none;
 }
 
@@ -7253,7 +7253,7 @@ details.section{
     box-shadow: 0 18px 46px rgba(0,0,0,.34) !important;
 }
 
-#rbShell .proposal-menu-head{ color:#f4d890 !important; }
+#rbShell .proposal-menu-head{ color:var(--legend-app-accent-bright) !important; }
 #rbShell .proposal-empty{ color:#b9c5d8 !important; }
 
 #rbShell .proposal-item{
@@ -7265,12 +7265,12 @@ details.section{
     background:rgba(221,180,87,.10) !important;
     box-shadow: 0 10px 22px rgba(0,0,0,.24) !important;
 }
-#rbShell .proposal-name{ color:#f8fafc !important; }
+#rbShell .proposal-name{ color:var(--legend-app-on-dark) !important; }
 #rbShell .proposal-meta-line{ color:#b9c5d8 !important; }
 
 #rbShell .ellipsis-btn{
     background:rgba(255,255,255,.07) !important;
-    color:#f8fafc !important;
+    color:var(--legend-app-on-dark) !important;
     border:1px solid rgba(166,128,35,.34) !important;
 }
 
@@ -7281,7 +7281,7 @@ details.section{
 }
 
 
-#rbShell .proposal-dialog .uw-name{ color:#f4d890 !important; }
+#rbShell .proposal-dialog .uw-name{ color:var(--legend-app-accent-bright) !important; }
 #rbShell .proposal-dialog .uw-sub{ color:#b9c5d8 !important; }
 
 #rbShell .proposal-meta{
@@ -7292,14 +7292,14 @@ details.section{
 #rbShell .proposal-form .uw-field,
 #rbShell .proposal-form .uw-field > span,
 #rbShell .proposal-form .uw-field > label{
-    color:#f4d890 !important;
+    color:var(--legend-app-accent-bright) !important;
 }
 
 #rbShell .proposal-form .uw-field input,
 #rbShell .proposal-form .uw-field select{
     border:1.5px solid rgba(166,128,35,.38) !important;
     background:rgba(255,255,255,.07) !important;
-    color:#f8fafc !important;
+    color:var(--legend-app-on-dark) !important;
 }
 
 #rbShell .proposal-form .uw-field input::placeholder{ color:#64748b !important; }
@@ -7316,7 +7316,7 @@ details.section{
 }
 
 #rbShell .pb-head{
-    color:#f4d890 !important;
+    color:var(--legend-app-accent-bright) !important;
     border-bottom:1px solid rgba(166,128,35,.22) !important;
 }
 
@@ -7331,9 +7331,9 @@ details.section{
 }
 
 #rbShell .currency-wrap span,
-#rbShell .currency-wrap .suffix{ color:#f4d890 !important; }
+#rbShell .currency-wrap .suffix{ color:var(--legend-app-accent-bright) !important; }
 
-#rbShell .currency-input{ color:#f8fafc !important; }
+#rbShell .currency-input{ color:var(--legend-app-on-dark) !important; }
 
 #rbShell .proposal-actions-inline .btn.gold{
     background:linear-gradient(180deg,#f4dc98,#ddb457) !important;
@@ -7343,7 +7343,7 @@ details.section{
 
 #rbShell .proposal-actions-inline .btn.btn-ghost{
     background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03)) !important;
-    color:#f8fafc !important;
+    color:var(--legend-app-on-dark) !important;
     border:1.5px solid rgba(166,128,35,.44) !important;
 }
 
@@ -7371,7 +7371,7 @@ details.section{
 #rbShell .hero-actions .btn.gold:hover,
 #rbShell .hero-actions .hp-proposal-trigger:hover,
 #rbShell .hero-actions .hero-underwrite:hover {
-    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    background: linear-gradient(155deg, #152848 0%, var(--legend-app-surface-elevated) 100%) !important;
     border-color: rgba(199,153,49,.95) !important;
     color: #ffffff !important;
     transform: translateY(-1px) !important;
@@ -7420,7 +7420,7 @@ details.section{
 #rbShell .rb-link-bar .btn:hover,
 #rbShell .rb-link-bar .btn.gold:hover,
 #rbShell .rb-link-bar .rb-link:hover {
-    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    background: linear-gradient(155deg, #152848 0%, var(--legend-app-surface-elevated) 100%) !important;
     border-color: rgba(199,153,49,.95) !important;
     color: #ffffff !important;
     transform: translateY(-1px) !important;
@@ -7536,7 +7536,7 @@ details.section{
 /* Policy Placed — gold/champagne */
 #rbShell .lb-actions .lb-btn[data-outcome="PolicyPlaced"] {
     border-color: rgba(199,153,49,.65) !important;
-    color: #c79931 !important;
+    color: var(--legend-app-accent) !important;
 }
 #rbShell .lb-actions .lb-btn[data-outcome="PolicyPlaced"]:hover {
     border-color: rgba(199,153,49,1) !important;
@@ -8647,7 +8647,7 @@ details.section{
     font-size: .98rem;
     line-height: 1.2;
     font-weight: 800;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
 }
 
 #mpShell .flow-guide-note,
@@ -8726,7 +8726,7 @@ details.section{
     font-size: .88rem;
     line-height: 1.2;
     font-weight: 800;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
 }
 
 #mpShell .flow-guide-terminal,
@@ -8737,7 +8737,7 @@ details.section{
 
 #mpShell .flow-guide-terminal strong,
 #rbShell .flow-guide-terminal strong{
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
 }
 
 #mpShell .flow-guide-terminal span,
@@ -8954,7 +8954,7 @@ details.section{
 .scripts-shell .body .btn.dark{
     background: linear-gradient(180deg, var(--ws-brand-navy-700) 0%, var(--ws-brand-navy-900) 100%) !important;
     border-color: rgba(244,220,147,.18) !important;
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.08),
         0 14px 24px rgba(5,10,22,.22) !important;
@@ -9380,7 +9380,7 @@ details.section{
     background: linear-gradient(180deg, rgba(8,15,28,.96), rgba(11,19,35,.88)) !important;
     backdrop-filter: blur(18px) saturate(120%);
     box-shadow: 0 16px 36px rgba(2,6,23,.32) !important;
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
 }
 
 #rbShell #drawer.crm-qv-shell .dtitle{
@@ -9390,7 +9390,7 @@ details.section{
 
 #rbShell #drawer.crm-qv-shell #dName{
     font-weight: 1000;
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
     text-shadow: 0 1px 16px rgba(148,163,184,.16);
 }
 
@@ -9558,7 +9558,7 @@ details.section{
 #rbShell #drawer.crm-qv-shell .qv-panel h4,
 #rbShell #drawer.crm-qv-shell .qv-subsection h5,
 #rbShell #drawer.crm-qv-shell .qv-panel.qv-panel-relationship h5{
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
 }
 
 #rbShell #drawer.crm-qv-shell .qv-contact-card > div:first-child{
@@ -9645,7 +9645,7 @@ details.section{
     font-weight: 950;
     letter-spacing: .06em;
     text-transform: uppercase;
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
 }
 
 #rbShell #drawer.crm-qv-shell .qv-section-copy{
@@ -10470,7 +10470,7 @@ details.section{
 }
 
 #rbShell #prosperNav .cat-btn[data-guide-id] .cat-top-single{
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
     text-shadow: 0 0 10px rgba(255,255,255,.05);
 }
 
