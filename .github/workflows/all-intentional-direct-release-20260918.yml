@@ -15,6 +15,10 @@ on:
         description: Exact validated PR head SHA
         type: string
         default: ''
+      source_merge_sha:
+        description: Exact historical approved merge SHA for the validated source PR
+        type: string
+        default: ''
       merge_sha:
         description: Exact approved merge SHA to execute
         type: string
@@ -85,6 +89,7 @@ jobs:
           AUTOMATIC_RELEASE: ${{ inputs.automatic }}
           AUTOMATIC_SOURCE_PR: ${{ inputs.source_pr }}
           AUTOMATIC_VALIDATED_SHA: ${{ inputs.validated_sha }}
+          AUTOMATIC_SOURCE_MERGE_SHA: ${{ inputs.source_merge_sha }}
           AUTOMATIC_MERGE_SHA: ${{ inputs.merge_sha }}
           AUTOMATIC_TARGETS_JSON: ${{ inputs.targets_json }}
           GH_TOKEN: ${{ github.token }}
