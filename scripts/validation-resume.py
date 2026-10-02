@@ -28,10 +28,6 @@ import urllib.parse
 import urllib.request
 
 
-CONTROL_PATHS = {
-    "scripts/validation-resume.py",
-}
-
 TRUSTED_PR_BASE = "legend/approved-changes"
 DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
 RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
@@ -1259,13 +1255,12 @@ def compute_plan(
             }
         return plan
 
-    if any(path in CONTROL_PATHS for path in changed_paths) or workflow_structure_changed:
-        reason = "validation_authority_changed" if any(path in CONTROL_PATHS for path in changed_paths) else "workflow_structure_changed"
+    if workflow_structure_changed:
         for key, gate in gates.items():
             plan["gates"][key] = {
                 "step": gate["step"],
                 "run": True,
-                "reason": reason,
+                "reason": "workflow_structure_changed",
             }
         return plan
 
