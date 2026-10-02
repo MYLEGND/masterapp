@@ -251,9 +251,77 @@ jobs:
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate form-tracking; then exit 0; fi
           node --test tests/analytics/form-tracker.test.cjs
+
+      - name: Run release web contract regressions
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-web-contracts; then exit 0; fi
+          node --test tests/analytics/csv-export.test.cjs
+          node tests/analytics/form-tracker.test.cjs .
+          node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
+          node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
+          python3 scripts/test-diagnostic-project-impact.py
+          python3 scripts/test-sync-published-checkout.py
+
       - name: Verify consolidated release scope and routing policy
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-policy; then exit 0; fi
           python3 scripts/test-release-policy.py
           python3 scripts/test-deploy-approved-app.py
 
+  validated-release-package:
+    name: validated-release-package
+    needs: validate
+    if: github.event_name == 'pull_request' && needs.validate.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+      - name: Checkout exact validated application revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET for canonical package build
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Setup Node for canonical static package build
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Legend-Website/package-lock.json
+
+      - name: Build immutable validated release package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release-package.py build \
+            --revision "${{ github.event.pull_request.head.sha }}" \
+            --directory "$RUNNER_TEMP/validated-release-package" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Verify immutable validated release package
+        shell: bash
+        run: |
+          python3 scripts/release-package.py verify \
+            --revision "${{ github.event.pull_request.head.sha }}" \
+            --directory "$RUNNER_TEMP/validated-release-package"
+
+      - name: Preserve immutable validated release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.artifact }}
+          path: ${{ runner.temp }}/validated-release-package/
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
