@@ -77,6 +77,9 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
         executionPolicy
       });
       const modelSettings = resolveModelSettings(env, model);
+      // Preserve the canonical pre-dispatch receipt semantics: selected reasoning
+      // settings remain observable even when budget admission rejects the call.
+      result.modelSettings = modelSettings;
       const reserved = estimateCostMicrousd(model, model.contextTokens, envelope.limits.maxOutputTokens);
       if (reserved > remaining) throw new RuntimeFailure('request_budget_exhausted');
       await emit({ type: 'progress', stage, modelRole: model.role });
