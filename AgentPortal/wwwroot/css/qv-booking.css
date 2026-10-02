@@ -605,7 +605,7 @@
     width:50px;
     height:50px;
     min-width:50px;
-    border-radius:999px;
+    border-radius: var(--legend-app-radius-compact);
     font-size:0;
     position:relative;
 }
@@ -989,7 +989,7 @@
     background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
     color:#08111f !important;
     border:1px solid rgba(255,229,138,.95) !important;
-    border-radius:999px !important;
+    border-radius: var(--legend-app-radius-compact) !important;
     font-weight:950 !important;
     letter-spacing:-.01em;
     box-shadow:
@@ -1021,7 +1021,7 @@
     background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
     color:#08111f !important;
     border:1px solid rgba(255,229,138,.95) !important;
-    border-radius:999px !important;
+    border-radius: var(--legend-app-radius-compact) !important;
     font-weight:950 !important;
     box-shadow:
         0 14px 34px rgba(245,158,11,.36),
