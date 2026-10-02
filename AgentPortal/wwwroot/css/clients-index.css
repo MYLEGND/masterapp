@@ -8639,3 +8639,54 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         font-size:.8rem;
     }
 }
+
+/* Canonical CRM priority pin: compact control, not a generic pill. */
+.crm-star-toggle{
+    display:inline-grid;
+    width:30px;
+    height:30px;
+    min-width:30px;
+    min-height:30px;
+    flex:0 0 30px;
+    place-items:center;
+    margin:0;
+    padding:0;
+    border:1px solid rgba(212,173,69,.28);
+    border-radius:8px;
+    background:rgba(255,255,255,.06);
+    color:rgba(226,232,240,.58);
+    font-size:15px;
+    line-height:1;
+    box-shadow:none;
+    cursor:pointer;
+    transition:transform .12s ease,border-color .12s ease,background .12s ease,color .12s ease;
+}
+.crm-star-toggle:hover,
+.crm-star-toggle:focus-visible{
+    border-color:var(--legend-app-accent);
+    color:var(--legend-app-accent-bright);
+    outline:none;
+    transform:translateY(-1px);
+}
+.crm-star-toggle.is-starred{
+    border-color:var(--legend-app-accent);
+    background:color-mix(in srgb,var(--legend-app-accent) 16%,transparent);
+    color:var(--legend-app-accent-bright);
+}
+.client-card.is-starred{
+    border-color:color-mix(in srgb,var(--legend-app-accent) 56%,rgba(147,181,255,.24));
+    box-shadow:0 12px 28px rgba(7,15,31,.24),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.client-card.is-starred::after{
+    content:"";
+    position:absolute;
+    top:0;
+    right:0;
+    width:42px;
+    height:2px;
+    background:linear-gradient(90deg,transparent,var(--legend-app-accent));
+    pointer-events:none;
+}
+.client-card.dragging{
+    cursor:grabbing;
+}
