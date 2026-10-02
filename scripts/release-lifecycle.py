@@ -206,7 +206,13 @@ def merge_validated(api, pr):
             'targets': list(targets),
         }
     else:
-        release_result = dispatch_pending_legacy_release(api, result['sha'])
+        # The merge commit does not exist in this runner's local checkout yet.
+        # Historical recovery is intentionally deferred to the workflow's
+        # refresh -> reconcile phase, which fetches and resets to the newly
+        # approved commit before inspecting first-parent authorization history.
+        release_result = {
+            'releaseRecovery': 'deferred until refreshed approved checkout',
+        }
 
     if any(f['filename'] == '.github/workflows/deployment-diagnostics.yml' for f in api.pages(f"pulls/{pr['number']}/files")):
         api.dispatch('deployment-diagnostics.yml')
