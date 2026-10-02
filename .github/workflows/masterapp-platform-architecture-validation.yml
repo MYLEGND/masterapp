@@ -260,6 +260,18 @@ jobs:
           node tests/analytics/form-tracker.test.cjs .
           node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
           node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
+            --filter 'FullyQualifiedName~WebsiteDomainImportTests'
+          dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
+          npm ci --prefix Legend-Cloudflare
+          npm --prefix Legend-Cloudflare run test:website-routing
+          npm --prefix Legend-Cloudflare run check:website-routing
+          python3 -m py_compile scripts/cloudflare-routing-authority.py
+          legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
+          if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
+            echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
+            exit 1
+          fi
           python3 scripts/test-diagnostic-project-impact.py
           python3 scripts/test-sync-published-checkout.py
 
@@ -271,8 +283,7 @@ jobs:
 
   validated-release-package:
     name: validated-release-package
-    needs: validate
-    if: github.event_name == 'pull_request' && needs.validate.result == 'success'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
