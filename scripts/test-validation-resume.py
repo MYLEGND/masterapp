@@ -362,7 +362,9 @@ jobs:
         rollback = release.split("      - name: Reuse exact retained live package when available\n", 1)[1].split("      - uses:", 1)[0]
         self.assertIn("scripts/validation-resume.py validated-package", validated)
         self.assertIn("rollback-evidence", rollback)
-        self.assertIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', release)
+        self.assertIn('git show "${GITHUB_SHA}:scripts/validation-resume.py"', release)
+        self.assertNotIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', release)
+        self.assertIn('git show "${GITHUB_SHA}:.github/workflows/all-intentional-direct-release-20260918.yml"', release)
         self.assertNotIn("gh api", validated)
         self.assertNotIn("gh api", rollback)
 
