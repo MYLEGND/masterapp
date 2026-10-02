@@ -346,10 +346,11 @@
                                 class="legend-founder-ai-nav-button"
                                 title="Legend® Ai"
                                 aria-label="Open Legend® Ai">
-                            <img src="~/images/legend-ai/legendai.png"
+                            <img src="~/images/company-icons/legend-transparent.png"
                                  asp-append-version="true"
                                  alt=""
-                                 class="legend-founder-ai-logo-image" />
+                                 class="legend-founder-ai-logo-image"
+                                 decoding="async" />
                             <span class="legend-founder-ai-nav-label" aria-hidden="true">LEGEND® AI</span>
                         </button>
                     }
@@ -368,7 +369,13 @@
             <div class="profile-avatar">
                 @if (!string.IsNullOrWhiteSpace(avatarUrl))
                 {
-                    <img src="@avatarUrl" alt="Profile photo" loading="lazy" />
+                    <span class="profile-avatar-fallback" aria-hidden="true">@initials</span>
+                    <img src="@avatarUrl"
+                         alt=""
+                         loading="lazy"
+                         decoding="async"
+                         onerror="this.hidden=true; this.previousElementSibling.hidden=false;"
+                         onload="this.previousElementSibling.hidden=true;" />
                                 }
                                 else
                                 {
