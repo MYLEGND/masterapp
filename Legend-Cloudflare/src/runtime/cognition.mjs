@@ -72,7 +72,7 @@ export function parseCognitivePlan(text, cognition) {
     version: raw.version,
     complexity: raw.complexity,
     specialists: Object.freeze(specialists),
-    verification: raw.verification && cognition.independentCritique,
+    verification: raw.verification && cognition.independentCritique && specialists.includes('reasoning'),
   });
 }
 
