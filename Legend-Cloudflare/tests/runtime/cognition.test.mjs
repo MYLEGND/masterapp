@@ -53,6 +53,14 @@ test('plan parser enforces bounded unique specialists and adds independent reaso
   }), adaptive);
   assert.deepEqual(plan.specialists, ['architecture', 'reasoning']);
   assert.equal(plan.verification, true);
+  const capped = parseCognitivePlan(JSON.stringify({
+    version: 'legend-cognition-plan.v1',
+    complexity: 4,
+    specialists: ['architecture', 'coding'],
+    verification: true,
+  }), adaptive);
+  assert.deepEqual(capped.specialists, ['architecture', 'coding']);
+  assert.equal(capped.verification, false);
 
   for (const invalid of [
     { version: 'legend-cognition-plan.v1', complexity: 5, specialists: [], verification: false },
