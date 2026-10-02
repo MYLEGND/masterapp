@@ -8686,12 +8686,12 @@ header .legend-global-nav .container-fluid {
  */
 @media (min-width: 901px) {
     body.legend-app .legend-global-nav {
-        min-height: 76px;
-        padding: .6rem var(--app-shell-gutter, 28px);
+        min-height: 68px;
+        padding: 7px var(--app-shell-gutter, 28px);
     }
 
     body.legend-app .legend-global-nav .navbar-brand img {
-        max-height: 64px;
+        max-height: 50px;
     }
 
     body.legend-app header .legend-global-nav .container-fluid {
@@ -8736,6 +8736,78 @@ header .legend-global-nav .container-fluid {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    body.legend-app .legend-global-nav .header-psalms {
+        top: 50%;
+        bottom: auto;
+        left: 50%;
+        max-width: min(320px, 28vw);
+        min-height: 32px;
+        margin: 0;
+        padding: 5px 12px;
+        border-width: 1px;
+        border-radius: var(--legend-app-radius-compact);
+        background: var(--legend-app-surface);
+        color: var(--legend-app-accent-bright);
+        font-size: .72rem;
+        letter-spacing: .045em;
+        line-height: 1;
+        box-shadow: none;
+        transform: translate(-50%, -50%);
+    }
+
+    body.legend-app .legend-global-nav .header-psalms:hover,
+    body.legend-app .legend-global-nav .header-psalms:focus-visible {
+        background: var(--legend-app-surface-elevated);
+        box-shadow: none;
+        transform: translate(-50%, -50%);
+    }
+
+    body.legend-app .legend-global-nav .profile-avatar {
+        position: relative;
+        overflow: hidden;
+    }
+
+    body.legend-app .legend-global-nav .profile-avatar-fallback {
+        display: grid;
+        width: 100%;
+        height: 100%;
+        place-items: center;
+        background: var(--legend-app-control);
+        color: var(--legend-app-accent-bright);
+        font-size: .72rem;
+        font-weight: 900;
+        line-height: 1;
+    }
+
+    body.legend-app .legend-global-nav .profile-avatar img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    body.legend-app .legend-founder-ai-nav-button {
+        width: var(--legend-desktop-control-height);
+        height: var(--legend-desktop-control-height);
+        min-width: var(--legend-desktop-control-height);
+        flex-basis: var(--legend-desktop-control-height);
+        margin: 0;
+        border-radius: var(--legend-app-radius-compact);
+        box-shadow: none;
+    }
+
+    body.legend-app .legend-founder-ai-nav-button .legend-founder-ai-logo-image {
+        width: 22px;
+        height: 22px;
+        object-fit: contain;
+    }
+
+    body.legend-app .messaging-nav-trigger {
+        min-height: var(--legend-desktop-control-height);
+        border-radius: var(--legend-app-radius-compact);
     }
 
     body.legend-app .legend-app-content > main > :not(script):not(style):not(link) {
