@@ -16,12 +16,12 @@ public sealed class FounderCloudflareFoundationConsoleContractTests
         var script = Read(root, "AgentPortal", "wwwroot", "js", "legend-connect.js");
         var model = Read(root, "AgentPortal", "Models", "LegendConnectViewModels.cs");
 
-        Assert.Contains("asp-controller="LegendConnect"", layout, StringComparison.Ordinal);
+        Assert.Contains("asp-controller=\"LegendConnect\"", layout, StringComparison.Ordinal);
         Assert.Contains("Cloudflare Foundation Console", view, StringComparison.Ordinal);
         Assert.Contains("Run no-inference connection check", view, StringComparison.Ordinal);
-        Assert.Contains("data-cf-control="set_spend_cap"", view, StringComparison.Ordinal);
-        Assert.Contains("data-cf-control="pause"", view, StringComparison.Ordinal);
-        Assert.Contains("data-cf-control="resume"", view, StringComparison.Ordinal);
+        Assert.Contains("data-cf-control=\"set_spend_cap\"", view, StringComparison.Ordinal);
+        Assert.Contains("data-cf-control=\"pause\"", view, StringComparison.Ordinal);
+        Assert.Contains("data-cf-control=\"resume\"", view, StringComparison.Ordinal);
         Assert.Contains("/founder/legend-connect/cloudflare/status", script, StringComparison.Ordinal);
         Assert.Contains("/founder/legend-connect/cloudflare/control", script, StringComparison.Ordinal);
         Assert.Contains("/founder/legend-connect/cloudflare/canary", script, StringComparison.Ordinal);
