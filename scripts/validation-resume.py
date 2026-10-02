@@ -1352,15 +1352,25 @@ def required_validation_topology(changed_paths):
     if step5 in names or release_evidence_change:
         required.add(step5)
 
+    shared_resume_authority_change = any(
+        name in {"scripts/validation-resume.py", "scripts/test-validation-resume.py"}
+        for name in names
+    )
+
     step6_name = "step6-openai-ads-execution-validation.yml"
-    if step6 in names or any(_workflow_affected_by_path(step6_name, name) for name in names):
+    if (
+        shared_resume_authority_change
+        or step6 in names
+        or any(_workflow_affected_by_path(step6_name, name) for name in names)
+    ):
         required.add(step6)
 
     step78_name = "steps7-8-governed-advertising-validation.yml"
     if (
         not public_website_only
         and (
-            step78 in names
+            shared_resume_authority_change
+            or step78 in names
             or any(_workflow_affected_by_path(step78_name, name) for name in names)
         )
     ):
