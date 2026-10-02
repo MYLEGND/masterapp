@@ -73,7 +73,7 @@ class Azure:
     def deployments(self):
         # Uses the existing OIDC session; no publishing credentials or new authority.
         result = subprocess.run(
-            ['az', 'webapp', 'log', 'deployment', 'list', '-g', 'masterapp-rg', '-n', self.app,
+            ['az', 'webapp', 'log', 'deployment', 'list', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
              '--only-show-errors', '-o', 'json'], capture_output=True, text=True, timeout=45)
         if result.returncode:
             raise RuntimeError('Azure deployment status unavailable')
@@ -102,7 +102,7 @@ class Azure:
         # replaced by exact-revision checks below, not waived. Status preflight
         # already warmed SCM; disabling CLI warmup prevents its exception fallback
         # from replaying a POST. A subprocess timeout leaves Azure running untouched.
-        command = ['az', 'webapp', 'deploy', '-g', 'masterapp-rg', '-n', self.app,
+        command = ['az', 'webapp', 'deploy', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
                    '--src-path', str(self.package), '--type', 'zip', '--clean', 'true',
                    '--restart', 'true', '--async', 'true', '--track-status', 'false',
                    '--enable-kudu-warmup', 'false', '--timeout', '120000',
@@ -125,7 +125,7 @@ class Azure:
         # the candidate is still not live. Reuse the same verified immutable ZIP
         # through Kudu ZipDeploy once, then return to read-only reconciliation.
         command = ['az', 'webapp', 'deployment', 'source', 'config-zip',
-                   '-g', 'masterapp-rg', '-n', self.app, '--src', str(self.package),
+                   '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app, '--src', str(self.package),
                    '--only-show-errors', '-o', 'json']
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=300)
