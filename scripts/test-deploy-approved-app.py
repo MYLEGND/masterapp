@@ -230,8 +230,13 @@ class TransactionTests(unittest.TestCase):
 class SettingsIdempotenceTests(unittest.TestCase):
     def run_settings(self, drift=False):
         workflow = (ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
-        names = ['Synchronize Protect shared website authorization and publisher runtime',
-                 'Synchronize shared website editor ticket authority']
+        names = ['Synchronize selected shared authorization and publisher runtimes',
+                 'Synchronize selected editor ticket authority']
+        authority = deploy._RELEASE_AUTHORITY
+        all_names = [row['releaseName'] for row in deploy.TARGETS.values()]
+        profile = authority.release_runtime_profile(all_names)
+        shared_target = profile['sharedAuthTargets'][0]
+        editor_target = next(name for name in profile['editorTargets'] if name != shared_target)
         with tempfile.TemporaryDirectory() as folder:
             directory = Path(folder)
             common = {'FOUNDER_OID': 'test-founder', 'Founder__Upn': 'test@example.invalid',
@@ -244,8 +249,8 @@ class SettingsIdempotenceTests(unittest.TestCase):
                       'Tracking:SharedSecret': 'test-secret', 'WEBSITE_NODE_DEFAULT_VERSION': '~24'}
             state = {row['releaseName']: dict(common) for row in deploy.TARGETS.values()}
             if drift:
-                state['masterapp-protect']['Tracking:SharedSecret'] = 'stale'
-                state['masterapp-parfait']['WebsiteEditorDataProtection__BlobUri'] = 'stale'
+                state[shared_target]['Tracking:SharedSecret'] = 'stale'
+                state[editor_target]['WebsiteEditorDataProtection__BlobUri'] = 'stale'
             (directory / 'state.json').write_text(json.dumps(state))
             (directory / 'writes.json').write_text('[]')
             executable = directory / 'az'
@@ -272,8 +277,16 @@ else:
     raise AssertionError('Unexpected Azure mutation')
 """)
             executable.chmod(0o755)
-            env = os.environ | {'PATH': str(directory) + os.pathsep + os.environ['PATH'],
-                                'FAKE_AZ_ROOT': folder, 'SELECTED_TARGETS': json.dumps(list(state))}
+            env = os.environ | {
+                'PATH': str(directory) + os.pathsep + os.environ['PATH'],
+                'FAKE_AZ_ROOT': folder,
+                'SELECTED_TARGETS': json.dumps(list(state)),
+                'RELEASE_RESOURCE_GROUP': profile['resourceGroup'],
+                'DATABASE_AUTHORITY': profile['databaseAuthority'],
+                'SHARED_AUTH_TARGETS': json.dumps(profile['sharedAuthTargets']),
+                'MARKETING_TARGETS': json.dumps(profile['marketingTargets']),
+                'EDITOR_TARGETS': json.dumps(profile['editorTargets']),
+            }
             for _ in range(2):
                 for name in names:
                     block = workflow.split('      - name: ' + name + '\n', 1)[1].split('      - name:', 1)[0]
@@ -281,15 +294,18 @@ else:
                     script = script.replace('/tmp/', folder + '/')
                     result = subprocess.run(['bash', '-c', script], env=env, text=True, capture_output=True)
                     self.assertEqual(0, result.returncode, result.stderr)
-            return json.loads((directory / 'writes.json').read_text())
+            return json.loads((directory / 'writes.json').read_text()), shared_target, editor_target
 
     def test_matching_settings_make_zero_azure_writes_across_repeated_runs(self):
-        self.assertEqual([], self.run_settings())
+        writes, _, _ = self.run_settings()
+        self.assertEqual([], writes)
 
     def test_only_drifted_keys_are_updated_once_and_then_preserved(self):
-        self.assertEqual([{'app': 'masterapp-protect', 'keys': ['Tracking:SharedSecret']},
-                          {'app': 'masterapp-parfait', 'keys': ['WebsiteEditorDataProtection__BlobUri']}],
-                         self.run_settings(drift=True))
+        writes, shared_target, editor_target = self.run_settings(drift=True)
+        self.assertEqual([
+            {'app': shared_target, 'keys': ['Tracking:SharedSecret']},
+            {'app': editor_target, 'keys': ['WebsiteEditorDataProtection__BlobUri']},
+        ], writes)
 
 if __name__ == '__main__':
     unittest.main()
