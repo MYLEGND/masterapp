@@ -6022,6 +6022,7 @@ pipelineStageNav?.addEventListener("click", (e) => {
 });
 
 pipelineBoard?.addEventListener("click", (e) => {
+  if (e.target.closest("[data-star-contact]")) return;
   const stageBtn = e.target.closest("[data-pipeline-nav]")?.getAttribute("data-pipeline-nav");
   if (stageBtn){
     pipelineFocusStage = stageBtn;
@@ -6073,6 +6074,7 @@ pipelineBoard?.addEventListener("click", async (e) => {
   if (!star) return;
   e.preventDefault();
   e.stopPropagation();
+  e.stopImmediatePropagation();
   const id = star.getAttribute("data-star-contact");
   const row = rows.find(r => r.dataset.clientId === id);
   if (!row) return;
@@ -6232,6 +6234,7 @@ pipelineBoard?.addEventListener("drop", async (e) => {
 });
 
 pipelineBoard?.addEventListener("click", (e) => {
+  if (e.target.closest("[data-star-contact]")) return;
   const textBtn = e.target.closest("[data-text-menu]");
   if (textBtn){
     const id = textBtn.getAttribute("data-text-menu");
