@@ -286,6 +286,37 @@ jobs:
         self.assertFalse(plan["gates"]["build-hosts"]["run"])
         self.assertFalse(plan["gates"]["meta-regressions"]["run"])
 
+    def test_release_package_change_reruns_only_release_authority_gates(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["scripts/release-package.py"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["lifecycle"]["run"])
+        self.assertTrue(plan["gates"]["release-policy"]["run"])
+        for key, gate in plan["gates"].items():
+            if key not in {"lifecycle", "release-policy"}:
+                self.assertFalse(gate["run"], key)
+
+    def test_release_web_contract_change_invalidates_only_release_web_gate(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["tests/legend-connect/example.test.mjs"],
+            "prior_run",
+        )
+        self.assertTrue(plan["gates"]["release-web-contracts"]["run"])
+        for key, gate in plan["gates"].items():
+            if key != "release-web-contracts":
+                self.assertFalse(gate["run"], key)
+
     def test_validation_authority_change_fails_closed_to_full(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
