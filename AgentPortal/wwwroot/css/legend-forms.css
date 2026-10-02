@@ -1,11 +1,11 @@
 /* Legend premium navy form styling, aligned with Advanced Markets look */
 :root {
-    --legend-navy: #0f172a;
-    --legend-navy-2: #1e293b;
-    --legend-ink: #e2e8f0;
-    --legend-line: #273554;
+    --legend-navy: var(--legend-app-surface);
+    --legend-navy-2: var(--legend-app-surface-elevated);
+    --legend-ink: var(--legend-app-on-dark);
+    --legend-line: var(--legend-app-control-line);
     --legend-gold: var(--legend-app-accent);
-    --legend-muted: #94a3b8;
+    --legend-muted: var(--legend-app-on-dark-muted);
 }
 
 .legend-shell {
@@ -64,7 +64,7 @@
 
 .legend-card {
     border: 1.5px solid #d7dae3;
-    border-radius: 18px;
+    border-radius: var(--legend-app-radius);
     background: #ffffff;
     color: #0f172a;
     box-shadow: 0 12px 26px rgba(15, 23, 42, .10);
