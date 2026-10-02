@@ -28,6 +28,7 @@ jobs:
       matrix: ${{ steps.live.outputs.matrix }}
       baselines: ${{ steps.live.outputs.baselines }}
       portal: ${{ steps.live.outputs.portal }}
+      database_baseline: ${{ steps.live.outputs.database_baseline }}
       targets: ${{ steps.live.outputs.targets }}
       portal_only: ${{ steps.live.outputs.portal_only }}
       website_only: ${{ steps.live.outputs.website_only }}
@@ -188,6 +189,7 @@ jobs:
     environment: Production
     env:
       EXPECTED_BASE_SHA: ${{ needs.discover-live.outputs.portal }}
+      EXPECTED_DB_BASE_SHA: ${{ needs.discover-live.outputs.database_baseline }}
       LIVE_BASELINES: ${{ needs.discover-live.outputs.baselines }}
       SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
       PORTAL_ONLY: ${{ needs.discover-live.outputs.portal_only }}
