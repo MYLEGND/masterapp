@@ -628,7 +628,7 @@ def release_proven(api, revision, app=None):
     artifact name binds proof to APPLICATION_RELEASE_SHA instead of guessing from
     the workflow head.
     """
-    name = 'legend-approved-release-' + revision
+    name = 'legend-approved-release-' + revision + (('-' + app) if app else '')
     artifacts = api.pages(
         'actions/artifacts?name=' + urllib.parse.quote(name, safe=''),
         'artifacts',
@@ -642,7 +642,10 @@ def release_proven(api, revision, app=None):
             run_ids.append(run_id)
     for run_id in run_ids:
         run = api.api(f'actions/runs/{run_id}')
-        if successful_release(api, run, app=app):
+        # Target-specific artifact names are the scope proof for modern
+        # transactional releases. Legacy generic receipts still fall back to the
+        # committed request check below.
+        if successful_release(api, run, app=None if app else app):
             return True
 
     # Bootstrap durable proof for exact-head direct releases that completed before
