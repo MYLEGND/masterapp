@@ -1305,7 +1305,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     justify-content: center;
     width: fit-content;
     padding: 8px 12px;
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     border: 1.5px solid rgba(185,28,28,.65);
     background: linear-gradient(180deg, #fee2e2, #fecaca);
     color: #991b1b;
@@ -1355,7 +1355,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 .btn-ghost,
 .btn-legend-outline{
     font-weight: 900;
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     border: 1.5px solid rgba(166,128,35,.86);
     background: linear-gradient(180deg, #ffe9b5, #e6b23a);
     color: var(--ink-2);
@@ -1444,7 +1444,7 @@ details.section{
 .search,
 .side-search{
     border: 1.5px solid rgba(166,128,35,.44);
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     padding: 12px 14px;
     background: linear-gradient(180deg, #fff, #fffdf7);
     font-weight: 850;
@@ -1914,7 +1914,7 @@ details.section{
     box-shadow: 0 14px 28px rgba(0,0,0,.16);
     font-weight: 950;
     letter-spacing: .25px;
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     white-space: nowrap;
 }
 .script-switcher select.btn:focus{
@@ -3622,7 +3622,7 @@ details.section{
 
     .search{
         width: 100%;
-        border-radius: 999px;
+        border-radius: var(--legend-app-radius-compact);
         border: 1.5px solid rgba(166,128,35,.44);
         padding: 14px 16px 14px 46px;
         outline: none;
@@ -3893,7 +3893,7 @@ details.section{
         font-weight: 950;
         font-size: .96rem;
         padding: 12px 14px;
-        border-radius: 999px;
+        border-radius: var(--legend-app-radius-compact);
         transition: all .18s ease;
         text-decoration: none;
         display:inline-flex;
@@ -3914,7 +3914,7 @@ details.section{
         content:"";
         position:absolute;
         inset: 1px;
-        border-radius: 999px;
+        border-radius: var(--legend-app-radius-compact);
         border: 1px solid rgba(255,255,255,.24);
         pointer-events:none;
     }
@@ -4538,7 +4538,7 @@ details.section{
         gap:8px;
         margin: 0 0 12px 0;
         padding: 10px 16px;
-        border-radius: 999px;
+        border-radius: var(--legend-app-radius-compact);
         border: 1.5px solid rgba(166,128,35,.78);
         background: linear-gradient(180deg, #fff, #fbf7eb);
         color: var(--ink);
@@ -5409,7 +5409,7 @@ details.section{
         gap:8px;
         margin: 0 auto 12px auto;
         padding: 10px 16px;
-        border-radius: 999px;
+        border-radius: var(--legend-app-radius-compact);
         border: 1.5px solid rgba(166,128,35,.78);
         background: linear-gradient(180deg, #fff, #fbf7eb);
         color: var(--ink);
@@ -8744,7 +8744,7 @@ details.section{
     min-height: 0 !important;
     max-width: 100%;
     padding: 6px 10px !important;
-    border-radius: 999px !important;
+    border-radius: var(--legend-app-radius-compact) !important;
     font-size: .76rem !important;
     line-height: 1.08 !important;
     font-weight: 800 !important;
