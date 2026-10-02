@@ -1169,7 +1169,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     border-radius: 999px;
     border: 1px solid rgba(212, 170, 71, 0.34);
     background: rgba(212, 170, 71, 0.1);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.75rem;
     font-weight: 900;
     letter-spacing: 0.09em;
@@ -1178,7 +1178,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 
 .dashboard-hero-title {
     margin: 0;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: clamp(1.6rem, 2.7vw, 2.55rem);
     font-weight: 980;
     line-height: 0.96;
@@ -1265,7 +1265,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .dashboard-stat-label {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.69rem;
     font-weight: 900;
     letter-spacing: 0.08em;
@@ -1273,7 +1273,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .dashboard-stat-value {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: clamp(1.28rem, 2vw, 1.8rem);
     font-weight: 980;
     line-height: 1;
@@ -1330,7 +1330,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 
 .dashboard-section-title {
     margin: 0.24rem 0 0;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: clamp(1.24rem, 2vw, 1.72rem);
     font-weight: 930;
     line-height: 1.1;
@@ -1373,7 +1373,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     --bs-table-color: var(--dash-text);
     --bs-table-border-color: rgba(150, 182, 255, 0.14);
     --bs-table-hover-bg: rgba(212, 170, 71, 0.06);
-    --bs-table-hover-color: #ffffff;
+    --bs-table-hover-color: var(--legend-app-on-dark);
     width: 100%;
     min-width: max-content;
     margin: 0;
@@ -1397,7 +1397,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 .dashboard-data-table thead th {
     border-bottom-color: rgba(212, 170, 71, 0.34);
     background: linear-gradient(180deg, rgba(16, 37, 76, 0.98), rgba(10, 22, 46, 0.98));
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.67rem;
     font-weight: 900;
     letter-spacing: 0.07em;
@@ -1415,7 +1415,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .dashboard-data-table a {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-weight: 800;
     text-decoration-color: rgba(240, 217, 145, 0.42);
     text-underline-offset: 0.16em;
@@ -1423,8 +1423,8 @@ html[data-legend-modal-region] body .modal .modal-body {
 
 .dashboard-data-table a:hover,
 .dashboard-data-table a:focus-visible {
-    color: #ffffff;
-    text-decoration-color: #f0d991;
+    color: var(--legend-app-on-dark);
+    text-decoration-color: var(--legend-app-accent-bright);
 }
 
 .dashboard-form-grid {
@@ -1444,7 +1444,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .dashboard-form-field > span {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.67rem;
     font-weight: 900;
     letter-spacing: 0.07em;
@@ -1587,7 +1587,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .legend-connect-production-kicker {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.62rem;
     font-weight: 900;
     letter-spacing: 0.08em;
@@ -1595,7 +1595,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .legend-connect-production-title {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.9rem;
     font-weight: 900;
     line-height: 1.1;
@@ -1630,7 +1630,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .legend-connect-composition-status--shadow {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     background: rgba(212, 170, 71, 0.14);
     box-shadow: inset 0 0 12px rgba(212, 170, 71, 0.08);
 }
@@ -1680,7 +1680,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 .legend-connect-production-primary--disable {
     border-color: rgba(240, 217, 145, 0.7);
     background: rgba(8, 18, 38, 0.68);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
@@ -1688,7 +1688,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 .legend-connect-production-primary:focus-visible,
 .legend-connect-modal-confirm:hover,
 .legend-connect-modal-confirm:focus-visible {
-    border-color: #ffffff;
+    border-color: var(--legend-app-on-dark);
     transform: translateY(-1px);
     box-shadow: 0 10px 20px rgba(4, 10, 28, 0.3);
 }
@@ -1799,7 +1799,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 .legend-connect-modal-cancel:hover,
 .legend-connect-modal-cancel:focus-visible {
     border-color: rgba(240, 217, 145, 0.72);
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
 }
 
 .legend-connect-modal-confirm {
@@ -2036,7 +2036,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     flex: 0 0 30px;
     border: 1px solid rgba(212, 170, 71, 0.38);
     border-radius: 50%;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 1.2rem;
     font-weight: 700;
     line-height: 1;
@@ -2153,7 +2153,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .legend-connect-focus-label {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.67rem;
     font-weight: 900;
     letter-spacing: 0.07em;
@@ -2220,7 +2220,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .legend-connect-focus-switch-input:focus-visible + .legend-connect-focus-switch {
-    outline: 2px solid #f0d991;
+    outline: 2px solid var(--legend-app-accent-bright);
     outline-offset: 3px;
 }
 
@@ -2257,7 +2257,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .legend-connect-language-picker > summary:focus-visible {
-    outline: 2px solid #f0d991;
+    outline: 2px solid var(--legend-app-accent-bright);
     outline-offset: 3px;
 }
 
@@ -2265,8 +2265,8 @@ html[data-legend-modal-region] body .modal .modal-body {
     inline-size: 0.55rem;
     block-size: 0.55rem;
     flex: 0 0 auto;
-    border-right: 2px solid #f0d991;
-    border-bottom: 2px solid #f0d991;
+    border-right: 2px solid var(--legend-app-accent-bright);
+    border-bottom: 2px solid var(--legend-app-accent-bright);
     transform: rotate(45deg) translateY(-2px);
     transition: transform 0.16s ease;
 }
@@ -2293,13 +2293,13 @@ html[data-legend-modal-region] body .modal .modal-body {
     border: 1px solid rgba(150, 182, 255, 0.28);
     border-radius: 9px;
     background: rgba(6, 15, 32, 0.8);
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font: inherit;
     font-size: 0.8rem;
 }
 
 .legend-connect-language-search input:focus {
-    border-color: #f0d991;
+    border-color: var(--legend-app-accent-bright);
     outline: none;
     box-shadow: 0 0 0 3px rgba(240, 217, 145, 0.14);
 }
@@ -2381,7 +2381,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 .legend-connect-account-parameters > summary {
     width: fit-content;
     cursor: pointer;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.73rem;
     font-weight: 850;
 }
@@ -2491,7 +2491,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .dashboard-analytics-label {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.74rem;
     font-weight: 900;
     letter-spacing: 0.08em;
@@ -2499,7 +2499,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .dashboard-analytics-value {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: clamp(1.4rem, 2.6vw, 2.05rem);
     font-weight: 970;
     line-height: 1;
@@ -2676,7 +2676,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .legend-exec-title {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 1.18rem;
     font-weight: 940;
     line-height: 1.05;
@@ -2689,7 +2689,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 
 .legend-exec-btn .chevron {
     margin-top: auto;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.72rem;
     font-weight: 900;
     letter-spacing: 0.08em;
@@ -2831,7 +2831,7 @@ button.dashboard-tool {
     background:
         radial-gradient(circle at top, rgba(212, 170, 71, 0.14), transparent 44%),
         linear-gradient(180deg, rgba(20, 44, 89, 0.99), rgba(11, 24, 50, 0.995));
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     box-shadow:
         0 24px 40px rgba(4, 10, 28, 0.28),
         0 0 0 3px rgba(244, 220, 147, 0.10);
@@ -2965,7 +2965,7 @@ button.dashboard-tool {
 }
 
 .home-hero-stat-title {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.96rem;
     font-weight: 940;
     line-height: 1;
@@ -3040,7 +3040,7 @@ button.dashboard-tool {
 .home-focus-kicker {
     display: inline-flex;
     align-items: center;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.78rem;
     font-weight: 900;
     letter-spacing: 0.1em;
@@ -3049,7 +3049,7 @@ button.dashboard-tool {
 
 .home-focus-title {
     margin: 0.42rem 0 0.34rem;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 1.95rem;
     font-weight: 950;
     line-height: 1.1;
@@ -3161,7 +3161,7 @@ button.dashboard-tool {
     border: 1px solid rgba(212, 170, 71, 0.36);
     border-radius: 11px;
     background: rgba(16, 37, 76, 0.9);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-weight: 820;
     cursor: pointer;
 }
@@ -3228,7 +3228,7 @@ button.client-dashboard-tile {
 
 .client-dashboard-tile-title {
     margin: 0;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 1.06rem;
     font-weight: 920;
     line-height: 1.1;
@@ -3244,7 +3244,7 @@ button.client-dashboard-tile {
 
 .client-dashboard-tile-foot {
     margin-top: auto;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.72rem;
     font-weight: 900;
     letter-spacing: 0.08em;
@@ -3284,7 +3284,7 @@ button.client-dashboard-tile {
     width: 100%;
     height: 100%;
     place-items: center;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 1.6rem;
     font-weight: 950;
 }
@@ -3354,7 +3354,7 @@ button.client-dashboard-tile {
 
 .client-create-title {
     margin: 0;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: clamp(1.65rem, 3vw, 2.35rem);
     font-weight: 980;
     line-height: 1;
@@ -3403,7 +3403,7 @@ button.client-dashboard-tile {
 
 .client-create-section-title {
     margin: 0;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.78rem;
     font-weight: 900;
     letter-spacing: 0.09em;
@@ -3589,7 +3589,7 @@ textarea.client-create-notes {
     border: 1px solid rgba(212, 170, 71, 0.4);
     border-radius: 13px;
     background: rgba(8, 18, 38, 0.58);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.84rem;
     font-weight: 850;
     line-height: 1;
@@ -3612,13 +3612,13 @@ textarea.client-create-notes {
 
 .client-create-button-primary {
     border-color: var(--dash-gold-deep);
-    background: linear-gradient(180deg, #f0d991, var(--dash-gold));
+    background: linear-gradient(180deg, var(--legend-app-accent-bright), var(--dash-gold));
     color: var(--dash-royal-950);
     box-shadow: 0 12px 24px rgba(143, 106, 29, 0.24);
 }
 
 .client-create-button-primary:hover {
-    border-color: #f0d991;
+    border-color: var(--legend-app-accent-bright);
     background: linear-gradient(180deg, #f8e7b5, #deb652);
     color: var(--dash-royal-950);
     box-shadow: 0 16px 28px rgba(143, 106, 29, 0.3);
@@ -3788,7 +3788,7 @@ textarea.client-create-notes {
     border: 1px solid rgba(212, 170, 71, 0.36);
     border-radius: 999px;
     background: rgba(212, 170, 71, 0.1);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.72rem;
     font-weight: 880;
     line-height: 1;
@@ -3894,7 +3894,7 @@ textarea.client-create-notes {
 }
 
 .legend-modal .modal-title {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-weight: 900;
     letter-spacing: 0.02em;
 }
@@ -3986,7 +3986,7 @@ textarea.client-create-notes {
     border: 1px solid rgba(240, 217, 145, 0.64);
     border-radius: 50%;
     background: rgba(8, 18, 38, 0.54);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 1.55rem;
     font-weight: 500;
     line-height: 1;
@@ -3994,13 +3994,13 @@ textarea.client-create-notes {
 
 .dashboard-modal-close:hover,
 .dashboard-modal-close:focus-visible {
-    border-color: #ffffff;
+    border-color: var(--legend-app-on-dark);
     background: rgba(212, 170, 71, 0.18);
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
 }
 
 .dashboard-modal-close:focus-visible {
-    outline: 2px solid #f0d991;
+    outline: 2px solid var(--legend-app-accent-bright);
     outline-offset: 3px;
 }
 
@@ -4064,7 +4064,7 @@ textarea.client-create-notes {
     border-radius: 16px;
     border: 1px solid rgba(212, 170, 71, 0.34);
     background: linear-gradient(180deg, rgba(16, 37, 76, 0.98), rgba(10, 22, 46, 0.98));
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     box-shadow: 0 24px 40px rgba(0, 0, 0, 0.22);
     opacity: 0;
     pointer-events: none;
@@ -4129,7 +4129,7 @@ textarea.client-create-notes {
 }
 
 .founder-subscriber-metric-strip strong {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-weight: 900;
 }
 
@@ -4162,7 +4162,7 @@ textarea.client-create-notes {
 }
 
 .founder-subscriber-summary-action span {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.66rem;
     font-weight: 900;
     letter-spacing: 0.06em;
@@ -4171,7 +4171,7 @@ textarea.client-create-notes {
 
 .founder-subscriber-summary-action strong {
     overflow: hidden;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.88rem;
     font-weight: 850;
     text-overflow: ellipsis;
@@ -4193,7 +4193,7 @@ textarea.client-create-notes {
     display: grid;
     gap: 0.24rem;
     min-width: 0;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.64rem;
     font-weight: 900;
     letter-spacing: 0.07em;
@@ -4283,7 +4283,7 @@ textarea.client-create-notes {
 }
 
 .founder-subscriber-tier-primary strong {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.96rem;
     font-weight: 930;
 }
@@ -4296,15 +4296,15 @@ textarea.client-create-notes {
 }
 
 .founder-subscriber-tier-summary b {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-weight: 900;
 }
 
 .founder-subscriber-tier-chevron {
     inline-size: 8px;
     block-size: 8px;
-    border-right: 2px solid #f0d991;
-    border-bottom: 2px solid #f0d991;
+    border-right: 2px solid var(--legend-app-accent-bright);
+    border-bottom: 2px solid var(--legend-app-accent-bright);
     transform: rotate(45deg) translateY(-3px);
     transition: transform 0.16s ease;
 }
@@ -4341,7 +4341,7 @@ textarea.client-create-notes {
 
 .founder-subscriber-distribution-grid h3 {
     margin: 0 0 0.46rem;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.7rem;
     font-weight: 900;
     letter-spacing: 0.07em;
@@ -4373,7 +4373,7 @@ textarea.client-create-notes {
 }
 
 .founder-subscriber-distribution-list strong {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
 }
 
 .founder-subscriber-distribution-list small {
@@ -4436,7 +4436,7 @@ textarea.client-create-notes {
 }
 
 .founder-subscriber-modal-metrics span {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.65rem;
     font-weight: 900;
     letter-spacing: 0.06em;
@@ -4445,7 +4445,7 @@ textarea.client-create-notes {
 
 .founder-subscriber-modal-metrics strong {
     overflow-wrap: anywhere;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 1.08rem;
     font-weight: 900;
 }
@@ -4517,15 +4517,15 @@ textarea.client-create-notes {
 
 .founder-subscriber-action-select:hover,
 .founder-subscriber-action-select:focus-visible {
-    border-color: #f0d991;
+    border-color: var(--legend-app-accent-bright);
     background: rgba(212, 170, 71, 0.12);
 }
 
 .founder-subscriber-select-chevron {
     inline-size: 7px;
     block-size: 7px;
-    border-right: 1px solid #f0d991;
-    border-bottom: 1px solid #f0d991;
+    border-right: 1px solid var(--legend-app-accent-bright);
+    border-bottom: 1px solid var(--legend-app-accent-bright);
     transform: rotate(45deg) translateY(-2px);
 }
 
@@ -4564,7 +4564,7 @@ textarea.client-create-notes {
 
 .founder-subscriber-action-modal-title {
     margin: 0;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.94rem;
     font-weight: 900;
 }
@@ -4578,7 +4578,7 @@ textarea.client-create-notes {
     border: 1px solid rgba(212, 170, 71, 0.7);
     border-radius: 50%;
     background: transparent;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 1.1rem;
     line-height: 1;
 }
@@ -4595,7 +4595,7 @@ textarea.client-create-notes {
     border: 1px solid rgba(150, 182, 255, 0.28);
     border-radius: 9px;
     background: rgba(8, 18, 38, 0.62);
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.76rem;
     font-weight: 850;
     text-align: left;
@@ -4603,7 +4603,7 @@ textarea.client-create-notes {
 
 .founder-subscriber-action-choice:hover,
 .founder-subscriber-action-choice:focus-visible {
-    border-color: #f0d991;
+    border-color: var(--legend-app-accent-bright);
     background: rgba(212, 170, 71, 0.12);
 }
 
@@ -4864,7 +4864,7 @@ textarea.client-create-notes {
         position: absolute;
         right: 0;
         top: 0.02rem;
-        color: #f0d991;
+        color: var(--legend-app-accent-bright);
         font-weight: 900;
     }
 }
@@ -5075,7 +5075,7 @@ body.messaging-command-center-open {
     height: 2px;
     flex: 0 0 auto;
     border-radius: 999px;
-    background: linear-gradient(90deg, #f8fafc, var(--web-gold, #d4aa47));
+    background: linear-gradient(90deg, var(--legend-app-on-dark), var(--web-gold, #d4aa47));
 }
 
 .explore-drawer {
@@ -5163,7 +5163,7 @@ body.messaging-command-center-open {
     border-radius: 999px;
     outline: none;
     background: var(--web-navy, #10254c);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-weight: 700;
 }
 
@@ -5201,7 +5201,7 @@ body.messaging-command-center-open {
     border-radius: 11px;
     background: var(--web-navy, #10254c);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-weight: 800;
     text-align: left;
     text-decoration: none;
@@ -5351,9 +5351,9 @@ header .legend-global-nav .container-fluid {
     padding: 0.48rem 0.9rem;
     border: 1.5px solid rgba(166, 128, 35, 0.65);
     border-radius: 999px;
-    background: #0f172a;
+    background: var(--legend-app-surface);
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-weight: 850;
     letter-spacing: 0.02em;
 }
@@ -5361,7 +5361,7 @@ header .legend-global-nav .container-fluid {
 .legend-global-nav .nav-context-pill strong {
     min-width: 0;
     overflow: hidden;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-weight: 950;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -5377,7 +5377,7 @@ header .legend-global-nav .container-fluid {
     border-radius: 999px;
     background: transparent;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-weight: 900;
     letter-spacing: 0.02em;
     text-decoration: none;
@@ -5413,7 +5413,7 @@ header .legend-global-nav .container-fluid {
     margin: 0 6px;
     padding: 0.65rem 1.25rem;
     border-radius: 14px;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-weight: 800;
     text-decoration: none;
     transition: all 0.25s ease;
@@ -5437,7 +5437,7 @@ header .legend-global-nav .container-fluid {
     border-radius: 50px;
     background: transparent;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    color: #f8fafc !important;
+    color: var(--legend-app-on-dark) !important;
     font-weight: 800;
     letter-spacing: 0.35px;
     text-decoration: none;
@@ -5487,9 +5487,9 @@ header .legend-global-nav .container-fluid {
     padding: 0.4rem 0.85rem;
     border: 1.5px solid rgba(166, 128, 35, 0.65);
     border-radius: 999px;
-    background: #0f172a;
+    background: var(--legend-app-surface);
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-weight: 900;
     text-decoration: none;
 }
@@ -5502,8 +5502,8 @@ header .legend-global-nav .container-fluid {
     place-items: center;
     border: 1.5px solid rgba(166, 128, 35, 0.45);
     border-radius: 50%;
-    background: linear-gradient(135deg, #0f172a, #1e293b);
-    color: #f8fafc;
+    background: linear-gradient(135deg, var(--legend-app-surface), #1e293b);
+    color: var(--legend-app-on-dark);
     font-weight: 900;
     letter-spacing: 0.5px;
 }
@@ -5522,7 +5522,7 @@ header .legend-global-nav .container-fluid {
 }
 
 .legend-global-nav .profile-name {
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-weight: 900;
 }
 
@@ -5539,9 +5539,9 @@ header .legend-global-nav .container-fluid {
     padding: 0.22rem 0.7rem;
     border: 1.5px solid rgba(166, 128, 35, 0.55);
     border-radius: 999px;
-    background: #0f172a;
+    background: var(--legend-app-surface);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 16px rgba(0, 0, 0, 0.18);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-size: 0.78rem;
     font-weight: 800;
     letter-spacing: 0.02em;
@@ -5552,19 +5552,19 @@ header .legend-global-nav .container-fluid {
     z-index: 12000;
     border: 1.6px solid rgba(199, 153, 49, 0.75);
     border-radius: 12px;
-    background: #0b1529;
+    background: var(--legend-app-surface);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
 }
 
 .legend-global-nav .dropdown-menu .dropdown-item {
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-weight: 800;
 }
 
 .legend-global-nav .dropdown-menu .dropdown-item:hover,
 .legend-global-nav .dropdown-menu .dropdown-item:focus {
     background: rgba(166, 128, 35, 0.18);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
 }
 
 .legend-global-nav .dropdown-menu .dropdown-divider {
@@ -5605,7 +5605,7 @@ header .legend-global-nav .container-fluid {
     width: 16px;
     height: 2px;
     border-radius: 4px;
-    background: #f8fafc;
+    background: var(--legend-app-on-dark);
     transform-origin: center;
     transition: transform 0.18s ease, opacity 0.18s ease;
 }
@@ -6141,7 +6141,7 @@ header .legend-global-nav .container-fluid {
     overflow: hidden;
     border: 1.5px solid rgba(166, 128, 35, 0.65);
     border-radius: 999px;
-    background: #0f172a;
+    background: var(--legend-app-surface);
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     color: var(--client-gold-bright, var(--legend-gold-bright, #d3a42e));
     font-family: 'Inter', sans-serif;
@@ -6159,14 +6159,14 @@ header .legend-global-nav .container-fluid {
 
 .header-psalms:hover,
 .header-psalms:focus-visible {
-    background: #111d33;
+    background: var(--legend-app-surface-elevated);
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.14);
     outline: none;
     transform: translateX(-50%) translateY(-1px);
 }
 
 .header-psalms:active {
-    background: #0d172b;
+    background: var(--legend-app-surface);
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     transform: translateX(-50%);
 }
@@ -6191,8 +6191,8 @@ header .legend-global-nav .container-fluid {
 
 .scripture-card {
     width: min(760px, 96vw);
-    background: #0b1529;
-    color: #f8fafc;
+    background: var(--legend-app-surface);
+    color: var(--legend-app-on-dark);
     border-radius: 18px;
     border: 1.6px solid var(--legend-gold-deep, rgba(166,128,35,.85));
     box-shadow: 0 28px 60px rgba(0,0,0,.44);
@@ -6232,13 +6232,13 @@ header .legend-global-nav .container-fluid {
     border: 1px solid rgba(166,128,35,.60);
     background: rgba(255,255,255,.06);
     font-size: .85rem;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     white-space: nowrap;
 }
 
 .scripture-close {
     background: transparent;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     border: 1px solid rgba(255,255,255,.18);
     border-radius: 10px;
     width: 36px;
@@ -6319,11 +6319,11 @@ header .legend-global-nav .container-fluid {
     height: min(820px, calc(100dvh - 2rem));
     min-height: 600px;
     overflow: hidden;
-    border: 1px solid rgba(212, 170, 71, 0.76);
-    border-radius: 26px;
+    border: 1px solid var(--legend-app-control-line);
+    border-radius: var(--legend-app-radius);
     background:
-        radial-gradient(circle at 84% 0%, rgba(212, 170, 71, 0.17), transparent 30%),
-        linear-gradient(145deg, #132958, #08142d 64%, #071128);
+        radial-gradient(circle at 84% 0%, color-mix(in srgb,var(--legend-app-accent) 17%,transparent), transparent 30%),
+        linear-gradient(145deg, var(--legend-app-surface-elevated), var(--legend-app-surface));
     box-shadow: 0 34px 88px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.13);
     outline: none;
 }
@@ -6334,7 +6334,7 @@ header .legend-global-nav .container-fluid {
     flex-direction: column;
     gap: 1rem;
     padding: 1.1rem 1.35rem;
-    border-bottom: 1px solid rgba(212, 170, 71, 0.28);
+    border-bottom: 1px solid var(--legend-app-control-line);
     background: rgba(5, 15, 36, 0.44);
 }
 
@@ -6343,7 +6343,7 @@ header .legend-global-nav .container-fluid {
 .messaging-thread-header h3,
 .messaging-thread-empty h3 {
     margin: 0;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: clamp(1.2rem, 2vw, 1.65rem);
     font-weight: 900;
     letter-spacing: -0.04em;
@@ -6413,7 +6413,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-recipient-scope-button:hover,
 .messaging-recipient-scope-button:focus-visible {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     outline: none;
 }
 
@@ -6452,7 +6452,7 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-service-contact > span {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.64rem;
     font-weight: 900;
     letter-spacing: 0.08em;
@@ -6460,7 +6460,7 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-service-contact strong {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-weight: 850;
 }
 
@@ -6472,7 +6472,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-service-contact a:hover,
 .messaging-service-contact a:focus-visible {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     text-decoration: underline;
 }
 
@@ -6517,7 +6517,7 @@ header .legend-global-nav .container-fluid {
     padding: 0 0.34rem;
     border-radius: 999px;
     background: linear-gradient(135deg, #ff5b6e, #cf2439);
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.7rem;
     font-weight: 950;
     line-height: 1;
@@ -6549,7 +6549,7 @@ header .legend-global-nav .container-fluid {
     border: 1.5px solid rgba(199, 153, 49, 0.72);
     border-radius: 999px;
     background: linear-gradient(145deg, rgba(18, 40, 82, 0.96), rgba(9, 24, 54, 0.98));
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 18px rgba(0, 0, 0, 0.22);
     cursor: pointer;
     transition: transform 0.16s ease, border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
@@ -6565,7 +6565,7 @@ header .legend-global-nav .container-fluid {
 .messaging-nav-trigger[aria-expanded="true"] {
     border-color: #f2d269;
     background: linear-gradient(145deg, rgba(33, 63, 120, 0.98), rgba(12, 30, 67, 0.98));
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     outline: none;
     transform: translateY(-1px);
 }
@@ -6578,7 +6578,7 @@ header .legend-global-nav .container-fluid {
     border: 1px solid rgba(244, 220, 147, 0.56);
     border-radius: 50%;
     background: rgba(8, 20, 46, 0.7);
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font: inherit;
     font-size: 1.45rem;
     line-height: 1;
@@ -6597,7 +6597,7 @@ header .legend-global-nav .container-fluid {
     border: 1px solid rgba(244, 220, 147, 0.5);
     border-radius: 999px;
     background: rgba(8, 20, 46, 0.7);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font: inherit;
     font-size: 0.72rem;
     font-weight: 850;
@@ -6657,7 +6657,7 @@ header .legend-global-nav .container-fluid {
             #37d86d,
             #16803c 72%
         );
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     box-shadow: 0 0 12px rgba(34, 197, 94, 0.34);
 }
 
@@ -6754,7 +6754,7 @@ header .legend-global-nav .container-fluid {
             #16813d 64%,
             #0b4423
         );
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     box-shadow:
         0 0 0 5px rgba(34, 197, 94, 0.08),
         0 0 26px rgba(34, 197, 94, 0.32);
@@ -6796,13 +6796,13 @@ header .legend-global-nav .container-fluid {
 .messaging-journey-trust-card h4,
 .messaging-journey-card h5 {
     margin: 0;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-weight: 900;
 }
 
 .messaging-journey-header h3 {
     margin: 0;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: clamp(1.85rem, 2.35vw, 2.65rem);
     font-weight: 900;
     line-height: 1;
@@ -7011,7 +7011,7 @@ header .legend-global-nav .container-fluid {
     justify-content: center;
     border: 1px solid rgba(240, 217, 145, 0.7);
     border-radius: 50%;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     background: rgba(7, 20, 46, 0.84);
 }
 
@@ -7053,7 +7053,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-journey-section-copy h5 {
     margin: 0;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.8rem;
     font-weight: 900;
 }
@@ -7078,7 +7078,7 @@ header .legend-global-nav .container-fluid {
     border: 0;
     border-right: 1px solid rgba(212, 170, 71, 0.24);
     border-radius: 0;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     background: transparent;
     font: inherit;
     text-align: center;
@@ -7113,7 +7113,7 @@ header .legend-global-nav .container-fluid {
     justify-content: center;
     width: 1.8rem;
     height: 1.8rem;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
 }
 
 .messaging-journey-choice-icon svg {
@@ -7122,7 +7122,7 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-journey-privacy-choice strong {
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.72rem;
     font-weight: 900;
 }
@@ -7149,7 +7149,7 @@ header .legend-global-nav .container-fluid {
     display: inline-flex;
     align-items: center;
     gap: 0.36rem;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.73rem;
     font-weight: 900;
 }
@@ -7164,7 +7164,7 @@ header .legend-global-nav .container-fluid {
     width: 100%;
     border: 1px solid rgba(212, 170, 71, 0.42);
     border-radius: 11px;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     background: linear-gradient(
         180deg,
         rgba(6, 18, 43, 0.9),
@@ -7194,14 +7194,14 @@ header .legend-global-nav .container-fluid {
 
 .messaging-journey-field select:focus,
 .messaging-journey-field textarea:focus {
-    border-color: #f0d991;
+    border-color: var(--legend-app-accent-bright);
     box-shadow: 0 0 0 3px rgba(212, 170, 71, 0.17);
     outline: none;
 }
 
 .messaging-journey-field select option:checked {
     color: #07152f;
-    background: linear-gradient(#f0d991, #f0d991);
+    background: linear-gradient(var(--legend-app-accent-bright), var(--legend-app-accent-bright));
 }
 
 .messaging-journey-introduction {
@@ -7407,7 +7407,7 @@ header .legend-global-nav .container-fluid {
 .messaging-command-center-search:focus,
 .messaging-send-form textarea:focus {
     outline: none;
-    border-color: #f0d991;
+    border-color: var(--legend-app-accent-bright);
     box-shadow: 0 0 0 3px rgba(212, 170, 71, 0.2);
 }
 
@@ -7455,7 +7455,7 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-search-result strong {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.84rem;
 }
 
@@ -7506,7 +7506,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-conversation-item.is-unread .messaging-conversation-title,
 .messaging-conversation-item.is-unread .messaging-conversation-preview {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
 }
 
 .messaging-conversation-identity {
@@ -7524,7 +7524,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-conversation-title {
     overflow: hidden;
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     font-size: 0.86rem;
     font-weight: 850;
     text-overflow: ellipsis;
@@ -7700,7 +7700,7 @@ header .legend-global-nav .container-fluid {
     padding: 0.34rem 0.15rem;
     border: 0;
     background: transparent;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font: inherit;
     font-size: 0.76rem;
     font-weight: 850;
@@ -7709,7 +7709,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-text-button:hover,
 .messaging-text-button:focus-visible {
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     text-decoration: underline;
 }
 
@@ -7929,7 +7929,7 @@ header .legend-global-nav .container-fluid {
     border: 1px solid rgba(150, 182, 255, 0.26);
     border-radius: 9px;
     background: rgba(8, 18, 38, 0.52);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.73rem;
     text-decoration: none;
 }
@@ -7954,13 +7954,13 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-send-form.is-dragging {
-    outline: 2px dashed #f0d991;
+    outline: 2px dashed var(--legend-app-accent-bright);
     outline-offset: 5px;
 }
 
 .messaging-compose-target {
     overflow: hidden;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.76rem;
     font-weight: 780;
     text-overflow: ellipsis;
@@ -7991,11 +7991,11 @@ header .legend-global-nav .container-fluid {
 
 .messaging-file-label {
     border: 1px solid rgba(244, 220, 147, 0.45);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
 }
 
 .messaging-file-label:hover {
-    border-color: #f0d991;
+    border-color: var(--legend-app-accent-bright);
     background: rgba(212, 170, 71, 0.12);
 }
 
@@ -8010,7 +8010,7 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-primary-button {
-    border: 1px solid #f0d991;
+    border: 1px solid var(--legend-app-accent-bright);
     background: linear-gradient(135deg, #f7df90, #d3a42e);
     color: #17213d;
     box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
@@ -8211,7 +8211,7 @@ header .legend-global-nav .container-fluid {
 .membership-billing-kicker {
     display: block;
     margin-bottom: 0.2rem;
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.66rem;
     font-weight: 900;
     letter-spacing: 0.09em;
@@ -8434,7 +8434,7 @@ header .legend-global-nav .container-fluid {
     background:
         radial-gradient(circle at top right, rgba(77, 111, 255, 0.18), transparent 48%),
         linear-gradient(145deg, rgba(24, 56, 111, 0.92), rgba(10, 27, 59, 0.98));
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.68rem;
     font-weight: 950;
     letter-spacing: 0.08em;
@@ -8496,7 +8496,7 @@ header .legend-global-nav .container-fluid {
     padding: 0.62rem 0.7rem;
     border-bottom: 1px solid var(--dash-line);
     background: rgba(8, 18, 38, 0.58);
-    color: #f0d991;
+    color: var(--legend-app-accent-bright);
     font-size: 0.63rem;
     font-weight: 900;
     letter-spacing: 0.06em;
@@ -8965,5 +8965,90 @@ header .legend-global-nav .container-fluid {
         min-height: 100%;
         align-items: center;
         justify-content: center;
+    }
+}
+
+/*
+ * Canonical desktop conversational surfaces.
+ * Shared geometry/chrome for LEGEND AI, Messages and Life HAC. Feature CSS
+ * owns only internal conversational/content composition and semantic states.
+ */
+@media (min-width: 901px) {
+    body.legend-app :is(
+        .legend-founder-ai-modal.show,
+        .messaging-command-center-modal:not([hidden]),
+        .scripture-modal.open
+    ) {
+        position: fixed;
+        inset: 0;
+        box-sizing: border-box;
+        width: 100vw;
+        height: 100dvh;
+        margin: 0;
+        padding: var(--legend-desktop-modal-gutter);
+        align-items: center;
+        justify-content: center;
+        background: var(--legend-modal-backdrop);
+        isolation: isolate;
+        overflow: hidden;
+    }
+
+    body.legend-app .legend-founder-ai-modal.show {
+        display: flex;
+    }
+
+    body.legend-app .legend-founder-ai-modal .modal-dialog,
+    body.legend-app .messaging-command-center-window,
+    body.legend-app .scripture-card {
+        box-sizing: border-box;
+        width: var(--legend-desktop-modal-width);
+        max-width: var(--legend-desktop-modal-width);
+        max-height: var(--legend-desktop-modal-height);
+        min-width: 0;
+        margin: 0 auto;
+        border: 1px solid var(--legend-app-control-line);
+        border-radius: var(--legend-app-radius);
+        background: var(--legend-app-surface-elevated);
+        color: var(--legend-app-on-dark);
+        box-shadow: 0 30px 80px rgba(2,8,23,.42);
+    }
+
+    body.legend-app .legend-founder-ai-shell {
+        height: var(--legend-desktop-modal-height);
+        min-height: 0;
+        max-height: var(--legend-desktop-modal-height);
+        border-radius: var(--legend-app-radius);
+    }
+
+    body.legend-app .messaging-command-center-window {
+        height: var(--legend-desktop-modal-height);
+        min-height: 0;
+    }
+
+    body.legend-app .scripture-card {
+        width: min(760px,var(--legend-desktop-modal-width));
+        padding: var(--legend-desktop-card-pad);
+    }
+
+    body.legend-app :is(
+        .messaging-command-center-header,
+        .legend-founder-ai-header,
+        .scripture-card-header
+    ) {
+        border-color: var(--legend-app-control-line);
+    }
+
+    body.legend-app :is(
+        .messaging-text-button,
+        .messaging-call-button,
+        .messaging-primary-button,
+        .messaging-command-center-close,
+        .scripture-close,
+        .legend-founder-ai-nav-button,
+        .legend-founder-ai-modal button,
+        .legend-founder-ai-modal .btn
+    ) {
+        min-height: var(--legend-desktop-control-height);
+        border-radius: var(--legend-app-radius-compact);
     }
 }
