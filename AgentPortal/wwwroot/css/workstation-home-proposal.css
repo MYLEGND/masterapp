@@ -58,7 +58,7 @@
 #proposalOverlay.hp-overlay{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:1.5rem 1rem;}
 #proposalOverlay.hp-overlay[hidden]{display:none !important;}
 #proposalDialog.hp-dialog{border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:#f8fafc;box-shadow:0 40px 100px rgba(0,0,0,.52);}
-@media (min-width:901px){#proposalDialog.hp-dialog{width:min(1380px,97vw);max-height:92vh;overflow:auto;padding:1rem 1.1rem;}}
+
 #proposalDialog .hp-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding-bottom:.7rem;border-bottom:1px solid rgba(166,128,35,.22);margin-bottom:.8rem;}
 #proposalDialog .hp-dialog-brand{display:flex;align-items:center;gap:.9rem;}
 #proposalDialog .hp-dialog-icon{font-size:1.8rem;line-height:1;flex-shrink:0;}
@@ -93,34 +93,6 @@
 }
 
 /* ── Proposal & Underwriting quick-list: centered fixed popout ─── */
-@media (min-width: 901px) {
-#rbShell .hp-proposal-menu:not([hidden]),
-#proposalMenu.hp-proposal-menu:not([hidden]),
-#rbShell .proposal-menu:not([hidden]),
-#uwMenu.proposal-menu:not([hidden]) {
-    position: fixed !important;
-    top: var(--legend-modal-safe-center, 50%) !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    width: min(680px, 96vw) !important;
-    min-width: unset !important;
-    height: min(860px, var(--legend-modal-safe-height, 82vh)) !important;
-    max-height: var(--legend-modal-safe-height, 82vh) !important;
-    overflow-y: hidden !important;
-    display: flex !important;
-    flex-direction: column !important;
-    z-index: 5100 !important;
-    border-radius: 20px !important;
-    border: 1.5px solid rgba(221,180,87,.72) !important;
-    background: linear-gradient(160deg, #0e1e3c 0%, #09121f 100%) !important;
-    box-shadow:
-        0 0 0 1px rgba(255,255,255,.07) inset,
-        0 0 0 4px rgba(199,153,49,.10),
-        0 0 40px rgba(199,153,49,.12),
-        0 36px 80px rgba(0,0,0,.78) !important;
-    padding: 24px !important;
-}
-}
 
 /* Menu head ─────────────────────────────────────────────────────── */
 #rbShell .hp-proposal-menu-head,
@@ -676,24 +648,8 @@
    ══════════════════════════════════════════════════════════════════ */
 
 /* Overlay */
-@media (min-width: 901px) {
-#uwOverlay {
-    padding: 1.5rem 1rem !important;
-}
-}
 
 /* Dialog shell */
-@media (min-width: 901px) {
-#uwDialog {
-    background:
-        radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%),
-        linear-gradient(180deg, rgba(11,21,41,.99), rgba(7,14,30,.99)) !important;
-    border: 1.8px solid rgba(166,128,35,.52) !important;
-    border-radius: 22px !important;
-    color: #f8fafc !important;
-    box-shadow: 0 40px 100px rgba(0,0,0,.58) !important;
-}
-}
 
 /* Sticky header */
 #uwDialog .uw-head {
@@ -722,61 +678,13 @@
 }
 
 /* Close button — matches proposal */
-@media (min-width: 901px) {
-#uwDialog .uw-close {
-    border: 2px solid rgba(221,180,87,.78) !important;
-    background: linear-gradient(180deg, rgba(15,26,50,.98), rgba(11,21,41,.98)) !important;
-    color: #f8fafc !important;
-    box-shadow: 0 10px 24px rgba(0,0,0,.35) !important;
-    border-radius: 12px !important;
-    width: 44px !important;
-    height: 44px !important;
-}
-}
+
 #uwDialog .uw-close:hover {
     border-color: #f2cf7f !important;
     background: linear-gradient(180deg, rgba(20,35,66,.98), rgba(15,29,56,.98)) !important;
 }
 
 /* Desktop workspace centering only; mobile geometry is globally canonical. */
-@media (min-width: 901px) {
-#proposalOverlay.hp-overlay,
-.uw-overlay,
-.proposal-overlay,
-.note-self-overlay{
-    padding: var(--legend-modal-area-start, 24px) 1rem var(--legend-modal-area-end, 24px) !important;
-}
-
-#proposalDialog.hp-dialog,
-#uwDialog.uw-dialog,
-.proposal-dialog,
-.uw-dialog,
-.note-self-modal,
-#drawer.drawer[data-workstation-drawer="1"]{
-    max-height: min(92vh, var(--legend-modal-safe-height, calc(100dvh - 48px))) !important;
-}
-
-#captureDecisionModal.legend-popout-modal.show{
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: var(--legend-modal-area-start, 24px) var(--legend-modal-safe-margin, 24px) var(--legend-modal-area-end, 24px) !important;
-    overflow-y: auto !important;
-}
-
-#captureDecisionModal.legend-popout-modal .modal-dialog{
-    margin: 0 auto !important;
-    max-width: min(calc(100vw - var(--legend-modal-safe-margin, 24px) - var(--legend-modal-safe-margin, 24px)), 760px) !important;
-}
-
-#captureDecisionModal.legend-popout-modal .modal-content{
-    max-height: min(760px, var(--legend-modal-safe-height, 86vh)) !important;
-}
-
-#drawer.drawer[data-workstation-drawer="1"]{
-    top: var(--legend-modal-safe-center, 50%) !important;
-}
-}
 
 /* Section cards */
 #uwDialog .uw-section {
