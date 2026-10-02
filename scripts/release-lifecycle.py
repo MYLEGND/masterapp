@@ -339,7 +339,7 @@ def direct_only_request(sha):
     # Two authorized shapes exist:
     # 1) a validated PR merge that carries the request in the merge itself; or
     # 2) a single-parent control-only authorization immediately after that merge.
-    path = 'Docs/releases/direct-release-request.json'
+    path = VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH
     lineage = git('rev-list', '--parents', '-n', '1', sha, check=False)
     parts = lineage.stdout.strip().split() if not lineage.returncode else []
     if not parts or parts[0] != sha or len(parts) not in {2, 3}:
@@ -374,7 +374,7 @@ def direct_release_approved_pr(api, sha):
         return None
 
     current = sha
-    request_path = 'Docs/releases/direct-release-request.json'
+    request_path = VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH
     for _ in range(16):
         lineage = git('rev-list', '--parents', '-n', '1', current, check=False)
         parts = lineage.stdout.strip().split() if not lineage.returncode else []
@@ -429,12 +429,12 @@ def pending_legacy_release_authorization(api, approved):
     replay the same failed direct-release run.
     """
     history = git(
-        'rev-list', '--first-parent', '-n',
-        str(VALIDATION_AUTHORITY.MAX_RELEASE_HISTORY_COMMITS), approved,
+        'log', '--first-parent', '--format=%H', approved, '--',
+        VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH,
         check=False,
     )
     if history.returncode:
-        raise RuntimeError('Unable to inspect approved first-parent release history')
+        raise RuntimeError('Unable to inspect approved first-parent release authorization history')
 
     for sha in history.stdout.splitlines():
         if not SHA.fullmatch(sha) or not direct_only_request(sha):
