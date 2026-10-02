@@ -30,8 +30,20 @@ def _validation_authority_module():
     return module
 
 VALIDATION_AUTHORITY = _validation_authority_module()
+
+
+def _release_package_module():
+    path = Path(__file__).with_name("release-package.py")
+    spec = importlib.util.spec_from_file_location("release_package_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+PACKAGE_AUTHORITY = _release_package_module()
 APPROVED = VALIDATION_AUTHORITY.TRUSTED_PR_BASE
 DIRECT = VALIDATION_AUTHORITY.DIRECT_RELEASE_WORKFLOW
+PACKAGE_VALIDATION = VALIDATION_AUTHORITY.PACKAGE_VALIDATION_WORKFLOW
 KEEP = {APPROVED}
 
 
@@ -514,18 +526,58 @@ def pending_legacy_release_authorization(api, approved):
     return None
 
 
+def _validated_package_evidence(api, revision):
+    identity = PACKAGE_AUTHORITY.package_identity(revision)
+    return VALIDATION_AUTHORITY.compute_validated_package_evidence(
+        api.repo,
+        revision,
+        identity,
+    )
+
+
+def _package_backfill_running(api, approved):
+    runs = api.pages(
+        'actions/runs?head_sha=' + urllib.parse.quote(approved, safe=''),
+        'workflow_runs',
+    )
+    return any(
+        run.get('path', '').split('@')[0] == '.github/workflows/' + PACKAGE_VALIDATION
+        and run.get('event') == 'workflow_dispatch'
+        and run.get('status') != 'completed'
+        for run in runs
+    )
+
+
 def dispatch_pending_legacy_release(api, approved):
     pending = pending_legacy_release_authorization(api, approved)
     if not pending:
         return None
     if 'retained' in pending:
         return pending
+
+    package = _validated_package_evidence(api, pending['applicationRevision'])
+    if not package.get('reusable'):
+        if _package_backfill_running(api, approved):
+            return {
+                'packageBackfill': 'already queued or running',
+                **pending,
+            }
+        api.dispatch(PACKAGE_VALIDATION, {
+            'package_revision': pending['applicationRevision'],
+        })
+        return {
+            'packageBackfill': 'dispatched for exact green historical application revision',
+            'packageReason': package.get('reason'),
+            **pending,
+        }
+
     api.dispatch(DIRECT, {
         'automatic': 'false',
         'merge_sha': pending['authorizationSha'],
     })
     return {
         'directRelease': 'recovered nearest still-unreleased historical authorization',
+        'packageEvidenceRunId': package.get('runId'),
         **pending,
     }
 
@@ -536,10 +588,17 @@ def reconcile(api, trigger=None):
         return {'release': 'disabled while validation-only staging hold is active'}
     if trigger:
         run = api.api(f'actions/runs/{trigger}')
-        if run.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT:
+        trigger_path = run.get('path', '').split('@')[0]
+        if trigger_path == '.github/workflows/' + DIRECT:
             if successful_release(api, run):
                 return {'release': 'exact approved direct release already successful'}
             return {'retained': 'Triggered direct release did not complete successfully; no automatic replay'}
+        if (
+            trigger_path == '.github/workflows/' + PACKAGE_VALIDATION
+            and run.get('event') == 'workflow_dispatch'
+            and (run.get('status') != 'completed' or run.get('conclusion') != 'success')
+        ):
+            return {'retained': 'Triggered package backfill did not complete successfully; no automatic replay'}
 
     approved = api.ref(APPROVED)
 
