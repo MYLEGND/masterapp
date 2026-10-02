@@ -2217,7 +2217,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         };
         operations.Setup(operation => operation.TryInferConversationWithDiscourseAsync(
                 It.IsAny<string>(), It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
-                It.IsAny<LegendConnectDiscourseStateSnapshot?>(), It.IsAny<CancellationToken>(), "en", policy))
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(), It.IsAny<CancellationToken>(), "en", LegendConnectExternalProviderPolicy.NativeOnly))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false, 0m, null, "read_only_content_binding_required", 3,
                 "One scoped read is required.", false, ReadOnlyContentRequest: request));
@@ -2230,7 +2230,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
                 It.IsAny<string>(), It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.Is<LegendConnectReadOnlyContentBindingReceipt>(receipt => receipt.SemanticValue == "100"),
-                It.IsAny<CancellationToken>(), "en", policy))
+                It.IsAny<CancellationToken>(), "en", LegendConnectExternalProviderPolicy.NativeOnly))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 true, 1m, "The governed consumption is 100.", "governed", 4, "Scoped read receipt.", false,
                 ReadOnlyContentRequest: request));
