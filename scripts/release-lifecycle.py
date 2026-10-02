@@ -324,11 +324,23 @@ def pending_updates(api):
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     # Scheduled reconciliation also covers bot-created PR events and corrections
     # pushed to a retained branch after its previous approved PR was merged.
+    #
+    # A retained/unvalidated PR must never starve another fully validated PR.
+    # Preserve its reason and continue scanning; stop only after a mutation
+    # actually succeeds.
     pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
     closed = api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe=''))
+    retained_candidates = []
     for pr in reversed(pulls):
         if ready(pr, api.repo, APPROVED):
-            return integrate(api, pr['number'])
+            result = integrate(api, pr['number'])
+            if 'retained' not in result:
+                return result
+            retained_candidates.append({
+                'pr': pr['number'],
+                'reason': result['retained'],
+            })
+            continue
         if (pr['state'] == 'open' and not pr['draft'] and pr['user']['login'] == 'github-actions[bot]'
             and pr['head']['repo'] and pr['head']['repo']['full_name'] == api.repo
             and pr['head']['ref'] not in KEEP):
@@ -337,7 +349,13 @@ def pending_updates(api):
                 old['head']['repo'] and old['head']['repo']['full_name'] == api.repo and
                 old['head']['ref'] == pr['head']['ref']]
             if any(ancestor(old['head']['sha'], pr['head']['sha']) for old in prior):
-                return merge_validated(api, pr)
+                result = merge_validated(api, pr)
+                if 'retained' not in result:
+                    return result
+                retained_candidates.append({
+                    'pr': pr['number'],
+                    'reason': result['retained'],
+                })
     open_names = {p['head']['ref'] for p in pulls if p['head']['repo'] and p['head']['repo']['full_name'] == api.repo}
     branches = {b['name']: b for b in api.pages('branches')}
     approved = api.ref(APPROVED)
@@ -359,7 +377,10 @@ def pending_updates(api):
                     'Owning validation and the approved direct-release authority will re-evaluate only invalidated evidence; branch deletion remains gated.'})
         # The previous collaborator PR authorizes review, not skipping fresh CI.
         return {'correctionPr': correction['number'], 'retained': 'Fresh exact-head validation required'}
-    return {'integration': 'no ready changes or retained-branch corrections'}
+    result = {'integration': 'no validated ready changes or retained-branch corrections'}
+    if retained_candidates:
+        result['retainedCandidates'] = retained_candidates
+    return result
 
 
 def release_targets(revision):
