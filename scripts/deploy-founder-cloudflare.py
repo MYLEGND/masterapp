@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deploy/rollback the validated LEGEND Founder Cloudflare baseline inside the canonical release job."""
 from __future__ import annotations
-import argparse, base64, json, os, re, secrets, subprocess, sys, urllib.request, urllib.error
+import argparse, base64, json, os, re, secrets, subprocess, sys, time, urllib.request, urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -132,6 +132,28 @@ def write_state(path, data):
     path.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n")
     path.chmod(0o600)
 
+def wait_for_worker_route(endpoint, attempts=8, delay_seconds=2):
+    status_url = endpoint.rsplit("/", 1)[0] + "/status"
+    last_status = None
+    for attempt in range(1, attempts + 1):
+        request = urllib.request.Request(status_url, method="GET", headers={"User-Agent": "LEGEND-founder-route-readiness/1.0"})
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                last_status = response.status
+        except urllib.error.HTTPError as error:
+            last_status = error.code
+        except urllib.error.URLError as error:
+            last_status = type(error.reason).__name__ if getattr(error, "reason", None) else type(error).__name__
+        if last_status == 405:
+            print(f"Founder Workers route ready after attempt {attempt}.", flush=True)
+            return
+        if last_status != 404:
+            raise RuntimeError(f"founder_workers_route_unexpected_status_{last_status}")
+        if attempt < attempts:
+            print(f"Founder Workers route not active yet (404), retrying {attempt}/{attempts}.", flush=True)
+            time.sleep(delay_seconds)
+    raise RuntimeError("founder_workers_route_not_ready")
+
 def deploy(state_path, receipt_path):
     group = required("RELEASE_RESOURCE_GROUP")
     app = required("DATABASE_AUTHORITY")
@@ -196,6 +218,7 @@ def deploy(state_path, receipt_path):
         if not isinstance(subdomain, str) or not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", subdomain):
             raise RuntimeError("workers_subdomain_unavailable")
         endpoint = f"https://{worker}.{subdomain}.workers.dev/v1/legend/respond"
+        wait_for_worker_route(endpoint)
         canary_output = Path("/tmp/legend-founder-cloudflare-canary.json")
         canary_env = os.environ.copy()
         canary_env.update({
