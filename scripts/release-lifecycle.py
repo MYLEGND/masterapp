@@ -186,17 +186,25 @@ def merge_validated(api, pr):
     # immediately enter the sole direct-release workflow with scope derived from
     # the validated PR. No second authorization command or hand-maintained target
     # table exists between merge and deployment.
+    release_result = None
     if targets:
         api.dispatch(DIRECT, automatic_release_inputs(pr, result['sha'], targets))
+        release_result = {
+            'directRelease': 'automatic validated-merge release',
+            'targets': list(targets),
+        }
+    else:
+        release_result = dispatch_pending_legacy_release(api, result['sha'])
 
     if any(f['filename'] == '.github/workflows/deployment-diagnostics.yml' for f in api.pages(f"pulls/{pr['number']}/files")):
         api.dispatch('deployment-diagnostics.yml')
     return {
         'mergedPr': pr['number'],
         'sha': result['sha'],
-        'releaseDispatched': bool(targets),
+        'releaseDispatched': bool(release_result and 'directRelease' in release_result),
         'automaticRelease': bool(targets),
         'targets': list(targets),
+        'release': release_result,
     }
 
 
@@ -411,6 +419,71 @@ def direct_release_approved_pr(api, sha):
     return None
 
 
+def pending_legacy_release_authorization(api, approved):
+    """Find the nearest still-unreleased explicit authorization in first-parent history.
+
+    Automatic application PRs do not use this path. It exists only to carry a
+    previously authorized release across release-control-only correction merges.
+    A successful receipt closes the authorization; a fresh control correction may
+    retry a failed attempt, while reconcile on an unchanged head still refuses to
+    replay the same failed direct-release run.
+    """
+    history = git(
+        'rev-list', '--first-parent', '-n',
+        str(VALIDATION_AUTHORITY.MAX_RELEASE_HISTORY_COMMITS), approved,
+        check=False,
+    )
+    if history.returncode:
+        raise RuntimeError('Unable to inspect approved first-parent release history')
+
+    for sha in history.stdout.splitlines():
+        if not SHA.fullmatch(sha) or not direct_only_request(sha):
+            continue
+
+        pr = direct_release_approved_pr(api, sha)
+        if pr is None:
+            return {
+                'retained': 'Historical release authorization cannot be bound to one validated approved PR'
+            }
+
+        pending = candidate_validation(api, pr)
+        if pending:
+            return {'retained': pending}
+
+        targets = release_targets(sha)
+        if not targets:
+            return {'retained': 'Historical release authorization has no canonical target scope'}
+
+        revision = pr['head']['sha']
+        if all(release_proven(api, revision, app=target) for target in targets):
+            return None
+
+        return {
+            'authorizationSha': sha,
+            'applicationRevision': revision,
+            'targets': sorted(targets),
+            'sourcePr': pr['number'],
+        }
+
+    return None
+
+
+def dispatch_pending_legacy_release(api, approved):
+    pending = pending_legacy_release_authorization(api, approved)
+    if not pending:
+        return None
+    if 'retained' in pending:
+        return pending
+    api.dispatch(DIRECT, {
+        'automatic': 'false',
+        'merge_sha': pending['authorizationSha'],
+    })
+    return {
+        'directRelease': 'recovered nearest still-unreleased historical authorization',
+        **pending,
+    }
+
+
 def reconcile(api, trigger=None):
     """Recover only the exact approved direct release; never create a second branch path."""
     if staging_only():
@@ -459,17 +532,11 @@ def reconcile(api, trigger=None):
             api.dispatch(DIRECT, automatic_release_inputs(pr, approved, targets))
             return {'directRelease': 'recovered automatic validated-merge release', 'targets': list(targets)}
 
-    if not direct_only_request(approved):
-        return {'release': 'no application publication required for exact approved head'}
+    historical = dispatch_pending_legacy_release(api, approved)
+    if historical:
+        return historical
 
-    pr = direct_release_approved_pr(api, approved)
-    if pr is None:
-        return {'retained': 'Exact release authorization cannot be bound to a validated approved PR'}
-    pending = candidate_validation(api, pr)
-    if pending:
-        return {'retained': pending}
-    api.dispatch(DIRECT, {'automatic': 'false'})
-    return {'directRelease': 'recovered exact scoped approved request'}
+    return {'release': 'no application publication required for exact approved head'}
 
 
 def _canonical_release_name(app):

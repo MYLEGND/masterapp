@@ -213,6 +213,31 @@ class AutomaticMergeRelease(unittest.TestCase):
 
 
 
+    @patch.object(m, "candidate_validation", return_value=None)
+    @patch.object(m, "automatic_release_targets", return_value=())
+    @patch.object(m, "dispatch_pending_legacy_release")
+    def test_control_only_green_merge_recovers_pending_release_without_second_command(
+        self, recover, _, __
+    ):
+        api = Api()
+        recover.return_value = {
+            "directRelease": "recovered nearest still-unreleased historical authorization",
+            "authorizationSha": "d" * 40,
+        }
+        pr = {"number": 78, "head": {"sha": "e" * 40}}
+        api.api_map["pulls/78/merge"] = {
+            "merged": True,
+            "sha": "f" * 40,
+        }
+        api.pages_map["pulls/78/files"] = []
+
+        result = m.merge_validated(api, pr)
+
+        self.assertTrue(result["releaseDispatched"])
+        self.assertFalse(result["automaticRelease"])
+        recover.assert_called_once_with(api, "f" * 40)
+
+
 class ReleaseTruth(unittest.TestCase):
     def setUp(self):
         request = json.dumps({"releaseMode": "approved-only", "targets": [canonical_name("portal")]})
@@ -308,10 +333,62 @@ class ReleaseTruth(unittest.TestCase):
         self.assertFalse(m.release_proven(api, revision, app="portal"))
 
 
+class HistoricalReleaseRecovery(unittest.TestCase):
+    @patch.object(m, "release_proven", return_value=False)
+    @patch.object(m, "release_targets")
+    @patch.object(m, "candidate_validation", return_value=None)
+    @patch.object(m, "direct_release_approved_pr")
+    @patch.object(m, "direct_only_request")
+    @patch.object(m, "git")
+    def test_nearest_unreleased_authorization_survives_control_only_descendants(
+        self, git, direct_only, approved_pr, _, targets, __
+    ):
+        approved = "a" * 40
+        authorization = "b" * 40
+        target = canonical_name("portal")
+        git.return_value = SimpleNamespace(
+            returncode=0,
+            stdout=approved + "\n" + authorization + "\n",
+            stderr="",
+        )
+        direct_only.side_effect = lambda sha: sha == authorization
+        approved_pr.return_value = {
+            "number": 42,
+            "head": {"sha": "c" * 40},
+        }
+        targets.return_value = {target}
+
+        result = m.pending_legacy_release_authorization(Api(), approved)
+
+        self.assertEqual(authorization, result["authorizationSha"])
+        self.assertEqual("c" * 40, result["applicationRevision"])
+        self.assertEqual([target], result["targets"])
+        self.assertEqual(42, result["sourcePr"])
+
+    @patch.object(m, "pending_legacy_release_authorization")
+    def test_pending_authorization_dispatches_exact_historical_release_sha(self, pending):
+        api = Api()
+        target = canonical_name("portal")
+        pending.return_value = {
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [target],
+            "sourcePr": 42,
+        }
+
+        result = m.dispatch_pending_legacy_release(api, "a" * 40)
+
+        self.assertIn("directRelease", result)
+        self.assertEqual(
+            [(m.DIRECT, {"automatic": "false", "merge_sha": "b" * 40})],
+            api.dispatched,
+        )
+
+
 class ReconcileSafety(unittest.TestCase):
     @patch.object(m, "staging_only", return_value=False)
-    @patch.object(m, "direct_only_request", return_value=False)
-    def test_no_authorization_means_no_release(self, _, __):
+    @patch.object(m, "dispatch_pending_legacy_release", return_value=None)
+    def test_no_pending_release_means_no_release(self, _, __):
         api = Api()
         self.assertEqual(
             {"release": "no application publication required for exact approved head"},
@@ -320,16 +397,21 @@ class ReconcileSafety(unittest.TestCase):
         self.assertEqual([], api.dispatched)
 
     @patch.object(m, "staging_only", return_value=False)
-    @patch.object(m, "direct_only_request", return_value=True)
-    @patch.object(m, "direct_release_approved_pr")
-    @patch.object(m, "candidate_validation", return_value=None)
-    def test_missing_exact_run_recovers_only_direct_release(self, _, approved_pr, __, ___):
+    @patch.object(m, "dispatch_pending_legacy_release")
+    def test_control_only_head_recovers_historical_release(self, recover, _):
         api = Api()
-        approved_pr.return_value = {"number": 42}
+        recovered = {
+            "directRelease": "recovered nearest still-unreleased historical authorization",
+            "authorizationSha": "b" * 40,
+        }
+        recover.return_value = recovered
         api.pages_map["actions/runs?head_sha=" + "a" * 40] = []
+        api.pages_map["commits/" + "a" * 40 + "/pulls"] = []
+
         result = m.reconcile(api)
-        self.assertIn("directRelease", result)
-        self.assertEqual([(m.DIRECT, {"automatic": "false"})], api.dispatched)
+
+        self.assertEqual(recovered, result)
+        recover.assert_called_once_with(api, "a" * 40)
 
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "direct_only_request", return_value=True)
