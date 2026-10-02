@@ -333,6 +333,7 @@ def main():
             out.write('selected_has_static=' + str(runtime_profile['selectedHasStatic']).lower() + '\n')
             out.write('selected_has_shared_auth=' + str(runtime_profile['selectedHasSharedAuth']).lower() + '\n')
             out.write('selected_has_editor=' + str(runtime_profile['selectedHasEditor']).lower() + '\n')
+            out.write('selected_database_dependent=' + str(runtime_profile['selectedDatabaseDependent']).lower() + '\n')
             out.write('validate_only=' + str(release_mode == 'validate-only').lower() + '\n')
             out.write('website_routing=' + str(website_routing).lower() + '\n')
             out.write('website_routing_canary=' + website_routing_canary + '\n')
