@@ -281,6 +281,16 @@ jobs:
           python3 scripts/test-release-policy.py
           python3 scripts/test-deploy-approved-app.py
 
+
+      - name: Preserve exact validation resume plan
+        if: always() && steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-resume-architecture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/validation-resume.json
+          retention-days: 30
+          if-no-files-found: error
+
   validated-release-package:
     name: validated-release-package
     if: github.event_name == 'pull_request'
