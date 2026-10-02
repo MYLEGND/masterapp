@@ -403,6 +403,37 @@ jobs:
         self.assertNotIn("STEP78_VALIDATION_PATHS", lifecycle)
         self.assertNotIn("VALIDATION_NEUTRAL_PATHS =", lifecycle)
 
+    def test_lifecycle_only_change_requires_architecture_only(self):
+        topology = m.required_validation_topology([
+            "scripts/release-lifecycle.py",
+            "scripts/test-release-lifecycle.py",
+        ])
+        self.assertEqual(
+            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            set(topology["required"]),
+        )
+
+    def test_release_package_change_requires_step5_but_not_security(self):
+        topology = m.required_validation_topology([
+            "scripts/release-package.py",
+        ])
+        self.assertEqual(
+            {
+                ".github/workflows/masterapp-platform-architecture-validation.yml",
+                ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            },
+            set(topology["required"]),
+        )
+
+    def test_deploy_control_test_change_requires_architecture_only(self):
+        topology = m.required_validation_topology([
+            "scripts/test-deploy-approved-app.py",
+        ])
+        self.assertEqual(
+            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            set(topology["required"]),
+        )
+
     def test_public_website_only_scope_does_not_expand_into_unrelated_validations(self):
         topology = m.required_validation_topology([
             "Infrastructure/WebsiteEditing/WebsiteSiteSource.cs",
