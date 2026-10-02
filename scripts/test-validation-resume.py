@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("validation_resume", ROOT / "scripts" / "validation-resume.py")
@@ -405,6 +406,51 @@ jobs:
             {".github/workflows/masterapp-platform-architecture-validation.yml"},
             set(topology["required"]),
         )
+
+    def test_package_canary_preserves_prior_child_proof_for_control_only_change(self):
+        proof = {
+            "id": 91,
+            "head_sha": "a" * 40,
+            "updated_at": "2026-10-02T00:00:00Z",
+        }
+        with patch.object(m, "_package_canary_proof_runs", return_value=[proof]), \
+             patch.object(m, "git_changed", return_value=["scripts/test-release-policy.py"]), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            plan = m.compute_package_canary_plan(
+                "MYLEGND/masterapp",
+                "b" * 40,
+                "0" * 40,
+                100,
+                "hardening/example",
+            )
+        self.assertFalse(plan["needed"])
+        self.assertEqual(91, plan["evidenceRunId"])
+        self.assertEqual("preserved_prior_package_canary", plan["reason"])
+
+    def test_package_canary_invalidates_only_for_package_or_application_inputs(self):
+        proof = {
+            "id": 92,
+            "head_sha": "a" * 40,
+            "updated_at": "2026-10-02T00:00:00Z",
+        }
+        with patch.object(m, "_package_canary_proof_runs", return_value=[proof]), \
+             patch.object(m, "git_changed", return_value=["AgentPortal/Program.cs"]), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            plan = m.compute_package_canary_plan(
+                "MYLEGND/masterapp",
+                "b" * 40,
+                "0" * 40,
+                101,
+                "hardening/example",
+            )
+        self.assertTrue(plan["needed"])
+        self.assertEqual(["AgentPortal/Program.cs"], plan["changedInputs"])
+        self.assertEqual("package_or_application_inputs_changed_since_proof", plan["reason"])
+
+    def test_release_baseline_delegates_application_identity_classification(self):
+        baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
+        self.assertIn("_validation_authority.release_control_only_path(path)", baseline)
+        self.assertNotIn('path.startswith(".github/workflows/")', baseline)
 
     def test_step5_workflow_only_change_is_neutral_to_architecture(self):
         workflow = "masterapp-platform-architecture-validation.yml"
