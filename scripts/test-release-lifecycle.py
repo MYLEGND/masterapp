@@ -283,14 +283,10 @@ class AutomaticMergeRelease(unittest.TestCase):
     @patch.object(m, "candidate_validation", return_value=None)
     @patch.object(m, "automatic_release_targets", return_value=())
     @patch.object(m, "dispatch_pending_legacy_release")
-    def test_control_only_green_merge_recovers_pending_release_without_second_command(
+    def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(
         self, recover, _, __
     ):
         api = Api()
-        recover.return_value = {
-            "directRelease": "recovered nearest still-unreleased historical authorization",
-            "authorizationSha": "d" * 40,
-        }
         pr = {"number": 78, "head": {"sha": "e" * 40}}
         api.api_map["pulls/78/merge"] = {
             "merged": True,
@@ -300,9 +296,13 @@ class AutomaticMergeRelease(unittest.TestCase):
 
         result = m.merge_validated(api, pr)
 
-        self.assertTrue(result["releaseDispatched"])
+        self.assertFalse(result["releaseDispatched"])
         self.assertFalse(result["automaticRelease"])
-        recover.assert_called_once_with(api, "f" * 40)
+        self.assertEqual(
+            "deferred until refreshed approved checkout",
+            result["release"]["releaseRecovery"],
+        )
+        recover.assert_not_called()
 
 
 class ReleaseTruth(unittest.TestCase):
