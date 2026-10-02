@@ -76,8 +76,9 @@ internal sealed partial class LegendFounderToolAuthority
             if (name == "legend_remember_conversation_facts")
                 return !string.IsNullOrWhiteSpace(conversationId);
             if (name == "legend_request_teacher_escalation")
-                return !externalTeacher && !providerPolicy.ForbidsExternalAnswering;
-            if (name == "legend_research_internet" && providerPolicy.ForbidsExternalProviders)
+                return !externalTeacher && !providerPolicy.ForbidsExternalAnswering && !providerPolicy.ForbidsOpenAiPayg;
+            if (name == "legend_research_internet" &&
+                (providerPolicy.ForbidsExternalProviders || providerPolicy.ForbidsOpenAiPayg))
                 return false;
             return !RequiresExplicitFounderCommand(name) || mutationConfirmed;
         }).ToArray();
@@ -115,10 +116,16 @@ internal sealed partial class LegendFounderToolAuthority
         name == CloudRepairTool ? mutationsEnabled : name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name);
 
     private static bool IsCloudReadableTool(string name) => name is
-        "legend_calculate" or "legend_capabilities" or "legend_software_remediation_status" or
+        "legend_calculate" or "legend_capabilities" or
+        "legend_system_inventory" or "legend_system_health" or "legend_configuration_presence" or
+        "legend_software_remediation_status" or "legend_engineering_status" or
         "legend_system_overview" or "legend_provider_capacity" or "legend_client_lead_portfolio" or
-        // Source inspection keeps its own regular-file, immutable-revision,
-        // sensitive-path and credential-material checks before returning text.
+        "legend_inspect_repair_validation" or "legend_verify_repair_deployment" or
+        // Source inspection reuses the same GPT/Codex authority and keeps its
+        // regular-file, immutable-revision, sensitive-path and credential
+        // material checks before returning text. Private retained knowledge,
+        // unrestricted diagnostic drilldowns and raw CRM/user content remain
+        // excluded from Cloudflare disclosure.
         "legend_inspect_repository";
 
     private static bool IsSiteReadableTool(string name) =>
