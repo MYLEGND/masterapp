@@ -244,7 +244,13 @@
                             <div class="profile-avatar">
                                 @if (!string.IsNullOrWhiteSpace(avatarUrl))
                                 {
-                                    <img src="@avatarUrl" alt="Profile photo" loading="lazy" />
+                                    <span class="profile-avatar-fallback" aria-hidden="true">@initials</span>
+                                    <img src="@avatarUrl"
+                                         alt=""
+                                         loading="lazy"
+                                         decoding="async"
+                                         onerror="this.hidden=true; this.previousElementSibling.hidden=false;"
+                                         onload="this.previousElementSibling.hidden=true;" />
                                 }
                                 else
                                 {
