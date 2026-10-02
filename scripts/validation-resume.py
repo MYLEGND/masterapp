@@ -15,6 +15,7 @@ intentionally conservative and invalidate the whole architecture suite.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import fnmatch
 import hashlib
 import json
@@ -22,6 +23,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 
@@ -44,6 +46,7 @@ RELEASE_TARGETS = {
         "project": "AgentPortal/AgentPortal.csproj",
         "package": "agentportal.zip",
         "provenancePath": "/api/runtime-provenance",
+        "proofHosts": ("portal.mylegnd.com", "masterapp-portal.azurewebsites.net"),
         "static": False,
     },
     "client": {
@@ -53,6 +56,7 @@ RELEASE_TARGETS = {
         "project": "ClientApp/ClientApp.csproj",
         "package": "clientapp.zip",
         "provenancePath": "/api/runtime-provenance",
+        "proofHosts": ("client.mylegnd.com", "masterapp-client.azurewebsites.net"),
         "static": False,
     },
     "protect": {
@@ -62,6 +66,7 @@ RELEASE_TARGETS = {
         "project": "Protect-Website/ProtectWebsite.csproj",
         "package": "protect.zip",
         "provenancePath": "/api/runtime-provenance",
+        "proofHosts": ("masterapp-protect.azurewebsites.net",),
         "static": False,
     },
     "parfait": {
@@ -71,6 +76,7 @@ RELEASE_TARGETS = {
         "project": "ParfaitApp/ParfaitApp.csproj",
         "package": "parfait.zip",
         "provenancePath": "/api/runtime-provenance",
+        "proofHosts": ("masterapp-parfait.azurewebsites.net",),
         "static": False,
     },
     "website": {
@@ -80,6 +86,7 @@ RELEASE_TARGETS = {
         "project": "static",
         "package": "website.zip",
         "provenancePath": "/_deployment-provenance.txt",
+        "proofHosts": ("masterapp-website.azurewebsites.net", "mylegnd.com", "www.mylegnd.com"),
         "static": True,
     },
 }
@@ -1310,6 +1317,113 @@ def cmd_preserved(args):
 
 
 
+def _selected_release_targets(raw: str):
+    names = json.loads(raw)
+    by_name = {row["releaseName"]: key for key, row in RELEASE_TARGETS.items()}
+    if (
+        not isinstance(names, list)
+        or not names
+        or len(names) != len(set(names))
+        or any(name not in by_name for name in names)
+    ):
+        raise ValueError("Selected release targets do not match canonical inventory")
+    return tuple(by_name[name] for name in names)
+
+
+def _read_provenance(host: str, target, revision: str):
+    path = target["provenancePath"]
+    request = urllib.request.Request(
+        f"https://{host}{path}?release={revision}",
+        headers={"Cache-Control": "no-cache", "User-Agent": "LEGEND-release-proof/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        if target["static"]:
+            return response.read().decode().strip()
+        payload = json.load(response)
+        return payload.get("sourceRevision")
+
+
+def cmd_live_state(args):
+    keys = _selected_release_targets(args.selected_targets)
+    result = {
+        "schemaVersion": 1,
+        "revision": args.revision,
+        "targets": {},
+    }
+    for key, target in RELEASE_TARGETS.items():
+        selected = key in keys
+        actual = None
+        live = False
+        if selected:
+            try:
+                actual = _read_provenance(target["host"], target, args.revision)
+                live = actual == args.revision
+            except Exception as exc:
+                actual = type(exc).__name__
+        result["targets"][key] = {
+            "releaseName": target["releaseName"],
+            "selected": selected,
+            "alreadyLive": live,
+            "actual": actual,
+        }
+        print(json.dumps({
+            "target": target["releaseName"],
+            "selected": selected,
+            "alreadyLive": live,
+            "actual": actual,
+            "expected": args.revision if selected else None,
+        }, sort_keys=True))
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    if args.github_output:
+        with Path(args.github_output).open("a") as output:
+            for key in RELEASE_TARGETS:
+                output.write(f"{key}_live={str(result['targets'][key]['alreadyLive']).lower()}\n")
+
+
+def cmd_verify_live(args):
+    keys = _selected_release_targets(args.selected_targets)
+    work = [
+        (key, host)
+        for key in keys
+        for host in RELEASE_TARGETS[key]["proofHosts"]
+    ]
+
+    def verify(item):
+        key, host = item
+        target = RELEASE_TARGETS[key]
+        end = time.monotonic() + args.timeout_seconds
+        actual = None
+        while time.monotonic() < end:
+            try:
+                actual = _read_provenance(host, target, args.revision)
+                if actual == args.revision:
+                    return {
+                        "target": target["releaseName"],
+                        "host": host,
+                        "passed": True,
+                        "actual": actual,
+                    }
+            except Exception as exc:
+                actual = type(exc).__name__
+            time.sleep(args.poll_seconds)
+        return {
+            "target": target["releaseName"],
+            "host": host,
+            "passed": False,
+            "actual": actual,
+        }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(work))) as pool:
+        rows = list(pool.map(verify, work))
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n")
+    for row in rows:
+        print(json.dumps(row, sort_keys=True))
+    if not rows or not all(row["passed"] for row in rows):
+        raise SystemExit("Final live provenance proof failed")
+
+
 def release_target_rows():
     return tuple(
         (
@@ -1888,6 +2002,21 @@ def build_parser():
     preserved.add_argument("--plan", required=True)
     preserved.add_argument("--gate", required=True)
     preserved.set_defaults(func=cmd_preserved)
+
+    live_state = sub.add_parser("live-state")
+    live_state.add_argument("--revision", required=True)
+    live_state.add_argument("--selected-targets", required=True)
+    live_state.add_argument("--output", required=True)
+    live_state.add_argument("--github-output")
+    live_state.set_defaults(func=cmd_live_state)
+
+    verify_live = sub.add_parser("verify-live")
+    verify_live.add_argument("--revision", required=True)
+    verify_live.add_argument("--selected-targets", required=True)
+    verify_live.add_argument("--output", required=True)
+    verify_live.add_argument("--timeout-seconds", type=int, default=480)
+    verify_live.add_argument("--poll-seconds", type=int, default=5)
+    verify_live.set_defaults(func=cmd_verify_live)
 
     lifecycle_evidence = sub.add_parser("lifecycle-evidence")
     lifecycle_evidence.add_argument("--repository", required=True)
