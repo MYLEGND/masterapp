@@ -532,16 +532,38 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
 
 
 class ApprovedReleaseResumePolicy(unittest.TestCase):
-    def test_exact_live_targets_are_preserved_across_retries(self):
+    def test_exact_live_targets_are_preserved_by_one_transactional_authority(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         self.assertIn('Preserve targets already live at exact candidate', workflow)
-        self.assertIn("steps.resumestate.outputs.portal_live != 'true'", workflow)
-        self.assertIn("steps.resumestate.outputs.client_live != 'true'", workflow)
-        self.assertIn("steps.resumestate.outputs.protect_live != 'true'", workflow)
-        self.assertIn("steps.resumestate.outputs.parfait_live != 'true'", workflow)
-        self.assertIn("steps.resumestate.outputs.website_live != 'true'", workflow)
-        self.assertIn("preservedExactLiveTargets", workflow)
-        self.assertIn("was already live at the exact candidate but redeployed", workflow)
+        self.assertIn('scripts/validation-resume.py live-state', workflow)
+        self.assertIn('Publish selected head as one transaction', workflow)
+        self.assertIn('--targets-json "$SELECTED_TARGETS"', workflow)
+        self.assertIn('--baselines-json "$LIVE_BASELINES"', workflow)
+        self.assertIn('Restore complete application baseline after downstream release failure', workflow)
+        self.assertIn('--rollback-only', workflow)
+        self.assertNotIn('steps.resumestate.outputs.portal_live', workflow)
+        self.assertNotIn('steps.resumestate.outputs.client_live', workflow)
+        self.assertNotIn('steps.resumestate.outputs.protect_live', workflow)
+        self.assertNotIn('steps.resumestate.outputs.parfait_live', workflow)
+        self.assertNotIn('steps.resumestate.outputs.website_live', workflow)
+
+    def test_release_execution_contains_no_duplicate_target_or_infrastructure_literals(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        authority=(ROOT.parent / 'scripts/validation-resume.py')
+        spec=importlib.util.spec_from_file_location('validation_authority_audit',authority)
+        module=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for row in module.RELEASE_TARGETS.values():
+            self.assertNotIn(row['releaseName'], workflow)
+            self.assertNotIn(row['azureHost'], workflow)
+        self.assertNotIn(module.RELEASE_RESOURCE_GROUP, workflow)
+        self.assertNotIn(module.MIGRATION_BUNDLE_NAME, workflow)
+        self.assertNotIn(module.ROUTING_WORKER_NAME, workflow)
+        self.assertNotIn(module.DOMAIN_REFRESH_PROJECT, workflow)
+        self.assertNotIn("paths: ['Docs/releases/direct-release-request.json']", workflow)
+        self.assertIn('targets_json:', workflow)
+        self.assertIn('Publish selected head as one transaction', workflow)
+
 
     def test_direct_release_reuses_only_exact_validated_package_evidence(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
@@ -566,7 +588,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn("'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA']", workflow)
         self.assertIn('Reuse exact retained live package when available', workflow)
         self.assertIn('Load current canonical release authority without changing rollback source', workflow)
-        self.assertIn('git show "${GITHUB_SHA}:scripts/validation-resume.py"', workflow)
+        self.assertIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', workflow)
         self.assertIn('EXACT_LIVE', workflow)
         self.assertIn("'mode':'exact-live-noop'", workflow)
         self.assertIn('retention-days: 30', workflow)
@@ -579,7 +601,9 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn('npm ', step('Publish exact selected application packages'))
         migration = step('Apply additive diagnostics migrations before restarting apps')
         self.assertIn("sys.path.insert(0,str(scripts))", migration)
-        self.assertIn("masterapp-migrations", migration)
+        self.assertIn("MIGRATION_BUNDLE", migration)
+        self.assertIn("DATABASE_AUTHORITY", migration)
+        self.assertIn("RELEASE_RESOURCE_GROUP", migration)
         self.assertIn("release_proven", migration)
         self.assertNotIn("dotnet-ef','database','update", migration)
         self.assertNotIn("dotnet-ef database update", migration)
