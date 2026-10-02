@@ -316,7 +316,9 @@ jobs:
           python3 - "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" "$GITHUB_OUTPUT" <<'PY'
           import importlib.util, pathlib, subprocess, sys
           base, head, output = sys.argv[1:]
-          path=pathlib.Path('scripts/approved-release-baseline.py')
+          scripts=pathlib.Path('scripts').resolve()
+          sys.path.insert(0,str(scripts))
+          path=scripts / 'approved-release-baseline.py'
           spec=importlib.util.spec_from_file_location('release_baseline',path)
           module=importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
