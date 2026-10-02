@@ -36,6 +36,15 @@ TRUSTED_PR_BASE = "legend/approved-changes"
 MAX_HISTORICAL_EVIDENCE_RUNS = 8
 RELEASE_RESOURCE_GROUP = "masterapp-rg"
 MIGRATION_BUNDLE_NAME = "masterapp-migrations"
+ROUTING_WORKER_NAME = "legend-business-website-router"
+ROUTING_PASS_THROUGH_HOSTS = (
+    "mylegnd.com",
+    "www.mylegnd.com",
+    "protect.mylegnd.com",
+    "portal.mylegnd.com",
+    "client.mylegnd.com",
+)
+DOMAIN_REFRESH_PROJECT = "scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj"
 
 # Single canonical web release inventory. Validation, release baseline discovery,
 # deployment reconciliation, live-resume probing, package naming and final
@@ -72,6 +81,7 @@ RELEASE_TARGETS = {
         "project": "Protect-Website/ProtectWebsite.csproj",
         "sourceRoot": "Protect-Website",
         "roles": ("database-dependent", "shared-auth-target", "editor-target", "marketing-settings-target", "routing-target", "routing-primary", "public-release"),
+        "routingProbePath": "/",
         "package": "protect.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("masterapp-protect.azurewebsites.net",),
@@ -84,6 +94,7 @@ RELEASE_TARGETS = {
         "project": "ParfaitApp/ParfaitApp.csproj",
         "sourceRoot": "ParfaitApp",
         "roles": ("database-dependent", "editor-target", "marketing-settings-target", "routing-target"),
+        "routingProbePath": "/store",
         "package": "parfait.zip",
         "provenancePath": "/api/runtime-provenance",
         "proofHosts": ("masterapp-parfait.azurewebsites.net",),
@@ -139,6 +150,9 @@ def release_runtime_profile(selected_names):
     return {
         "resourceGroup": RELEASE_RESOURCE_GROUP,
         "migrationBundle": MIGRATION_BUNDLE_NAME,
+        "routingWorker": ROUTING_WORKER_NAME,
+        "routingPassThroughHosts": list(ROUTING_PASS_THROUGH_HOSTS),
+        "domainRefreshProject": DOMAIN_REFRESH_PROJECT,
         "databaseAuthority": RELEASE_TARGETS[database_key]["releaseName"],
         "browserEntryTargets": names_for("browser-entry"),
         "browserEntryHosts": [
@@ -153,6 +167,7 @@ def release_runtime_profile(selected_names):
             {
                 "releaseName": RELEASE_TARGETS[key]["releaseName"],
                 "azureHost": RELEASE_TARGETS[key]["azureHost"],
+                "probePath": RELEASE_TARGETS[key]["routingProbePath"],
             }
             for key in target_keys_with_role("routing-target")
         ],
