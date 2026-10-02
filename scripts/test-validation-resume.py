@@ -220,6 +220,35 @@ jobs:
         self.assertIn("baseline", blocks)
         self.assertNotEqual(blocks["candidate"], blocks["baseline"])
 
+    def test_job_definition_parser_preserves_blank_separated_jobs(self):
+        text = """jobs:
+  plan:
+    runs-on: ubuntu-latest
+
+  candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo candidate
+
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo baseline
+
+  validate:
+    runs-on: ubuntu-latest
+"""
+        blocks = m._job_blocks(text)
+        self.assertEqual({"plan", "candidate", "baseline", "validate"}, set(blocks))
+
+    def test_real_step5_workflow_exposes_candidate_and_baseline_jobs(self):
+        path = ROOT / ".github" / "workflows" / "step5-isolated-conversion-mapping-validation.yml"
+        blocks = m._job_blocks(path.read_text())
+        for name in ("plan", "baseline-evidence", "candidate", "baseline", "validate"):
+            self.assertIn(name, blocks)
+        self.assertIn("Run full AgentPortal candidate suite", blocks["candidate"])
+        self.assertIn("Run identical suite on approved baseline", blocks["baseline"])
+
     def test_release_workflow_policy_covers_every_named_direct_release_step(self):
         path = ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
         policies = m.verify_release_policy_coverage(
