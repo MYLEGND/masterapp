@@ -288,8 +288,12 @@ jobs:
           python3 scripts/validation-resume.py verify-release-coverage \
             --workflow all-intentional-direct-release-20260918.yml \
             --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
+          # Deployment remains bound to RELEASE_SHA, but durable evidence
+          # recognition must use the current approved control-plane contract so
+          # later canonical receipt formats can validate older authorized bytes.
+          git show "${GITHUB_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/current-validation-resume.py"
           evidence="$RUNNER_TEMP/validated-package-evidence.json"
-          python3 scripts/validation-resume.py validated-package \
+          python3 "$RUNNER_TEMP/current-validation-resume.py" validated-package \
             --repository "${{ github.repository }}" \
             --revision "$APPLICATION_RELEASE_SHA" \
             --package-identity "$PACKAGE_IDENTITY" \
@@ -414,15 +418,6 @@ jobs:
             --revision "$APPLICATION_RELEASE_SHA" \
             --directory /tmp/diagnostics-packages
           echo "Using exact validated package bytes; release contains no fallback package builder."
-      - name: Retain exact deployable candidate packages
-        if: steps.package.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: founder-diagnostics-packages-${{ needs.discover-live.outputs.package_identity }}
-          path: /tmp/diagnostics-packages/
-          retention-days: 30
-          if-no-files-found: error
-          overwrite: true
       - uses: azure/login@v2
         id: azure
         if: (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true'
@@ -715,7 +710,18 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$EXPECTED_DB_BASE_SHA"
-          git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"
+          if git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"; then
+            echo "Live database baseline is an ancestor of the validated application revision."
+          elif git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"; then
+            # A live provenance revision may be the approved merge commit whose
+            # tree is byte-for-byte identical to the validated PR head. Accept
+            # that merge alias only when there is no source drift at all.
+            git diff --quiet "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA" --
+            echo "Live database baseline is a source-identical approved merge alias of the validated application revision."
+          else
+            echo "::error::Live database baseline and validated application revision do not share a safe ancestry relationship."
+            exit 1
+          fi
 
           python3 - <<'PYBASELINE'
           import importlib.util, os, sys
@@ -1319,4 +1325,47 @@ jobs:
           name: legend-release-step-state-${{ needs.discover-live.outputs.application_release_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/legend-release-step-state.json
           retention-days: 30
+          if-no-files-found: error
+
+      - name: Bind successful release to canonical validated package
+        if: >-
+          needs.release.result == 'success' &&
+          needs.discover-live.outputs.validate_only != 'true' &&
+          needs.discover-live.outputs.exact_live != 'true' &&
+          needs.discover-live.outputs.preserve_live_targets != 'true' &&
+          needs.discover-live.outputs.package_identity != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYPACKAGELINK'
+          import json,os,pathlib,re
+          revision=os.environ['APPLICATION_RELEASE_SHA']
+          identity=os.environ['PACKAGE_IDENTITY']
+          if not re.fullmatch(r'[0-9a-f]{40}',revision):
+              raise SystemExit('Package-link release revision is malformed')
+          if not re.fullmatch(r'[0-9a-f]{64}',identity):
+              raise SystemExit('Package-link identity is malformed')
+          payload={
+              'schemaVersion':1,
+              'applicationReleaseSha':revision,
+              'packageIdentity':identity,
+              'source':'canonical-validated-package',
+          }
+          pathlib.Path('/tmp/legend-approved-package-link.json').write_text(
+              json.dumps(payload,sort_keys=True,indent=2)+'\n'
+          )
+          PYPACKAGELINK
+
+      - name: Preserve validated package release binding
+        if: >-
+          needs.release.result == 'success' &&
+          needs.discover-live.outputs.validate_only != 'true' &&
+          needs.discover-live.outputs.exact_live != 'true' &&
+          needs.discover-live.outputs.preserve_live_targets != 'true' &&
+          needs.discover-live.outputs.package_identity != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-package-link-${{ needs.discover-live.outputs.application_release_sha }}-${{ needs.discover-live.outputs.package_identity }}
+          path: /tmp/legend-approved-package-link.json
+          retention-days: 90
           if-no-files-found: error

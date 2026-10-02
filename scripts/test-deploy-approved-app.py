@@ -219,6 +219,43 @@ class TransactionTests(unittest.TestCase):
         rollback.assert_called_once()
         self.assertEqual(keys, rollback.call_args.args[0])
 
+    def test_single_target_transaction_does_not_repeat_completed_reconciliation(self):
+        key = next(iter(deploy.TARGETS))
+        revision = "a" * 40
+        names = [deploy.TARGETS[key]["releaseName"]]
+        baselines = json.dumps([{"app": key, "revision": revision}])
+        with patch.object(deploy, "verify_package"), \
+             patch.object(deploy, "deploy_one", return_value="deployed"), \
+             patch.object(deploy, "reconcile") as recheck:
+            deploy.deploy_transaction(
+                names,
+                baselines,
+                Path("/tmp/candidate"),
+                Path("/tmp/rollback"),
+                revision,
+            )
+        recheck.assert_not_called()
+
+    def test_multi_target_transaction_retains_final_cross_target_reconciliation(self):
+        keys = list(deploy.TARGETS)[:2]
+        revision = "a" * 40
+        names = [deploy.TARGETS[key]["releaseName"] for key in keys]
+        baselines = json.dumps([
+            {"app": key, "revision": revision}
+            for key in keys
+        ])
+        with patch.object(deploy, "verify_package"), \
+             patch.object(deploy, "deploy_one", return_value="deployed"), \
+             patch.object(deploy, "reconcile", return_value="preserved") as recheck:
+            deploy.deploy_transaction(
+                names,
+                baselines,
+                Path("/tmp/candidate"),
+                Path("/tmp/rollback"),
+                revision,
+            )
+        self.assertEqual(len(keys), recheck.call_count)
+
     def test_transaction_scope_comes_only_from_canonical_inventory(self):
         names = [row["releaseName"] for row in deploy.TARGETS.values()]
         keys = deploy._RELEASE_AUTHORITY.selected_release_target_keys(names)

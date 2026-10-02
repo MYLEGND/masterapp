@@ -189,10 +189,21 @@ def merge_validated(api, pr):
         return {'retained': pending}
 
     targets = automatic_release_targets(api, pr)
-    result = api.api(f"pulls/{pr['number']}/merge",
-        {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
+    try:
+        result = api.api(f"pulls/{pr['number']}/merge",
+            {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
+    except RuntimeError as exc:
+        if any(f"HTTP {code}" in str(exc) for code in (405, 409, 422)):
+            return {
+                'retained': 'Validated PR is not currently mergeable; source branch retained',
+                'pr': pr['number'],
+            }
+        raise
     if not result.get('merged'):
-        raise RuntimeError('Merge did not complete; source branch retained')
+        return {
+            'retained': 'Merge did not complete; source branch retained',
+            'pr': pr['number'],
+        }
 
     # Validation success is the publication handoff. Application-affecting merges
     # immediately enter the sole direct-release workflow with scope derived from
@@ -230,6 +241,32 @@ def integrate(api, number):
     if staging_only():
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     pr = api.api(f'pulls/{number}')
+
+    # pull_request_target events can queue behind another lifecycle run. If that
+    # earlier run already merged this exact trusted PR, the delayed event is a
+    # replay, not a new integration failure. Prove the recorded merge is in the
+    # current approved lineage and return without dispatching anything again.
+    merged_sha = pr.get('merge_commit_sha')
+    already_integrated = (
+        pr.get('state') == 'closed'
+        and pr.get('merged_at')
+        and pr.get('base', {}).get('ref') == APPROVED
+        and pr.get('head', {}).get('repo')
+        and pr['head']['repo'].get('full_name') == api.repo
+        and pr.get('author_association') in {'OWNER', 'MEMBER', 'COLLABORATOR'}
+        and SHA.fullmatch(merged_sha or '')
+    )
+    if already_integrated:
+        approved = api.ref(APPROVED)
+        if ancestor(merged_sha, approved):
+            return {
+                'integration': 'already merged exact PR event preserved as no-op',
+                'mergedPr': number,
+                'sha': merged_sha,
+                'replayed': True,
+                'releaseDispatched': False,
+            }
+
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
     return merge_validated(api, pr)

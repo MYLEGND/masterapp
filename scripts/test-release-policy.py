@@ -572,7 +572,8 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         authority=(ROOT.parent / 'scripts/validation-resume.py').read_text()
         self.assertIn('f"founder-diagnostics-packages-{package_identity}"', authority)
         self.assertNotIn('founder-diagnostics-packages-${PACKAGE_IDENTITY}', workflow)
-        self.assertIn('scripts/validation-resume.py validated-package', workflow)
+        self.assertIn('git show "${GITHUB_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/current-validation-resume.py"', workflow)
+        self.assertIn('python3 "$RUNNER_TEMP/current-validation-resume.py" validated-package', workflow)
         self.assertIn('rollback-evidence', workflow)
         self.assertIn('scripts/validation-resume.py live-state', workflow)
         self.assertIn('scripts/validation-resume.py verify-live', workflow)
@@ -586,6 +587,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn("STEP_STATE_JSON", workflow)
         self.assertIn('Retain exact approved release receipt', workflow)
         self.assertIn('legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}', workflow)
+        self.assertNotIn('Retain exact deployable candidate packages', workflow)
+        self.assertIn('Bind successful release to canonical validated package', workflow)
+        self.assertIn('Preserve validated package release binding', workflow)
+        self.assertIn('legend-approved-package-link-${{ needs.discover-live.outputs.application_release_sha }}-${{ needs.discover-live.outputs.package_identity }}', workflow)
         self.assertIn("'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA']", workflow)
         self.assertIn('Reuse exact retained live package when available', workflow)
         self.assertIn('Load current canonical release authority without changing rollback source', workflow)
@@ -593,6 +598,9 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('EXACT_LIVE', workflow)
         self.assertIn("mode='exact-live-noop'", workflow)
         self.assertIn('retention-days: 30', workflow)
+        architecture=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        package_block=architecture.split('      - name: Preserve immutable validated release package\n',1)[1].split('      - name:',1)[0]
+        self.assertIn('retention-days: 90', package_block)
 
         def step(name):
             return workflow.split('      - name: ' + name + '\n', 1)[1].split('      - name:', 1)[0]
@@ -606,6 +614,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn("DATABASE_AUTHORITY", migration)
         self.assertIn("RELEASE_RESOURCE_GROUP", migration)
         self.assertIn("release_proven", migration)
+        self.assertIn('git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"', migration)
+        self.assertIn('git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"', migration)
+        self.assertIn('git diff --quiet "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA" --', migration)
+        self.assertIn('source-identical approved merge alias', migration)
         self.assertNotIn("dotnet-ef','database','update", migration)
         self.assertNotIn("dotnet-ef database update", migration)
 

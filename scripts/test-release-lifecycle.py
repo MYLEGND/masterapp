@@ -190,6 +190,51 @@ class BranchSafety(unittest.TestCase):
         self.assertIn("every live", reason)
 
 
+class IntegrationReplaySafety(unittest.TestCase):
+    def merged_pr(self, api, merge_sha="c" * 40):
+        return {
+            "number": 382,
+            "state": "closed",
+            "draft": False,
+            "merged_at": "2026-10-02T15:19:07Z",
+            "merge_commit_sha": merge_sha,
+            "author_association": "OWNER",
+            "base": {"ref": m.APPROVED},
+            "head": {
+                "ref": "perf/release-publication-fastpath-20261002",
+                "sha": "b" * 40,
+                "repo": {"full_name": api.repo},
+            },
+        }
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "ancestor", return_value=True)
+    @patch.object(m, "merge_validated")
+    def test_stale_already_merged_event_is_verified_noop(self, merge_validated, ancestor, _):
+        api = Api()
+        api.refs[m.APPROVED] = "d" * 40
+        api.api_map["pulls/382"] = self.merged_pr(api)
+
+        result = m.integrate(api, 382)
+
+        self.assertTrue(result["replayed"])
+        self.assertEqual(382, result["mergedPr"])
+        self.assertFalse(result["releaseDispatched"])
+        self.assertEqual([], api.dispatched)
+        ancestor.assert_called_once_with("c" * 40, "d" * 40)
+        merge_validated.assert_not_called()
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "ancestor", return_value=False)
+    def test_merged_pr_outside_current_approved_lineage_still_fails_closed(self, _, __):
+        api = Api()
+        api.refs[m.APPROVED] = "d" * 40
+        api.api_map["pulls/382"] = self.merged_pr(api)
+
+        with self.assertRaisesRegex(RuntimeError, "Only ready"):
+            m.integrate(api, 382)
+
+
 class PendingUpdateFairness(unittest.TestCase):
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "ready", return_value=True)
@@ -304,6 +349,24 @@ class AutomaticMergeRelease(unittest.TestCase):
         )
         recover.assert_not_called()
 
+
+    @patch.object(m, "candidate_validation", return_value=None)
+    @patch.object(m, "automatic_release_targets", return_value=())
+    def test_nonmergeable_validated_pr_is_retained_not_fatal(self, _, __):
+        api = Api()
+        pr = {"number": 323, "head": {"sha": "b" * 40}}
+
+        def blocked_merge(_data, _method):
+            raise RuntimeError("GitHub PUT pulls/323/merge: HTTP 405")
+
+        api.api_map["pulls/323/merge"] = blocked_merge
+        api.pages_map["pulls/323/files"] = []
+
+        result = m.merge_validated(api, pr)
+
+        self.assertIn("retained", result)
+        self.assertEqual(323, result["pr"])
+        self.assertIn("not currently mergeable", result["retained"])
 
 class ReleaseTruth(unittest.TestCase):
     def setUp(self):

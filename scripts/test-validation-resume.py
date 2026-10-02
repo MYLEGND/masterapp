@@ -360,7 +360,8 @@ jobs:
         release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
         validated = release.split("      - name: Reuse exact successful validation package when available\n", 1)[1].split("      - name:", 1)[0]
         rollback = release.split("      - name: Reuse exact retained live package when available\n", 1)[1].split("      - uses:", 1)[0]
-        self.assertIn("scripts/validation-resume.py validated-package", validated)
+        self.assertIn('git show "${GITHUB_SHA}:scripts/validation-resume.py"', validated)
+        self.assertIn('python3 "$RUNNER_TEMP/current-validation-resume.py" validated-package', validated)
         self.assertIn("rollback-evidence", rollback)
         self.assertIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', release)
         self.assertNotIn("gh api", validated)
@@ -535,6 +536,68 @@ jobs:
         self.assertFalse(plan["allowed"])
         self.assertEqual(["AgentPortal/Program.cs"], plan["changedApplicationInputs"])
         self.assertEqual("application_inputs_changed_since_validated_revision", plan["reason"])
+
+    def test_rollback_evidence_uses_release_receipt_link_to_validated_package(self):
+        revision = "a" * 40
+        identity = "b" * 64
+        release_run_id = 88
+        validation_run_id = 77
+        release_name = m.RELEASE_TARGETS["portal"]["releaseName"]
+        receipt = f"legend-approved-release-{revision}-{release_name}"
+        package_artifact = f"founder-diagnostics-packages-{identity}"
+        package_link = f"legend-approved-package-link-{revision}-{identity}"
+
+        release_run = {
+            "id": release_run_id,
+            "path": ".github/workflows/all-intentional-direct-release-20260918.yml",
+            "head_branch": m.TRUSTED_PR_BASE,
+            "status": "completed",
+            "conclusion": "success",
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+        }
+        validation_run = {
+            "id": validation_run_id,
+            "path": ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+            "event": "pull_request",
+            "status": "completed",
+            "conclusion": "success",
+            "head_sha": revision,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+        }
+
+        def artifacts(_repository, name, _token):
+            if name == receipt:
+                return [{"workflow_run": {"id": release_run_id}}]
+            if name == package_artifact:
+                return [{"workflow_run": {"id": validation_run_id}}]
+            return []
+
+        def api_get(_repository, path, _token):
+            if path == f"actions/runs/{release_run_id}":
+                return release_run
+            if path == f"actions/runs/{validation_run_id}":
+                return validation_run
+            raise AssertionError(path)
+
+        with patch.object(m, "_artifact_rows", side_effect=artifacts), \
+             patch.object(m, "api_get", side_effect=api_get), \
+             patch.object(m, "_run_artifact_names", return_value={package_link}), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            evidence = m.compute_rollback_evidence(
+                "MYLEGND/masterapp",
+                revision,
+                "portal",
+            )
+
+        self.assertTrue(evidence["reusable"])
+        self.assertEqual(validation_run_id, evidence["runId"])
+        self.assertEqual(release_run_id, evidence["releaseRunId"])
+        self.assertEqual(package_artifact, evidence["packageArtifact"])
+        self.assertEqual(identity, evidence["packageIdentity"])
+        self.assertEqual(
+            "exact_target_release_receipt_with_validated_package_link",
+            evidence["reason"],
+        )
 
     def test_validated_package_accepts_receipt_backed_approved_backfill(self):
         revision = "a" * 40
