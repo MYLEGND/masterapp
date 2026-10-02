@@ -189,10 +189,21 @@ def merge_validated(api, pr):
         return {'retained': pending}
 
     targets = automatic_release_targets(api, pr)
-    result = api.api(f"pulls/{pr['number']}/merge",
-        {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
+    try:
+        result = api.api(f"pulls/{pr['number']}/merge",
+            {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
+    except RuntimeError as exc:
+        if any(f"HTTP {code}" in str(exc) for code in (405, 409, 422)):
+            return {
+                'retained': 'Validated PR is not currently mergeable; source branch retained',
+                'pr': pr['number'],
+            }
+        raise
     if not result.get('merged'):
-        raise RuntimeError('Merge did not complete; source branch retained')
+        return {
+            'retained': 'Merge did not complete; source branch retained',
+            'pr': pr['number'],
+        }
 
     # Validation success is the publication handoff. Application-affecting merges
     # immediately enter the sole direct-release workflow with scope derived from
