@@ -429,7 +429,8 @@ def pending_legacy_release_authorization(api, approved):
     replay the same failed direct-release run.
     """
     history = git(
-        'rev-list', '--first-parent', '-n', '64', approved,
+        'rev-list', '--first-parent', '-n',
+        str(VALIDATION_AUTHORITY.MAX_RELEASE_HISTORY_COMMITS), approved,
         check=False,
     )
     if history.returncode:
