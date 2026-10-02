@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -82,6 +83,44 @@ RELEASE_TARGETS = {
         "static": True,
     },
 }
+
+# Scope combinations are authorization policy, not deployment discovery. Keep them
+# beside the inventory so validation, baseline resolution and deployment cannot
+# drift into separate notions of what a selectable application is.
+ALLOWED_RELEASE_TARGET_SETS = frozenset({
+    frozenset({"masterapp-website"}),
+    frozenset({"masterapp-protect"}),
+    frozenset({"masterapp-client"}),
+    frozenset({"masterapp-client", "masterapp-protect"}),
+    frozenset({"masterapp-protect", "masterapp-website"}),
+    frozenset({"masterapp-parfait"}),
+    frozenset({"masterapp-protect", "masterapp-parfait"}),
+    frozenset({"masterapp-protect", "masterapp-parfait", "masterapp-website"}),
+    frozenset({"masterapp-portal"}),
+    frozenset({"masterapp-portal", "masterapp-protect"}),
+    frozenset({"masterapp-portal", "masterapp-client"}),
+    frozenset({"masterapp-portal", "masterapp-client", "masterapp-protect"}),
+    frozenset({"masterapp-portal", "masterapp-client", "masterapp-parfait"}),
+    frozenset({"masterapp-portal", "masterapp-protect", "masterapp-website"}),
+    frozenset({"masterapp-portal", "masterapp-client", "masterapp-protect", "masterapp-website"}),
+    frozenset({"masterapp-portal", "masterapp-client", "masterapp-protect", "masterapp-parfait"}),
+    frozenset({"masterapp-portal", "masterapp-protect", "masterapp-parfait", "masterapp-website"}),
+    frozenset({"masterapp-portal", "masterapp-client", "masterapp-protect", "masterapp-parfait", "masterapp-website"}),
+})
+
+LIFECYCLE_AUTHORITY_PATHS = (
+    ".github/workflows/legend-release-lifecycle.yml",
+    ".github/workflows/all-intentional-direct-release-20260918.yml",
+    ".github/workflows/approved-release-security-validation.yml",
+    ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+    "scripts/release-lifecycle.py",
+    "scripts/release_policy.py",
+    "scripts/approved-release-baseline.py",
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
+    "scripts/test-release-policy.py",
+    "scripts/test-release-lifecycle.py",
+)
 
 WORKFLOW_PATHS = {
     name: ".github/workflows/" + name
@@ -1271,6 +1310,198 @@ def cmd_preserved(args):
 
 
 
+def release_target_rows():
+    return tuple(
+        (
+            key,
+            row["host"],
+            row["project"],
+        )
+        for key, row in RELEASE_TARGETS.items()
+    )
+
+
+def lifecycle_authority_identity():
+    digest = hashlib.sha256()
+    for path in LIFECYCLE_AUTHORITY_PATHS:
+        payload = Path(path).read_bytes()
+        digest.update(path.encode())
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(payload).digest())
+    return digest.hexdigest()
+
+
+def compute_lifecycle_evidence(repository: str):
+    result = {
+        "schemaVersion": 1,
+        "identity": lifecycle_authority_identity(),
+        "artifact": None,
+        "runId": None,
+        "reusable": False,
+    }
+    result["artifact"] = f"legend-lifecycle-contracts-{result['identity']}"
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    workflow_path = ".github/workflows/legend-release-lifecycle.yml"
+    for artifact in _artifact_rows(repository, result["artifact"], token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        if (
+            run.get("path") == workflow_path
+            and run.get("status") == "completed"
+            and run.get("conclusion") == "success"
+            and (run.get("head_repository") or {}).get("full_name") == repository
+        ):
+            result.update({
+                "runId": run_id,
+                "reusable": True,
+                "reason": "exact_lifecycle_authority_receipt",
+            })
+            return result
+    result["reason"] = "no_exact_lifecycle_authority_receipt"
+    return result
+
+
+def cmd_lifecycle_evidence(args):
+    try:
+        result = compute_lifecycle_evidence(args.repository)
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "identity": None,
+            "artifact": None,
+            "runId": None,
+            "reusable": False,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def compute_validated_package_evidence(repository: str, revision: str, package_identity: str):
+    result = {
+        "schemaVersion": 1,
+        "revision": revision,
+        "packageIdentity": package_identity,
+        "artifact": f"founder-diagnostics-packages-{package_identity}",
+        "runId": None,
+        "reusable": False,
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    workflow_path = ".github/workflows/masterapp-platform-architecture-validation.yml"
+    for artifact in _artifact_rows(repository, result["artifact"], token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        if (
+            run.get("path") == workflow_path
+            and run.get("event") == "pull_request"
+            and run.get("status") == "completed"
+            and run.get("conclusion") == "success"
+            and run.get("head_sha") == revision
+            and (run.get("head_repository") or {}).get("full_name") == repository
+        ):
+            result.update({
+                "runId": run_id,
+                "reusable": True,
+                "reason": "exact_validated_application_package",
+            })
+            return result
+    result["reason"] = "exact_validated_package_missing"
+    return result
+
+
+def cmd_validated_package(args):
+    try:
+        result = compute_validated_package_evidence(
+            args.repository,
+            args.revision,
+            args.package_identity,
+        )
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "revision": args.revision,
+            "packageIdentity": args.package_identity,
+            "artifact": f"founder-diagnostics-packages-{args.package_identity}",
+            "runId": None,
+            "reusable": False,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def compute_rollback_evidence(repository: str, revision: str):
+    result = {
+        "schemaVersion": 1,
+        "revision": revision,
+        "runId": None,
+        "packageArtifact": None,
+        "reusable": False,
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    receipt_name = f"legend-approved-release-{revision}"
+    workflow_path = ".github/workflows/all-intentional-direct-release-20260918.yml"
+    for artifact in _artifact_rows(repository, receipt_name, token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        if not (
+            run.get("path") == workflow_path
+            and run.get("head_branch") == TRUSTED_PR_BASE
+            and run.get("status") == "completed"
+            and run.get("conclusion") == "success"
+            and (run.get("head_repository") or {}).get("full_name") == repository
+        ):
+            continue
+        names = sorted(
+            name for name in _run_artifact_names(repository, run_id, token)
+            if name.startswith("founder-diagnostics-packages-")
+        )
+        if names:
+            result.update({
+                "runId": run_id,
+                "packageArtifact": names[-1],
+                "reusable": True,
+                "reason": "exact_successful_release_receipt",
+            })
+            return result
+    result["reason"] = "no_exact_successful_release_package"
+    return result
+
+
+def cmd_rollback_evidence(args):
+    try:
+        result = compute_rollback_evidence(args.repository, args.revision)
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "revision": args.revision,
+            "runId": None,
+            "packageArtifact": None,
+            "reusable": False,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def _step5_jobs_unchanged(prior_sha: str, workflow_path: str) -> bool:
     prior = git_show_file(prior_sha, workflow_path)
     current = Path(workflow_path).read_text()
@@ -1651,6 +1882,24 @@ def build_parser():
     preserved.add_argument("--plan", required=True)
     preserved.add_argument("--gate", required=True)
     preserved.set_defaults(func=cmd_preserved)
+
+    lifecycle_evidence = sub.add_parser("lifecycle-evidence")
+    lifecycle_evidence.add_argument("--repository", required=True)
+    lifecycle_evidence.add_argument("--output", required=True)
+    lifecycle_evidence.set_defaults(func=cmd_lifecycle_evidence)
+
+    validated_package = sub.add_parser("validated-package")
+    validated_package.add_argument("--repository", required=True)
+    validated_package.add_argument("--revision", required=True)
+    validated_package.add_argument("--package-identity", required=True)
+    validated_package.add_argument("--output", required=True)
+    validated_package.set_defaults(func=cmd_validated_package)
+
+    rollback_evidence = sub.add_parser("rollback-evidence")
+    rollback_evidence.add_argument("--repository", required=True)
+    rollback_evidence.add_argument("--revision", required=True)
+    rollback_evidence.add_argument("--output", required=True)
+    rollback_evidence.set_defaults(func=cmd_rollback_evidence)
 
     step5_decision = sub.add_parser("step5-decision")
     step5_decision.add_argument("--current-sha", required=True)
