@@ -121,9 +121,6 @@ body{
     box-shadow: 0 26px 80px rgba(0,0,0,.52);
     overflow: hidden;
 }
-@media (min-width:901px){
-    .note-self-modal{width:min(1180px,96vw);max-height:92vh;}
-}
 
 .note-self-head{
     display: flex;
@@ -384,9 +381,6 @@ body{
     border-radius: 16px;
     box-shadow: 0 26px 80px rgba(16,24,40,.26);
     color: #0f172a;
-}
-@media (min-width:901px){
-    .uw-dialog{width:min(1180px,96vw);max-height:92vh;overflow:auto;padding:20px 22px 26px;}
 }
 
 .uw-head{
@@ -7286,25 +7280,7 @@ details.section{
     box-shadow: 0 12px 26px rgba(0,0,0,.34) !important;
 }
 
-@media (min-width: 901px) {
-#rbShell .proposal-dialog{
-    border: 1.8px solid rgba(166,128,35,.48) !important;
-    border-radius: 22px !important;
-    background:
-        radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),
-        linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99)) !important;
-    box-shadow: 0 40px 100px rgba(0,0,0,.52) !important;
-    color: #f8fafc !important;
-    padding: 1rem 1.1rem !important;
-}
 
-#rbShell .proposal-dialog .uw-head{
-    border-bottom: 1px solid rgba(166,128,35,.22) !important;
-    padding-bottom: .7rem !important;
-    margin-bottom: .8rem !important;
-}
-
-}
 #rbShell .proposal-dialog .uw-name{ color:#f4d890 !important; }
 #rbShell .proposal-dialog .uw-sub{ color:#b9c5d8 !important; }
 
@@ -12578,4 +12554,3 @@ details.section{
     color:#04070d !important;
     border-color:rgba(255,240,168,.98) !important;
 }
-
