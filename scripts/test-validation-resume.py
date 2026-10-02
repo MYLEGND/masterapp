@@ -453,6 +453,87 @@ jobs:
         self.assertEqual(["AgentPortal/Program.cs"], plan["changedInputs"])
         self.assertEqual("package_or_application_inputs_changed_since_proof", plan["reason"])
 
+    def test_package_backfill_requires_green_exact_revision_and_control_only_descendants(self):
+        revision = "a" * 40
+        current = "b" * 40
+        run = {
+            "id": 123,
+            "path": ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+            "event": "pull_request",
+            "status": "completed",
+            "conclusion": "success",
+            "head_sha": revision,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+            "updated_at": "2026-10-02T00:00:00Z",
+        }
+        pr = {
+            "number": 364,
+            "merged_at": "2026-10-02T01:10:41Z",
+            "base": {"ref": m.TRUSTED_PR_BASE},
+            "head": {
+                "sha": revision,
+                "repo": {"full_name": "MYLEGND/masterapp"},
+            },
+        }
+        def api_get(_repository, path, _token):
+            if path.startswith("actions/runs?"):
+                return {"workflow_runs": [run]}
+            if path == f"commits/{revision}/pulls":
+                return [pr]
+            raise AssertionError(path)
+
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")), \
+             patch.object(m, "git_changed", return_value=["scripts/release-lifecycle.py"]), \
+             patch.object(m, "api_get", side_effect=api_get), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            plan = m.compute_package_backfill_plan("MYLEGND/masterapp", revision, current)
+
+        self.assertTrue(plan["allowed"])
+        self.assertEqual(123, plan["validationRunId"])
+        self.assertEqual(364, plan["sourcePr"])
+        self.assertEqual([], plan["changedApplicationInputs"])
+
+    def test_package_backfill_fails_closed_on_application_drift(self):
+        revision = "a" * 40
+        current = "b" * 40
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")), \
+             patch.object(m, "git_changed", return_value=["AgentPortal/Program.cs"]), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            plan = m.compute_package_backfill_plan("MYLEGND/masterapp", revision, current)
+
+        self.assertFalse(plan["allowed"])
+        self.assertEqual(["AgentPortal/Program.cs"], plan["changedApplicationInputs"])
+        self.assertEqual("application_inputs_changed_since_validated_revision", plan["reason"])
+
+    def test_validated_package_accepts_receipt_backed_approved_backfill(self):
+        revision = "a" * 40
+        identity = "b" * 64
+        artifact = f"founder-diagnostics-packages-{identity}"
+        receipt = m.package_backfill_receipt_name(revision, identity)
+        run = {
+            "id": 77,
+            "path": ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+            "event": "workflow_dispatch",
+            "status": "completed",
+            "conclusion": "success",
+            "head_branch": m.TRUSTED_PR_BASE,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+        }
+        with patch.object(m, "_artifact_rows", return_value=[{"workflow_run": {"id": 77}}]), \
+             patch.object(m, "api_get", return_value=run), \
+             patch.object(m, "_run_artifact_names", return_value={artifact, receipt}), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            evidence = m.compute_validated_package_evidence(
+                "MYLEGND/masterapp", revision, identity
+            )
+
+        self.assertTrue(evidence["reusable"])
+        self.assertEqual(77, evidence["runId"])
+        self.assertEqual(
+            "validated_package_backfill_from_exact_green_revision",
+            evidence["reason"],
+        )
+
     def test_release_baseline_delegates_application_identity_classification(self):
         baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
         self.assertIn("_validation_authority.release_control_only_path(path)", baseline)
