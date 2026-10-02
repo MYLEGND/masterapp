@@ -438,7 +438,7 @@ WORKFLOWS = {
                     "scripts/test-validation-resume.py",
                     "scripts/test-release-policy.py",
                 ),
-                "requires": ("candidate-full",),
+                "consumes": ("candidate-full",),
                 "group": "comparison",
             },
         },
@@ -1172,9 +1172,11 @@ def compute_plan(
             run.add(key)
             reasons[key] = "gate_inputs_changed"
 
-    # Close the graph in both directions. A running consumer needs its
-    # prerequisites now; a changed prerequisite also invalidates every preserved
-    # consumer whose evidence was produced from the older prerequisite output.
+    # Close only real execution/evidence edges. "requires" means a runtime
+    # prerequisite that must exist when a child executes; "consumes" means the
+    # child's preserved evidence is semantically derived from that node and must
+    # be invalidated when the consumed evidence changes. Keeping these distinct
+    # prevents a repaired sibling test from cascading across unrelated suites.
     changed = True
     while changed:
         changed = False
@@ -1188,12 +1190,12 @@ def compute_plan(
             if key in run:
                 continue
             invalidated = next(
-                (required for required in gate.get("requires", ()) if required in run),
+                (dependency for dependency in gate.get("consumes", ()) if dependency in run),
                 None,
             )
             if invalidated:
                 run.add(key)
-                reasons[key] = f"dependency_invalidated:{invalidated}"
+                reasons[key] = f"evidence_dependency_invalidated:{invalidated}"
                 changed = True
 
     for key, gate in gates.items():
