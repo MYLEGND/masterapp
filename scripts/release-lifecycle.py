@@ -429,20 +429,43 @@ def direct_release_approved_pr(api, sha):
     return None
 
 
+def authorization_release_proven(api, authorization_sha, targets):
+    """Accept a successful direct release bound to the exact authorization commit.
+
+    Older release workflow generations wrote a generic receipt keyed by the
+    approved merge/authorization SHA rather than the application source SHA.
+    The workflow run itself is durable proof only when it is the sole canonical
+    direct-release workflow, targets this approved authorization, and its final
+    live verification and enforcement both succeeded.
+    """
+    runs = api.pages(
+        'actions/runs?head_sha=' + urllib.parse.quote(authorization_sha, safe=''),
+        'workflow_runs',
+    )
+    for run in runs:
+        if run.get('head_sha') != authorization_sha:
+            continue
+        if not successful_release(api, run):
+            continue
+        authorized = release_targets(authorization_sha)
+        if targets <= authorized:
+            return True
+    return False
+
+
 def pending_legacy_release_authorization(api, approved):
-    """Find the nearest still-unreleased explicit authorization in first-parent history.
+    """Resolve only the newest valid explicit authorization on first-parent history.
 
     Automatic application PRs do not use this path. It exists only to carry a
     previously authorized release across release-control-only correction merges.
-    A successful receipt closes the authorization; a fresh control correction may
-    retry a failed attempt, while reconcile on an unchanged head still refuses to
-    replay the same failed direct-release run.
+
+    Scan the literal first-parent commit chain rather than path-filtered history:
+    Git path simplification must never hide a merge that imports a new release
+    request from its second parent. Once the newest valid authorization is found,
+    it is authoritative. If already released, stop; never resurrect an older
+    superseded authorization.
     """
-    history = git(
-        'log', '--first-parent', '--format=%H', approved, '--',
-        VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH,
-        check=False,
-    )
+    history = git('rev-list', '--first-parent', approved, check=False)
     if history.returncode:
         raise RuntimeError('Unable to inspect approved first-parent release authorization history')
 
@@ -465,7 +488,10 @@ def pending_legacy_release_authorization(api, approved):
             return {'retained': 'Historical release authorization has no canonical target scope'}
 
         revision = pr['head']['sha']
-        if all(release_proven(api, revision, app=target) for target in targets):
+        if (
+            all(release_proven(api, revision, app=target) for target in targets)
+            or authorization_release_proven(api, sha, targets)
+        ):
             return None
 
         return {
