@@ -333,6 +333,42 @@ jobs:
           echo "repair_classes=$repair_classes" >> "$GITHUB_OUTPUT"
           echo "Safe repair mode: prior candidate/baseline evidence is preserved; only the repaired failing class is invalidated."
 
+      - name: Retain exact Step 5 resume decision
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        env:
+          MODE: ${{ steps.plan.outputs.mode }}
+          PRIOR_RUN_ID: ${{ steps.plan.outputs.prior_run_id }}
+          PRIOR_HEAD_SHA: ${{ steps.plan.outputs.prior_head_sha }}
+          REPAIR_CLASSES: ${{ steps.plan.outputs.repair_classes }}
+          REPAIR_FILTER: ${{ steps.plan.outputs.repair_filter }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          data={
+              'schemaVersion':1,
+              'currentHeadSha':'${{ github.event.pull_request.head.sha }}',
+              'currentBaseSha':'${{ github.event.pull_request.base.sha }}',
+              'mode':os.environ.get('MODE') or 'full',
+              'priorRunId':os.environ.get('PRIOR_RUN_ID') or None,
+              'priorHeadSha':os.environ.get('PRIOR_HEAD_SHA') or None,
+              'repairClasses':[x for x in os.environ.get('REPAIR_CLASSES','').split(';') if x],
+              'repairFilter':os.environ.get('REPAIR_FILTER') or None,
+          }
+          with open('/tmp/step5-resume-decision.json','w') as output:
+              json.dump(data,output,sort_keys=True,indent=2)
+          print(json.dumps(data,sort_keys=True))
+          PY
+
+      - name: Preserve exact Step 5 resume decision
+        if: always() && steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-resume-decision-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/step5-resume-decision.json
+          retention-days: 30
+          if-no-files-found: error
+
   baseline-evidence:
     needs: plan
     if: needs.plan.outputs.mode == 'full'
@@ -395,6 +431,37 @@ jobs:
           done
 
           echo "No content-identical full-suite baseline artifact exists; baseline suite will execute."
+
+      - name: Retain exact Step 5 baseline reuse decision
+        if: always() && steps.lookup.outcome == 'success'
+        shell: bash
+        env:
+          REUSABLE: ${{ steps.lookup.outputs.reusable }}
+          EVIDENCE_RUN_ID: ${{ steps.lookup.outputs.run_id }}
+          EVIDENCE_ARTIFACT: ${{ steps.lookup.outputs.artifact }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          data={
+              'schemaVersion':1,
+              'approvedBaseSha':'${{ github.event.pull_request.base.sha }}',
+              'reusable':os.environ.get('REUSABLE')=='true',
+              'evidenceRunId':os.environ.get('EVIDENCE_RUN_ID') or None,
+              'evidenceArtifact':os.environ.get('EVIDENCE_ARTIFACT') or None,
+          }
+          with open('/tmp/step5-baseline-reuse.json','w') as output:
+              json.dump(data,output,sort_keys=True,indent=2)
+          print(json.dumps(data,sort_keys=True))
+          PY
+
+      - name: Preserve exact Step 5 baseline reuse decision
+        if: always() && steps.lookup.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-baseline-reuse-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/step5-baseline-reuse.json
+          retention-days: 30
+          if-no-files-found: error
 
   candidate:
     needs: plan
