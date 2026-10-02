@@ -579,6 +579,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn("STEP_STATE_JSON", workflow)
         self.assertIn('Retain exact approved release receipt', workflow)
         self.assertIn('legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}', workflow)
+        self.assertNotIn('Retain exact deployable candidate packages', workflow)
+        self.assertIn('Bind successful release to canonical validated package', workflow)
+        self.assertIn('Preserve validated package release binding', workflow)
+        self.assertIn('legend-approved-package-link-${{ needs.discover-live.outputs.application_release_sha }}-${{ needs.discover-live.outputs.package_identity }}', workflow)
         self.assertIn("'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA']", workflow)
         self.assertIn('Reuse exact retained live package when available', workflow)
         self.assertIn('Load current canonical release authority without changing rollback source', workflow)
@@ -586,6 +590,9 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('EXACT_LIVE', workflow)
         self.assertIn("mode='exact-live-noop'", workflow)
         self.assertIn('retention-days: 30', workflow)
+        architecture=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        package_block=architecture.split('      - name: Preserve immutable validated release package\n',1)[1].split('      - name:',1)[0]
+        self.assertIn('retention-days: 90', package_block)
 
         def step(name):
             return workflow.split('      - name: ' + name + '\n', 1)[1].split('      - name:', 1)[0]
