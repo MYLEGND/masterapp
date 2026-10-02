@@ -1131,8 +1131,11 @@ jobs:
           TRANSACTION_ROLLBACK: ${{ steps.transactionrollback.outcome }}
           LIVE: ${{ steps.live.outcome }}
           ROUTING_LIVE: ${{ steps.routinglive.outcome }}
+          FOUNDER_CLOUD: ${{ steps.foundercloud.outcome }}
+          FOUNDER_CLOUD_ROLLBACK: ${{ steps.foundercloudrollback.outcome }}
           VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
           WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
+          FOUNDER_CLOUDFLARE: ${{ env.FOUNDER_CLOUDFLARE }}
           PRESERVE_LIVE_TARGETS: ${{ env.PRESERVE_LIVE_TARGETS }}
           EXACT_LIVE: ${{ env.EXACT_LIVE }}
         run: |
@@ -1142,6 +1145,7 @@ jobs:
           assert isinstance(selected,list) and selected and len(selected)==len(set(selected))
           validate_only=os.environ.get('VALIDATE_ONLY')=='true'
           website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
+          founder_cloudflare=os.environ.get('FOUNDER_CLOUDFLARE')=='true'
           preserve_live=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
           exact_live=os.environ.get('EXACT_LIVE')=='true'
           base=os.environ['BASE']
@@ -1151,6 +1155,8 @@ jobs:
           rollback=os.environ['TRANSACTION_ROLLBACK']
           live=os.environ['LIVE']
           routing_live=os.environ['ROUTING_LIVE']
+          founder_cloud=os.environ['FOUNDER_CLOUD']
+          founder_cloud_rollback=os.environ['FOUNDER_CLOUD_ROLLBACK']
 
           if validate_only:
               assert not preserve_live and not exact_live
@@ -1158,7 +1164,7 @@ jobs:
               assert transaction=='skipped' and live=='skipped'
               mode='validate-only'
           elif exact_live:
-              assert not preserve_live and not website_routing
+              assert not preserve_live and not website_routing and not founder_cloudflare
               assert base=='success' and live=='success'
               assert transaction=='skipped' and rollback=='skipped'
               mode='exact-live-noop'
@@ -1172,6 +1178,9 @@ jobs:
               assert transaction=='success'
               assert rollback=='skipped', 'Downstream release failure forced complete application rollback'
               assert live=='success'
+              if founder_cloudflare:
+                  assert founder_cloud=='success'
+                  assert founder_cloud_rollback=='skipped'
               mode='approved-transaction'
 
           if website_routing and not validate_only:
@@ -1184,6 +1193,7 @@ jobs:
               'releaseHeadSha':os.environ['RELEASE_SHA'],
               'selectedTargets':selected,
               'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+              'founderCloudflare':founder_cloudflare,
               'transaction':'committed' if transaction=='success' else 'preserved',
           }
           with open('/tmp/approved-release-receipt.json','w') as output:
