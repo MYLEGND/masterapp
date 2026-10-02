@@ -523,18 +523,26 @@ internal sealed partial class LegendFounderToolAuthority
                         ? null : root.GetProperty("surface").GetString();
                     var preset = root.GetProperty("preset").ValueKind == JsonValueKind.Null
                         ? null : root.GetProperty("preset").GetString();
+                    var timeZoneId = root.GetProperty("timezone_id").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("timezone_id").GetString();
+                    int? timeZoneOffsetMinutes = root.GetProperty("timezone_offset_minutes").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("timezone_offset_minutes").GetInt32();
 
                     await using var readScope = _authorizationScopes.CreateAsyncScope();
                     var authority = readScope.ServiceProvider.GetRequiredService<LegendMasterAppReadAuthority>();
                     if (operation == "catalog")
                     {
-                        if (surface is not null || preset is not null)
+                        if (surface is not null || preset is not null || timeZoneId is not null || timeZoneOffsetMinutes is not null)
                             return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
                         return SerializeUnbounded(authority.Catalog());
                     }
                     if (operation != "read" || string.IsNullOrWhiteSpace(surface))
                         return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
-                    return SerializeUnbounded(await authority.ReadAsync(founder, surface, preset, cancellationToken));
+                    return SerializeUnbounded(await authority.ReadAsync(
+                        founder,
+                        surface,
+                        new LegendMasterAppReadRequest(preset, timeZoneId, timeZoneOffsetMinutes),
+                        cancellationToken));
                 }
                 catch (JsonException)
                 {
@@ -2342,9 +2350,21 @@ internal sealed partial class LegendFounderToolAuthority
                         {
                             type = new[] { "string", "null" },
                             @enum = new string?[] { "today", "7d", "30d", "month", "year", null }
+                        },
+                        timezone_id = new
+                        {
+                            type = new[] { "string", "null" },
+                            minLength = 1,
+                            maxLength = 128
+                        },
+                        timezone_offset_minutes = new
+                        {
+                            type = new[] { "integer", "null" },
+                            minimum = -840,
+                            maximum = 840
                         }
                     },
-                    required = new[] { "operation", "surface", "preset" },
+                    required = new[] { "operation", "surface", "preset", "timezone_id", "timezone_offset_minutes" },
                     additionalProperties = false
                 },
                 strict = true
