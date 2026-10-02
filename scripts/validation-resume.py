@@ -30,6 +30,7 @@ import urllib.request
 
 TRUSTED_PR_BASE = "legend/approved-changes"
 DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
+PACKAGE_VALIDATION_WORKFLOW = "masterapp-platform-architecture-validation.yml"
 RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
 RELEASE_RESOURCE_GROUP = "masterapp-rg"
 MIGRATION_BUNDLE_NAME = "masterapp-migrations"
@@ -1740,7 +1741,7 @@ def cmd_lifecycle_evidence(args):
 
 
 def _package_canary_proof_runs(repository: str, current_run_id: int, head_branch: str, token: str):
-    workflow = urllib.parse.quote("masterapp-platform-architecture-validation.yml", safe="")
+    workflow = urllib.parse.quote(PACKAGE_VALIDATION_WORKFLOW, safe="")
     branch = urllib.parse.quote(head_branch, safe="")
     payload = api_get(
         repository,
@@ -1892,7 +1893,7 @@ def compute_package_backfill_plan(repository: str, revision: str, current_sha: s
         result["reason"] = "application_inputs_changed_since_validated_revision"
         return result
 
-    workflow_path = ".github/workflows/masterapp-platform-architecture-validation.yml"
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
     encoded = urllib.parse.quote(revision, safe="")
     payload = api_get(
         repository,
@@ -1968,7 +1969,7 @@ def compute_validated_package_evidence(repository: str, revision: str, package_i
     if not token:
         result["reason"] = "github_token_unavailable"
         return result
-    workflow_path = ".github/workflows/masterapp-platform-architecture-validation.yml"
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
     for artifact in _artifact_rows(repository, result["artifact"], token):
         run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
         if not run_id:
