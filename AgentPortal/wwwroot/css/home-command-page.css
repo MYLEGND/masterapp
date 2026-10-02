@@ -377,7 +377,7 @@
     border-radius: 14px;
     border: 1px solid rgba(212, 170, 71, 0.34);
     background: rgba(212, 170, 71, 0.12);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-weight: 780;
 }
 
@@ -420,7 +420,7 @@
     border: 0;
     border-radius: 16px;
     background: transparent;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     padding: 0 1.1rem 0 2.95rem;
     font-size: 1rem;
     font-weight: 620;
@@ -521,7 +521,7 @@
 .home-clients-recent-title {
     font-size: 1.04rem;
     font-weight: 900;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
 }
 
 .home-clients-recent-sub {
@@ -546,7 +546,7 @@
     border-radius: 18px;
     border: 1px solid rgba(214, 188, 128, 0.2);
     background: linear-gradient(180deg, rgba(38, 57, 98, 0.74), rgba(28, 44, 78, 0.78));
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     text-align: left;
     box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
     transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
@@ -665,7 +665,7 @@
     border-radius: 10px;
     border: 1px solid rgba(221, 180, 87, 0.4);
     background: rgba(255, 255, 255, 0.06);
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
     font-size: 0.95rem;
     font-weight: 620;
     transition: border-color 0.15s ease, background 0.15s ease;
