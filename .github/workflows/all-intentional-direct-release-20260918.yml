@@ -23,9 +23,7 @@ on:
         description: Canonically derived target scope; revalidated before publication
         type: string
         default: ''
-  push:
-    branches: [legend/approved-changes]
-    paths: ['Docs/releases/direct-release-request.json']
+
 permissions:
   contents: read
   actions: read
