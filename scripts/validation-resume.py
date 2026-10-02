@@ -590,22 +590,35 @@ def workflow_gate_change_scope(prior_text: str, current_text: str, gate_steps):
 
 
 def _job_blocks(text: str):
+    """Return exact top-level job blocks without treating blank lines as EOF.
+
+    GitHub workflow jobs routinely contain blank separators. The previous parser
+    treated a bare newline as a non-indented top-level key, stopped after the
+    first job, and falsely reported later jobs as missing. That silently defeated
+    content-addressed Step 5 baseline reuse.
+    """
     lines = text.splitlines(keepends=True)
-    jobs_line = next((i for i, line in enumerate(lines) if line.rstrip() == "jobs:"), None)
+    jobs_line = next((i for i, line in enumerate(lines) if line.strip() == "jobs:" and not line.startswith(" ")), None)
     if jobs_line is None:
         return {}
     blocks = {}
     index = jobs_line + 1
     while index < len(lines):
         line = lines[index]
-        if line and not line.startswith(" "):
+        if not line.strip():
+            index += 1
+            continue
+        if not line.startswith(" "):
             break
         if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":"):
             name = line.strip()[:-1]
             end = index + 1
             while end < len(lines):
                 candidate = lines[end]
-                if candidate and not candidate.startswith(" "):
+                if not candidate.strip():
+                    end += 1
+                    continue
+                if not candidate.startswith(" "):
                     break
                 if candidate.startswith("  ") and not candidate.startswith("    ") and candidate.strip().endswith(":"):
                     break
