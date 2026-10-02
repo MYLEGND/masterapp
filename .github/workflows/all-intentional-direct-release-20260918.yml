@@ -439,17 +439,18 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
           echo "Exact-candidate live targets are preserved; only targets not already live may deploy."
 
-      - name: Synchronize Protect shared website authorization and publisher runtime
+      - name: Synchronize selected shared authorization and publisher runtimes
         id: protectauth
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_HAS_SHARED_AUTH == 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          portal_settings=/tmp/portal-shared-auth.json
-          protect_settings=/tmp/protect-shared-auth.json
-          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
+          source_settings=/tmp/shared-auth-source.json
+          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json > "$source_settings"
 
+          selected() {
+            jq -e --arg app "$1" 'index($app) != null' <<< "$SELECTED_TARGETS" >/dev/null
+          }
           resolve_value() {
             local file="$1"; shift
             local key value
@@ -469,93 +470,78 @@ jobs:
             return 1
           }
 
-          founder="$(resolve_value "$portal_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
-          founder_upn="$(resolve_value "$portal_settings" Founder__Upn 'Founder:Upn')"
-          blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
-          [ -n "$founder" ] && [ -n "$founder_upn" ] && [ -n "$blob" ] && [ -n "$keyvault" ]
-          echo "::add-mask::$founder"
-          echo "::add-mask::$founder_upn"
-          echo "::add-mask::$blob"
-          echo "::add-mask::$keyvault"
+          founder="$(resolve_value "$source_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
+          founder_upn="$(resolve_value "$source_settings" Founder__Upn 'Founder:Upn')"
+          blob="$(resolve_value "$source_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(resolve_value "$source_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          ingest_secret="$(resolve_value "$source_settings" Analytics__SharedSecret 'Analytics:SharedSecret' LeadIngest__SharedSecret 'LeadIngest:SharedSecret')"
+          [ -n "$founder" ] && [ -n "$founder_upn" ] && [ -n "$blob" ] && [ -n "$keyvault" ] && [ -n "$ingest_secret" ]
+          for value in "$founder" "$founder_upn" "$blob" "$keyvault" "$ingest_secret"; do echo "::add-mask::$value"; done
 
-          protect_founder_key="$(resolve_key "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
-          protect_founder_upn_key="$(resolve_key "$protect_settings" Founder__Upn 'Founder:Upn' || true)"
-          protect_blob_key="$(resolve_key "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-          protect_keyvault_key="$(resolve_key "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
-          protect_founder="$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
-          protect_founder_upn="$(resolve_value "$protect_settings" Founder__Upn 'Founder:Upn' || true)"
-          protect_blob="$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-          protect_keyvault="$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
+          while IFS= read -r app; do
+            [ -n "$app" ] || continue
+            selected "$app" || continue
+            settings="/tmp/shared-auth-${app}.json"
+            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
 
-          updates=()
-          if [ "$protect_founder" != "$founder" ]; then updates+=("${protect_founder_key:-FOUNDER_OID}=$founder"); fi
-          if [ "$protect_founder_upn" != "$founder_upn" ]; then updates+=("${protect_founder_upn_key:-Founder__Upn}=$founder_upn"); fi
-          if [ "$protect_blob" != "$blob" ]; then updates+=("${protect_blob_key:-DataProtection__BlobUri}=$blob"); fi
-          if [ "$protect_keyvault" != "$keyvault" ]; then updates+=("${protect_keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault"); fi
-          protect_node="$(resolve_value "$protect_settings" WEBSITE_NODE_DEFAULT_VERSION || true)"
-          if [ "$protect_node" != "~24" ]; then updates+=("WEBSITE_NODE_DEFAULT_VERSION=~24"); fi
-          if [ "${#updates[@]}" -gt 0 ]; then
-            az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings "${updates[@]}" --output none
-          fi
-
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
-          [ "$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder" ]
-          [ "$(resolve_value "$protect_settings" Founder__Upn 'Founder:Upn')" = "$founder_upn" ]
-          [ "$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
-          [ "$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
-          [ "$(resolve_value "$protect_settings" WEBSITE_NODE_DEFAULT_VERSION)" = "~24" ]
-          # AgentPortal owns the receiver secret. Keep Protect's sender and legacy
-          # aliases on that exact value, without printing settings or secret values.
-          ingest_secret="$(resolve_value "$portal_settings" Analytics__SharedSecret 'Analytics:SharedSecret' LeadIngest__SharedSecret 'LeadIngest:SharedSecret')"
-          [ -n "$ingest_secret" ]
-          echo "::add-mask::$ingest_secret"
-          ingest_updates=()
-          for key in Analytics__SharedSecret Tracking__SharedSecret; do
-            current="$(resolve_value "$protect_settings" "$key" || true)"
-            if [ "$current" != "$ingest_secret" ]; then ingest_updates+=("$key=$ingest_secret"); fi
-          done
-          for alias in 'Analytics:SharedSecret' 'LeadIngest:SharedSecret' LeadIngest__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET; do
-            if jq -e --arg key "$alias" 'any(.[]; .name == $key)' "$protect_settings" >/dev/null; then
-              current="$(resolve_value "$protect_settings" "$alias" || true)"
-              if [ "$current" != "$ingest_secret" ]; then ingest_updates+=("$alias=$ingest_secret"); fi
-            fi
-          done
-          if [ "${#ingest_updates[@]}" -gt 0 ]; then
-            az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings "${ingest_updates[@]}" --output none
-          fi
-          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
-          [ "$(resolve_value "$protect_settings" Analytics__SharedSecret 'Analytics:SharedSecret')" = "$ingest_secret" ]
-          [ "$(resolve_value "$protect_settings" Tracking__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET)" = "$ingest_secret" ]
-          echo "Protect website and analytics ingest authority match AgentPortal."
-          for app in masterapp-portal masterapp-protect masterapp-client masterapp-parfait; do
-            if [[ "$SELECTED_TARGETS" != *"\"$app\""* ]]; then continue; fi
-            settings_file="/tmp/$app-marketing-authority.json"
-            az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings_file"
-            marketing_updates=()
-            for pair in BlobUri KeyVaultKeyId; do
-              expected="$blob"; if [ "$pair" = KeyVaultKeyId ]; then expected="$keyvault"; fi
-              key="$(resolve_key "$settings_file" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
-              current="$(resolve_value "$settings_file" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
-              if [ "$current" != "$expected" ]; then marketing_updates+=("${key:-MarketingDataProtection__$pair}=$expected"); fi
+            founder_key="$(resolve_key "$settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
+            founder_upn_key="$(resolve_key "$settings" Founder__Upn 'Founder:Upn' || true)"
+            blob_key="$(resolve_key "$settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
+            keyvault_key="$(resolve_key "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
+            updates=()
+            [ "$(resolve_value "$settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)" = "$founder" ] || updates+=("${founder_key:-FOUNDER_OID}=$founder")
+            [ "$(resolve_value "$settings" Founder__Upn 'Founder:Upn' || true)" = "$founder_upn" ] || updates+=("${founder_upn_key:-Founder__Upn}=$founder_upn")
+            [ "$(resolve_value "$settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)" = "$blob" ] || updates+=("${blob_key:-DataProtection__BlobUri}=$blob")
+            [ "$(resolve_value "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)" = "$keyvault" ] || updates+=("${keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault")
+            [ "$(resolve_value "$settings" WEBSITE_NODE_DEFAULT_VERSION || true)" = "~24" ] || updates+=("WEBSITE_NODE_DEFAULT_VERSION=~24")
+            for key in Analytics__SharedSecret Tracking__SharedSecret; do
+              [ "$(resolve_value "$settings" "$key" || true)" = "$ingest_secret" ] || updates+=("$key=$ingest_secret")
             done
-            if [ "${#marketing_updates[@]}" -gt 0 ]; then
-              az webapp config appsettings set -g masterapp-rg -n "$app" --settings "${marketing_updates[@]}" --output none
+            for alias in 'Analytics:SharedSecret' 'LeadIngest:SharedSecret' LeadIngest__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET; do
+              if jq -e --arg key "$alias" 'any(.[]; .name == $key)' "$settings" >/dev/null; then
+                [ "$(resolve_value "$settings" "$alias" || true)" = "$ingest_secret" ] || updates+=("$alias=$ingest_secret")
+              fi
+            done
+            if [ "${#updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
+              az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
             fi
-            az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings_file"
-            [ "$(resolve_value "$settings_file" MarketingDataProtection__BlobUri 'MarketingDataProtection:BlobUri')" = "$blob" ]
-            [ "$(resolve_value "$settings_file" MarketingDataProtection__KeyVaultKeyId 'MarketingDataProtection:KeyVaultKeyId')" = "$keyvault" ]
-          done
-          echo "Selected marketing consumers use the shared key authority."
+            [ "$(resolve_value "$settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder" ]
+            [ "$(resolve_value "$settings" Founder__Upn 'Founder:Upn')" = "$founder_upn" ]
+            [ "$(resolve_value "$settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
+            [ "$(resolve_value "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
+            [ "$(resolve_value "$settings" Analytics__SharedSecret 'Analytics:SharedSecret')" = "$ingest_secret" ]
+            [ "$(resolve_value "$settings" Tracking__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET)" = "$ingest_secret" ]
+          done < <(jq -r '.[]' <<< "$SHARED_AUTH_TARGETS")
 
-      - name: Synchronize shared website editor ticket authority
+          while IFS= read -r app; do
+            [ -n "$app" ] || continue
+            selected "$app" || continue
+            settings="/tmp/marketing-authority-${app}.json"
+            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+            updates=()
+            for pair in BlobUri KeyVaultKeyId; do
+              expected="$blob"; [ "$pair" = KeyVaultKeyId ] && expected="$keyvault"
+              key="$(resolve_key "$settings" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
+              current="$(resolve_value "$settings" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
+              [ "$current" = "$expected" ] || updates+=("${key:-MarketingDataProtection__$pair}=$expected")
+            done
+            if [ "${#updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
+              az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+            fi
+            [ "$(resolve_value "$settings" MarketingDataProtection__BlobUri 'MarketingDataProtection:BlobUri')" = "$blob" ]
+            [ "$(resolve_value "$settings" MarketingDataProtection__KeyVaultKeyId 'MarketingDataProtection:KeyVaultKeyId')" = "$keyvault" ]
+          done < <(jq -r '.[]' <<< "$MARKETING_TARGETS")
+          echo "Selected shared-auth and marketing runtimes consume the canonical authority."
+      - name: Synchronize selected editor ticket authority
         id: editorauth
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' && (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') || contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait')) }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_HAS_EDITOR == 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          portal_settings=/tmp/portal-editor-ticket-authority.json
-          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
+          source_settings=/tmp/editor-ticket-source.json
+          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json > "$source_settings"
           value() {
             local file="$1"; shift
             local key found
@@ -565,29 +551,33 @@ jobs:
             done
             return 1
           }
-          blob="$(value "$portal_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri' DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(value "$portal_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId' DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          selected() {
+            jq -e --arg app "$1" 'index($app) != null' <<< "$SELECTED_TARGETS" >/dev/null
+          }
+          blob="$(value "$source_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri' DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(value "$source_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId' DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
           [ -n "$blob" ] && [ -n "$keyvault" ]
           echo "::add-mask::$blob"
           echo "::add-mask::$keyvault"
-          for app in masterapp-protect masterapp-parfait; do
-            if [[ "$SELECTED_TARGETS" != *"\"$app\""* ]]; then continue; fi
-            settings="/tmp/$app-editor-ticket-authority.json"
-            az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings"
-            editor_updates=()
+          while IFS= read -r app; do
+            [ -n "$app" ] || continue
+            selected "$app" || continue
+            settings="/tmp/editor-ticket-${app}.json"
+            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
+            updates=()
             for pair in BlobUri KeyVaultKeyId; do
-              expected="$blob"; if [ "$pair" = KeyVaultKeyId ]; then expected="$keyvault"; fi
+              expected="$blob"; [ "$pair" = KeyVaultKeyId ] && expected="$keyvault"
               current="$(value "$settings" "WebsiteEditorDataProtection__$pair" "WebsiteEditorDataProtection:$pair" || true)"
-              if [ "$current" != "$expected" ]; then editor_updates+=("WebsiteEditorDataProtection__$pair=$expected"); fi
+              [ "$current" = "$expected" ] || updates+=("WebsiteEditorDataProtection__$pair=$expected")
             done
-            if [ "${#editor_updates[@]}" -gt 0 ]; then
-              az webapp config appsettings set -g masterapp-rg -n "$app" --settings "${editor_updates[@]}" --output none
-              az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings"
+            if [ "${#updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
+              az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
             fi
             [ "$(value "$settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri')" = "$blob" ]
             [ "$(value "$settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId')" = "$keyvault" ]
-          done
-          echo "Selected website and commerce runtimes share one editor-ticket key authority."
+          done < <(jq -r '.[]' <<< "$EDITOR_TARGETS")
+          echo "Selected editor runtimes consume the canonical ticket authority."
 
       - name: Prepare shared business website routing authority
         id: routingsecret
