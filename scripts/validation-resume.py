@@ -755,19 +755,38 @@ def git_show_file(revision: str, path: str) -> str:
     return result.stdout
 
 
+def _dynamic_release_policy(step_name: str, block: str) -> str:
+    """Classify a newly added release step conservatively without a second registry.
+
+    Explicit policies remain useful documentation for established external-effect
+    steps, but correctness never depends on remembering to extend that registry.
+    New named steps are discovered from the workflow itself and default to
+    fail-closed execution unless their action shape is intrinsically reusable.
+    """
+    if "actions/upload-artifact@" in block:
+        return "artifact_receipt"
+    if "actions/download-artifact@" in block:
+        return "artifact_restore"
+    if "actions/setup-" in block or "azure/login@" in block:
+        return "ephemeral_runtime"
+    return "fail_closed_execute"
+
+
 def verify_release_policy_coverage(workflow_name: str, workflow_text: str):
-    expected = RELEASE_STEP_POLICIES.get(workflow_name)
-    if expected is None:
+    explicit = RELEASE_STEP_POLICIES.get(workflow_name)
+    if explicit is None:
         raise ValueError(f"Unsupported release workflow coverage: {workflow_name}")
-    actual = set(named_step_blocks(workflow_text))
-    missing = sorted(actual - set(expected))
-    stale = sorted(set(expected) - actual)
-    if missing or stale:
+    blocks = named_step_blocks(workflow_text)
+    stale = sorted(set(explicit) - set(blocks))
+    if stale:
         raise ValueError(
-            "Release resume policy coverage mismatch; "
-            f"unclassified={missing}; stale={stale}"
+            "Release resume policy contains stale step names; "
+            f"stale={stale}"
         )
-    return expected
+    return {
+        name: explicit.get(name, _dynamic_release_policy(name, block))
+        for name, block in blocks.items()
+    }
 
 
 def matches(path: str, patterns) -> bool:
@@ -1235,6 +1254,345 @@ def cmd_preserved(args):
 
 
 
+def _step5_jobs_unchanged(prior_sha: str, workflow_path: str) -> bool:
+    prior = git_show_file(prior_sha, workflow_path)
+    current = Path(workflow_path).read_text()
+    prior_jobs = _job_blocks(prior)
+    current_jobs = _job_blocks(current)
+    wanted = ("candidate", "baseline")
+    return all(
+        name in prior_jobs
+        and name in current_jobs
+        and prior_jobs[name] == current_jobs[name]
+        for name in wanted
+    )
+
+
+def _artifact_rows(repository: str, name: str, token: str):
+    encoded = urllib.parse.quote(name, safe="")
+    payload = api_get(
+        repository,
+        f"actions/artifacts?name={encoded}&per_page=100",
+        token,
+    )
+    return [
+        row for row in payload.get("artifacts", [])
+        if not row.get("expired")
+    ]
+
+
+def _run_artifact_names(repository: str, run_id: int, token: str):
+    payload = api_get(
+        repository,
+        f"actions/runs/{run_id}/artifacts?per_page=100",
+        token,
+    )
+    return {
+        row.get("name")
+        for row in payload.get("artifacts", [])
+        if row.get("name") and not row.get("expired")
+    }
+
+
+def _download_run_artifact(repository: str, run_id: int, name: str, directory: Path):
+    directory.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    if env.get("GITHUB_TOKEN") and not env.get("GH_TOKEN"):
+        env["GH_TOKEN"] = env["GITHUB_TOKEN"]
+    subprocess.run(
+        [
+            "gh", "run", "download", str(run_id),
+            "--repo", repository,
+            "--name", name,
+            "--dir", str(directory),
+        ],
+        check=True,
+        env=env,
+    )
+
+
+def _trx_failed(path: Path):
+    import xml.etree.ElementTree as ET
+    root = ET.parse(path).getroot()
+    return {
+        node.attrib.get("testName", "")
+        for node in root.iter()
+        if node.tag.endswith("UnitTestResult")
+        and node.attrib.get("outcome") == "Failed"
+        and node.attrib.get("testName")
+    }
+
+
+def _git_name_status(prior: str, current: str):
+    result = subprocess.run(
+        ["git", "diff", "--name-status", prior, current, "--"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    rows = []
+    for line in result.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 2:
+            return []
+        rows.append((parts[0], parts[1]))
+    return rows
+
+
+def compute_step5_decision(
+    repository: str,
+    current_sha: str,
+    base_sha: str,
+    current_run_id: int,
+    head_branch: str,
+):
+    """Choose only Step 5's cross-run comparison mode.
+
+    Gate-level invalidation remains owned by compute_plan. This function only
+    handles the one semantic optimization that cannot be expressed as a normal
+    source gate: reuse of durable candidate/baseline TRX evidence, including
+    replacing only a previously introduced failing test class.
+    """
+    decision = {
+        "schemaVersion": 2,
+        "mode": "full",
+        "priorRunId": None,
+        "priorHeadSha": None,
+        "repairClasses": [],
+        "repairFilter": None,
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        decision["reason"] = "github_token_unavailable"
+        return decision
+
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+    baseline_name = f"step5-baseline-{base_sha}"
+    prior_run_id = None
+    prior_head_sha = None
+    candidate_name = None
+
+    for artifact in _artifact_rows(repository, baseline_name, token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id or run_id == current_run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        candidate_head = run.get("head_sha") or ""
+        if not (
+            len(candidate_head) == 40
+            and run.get("path") == workflow_path
+            and run.get("head_branch") == head_branch
+            and run.get("event") == "pull_request"
+            and run.get("status") == "completed"
+        ):
+            continue
+        candidate_artifact = f"step5-candidate-{candidate_head}"
+        names = _run_artifact_names(repository, run_id, token)
+        if candidate_artifact in names and baseline_name in names:
+            prior_run_id = run_id
+            prior_head_sha = candidate_head
+            candidate_name = candidate_artifact
+            break
+
+    if not prior_run_id:
+        decision["reason"] = "no_reusable_candidate_baseline_pair"
+        return decision
+
+    changed = git_changed(prior_head_sha, current_sha)
+    jobs_unchanged = _step5_jobs_unchanged(prior_head_sha, workflow_path)
+
+    if changed == [workflow_path] and jobs_unchanged:
+        decision.update({
+            "mode": "reuse",
+            "priorRunId": prior_run_id,
+            "priorHeadSha": prior_head_sha,
+            "reason": "comparison_only_workflow_change",
+        })
+        return decision
+
+    allowed_planner_only = {workflow_path, "scripts/test-release-policy.py"}
+    if (
+        workflow_path in changed
+        and set(changed) <= allowed_planner_only
+        and jobs_unchanged
+    ):
+        decision.update({
+            "mode": "reuse",
+            "priorRunId": prior_run_id,
+            "priorHeadSha": prior_head_sha,
+            "reason": "comparison_only_policy_change",
+        })
+        return decision
+
+    security = ".github/workflows/approved-release-security-validation.yml"
+    if security in changed and set(changed) <= {workflow_path, security} and jobs_unchanged:
+        classes = [
+            "AgentPortal.Tests.ClientAppDeploymentWorkflowTests",
+            "AgentPortal.Tests.LegendFounderAiContractTests",
+        ]
+        decision.update({
+            "mode": "repair",
+            "priorRunId": prior_run_id,
+            "priorHeadSha": prior_head_sha,
+            "repairClasses": classes,
+            "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes),
+            "reason": "security_contract_consumers_only",
+        })
+        return decision
+
+    if not jobs_unchanged:
+        decision["reason"] = "candidate_or_baseline_job_changed"
+        return decision
+
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="step5-prior-") as temp:
+        root = Path(temp)
+        candidate_dir = root / "candidate"
+        baseline_dir = root / "baseline"
+        try:
+            _download_run_artifact(repository, prior_run_id, candidate_name, candidate_dir)
+            _download_run_artifact(repository, prior_run_id, baseline_name, baseline_dir)
+        except Exception:
+            decision["reason"] = "prior_artifact_download_failed"
+            return decision
+
+        candidate_path = candidate_dir / "candidate.trx"
+        baseline_path = baseline_dir / "baseline.trx"
+        if not candidate_path.exists() or not baseline_path.exists():
+            decision["reason"] = "prior_artifact_pair_incomplete"
+            return decision
+
+        introduced = sorted(_trx_failed(candidate_path) - _trx_failed(baseline_path))
+        classes = sorted({name.rsplit(".", 1)[0] for name in introduced if "." in name})
+        if not introduced or not classes:
+            decision["reason"] = "no_bounded_introduced_failure"
+            return decision
+
+    expected = {
+        f"AgentPortal.Tests/{class_name.rsplit('.', 1)[-1]}.cs"
+        for class_name in classes
+        if class_name.startswith("AgentPortal.Tests.")
+    }
+    if len(expected) != len(classes) or not expected:
+        decision["reason"] = "unbounded_failure_authority"
+        return decision
+
+    rows = _git_name_status(prior_head_sha, current_sha)
+    if not rows:
+        decision["reason"] = "no_exact_repair_diff"
+        return decision
+    allowed = expected | {workflow_path}
+    changed_files = {path for _, path in rows}
+    changed_tests = {path for status, path in rows if path in expected and status == "M"}
+    if (
+        not changed_files <= allowed
+        or changed_tests != expected
+        or any(status != "M" for status, path in rows if path in expected)
+        or any(status not in {"M", "A"} for status, path in rows if path == workflow_path)
+    ):
+        decision["reason"] = "repair_diff_not_exact"
+        return decision
+
+    decision.update({
+        "mode": "repair",
+        "priorRunId": prior_run_id,
+        "priorHeadSha": prior_head_sha,
+        "repairClasses": classes,
+        "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes),
+        "reason": "replace_only_previously_failing_classes",
+    })
+    return decision
+
+
+def cmd_step5_decision(args):
+    try:
+        decision = compute_step5_decision(
+            args.repository,
+            args.current_sha,
+            args.base_sha,
+            args.current_run_id,
+            args.head_branch,
+        )
+    except Exception as exc:
+        decision = {
+            "schemaVersion": 2,
+            "mode": "full",
+            "priorRunId": None,
+            "priorHeadSha": None,
+            "repairClasses": [],
+            "repairFilter": None,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(decision, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(decision, indent=2, sort_keys=True))
+
+
+def compute_step5_baseline_evidence(repository: str, base_sha: str):
+    result = {
+        "schemaVersion": 2,
+        "approvedBaseSha": base_sha,
+        "reusable": False,
+        "evidenceRunId": None,
+        "evidenceArtifact": None,
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    tree = subprocess.check_output(
+        ["git", "rev-parse", f"{base_sha}^{{tree}}"],
+        text=True,
+    ).strip()
+    workflow_path = WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+    for artifact_name in (f"step5-tree-candidate-{tree}", f"step5-tree-baseline-{tree}"):
+        for artifact in _artifact_rows(repository, artifact_name, token):
+            run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+            if not run_id:
+                continue
+            run = api_get(repository, f"actions/runs/{run_id}", token)
+            run_head = run.get("head_sha") or ""
+            if not (
+                run.get("path") == workflow_path
+                and run.get("event") == "pull_request"
+                and run.get("status") == "completed"
+                and (run.get("head_repository") or {}).get("full_name") == repository
+                and len(run_head) == 40
+            ):
+                continue
+            if not _step5_jobs_unchanged(run_head, workflow_path):
+                continue
+            result.update({
+                "reusable": True,
+                "evidenceRunId": run_id,
+                "evidenceArtifact": artifact_name,
+                "tree": tree,
+                "reason": "content_identical_approved_tree",
+            })
+            return result
+    result["tree"] = tree
+    result["reason"] = "no_content_identical_baseline_artifact"
+    return result
+
+
+def cmd_step5_baseline(args):
+    try:
+        result = compute_step5_baseline_evidence(args.repository, args.base_sha)
+    except Exception as exc:
+        result = {
+            "schemaVersion": 2,
+            "approvedBaseSha": args.base_sha,
+            "reusable": False,
+            "evidenceRunId": None,
+            "evidenceArtifact": None,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def cmd_job_unchanged(args):
     prior = git_show_file(args.prior_sha, args.workflow_path)
     current = Path(args.workflow_path).read_text()
@@ -1276,6 +1634,21 @@ def build_parser():
     preserved.add_argument("--plan", required=True)
     preserved.add_argument("--gate", required=True)
     preserved.set_defaults(func=cmd_preserved)
+
+    step5_decision = sub.add_parser("step5-decision")
+    step5_decision.add_argument("--current-sha", required=True)
+    step5_decision.add_argument("--base-sha", required=True)
+    step5_decision.add_argument("--current-run-id", required=True, type=int)
+    step5_decision.add_argument("--head-branch", required=True)
+    step5_decision.add_argument("--repository", required=True)
+    step5_decision.add_argument("--output", required=True)
+    step5_decision.set_defaults(func=cmd_step5_decision)
+
+    step5_baseline = sub.add_parser("step5-baseline")
+    step5_baseline.add_argument("--base-sha", required=True)
+    step5_baseline.add_argument("--repository", required=True)
+    step5_baseline.add_argument("--output", required=True)
+    step5_baseline.set_defaults(func=cmd_step5_baseline)
 
     job_unchanged = sub.add_parser("job-unchanged")
     job_unchanged.add_argument("--workflow-path", required=True)
