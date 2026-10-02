@@ -395,6 +395,7 @@ WORKFLOWS = {
                     ".github/workflows/all-intentional-direct-release-20260918.yml",
                     ".github/workflows/approved-release-security-validation.yml",
                     "scripts/release-lifecycle.py",
+                    "scripts/validation-resume.py",
                     "scripts/release_policy.py",
                     "scripts/approved-release-baseline.py",
                     "scripts/deploy-approved-app.py",
