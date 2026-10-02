@@ -4,7 +4,7 @@
     --legend-navy-2: #1e293b;
     --legend-ink: #e2e8f0;
     --legend-line: #273554;
-    --legend-gold: #a68023;
+    --legend-gold: var(--legend-app-accent);
     --legend-muted: #94a3b8;
 }
 
@@ -25,7 +25,7 @@
 
 .legend-hero-bar {
     height: 4px;
-    background: linear-gradient(90deg, var(--legend-gold), #c79931, #ddb457, #c79931, var(--legend-gold));
+    background: linear-gradient(90deg, var(--legend-gold), var(--legend-app-accent), #ddb457, var(--legend-app-accent), var(--legend-gold));
 }
 
 .legend-hero-body {
@@ -52,7 +52,7 @@
     font-size: 2rem;
     font-weight: 950;
     letter-spacing: -.2px;
-    color: #f8fafc;
+    color: var(--legend-app-on-dark);
 }
 
 .legend-sub {
@@ -73,7 +73,7 @@
 
 .legend-card .card-header {
     border-bottom: 1px solid #e5e7eb;
-    background: #f8fafc;
+    background: var(--legend-app-on-dark);
     color: #0f172a;
     font-weight: 800;
 }
@@ -85,7 +85,7 @@
 .legend-form input.form-control,
 .legend-form select.form-select,
 .legend-form textarea.form-control {
-    background: #f8fafc;
+    background: var(--legend-app-on-dark);
     color: #0f172a;
     border: 1.2px solid #cbd5e1;
     border-radius: 12px;
@@ -116,7 +116,7 @@
 }
 
 .legend-form .table thead {
-    background: #f8fafc;
+    background: var(--legend-app-on-dark);
     color: #0f172a;
     border-bottom: 1px solid #e5e7eb;
 }
@@ -166,4 +166,3 @@
     color: var(--legend-muted);
     font-weight: 700;
 }
-
