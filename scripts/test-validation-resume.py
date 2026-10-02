@@ -628,6 +628,19 @@ jobs:
             evidence["reason"],
         )
 
+    def test_founder_cloudflare_release_trigger_is_canonical_and_narrow(self):
+        self.assertTrue(m.founder_cloudflare_release_required([
+            "Legend-Cloudflare/src/runtime/registry.mjs",
+        ]))
+        self.assertTrue(m.founder_cloudflare_release_required([
+            "Legend-Cloudflare/wrangler.founder-baseline.jsonc",
+        ]))
+        self.assertFalse(m.founder_cloudflare_release_required([
+            "Legend-Cloudflare/tests/runtime/qualification-mode.test.mjs",
+            "Legend-Cloudflare/scripts/founder-canary.mjs",
+            "AgentPortal/Program.cs",
+        ]))
+
     def test_release_baseline_delegates_application_identity_classification(self):
         baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
         self.assertIn("_validation_authority.release_control_only_path(path)", baseline)
@@ -951,6 +964,109 @@ jobs:
 
         self.assertFalse(result["reusable"])
         self.assertEqual("no_content_identical_baseline_artifact", result["reason"])
+
+
+    def test_step5_cloudflare_test_only_change_is_neutral_to_dotnet_candidate(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        plan = m.compute_plan(
+            workflow,
+            "b" * 40,
+            self.prior(),
+            self.successful_steps(workflow),
+            ["Legend-Cloudflare/tests/security/founder-control.test.mjs"],
+            "prior_run",
+        )
+        self.assertEqual("incremental", plan["mode"])
+        self.assertTrue(all(not gate["run"] for gate in plan["gates"].values()))
+
+    def test_step5_partial_class_source_mapping_covers_split_fixture_files(self):
+        files = m._step5_class_source_files(
+            "AgentPortal.Tests.LegendFounderAiModeIsolationTests"
+        )
+        self.assertIn(
+            "AgentPortal.Tests/LegendFounderAiModeIsolationTests.cs",
+            files,
+        )
+        self.assertIn(
+            "AgentPortal.Tests/LegendFounderPretrainedAcceptanceTests.cs",
+            files,
+        )
+
+    def test_step5_repair_uses_independent_candidate_and_baseline_evidence(self):
+        prior_head = "a" * 40
+        current_head = "b" * 40
+        failing_class = "AgentPortal.Tests.LegendFounderAiModeIsolationTests"
+        failing_test = (
+            failing_class
+            + ".HeldOutFoundation_ResearchFailureSurvivesSubsequentProviderFailure"
+        )
+        candidate = {
+            "runId": 71,
+            "headSha": prior_head,
+            "artifact": "step5-candidate-" + prior_head,
+        }
+        baseline = {
+            "reusable": True,
+            "evidenceRunId": 44,
+            "evidenceArtifact": "step5-baseline-" + ("c" * 40),
+            "evidenceBaseSha": "c" * 40,
+        }
+        changed = [
+            ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            "AgentPortal.Tests/LegendFounderPretrainedAcceptanceTests.cs",
+            "scripts/test-validation-resume.py",
+            "scripts/validation-resume.py",
+        ]
+
+        def download(_repository, _run_id, _name, directory):
+            directory.mkdir(parents=True, exist_ok=True)
+            filename = "candidate.trx" if directory.name == "candidate" else "baseline.trx"
+            (directory / filename).write_text("<TestRun />")
+
+        def failures(path):
+            return {failing_test} if path.name == "candidate.trx" else set()
+
+        with patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}, clear=False), \
+             patch.object(m, "_step5_prior_candidate_evidence", return_value=candidate), \
+             patch.object(m, "compute_step5_baseline_evidence", return_value=baseline), \
+             patch.object(m, "_step5_jobs_unchanged", return_value=True), \
+             patch.object(m, "git_changed", return_value=changed), \
+             patch.object(m, "_download_run_artifact", side_effect=download), \
+             patch.object(m, "_trx_failed", side_effect=failures), \
+             patch.object(m, "_step5_class_source_files", return_value={
+                 "AgentPortal.Tests/LegendFounderPretrainedAcceptanceTests.cs"
+             }), \
+             patch.object(m, "_git_name_status", return_value=[
+                 ("M", path) for path in changed
+             ]):
+            decision = m.compute_step5_decision(
+                "MYLEGND/masterapp",
+                current_head,
+                "d" * 40,
+                99,
+                "hardening/example",
+            )
+
+        self.assertEqual("repair", decision["mode"])
+        self.assertEqual(71, decision["priorRunId"])
+        self.assertEqual(44, decision["baselineEvidenceRunId"])
+        self.assertEqual(baseline["evidenceArtifact"], decision["baselineEvidenceArtifact"])
+        self.assertEqual([failing_class], decision["repairClasses"])
+        self.assertEqual(
+            "replace_only_previously_failing_classes",
+            decision["reason"],
+        )
+
+    def test_step5_workflow_repair_reads_independent_baseline_evidence(self):
+        workflow = (
+            ROOT / ".github" / "workflows"
+            / "step5-isolated-conversion-mapping-validation.yml"
+        ).read_text()
+        self.assertIn("baseline_evidence_run_id", workflow)
+        self.assertIn("baseline_evidence_artifact", workflow)
+        self.assertIn("Load independently proven approved baseline results", workflow)
+        self.assertIn("needs.plan.outputs.baseline_evidence_run_id", workflow)
+        self.assertIn("needs.plan.outputs.baseline_evidence_artifact", workflow)
 
     def test_content_equivalent_evidence_reuses_only_proven_gates_and_keeps_runtime_requirements(self):
         workflow = "masterapp-platform-architecture-validation.yml"

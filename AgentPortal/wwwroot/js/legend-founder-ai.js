@@ -993,7 +993,10 @@
                 authority.textContent = 'LEGEND-controlled model';
             } else if (responseAuthority === 'HostedFoundation') {
                 authority.classList.add('is-provider');
-                authority.textContent = 'LEGEND · hosted foundation';
+                authority.textContent =
+                    metadata?.foundationHosting === 'CloudflareHosted'
+                        ? 'LEGEND · Cloudflare Workers AI'
+                        : 'LEGEND · hosted foundation';
             } else if (
                 responseAuthority === 'GovernedResearch'
             ) {
@@ -1020,6 +1023,16 @@
 
         if (role !== 'user' && metadata) {
             const labels = [];
+            if (metadata.foundationHosting === 'CloudflareHosted') {
+                labels.push('Provider: Cloudflare Workers AI');
+                labels.push('Hosting: CloudflareHosted');
+                if (typeof metadata.foundationModel === 'string' && metadata.foundationModel.trim()) {
+                    labels.push(`Model: ${metadata.foundationModel.trim()}`);
+                }
+                labels.push('Billing: Cloudflare Workers AI');
+                labels.push('OpenAI API used: No');
+                labels.push('OpenAI Teacher escalation: No');
+            }
             if (metadata.reason === 'provider_output_incomplete') labels.push('Partial answer: output limit reached');
             else if (metadata.stage === 'response_partial') labels.push('Partial answer');
             const escalationLabels = {

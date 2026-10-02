@@ -2209,7 +2209,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         var policy = nativeOnly
             ? LegendConnectExternalProviderPolicy.NativeOnly
-            : LegendConnectExternalProviderPolicy.ProviderEnabled;
+            : LegendConnectExternalProviderPolicy.IndependentAnswering;
         var request = ReadOnlyContentRequest() with
         {
             ToolName = "legend_provider_capacity",
@@ -2244,9 +2244,9 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Assert.Equal("LegendAi", response.ResponseAuthority);
         Assert.Equal(0, handler.RequestCount);
         operations.Verify(operation => operation.GetProviderCapacityAsync(
-            It.IsAny<CancellationToken>(), policy), nativeOnly ? Times.Once() : Times.Never());
+            It.IsAny<CancellationToken>(), policy), Times.Once());
         operations.Verify(operation => operation.GetProviderCapacityAsync(
-            It.IsAny<CancellationToken>()), nativeOnly ? Times.Never() : Times.Once());
+            It.IsAny<CancellationToken>()), Times.Never());
     }
 
     [Fact]

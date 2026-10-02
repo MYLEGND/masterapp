@@ -51,6 +51,7 @@ jobs:
       validate_only: ${{ steps.live.outputs.validate_only }}
       website_routing: ${{ steps.live.outputs.website_routing }}
       website_routing_canary: ${{ steps.live.outputs.website_routing_canary }}
+      founder_cloudflare: ${{ steps.live.outputs.founder_cloudflare }}
       preserve_live_targets: ${{ steps.live.outputs.preserve_live_targets }}
       exact_live: ${{ steps.live.outputs.exact_live }}
       application_release_sha: ${{ steps.live.outputs.application_release_sha }}
@@ -237,6 +238,7 @@ jobs:
       VALIDATE_ONLY: ${{ needs.discover-live.outputs.validate_only }}
       WEBSITE_ROUTING: ${{ needs.discover-live.outputs.website_routing }}
       WEBSITE_ROUTING_CANARY: ${{ needs.discover-live.outputs.website_routing_canary }}
+      FOUNDER_CLOUDFLARE: ${{ needs.discover-live.outputs.founder_cloudflare }}
       PRESERVE_LIVE_TARGETS: ${{ needs.discover-live.outputs.preserve_live_targets }}
       EXACT_LIVE: ${{ needs.discover-live.outputs.exact_live }}
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
@@ -269,7 +271,7 @@ jobs:
         with:
           dotnet-version: '10.x'
       - uses: actions/setup-node@v4
-        if: env.WEBSITE_ROUTING == 'true' && env.EXACT_LIVE != 'true'
+        if: (env.WEBSITE_ROUTING == 'true' || env.FOUNDER_CLOUDFLARE == 'true') && env.EXACT_LIVE != 'true'
         with:
           node-version: '24'
           cache: npm
@@ -804,6 +806,26 @@ jobs:
             --baselines-json "$LIVE_BASELINES" \
             --package-root /tmp/diagnostics-packages \
             --rollback-root /tmp/rollback-packages
+      - name: Deploy and activate LEGEND Founder Cloudflare baseline
+        id: foundercloud
+        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && steps.transaction.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          set -euo pipefail
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Central Cloudflare Workers authority is not configured."; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Central Cloudflare account authority is not configured."; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          mkdir -p /tmp/translation-results
+          python3 scripts/deploy-founder-cloudflare.py deploy \
+            --state /tmp/legend-founder-cloudflare-state.json \
+            --receipt /tmp/translation-results/legend-founder-cloudflare.json
+
       - name: Reconcile public custom-hostname Cloudflare policy
         id: routingpolicy
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
@@ -1064,7 +1086,7 @@ jobs:
 
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') }}
+        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1075,9 +1097,21 @@ jobs:
             --selected-targets "$SELECTED_TARGETS" \
             --output /tmp/translation-results/live.json
 
+      - name: Restore Founder Cloudflare baseline after downstream release failure
+        id: foundercloudrollback
+        if: ${{ always() && env.FOUNDER_CLOUDFLARE == 'true' && steps.foundercloud.outcome == 'success' && steps.live.outcome != 'success' }}
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          python3 scripts/deploy-founder-cloudflare.py rollback \
+            --state /tmp/legend-founder-cloudflare-state.json
+
       - name: Restore complete application baseline after downstream release failure
         id: transactionrollback
-        if: ${{ always() && steps.transaction.outcome == 'success' && (steps.live.outcome != 'success' || (env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome != 'success')) }}
+        if: ${{ always() && steps.transaction.outcome == 'success' && (steps.live.outcome != 'success' || (env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome != 'success') || (env.FOUNDER_CLOUDFLARE == 'true' && steps.foundercloud.outcome != 'success')) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1103,8 +1137,11 @@ jobs:
           TRANSACTION_ROLLBACK: ${{ steps.transactionrollback.outcome }}
           LIVE: ${{ steps.live.outcome }}
           ROUTING_LIVE: ${{ steps.routinglive.outcome }}
+          FOUNDER_CLOUD: ${{ steps.foundercloud.outcome }}
+          FOUNDER_CLOUD_ROLLBACK: ${{ steps.foundercloudrollback.outcome }}
           VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
           WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
+          FOUNDER_CLOUDFLARE: ${{ env.FOUNDER_CLOUDFLARE }}
           PRESERVE_LIVE_TARGETS: ${{ env.PRESERVE_LIVE_TARGETS }}
           EXACT_LIVE: ${{ env.EXACT_LIVE }}
         run: |
@@ -1114,6 +1151,7 @@ jobs:
           assert isinstance(selected,list) and selected and len(selected)==len(set(selected))
           validate_only=os.environ.get('VALIDATE_ONLY')=='true'
           website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
+          founder_cloudflare=os.environ.get('FOUNDER_CLOUDFLARE')=='true'
           preserve_live=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
           exact_live=os.environ.get('EXACT_LIVE')=='true'
           base=os.environ['BASE']
@@ -1123,6 +1161,8 @@ jobs:
           rollback=os.environ['TRANSACTION_ROLLBACK']
           live=os.environ['LIVE']
           routing_live=os.environ['ROUTING_LIVE']
+          founder_cloud=os.environ['FOUNDER_CLOUD']
+          founder_cloud_rollback=os.environ['FOUNDER_CLOUD_ROLLBACK']
 
           if validate_only:
               assert not preserve_live and not exact_live
@@ -1130,7 +1170,7 @@ jobs:
               assert transaction=='skipped' and live=='skipped'
               mode='validate-only'
           elif exact_live:
-              assert not preserve_live and not website_routing
+              assert not preserve_live and not website_routing and not founder_cloudflare
               assert base=='success' and live=='success'
               assert transaction=='skipped' and rollback=='skipped'
               mode='exact-live-noop'
@@ -1144,6 +1184,9 @@ jobs:
               assert transaction=='success'
               assert rollback=='skipped', 'Downstream release failure forced complete application rollback'
               assert live=='success'
+              if founder_cloudflare:
+                  assert founder_cloud=='success'
+                  assert founder_cloud_rollback=='skipped'
               mode='approved-transaction'
 
           if website_routing and not validate_only:
@@ -1156,6 +1199,7 @@ jobs:
               'releaseHeadSha':os.environ['RELEASE_SHA'],
               'selectedTargets':selected,
               'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+              'founderCloudflare':founder_cloudflare,
               'transaction':'committed' if transaction=='success' else 'preserved',
           }
           with open('/tmp/approved-release-receipt.json','w') as output:

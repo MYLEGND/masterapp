@@ -122,6 +122,9 @@ class ReleaseScopeSelection(unittest.TestCase):
             self.baseline.exact_live_release(rows, "a" * 40, "approved-only", True)
         )
         self.assertFalse(
+            self.baseline.exact_live_release(rows, "a" * 40, "approved-only", False, True)
+        )
+        self.assertFalse(
             self.baseline.exact_live_release(
                 [{"revision": "a" * 40}, {"revision": "b" * 40}],
                 "a" * 40,
@@ -530,6 +533,11 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Preserve targets already live at exact candidate', workflow)
         self.assertIn('scripts/validation-resume.py live-state', workflow)
         self.assertIn('Publish selected head as one transaction', workflow)
+        self.assertIn('Deploy and activate LEGEND Founder Cloudflare baseline', workflow)
+        self.assertIn('scripts/deploy-founder-cloudflare.py deploy', workflow)
+        self.assertIn('Restore Founder Cloudflare baseline after downstream release failure', workflow)
+        self.assertIn('scripts/deploy-founder-cloudflare.py rollback', workflow)
+        self.assertIn('FOUNDER_CLOUDFLARE', workflow)
         self.assertIn('--targets-json "$SELECTED_TARGETS"', workflow)
         self.assertIn('--baselines-json "$LIVE_BASELINES"', workflow)
         self.assertIn('Restore complete application baseline after downstream release failure', workflow)
