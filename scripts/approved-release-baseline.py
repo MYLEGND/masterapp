@@ -62,11 +62,12 @@ def reusable_live_application_revision(rows, head):
 
 
 
-def exact_live_release(rows, application_release_sha, release_mode, website_routing):
-    """True only when publication cannot change any selected application target."""
+def exact_live_release(rows, application_release_sha, release_mode, website_routing, founder_cloudflare=False):
+    """True only when publication cannot change any selected app or auxiliary runtime."""
     return (
         release_mode == 'approved-only'
         and not website_routing
+        and not founder_cloudflare
         and bool(rows)
         and all(row['revision'] == application_release_sha for row in rows)
     )
@@ -157,6 +158,7 @@ def main():
 
     automatic = bool(args.automatic and github_release_context)
     validated_source_sha = head
+    validated_paths = []
     if automatic:
         spec = importlib.util.spec_from_file_location('release_lifecycle', Path(__file__).with_name('release-lifecycle.py'))
         lifecycle = importlib.util.module_from_spec(spec); spec.loader.exec_module(lifecycle)
@@ -181,6 +183,7 @@ def main():
         if pending:
             raise ValueError(pending)
         names = [row.get('filename') for row in api.pages(f'pulls/{pr_number}/files') if row.get('filename')]
+        validated_paths = names
         derived = list(_validation_authority.release_targets_for_paths(names))
         try:
             supplied = json.loads(os.environ['AUTOMATIC_TARGETS_JSON'])
@@ -211,6 +214,11 @@ def main():
         if pending:
             raise ValueError(pending)
         validated_source_sha = validate_revision(pr['head']['sha'])
+        validated_paths = [row.get('filename') for row in api.pages(f"pulls/{pr['number']}/files") if row.get('filename')]
+    founder_cloudflare = (
+        release_mode == 'approved-only'
+        and _validation_authority.founder_cloudflare_release_required(validated_paths)
+    )
     website_routing = False if automatic else request.get('cloudflareWebsiteRouting', False)
     if not isinstance(website_routing, bool):
         raise ValueError('cloudflareWebsiteRouting must be a boolean when supplied')
@@ -301,6 +309,7 @@ def main():
         application_release_sha,
         release_mode,
         website_routing,
+        founder_cloudflare,
     )
     if exact_live:
         print('All selected application targets already expose the exact approved application revision; publication work is unnecessary.')
@@ -336,6 +345,7 @@ def main():
             out.write('selected_database_dependent=' + str(runtime_profile['selectedDatabaseDependent']).lower() + '\n')
             out.write('validate_only=' + str(release_mode == 'validate-only').lower() + '\n')
             out.write('website_routing=' + str(website_routing).lower() + '\n')
+            out.write('founder_cloudflare=' + str(founder_cloudflare).lower() + '\n')
             out.write('website_routing_canary=' + website_routing_canary + '\n')
             out.write('preserve_live_targets=' + str(preserve_live_targets).lower() + '\n')
             out.write('exact_live=' + str(exact_live).lower() + '\n')
