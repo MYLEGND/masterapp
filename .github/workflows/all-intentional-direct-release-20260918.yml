@@ -119,6 +119,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REVISION: ${{ matrix.revision }}
           APP: ${{ matrix.app }}
+          STATIC_TARGET: ${{ matrix.static }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/rollback-evidence.json"
@@ -153,12 +154,12 @@ jobs:
           [ -n "$candidate" ]
           sums="$(find "$(dirname "$candidate")" -maxdepth 1 -type f -name SHA256SUMS -print -quit)"
           [ -n "$sums" ]
-          python3 - "$candidate" "$sums" "$REVISION" "$APP" <<'PYROLLBACK'
+          python3 - "$candidate" "$sums" "$REVISION" "$STATIC_TARGET" <<'PYROLLBACK'
           import hashlib,json,pathlib,sys,zipfile
           package=pathlib.Path(sys.argv[1])
           sums=pathlib.Path(sys.argv[2])
           revision=sys.argv[3]
-          app=sys.argv[4]
+          static=sys.argv[4].lower()=='true'
           rows=[line.split() for line in sums.read_text().splitlines()]
           expected=[row[0] for row in rows if len(row)==2 and pathlib.Path(row[1]).name==package.name]
           with package.open('rb') as stream:
@@ -168,9 +169,9 @@ jobs:
           with zipfile.ZipFile(package) as archive:
               if archive.testzip() is not None:
                   raise SystemExit('Retained rollback package is corrupt')
-              entry='_deployment-provenance.txt' if app=='website' else 'wwwroot/_deployment-provenance.json'
+              entry='_deployment-provenance.txt' if static else 'wwwroot/_deployment-provenance.json'
               raw=archive.read(entry).decode().strip()
-              embedded=raw if app=='website' else json.loads(raw)['releaseSha']
+              embedded=raw if static else json.loads(raw)['releaseSha']
           if embedded != revision:
               raise SystemExit('Retained rollback package revision mismatch')
           PYROLLBACK
@@ -183,23 +184,27 @@ jobs:
           echo "Reused exact verified rollback package for $APP at $REVISION from direct release run $run_id."
 
       - uses: actions/setup-dotnet@v4
-        if: matrix.project != 'static' && steps.retained.outputs.reused != 'true'
+        if: matrix.static != true && steps.retained.outputs.reused != 'true'
         with:
           dotnet-version: '10.x'
       - name: Preserve source-equivalent rollback without production data
         if: steps.retained.outputs.reused != 'true'
         env:
           PROJECT: ${{ matrix.project }}
+          SOURCE_ROOT: ${{ matrix.sourceRoot }}
+          PACKAGE_NAME: ${{ matrix.package }}
+          STATIC_TARGET: ${{ matrix.static }}
           REVISION: ${{ matrix.revision }}
           APP: ${{ matrix.app }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/rollback
-          if [ "$PROJECT" = static ]; then
-            npm --prefix Legend-Website run build
-            cp Legend-Website/public/web.config Legend-Website/dist/web.config
-            printf '%s\n' "$REVISION" > Legend-Website/dist/_deployment-provenance.txt
-            (cd Legend-Website/dist && zip -qr /tmp/rollback/package.zip .)
+          if [ "$STATIC_TARGET" = true ]; then
+            npm ci --prefix "$SOURCE_ROOT" --ignore-scripts --no-audit --no-fund
+            npm --prefix "$SOURCE_ROOT" run build
+            cp "$SOURCE_ROOT/public/web.config" "$SOURCE_ROOT/dist/web.config"
+            printf '%s\n' "$REVISION" > "$SOURCE_ROOT/dist/_deployment-provenance.txt"
+            (cd "$SOURCE_ROOT/dist" && zip -qr /tmp/rollback/package.zip .)
           else
             dotnet publish "$PROJECT" -c Release -o /tmp/rollback-publish -p:SourceRevisionId="$REVISION" --nologo
             printf '{"releaseSha":"%s"}\n' "$REVISION" > /tmp/rollback-publish/wwwroot/_deployment-provenance.json
