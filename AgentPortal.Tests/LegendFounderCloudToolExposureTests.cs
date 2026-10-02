@@ -124,7 +124,7 @@ public sealed class LegendFounderCloudToolExposureTests
         await using var fixture = await Fixture.CreateAsync();
         var response = Assert.IsType<OkObjectResult>(await fixture.CallbackAsync(
             "legend_read_masterapp",
-            "{\"operation\":\"catalog\",\"surface\":null,\"preset\":null}"));
+            "{\"operation\":\"catalog\",\"surface\":null,\"preset\":null,\"timezone_id\":null,\"timezone_offset_minutes\":null}"));
         var output = JsonSerializer.SerializeToElement(response.Value).GetProperty("output");
         Assert.Equal("LegendMasterAppReadAuthority", output.GetProperty("authority").GetString());
         Assert.False(output.GetProperty("providerSpecificRegistry").GetBoolean());
