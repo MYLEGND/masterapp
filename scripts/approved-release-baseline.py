@@ -53,6 +53,7 @@ def release_control_only_path(path):
             "scripts/release-lifecycle.py",
             "scripts/release_policy.py",
             "scripts/deploy-approved-app.py",
+            "scripts/release-package.py",
             "scripts/validation-resume.py",
             "scripts/test-validation-resume.py",
             "scripts/test-release-policy.py",
@@ -93,41 +94,45 @@ def exact_live_release(rows, application_release_sha, release_mode, website_rout
     )
 
 
+def _release_package_module():
+    path = Path(__file__).with_name("release-package.py")
+    spec = importlib.util.spec_from_file_location("release_package", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def release_package_contract_hash():
-    resume_path = Path(__file__).with_name("validation-resume.py")
-    spec = importlib.util.spec_from_file_location("validation_resume", resume_path)
-    resume = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(resume)
-    workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml"
-    blocks = resume.named_step_blocks(workflow.read_text())
-    names = (
-        "Build exact selected release candidate",
-        "Verify business website routing bridge",
-        "Verify localization retention privacy limits and original delivery",
-        "Verify shared web catalog contracts",
-        "Verify selected website catalog and build",
-        "Publish exact selected application packages",
-    )
-    if any(name not in blocks for name in names):
-        raise ValueError("Release package contract step is missing")
-    payload = "\n".join(name + "\n" + blocks[name] for name in names).encode()
-    return hashlib.sha256(payload).hexdigest()
+    return _release_package_module().contract_hash()
 
 
-def release_package_identity(application_release_sha, targets, website_routing, website_routing_canary):
-    payload = json.dumps(
-        {
-            "applicationReleaseSha": application_release_sha,
-            "targets": ["masterapp-" + row[0] for row in targets],
-            "websiteRouting": bool(website_routing),
-            "websiteRoutingCanary": website_routing_canary or "",
-            "packageContractSha256": release_package_contract_hash(),
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return hashlib.sha256(payload).hexdigest()
+def release_package_identity(application_release_sha, targets=None, website_routing=False, website_routing_canary=""):
+    """Package identity is source/contract bound, never authorization-scope bound.
 
+    Target/routing authorization remains in direct-release-request.json. The
+    immutable package bytes are built once for the exact validated application
+    revision and may be selected by any later authorized scoped release without
+    recompilation.
+    """
+    return _release_package_module().package_identity(application_release_sha)
+
+
+def validated_application_revision(validated_sha, approved_head):
+    """Return the exact validated PR head when later commits are control-only."""
+    validated_sha = validate_revision(validated_sha)
+    approved_head = validate_revision(approved_head)
+    subprocess.run(["git", "merge-base", "--is-ancestor", validated_sha, approved_head], check=True)
+    changed = subprocess.check_output(
+        ["git", "diff", "--name-only", validated_sha, approved_head],
+        text=True,
+    ).splitlines()
+    unexpected = sorted(path for path in changed if not release_control_only_path(path))
+    if unexpected:
+        raise ValueError(
+            "Approved release contains application changes after the validated PR head: "
+            + ", ".join(unexpected)
+        )
+    return validated_sha
 
 def validate_revision(value):
     if not isinstance(value, str) or not re.fullmatch(r'[a-fA-F0-9]{40}', value):
@@ -159,6 +164,7 @@ def main():
         if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != os.environ.get('GITHUB_SHA'):
             raise SystemExit('Only the exact approved branch revision can be released')
     request = read_request()
+    validated_source_sha = head
     release_mode = request['releaseMode']
     if release_mode not in {'approved-only', 'validate-only'}:
         raise ValueError('releaseMode must be approved-only or validate-only')
@@ -176,6 +182,7 @@ def main():
         pending = lifecycle.candidate_validation(api, pr)
         if pending:
             raise ValueError(pending)
+        validated_source_sha = validate_revision(pr['head']['sha'])
     website_routing = request.get('cloudflareWebsiteRouting', False)
     if not isinstance(website_routing, bool):
         raise ValueError('cloudflareWebsiteRouting must be a boolean when supplied')
@@ -222,6 +229,13 @@ def main():
             raise ValueError('Preserve-live recovery contains application changes: ' + ', '.join(unexpected))
     if preserve_live_targets:
         application_release_sha = preserve_live_revision
+    elif release_mode == 'approved-only':
+        application_release_sha = validated_application_revision(validated_source_sha, head)
+        if application_release_sha != head:
+            print(
+                "Using exact validated PR head as application provenance:",
+                application_release_sha,
+            )
     else:
         application_release_sha = reusable_live_application_revision(rows, head) or head
         if application_release_sha != head:
