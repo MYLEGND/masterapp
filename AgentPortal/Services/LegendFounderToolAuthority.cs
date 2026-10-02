@@ -141,7 +141,9 @@ internal sealed partial class LegendFounderToolAuthority
 
     private static bool IsSiteReadableTool(string name) =>
         IsReadOnlyFounderTool(name) && name is
+            "legend_calculate" or
             "legend_capabilities" or
+            "legend_read_masterapp" or
             "legend_system_inventory" or
             "legend_system_health" or
             "legend_configuration_presence" or
