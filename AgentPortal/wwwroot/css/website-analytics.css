@@ -107,7 +107,7 @@ body { background: var(--legend-app-panel-soft); color: var(--legend-ink-dark); 
 .scope-select { min-width: 0; }
 .control-bar .form-control,
 .control-bar .form-select {
-    background: #ffffff;
+    background: var(--legend-app-surface-elevated);
     color: #0b1530 !important;
     border: 1px solid rgba(199,153,49,.45);
     border-radius: 10px;
@@ -431,7 +431,7 @@ body { background: var(--legend-app-panel-soft); color: var(--legend-ink-dark); 
     padding: 6px 10px;
     color: var(--legend-navy);
     box-shadow: 0 6px 14px rgba(0,0,0,.08);
-    background: #ffffff;
+    background: var(--legend-app-surface-elevated);
 }
 .fa-range-controls input[type="date"]::placeholder {
     color: var(--legend-navy);
@@ -1127,7 +1127,7 @@ body { background: var(--legend-app-panel-soft); color: var(--legend-ink-dark); 
 
 .product-link-display {
     font-size: .72rem;
-    background: #ffffff !important;
+    background: var(--legend-app-surface-elevated) !important;
     border: 1.5px solid rgba(199,153,49,.45) !important;
     color: #0f172a !important;
     border-radius: 10px;
@@ -3355,7 +3355,7 @@ body {
     padding: 0 .55rem;
     border: 1px solid rgba(231,196,103,.3);
     border-radius: 8px;
-    background: #ffffff;
+    background: var(--legend-app-surface-elevated);
     color: #7a5a14 !important;
     font-size: .76rem;
     font-weight: 900;
@@ -3364,7 +3364,7 @@ body {
 }
 
 .wa-quality-select option {
-    background: #ffffff;
+    background: var(--legend-app-surface-elevated);
     color: #7a5a14;
 }
 
@@ -6978,7 +6978,7 @@ body {
 .wa-incident-timeline-item {
   border-radius: 14px;
   border: 1px solid rgba(148,163,184,.18);
-  background: #fff;
+  background: var(--legend-app-surface-elevated);
   padding: .9rem .95rem;
   box-shadow: 0 12px 24px rgba(15,23,42,.05);
 }
