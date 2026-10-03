@@ -354,7 +354,7 @@ test('CRM utility backdrops cannot render a Bootstrap black screen before a moda
   }
 });
 
-test('premium desktop modal system is wide graphite-grey with one dark-gold control authority',()=>{
+test('premium desktop modal system is wide midnight-graphite with one gold control authority',()=>{
   const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
 
@@ -365,6 +365,17 @@ test('premium desktop modal system is wide graphite-grey with one dark-gold cont
   assert.match(shared,/background:\s*linear-gradient\(180deg,var\(--legend-modal-surface\),var\(--legend-modal-surface-raised\)\)/);
   assert.match(shared,/\.btn-primary,[\s\S]*\.btn-gold,[\s\S]*background:\s*linear-gradient\(180deg,var\(--legend-modal-gold-strong\),var\(--legend-modal-gold\)\)/);
   assert.doesNotMatch(shared,/--legend-desktop-modal-width:min\(1120px/);
+});
+
+test('desktop Bootstrap modal wrapper is transparent geometry and content owns the only visible surface',()=>{
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  assert.match(shared,/\.modal\.show\[data-legend-modal-surface\] > \.modal-dialog\[data-legend-modal-panel\] \{[\s\S]*height: auto;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
+  assert.match(shared,/> \.modal-dialog\[data-legend-modal-panel\] > \.modal-content,[\s\S]*border: 1px solid var\(--legend-modal-line-strong\);[\s\S]*border-radius: 18px;[\s\S]*box-shadow: var\(--legend-modal-shadow\);/);
+  const desktop=shared.slice(shared.indexOf('@media (min-width: 901px)'),shared.indexOf('/* One shared content-region boundary'));
+  assert.match(desktop,/\.modal-dialog-scrollable\[data-legend-modal-panel\],[\s\S]*height: auto;/);
+  const globalRegion=shared.slice(shared.indexOf('/* One shared content-region boundary'),shared.indexOf('/*\n * Canonical authenticated mobile width contract'));
+  assert.doesNotMatch(globalRegion,/\.modal-dialog-scrollable \{\s*height: 100dvh;/);
+  assert.doesNotMatch(globalRegion,/\.modal-dialog-centered \{\s*min-height: 100dvh;/);
 });
 
 test('desktop modal geometry is owned by the shared authenticated authority',()=>{
