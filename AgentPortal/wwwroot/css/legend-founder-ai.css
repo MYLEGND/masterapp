@@ -49,7 +49,7 @@
     --legend-ai-navy-925: var(--legend-app-surface-elevated);
     --legend-ai-navy-900: var(--legend-app-surface-elevated);
     --legend-ai-navy-850: var(--legend-app-surface-elevated);
-    --legend-ai-response: var(--legend-app-surface-elevated);
+    --legend-ai-response: var(--legend-design-aiResponseRoyal, var(--legend-app-surface-elevated));
     --legend-ai-on-response: var(--legend-app-on-dark);
     --legend-ai-gold-800: var(--legend-app-accent);
     --legend-ai-gold-700: var(--legend-app-accent);
