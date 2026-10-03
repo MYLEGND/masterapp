@@ -19,7 +19,6 @@ on:
       - 'scripts/approved-release-baseline.py'
       - '.github/workflows/all-intentional-direct-release-20260918.yml'
       - '.github/workflows/masterapp-platform-architecture-validation.yml'
-      - 'scripts/test-validation-resume.py'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
