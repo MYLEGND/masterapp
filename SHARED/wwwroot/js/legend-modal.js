@@ -278,6 +278,56 @@
     body.classList.toggle("legend-modal-active", openCount > 0);
   }
 
+  function closeSurfaceFallback(surface){
+    if (!surface) return;
+    if (surface.matches(".modal") && window.bootstrap?.Modal) {
+      window.bootstrap.Modal.getOrCreateInstance(surface).hide();
+      return;
+    }
+    surface.dispatchEvent(new CustomEvent("legend:modal-close", { bubbles: true }));
+    surface.classList.remove("open", "show");
+    surface.setAttribute("aria-hidden", "true");
+    if (!surface.matches("[data-legend-mobile-sheet]")) surface.hidden = true;
+    syncModalSurfaceState(surface);
+  }
+
+  function requestSurfaceClose(surface, sourceControl = null){
+    if (!surface) return;
+    const closeSelectors = [
+      '[data-bs-dismiss="modal"]',
+      'button[data-legend-sheet-close]',
+      'button[data-legend-modal-close]',
+      'button[data-close-rev]',
+      'button[data-note-self-close]',
+      'button[data-close-subscriber-actions]',
+      'button[data-uw-close]',
+      'button[data-proposal-close]',
+      '.btn-close',
+      '.modal-close',
+      '.qv-booking-close',
+      '.finance-support-close',
+      '.uw-close',
+      '.hp-dialog-close',
+      '.ws-client-picker-close',
+      '.ai-drawer-close',
+      '.home-clients-close',
+      '.home-zoom-close',
+      '.home-focus-close',
+      '.note-self-close',
+      '.founder-subscriber-action-modal-close'
+    ].join(',');
+    const existing = Array.from(surface.querySelectorAll(closeSelectors))
+      .find(control => control !== sourceControl && !control.disabled);
+    if (existing) {
+      existing.click();
+      window.setTimeout(() => {
+        if (surfaceOpen(surface)) closeSurfaceFallback(surface);
+      }, 0);
+      return;
+    }
+    closeSurfaceFallback(surface);
+  }
+
   function normalizeCloseControl(surface){
     const selectors = [
       '[aria-label="Close"]',
@@ -307,6 +357,13 @@
     controls.forEach(control => {
       control.classList.add("legend-modal-close-control");
       if (!control.getAttribute("aria-label")) control.setAttribute("aria-label", "Close");
+      if (control.dataset.legendModalCloseNormalized === "1") return;
+      control.dataset.legendModalCloseNormalized = "1";
+      control.addEventListener("click", () => {
+        window.setTimeout(() => {
+          if (surfaceOpen(surface)) closeSurfaceFallback(surface);
+        }, 0);
+      });
     });
 
     if (controls.length) return;
@@ -320,15 +377,7 @@
     if (surface.matches(".modal")) button.setAttribute("data-bs-dismiss", "modal");
     button.addEventListener("click", event => {
       event.preventDefault();
-      if (surface.matches(".modal") && window.bootstrap?.Modal) {
-        window.bootstrap.Modal.getOrCreateInstance(surface).hide();
-        return;
-      }
-      surface.dispatchEvent(new CustomEvent("legend:modal-close", { bubbles: true }));
-      surface.classList.remove("open", "show");
-      surface.setAttribute("aria-hidden", "true");
-      surface.hidden = true;
-      syncModalSurfaceState(surface);
+      requestSurfaceClose(surface, button);
     });
     panel.prepend(button);
   }
@@ -615,6 +664,20 @@
       syncModalSurfaceState(event.target);
     });
     document.addEventListener('hidden.bs.modal', event => syncModalSurfaceState(event.target));
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      const open = Array.from(surfaceList)
+        .filter(surface => surface.isConnected && surfaceOpen(surface))
+        .sort((a, b) => {
+          const az = Number.parseInt(window.getComputedStyle(a).zIndex || '0', 10) || 0;
+          const bz = Number.parseInt(window.getComputedStyle(b).zIndex || '0', 10) || 0;
+          return az - bz;
+        });
+      const top = open[open.length - 1];
+      if (!top) return;
+      event.preventDefault();
+      requestSurfaceClose(top);
+    });
   }
 
   function scheduleViewportOffsets(){
@@ -699,6 +762,7 @@
   api.refreshViewportOffsets = syncViewportOffsets;
   api.reconcile = reconcile;
   api.hide = hide;
+  api.requestClose = requestSurfaceClose;
   api.closeLegacyExecutionOverlays = closeLegacyExecutionOverlays;
 
   installBootstrapModalShim();
