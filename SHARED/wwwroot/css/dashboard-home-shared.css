@@ -90,7 +90,7 @@ body.legend-app.legend-modal-active > .modal-backdrop {
 
     /* Bootstrap's outer dialog is geometry only. One visible material surface
        belongs to modal-content, preventing the giant panel-behind-panel slab. */
-    html[data-legend-modal-region] body.legend-app :is(.modal.show,.modal.open)[data-legend-modal-surface] > .modal-dialog[data-legend-modal-panel] {
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] > .modal-dialog[data-legend-modal-panel] {
         box-sizing: border-box;
         width: calc(100vw - (2 * var(--legend-desktop-modal-gutter)));
         max-width: calc(100vw - (2 * var(--legend-desktop-modal-gutter)));
@@ -107,7 +107,7 @@ body.legend-app.legend-modal-active > .modal-backdrop {
         box-shadow: none;
     }
 
-    html[data-legend-modal-region] body.legend-app :is(.modal.show,.modal.open)[data-legend-modal-surface] > .modal-dialog[data-legend-modal-panel] > .modal-content,
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] > .modal-dialog[data-legend-modal-panel] > .modal-content,
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal)[data-legend-modal-open="true"] > [data-legend-modal-panel] {
         box-sizing: border-box;
         width: 100%;
@@ -124,8 +124,8 @@ body.legend-app.legend-modal-active > .modal-backdrop {
         box-shadow: var(--legend-modal-shadow);
     }
 
-    html[data-legend-modal-region] body.legend-app :is(.modal.show,.modal.open)[data-legend-modal-surface] > .modal-dialog-scrollable[data-legend-modal-panel],
-    html[data-legend-modal-region] body.legend-app :is(.modal.show,.modal.open)[data-legend-modal-surface] > .modal-dialog-centered[data-legend-modal-panel] {
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] > .modal-dialog-scrollable[data-legend-modal-panel],
+    html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] > .modal-dialog-centered[data-legend-modal-panel] {
         min-height: 0;
         height: auto;
     }
