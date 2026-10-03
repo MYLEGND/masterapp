@@ -167,13 +167,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: step5-resume-decision-${{ github.run_id }}-${{ github.run_attempt }}
-          path: /tmp/step5-resume-decision.json
+          path: |
+            /tmp/step5-resume-decision.json
+            ${{ runner.temp }}/validation-resume.json
+            ${{ runner.temp }}/step5-decision.json
           retention-days: 30
           if-no-files-found: error
 
   baseline-evidence:
     needs: plan
-    if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
+    if: needs.plan.outputs.comparison_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -325,7 +328,7 @@ jobs:
 
   baseline:
     needs: [plan, baseline-evidence]
-    if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable != 'true'
+    if: needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -380,8 +383,8 @@ jobs:
     if: >-
       always() &&
       needs.plan.result == 'success' &&
-      (needs.plan.outputs.mode == 'repair' ||
-       needs.plan.outputs.mode == 'reuse' ||
+      (((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+        (needs.baseline.result == 'success' || needs.baseline-evidence.outputs.reusable == 'true')) ||
        (needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'false') ||
        (needs.plan.outputs.mode == 'full' &&
         needs.plan.outputs.comparison_run == 'true' &&
@@ -428,8 +431,7 @@ jobs:
           fi
           test -f /tmp/step5-baseline/baseline.trx
 
-      - name: Checkout only the repaired isolated head
-        if: needs.plan.outputs.mode == 'repair'
+      - name: Checkout exact comparison authority
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -498,6 +500,7 @@ jobs:
           echo "Focused repaired-class test exit code: $repair_rc"
 
       - name: Prove Step 5 adds no full-suite failures
+        id: comparison
         shell: bash
         env:
           VALIDATION_MODE: ${{ needs.plan.outputs.mode }}
@@ -515,16 +518,14 @@ jobs:
           import shutil
           import xml.etree.ElementTree as ET
 
-          def results(path):
-              root = ET.parse(path).getroot()
-              return {
-                  node.attrib.get("testName", ""): node.attrib.get("outcome", "")
-                  for node in root.iter()
-                  if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
-              }
+          import importlib.util
+          spec = importlib.util.spec_from_file_location("validation_resume", "scripts/validation-resume.py")
+          authority = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
+          results = authority.read_step5_results
 
           def failed(path):
-              return {name for name, outcome in results(path).items() if outcome == "Failed"}
+              return {name for name, outcome in results(path).items() if outcome in {"Failed", "NotExecuted"}}
 
           mode = os.environ["VALIDATION_MODE"]
           classes = []
@@ -533,7 +534,7 @@ jobs:
               baseline = failed("/tmp/step5-prior-baseline/baseline.trx")
               if mode == "repair":
                   repair_rows = results("/tmp/step5-repair/repair.trx")
-                  repair_failed = {name for name, outcome in repair_rows.items() if outcome == "Failed"}
+                  repair_failed = {name for name, outcome in repair_rows.items() if outcome in {"Failed", "NotExecuted"}}
                   classes = [value for value in os.environ.get("REPAIR_CLASSES", "").split(";") if value]
                   if not classes:
                       raise SystemExit("Repair mode had no bounded failing class authority.")
@@ -557,12 +558,6 @@ jobs:
           introduced = sorted(candidate - baseline)
           print(f"candidate failures: {len(candidate)}")
           print(f"approved baseline failures: {len(baseline)}")
-          if introduced:
-              print("Step 5 introduced full-suite failures:")
-              for name in introduced:
-                  print(f" - {name}")
-              raise SystemExit(1)
-
           if mode in {"repair", "reuse"}:
               effective = Path("/tmp/step5-effective")
               effective.mkdir(parents=True, exist_ok=True)
@@ -613,18 +608,31 @@ jobs:
                   for name, node in repair_nodes.items():
                       if affected(name) and name not in candidate_nodes:
                           results_node.append(copy.deepcopy(node))
+                  all_results = [node for node in candidate_root.iter() if node.tag.endswith("UnitTestResult")]
+                  counters = next(node for node in candidate_root.iter() if node.tag.endswith("Counters"))
+                  counters.set("total", str(len(all_results)))
+                  for outcome in ("Passed", "Failed", "NotExecuted"):
+                      counters.set(outcome[0].lower() + outcome[1:], str(sum(node.get("outcome") == outcome for node in all_results)))
                   candidate_tree.write(
                       effective / "candidate.trx",
                       encoding="utf-8",
                       xml_declaration=True,
                   )
+              with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                  output.write("effective_evidence=true\n")
               print("Materialized effective repaired/reused Step 5 evidence for the current head.")
+
+          if introduced:
+              print("Step 5 introduced full-suite failures:")
+              for name in introduced:
+                  print(f" - {name}")
+              raise SystemExit(1)
 
           print("Step 5 introduced zero new full-suite failures.")
           PY
 
       - name: Preserve effective Step 5 candidate evidence
-        if: success() && (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse')
+        if: always() && (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') && steps.comparison.outputs.effective_evidence == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: step5-candidate-${{ github.event.pull_request.head.sha }}
@@ -633,7 +641,7 @@ jobs:
           retention-days: 30
 
       - name: Preserve effective Step 5 baseline evidence
-        if: success() && (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse')
+        if: always() && steps.comparison.outputs.effective_evidence == 'true' && needs.baseline.result != 'success'
         uses: actions/upload-artifact@v4
         with:
           name: step5-baseline-${{ github.event.pull_request.base.sha }}

@@ -80,6 +80,9 @@ jobs:
           fi
           python3 scripts/test-release-policy.py
           python3 scripts/test-release-lifecycle.py
+          python3 scripts/release-workflow.py --check
+          python3 scripts/test-release-operation-evidence.py
+          python3 scripts/test-release-children.py
           python3 scripts/test-validation-resume.py
           python3 scripts/validation-resume.py verify-release-coverage             --workflow all-intentional-direct-release-20260918.yml             --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
           python3 scripts/validation-resume.py verify-release-coverage             --workflow legend-release-lifecycle.yml             --workflow-path .github/workflows/legend-release-lifecycle.yml
@@ -110,7 +113,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/release-lifecycle.py pending-updates
       - name: Refresh after automatically integrated corrections
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request')
         env:
           APPROVED_REF: ${{ github.event.repository.default_branch }}
         run: |
@@ -128,7 +130,6 @@ jobs:
           git fetch --no-tags --prune origin "+refs/heads/$APPROVED_REF:refs/remotes/origin/$APPROVED_REF"
           git reset --hard "origin/$APPROVED_REF"
       - name: Recover authorized direct release when needed
-        if: github.event_name != 'pull_request_target'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_RUN: ${{ github.event.workflow_run.id }}

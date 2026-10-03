@@ -85,27 +85,12 @@ class ReconciliationTests(unittest.TestCase):
             azure.run()
         self.assertEqual(1, azure.uploads)
 
-    def test_static_terminal_onedeploy_failure_uses_one_verified_recovery_then_requires_live_revision(self):
-        azure = FakeAzure(
-            [[], [row('failed', 3)], [row('recovery', 1)], [row('recovery', 4)]],
-            [False, False, None, True, True],
-            accepted=False,
-            static=True)
-        self.assertEqual('deployed', azure.run())
-        self.assertEqual(1, azure.uploads)
-        self.assertEqual(1, azure.recovery_uploads)
-
-    def test_static_recovery_terminal_failure_is_not_retried_again(self):
-        azure = FakeAzure(
-            [[], [row('failed', 3)], [row('recovery-failed', 3)]],
-            [False, False, False],
-            accepted=False,
-            static=True,
-            recovery_accepted=False)
+    def test_static_terminal_failure_has_no_alternate_upload_path(self):
+        azure = FakeAzure([[], [row('failed', 3)]], [False, False], static=True)
         with self.assertRaisesRegex(RuntimeError, 'failed'):
             azure.run()
         self.assertEqual(1, azure.uploads)
-        self.assertEqual(1, azure.recovery_uploads)
+        self.assertEqual(0, azure.recovery_uploads)
 
     def test_unknown_upload_outcome_never_causes_another_upload(self):
         azure = FakeAzure([[]], [False], accepted=False)
@@ -159,6 +144,38 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(1, azure.uploads)
 
 
+    def test_fresh_process_retry_never_replays_ambiguous_original_upload(self):
+        first = FakeAzure([[]], [False], accepted=False)
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):
+            first.run()
+        resumed = FakeAzure([[], [row('delayed-original', 4)]], [False, True, True])
+        self.assertEqual('preserved', resumed.run(reconcile_only=True))
+        self.assertEqual(1, first.uploads)
+        self.assertEqual(0, resumed.uploads)
+
+    def test_retry_with_unproven_original_outcome_fails_closed(self):
+        azure = FakeAzure([[]], [False])
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):
+            azure.run(reconcile_only=True)
+        self.assertEqual(0, azure.uploads)
+
+    def test_baseline_candidate_and_third_revision_are_distinguished(self):
+        for observed, allowed in [('b' * 40, True), ('a' * 40, True), ('c' * 40, False)]:
+            azure = FakeAzure([[row('old', 4)]], [False])
+            azure.revision = 'a' * 40
+            azure.observed_revision = lambda: observed
+            with self.subTest(observed=observed):
+                if not allowed:
+                    with self.assertRaises(deploy.DeploymentDrift):
+                        azure.run(baseline='b' * 40)
+                elif observed == azure.revision:
+                    self.assertEqual('preserved', azure.run(baseline='b' * 40))
+                else:
+                    with self.assertRaises(deploy.DeploymentReconciliationRequired):
+                        azure.run(baseline='b' * 40, reconcile_only=True)
+                self.assertEqual(0, azure.uploads)
+
+
 class PackageTests(unittest.TestCase):
     def make_package(self, folder, static=False, revision='a' * 40):
         path = Path(folder) / 'app.zip'
@@ -200,103 +217,219 @@ class PackageTests(unittest.TestCase):
                 self.assertEqual(value, command[command.index(flag) + 1])
             self.assertEqual(1, run.call_count)
 
-    def test_static_recovery_uses_kudu_config_zip_once_with_same_package(self):
-        azure = deploy.Azure('masterapp-website', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40, static=True)
-        with patch.object(deploy.subprocess, 'run') as run:
-            run.return_value.returncode = 0
-            self.assertTrue(azure.submit_static_recovery())
-            command = run.call_args.args[0]
-            self.assertEqual(['az','webapp','deployment','source','config-zip'], command[:5])
-            self.assertEqual('/immutable.zip', command[command.index('--src') + 1])
-            self.assertEqual(1, run.call_count)
 
 
-class TransactionTests(unittest.TestCase):
-    def test_failure_rolls_every_changed_target_back_to_preserved_baseline(self):
-        keys = list(deploy.TARGETS)[:2]
-        names = [deploy.TARGETS[key]["releaseName"] for key in keys]
-        baseline = "b" * 40
-        baselines = json.dumps([
-            {"app": key, "revision": baseline}
-            for key in keys
-        ])
-        with patch.object(deploy, "verify_package"), \
-             patch.object(deploy, "_rollback_package", return_value=Path("/tmp/rollback.zip")), \
-             patch.object(deploy, "deploy_one", side_effect=["deployed", RuntimeError("boom")]), \
-             patch.object(deploy, "rollback_transaction") as rollback:
-            with self.assertRaisesRegex(RuntimeError, "every changed target was restored"):
-                deploy.deploy_transaction(
-                    names,
-                    baselines,
-                    Path("/tmp/candidate"),
-                    Path("/tmp/rollback"),
-                    "a" * 40,
-                )
-        rollback.assert_called_once()
-        self.assertEqual(keys, rollback.call_args.args[0])
+class PackageContractTests(unittest.TestCase):
+    def test_deployment_and_workflow_orchestration_changes_preserve_package_identity(self):
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        with tempfile.TemporaryDirectory() as folder:
+            checkout = Path(folder)
+            for relative in package.CONTRACT_INPUTS:
+                dest = checkout / relative
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes((ROOT.parent / relative).read_bytes())
+            with patch.object(package, 'ROOT', checkout):
+                original = package.package_identity('a' * 40)
+                (checkout / 'scripts/deploy-approved-app.py').write_text('changed deployment reconciliation')
+                self.assertEqual(original, package.package_identity('a' * 40))
+                workflow = checkout / package._RELEASE_AUTHORITY.PACKAGE_BUILD_WORKFLOW
+                content = workflow.read_text()
+                workflow.write_text(content + '\n# unrelated orchestration comment\n')
+                self.assertEqual(original, package.package_identity('a' * 40))
+                workflow.write_text(content.replace("dotnet-version: '10.0.401'", "dotnet-version: '10.0.402'"))
+                self.assertNotEqual(original, package.package_identity('a' * 40))
 
-    def test_single_target_transaction_does_not_repeat_completed_reconciliation(self):
-        key = next(iter(deploy.TARGETS))
-        revision = "a" * 40
-        names = [deploy.TARGETS[key]["releaseName"]]
-        baselines = json.dumps([{"app": key, "revision": revision}])
-        with patch.object(deploy, "verify_package"), \
-             patch.object(deploy, "deploy_one", return_value="deployed"), \
-             patch.object(deploy, "reconcile") as recheck:
-            deploy.deploy_transaction(
-                names,
-                baselines,
-                Path("/tmp/candidate"),
-                Path("/tmp/rollback"),
-                revision,
-            )
-        recheck.assert_not_called()
-
-    def test_multi_target_transaction_retains_final_cross_target_reconciliation(self):
-        keys = list(deploy.TARGETS)[:2]
-        revision = "a" * 40
-        names = [deploy.TARGETS[key]["releaseName"] for key in keys]
-        baselines = json.dumps([
-            {"app": key, "revision": revision}
-            for key in keys
-        ])
-        with patch.object(deploy, "verify_package"), \
-             patch.object(deploy, "deploy_one", return_value="deployed"), \
-             patch.object(deploy, "reconcile", return_value="preserved") as recheck:
-            deploy.deploy_transaction(
-                names,
-                baselines,
-                Path("/tmp/candidate"),
-                Path("/tmp/rollback"),
-                revision,
-            )
-        self.assertEqual(len(keys), recheck.call_count)
-
-    def test_control_plane_blindness_never_authorizes_rollback_writes(self):
-        key = next(iter(deploy.TARGETS))
-        revision = "a" * 40
-        names = [deploy.TARGETS[key]["releaseName"]]
-        baselines = json.dumps([{"app": key, "revision": "b" * 40}])
-        with patch.object(deploy, "verify_package"), \
-             patch.object(deploy, "_rollback_package", return_value=Path("/tmp/rollback.zip")), \
-             patch.object(deploy, "deploy_one", side_effect=deploy.DeploymentStatusUnavailable("blind")), \
-             patch.object(deploy, "rollback_transaction") as rollback:
-            with self.assertRaises(deploy.DeploymentStatusUnavailable):
-                deploy.deploy_transaction(
-                    names,
-                    baselines,
-                    Path("/tmp/candidate"),
-                    Path("/tmp/rollback"),
-                    revision,
-                )
-        rollback.assert_not_called()
-
-    def test_transaction_scope_comes_only_from_canonical_inventory(self):
-        names = [row["releaseName"] for row in deploy.TARGETS.values()]
-        keys = deploy._RELEASE_AUTHORITY.selected_release_target_keys(names)
-        self.assertEqual(tuple(deploy.TARGETS), keys)
+    def test_package_contract_includes_migration_bundle_identity(self):
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        original = package.contract_hash()
+        with patch.object(package, 'MIGRATION_BUNDLE', 'changed-migration-bundle'):
+            self.assertNotEqual(original, package.contract_hash())
 
 
+    def test_reused_immutable_package_keeps_original_manifest_and_bytes(self):
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        revision = 'a' * 40
+        declared_contract = 'd' * 64
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            files = {}
+            for app, (_, filename, static) in package.APPS.items():
+                with zipfile.ZipFile(directory / filename, 'w') as archive:
+                    archive.writestr('_deployment-provenance.txt' if static else 'wwwroot/_deployment-provenance.json',
+                                     revision if static else json.dumps({'releaseSha': revision}))
+                files[filename] = package.sha256_file(directory / filename)
+            (directory / package.MIGRATION_BUNDLE).write_bytes(b'preserved bundle')
+            files[package.MIGRATION_BUNDLE] = package.sha256_file(directory / package.MIGRATION_BUNDLE)
+            manifest = {'schema': package.SCHEMA, 'applicationReleaseSha': revision, 'applicationTreeSha': 'tree',
+                        'packageContractSha256': declared_contract, 'files': files}
+            manifest['packageIdentity'] = hashlib.sha256(json.dumps({'schema': package.SCHEMA,
+                'applicationReleaseSha': revision, 'packageContractSha256': declared_contract}, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            (directory / 'manifest.json').write_text(json.dumps(manifest))
+            (directory / 'SHA256SUMS').write_text(''.join(digest + '  ' + name + '\n' for name, digest in files.items()))
+            before = {path.name: path.read_bytes() for path in directory.iterdir()}
+            with patch.object(package, 'validate_revision', return_value=revision), \
+                 patch.object(package.subprocess, 'check_output', side_effect=['tree', 'b' * 40]), \
+                 patch.object(package._RELEASE_AUTHORITY, 'package_inputs_compatible', return_value=True):
+                actual = package.verify_all(revision, directory)
+            self.assertEqual(revision, actual['applicationReleaseSha'])
+            self.assertEqual(declared_contract, actual['packageContractSha256'])
+            self.assertEqual(before, {path.name: path.read_bytes() for path in directory.iterdir()})
+
+
+class PackageProducerTests(unittest.TestCase):
+    def test_green_package_child_survives_red_parent_and_reuses_original_producer(self):
+        authority = deploy._RELEASE_AUTHORITY
+        producer = 'a' * 40
+        run = {'id': 12, 'head_sha': producer, 'conclusion': 'failure'}
+        artifact = {'name': 'founder-diagnostics-packages-' + 'c' * 64,
+                    'workflow_run': {'id': 12}, 'expired': False}
+        jobs = {'jobs': [{'name': 'validated-release-package', 'conclusion': 'success', 'steps': [
+            {'name': name, 'conclusion': 'success'} for name in (
+                'Build immutable validated release package', 'Verify immutable validated release package',
+                'Preserve immutable validated release package')]}]}
+        def api(repository, path, token):
+            if path.startswith('actions/artifacts?'):
+                return {'artifacts': [artifact]}
+            if '/jobs?' in path:
+                return jobs
+            return run
+        with patch.object(authority, 'api_get', side_effect=api), \
+             patch.object(authority.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)), \
+             patch.object(authority, '_trusted_pr_run', return_value=True), \
+             patch.object(authority, 'package_inputs_compatible', return_value=True):
+            result = authority.compatible_package_producer('MYLEGND/masterapp', 'b' * 40, 'test-token')
+            self.assertEqual(producer, result['revision'])
+            self.assertEqual('c' * 64, result['packageIdentity'])
+            jobs['jobs'][0]['steps'][1]['conclusion'] = 'failure'
+            self.assertIsNone(authority.compatible_package_producer('MYLEGND/masterapp', 'b' * 40, 'test-token'))
+
+    def test_builder_globals_and_invoked_helpers_invalidate_compatibility(self):
+        authority = deploy._RELEASE_AUTHORITY
+        source = (ROOT / 'release-package.py').read_text()
+        with patch.object(authority, 'git_changed', return_value=['scripts/release-package.py']):
+            for changed in (source.replace('ROOT = Path(__file__).resolve().parents[1]', 'ROOT = Path("/different-project")'),
+                            source.replace('def run(*args, env=None):', 'def run(*args, env=None):\n    print("changed")'),
+                            source.replace('def verify_all(revision: str, directory: Path):', 'def verify_all(revision: str, directory: Path):\n    (directory / "agentportal.zip").write_bytes(b"changed")'),
+                            source.replace('bundle.chmod(0o755)', 'bundle.chmod(0o644)')):
+                with patch.object(authority, 'git_show_file', side_effect=[source, changed]):
+                    self.assertFalse(authority.package_inputs_compatible('a' * 40, 'b' * 40))
+
+
+class MigrationProbeEvidenceTests(unittest.TestCase):
+    def test_probe_tool_changes_do_not_relabel_application_or_accept_runtime_drift(self):
+        authority = deploy._RELEASE_AUTHORITY
+        workflow = (ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        runtime = '100644 blob ' + '1' * 40 + '\tInfrastructure/Migrations/Example.cs\0'
+        helper = '100644 blob ' + '2' * 40 + '\tscripts/MigrationReleaseProbe/Program.cs\0'
+        def tree(command, **kwargs):
+            return runtime + (helper if command[-1] == 'b' * 40 else '')
+        with patch.object(authority.subprocess, 'check_output', side_effect=tree), \
+             patch.object(authority, 'git_show_file', return_value=workflow):
+            identity = authority.migration_probe_identity('b' * 40, 'a' * 40)
+            self.assertEqual(identity, authority.migration_probe_identity('b' * 40, 'b' * 40))
+        with patch.object(authority.subprocess, 'check_output', side_effect=[runtime, runtime.replace('1' * 40, '3' * 40)]), \
+             patch.object(authority, 'git_show_file', return_value=workflow):
+            with self.assertRaisesRegex(ValueError, 'different candidate'):
+                authority.migration_probe_identity('b' * 40, 'a' * 40)
+
+
+class DisjointReleaseRevisionTests(unittest.TestCase):
+    def test_queued_immutable_candidate_survives_unrelated_target_movement(self):
+        spec = importlib.util.spec_from_file_location('release_baseline_test', ROOT / 'approved-release-baseline.py')
+        baseline = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(baseline)
+        with patch.object(baseline.subprocess, 'run'), \
+             patch.object(baseline.subprocess, 'check_output', return_value='Protect-Website/Program.cs\n'):
+            self.assertEqual('a' * 40, baseline.validated_application_revision('a' * 40, 'b' * 40, ['masterapp-client']))
+            with self.assertRaisesRegex(ValueError, 'application changes'):
+                baseline.validated_application_revision('a' * 40, 'b' * 40, ['masterapp-protect'])
+        with patch.object(baseline.subprocess, 'run'), \
+             patch.object(baseline.subprocess, 'check_output', return_value='Infrastructure/Services/Runtime.cs\n'):
+            with self.assertRaisesRegex(ValueError, 'application changes'):
+                baseline.validated_application_revision('a' * 40, 'b' * 40, ['masterapp-client'])
+
+
+class PreparedTransactionTests(unittest.TestCase):
+    def plan(self, keys=None):
+        plan = {'schemaVersion': 1, 'candidateRevision': 'a' * 40,
+                'targets': [{'app': key, 'revision': 'b' * 40, 'packageDigest': 'c' * 64}
+                            for key in (keys or list(deploy.TARGETS)[:2])]}
+        identity = {'candidateRevision': plan['candidateRevision'], 'packageDigests': {row['app']: row['packageDigest'] for row in plan['targets']}}
+        plan['planId'] = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        return plan
+
+    def test_finalization_is_read_only_even_after_partial_failure(self):
+        plan = self.plan()
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'reconcile', side_effect=['preserved', deploy.DeploymentReconciliationRequired('unverified')]) as reconcile:
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):
+                deploy.finalize_prepared_transaction(plan, Path('/packages'), 'a' * 40)
+        self.assertEqual(2, reconcile.call_count)
+        self.assertTrue(all(call.kwargs['reconcile_only'] for call in reconcile.call_args_list))
+
+    def test_target_cannot_publish_modified_package_after_preflight(self):
+        plan = self.plan()
+        with patch.object(deploy, 'verify_package', return_value='d' * 64), patch.object(deploy, 'deploy_one') as publish:
+            with self.assertRaisesRegex(ValueError, 'package changed'):
+                deploy.publish_prepared_target(plan['targets'][0]['app'], 'a' * 40, Path('/packages'), plan)
+        publish.assert_not_called()
+
+    def test_reconcile_only_flag_survives_prepared_target_entrypoint(self):
+        plan = self.plan()
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), patch.object(deploy, 'deploy_one') as publish:
+            deploy.publish_prepared_target(plan['targets'][0]['app'], 'a' * 40, Path('/packages'), plan, reconcile_only=True)
+        self.assertTrue(publish.call_args.kwargs['reconcile_only'])
+
+    def test_prepare_restores_original_untouched_target_baseline_and_rollback_reference(self):
+        prior = self.plan(['portal', 'client'])
+        rollback = {'artifact': 'original-rollback', 'runId': 17, 'revision': 'b' * 40, 'packageDigest': 'd' * 64}
+        for row in prior['targets']:
+            row['rollbackEvidence'] = rollback
+        env = {'GITHUB_ACTIONS': 'true', 'GITHUB_REPOSITORY': 'MYLEGND/masterapp',
+               'GITHUB_RUN_ID': '22', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_TOKEN': 'test-token'}
+        names = [deploy.TARGETS[row['app']]['releaseName'] for row in prior['targets']]
+        observed = json.dumps([{'app': row['app'], 'revision': 'c' * 40} for row in prior['targets']])
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, env), \
+             patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy._RELEASE_AUTHORITY, 'release_transaction_plan_history', return_value=prior), \
+             patch.object(deploy, 'operation_journal', return_value=None), \
+             patch.object(deploy, 'retained_rollback_package', return_value=rollback) as restore, \
+             patch.object(deploy, 'preflight_target') as preflight:
+            plan = deploy.prepare_transaction(names, observed, Path('/packages'), Path('/rollback'), 'a' * 40, Path(folder) / 'plan.json')
+        self.assertEqual(['b' * 40, 'b' * 40], [row['revision'] for row in plan['targets']])
+        self.assertTrue(all(call.args[3] is rollback for call in restore.call_args_list))
+        self.assertTrue(all(call.args[3] == 'b' * 40 for call in preflight.call_args_list))
+
+    def test_idle_baseline_cannot_discharge_an_ambiguous_prior_upload(self):
+        from types import SimpleNamespace
+        plan = self.plan(['portal'])
+        journal = SimpleNamespace(intent={'baselineDeploymentIds': ['old']}, history_error=None)
+        azure = FakeAzure([[row('old', 4)]], [False])
+        azure.observed_revision = lambda: 'b' * 40
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', return_value=journal), \
+             patch.object(deploy, 'target_azure', return_value=azure):
+            with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'ambiguous'):
+                deploy.transaction_disposition(plan, Path('/packages'), 'a' * 40)
+            azure.states = [[row('old', 4), row('ours', 3)]]
+            result = deploy.transaction_disposition(plan, Path('/packages'), 'a' * 40)
+            self.assertTrue(result['terminal'])
+            self.assertEqual(0, azure.uploads)
+
+    def test_prepared_plan_rejects_other_candidate_and_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'plan.json'
+            path.write_text(json.dumps(self.plan(['portal'])))
+            with self.assertRaises(ValueError):
+                deploy.read_transaction_plan(path, 'd' * 40)
+            with self.assertRaises(ValueError):
+                deploy.read_transaction_plan(path, 'a' * 40, 'client')
 
 
 class SettingsIdempotenceTests(unittest.TestCase):
@@ -325,6 +458,10 @@ class SettingsIdempotenceTests(unittest.TestCase):
                 state[editor_target]['WebsiteEditorDataProtection__BlobUri'] = 'stale'
             (directory / 'state.json').write_text(json.dumps(state))
             (directory / 'writes.json').write_text('[]')
+            # Exercise the real settings owner while replacing only the remote
+            # Actions evidence boundary (covered by release-child protocol tests).
+            receipt = directory / 'fake-child-receipt.py'
+            receipt.write_text("import sys\nassert sys.argv[1] in {'shared-config', 'editor-config'}\n")
             executable = directory / 'az'
             executable.write_text("""#!/usr/bin/env python3
 import json, os, sys
@@ -364,6 +501,7 @@ else:
                     block = workflow.split('      - name: ' + name + '\n', 1)[1].split('      - name:', 1)[0]
                     script = textwrap.dedent(block.split('        run: |\n', 1)[1])
                     script = script.replace('/tmp/', folder + '/')
+                    script = script.replace('scripts/release-child-receipt.py', str(receipt))
                     result = subprocess.run(['bash', '-c', script], env=env, text=True, capture_output=True)
                     self.assertEqual(0, result.returncode, result.stderr)
             return json.loads((directory / 'writes.json').read_text()), shared_target, editor_target

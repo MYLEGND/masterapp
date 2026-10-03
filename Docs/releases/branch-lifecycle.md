@@ -7,9 +7,9 @@
 1. Create a bounded branch from the exact current approved head and open a same-repository PR to `legend/approved-changes`.
 2. Owning validators run for the changed scope. Architecture is always required; Step 5, Step 6, Steps 7–8, and approved-release security are required when their owned inputs change. The resume planner preserves unrelated successful evidence.
 3. The lifecycle merges only the exact validated PR head. Protected-branch requirements and conflicts fail closed. Source integration alone never deploys.
-4. An application release requires an exact changed `Docs/releases/direct-release-request.json` with `releaseMode: approved-only` and explicit targets.
+4. A validated merged application PR carries publication authorization directly. The canonical inventory derives its affected targets. Historical explicit `Docs/releases/direct-release-request.json` authorizations remain bound to the exact request-changing approved commit; they do not establish a second scheduler.
 5. The sole web deploy workflow, `all-intentional-direct-release-20260918.yml`, resolves the exact validated application PR head, restores the immutable package set produced by architecture validation, verifies its manifest/checksums, proves the separate Portal database baseline, applies only the validated migration bundle, deploys selected stale targets, and requires complete final live provenance. It has no production package rebuild fallback.
-6. Targets already live at the exact application revision are preserved. A retry deploys only targets that are not already proven live. Each attempt retains a durable step-state receipt; immutable evidence is reused, while current-state and mutation steps re-reconcile safely. A failed direct release is not automatically replayed without a correction or explicit rerun.
+6. Targets already live at the exact application revision are preserved. A retry deploys only targets that are not already proven live. Each attempt retains a durable step-state receipt; immutable evidence is reused, while current-state and mutation steps re-reconcile safely. A failed direct release is not blindly replayed. Its completion wakes the durable queue so another eligible candidate can proceed; publication still reconciles durable write intent before any upload.
 7. After successful applicable releases, cleanup evaluates temporary branches against fresh approved-history, live-provenance, direct-release-receipt, PR, workflow, and protection evidence.
 
 ## Mandatory branch deletion conditions
@@ -36,3 +36,11 @@ If a merged change needs deployment correction, the approved branch remains the 
 ## Validation
 
 Run `python3 scripts/test-release-lifecycle.py` for isolated ancestry, receipt, replay, cleanup, and single-authority tests. `python3 scripts/test-validation-resume.py` verifies per-gate preservation/invalidation behavior. Hosted workflow runs provide the external GitHub and live-runtime proof.
+
+## Durable queue and admission limits
+
+The scheduler derives pending authorization from approved first-parent merged PR history, not a second queue database. It inspects the newest authorization for each affected target and keeps independent candidates in deterministic history order. A newer completed ClientApp release cannot hide an older unreleased Protect candidate. When only part of an older atomic transaction is superseded, that transaction remains explicitly retained until a validated combined successor exists; the scheduler does not split its authorized scope or silently discard the untouched targets.
+
+Fresh integration and recovered candidates share one admission predicate. Active direct-release runs, including legacy runs without a candidate title, block new dispatch. Direct run titles bind source PR, immutable validated candidate, and execution authority, so a failed exact attempt is retained rather than blindly replayed. Both successful and failed completion events wake the queue, and reusable validation/package evidence is consulted without dispatching validation again.
+
+Publication remains globally serialized. Current shared settings, migration, routing, and upload reconciliation have not yet been proven safe under concurrent resource reservations. The lifecycle mutex serializes admission decisions; the publisher mutex protects the current multi-target transaction. These controls do not constitute completed support for concurrent disjoint publication. An ambiguous dispatch or upload remains a reconciliation boundary, never evidence that retry is safe.

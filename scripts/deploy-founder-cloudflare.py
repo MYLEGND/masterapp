@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deploy/rollback the validated LEGEND Founder Cloudflare baseline inside the canonical release job."""
 from __future__ import annotations
-import argparse, base64, json, os, re, secrets, subprocess, sys, time, urllib.request, urllib.error
+import argparse, base64, hashlib, importlib.util, json, os, re, secrets, subprocess, sys, time, urllib.request, urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,9 +108,20 @@ def worker_name():
 def current_worker_version(account, worker):
     result = cloudflare(f"/accounts/{account}/workers/scripts/{worker}/deployments?per_page=1", allow_404=True)
     if result is None: return ""
-    deployments = result.get("deployments") or []
-    versions = deployments[0].get("versions") if deployments else []
-    return str(versions[0].get("version_id") or "") if versions else ""
+    deployments = result.get("deployments")
+    if not isinstance(deployments, list):
+        raise RuntimeError("founder_worker_deployment_state_invalid")
+    if not deployments:
+        return ""
+    versions = deployments[0].get("versions")
+    # A traffic split is a third live state, not an exact immutable baseline.
+    # Never turn its first entry into an apparently safe rollback/reuse identity.
+    if (not isinstance(versions, list) or len(versions) != 1 or
+            versions[0].get("percentage") != 100 or
+            not isinstance(versions[0].get("version_id"), str) or
+            not versions[0]["version_id"]):
+        raise RuntimeError("founder_worker_deployment_not_exact")
+    return versions[0]["version_id"]
 
 def worker_subdomain_enabled(account, worker):
     result = cloudflare(f"/accounts/{account}/workers/scripts/{worker}/subdomain", allow_404=True)
@@ -211,6 +222,24 @@ def deploy(state_path, receipt_path):
     service_keys = {service_key_id: service_key}
     worker = worker_name()
     previous_version = current_worker_version(account, worker)
+    spec = importlib.util.spec_from_file_location("release_journal", ROOT / "scripts/release-operation-evidence.py")
+    journal_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(journal_module)
+    material = hashlib.sha256(json.dumps({"account": account, "worker": worker, "portal": app}, sort_keys=True).encode()).hexdigest()
+    journal = journal_module.ChildJournal("founder-cloudflare", material)
+    if journal.success is not None:
+        observed = journal.success.get("observation", {}).get("providerVersion")
+        if not observed or previous_version != observed:
+            raise RuntimeError("founder_cloudflare_provider_version_drift_preserve_no_replay")
+        # Worker version binds its code and bindings, but Azure's callback key is
+        # independently mutable. Cloudflare never exposes that key for readback,
+        # and the callback endpoint requires server-owned operation delegation.
+        # A deployment receipt cannot fabricate that functional authorization.
+        # Preserve the successful provider bytes instead of blindly deploying
+        # again or storing a secret/hash in durable public evidence.
+        raise RuntimeError("founder_callback_equivalence_requires_governed_live_proof_preserve_no_replay")
+    if journal.intent is not None:
+        raise RuntimeError("founder_cloudflare_write_outcome_requires_readonly_reconciliation_no_replay")
     previous_subdomain_enabled = worker_subdomain_enabled(account, worker) if previous_version else False
     state = {
         "schemaVersion": 1, "resourceGroup": group, "app": app, "accountId": account,
@@ -234,6 +263,7 @@ def deploy(state_path, receipt_path):
     release_config.write_text(json.dumps(config, indent=2) + "\n")
     try:
         run("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund", cwd=CF)
+        journal.before_mutation({"providerVersion": previous_version or "absent"})
         run("npx", "wrangler", "deploy", "--config", release_config.name, cwd=CF)
         state["workerModified"] = True; write_state(state_path, state)
         for name, secret_value in (
@@ -292,13 +322,15 @@ def deploy(state_path, receipt_path):
             "releaseSha": os.environ.get("APPLICATION_RELEASE_SHA", ""),
         })
         receipt_path.write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
+        deployed_version = current_worker_version(account, worker)
+        if not deployed_version:
+            raise RuntimeError("founder_cloudflare_exact_deployment_identity_missing")
+        journal.record_success({"providerVersion": deployed_version})
         print(json.dumps({k: receipt[k] for k in ("provider","foundationHosting","foundationModel","billing","openAiApiUsed","modelCount")}, sort_keys=True))
     except Exception:
-        try:
-            if state.get("portalModified"): restore_settings(group, app, state["previousSettings"])
-        finally:
-            if state.get("workerModified"):
-                restore_worker(account, worker, previous_version, previous_subdomain_enabled)
+        # A provider call may have completed despite a client timeout. Automatic
+        # rollback is another write and could overwrite a concurrent version.
+        # Preserve the intent and exact provider state for governed reconciliation.
         raise
     finally:
         release_config.unlink(missing_ok=True)

@@ -113,6 +113,17 @@ jobs:
           npm ci
           npm test
 
+      - name: Record canonical child execution evidence
+        if: always() && steps.plan.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/validation-resume.py record-evidence \
+            --plan "$RUNNER_TEMP/validation-resume.json" \
+            --output "$RUNNER_TEMP/validation-resume.json" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}"
+
       - name: Preserve exact validation resume plan
         if: always() && steps.plan.outcome == 'success'
         uses: actions/upload-artifact@v4

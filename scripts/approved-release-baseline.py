@@ -96,7 +96,7 @@ def release_package_identity(application_release_sha, targets=None, website_rout
     return _release_package_module().package_identity(application_release_sha)
 
 
-def validated_application_revision(validated_sha, approved_head):
+def validated_application_revision(validated_sha, approved_head, selected_names=None):
     """Return the exact validated PR head when later commits are control-only."""
     validated_sha = validate_revision(validated_sha)
     approved_head = validate_revision(approved_head)
@@ -106,6 +106,12 @@ def validated_application_revision(validated_sha, approved_head):
         text=True,
     ).splitlines()
     unexpected = sorted(path for path in changed if not release_control_only_path(path))
+    if unexpected and selected_names is not None:
+        _validation_authority.selected_release_target_keys(selected_names)
+        selected = set(selected_names)
+        affected = set(_validation_authority.release_targets_for_paths(unexpected))
+        if not selected.intersection(affected):
+            unexpected = []
     if unexpected:
         raise ValueError(
             "Approved release contains application changes after the validated PR head: "
@@ -287,7 +293,7 @@ def main():
     if preserve_live_targets:
         application_release_sha = preserve_live_revision
     elif release_mode == 'approved-only' and github_release_context:
-        application_release_sha = validated_application_revision(validated_source_sha, head)
+        application_release_sha = validated_application_revision(validated_source_sha, head, selected_names)
         if application_release_sha != head:
             print(
                 "Using exact validated PR head as application provenance:",
@@ -308,6 +314,13 @@ def main():
         website_routing,
         website_routing_canary,
     )
+    if github_release_context and release_mode == 'approved-only':
+        preserved_package = _validation_authority.compute_validated_package_evidence(
+            os.environ['GITHUB_REPOSITORY'], application_release_sha, package_identity)
+        if preserved_package.get('reusable'):
+            application_release_sha = validate_revision(preserved_package['revision'])
+            package_identity = preserved_package['packageIdentity']
+            print('Preserving immutable package producer provenance:', application_release_sha)
     exact_live = exact_live_release(
         rows,
         application_release_sha,
