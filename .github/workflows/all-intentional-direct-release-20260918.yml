@@ -717,7 +717,49 @@ jobs:
           test -n "$EXPECTED_DB_BASE_SHA"
           changed="$(
             git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
-            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs
+            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs$' |
+            grep -v '\.Designer\.cs$' || true
+          )"
+          if [ -z "$changed" ]; then
+            echo "No candidate migration source changed from the observed database baseline; no database mutation is required."
+            exit 0
+          fi
+          printf '%s\n' "$changed"
+
+          # Receipt/ancestry proof is required only when this release would
+          # actually mutate the production schema. A partially completed prior
+          # publication may advance application provenance without a final
+          # release receipt; that must not block a later release whose migration
+          # diff is empty, because this step performs no database write.
+          if git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"; then
+            echo "Live database baseline is an ancestor of the validated application revision."
+          elif git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"; then
+            # A live provenance revision may be the approved merge commit whose
+            # tree is byte-for-byte identical to the validated PR head. Accept
+            # that merge alias only when there is no source drift at all.
+            git diff --quiet "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA" --
+            echo "Live database baseline is a source-identical approved merge alias of the validated application revision."
+          else
+            echo "::error::Live database baseline and validated application revision do not share a safe ancestry relationship."
+            exit 1
+          fi
+
+          python3 - <<'PYBASELINE'
+          import importlib.util, os, sys
+          from pathlib import Path
+          scripts=Path('scripts').resolve()
+          sys.path.insert(0,str(scripts))
+          path=scripts / 'release-lifecycle.py'
+          spec=importlib.util.spec_from_file_location('release_lifecycle',path)
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          base=os.environ['EXPECTED_DB_BASE_SHA']
+          authority=os.environ['DATABASE_AUTHORITY']
+          if not module.release_proven(module.GitHub(),base,app=authority):
+              raise SystemExit('Live database baseline lacks a successful canonical release receipt; no migration authorized.')
+          print('Database baseline release receipt verified:',base)
+          PYBASELINE
+
           bundle="/tmp/diagnostics-packages/$MIGRATION_BUNDLE"
           test -x "$bundle"
           python3 scripts/release-package.py verify \
