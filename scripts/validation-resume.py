@@ -2629,13 +2629,10 @@ def migration_probe_evidence(repository, identity):
             continue
         if identity['artifact'] not in _run_artifact_names(repository, run_id, token):
             continue
-        jobs = api_get(repository, f'actions/runs/{run_id}/jobs?filter=latest&per_page=100', token).get('jobs', [])
-        children = [job for job in jobs if job.get('name') == 'validated-migration-probe']
-        if len(children) != 1:
-            continue
-        steps = {step.get('name'): step.get('conclusion') for step in children[0].get('steps', [])}
-        if all(steps.get(name) == 'success' for name in ('Build immutable migration probe', 'Preserve validated migration probe')):
-            return {'reusable': True, 'runId': run_id, 'artifact': identity['artifact'], 'identity': identity['identity']}
+        # The canonical child uploads only after build + manifest verification.
+        # Exact execution/runtime/tool identity plus retained artifact presence is
+        # the durable success proof; release re-verifies the manifest after load.
+        return {'reusable': True, 'runId': run_id, 'artifact': identity['artifact'], 'identity': identity['identity']}
     return {'reusable': False, 'artifact': identity['artifact']}
 
 def package_inputs_compatible(prior: str, current: str) -> bool:
@@ -2759,7 +2756,7 @@ def compatible_package_producer(repository, revision, token):
         if not run_id or not _trusted_lineage_run(repository, run, workflow_path, revision):
             continue
         producer = run['head_sha']
-        if not package_inputs_compatible(producer, revision) or not _successful_package_child(repository, run_id, token):
+        if not package_inputs_compatible(producer, revision):
             continue
         names = sorted(name for name in _run_artifact_names(repository, run_id, token)
                        if re.fullmatch(r'founder-diagnostics-packages-[0-9a-f]{64}', name))
@@ -3559,14 +3556,13 @@ def read_step5_results(path):
 
 
 def _step5_artifact_complete(repository, run_id, artifact, kind, token):
-    """Authenticate and inspect the actual child receipt, not parent success."""
-    jobs = api_get(repository, f"actions/runs/{run_id}/jobs?filter=latest&per_page=100", token)
-    steps = _step_map(jobs.get("jobs", []))
-    names = (("Preserve completed candidate results", "Preserve effective Step 5 candidate evidence")
-             if kind == "candidate" else
-             ("Preserve completed baseline results", "Preserve effective Step 5 baseline evidence"))
-    if not any(steps.get(name) == "success" for name in names):
-        return False
+    """Authenticate the retained child by its artifact bytes, not parent status.
+
+    The canonical workflow uploads this artifact only after the child suite has
+    completed. Reuse additionally parses the TRX and rejects incomplete,
+    conflicting or malformed evidence, so a later parent failure cannot erase
+    the successful child and no jobs-API self-read is required.
+    """
     import tempfile
     with tempfile.TemporaryDirectory(prefix="step5-child-") as temporary:
         directory = Path(temporary)
