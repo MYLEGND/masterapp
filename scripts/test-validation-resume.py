@@ -690,6 +690,7 @@ jobs:
             raise AssertionError(path)
         with patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "_successful_package_child", return_value=True), \
              patch.object(m, "git_changed", return_value=["scripts/test-validation-resume.py"]), \
              patch.object(m, "_run_artifact_names", return_value={artifact}), \
              patch.object(m, "package_inputs_compatible",
@@ -719,6 +720,7 @@ jobs:
             raise AssertionError(path)
         with patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "_successful_package_child", return_value=True), \
              patch.object(m, "package_inputs_compatible", return_value=True), \
              patch.object(m, "_run_artifact_names", return_value={artifact}), \
              patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="")):
