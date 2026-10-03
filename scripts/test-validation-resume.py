@@ -21,6 +21,41 @@ class ValidationResumePlannerTests(unittest.TestCase):
     def prior(self, sha="a" * 40):
         return {"id": 17, "head_sha": sha, "run_attempt": 1}
 
+    def write_trx(self, rows):
+        with tempfile.NamedTemporaryFile("w", suffix=".trx", delete=False) as handle:
+            failed = sum(outcome == "Failed" for _, outcome in rows)
+            passed = sum(outcome == "Passed" for _, outcome in rows)
+            not_executed = sum(outcome == "NotExecuted" for _, outcome in rows)
+            handle.write(
+                '<TestRun><Results>' +
+                ''.join(f'<UnitTestResult testName="{name}" outcome="{outcome}" />' for name, outcome in rows) +
+                '</Results><ResultSummary outcome="Completed"><Counters ' +
+                f'total="{len(rows)}" executed="{passed + failed}" passed="{passed}" failed="{failed}" ' +
+                f'notExecuted="{not_executed}" error="0" timeout="0" aborted="0" disconnected="0" ' +
+                'inProgress="0" pending="0" /></ResultSummary></TestRun>'
+            )
+            return Path(handle.name)
+
+    def test_step5_trx_concordant_duplicate_identity_collapses_safely(self):
+        path = self.write_trx([
+            ("AgentPortal.Tests.ExampleTests.Case", "Passed"),
+            ("AgentPortal.Tests.ExampleTests.Case", "Passed"),
+        ])
+        self.addCleanup(path.unlink, missing_ok=True)
+        self.assertEqual(
+            {"AgentPortal.Tests.ExampleTests.Case": "Passed"},
+            m.read_step5_results(path),
+        )
+
+    def test_step5_trx_conflicting_duplicate_identity_fails_closed(self):
+        path = self.write_trx([
+            ("AgentPortal.Tests.ExampleTests.Case", "Passed"),
+            ("AgentPortal.Tests.ExampleTests.Case", "Failed"),
+        ])
+        self.addCleanup(path.unlink, missing_ok=True)
+        with self.assertRaisesRegex(ValueError, "Ambiguous duplicate test identity"):
+            m.read_step5_results(path)
+
     def test_effective_steps_keeps_latest_executed_failure_and_backfills_only_skips(self):
         effective = m._effective_steps([
             {
