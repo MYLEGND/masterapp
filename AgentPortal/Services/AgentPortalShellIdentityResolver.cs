@@ -23,10 +23,21 @@ public sealed class AgentPortalShellIdentityResolver(
             ?? user.FindFirst("family_name")?.Value
             ?? user.FindFirst("last_name")?.Value);
 
+        var impersonatedAgentId = httpContext.Items.TryGetValue("ImpersonatedAgentOid", out var impersonatedValue)
+            ? impersonatedValue as string
+            : null;
+        var impersonatedDisplay = httpContext.Items.TryGetValue("ImpersonatedAgentName", out var impersonatedName)
+            ? impersonatedName as string
+            : httpContext.Items.TryGetValue("ImpersonatedAgentEmail", out var impersonatedEmail)
+                ? impersonatedEmail as string
+                : null;
+
         var userId =
-            user.FindFirst("oid")?.Value
-            ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? user.Identity?.Name;
+            !string.IsNullOrWhiteSpace(impersonatedAgentId)
+                ? impersonatedAgentId
+                : user.FindFirst("oid")?.Value
+                    ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                    ?? user.Identity?.Name;
 
         Domain.Entities.AgentProfile? profile = null;
         if (!string.IsNullOrWhiteSpace(userId))
@@ -48,7 +59,7 @@ public sealed class AgentPortalShellIdentityResolver(
 
         var displayName = PortalShellIdentityFactory.BuildDisplayName(
             fallback,
-            profile?.FullName,
+            profile?.FullName ?? impersonatedDisplay,
             first,
             last,
             PortalShellIdentityFactory.ClaimDisplayName(user));
@@ -63,10 +74,12 @@ public sealed class AgentPortalShellIdentityResolver(
 
         return new PortalShellIdentity(
             displayName,
+            first ?? displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "Agent",
             PortalShellIdentityFactory.Initials(first, last, displayName),
             roleLabel,
             "/avatar/current",
             PortalShellIdentityFactory.CanonicalStoreUrl,
-            "/Account/ManageProfile");
+            "/Account/ManageProfile",
+            profile?.Phone?.Trim() ?? string.Empty);
     }
 }
