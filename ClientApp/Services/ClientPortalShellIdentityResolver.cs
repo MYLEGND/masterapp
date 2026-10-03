@@ -69,10 +69,12 @@ public sealed class ClientPortalShellIdentityResolver(
 
         return new PortalShellIdentity(
             displayName,
+            first ?? displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "Member",
             PortalShellIdentityFactory.Initials(first, last, displayName),
             roleLabel,
             avatarUrl,
             PortalShellIdentityFactory.CanonicalStoreUrl,
-            "/profile");
+            "/profile",
+            isAgentView ? context?.AgentPhone?.Trim() ?? string.Empty : context?.Profile.Phone?.Trim() ?? string.Empty);
     }
 }
