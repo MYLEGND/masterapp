@@ -1230,23 +1230,43 @@
 
 @await RenderSectionAsync("Scripts", required:false)
 
-<div id="appointmentModal" style="display:none; position:fixed; top:10%; left:30%; width:40%; background:white; padding:20px; z-index:9999;">
-    <h3>Book Appointment</h3>
-
-    <input id="apptTitle" placeholder="Title" style="width:100%;" />
-    <br/><br/>
-
-    <input id="apptStart" type="datetime-local" style="width:100%;" />
-    <br/><br/>
-
-    <input id="apptDuration" type="number" value="30" style="width:100%;" />
-    <br/><br/>
-
-    <textarea id="apptNotes" placeholder="Notes" style="width:100%;"></textarea>
-    <br/><br/>
-
-    <button onclick="submitAppointment()">Create</button>
-    <button onclick="closeAppointmentModal()">Cancel</button>
+<div id="appointmentModal"
+     class="modal fade"
+     tabindex="-1"
+     aria-labelledby="appointmentModalTitle"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="appointmentModalTitle">Book Appointment</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="legend-modal-field-grid">
+                    <label class="legend-modal-field">
+                        <span>Title</span>
+                        <input id="apptTitle" class="form-control" placeholder="Title" />
+                    </label>
+                    <label class="legend-modal-field">
+                        <span>Start</span>
+                        <input id="apptStart" class="form-control" type="datetime-local" />
+                    </label>
+                    <label class="legend-modal-field">
+                        <span>Duration</span>
+                        <input id="apptDuration" class="form-control" type="number" value="30" min="1" />
+                    </label>
+                    <label class="legend-modal-field">
+                        <span>Notes</span>
+                        <textarea id="apptNotes" class="form-control" placeholder="Notes"></textarea>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-gold" id="apptCreate">Create</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="/js/appointment-modal.js"></script>
