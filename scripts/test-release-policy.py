@@ -646,6 +646,15 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn("DATABASE_AUTHORITY", migration)
         self.assertIn("RELEASE_RESOURCE_GROUP", migration)
         self.assertIn("release_proven", migration)
+        self.assertIn('No candidate migration source changed from the observed database baseline; no database mutation is required.', migration)
+        self.assertLess(
+            migration.index('git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations'),
+            migration.index("release_proven"),
+        )
+        self.assertLess(
+            migration.index('if [ -z "$changed" ]; then'),
+            migration.index("release_proven"),
+        )
         self.assertIn('git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"', migration)
         self.assertIn('git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"', migration)
         self.assertIn('git diff --quiet "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA" --', migration)
