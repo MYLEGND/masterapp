@@ -101,6 +101,7 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.authority._RELEASE_HISTORY_API.clear()
         self.authority._RELEASE_HISTORY_TERMINAL_RUNS.clear()
         self.authority._RELEASE_HISTORY_RECEIPTS.clear()
+        self.authority._RELEASE_HISTORY_LOG_BINDINGS.clear()
         self.authority._RELEASE_HISTORY_EXCLUSIONS.clear()
         self.job = dict(name='release', status='completed', conclusion='failure', steps=[
             dict(name='Publish canonical target (portal)', status='completed', conclusion='skipped')])
@@ -142,6 +143,26 @@ class CanonicalHistoryTests(unittest.TestCase):
     def test_unknown_execution_owner_cannot_prove_absence(self):
         self.job['name'] = 'renamed-owner'
         with self.assertRaisesRegex(RuntimeError, 'publication owner'):
+            self.history()
+
+    def test_terminal_attempt_with_complete_empty_job_inventory_never_published(self):
+        original = self.api
+        def api(repo, path, token):
+            if '/jobs?' in path:
+                return {'jobs': [], 'total_count': 0}
+            return original(repo, path, token)
+        with patch.object(self.authority, 'api_get', side_effect=api):
+            self.assertIsNone(self.authority.release_operation_history(
+                'owner/repo', 'b' * 64, 'a' * 40, 'portal', 10, 1, 'placeholder'))
+
+    def test_cancelled_job_with_explicit_empty_steps_never_published(self):
+        self.job.update(conclusion='cancelled', steps=[])
+        self.assertIsNone(self.history())
+
+    def test_cancelled_job_without_step_inventory_stays_unproven(self):
+        self.job.update(conclusion='cancelled')
+        del self.job['steps']
+        with self.assertRaises(RuntimeError):
             self.history()
 
     def test_legacy_positive_unstarted_publication_needs_no_artifact(self):
@@ -190,6 +211,89 @@ class CanonicalHistoryTests(unittest.TestCase):
     def test_authenticated_legacy_different_verified_package_does_not_block_new_operation(self):
         self.legacy_fixture()
         self.assertIsNone(self.legacy_history())
+
+    def test_retained_rollback_identity_binds_checkout_without_translation(self):
+        self.legacy_fixture()
+        self.legacy_artifacts[1]['name'] = 'diagnostics-rollback-portal-' + 'd' * 40
+        self.assertIsNone(self.legacy_history())
+
+    def test_rollback_checkout_proof_still_blocks_same_package_replay(self):
+        self.legacy_fixture('a' * 40)
+        self.legacy_artifacts[1]['name'] = 'diagnostics-rollback-portal-' + 'd' * 40
+        with self.assertRaisesRegex(RuntimeError, 'may have written this immutable package'):
+            self.legacy_history()
+
+    def test_rollback_checkout_proof_requires_original_workflow_binding(self):
+        self.legacy_fixture()
+        self.legacy_artifacts[1]['name'] = 'diagnostics-rollback-portal-' + 'd' * 40
+        self.old_workflow = self.old_workflow.replace(
+            'name: diagnostics-rollback-${{ matrix.app }}-${{ env.RELEASE_SHA }}',
+            'name: unrelated-artifact')
+        with self.assertRaisesRegex(RuntimeError, 'recognized producer binding'):
+            self.legacy_history()
+
+    def test_conflicting_checkout_artifacts_do_not_authorize_exclusion(self):
+        self.legacy_fixture()
+        self.legacy_artifacts.append(dict(name='diagnostics-rollback-portal-' + 'c' * 40, expired=False))
+        with self.assertRaisesRegex(RuntimeError, 'checkout/producer revision'):
+            self.legacy_history()
+
+    def test_retained_log_binds_checkout_when_artifacts_expire(self):
+        self.legacy_fixture()
+        self.job['id'] = 123
+        self.job['steps'].insert(0, dict(name='Run actions/checkout@v4', status='completed', conclusion='success'))
+        self.legacy_artifacts = self.legacy_artifacts[:1]
+        log = ('2026-10-02T12:00:00.000Z   RELEASE_SHA: ' + 'd' * 40 + '\n'
+               '2026-10-02T12:00:00.001Z   APPLICATION_RELEASE_SHA: ' + 'f' * 40 + '\n'
+               '2026-10-02T12:00:00.002Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-02T12:00:00.003Z ' + 'd' * 40 + '\n')
+        with patch.object(self.authority.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, log, '')):
+            self.assertIsNone(self.legacy_history())
+
+    def test_checkout_log_rejects_conflicting_package_and_missing_head(self):
+        job = dict(id=123, steps=[dict(name='Run actions/checkout@v4', conclusion='success')])
+        valid = '  RELEASE_SHA: ' + 'd' * 40 + '\n  APPLICATION_RELEASE_SHA: ' + 'f' * 40 + '\n'
+        valid += '[command]/usr/bin/git log -1 --format=%H\n' + 'd' * 40 + '\n'
+        for log in (valid.replace('f' * 40, 'a' * 40), valid.split('[command]')[0],
+                    valid + '  RELEASE_SHA: ' + 'c' * 40 + '\n'):
+            with self.subTest(log=log), patch.object(self.authority.subprocess, 'run',
+                    return_value=subprocess.CompletedProcess([], 0, log, '')):
+                with self.assertRaisesRegex(RuntimeError, 'missing or contradictory'):
+                    self.authority._release_checkout_from_job_log('owner/repo', job, 'f' * 40, 'placeholder')
+
+    def test_retired_inline_package_requires_success_and_exact_revision_binding(self):
+        workflow = '''jobs:
+  release:
+    steps:
+      - name: Build exact selected release candidate
+        run: dotnet build AgentPortal/AgentPortal.csproj -p:SourceRevisionId="$RELEASE_SHA"
+      - name: Publish exact selected application packages
+        run: |
+          dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-build --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$RELEASE_SHA"
+          apps+=(agentportal)
+          (cd "/tmp/$app-publish" && zip -qr "/tmp/diagnostics-packages/$app.zip" .)
+          sha256sum /tmp/diagnostics-packages/*.zip > /tmp/diagnostics-packages/SHA256SUMS
+      - name: Direct deploy AgentPortal
+        uses: azure/webapps-deploy@v3
+        with:
+          package: /tmp/agentportal-publish
+'''
+        job = {'steps': [{'name': name, 'conclusion': 'success'} for name in (
+            'Build exact selected release candidate', 'Publish exact selected application packages',
+            'Direct deploy AgentPortal')]}
+        verify = self.authority._legacy_inline_package_revision
+        self.assertEqual('d' * 40, verify(workflow, job, 'portal', 'd' * 40))
+        self.assertIsNone(verify(workflow.replace('$RELEASE_SHA', '$OTHER_SHA'), job, 'portal', 'd' * 40))
+        job['steps'][1]['conclusion'] = 'failure'
+        self.assertIsNone(verify(workflow, job, 'portal', 'd' * 40))
+        job['steps'][1]['conclusion'] = 'success'
+        job['steps'].append({'name': 'Load exact preserved deployable package', 'conclusion': 'success'})
+        self.assertIsNone(verify(workflow, job, 'portal', 'd' * 40))
+
+    def test_legacy_target_skip_does_not_need_package_receipts(self):
+        self.run['display_title'] = 'old release'
+        self.job['steps'][0]['name'] = 'Direct deploy AgentPortal'
+        self.assertIsNone(self.history())
 
     def test_authenticated_legacy_same_package_missing_intent_blocks_replay(self):
         self.legacy_fixture('a' * 40)

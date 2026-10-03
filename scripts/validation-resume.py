@@ -2875,6 +2875,8 @@ def compatible_package_producer(repository, revision, token):
         run_id = int(run.get('id') or 0)
         if not run_id or not _trusted_lineage_run(repository, run, workflow_path, revision):
             continue
+        if not _successful_package_child(repository, run_id, token):
+            continue
         producer = run['head_sha']
         package_input_changes = [
             path for path in git_changed(producer, revision)
@@ -3125,6 +3127,7 @@ _RELEASE_HISTORY_VERIFIED_PACKAGES = {}
 _RELEASE_HISTORY_API = {}
 _RELEASE_HISTORY_TERMINAL_RUNS = set()
 _RELEASE_HISTORY_RECEIPTS = {}
+_RELEASE_HISTORY_LOG_BINDINGS = {}
 _RELEASE_HISTORY_EXCLUSIONS = {}
 
 
@@ -3241,6 +3244,99 @@ def _release_history_json(repository, run_id, artifact, filename):
         return receipt
 
 
+def _historical_publication_names(target):
+    # Read-only recognition of retired workflow formats; current writers still
+    # have one canonical owner and never execute these historical actions.
+    labels = {'portal': 'AgentPortal', 'client': 'ClientApp', 'protect': 'Protect',
+              'parfait': 'Parfait', 'website': 'Website'}
+    label = labels[target]
+    return {'Publish selected head as one transaction', f'Publish canonical target ({target})',
+            f'Direct deploy {label}', f'Direct deploy {label} immutable ZIP'}
+
+
+def _legacy_inline_package_revision(workflow, release_job, target, checkout):
+    """Recognize the retired inline build -> exact local package -> upload path."""
+    release = _job_blocks(workflow).get('release', '')
+    blocks = named_step_blocks(release)
+    steps = {row['name']: row for row in release_job.get('steps', [])}
+    publications = [name for name in _historical_publication_names(target)
+                    if name.startswith('Direct deploy ') and name in blocks and name in steps]
+    if len(publications) != 1:
+        return None
+    if steps.get('Load exact preserved deployable package', {}).get('conclusion') == 'success':
+        return None  # Reused bytes require their independent producer proof.
+    package_name = 'Publish exact selected application packages'
+    if steps.get(package_name, {}).get('conclusion') != 'success':
+        return None
+    package = blocks.get(package_name, '')
+    publication = blocks[publications[0]]
+    if (release.index(package) >= release.index(publication) or
+            re.search(r'git (?:checkout|reset|switch)\b', release) or
+            re.search(r'(?m)^\s+RELEASE_SHA:', release)):
+        return None
+    if target == 'website':
+        output = 'Legend-Website/dist'
+        if ('"$RELEASE_SHA" > Legend-Website/dist/_deployment-provenance.txt' not in package or
+                steps.get('Verify selected website catalog and build', {}).get('conclusion') != 'success'):
+            return None
+        filename = 'website.zip'
+    else:
+        project = re.escape(RELEASE_TARGETS[target]['project'])
+        match = re.search(r'dotnet publish ' + project +
+            r' -c Release --no-build --no-restore -o (/tmp/[a-z]+-publish) -p:SourceRevisionId="\$RELEASE_SHA"', package)
+        build = blocks.get('Build exact selected release candidate', '')
+        if (not match or steps.get('Build exact selected release candidate', {}).get('conclusion') != 'success' or
+                '-p:SourceRevisionId="$RELEASE_SHA"' not in build):
+            return None
+        output = match.group(1)
+        alias = output.removeprefix('/tmp/').removesuffix('-publish')
+        if 'apps+=(' + alias + ')' not in package:
+            return None
+        filename = alias + '.zip'
+    if (output not in publication and '/tmp/diagnostics-packages/' + filename not in publication and
+            'python3 scripts/deploy-approved-app.py --target ' + target not in publication):
+        return None
+    if ('zip -qr' not in package or 'sha256sum /tmp/diagnostics-packages/*.zip' not in package):
+        return None
+    return checkout
+
+
+def _release_checkout_from_job_log(repository, release_job, application, token):
+    """Recover only revision metadata from authenticated retained Actions logs.
+
+    Raw logs stay in memory and are never returned, printed, or persisted. This
+    is checkout evidence only; source and immutable-package proof still follow.
+    """
+    job_id = release_job.get('id')
+    if (type(job_id) is not int or job_id < 1 or
+            not any(step.get('name') == 'Run actions/checkout@v4' and
+                    step.get('conclusion') == 'success' for step in release_job.get('steps', []))):
+        raise ReleaseOperationHistoryUnproven('Historical successful checkout job proof unavailable')
+    cache_key = (repository, job_id, application)
+    if release_job.get('status') == 'completed' and cache_key in _RELEASE_HISTORY_LOG_BINDINGS:
+        return _RELEASE_HISTORY_LOG_BINDINGS[cache_key]
+    env = dict(os.environ, GH_TOKEN=token)
+    try:
+        result = subprocess.run(['gh', 'api', f'repos/{repository}/actions/jobs/{job_id}/logs'],
+                                capture_output=True, text=True, timeout=60, env=env, check=True)
+    except (OSError, subprocess.SubprocessError):
+        raise ReleaseOperationHistoryUnproven('Historical checkout log unavailable') from None
+    if len(result.stdout) > 32 * 1024 * 1024:
+        raise ReleaseOperationHistoryUnproven('Historical checkout log exceeds evidence limit')
+    lines = [re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line)
+             for line in result.stdout.splitlines()]
+    text = '\n'.join(lines)
+    heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text))
+    authorities = set(re.findall(r'(?m)^  RELEASE_SHA: ([a-f0-9]{40})$', text))
+    packages = set(re.findall(r'(?m)^  APPLICATION_RELEASE_SHA: ([a-f0-9]{40})$', text))
+    if len(heads) != 1 or heads != authorities or packages != {application}:
+        raise ReleaseOperationHistoryUnproven('Historical checkout log revision binding is missing or contradictory')
+    checkout = heads.pop()
+    if release_job.get('status') == 'completed':
+        _RELEASE_HISTORY_LOG_BINDINGS[cache_key] = checkout
+    return checkout
+
+
 def _release_attempt_package_revision(repository, run, attempt, release_job, token, target):
     """Bind legacy publication to the package's verified embedded revision.
 
@@ -3288,15 +3384,71 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     application = receipt['applicationReleaseSha'] if receipt else None
     translations = {row['name'].removeprefix('translation-direct-release-') for row in artifacts
                     if not row.get('expired') and re.fullmatch('translation-direct-release-[a-f0-9]{40}', row.get('name', ''))}
-    if len(translations) != 1:
-        raise ReleaseOperationHistoryUnproven('No authenticated legacy package checkout/producer revision')
-    checkout = translations.pop()
+    rollbacks = set()
+    for artifact in artifacts:
+        match = re.fullmatch(r'diagnostics-rollback-([a-z]+)-([a-f0-9]{40})', artifact.get('name', ''))
+        if match and not artifact.get('expired') and match.group(1) in RELEASE_TARGETS:
+            rollbacks.add(match.group(2))
+    checkouts = translations | rollbacks
+    from_log = not checkouts and receipt is not None
+    if from_log:
+        checkout = _release_checkout_from_job_log(repository, release_job, application, token)
+    elif len(checkouts) == 1:
+        checkout = checkouts.pop()
+    else:
+        raise ReleaseOperationHistoryUnproven('No authenticated legacy package checkout/producer revision (missing or ambiguous)')
     workflow = _release_history_source(repository, run['head_sha'], '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
-    if ('RELEASE_SHA: ${{ inputs.merge_sha || github.sha }}' not in workflow or
-            'name: translation-direct-release-${{ env.RELEASE_SHA }}' not in workflow or
-            re.search(r'(?<![A-Z_])RELEASE_SHA\s*=', workflow)):
+    # Both existing artifact families bind the execution authority, not the
+    # rollback package's embedded revision. Package proof below remains required.
+    rollback_job = _job_blocks(workflow).get('preserve-rollback', '')
+    release = _job_blocks(workflow).get('release', '')
+    checkout_step = re.search(r'(?m)^      - uses: actions/checkout@v4\n((?:        [^\n]*\n|\n)*)', release)
+    event_checkout = (
+        'RELEASE_SHA: ${{ github.sha }}' in workflow and checkout == run['head_sha'] and
+        checkout_step is not None and (not re.search(r'(?m)^\s+ref:', checkout_step.group(1)) or
+            re.findall(r'(?m)^\s+ref: (.*)$', checkout_step.group(1)) == ['${{ github.sha }}']) and
+        not re.search(r'(?m)^\s+RELEASE_SHA:', release))
+    producer_binding = (
+        (event_checkout and bool(translations) and
+         'name: translation-direct-release-${{ github.sha }}' in release) or
+        (from_log and 'uses: actions/checkout@v4' in release and
+         'ref: ${{ env.RELEASE_SHA }}' in release) or
+        (bool(translations) and 'name: translation-direct-release-${{ env.RELEASE_SHA }}' in workflow) or
+        (bool(rollbacks) and 'name: diagnostics-rollback-${{ matrix.app }}-${{ env.RELEASE_SHA }}' in
+         rollback_job and not re.search(r'(?m)^\s+RELEASE_SHA:', rollback_job)))
+    if (('RELEASE_SHA: ${{ inputs.merge_sha || github.sha }}' not in workflow and not event_checkout) or
+            not producer_binding or re.search(r'(?<![A-Z_])RELEASE_SHA\s*=', workflow)):
         raise ReleaseOperationHistoryUnproven('Historical checkout receipt has no recognized producer binding')
     release = _job_blocks(workflow).get('release', '')
+    inline_revision = _legacy_inline_package_revision(workflow, release_job, target, checkout)
+    if inline_revision is not None:
+        if receipt is not None and application != inline_revision:
+            raise RuntimeError('Historical inline package proof contradicts retained receipt')
+        if 'python3 scripts/deploy-approved-app.py --target ' + target in release:
+            deployment_source = _release_history_source(repository, checkout, 'scripts/deploy-approved-app.py', token)
+            tree = ast.parse(deployment_source)
+            functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+            current = ast.parse(Path(__file__).with_name('deploy-approved-app.py').read_text())
+            verifier = next(node for node in current.body if isinstance(node, ast.FunctionDef) and node.name == 'verify_package')
+            legacy_main = ast.parse('''def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--target', choices=TARGETS, required=True)
+    args = parser.parse_args()
+    app, filename, url = TARGETS[args.target]
+    revision = os.environ['RELEASE_SHA']
+    package = Path('/tmp/diagnostics-packages') / filename
+    digest = verify_package(package, revision, args.target == 'website')
+    print(f'{app}: approved revision {revision}, ZIP sha256 {digest}', flush=True)
+    result = reconcile(Azure(app, package, url, revision, args.target == 'website'))
+    print(f'{app}: {result}; exact revision healthy and no Azure deployment pending.', flush=True)
+''').body[0]
+            if (not all(name in functions for name in ('main', 'verify_package')) or
+                    ast.dump(functions['main']) != ast.dump(legacy_main) or
+                    ast.dump(functions['verify_package']) != ast.dump(verifier)):
+                raise ReleaseOperationHistoryUnproven('Historical inline uploader contract is incompatible')
+        if release_job.get('status') == 'completed':
+            _RELEASE_HISTORY_VERIFIED_PACKAGES[cache_key] = inline_revision
+        return inline_revision
     if 'APPLICATION_RELEASE_SHA' in release:
         if ('APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}' not in release or
                 release.count('APPLICATION_RELEASE_SHA:') != 1 or re.search(r'APPLICATION_RELEASE_SHA\s*=', release)):
@@ -3317,7 +3469,7 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     lines, spans = _named_step_spans(release)
     steps = {row['name']: row for row in release_job.get('steps', [])}
     publication = next(((name, start, end) for name, start, end in spans
-                        if name in {'Publish selected head as one transaction', f'Publish canonical target ({target})'}), None)
+                        if name in _historical_publication_names(target)), None)
     if publication is None:
         raise ReleaseOperationHistoryUnproven('Historical publication source is unknown')
     publish_body = ''.join(lines[publication[1]:publication[2]])
@@ -3466,13 +3618,19 @@ def release_operation_history(repository, operation_id, application_revision, ta
             jobs = jobs_payload.get("jobs")
             if not isinstance(jobs, list) or jobs_payload.get("total_count", 0) > len(jobs):
                 raise ReleaseOperationHistoryUnproven("Incomplete prior deployment job history")
+            if (not jobs and jobs_payload.get('total_count') == 0 and
+                    (run.get('status') == 'completed' or attempt < attempts)):
+                # Complete Actions enumeration proves this attempt never started a job.
+                continue
             owners = [job for job in jobs if job.get("name") in {"release", f"publish-target ({target})"}]
             if len(owners) != 1:
                 raise ReleaseOperationHistoryUnproven("Release execution generation lacks one canonical publication owner")
             job = owners[0]
-            if job.get('conclusion') == 'skipped' or job.get('status') == 'queued':
+            if (job.get('conclusion') == 'skipped' or job.get('status') == 'queued' or
+                    (job.get('status') == 'completed' and job.get('conclusion') == 'cancelled' and
+                     job.get('steps') == [])):
                 continue
-            names = {"Publish selected head as one transaction", f"Publish canonical target ({target})"}
+            names = _historical_publication_names(target)
             publication = [step for step in job.get('steps', []) if step.get('name') in names]
             if len(publication) == 1 and (publication[0].get('conclusion') == 'skipped' or publication[0].get('status') == 'queued'):
                 # Positive target execution proof works even when old receipt

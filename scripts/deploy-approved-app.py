@@ -321,7 +321,7 @@ def preflight_target(key, package, revision, baseline, journal):
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
         raise DeploymentReconciliationRequired('Pre-publication Azure state unavailable') from exc
     if journal is not None and getattr(journal, 'history_error', None) is not None and observed != revision:
-        raise DeploymentReconciliationRequired('Original publication history unproven; no release mutation authorized')
+        raise DeploymentReconciliationRequired('Original publication history unproven; no release mutation authorized') from journal.history_error
     if observed is not None and observed not in {baseline, revision}:
         raise DeploymentDrift('Pre-publication live target differs from original baseline and candidate')
     if observed is None or any(row['status'] in (0, 1, 2) for row in rows):

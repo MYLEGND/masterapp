@@ -286,7 +286,10 @@ class PackageProducerTests(unittest.TestCase):
     def test_green_package_child_survives_red_parent_and_reuses_original_producer(self):
         authority = deploy._RELEASE_AUTHORITY
         producer = 'a' * 40
-        run = {'id': 12, 'head_sha': producer, 'conclusion': 'failure'}
+        run = {'id': 12, 'head_sha': producer, 'conclusion': 'failure',
+               'path': '.github/workflows/' + authority.PACKAGE_VALIDATION_WORKFLOW,
+               'event': 'pull_request', 'status': 'completed',
+               'head_repository': {'full_name': 'MYLEGND/masterapp'}}
         artifact = {'name': 'founder-diagnostics-packages-' + 'c' * 64,
                     'workflow_run': {'id': 12}, 'expired': False}
         jobs = {'jobs': [{'name': 'validated-release-package', 'conclusion': 'success', 'steps': [
@@ -294,14 +297,16 @@ class PackageProducerTests(unittest.TestCase):
                 'Build immutable validated release package', 'Verify immutable validated release package',
                 'Preserve immutable validated release package')]}]}
         def api(repository, path, token):
-            if path.startswith('actions/artifacts?'):
+            if path.startswith('actions/workflows/'):
+                return {'workflow_runs': [run]}
+            if path.startswith('actions/artifacts?') or '/artifacts?' in path:
                 return {'artifacts': [artifact]}
             if '/jobs?' in path:
                 return jobs
             return run
         with patch.object(authority, 'api_get', side_effect=api), \
              patch.object(authority.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)), \
-             patch.object(authority, '_trusted_pr_run', return_value=True), \
+             patch.object(authority, 'git_changed', return_value=[]), \
              patch.object(authority, 'package_inputs_compatible', return_value=True):
             result = authority.compatible_package_producer('MYLEGND/masterapp', 'b' * 40, 'test-token')
             self.assertEqual(producer, result['revision'])
