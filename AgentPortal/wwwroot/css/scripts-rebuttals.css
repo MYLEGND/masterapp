@@ -2413,26 +2413,15 @@ details.section{
 }
 
 /* Bootstrap decision capture modal stabilization */
-#captureDecisionModal.legend-popout-modal .modal-dialog{
-    width: min(94vw, 760px);
-    max-width: min(94vw, 760px);
-    margin: clamp(14px, 6vh, 64px) auto;
-}
 #captureDecisionModal.legend-popout-modal .modal-content{
-    background: linear-gradient(180deg,#0b1529,#0d1a33);
-    border: 2px solid var(--legend-gold-deep, var(--legend-app-accent));
-    border-radius: 16px;
-    box-shadow: 0 30px 80px rgba(0,0,0,.46);
     color: var(--legend-app-on-dark);
-    max-height: min(86vh, 760px);
     display: flex;
     flex-direction: column;
-    padding: 2px;
 }
 #captureDecisionModal.legend-popout-modal .modal-header,
 #captureDecisionModal.legend-popout-modal .modal-footer{
-    border-color: rgba(166,128,35,.5);
-    background: linear-gradient(180deg, rgba(15,23,42,.95), rgba(15,23,42,.88));
+    border-color: var(--legend-modal-line);
+    background: linear-gradient(180deg,var(--legend-modal-chrome),var(--legend-modal-chrome-deep));
 }
 #captureDecisionModal.legend-popout-modal .modal-header{
     position: sticky;
@@ -2450,8 +2439,8 @@ details.section{
     letter-spacing: .02em;
 }
 #captureDecisionModal.legend-popout-modal .modal-body{
-    background: linear-gradient(180deg,#111b2d,#0c1524);
-    color: #dbe7ff;
+    background: var(--legend-modal-surface);
+    color: var(--legend-modal-ink);
     overflow-y: auto;
     min-height: 0;
     padding: 14px 16px;
@@ -2462,9 +2451,9 @@ details.section{
 }
 #captureDecisionModal.legend-popout-modal .form-control,
 #captureDecisionModal.legend-popout-modal .form-select{
-    background: #0f172a;
+    background: var(--legend-app-control);
     color: var(--legend-app-on-dark);
-    border: 1px solid #334155;
+    border: 1px solid var(--legend-app-control-line);
 }
 #captureDecisionModal.legend-popout-modal .form-control::placeholder{
     color: #94a3b8;
