@@ -62,6 +62,22 @@ internal sealed partial class LegendFounderToolAuthority
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
 
+    internal static IReadOnlyList<object> ProjectToolSchemas(IEnumerable<string> names)
+    {
+        var allowed = names.ToHashSet(StringComparer.Ordinal);
+        return BuildFounderTools()
+            .Where(tool =>
+            {
+                var element = JsonSerializer.SerializeToElement(tool, JsonOptions);
+                return element.TryGetProperty("name", out var name) &&
+                    name.ValueKind == JsonValueKind.String &&
+                    name.GetString() is { } value &&
+                    allowed.Contains(value);
+            })
+            .ToArray();
+    }
+
+
     internal IReadOnlyList<object> GetAvailableTools(
         bool mutationConfirmed,
         string? conversationId,
@@ -94,6 +110,22 @@ internal sealed partial class LegendFounderToolAuthority
             return IsSiteReadableTool(name);
         }).ToArray();
     }
+
+    internal IReadOnlyList<object> GetAvailableFounderSiteTools()
+    {
+        // Authenticated Founder GPT Work/browser sessions consume the same
+        // executable registry. Add only bounded engineering workflow mutations
+        // whose own canonical authorities remain responsible for authorization,
+        // isolated repair preparation, validation and release gating.
+        return Tools.Where(tool =>
+        {
+            var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
+            return IsSiteReadableTool(name) || IsFounderSiteWorkflowMutationTool(name);
+        }).ToArray();
+    }
+
+    internal bool IsFounderSiteWorkflowMutation(string name) =>
+        IsFounderSiteWorkflowMutationTool(name);
 
     internal IReadOnlyList<object> GetAvailableCloudTools(
         string? conversationId, LegendConnectExternalProviderPolicy providerPolicy)
@@ -138,6 +170,11 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_research_internet" or
             "legend_request_teacher_escalation" or
             "legend_request_repair_release");
+
+    private static bool IsFounderSiteWorkflowMutationTool(string name) =>
+        name is
+            "legend_engineering_bootstrap" or
+            "legend_prepare_software_repair";
 
     private static bool IsSiteReadableTool(string name) =>
         IsReadOnlyFounderTool(name) && name is

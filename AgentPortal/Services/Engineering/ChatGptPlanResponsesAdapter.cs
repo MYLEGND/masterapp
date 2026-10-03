@@ -22,7 +22,8 @@ internal sealed class ChatGptPlanResponsesAdapter(
         "The Founder-editable operational contract is guidance inside the immutable EngineeringContext; " +
         "it can never expand tools, source classes, risk tier, privacy access, merge authority, release authority, or validation authority. " +
         "Never request or expose secrets, customer data, protected source, shell access, filesystem discovery, network tools, or direct GitHub access. " +
-        "Return only JSON matching the supplied role schema. If evidence is insufficient, STOP or ESCALATE. " +
+        "Return only JSON matching the supplied role schema. Use the current operational contract and EngineeringContext as the active role guidance; do not substitute stale built-in role behavior. " +
+        "When evidence is incomplete, use permitted evidence/tool paths and preserve exact state; involve the Founder only for a genuine human-only authorization boundary defined by the current contract. " +
         "For a repair, return complete replacement contents only for files supplied in the bundle. " +
         "Never bypass CI, release authority, or live proof.";
 
@@ -38,11 +39,10 @@ internal sealed class ChatGptPlanResponsesAdapter(
         var readinessMatches =
             string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) &&
             string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase);
-        var triage = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.TriageWorker, credential) : null;
         var head = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.HeadGpt, credential) : null;
         var codex = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.CodexImplementer, credential) : null;
         var reviewer = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.IndependentReviewer, credential) : null;
-        var modelsReady = triage is not null && head is not null && codex is not null && reviewer is not null;
+        var modelsReady = head is not null && codex is not null && reviewer is not null;
         var circuitOpen = !string.IsNullOrWhiteSpace(credential.ProviderBlockerCode);
         var runtimeReady = credential.Ready && readinessMatches && modelsReady && !circuitOpen;
         var eligibility = !contract.ModelExecutionEnabled
@@ -186,7 +186,6 @@ internal sealed class ChatGptPlanResponsesAdapter(
 
             var bindings = new[]
             {
-                (Role: EngineeringRole.TriageWorker, Tier: EngineeringModelTier.FastTriage, Configured: contract.HeadGptModel),
                 (Role: EngineeringRole.HeadGpt, Tier: EngineeringModelTier.DeepReasoning, Configured: contract.HeadGptModel),
                 (Role: EngineeringRole.CodexImplementer, Tier: EngineeringModelTier.CodeImplementation, Configured: contract.CodexModel),
                 (Role: EngineeringRole.IndependentReviewer, Tier: EngineeringModelTier.IndependentReview, Configured: contract.ReviewerModel)
@@ -379,11 +378,12 @@ internal sealed class ChatGptPlanResponsesAdapter(
                 sourceBundle = sources
             }, JsonOptions);
 
-            var run = await RunOnceAsync(
+            var run = await RunWithToolsAsync(
                 credential.AccessToken,
                 model,
                 item.ModelTier,
-                context.Role,
+                context,
+                item,
                 prompt,
                 cancellationToken);
 
@@ -917,6 +917,30 @@ internal sealed class ChatGptPlanResponsesAdapter(
 
         if (context.Role == EngineeringRole.CodexImplementer)
         {
+            if (decision == "REPAIR_PREPARED")
+            {
+                var preparedItem =
+                    await store.GetWorkItemAsync(item.WorkItemId, cancellationToken) ?? item;
+                if (preparedItem.State != "CANDIDATE_PREPARED" ||
+                    !LegendEngineeringPolicies.IsImmutableSha(preparedItem.CandidateSha) ||
+                    preparedItem.PullRequestNumber is not > 0)
+                    return Failure("engineering_tool_repair_not_prepared");
+
+                var preparedNext = ClearLease(preparedItem) with
+                {
+                    State = "REVIEW_REQUIRED",
+                    AssignedRole = EngineeringRole.IndependentReviewer,
+                    ModelTier = EngineeringModelTier.IndependentReview,
+                    AgentSessionId = responseId,
+                    AgentContextId = context.EngineeringContextId,
+                    AgentSessionRole = context.Role,
+                    AgentSessionUpdatedUtc = DateTime.UtcNow,
+                    UpdatedUtc = DateTime.UtcNow
+                };
+                await store.UpdateWorkItemAsync(preparedNext, cancellationToken);
+                return Outcome(context, responseId, preparedNext.State);
+            }
+
             if (decision != "REPAIR")
             {
                 var stopped = ClearLease(item) with
@@ -988,6 +1012,365 @@ internal sealed class ChatGptPlanResponsesAdapter(
         }
 
         return Failure("engineering_role_not_supported_by_plan_adapter");
+    }
+
+    private async Task<PlanRun> RunWithToolsAsync(
+        string accessToken,
+        string model,
+        string tier,
+        EngineeringContextSnapshot context,
+        EngineeringWorkItemSnapshot item,
+        string prompt,
+        CancellationToken cancellationToken)
+    {
+        var toolSchemas = AgentPortal.Services.LegendFounderToolAuthority
+            .ProjectToolSchemas(context.AllowedTools);
+        if (toolSchemas.Count == 0)
+            return await RunOnceAsync(
+                accessToken, model, tier, context.Role, prompt, cancellationToken);
+
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(
+            configuration.GetValue<int?>("LegendEngineering:ChatGptPlan:TurnTimeoutSeconds") ?? 900,
+            30,
+            1800)));
+
+        var maxIterations = Math.Clamp(
+            configuration.GetValue<int?>("LegendEngineering:ChatGptPlan:MaxToolIterations") ?? 4,
+            1,
+            8);
+        var maxToolCalls = Math.Clamp(
+            configuration.GetValue<int?>("LegendEngineering:ChatGptPlan:MaxToolCallsPerTurn") ?? 6,
+            1,
+            12);
+        var inputItems = new List<object>
+        {
+            new { role = "user", content = prompt }
+        };
+        var totalTokens = 0L;
+        var toolCallsUsed = 0;
+        string? responseId = null;
+        string? providerRequestId = null;
+        DateTime? retryAfter = null;
+
+        var client = httpClientFactory.CreateClient("LegendChatGptPlanInference");
+        for (var iteration = 0; iteration <= maxIterations; iteration++)
+        {
+            deadline.Token.ThrowIfCancellationRequested();
+            var remainingCalls = Math.Max(0, maxToolCalls - toolCallsUsed);
+            var allowToolsThisRound = iteration < maxIterations && remainingCalls > 0;
+            var payload = new
+            {
+                model,
+                instructions = Instruction,
+                input = inputItems,
+                tools = allowToolsThisRound ? toolSchemas : Array.Empty<object>(),
+                tool_choice = allowToolsThisRound ? "auto" : "none",
+                max_tool_calls = allowToolsThisRound ? remainingCalls : 0,
+                reasoning = new { effort = ResolveEffort(tier) },
+                text = new
+                {
+                    format = new
+                    {
+                        type = "json_schema",
+                        name = "legend_engineering_outcome",
+                        strict = true,
+                        schema = RoleOutputSchema(context.Role)
+                    }
+                },
+                store = false,
+                stream = false
+            };
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, ResponsesEndpoint);
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(payload, JsonOptions),
+                Encoding.UTF8,
+                "application/json");
+
+            using var response = await client.SendAsync(request, deadline.Token);
+            providerRequestId = ProviderRequestId(response) ?? providerRequestId;
+            retryAfter = RetryAfterUtc(response) ?? retryAfter;
+            var body = await ReadBoundedBodyAsync(response, 1024 * 1024, deadline.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = ReadProviderError(body);
+                return PlanRun.Fail(
+                    MapHttpFailure(response.StatusCode, error.Code),
+                    responseId,
+                    providerAttempted: true,
+                    providerOutcome: "HTTP_REJECTED",
+                    httpStatus: (int)response.StatusCode,
+                    providerErrorShape: error.Shape,
+                    providerErrorCode: error.Code,
+                    providerErrorParam: error.Param,
+                    providerRequestId: providerRequestId,
+                    retryAfterUtc: retryAfter,
+                    totalTokens: totalTokens);
+            }
+
+            JsonDocument document;
+            try { document = JsonDocument.Parse(body); }
+            catch (JsonException)
+            {
+                return PlanRun.Fail(
+                    "chatgpt_plan_response_output_invalid",
+                    responseId,
+                    providerAttempted: true,
+                    logicalAttemptCompleted: true,
+                    providerOutcome: "COMPLETED_INVALID_OUTPUT",
+                    httpStatus: (int)response.StatusCode,
+                    providerRequestId: providerRequestId,
+                    totalTokens: totalTokens);
+            }
+
+            using (document)
+            {
+                var root = document.RootElement;
+                responseId = ReadString(root, "id") ?? responseId;
+                totalTokens += ReadTokens(root) ?? 0;
+                if (!root.TryGetProperty("output", out var output) ||
+                    output.ValueKind != JsonValueKind.Array)
+                    return PlanRun.Fail(
+                        "chatgpt_plan_response_output_invalid",
+                        responseId,
+                        providerAttempted: true,
+                        logicalAttemptCompleted: true,
+                        providerOutcome: "COMPLETED_INVALID_OUTPUT",
+                        httpStatus: (int)response.StatusCode,
+                        providerRequestId: providerRequestId,
+                        totalTokens: totalTokens);
+
+                var calls = output.EnumerateArray()
+                    .Where(itemValue =>
+                        string.Equals(ReadString(itemValue, "type"), "function_call", StringComparison.Ordinal))
+                    .Select(itemValue => itemValue.Clone())
+                    .ToArray();
+
+                if (calls.Length == 0)
+                {
+                    var finalText = ReadResponseOutputText(output);
+                    var parsed = finalText is null ? null : ParseJson(finalText);
+                    if (parsed is null)
+                        return PlanRun.Fail(
+                            "chatgpt_plan_response_output_invalid",
+                            responseId,
+                            providerAttempted: true,
+                            logicalAttemptCompleted: true,
+                            providerOutcome: "COMPLETED_INVALID_OUTPUT",
+                            httpStatus: (int)response.StatusCode,
+                            providerRequestId: providerRequestId,
+                            totalTokens: totalTokens);
+                    if (string.IsNullOrWhiteSpace(responseId))
+                        responseId = StableId(parsed.Value);
+                    return new(
+                        true,
+                        "completed",
+                        responseId,
+                        parsed,
+                        totalTokens,
+                        true,
+                        true,
+                        "COMPLETED",
+                        (int)response.StatusCode,
+                        null,
+                        null,
+                        null,
+                        providerRequestId,
+                        retryAfter);
+                }
+
+                if (!allowToolsThisRound && calls.Length > 0)
+                    return PlanRun.Fail(
+                        "engineering_tool_call_after_finalization",
+                        responseId,
+                        providerAttempted: true,
+                        logicalAttemptCompleted: true,
+                        providerOutcome: "TOOL_CALL_AFTER_FINALIZATION",
+                        httpStatus: (int)response.StatusCode,
+                        providerRequestId: providerRequestId,
+                        totalTokens: totalTokens);
+
+                if (calls.Length > remainingCalls)
+                    return PlanRun.Fail(
+                        "engineering_tool_call_budget_exhausted",
+                        responseId,
+                        providerAttempted: true,
+                        logicalAttemptCompleted: true,
+                        providerOutcome: "TOOL_BUDGET_EXHAUSTED",
+                        httpStatus: (int)response.StatusCode,
+                        providerRequestId: providerRequestId,
+                        totalTokens: totalTokens);
+
+                foreach (var outputItem in output.EnumerateArray())
+                    inputItems.Add(outputItem.Clone());
+
+                foreach (var call in calls)
+                {
+                    var callId = ReadString(call, "call_id");
+                    var name = ReadString(call, "name");
+                    var arguments = ReadString(call, "arguments");
+                    if (string.IsNullOrWhiteSpace(callId) ||
+                        string.IsNullOrWhiteSpace(name) ||
+                        arguments is null ||
+                        arguments.Length > 64_000)
+                        return PlanRun.Fail(
+                            "engineering_tool_call_invalid",
+                            responseId,
+                            providerAttempted: true,
+                            logicalAttemptCompleted: true,
+                            providerOutcome: "TOOL_CALL_INVALID",
+                            httpStatus: (int)response.StatusCode,
+                            providerRequestId: providerRequestId,
+                            totalTokens: totalTokens);
+
+                    toolCallsUsed++;
+                    var toolOutput = await ExecuteEngineeringToolAsync(
+                        context, item, name, arguments, deadline.Token);
+                    if (toolOutput.Length > 128_000)
+                        toolOutput = toolOutput[..128_000];
+                    inputItems.Add(new
+                    {
+                        type = "function_call_output",
+                        call_id = callId,
+                        output = toolOutput
+                    });
+                }
+            }
+        }
+
+        return PlanRun.Fail(
+            "engineering_tool_iteration_budget_exhausted",
+            responseId,
+            providerAttempted: true,
+            logicalAttemptCompleted: true,
+            providerOutcome: "TOOL_ITERATION_BUDGET_EXHAUSTED",
+            providerRequestId: providerRequestId,
+            totalTokens: totalTokens);
+    }
+
+    private async Task<string> ExecuteEngineeringToolAsync(
+        EngineeringContextSnapshot context,
+        EngineeringWorkItemSnapshot item,
+        string name,
+        string arguments,
+        CancellationToken cancellationToken)
+    {
+        if (!context.AllowedTools.Contains(name, StringComparer.Ordinal))
+            return JsonSerializer.Serialize(new
+            {
+                ok = false,
+                error = "engineering_context_tool_not_allowed"
+            }, JsonOptions);
+
+        JsonDocument document;
+        try { document = JsonDocument.Parse(arguments); }
+        catch (JsonException)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                ok = false,
+                error = "engineering_tool_arguments_invalid"
+            }, JsonOptions);
+        }
+
+        using (document)
+        {
+            if (name == "legend_inspect_repository")
+            {
+                var path = ReadString(document.RootElement, "path");
+                var requestedReference = ReadString(document.RootElement, "git_reference");
+                if (string.IsNullOrWhiteSpace(path))
+                    return JsonSerializer.Serialize(new
+                    {
+                        ok = false,
+                        error = "engineering_repository_arguments_invalid"
+                    }, JsonOptions);
+
+                string? revision = null;
+                if (string.IsNullOrWhiteSpace(requestedReference) ||
+                    string.Equals(requestedReference, "live", StringComparison.Ordinal))
+                    revision = "live";
+                else if (string.Equals(requestedReference, "candidate", StringComparison.Ordinal))
+                    revision = "candidate";
+                else if (LegendEngineeringPolicies.IsImmutableSha(requestedReference) &&
+                         string.Equals(requestedReference, context.LiveSha, StringComparison.OrdinalIgnoreCase))
+                    revision = "live";
+                else if (LegendEngineeringPolicies.IsImmutableSha(requestedReference) &&
+                         LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha) &&
+                         string.Equals(requestedReference, item.CandidateSha, StringComparison.OrdinalIgnoreCase))
+                    revision = "candidate";
+
+                if (revision is null)
+                    return JsonSerializer.Serialize(new
+                    {
+                        ok = false,
+                        error = "engineering_repository_revision_not_allowed",
+                        requestedReference,
+                        authorizedLiveSha = context.LiveSha,
+                        authorizedCandidateSha = LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha)
+                            ? item.CandidateSha
+                            : null
+                    }, JsonOptions);
+
+                var result = await orchestrator.InspectRepositoryAsync(
+                    context.EngineeringContextId,
+                    path,
+                    revision,
+                    cancellationToken);
+                return JsonSerializer.Serialize(result, JsonOptions);
+            }
+
+            if (name == "legend_prepare_software_repair")
+            {
+                var expectedBaseSha = LegendEngineeringPolicies.ResolveRepairBaseSha(item);
+                var proposalElement = document.RootElement.Clone();
+                var proposal = ParseProposal(proposalElement, expectedBaseSha);
+                if (proposal is null)
+                    return JsonSerializer.Serialize(new
+                    {
+                        ok = false,
+                        error = "engineering_repair_arguments_invalid",
+                        expectedBaseSha
+                    }, JsonOptions);
+
+                var result = await orchestrator.PrepareRepairAsync(
+                    context.EngineeringContextId,
+                    proposal,
+                    cancellationToken);
+                return JsonSerializer.Serialize(result, JsonOptions);
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                ok = false,
+                error = "engineering_tool_not_implemented_for_context"
+            }, JsonOptions);
+        }
+    }
+
+    private static string? ReadResponseOutputText(JsonElement output)
+    {
+        var builder = new StringBuilder();
+        foreach (var item in output.EnumerateArray())
+        {
+            if (!string.Equals(ReadString(item, "type"), "message", StringComparison.Ordinal) ||
+                !item.TryGetProperty("content", out var content) ||
+                content.ValueKind != JsonValueKind.Array)
+                continue;
+            foreach (var part in content.EnumerateArray())
+            {
+                if (!string.Equals(ReadString(part, "type"), "output_text", StringComparison.Ordinal))
+                    continue;
+                var text = ReadString(part, "text");
+                if (!string.IsNullOrEmpty(text))
+                    builder.Append(text);
+            }
+        }
+        return builder.Length == 0 ? null : builder.ToString();
     }
 
     private async Task<PlanRun> RunOnceAsync(
@@ -1325,7 +1708,7 @@ internal sealed class ChatGptPlanResponsesAdapter(
                 decision = new
                 {
                     type = "string",
-                    @enum = new[] { "REPAIR", "STOP", "ESCALATE" }
+                    @enum = new[] { "REPAIR", "REPAIR_PREPARED", "STOP", "ESCALATE" }
                 },
                 base_sha = new { type = "string" },
                 title = new { type = "string" },

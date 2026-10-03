@@ -130,6 +130,32 @@ public sealed class FounderEngineeringActivationContractTests
         Assert.DoesNotContain("/v1/agents", adapter, StringComparison.Ordinal);
     }
 
+
+    [Fact]
+    public void DefaultEngineeringContracts_OwnContinuousProgressionWithoutFounderRelay()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            SourceRoot(), "AgentPortal", "Services", "Engineering",
+            "LegendEngineeringContractAuthority.cs"));
+
+        Assert.Contains("one coordinated LEGEND engineering system", source, StringComparison.Ordinal);
+        Assert.Contains("Do not use the Founder as a relay for ordinary engineering work", source, StringComparison.Ordinal);
+        Assert.Contains("Own mission progression continuously", source, StringComparison.Ordinal);
+        Assert.Contains("Do not repeatedly report routine next steps to the Founder", source, StringComparison.Ordinal);
+        Assert.Contains("continuous implementation partner", source, StringComparison.Ordinal);
+        Assert.Contains("Routine CHANGES REQUIRED goes to GPT Head, not the Founder", source, StringComparison.Ordinal);
+        Assert.Contains("If tools are temporarily unavailable, preserve exact state and next action", source, StringComparison.Ordinal);
+        Assert.Contains("Preserve explicit Founder release/deployment intent as durable mission context", source, StringComparison.Ordinal);
+        Assert.Contains("prior intent never bypasses that exact gate", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Escalate or stop when evidence is insufficient", source, StringComparison.Ordinal);
+        var adapter = File.ReadAllText(Path.Combine(
+            SourceRoot(), "AgentPortal", "Services", "Engineering",
+            "ChatGptPlanResponsesAdapter.cs"));
+        Assert.DoesNotContain("If evidence is insufficient, STOP or ESCALATE", adapter, StringComparison.Ordinal);
+        Assert.Contains("do not substitute stale built-in role behavior", adapter, StringComparison.Ordinal);
+    }
+
+
     [Fact]
     public void AutonomousActivation_IsOwnedByOperationalContract_NotDeploymentFlag()
     {

@@ -61,8 +61,9 @@ public sealed class LegendSiteToolBridgeTests
         var source = Read("SHARED", "wwwroot", "js", "legend-site-tools.js");
         Assert.Contains("document.modelContext", source, StringComparison.Ordinal);
         Assert.Contains("registerTool", source, StringComparison.Ordinal);
-        Assert.Contains("readOnlyHint: !recordsEngineeringProof", source, StringComparison.Ordinal);
-        Assert.Contains("consequentialHint: recordsEngineeringProof", source, StringComparison.Ordinal);
+        Assert.Contains("payload.toolPolicies", source, StringComparison.Ordinal);
+        Assert.Contains("readOnlyHint: readOnly", source, StringComparison.Ordinal);
+        Assert.Contains("consequentialHint: consequential", source, StringComparison.Ordinal);
         Assert.Contains("/api/legend-site-tools", source, StringComparison.Ordinal);
         Assert.Contains("RequestVerificationToken", source, StringComparison.Ordinal);
         Assert.Contains("legend_site_tool_antiforgery_unavailable", source, StringComparison.Ordinal);
@@ -85,23 +86,32 @@ public sealed class LegendSiteToolBridgeTests
     }
 
     [Fact]
-    public void FounderBridge_ReusesFounderAuthority_AndPublishesNoMutationTools()
+    public void FounderBridge_ReusesFounderAuthority_AndExposesOnlyBoundedWorkflowMutations()
     {
         var source = Read("AgentPortal", "Controllers", "FounderDiagnosticsController.cs");
+        var authority = Read("AgentPortal", "Services", "LegendFounderToolAuthority.cs");
         Assert.Contains("[Authorize]", source, StringComparison.Ordinal);
         Assert.Contains("[FounderOnly]", source, StringComparison.Ordinal);
         Assert.Contains("FounderGuard.EnsureFounderOrThrow(User)", source, StringComparison.Ordinal);
         Assert.Contains("new LegendFounderToolAuthority", source, StringComparison.Ordinal);
-        Assert.Contains("authority.IsReadOnly", source, StringComparison.Ordinal);
-        Assert.Equal(2, CountOccurrences(SiteToolSection(source), "GetAvailableSiteReadTools()"));
+        Assert.Equal(2, CountOccurrences(SiteToolSection(source), "GetAvailableFounderSiteTools()"));
         Assert.DoesNotContain("GetAvailableCloudTools", SiteToolSection(source), StringComparison.Ordinal);
-        Assert.Contains("mutationToolsExposed = false", source, StringComparison.Ordinal);
+        Assert.Contains("mutationToolsExposed = true", source, StringComparison.Ordinal);
+        Assert.Contains("bounded_founder_engineering_workflow_only", source, StringComparison.Ordinal);
+        Assert.Contains("toolPolicies", source, StringComparison.Ordinal);
+        Assert.Contains("founder_work", source, StringComparison.Ordinal);
         Assert.Contains("[ValidateAntiForgeryToken]", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("VerifyCurrentPageRepairTool", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("RecordBrowserFunctionalProofAsync", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("environment.ApplicationName", SiteToolSection(source), StringComparison.Ordinal);
-        Assert.DoesNotContain("legend_release_approved_repair", SiteToolSection(source), StringComparison.Ordinal);
-        Assert.DoesNotContain("legend_prepare_software_repair", SiteToolSection(source), StringComparison.Ordinal);
+        Assert.Contains("\"legend_engineering_bootstrap\"", authority, StringComparison.Ordinal);
+        Assert.Contains("\"legend_prepare_software_repair\"", authority, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"legend_release_approved_repair\";", authority[
+            authority.IndexOf("IsFounderSiteWorkflowMutationTool", StringComparison.Ordinal)..
+            authority.IndexOf("private static bool IsSiteReadableTool", StringComparison.Ordinal)], StringComparison.Ordinal);
+        Assert.DoesNotContain("\"legend_engineering_approve_release\";", authority[
+            authority.IndexOf("IsFounderSiteWorkflowMutationTool", StringComparison.Ordinal)..
+            authority.IndexOf("private static bool IsSiteReadableTool", StringComparison.Ordinal)], StringComparison.Ordinal);
     }
 
     [Fact]
