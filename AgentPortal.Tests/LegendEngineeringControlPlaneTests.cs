@@ -92,14 +92,14 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
 
 
     [Fact]
-    public void UnknownRoutineIncident_UsesFastTriageWithoutMutationAuthority()
+    public void UnknownRoutineIncident_GoesDirectlyToHeadGptWithoutMutationAuthority()
     {
         var incident = Incident(category: "Observation", error: "UnclassifiedSignal",
             source: "AgentPortal/Views/Home/Index.cshtml");
         incident.StatusCode = null;
         var decision = LegendEngineeringPolicies.Classify(incident);
         Assert.Equal(EngineeringFailureClass.Unknown, decision.FailureClass);
-        Assert.Equal(EngineeringRole.TriageWorker, decision.AssignedRole);
+        Assert.Equal(EngineeringRole.HeadGpt, decision.AssignedRole);
         Assert.Equal(EngineeringModelTier.FastTriage, decision.ModelTier);
         Assert.False(decision.CodeRepairEligible);
     }
