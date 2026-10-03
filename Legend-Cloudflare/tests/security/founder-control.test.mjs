@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import worker from '../../src/index.mjs';
 import { FOUNDER_BASELINE_MODEL_IDS, FOUNDER_BASELINE_PRIMARY_MODEL } from '../../src/runtime/registry.mjs';
-import { envelope, harness, signedRequest, reserve, NOW } from './fixtures.mjs';
+import { envelope, harness, signedRequest, reserve, NOW, TEST_KEY } from './fixtures.mjs';
 
 function fixture() {
   const h = harness({
@@ -17,6 +18,9 @@ function fixture() {
     LEGEND_RUNTIME_MODE: 'founder_baseline',
     LEGEND_DEPLOYMENT_ENVIRONMENT: 'production',
     LEGEND_TOOL_CALLBACK_ENABLED: 'true',
+    LEGEND_AZURE_TOOL_CALLBACK_URL: 'https://portal.example.test/api/founder/legend-ai/cloudflare-tools',
+    LEGEND_TOOL_CALLBACK_KEY_ID: 'callback-v1',
+    LEGEND_TOOL_CALLBACK_SECRET: TEST_KEY,
     LEGEND_FOUNDER_BASELINE_POLICY_JSON: JSON.stringify({
       version: 'legend-founder-baseline.v3',
       accountId: 'account-1', tenantId: 'tenant-1', founderUserId: 'user-1',
@@ -76,6 +80,49 @@ test('Founder status is signed, no-spend, persistent, and returns exact five-mod
   assert.equal(result.budget.concurrencyLimit, 1);
   assert.equal(f.modelCalls(), 0);
   assert.equal([...f.h.storage.data.keys()].some(key => key.startsWith('reservation:')), false);
+});
+
+test('Founder status proves current callback binding without exposing the secret', async () => {
+  const f = fixture();
+  const nonce = 'proof_' + 'a'.repeat(24);
+  const response = await worker.fetch(request(f.body({ callbackProofNonce: nonce }), '/v1/legend/status'), f.h.env, f.execution);
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.deepEqual({
+    version: result.callbackProof.version,
+    keyId: result.callbackProof.keyId,
+    url: result.callbackProof.url,
+    nonce: result.callbackProof.nonce,
+  }, {
+    version: 'legend-callback-equivalence.v1',
+    keyId: 'callback-v1',
+    url: 'https://portal.example.test/api/founder/legend-ai/cloudflare-tools',
+    nonce,
+  });
+  const message = [
+    'legend-callback-equivalence.v1',
+    result.callbackProof.keyId,
+    result.callbackProof.url,
+    nonce,
+  ].join('\n');
+  const expected = createHmac('sha256', Buffer.from(TEST_KEY, 'base64')).update(message).digest('hex');
+  assert.equal(result.callbackProof.signature, expected);
+  assert.equal(Object.values(result.callbackProof).includes(TEST_KEY), false);
+  assert.equal(f.modelCalls(), 0);
+});
+
+test('Founder callback proof rejects malformed nonce and missing callback configuration', async () => {
+  const f = fixture();
+  const malformed = await worker.fetch(request(f.body({ callbackProofNonce: 'short' }), '/v1/legend/status'), f.h.env, f.execution);
+  assert.equal(malformed.status, 400);
+  assert.equal((await malformed.json()).error, 'callback_proof_nonce_invalid');
+
+  delete f.h.env.LEGEND_TOOL_CALLBACK_SECRET;
+  const unavailable = await worker.fetch(request(f.body({ callbackProofNonce: 'proof_' + 'b'.repeat(24) }),
+    '/v1/legend/status'), f.h.env, f.execution);
+  assert.equal(unavailable.status, 503);
+  assert.equal((await unavailable.json()).error, 'callback_proof_configuration_missing');
+  assert.equal(f.modelCalls(), 0);
 });
 
 test('Founder control can pause and resume inference without changing the release-authorized maximum', async () => {
