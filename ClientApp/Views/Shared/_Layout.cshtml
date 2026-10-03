@@ -5,7 +5,6 @@
 @using Domain.Entities
 @using System.IO
 @using Shared.Messaging
-@inject IHttpContextAccessor HttpContextAccessor
 @inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
 @using Shared.Auth
 @inject ClientApp.Services.EffectiveClientContextService ClientContextService
@@ -21,7 +20,7 @@
         string.Equals(layoutController, "Home", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(layoutController, "Profile", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(layoutController, "Dashboard", StringComparison.OrdinalIgnoreCase);
-    var messagingClientContext = ClientContextService.ResolveAsync(User, Context.Request.Cookies).GetAwaiter().GetResult();
+    var messagingClientContext = await ClientContextService.ResolveAsync(User, Context.Request.Cookies);
     var messagingActorId = messagingClientContext is { IsAgentView: false } &&
         !string.IsNullOrWhiteSpace(messagingClientContext.ClientUserId)
             ? messagingClientContext.ClientUserId.Trim()
