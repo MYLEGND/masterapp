@@ -168,7 +168,7 @@ public sealed class WebsiteEventMapTests
         await db.SaveChangesAsync();
         var ticket = new WebsiteEditorTicket(WebsiteEditorSiteKeys.Protect, profile.AgentUserId, profile.Slug, false, DateTime.UtcNow.AddMinutes(5));
         var rows = await new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build()).ReadTicketAsync(ticket);
-        Assert.Equal("sent", Assert.Single(rows.Where(r => r.Element == "automatic:lead_created")).OpenAiStatus);
+        Assert.Equal("receipt_unverified", Assert.Single(rows.Where(r => r.Element == "automatic:lead_created")).OpenAiStatus);
         Assert.Null(receipt.AnalyticsEventId);
         Assert.Equal("historical-lead-id", receipt.CanonicalEventId);
         Assert.Equal(Microsoft.EntityFrameworkCore.EntityState.Unchanged, db.Entry(receipt).State);

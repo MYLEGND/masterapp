@@ -13,16 +13,13 @@ public class ProductionController : Controller
 {
     private readonly ProductionService _production;
     private readonly EffectiveAgentContext _agentContext;
-    private readonly MetaSignalCrmOutcomeService _metaSignalOutcomes;
 
     public ProductionController(
         ProductionService production,
-        EffectiveAgentContext agentContext,
-        MetaSignalCrmOutcomeService metaSignalOutcomes)
+        EffectiveAgentContext agentContext)
     {
         _production = production;
         _agentContext = agentContext;
-        _metaSignalOutcomes = metaSignalOutcomes;
     }
 
     [HttpPost]
@@ -143,23 +140,9 @@ public class ProductionController : Controller
     public async Task<IActionResult> Update(Guid id, decimal amount, decimal personalAmount, ProductionStatus status, string? notes, string? returnUrl = null)
     {
         var agent = GetEffectiveAgent();
-        var existingProduction = await _production.GetByIdAsync(agent, id);
 
         await _production.UpdateAsync(User?.Identity?.Name ?? agent, agent, id, status, amount, personalAmount, notes);
 
-        if (existingProduction != null)
-        {
-            await _metaSignalOutcomes.RecordProductionOutcomeAsync(
-                existingProduction.Id,
-                agent,
-                existingProduction.Side,
-                status,
-                existingProduction.LeadId,
-                existingProduction.ClientUserId,
-                amount,
-                personalAmount,
-                notes);
-        }
         if (Request.Headers["Accept"].ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase))
             return Ok(new { ok = true });
         return Redirect(string.IsNullOrWhiteSpace(returnUrl) ? Url.Action("Index", "Leads")! : returnUrl);
@@ -175,7 +158,6 @@ public class ProductionController : Controller
     {
         var agent = GetEffectiveAgent();
         var record = await _production.UpsertAsync(User?.Identity?.Name ?? agent, agent, ProductionSide.Lead, status, amount, personalAmount, leadId, null, notes);
-        await _metaSignalOutcomes.RecordProductionOutcomeAsync(record.Id, agent, ProductionSide.Lead, status, leadId, null, amount, personalAmount, notes);
         if (Request.Headers["Accept"].ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase))
             return Ok(new { ok = true });
         return Redirect(string.IsNullOrWhiteSpace(returnUrl) ? Url.Action("Index", "Leads")! : returnUrl);
@@ -187,7 +169,6 @@ public class ProductionController : Controller
     {
         var agent = GetEffectiveAgent();
         var record = await _production.UpsertAsync(User?.Identity?.Name ?? agent, agent, ProductionSide.Client, status, amount, personalAmount, null, clientUserId, notes);
-        await _metaSignalOutcomes.RecordProductionOutcomeAsync(record.Id, agent, ProductionSide.Client, status, null, clientUserId, amount, personalAmount, notes);
         if (Request.Headers["Accept"].ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase))
             return Ok(new { ok = true });
         return Redirect(string.IsNullOrWhiteSpace(returnUrl) ? Url.Action("Index", "Clients")! : returnUrl);

@@ -213,6 +213,16 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             AnalyticsEvent? source = sourceId.HasValue
                 ? await db.AnalyticsEvents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sourceId.Value, cancellationToken)
                 : null;
+            var humanEligibility = source is null ? null : await CanonicalMarketingEligibility.ResolveAsync(db, source, cancellationToken);
+            if (humanEligibility?.Eligible != true)
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult {
+                    Attempted = false, Sent = false, Retryable = true, Status = humanEligibility?.Reason.StartsWith("measurement_consent", StringComparison.Ordinal) == true ? "blocked_consent" : humanEligibility?.Reason.StartsWith("production_", StringComparison.Ordinal) == true ? "blocked_outcome_reconciliation" : "blocked_human_evidence",
+                    Note = humanEligibility?.Reason ?? "canonical_source_missing"
+                });
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
             CanonicalMarketingIdentity? canonicalIdentity = null;
             if (source is not null &&
                 source.AgentTrackingProfileId == row.AgentTrackingProfileId &&
@@ -347,9 +357,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 source.CommerceBusinessId == row.CommerceBusinessId &&
                 CanonicalAdvertisingEventProjection.CanProjectServer(source)
                 ? await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, cancellationToken)
-                : sourceId.HasValue
-                    ? null
-                    : await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, row, cancellationToken);
+                : null;
             if (owner is null)
             {
                 row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
@@ -751,7 +759,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             };
         }
 
-        var attempt = int.TryParse(ReadMetadataString(existingJson, "metaServerAttemptCount"), out var prior) ? prior + 1 : 1;
+        var attempt = (int.TryParse(ReadMetadataString(existingJson, "metaServerAttemptCount"), out var prior) ? prior : 0) + (result.Attempted ? 1 : 0);
         var retryable = result.Retryable && !result.Sent && attempt < 8;
         metadata["metaServerAttemptCount"] = attempt;
         metadata["metaServerRetryable"] = retryable;

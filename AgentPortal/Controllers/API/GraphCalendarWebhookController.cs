@@ -30,7 +30,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMicrosoftCalendarConnectionAuthority _calendarConnections;
-    private readonly MetaSignalCrmOutcomeService _outcomes;
+    private readonly CanonicalCrmOutcomeService _outcomes;
 
     public GraphCalendarWebhookController(
         MasterAppDbContext db,
@@ -38,7 +38,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         IConfiguration configuration,
         IHttpClientFactory httpClientFactory,
         IMicrosoftCalendarConnectionAuthority calendarConnections,
-        MetaSignalCrmOutcomeService outcomes)
+        CanonicalCrmOutcomeService outcomes)
     {
         _db = db;
         _logger = logger;
@@ -484,7 +484,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         {
             LeadAppointmentStatus.Rescheduled => "Appointment rescheduled automatically from Microsoft calendar.",
             LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed => "Appointment booked automatically from Microsoft calendar.",
-            LeadAppointmentStatus.Completed => "Appointment completed automatically after scheduled end.",
+            LeadAppointmentStatus.Completed => "Appointment completion recorded.",
             LeadAppointmentStatus.Cancelled => "Appointment cancelled automatically from Microsoft calendar.",
             LeadAppointmentStatus.NoShow => "Appointment marked no-show.",
             _ => $"Appointment status synced automatically: {appointment.Status}."

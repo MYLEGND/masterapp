@@ -64,9 +64,9 @@ public sealed class CanonicalCrmOutcomeLineageTests
         });
         await db.SaveChangesAsync();
 
-        var service = new MetaSignalCrmOutcomeService(
+        var service = new CanonicalCrmOutcomeService(
             db,
-            NullLogger<MetaSignalCrmOutcomeService>.Instance);
+            NullLogger<CanonicalCrmOutcomeService>.Instance);
 
         var issuedRecordId = Guid.NewGuid();
         db.ProductionRecords.Add(new ProductionRecord { Id = issuedRecordId, AgentUserId = "agent-lineage", UpdatedUtc = originalTime });
@@ -211,9 +211,9 @@ public sealed class CanonicalCrmOutcomeLineageTests
         });
         await db.SaveChangesAsync();
 
-        var service = new MetaSignalCrmOutcomeService(
+        var service = new CanonicalCrmOutcomeService(
             db,
-            NullLogger<MetaSignalCrmOutcomeService>.Instance);
+            NullLogger<CanonicalCrmOutcomeService>.Instance);
 
         await service.RecordProductionOutcomeAsync(
             Guid.NewGuid(),

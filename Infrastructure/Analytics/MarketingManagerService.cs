@@ -250,5 +250,5 @@ public sealed class MarketingManagerService(
         return text;
     }
 
-    private static string Money(decimal value) => "$" + value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Money(decimal? value) => value.HasValue ? "$" + value.Value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : "unavailable";
 }

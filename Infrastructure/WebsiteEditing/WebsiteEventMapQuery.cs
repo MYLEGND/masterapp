@@ -72,14 +72,17 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
         var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking().Where(r => r.AnalyticsEventId.HasValue && sourceIds.Contains(r.AnalyticsEventId.Value)).ToListAsync(ct);
         var meta = await db.MetaSignalEvents.AsNoTracking().Where(m => m.WebsiteContentVersionId.HasValue && versionIds.Contains(m.WebsiteContentVersionId.Value)).ToListAsync(ct);
         var historicalReceipts = new Dictionary<long, MarketingDestinationDelivery>();
-        foreach (var source in events)
-        {
-            var mapping = MarketingConversionDestinationCatalog.ResolveOpenAi(CanonicalAdvertisingEventProjection.ResolveEventName(source));
-            if (mapping is null || receipts.Any(r => r.Provider == MarketingDestinationKeys.OpenAi && r.AnalyticsEventId == source.Id)) continue;
-            var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
-            if (owner is not null && await OpenAiConversionDispatcherHostedService.FindHistoricalReceiptAsync(db, owner, source, mapping.EventName, ct) is { } receipt)
-                historicalReceipts[source.Id] = receipt;
-        }
+        var legacyEventIds = meta.Select(m => m.EventId).ToArray();
+        var legacyReceipts = await db.MarketingDestinationDeliveries.AsNoTracking()
+            .Where(r => r.CanonicalSource == nameof(MetaSignalEvent) && r.Provider == MarketingDestinationKeys.OpenAi && legacyEventIds.Contains(r.CanonicalEventId))
+            .ToListAsync(ct);
+        foreach (var m in meta)
+            if (CanonicalAdvertisingEventProjection.ReadInt64(m.MetadataJson, "sourceAnalyticsEventId") is { } id &&
+                events.Any(e => e.Id == id && e.AgentTrackingProfileId == m.AgentTrackingProfileId && e.CommerceBusinessId == m.CommerceBusinessId))
+            {
+                var receipt = legacyReceipts.FirstOrDefault(r => r.CanonicalEventId == m.EventId);
+                if (receipt is not null) historicalReceipts[id] = receipt;
+            }
         var result = new List<Entry>();
         foreach (var state in states)
         {
@@ -90,9 +93,10 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
             var stateOwner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, state, ct);
             var stateEvents = new List<AnalyticsEvent>();
             if (stateOwner is not null)
-                foreach (var source in events.Where(e => e.WebsiteContentVersionId == version?.Id))
-                    if (await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct) == stateOwner)
-                        stateEvents.Add(source);
+                foreach (var group in events.Where(e => e.WebsiteContentVersionId == version?.Id)
+                    .GroupBy(e => new { e.CommerceBusinessId, e.AgentTrackingProfileId, e.AgentSlug, e.Host }))
+                    if (await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, group.First(), ct) == stateOwner)
+                        stateEvents.AddRange(group);
             void Add(string page, string element, string? label, string? action, WebsiteSignalBinding? binding, AnalyticsBehaviorContract? behavior, bool automatic)
             {
                 var eventName = behavior?.EventName ?? binding?.EventName ?? "unresolved";
@@ -104,8 +108,18 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                           (page == "*" || e.Path == page || e.PageKey == page))).ToArray();
                 var selectedIds = sources.Select(e => e.Id).ToHashSet();
                 var deliveries = receipts.Where(r => r.OwnerKey == stateOwner?.Key && r.AnalyticsEventId.HasValue && selectedIds.Contains(r.AnalyticsEventId.Value))
-                    .Concat(historicalReceipts.Where(pair => selectedIds.Contains(pair.Key)).Select(pair => pair.Value)).ToArray();
-                string Status(string provider) => deliveries.Where(r => r.Provider == provider).OrderByDescending(r => r.UpdatedUtc).FirstOrDefault()?.Status ?? "not_observed";
+                    .Concat(historicalReceipts.Where(pair => selectedIds.Contains(pair.Key)).Select(pair => pair.Value).Where(r => r.OwnerKey == stateOwner?.Key)).ToArray();
+                var requiresReconciliation = sources.Any(e => CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "providerCorrectionStatus") != null);
+                string Status(string provider)
+                {
+                    if (requiresReconciliation) return "requires_reconciliation";
+                    var rows = deliveries.Where(r => r.Provider == provider).ToArray();
+                    if (rows.Length == 0) return sources.Any(e => CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, provider + "ProjectionBlock") != null) ? "blocked" : "not_observed";
+                    if (rows.All(r => r.Status == "sent" && r.LastHttpStatusCode is >= 200 and < 300)) return "http_accepted";
+                    if (rows.All(r => r.Status == "sent")) return "receipt_unverified";
+                    if (rows.Any(r => r.Status == "sent")) return "partial_delivery";
+                    return rows.OrderByDescending(r => r.UpdatedUtc).First().Status;
+                }
                 var metaRows = meta.Where(m => m.WebsiteContentVersionId == version?.Id &&
                     (CanonicalAdvertisingEventProjection.ReadInt64(m.MetadataJson, "sourceAnalyticsEventId") is { } id &&
                      sources.Any(source => source.Id == id && source.AgentTrackingProfileId == m.AgentTrackingProfileId && source.CommerceBusinessId == m.CommerceBusinessId))).ToArray();
@@ -117,7 +131,7 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                     MarketingConversionDestinationCatalog.ResolveMeta(conversion)?.EventName ?? signal,
                     MarketingConversionDestinationCatalog.ResolveOpenAi(conversion)?.EventName ?? (behavior?.Key == "page_view" ? OpenAiMeasurementEventNames.PageViewed : null),
                     version?.Id, version is null ? "not_published" : sources.Length > 0 ? "observed" : "not_observed",
-                    metaRows.Any(m => m.MetaServerSent || m.MetaBrowserSent) ? "sent" : metaRows.Length > 0 ? "projected" : Status("meta"), Status("openai"),
+                    requiresReconciliation ? "requires_reconciliation" : metaRows.Length > 0 && metaRows.All(m => m.MetaServerSent && CanonicalAdvertisingEventProjection.ReadInt64(m.MetadataJson, "metaServerEventsReceived") > 0) ? "provider_accepted" : metaRows.Any(m => m.MetaServerSent) ? "partial_delivery" : metaRows.Any(m => CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerStatus")?.StartsWith("blocked_") == true) ? "blocked" : metaRows.Length > 0 ? "projected" : Status("meta"), Status("openai"),
                     binding?.Trigger ?? (automatic ? behavior?.AutomaticTrigger : "click") ?? "", version?.Revision ?? 0));
             }
             void Element(string page, string key, string? label, string? action, List<WebsiteSignalBinding> bindings)

@@ -69,14 +69,14 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
     private readonly MasterAppDbContext _db;
     private readonly IPublicBookingCalendarMatcher _calendarMatcher;
     private readonly IPublicBookingResolver _publicBookingResolver;
-    private readonly MetaSignalCrmOutcomeService _outcomes;
+    private readonly CanonicalCrmOutcomeService _outcomes;
     private readonly ILogger<PublicBookingConfirmationService> _logger;
 
     public PublicBookingConfirmationService(
         MasterAppDbContext db,
         IPublicBookingCalendarMatcher calendarMatcher,
         IPublicBookingResolver publicBookingResolver,
-        MetaSignalCrmOutcomeService outcomes,
+        CanonicalCrmOutcomeService outcomes,
         ILogger<PublicBookingConfirmationService> logger)
     {
         _db = db;

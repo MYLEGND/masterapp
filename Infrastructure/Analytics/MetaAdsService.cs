@@ -227,38 +227,14 @@ public sealed class MetaAdsService : IMetaAdsService
             .GroupBy(x => x.Name!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Id!, StringComparer.OrdinalIgnoreCase);
 
-        var filteredMetaSignals = await ApplyMetaSignalQualityFilterAsync(
-            BaseMetaSignalEvents(range, scope, scopedAgentIds),
-            range,
-            scope,
-            scopedAgentIds,
-            ct);
-
-        var events = await filteredMetaSignals
-            .Where(e =>
-                e.EventName == "QualifiedLead" ||
-                e.EventName == "AppointmentBooked" ||
-                e.EventName == "Schedule" ||
-                e.EventName == "ApplicationSubmitted" ||
-                e.EventName == "SubmitApplication" ||
-                e.EventName == "PolicyIssued" ||
-                e.EventName == "CompleteRegistration" ||
-                e.EventName == "PolicyPaid" ||
-                e.EventName == "Purchase")
-            .Select(e => new MetaSignalOutcomeSeed
-            {
-                EventName = e.EventName,
-                UtmCampaign = e.UtmCampaign,
-                UtmId = e.UtmId,
-                MetadataJson = e.MetadataJson
-            })
-            .ToListAsync(ct);
+        var events = CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(
+            await _analytics.LoadAttributedEventsAsync(range, scope, TrafficType.All, ct));
 
         var result = new Dictionary<string, CampaignOutcomeTotals>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var signal in events)
         {
-            var metaCampaignId = ReadResolvedAttributionString(signal.MetadataJson, "metaCampaignId");
+            var metaCampaignId = signal.MetaCampaignId ?? CanonicalAdvertisingEventProjection.ReadString(signal.MetadataJson, "metaCampaignId");
             var utmId = NormalizeCampaignKey(signal.UtmId) ?? ReadResolvedAttributionString(signal.MetadataJson, "utmId");
             var utmCampaign = NormalizeCampaignKey(signal.UtmCampaign) ?? ReadResolvedAttributionString(signal.MetadataJson, "utmCampaign");
 
@@ -280,7 +256,7 @@ public sealed class MetaAdsService : IMetaAdsService
                 result[matchedCampaignId] = totals;
             }
 
-            switch (signal.EventName)
+            switch (CanonicalMarketingOutcomeProjection.OutcomeName(signal))
             {
                 case "QualifiedLead":
                     totals.QualifiedLeads++;
@@ -300,7 +276,7 @@ public sealed class MetaAdsService : IMetaAdsService
                 case "PolicyPaid":
                 case "Purchase":
                     totals.PoliciesPaid++;
-                    totals.PaidPremium += ReadOutcomeValue(signal.MetadataJson);
+                    totals.PaidPremium += CanonicalMarketingOutcomeProjection.ReadMoney(signal.MetadataJson);
                     break;
             }
         }
@@ -308,51 +284,11 @@ public sealed class MetaAdsService : IMetaAdsService
         return result;
     }
 
-    private IQueryable<MetaSignalEvent> BaseMetaSignalEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
-        _db.MetaSignalEvents.AsNoTracking()
-            .Where(e => e.CreatedUtc >= range.FromUtc && e.CreatedUtc <= range.ToUtc)
-            .ApplySiteScope(scope)
-            .Where(AnalyticsQueryService.ScopePredicateMetaEvents(scope, scopedAgentIds));
-
     private IQueryable<WebsiteLead> BaseWebsiteLeadsWithoutQualityFilter(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
         _db.WebsiteLeads.AsNoTracking()
             .Where(l => !l.IsDeleted)
             .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
             .Where(LeadScopePredicate(scope, scopedAgentIds));
-
-    private async Task<IQueryable<MetaSignalEvent>> ApplyMetaSignalQualityFilterAsync(
-        IQueryable<MetaSignalEvent> query,
-        TimeRangeRequest range,
-        ScopeContext scope,
-        Guid[]? scopedAgentIds,
-        CancellationToken ct)
-    {
-        if (range.QualityMode == TrafficQualityMode.AllTraffic)
-            return query;
-
-        var rawAnalyticsEvents = await _analytics
-            .ScopedEvents(WithQualityMode(range, TrafficQualityMode.AllTraffic), scope, scopedAgentIds)
-            .ToListAsync(ct);
-        var filteredAnalyticsEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawAnalyticsEvents, range.QualityMode);
-
-        var visitorIds = filteredAnalyticsEvents
-            .Select(x => x.VisitorId)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var sessionIds = filteredAnalyticsEvents
-            .Select(x => x.SessionId)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (visitorIds.Count == 0 && sessionIds.Count == 0)
-            return query.Where(x => false);
-
-        return query.Where(x =>
-            (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
-            (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)));
-    }
 
     private static TimeRangeRequest WithQualityMode(TimeRangeRequest range, TrafficQualityMode qualityMode) => new()
     {
@@ -393,37 +329,6 @@ public sealed class MetaAdsService : IMetaAdsService
         {
             return null;
         }
-    }
-
-    private static decimal ReadOutcomeValue(string? metadataJson)
-    {
-        if (string.IsNullOrWhiteSpace(metadataJson))
-            return 0m;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(metadataJson);
-            var root = doc.RootElement;
-
-            foreach (var propertyName in new[] { "personalAmount", "PersonalAmount", "value", "Value", "amount", "Amount" })
-            {
-                if (!root.TryGetProperty(propertyName, out var property))
-                    continue;
-
-                if (property.ValueKind == JsonValueKind.Number && property.TryGetDecimal(out var numeric))
-                    return numeric;
-
-                if (property.ValueKind == JsonValueKind.String &&
-                    decimal.TryParse(property.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
-                    return parsed;
-            }
-        }
-        catch
-        {
-            return 0m;
-        }
-
-        return 0m;
     }
 
     private static WebsiteLeadMetadataSeed ReadLeadMetadata(string? metadataJson)
@@ -793,14 +698,6 @@ public sealed class MetaAdsService : IMetaAdsService
         public TimeZoneInfo TimeZone { get; set; } = TimeZoneInfo.Utc;
         public string TimeZoneLabel { get; set; } = "UTC";
     }
-    private sealed class MetaSignalOutcomeSeed
-    {
-        public string EventName { get; set; } = "";
-        public string? UtmCampaign { get; set; }
-        public string? UtmId { get; set; }
-        public string? MetadataJson { get; set; }
-    }
-
     private sealed class CampaignOutcomeTotals
     {
         public long QualifiedLeads { get; set; }

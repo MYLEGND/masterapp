@@ -213,6 +213,6 @@ public sealed class MetaSignalLadderAiRow
     public decimal? ProgressionRate { get; set; }
 }
 
-public sealed record AiChannelRow(string Channel, decimal Spend, long Impressions, long Clicks,
-    long Leads, long QualifiedLeads, long Appointments, long Customers, decimal Revenue, decimal Roas, string AttributionConfidence);
+public sealed record AiChannelRow(string Channel, decimal? Spend, long Impressions, long Clicks,
+    long Leads, long QualifiedLeads, long Appointments, long Customers, decimal Revenue, decimal? Roas, string AttributionConfidence);
 public sealed record AiDeviceRow(string Label, int Sessions, int Events, int CtaClicks, int FormStarts, int SubmitAttempts, int ConfirmedLeads);

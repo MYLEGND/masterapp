@@ -5270,7 +5270,8 @@ function escapeHtml(value) {
       : openAi.measurementCapabilityStatus === 'not_enabled' ? 'API provisioning not enabled'
       : openAi.measurementCapabilityStatus === 'not_authorized' ? 'API provisioning not authorized'
       : 'Not configured');
-    setOpenAiText('marketing-setup-openai-health', (openAiHealth.status || 'unknown').replaceAll('_', ' '));
+    setOpenAiText('marketing-setup-openai-health', (openAiHealth.status || 'unknown').replaceAll('_', ' ') +
+      (openAiHealth.otherDestinationReceipts > 0 ? `; ${openAiHealth.otherDestinationReceipts} receipts for previous destinations (${openAiHealth.otherDestinationUnresolved || 0} unresolved)` : ''));
     setOpenAiText('marketing-setup-openai-last-send', openAiHealth.lastSentUtc ? `Last sent ${new Date(openAiHealth.lastSentUtc).toLocaleString()}` : 'No successful delivery yet');
     setOpenAiText('marketing-setup-openai-pending', Number(openAiHealth.pending || 0).toLocaleString());
     setOpenAiText('marketing-setup-openai-retrying', Number(openAiHealth.retrying || 0).toLocaleString());
@@ -5809,7 +5810,7 @@ function escapeHtml(value) {
       setText('growth-economics-customers', marketingManagerNumber(data.customersAcquired));
       setText('growth-economics-cac', marketingManagerMoney(data.costPerCustomer));
       setText('growth-economics-revenue', marketingManagerMoney(data.totalRevenue));
-      setText('growth-economics-roas', `${Number(data.blendedRoas || 0).toFixed(2)}x`);
+      setText('growth-economics-roas', data.blendedRoas == null ? 'Unavailable' : `${Number(data.blendedRoas).toFixed(2)}x`);
       setText('growth-economics-pipeline', marketingManagerMoney(data.pipelineValue));
       grid.replaceChildren();
       for (const row of data.channels || []) {
@@ -5830,7 +5831,7 @@ function escapeHtml(value) {
           ['Customers', marketingManagerNumber(row.customersAcquired)],
           ['Cost / customer', marketingManagerMoney(row.costPerCustomer)],
           ['Revenue', marketingManagerMoney(row.revenue)],
-          ['ROAS', `${Number(row.roas || 0).toFixed(2)}x`],
+          ['ROAS', row.roas == null ? 'Unavailable' : `${Number(row.roas).toFixed(2)}x`],
           ['Pipeline', marketingManagerMoney(row.pipelineValue)]
         ]) {
           const item = document.createElement('div');
@@ -6419,7 +6420,8 @@ function escapeHtml(value) {
   }
 
   function marketingManagerMoney(value) {
-    const n = Number(value || 0);
+    if (value == null) return "Unavailable";
+    const n = Number(value);
     return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 });
   }
 
@@ -6478,7 +6480,7 @@ function escapeHtml(value) {
         ['Appointments', marketingManagerNumber(row.appointments)],
         ['Customers', marketingManagerNumber(row.customers)],
         ['Revenue', marketingManagerMoney(row.revenue)],
-        ['ROAS', `${Number(row.roas || 0).toFixed(2)}x`]
+        ['ROAS', row.roas == null ? 'Unavailable' : `${Number(row.roas).toFixed(2)}x`]
       ];
       for (const [label, value] of values) {
         const item = document.createElement('div');
