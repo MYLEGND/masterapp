@@ -48,19 +48,19 @@
     --legend-ai-navy-950: var(--legend-app-surface);
     --legend-ai-navy-925: var(--legend-app-surface-elevated);
     --legend-ai-navy-900: var(--legend-app-surface-elevated);
-    --legend-ai-navy-850: var(--legend-design-navyElevated, #3159bf);
-    --legend-ai-response: var(--legend-design-aiResponseRoyal, var(--legend-ai-navy-850));
-    --legend-ai-on-response: var(--legend-design-onNavy, #fff);
+    --legend-ai-navy-850: var(--legend-app-surface-elevated);
+    --legend-ai-response: var(--legend-app-surface-elevated);
+    --legend-ai-on-response: var(--legend-app-on-dark);
     --legend-ai-gold-800: var(--legend-app-accent);
     --legend-ai-gold-700: var(--legend-app-accent);
     --legend-ai-gold-600: var(--legend-app-accent-bright);
     --legend-ai-gold-500: var(--legend-app-accent-bright);
     --legend-ai-gold-400: var(--legend-app-accent-bright);
     --legend-ai-gold-300: var(--legend-design-goldSoft, #f6e8bf);
-    --legend-ai-ivory: var(--legend-app-panel-soft);
-    --legend-ai-paper: var(--legend-app-panel);
-    --legend-ai-text: var(--web-ink);
-    --legend-ai-muted: var(--web-muted);
+    --legend-ai-ivory: var(--legend-app-surface);
+    --legend-ai-paper: var(--legend-app-surface-elevated);
+    --legend-ai-text: var(--legend-app-on-dark);
+    --legend-ai-muted: var(--legend-app-on-dark-muted);
     --legend-ai-native: var(--legend-design-contactConnected, #4ae28b);
     --legend-ai-provider: var(--legend-design-royal, #234284);
     --legend-ai-provider-surface: var(--legend-design-brandBlueSurface, #e0ebff);
@@ -622,7 +622,7 @@
     min-height: 0;
     display: grid;
     grid-template-rows: 52px minmax(0,1fr) auto auto;
-    background: #fffefa;
+    background: var(--legend-app-surface);
 }
 
 .legend-founder-ai-modebar {
@@ -631,8 +631,8 @@
     justify-content: space-between;
     gap: 8px;
     padding: 7px 18px;
-    border-bottom: 1px solid var(--legend-ai-line);
-    background: #fffefa;
+    border-bottom: 1px solid var(--legend-app-control-line);
+    background: var(--legend-app-surface);
 }
 
 .legend-founder-ai-mode-tabs {
@@ -651,7 +651,7 @@
     border: 1px solid transparent;
     border-radius: 999px;
     background: transparent;
-    color: #667085;
+    color: var(--legend-app-on-dark-muted);
     font-size: .72rem;
     font-weight: 850;
     cursor: pointer;
@@ -692,8 +692,8 @@
     padding: 6px 10px;
     border: 1px solid rgba(139,82,7,.20);
     border-radius: 12px;
-    background: rgba(255,255,255,.72);
-    color: #667085;
+    background: var(--legend-app-control);
+    color: var(--legend-app-on-dark-muted);
     cursor: pointer;
 }
 
@@ -765,10 +765,10 @@
     margin: 0 auto 18px;
     border: 1px solid rgba(221, 169, 66, .38);
     border-radius: 50%;
-    background: #fff;
+    background: var(--legend-app-surface);
     box-shadow:
-        0 18px 48px rgba(8,17,31,.12),
-        0 0 0 7px rgba(219, 166, 54, .035);
+        0 18px 48px rgba(0,0,0,.28),
+        0 0 0 7px color-mix(in srgb,var(--legend-app-accent) 5%,transparent);
 }
 
 .legend-founder-ai-welcome-mark img {
@@ -822,8 +822,8 @@
     overflow: hidden;
     border: 1px solid rgba(211, 159, 45, .30);
     border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 6px 18px rgba(7,17,31,.07);
+    background: var(--legend-app-surface);
+    box-shadow: 0 6px 18px rgba(0,0,0,.18);
 }
 
 .legend-founder-ai-message-mark img {
@@ -856,13 +856,13 @@
 .legend-founder-ai-message.is-assistant .legend-founder-ai-bubble {
     max-width: min(82%, 860px);
     padding: 12px 14px 13px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-on-response) 24%, transparent);
+    border: 1px solid var(--legend-app-control-line);
     border-radius: 16px 16px 16px 5px;
-    background: var(--legend-ai-response);
-    color: var(--legend-ai-on-response);
+    background: linear-gradient(145deg,var(--legend-app-surface-elevated),var(--legend-app-surface));
+    color: var(--legend-app-on-dark);
     box-shadow:
-        0 12px 28px color-mix(in srgb, var(--legend-ai-response) 28%, transparent),
-        inset 0 1px 0 color-mix(in srgb, var(--legend-ai-on-response) 20%, transparent);
+        0 12px 28px rgba(0,0,0,.22),
+        inset 0 1px 0 rgba(255,255,255,.05);
 }
 
 .legend-founder-ai-response-authority {
@@ -871,7 +871,7 @@
     padding: 4px 7px;
     border: 1px solid rgba(102,112,133,.22);
     border-radius: 999px;
-    color: #667085;
+    color: var(--legend-app-on-dark-muted);
     background: rgba(102,112,133,.06);
     font-size: .56rem;
     font-weight: 850;
@@ -902,8 +902,8 @@
     display: flex;
     align-items: center;
     padding: 0 24px;
-    color: #8a6a20;
-    background: rgba(255,254,250,.94);
+    color: var(--legend-app-accent-bright);
+    background: var(--legend-app-surface);
     font-size: .64rem;
     font-weight: 800;
     transition: padding .15s ease, min-height .15s ease;
@@ -918,8 +918,8 @@
 
 .legend-founder-ai-composer {
     padding: 10px 16px 11px;
-    border-top: 1px solid var(--legend-ai-line);
-    background: #fffefa;
+    border-top: 1px solid var(--legend-app-control-line);
+    background: var(--legend-app-surface);
 }
 
 .legend-founder-ai-composer form {
@@ -932,12 +932,12 @@
     align-items: flex-end;
     gap: 8px;
     padding: 6px 6px 6px 14px;
-    border: 1px solid rgba(202, 150, 39, .47);
+    border: 1px solid var(--legend-app-control-line);
     border-radius: 18px;
-    background: #fff;
+    background: var(--legend-app-surface-elevated);
     box-shadow:
-        0 8px 28px rgba(11,22,43,.065),
-        inset 0 1px 0 rgba(255,255,255,.80);
+        0 8px 28px rgba(0,0,0,.18),
+        inset 0 1px 0 rgba(255,255,255,.05);
     transition: border-color .15s ease, box-shadow .15s ease;
 }
 
@@ -964,7 +964,7 @@
 }
 
 .legend-founder-ai-input-wrap textarea::placeholder {
-    color: #929aa7;
+    color: var(--legend-app-on-dark-muted);
 }
 
 .legend-founder-ai-send {
@@ -1008,7 +1008,7 @@
     justify-content: space-between;
     gap: 14px;
     padding: 6px 4px 0;
-    color: #8b93a0;
+    color: var(--legend-app-on-dark-muted);
     font-size: .56rem;
     font-weight: 700;
 }
@@ -1023,7 +1023,7 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    color: #72541a;
+    color: var(--legend-app-accent-bright);
     cursor: pointer;
 }
 
