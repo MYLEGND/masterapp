@@ -760,6 +760,32 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public void ChatGptPlanResponsesAdapter_UsesCanonicalBoundedToolLoop()
+    {
+        var root = RepoRoot();
+        var adapter = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "Engineering", "ChatGptPlanResponsesAdapter.cs"));
+        var authority = File.ReadAllText(Path.Combine(
+            root, "AgentPortal", "Services", "LegendFounderToolAuthority.cs"));
+
+        Assert.Contains("ProjectToolSchemas(context.AllowedTools)", adapter, StringComparison.Ordinal);
+        Assert.Contains("RunWithToolsAsync", adapter, StringComparison.Ordinal);
+        Assert.Contains("max_tool_calls", adapter, StringComparison.Ordinal);
+        Assert.Contains("MaxToolIterations", adapter, StringComparison.Ordinal);
+        Assert.Contains("MaxToolCallsPerTurn", adapter, StringComparison.Ordinal);
+        Assert.Contains("function_call_output", adapter, StringComparison.Ordinal);
+        Assert.Contains("context.AllowedTools.Contains(name", adapter, StringComparison.Ordinal);
+        Assert.Contains("orchestrator.InspectRepositoryAsync", adapter, StringComparison.Ordinal);
+        Assert.Contains("orchestrator.PrepareRepairAsync", adapter, StringComparison.Ordinal);
+        Assert.Contains("engineering_tool_call_budget_exhausted", adapter, StringComparison.Ordinal);
+        Assert.Contains("engineering_tool_iteration_budget_exhausted", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("GithubClient", adapter, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("GitHubClient", adapter, StringComparison.Ordinal);
+        Assert.Contains("internal static IReadOnlyList<object> ProjectToolSchemas", authority, StringComparison.Ordinal);
+        Assert.Contains("BuildFounderTools()", authority, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ChatGptPlanResponsesAdapter_HasNoAgentsApiOrApiKeyFallback()
     {
         var source = File.ReadAllText(Path.Combine(SourceRoot(), "AgentPortal", "Services", "Engineering", "ChatGptPlanResponsesAdapter.cs"));
