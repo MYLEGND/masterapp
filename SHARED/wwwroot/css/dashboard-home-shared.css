@@ -9417,3 +9417,165 @@ header .legend-global-nav .container-fluid {
         letter-spacing: -.015em;
     }
 }
+
+
+/* Canonical Note to Self modal component */
+.note-self-overlay[hidden] { display: none; }
+
+.note-self-modal {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.note-self-head {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--legend-app-control-line);
+    background: linear-gradient(180deg,var(--legend-app-surface-elevated),var(--legend-app-surface));
+}
+
+.note-self-title { margin: 0; color: var(--legend-app-on-dark); font-weight: 900; letter-spacing: .01em; }
+.note-self-sub { margin: 4px 0 0; color: var(--legend-app-on-dark-muted); font-size: 13px; }
+
+.note-self-toolbar {
+    display: grid;
+    flex: 0 0 auto;
+    grid-template-columns: 1.2fr .9fr 1.15fr auto;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--legend-app-control-line);
+    background: var(--legend-app-surface);
+}
+
+.note-self-field {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--legend-app-on-dark-muted);
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.note-self-field-lead { min-width: 220px; }
+
+.note-self-field input,
+.note-self-field select,
+.note-self-col textarea {
+    border: 1px solid var(--legend-app-control-line);
+    border-radius: var(--legend-app-radius-compact);
+    background: var(--legend-app-control);
+    color: var(--legend-app-on-dark);
+    font: inherit;
+    box-shadow: var(--legend-inset);
+}
+
+.note-self-field input,
+.note-self-field select {
+    min-height: 38px;
+    padding: 0 10px;
+    font-weight: 750;
+}
+
+.note-self-field input[readonly] {
+    background: var(--legend-app-surface);
+    color: var(--legend-app-on-dark-muted);
+}
+
+.note-self-doc {
+    display: grid;
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: 1fr 1fr;
+    overflow-y: auto;
+    background: var(--legend-app-surface);
+}
+
+.note-self-col {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+}
+
+.note-self-col::before {
+    content: attr(data-note-prefix);
+    position: absolute;
+    top: 52px;
+    left: 14px;
+    z-index: 1;
+    color: var(--legend-app-accent-bright);
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.2;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.note-self-col.has-note-prefix::before { opacity: 1; }
+
+.note-self-col h4 {
+    margin: 0;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--legend-app-control-line);
+    background: var(--legend-app-surface-elevated);
+    color: var(--legend-app-on-dark);
+    font-size: 14px;
+    font-weight: 850;
+}
+
+.note-self-col:first-child {
+    border-right: 1px solid var(--legend-app-control-line);
+}
+
+.note-self-col textarea {
+    flex: 1 1 auto;
+    min-height: 260px;
+    padding: 32px 12px 12px;
+    resize: none;
+    border-width: 0;
+    border-radius: 0;
+    -webkit-text-fill-color: var(--legend-app-on-dark);
+}
+
+.note-self-col textarea.note-self-prefix-only {
+    color: var(--legend-app-accent-bright);
+    -webkit-text-fill-color: var(--legend-app-accent-bright);
+}
+
+.note-self-col textarea::placeholder { color: var(--legend-app-on-dark-muted); }
+
+.note-self-col textarea:focus {
+    outline: 0;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb,var(--legend-app-accent) 42%,transparent);
+}
+
+.note-self-foot {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    min-height: 34px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--legend-app-control-line);
+    background: var(--legend-app-surface-elevated);
+    color: var(--legend-app-on-dark-muted);
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.note-self-foot.is-bad { color: #ff8b8b; }
+
+@media (max-width: 900px) {
+    .note-self-toolbar { grid-template-columns: 1fr; }
+    .note-self-field-lead { min-width: 0; }
+    .note-self-doc { grid-template-columns: 1fr; }
+    .note-self-col:first-child { border-right: 0; border-bottom: 1px solid var(--legend-app-control-line); }
+}
