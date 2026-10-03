@@ -163,7 +163,7 @@ body.legend-app.legend-modal-active > .modal-backdrop {
     ) {
         padding: .72rem 1rem;
         border-top: 1px solid var(--legend-modal-line);
-        background: color-mix(in srgb,var(--legend-modal-surface-raised) 92%,#fff 8%);
+        background: linear-gradient(180deg,var(--legend-modal-surface-raised),var(--legend-modal-surface));
         color: var(--legend-modal-ink);
     }
 
@@ -176,9 +176,9 @@ body.legend-app.legend-modal-active > .modal-backdrop {
     ) {
         border: 1px solid var(--legend-modal-line);
         border-radius: var(--legend-app-radius-compact);
-        background: rgba(255,255,255,.055);
+        background: var(--legend-app-control);
         color: var(--legend-modal-ink);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.045);
+        box-shadow: var(--legend-inset);
     }
 
     html[data-legend-modal-region] body.legend-app [data-legend-modal-panel] :is(
