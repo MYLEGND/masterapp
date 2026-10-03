@@ -91,20 +91,22 @@
   --legend-desktop-card-pad:clamp(.72rem,.9vw,1rem);
   --legend-desktop-gap:clamp(.48rem,.7vw,.78rem);
 
-  --legend-modal-surface:#0b1426;
-  --legend-modal-surface-raised:#101d33;
-  --legend-modal-surface-subtle:#17243a;
-  --legend-modal-chrome:#12213b;
-  --legend-modal-chrome-deep:#08111f;
-  --legend-modal-ink:#f6f8fb;
-  --legend-modal-muted:#aeb9c9;
-  --legend-modal-line:rgba(255,255,255,.11);
-  --legend-modal-line-strong:rgba(210,166,74,.46);
-  --legend-modal-gold:#b88a31;
-  --legend-modal-gold-strong:#d3a84f;
-  --legend-modal-gold-soft:rgba(211,168,79,.12);
-  --legend-modal-on-gold:#0a1220;
-  --legend-modal-shadow:0 30px 80px rgba(0,5,14,.56),0 8px 26px rgba(0,5,14,.34),inset 0 1px 0 rgba(255,255,255,.055);
+  /* Modals do not own a second color theme. They consume the same canonical
+     authenticated-page navy/gold material authority as the main application. */
+  --legend-modal-surface:var(--legend-app-surface);
+  --legend-modal-surface-raised:var(--legend-app-surface-elevated);
+  --legend-modal-surface-subtle:var(--legend-app-control);
+  --legend-modal-chrome:var(--legend-app-surface-elevated);
+  --legend-modal-chrome-deep:var(--legend-app-surface);
+  --legend-modal-ink:var(--legend-app-on-dark);
+  --legend-modal-muted:var(--legend-app-on-dark-muted);
+  --legend-modal-line:color-mix(in srgb,var(--legend-app-on-dark) 12%,transparent);
+  --legend-modal-line-strong:var(--legend-app-control-line);
+  --legend-modal-gold:var(--legend-app-accent);
+  --legend-modal-gold-strong:var(--legend-app-accent-bright);
+  --legend-modal-gold-soft:color-mix(in srgb,var(--legend-app-accent) 14%,transparent);
+  --legend-modal-on-gold:var(--legend-app-surface);
+  --legend-modal-shadow:var(--legend-shadow-strong);
 
   --legend-desktop-modal-gutter:clamp(18px,2vw,32px);
   --legend-desktop-modal-width:min(1540px,calc(100vw - (2 * var(--legend-desktop-modal-gutter))));
