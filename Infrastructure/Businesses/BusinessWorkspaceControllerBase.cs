@@ -718,6 +718,8 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                     retrying = openAiHealth.RetryableDeliveries,
                     failed = openAiHealth.FailedDeliveries,
                     sent = openAiHealth.SentDeliveries,
+                    otherDestinationReceipts = openAiHealth.OtherDestinationReceipts,
+                    otherDestinationUnresolved = openAiHealth.OtherDestinationUnresolved,
                     lastSentUtc = openAiHealth.LastSentUtc,
                     providerMonitoringAvailable = openAiHealth.ProviderMonitoringAvailable,
                     recentProviderEvents = openAiHealth.RecentProviderEvents

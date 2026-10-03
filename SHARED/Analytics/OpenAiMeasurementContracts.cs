@@ -74,4 +74,6 @@ public sealed record OpenAiMeasurementHealthSnapshot(
     DateTime? LastSentUtc,
     bool ProviderMonitoringAvailable,
     int RecentProviderEvents,
-    string Status);
+    string Status,
+    int OtherDestinationReceipts = 0,
+    int OtherDestinationUnresolved = 0);

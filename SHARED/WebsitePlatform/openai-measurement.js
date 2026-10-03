@@ -116,7 +116,11 @@
     return true;
   }
 
+  const projectedCanonicalIds = new Set();
   function trackCanonical(body, pixelId) {
+    if (body?.MarketingEligibility?.eligible !== true) return false;
+    const projectionKey = pixelId + ":" + body.ClientEventId;
+    if (projectedCanonicalIds.has(projectionKey)) return false;
     if (!body || body.IsInternal === true) return false;
     let metadata = {}; try { metadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
     const bindings = metadata.configuredSignalBindings;
@@ -126,6 +130,8 @@
     const eventId = body.ClientEventId || body.EventId || null;
     switch (body.EventType) {
       case 'page_view':
+        if (!measurementConsentAllowed() || !initializedPixels.has(pixelId)) return false;
+        projectedCanonicalIds.add(projectionKey);
         return measure(
           'page_viewed',
           {
@@ -145,7 +151,6 @@
   window.LegendOpenAiMeasurement = Object.freeze({
     configure,
     setConsent,
-    measure,
     trackCanonical
   });
 })();

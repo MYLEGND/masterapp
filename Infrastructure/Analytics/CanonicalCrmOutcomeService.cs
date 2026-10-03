@@ -12,17 +12,98 @@ using Shared.Crm;
 
 namespace Infrastructure.Analytics;
 
-public sealed class MetaSignalCrmOutcomeService
+public sealed class CanonicalCrmOutcomeService
 {
     private readonly MasterAppDbContext _db;
-    private readonly ILogger<MetaSignalCrmOutcomeService> _logger;
+    private readonly ILogger<CanonicalCrmOutcomeService> _logger;
 
-    public MetaSignalCrmOutcomeService(
+    public CanonicalCrmOutcomeService(
         MasterAppDbContext db,
-        ILogger<MetaSignalCrmOutcomeService> logger)
+        ILogger<CanonicalCrmOutcomeService> logger)
     {
         _db = db;
         _logger = logger;
+    }
+
+    /// <summary>One transaction owns every production mutation and its immutable reporting facts.
+    /// Controller authorization remains in the caller; no caller writes production directly.</summary>
+    public static async Task SaveProductionChangesAsync(MasterAppDbContext db, CancellationToken ct = default)
+    {
+        db.ChangeTracker.DetectChanges();
+        var changes = db.ChangeTracker.Entries<ProductionRecord>()
+            .Where(e => e.State is EntityState.Added or EntityState.Deleted || e.State == EntityState.Modified &&
+                (e.Property(x => x.Status).IsModified || e.Property(x => x.Amount).IsModified ||
+                 e.Property(x => x.PersonalAmount).IsModified || e.Property(x => x.LeadId).IsModified ||
+                 e.Property(x => x.ClientUserId).IsModified))
+            .Select(e => (Record: e.Entity, Deleted: e.State == EntityState.Deleted)).ToArray();
+        foreach (var change in changes)
+            if (!Enum.IsDefined(change.Record.Status) || change.Record.Amount < 0 || change.Record.PersonalAmount < 0)
+                throw new ArgumentException("Production status and monetary amounts must be valid.");
+        await using var transaction = db.Database.IsRelational() && db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(ct) : null;
+        var authority = new CanonicalCrmOutcomeService(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<CanonicalCrmOutcomeService>.Instance);
+        // Stage deletion snapshots while the owned record and its lineage still exist.
+        foreach (var change in changes.Where(c => c.Deleted))
+            await authority.StageProductionSnapshotAsync(change.Record, true, ct);
+        await db.SaveChangesAsync(ct);
+        foreach (var change in changes.Where(c => !c.Deleted))
+        {
+            var r = change.Record;
+            await authority.RecordProductionOutcomeAsync(r.Id, r.AgentUserId, r.Side, r.Status, r.LeadId,
+                r.ClientUserId, r.Amount, r.PersonalAmount, r.Notes, ct);
+            await authority.StageProductionSnapshotAsync(r, false, ct);
+        }
+        await db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
+    }
+
+    private async Task StageProductionSnapshotAsync(ProductionRecord record, bool deleted, CancellationToken ct)
+    {
+        var recordKey = record.Id.ToString();
+        var exactRecordProperty = "\"productionRecordId\":\"" + recordKey + "\"";
+        var prior = await _db.AnalyticsEvents.AsNoTracking()
+            .Where(e => (e.TrackingVersion == "crm-production-authority-v1" || e.TrackingVersion == "crm-production-state-v1") && e.MetadataJson != null && e.MetadataJson.Contains(exactRecordProperty))
+            .OrderByDescending(e => e.EventUtc).ThenByDescending(e => e.Id).FirstOrDefaultAsync(ct);
+        if (prior is null) return; // No fabricated acquisition identity for historical untracked production.
+        var eventName = record.Status switch { ProductionStatus.Submitted => "ApplicationSubmitted", ProductionStatus.Issued => "PolicyIssued", _ => "PolicyPaid" };
+        if (!deleted && CanonicalAdvertisingEventProjection.ReadBoolean(prior.MetadataJson, "productionDeleted") != true &&
+            prior.EventType == eventName && CanonicalMarketingOutcomeProjection.ReadMoney(prior.MetadataJson) == record.PersonalAmount &&
+            CanonicalAdvertisingEventProjection.ReadString(prior.MetadataJson, "clientUserId") == record.ClientUserId &&
+            CanonicalAdvertisingEventProjection.ReadString(prior.MetadataJson, "workstationLeadId") == record.LeadId)
+            return; // The newly written canonical fact already represents the current state.
+        var snapshot = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+        {
+            EventName = eventName,
+            EventUtc = prior.EventUtc, IsServerAuthority = true,
+            AgentTrackingProfileId = prior.AgentTrackingProfileId, AgentSlug = prior.AgentSlug, CommerceBusinessId = prior.CommerceBusinessId,
+            WebsiteContentVersionId = prior.WebsiteContentVersionId, WebsiteBindingId = prior.WebsiteBindingId,
+            SessionId = prior.SessionId, VisitorId = prior.VisitorId, Host = prior.Host, Environment = prior.Environment, IsInternal = prior.IsInternal,
+            Url = prior.Url, PageKey = prior.PageKey, ElementKey = prior.ElementKey, Referrer = prior.Referrer, ReferrerHost = prior.ReferrerHost,
+            UtmSource = prior.UtmSource, UtmMedium = prior.UtmMedium, UtmCampaign = prior.UtmCampaign, UtmId = prior.UtmId,
+            UtmTerm = prior.UtmTerm, UtmContent = prior.UtmContent, MetaCampaignId = prior.MetaCampaignId, MetaAdSetId = prior.MetaAdSetId,
+            MetaAdId = prior.MetaAdId, Oppref = prior.Oppref, Fbclid = prior.Fbclid, UserAgent = prior.UserAgent, IpAddress = prior.IpAddress,
+            WebDriver = prior.WebDriver, IsHeadless = prior.IsHeadless, HumanInteractionCount = prior.HumanInteractionCount,
+            EngagedMilliseconds = prior.EngagedMilliseconds, DwellMilliseconds = prior.DwellMilliseconds,
+            MouseMoveCount = prior.MouseMoveCount, ScrollPercent = prior.ScrollPercent
+        });
+        snapshot.ClientEventId = snapshot.EventId;
+        snapshot.Path = prior.Path;
+        snapshot.TrackingVersion = "crm-production-state-v1";
+        var metadata = JsonNode.Parse(prior.MetadataJson ?? "{}")!.AsObject();
+        // Top-level canonical fields override historical nested values in the read projection.
+        metadata["productionRecordId"] = recordKey;
+        metadata["productionSnapshot"] = true; metadata["productionDeleted"] = deleted;
+        metadata["productionStatus"] = record.Status.ToString();
+        metadata["clientUserId"] = record.ClientUserId; metadata["workstationLeadId"] = record.LeadId;
+        metadata["valueCents"] = decimal.ToInt64(decimal.Round(record.PersonalAmount * 100m, 0, MidpointRounding.AwayFromZero));
+        metadata["currency"] = "USD";
+        metadata["canonicalOutcomeEventId"] = "production-state:" + snapshot.EventId.ToString("N");
+        metadata["measurementServerAuthorityEligible"] = false;
+        metadata["metaServerAuthorityEligible"] = false;
+        metadata["reportingOnlyReason"] = "production_state_reconciliation";
+        metadata["providerCorrectionStatus"] = "requires_reconciliation_if_previously_delivered";
+        snapshot.MetadataJson = metadata.ToJsonString();
+        UnifiedAnalyticsWriter.Write(_db, snapshot);
     }
 
     public async Task RecordAppointmentOutcomeAsync(
@@ -325,7 +406,7 @@ public sealed class MetaSignalCrmOutcomeService
         }
 
         _logger.LogInformation(
-            "MetaSignal CRM outcome recorded event={EventName} side={Side} contact={ContactKey} amount={Amount}",
+            "Canonical CRM outcome recorded event={EventName} side={Side} contact={ContactKey} amount={Amount}",
             row.EventType,
             side,
             contactKey,

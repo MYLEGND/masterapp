@@ -79,7 +79,7 @@ public sealed record CanonicalOutcomeTotals(
 
 public sealed record ChannelPerformanceRow(
     string Channel,
-    decimal Spend,
+    decimal? Spend,
     long Impressions,
     long Clicks,
     long Leads,
@@ -87,7 +87,7 @@ public sealed record ChannelPerformanceRow(
     long Appointments,
     long Customers,
     decimal Revenue,
-    decimal Roas,
+    decimal? Roas,
     string AttributionConfidence,
     string AttributionBasis);
 

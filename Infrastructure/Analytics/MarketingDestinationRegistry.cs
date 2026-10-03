@@ -91,11 +91,11 @@ public sealed class MetaMarketingDestination(MarketingConnectionStore connection
             !MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(eventName, outcome.MetadataJson))
             return Decision(true, true, "canonical_outcome_not_dispatch_eligible");
 
-        return Decision(true, true, "eligible");
+        return Decision(true, true, "mapping_ready");
     }
 
     private MarketingDestinationDecision Decision(bool supported, bool configured, string reason) =>
-        new(Key, supported, configured, supported && configured && reason == "eligible", reason);
+        new(Key, supported, configured, supported && configured && reason == "mapping_ready", reason);
 }
 
 /// <summary>
@@ -119,16 +119,16 @@ public sealed class OpenAiMarketingDestination(
 
         var destination = MarketingConversionDestinationCatalog.ResolveOpenAi(outcome.NormalizedEventName);
         if (!outcome.IsServerAuthority || destination is null)
-            return new(Key, Supported: false, Configured: false, Eligible: false, Reason: "event_not_supported");
+            return new(Key, Supported: false, Configured: false, MappingReady: false, Reason: "event_not_supported");
 
         var connection = await connections.GetAsync(owner, cancellationToken);
         if (!connection.Connected)
-            return new(Key, Supported: true, Configured: false, Eligible: false, Reason: "destination_not_configured");
+            return new(Key, Supported: true, Configured: false, MappingReady: false, Reason: "destination_not_configured");
 
         var configured = connection.PixelConfigured && connection.ConversionsApiConfigured;
         if (!configured)
-            return new(Key, Supported: true, Configured: false, Eligible: false, Reason: "destination_not_ready");
+            return new(Key, Supported: true, Configured: false, MappingReady: false, Reason: "destination_not_ready");
 
-        return new(Key, Supported: true, Configured: true, Eligible: true, Reason: "eligible");
+        return new(Key, Supported: true, Configured: true, MappingReady: true, Reason: "mapping_ready");
     }
 }

@@ -628,7 +628,7 @@
             <div class="wa-quality-filter">
               <label for="traffic-quality-mode" class="wa-quality-label">Traffic Quality</label>
               <select id="traffic-quality-mode" class="wa-quality-select">
-                <option value="real_human_traffic" selected="@(initialQualityMode == "real_human_traffic" ? "selected" : null)">Real Human Traffic</option>
+                <option value="real_human_traffic" selected="@(initialQualityMode == "real_human_traffic" ? "selected" : null)">High-confidence Human Traffic</option>
                 <option value="likely_human" selected="@(initialQualityMode == "likely_human" ? "selected" : null)">Likely Human</option>
                 <option value="reviewed_needed" selected="@(initialQualityMode == "reviewed_needed" ? "selected" : null)">Reviewed Needed</option>
                 <option value="suspicious_activity" selected="@(initialQualityMode == "suspicious_activity" ? "selected" : null)">Suspicious Activity</option>
@@ -636,6 +636,7 @@
                 <option value="internal_qa" selected="@(initialQualityMode == "internal_qa" ? "selected" : null)">Internal / QA</option>
                 <option value="all_traffic" selected="@(initialQualityMode == "all_traffic" ? "selected" : null)">All Traffic</option>
               </select>
+              <div class="small text-muted mt-2">Behavior-based estimates, not verified identity. Advertising requires strong human evidence and consent.</div>
               <div id="traffic-quality-empty-state" class="small text-warning mt-2" role="status" aria-live="polite" hidden>No real human traffic detected</div>
             </div>
 

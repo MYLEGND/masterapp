@@ -110,7 +110,7 @@ public sealed class OpenAiConversionsApiService(HttpClient httpClient) : IOpenAi
             using var response = await httpClient.SendAsync(request, cancellationToken);
             var body = await ReadBodyAsync(response, cancellationToken);
             if (response.IsSuccessStatusCode)
-                return new(true, true, false, (int)response.StatusCode, "sent", ProviderReceiptJson: body);
+                return new(true, !validateOnly, false, (int)response.StatusCode, validateOnly ? "validated" : "sent", ProviderReceiptJson: body);
 
             var retryable = response.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests ||
                             (int)response.StatusCode >= 500;
@@ -338,6 +338,12 @@ public sealed class OpenAiConversionDispatcherHostedService(
         var now = DateTime.UtcNow;
         var cutoff = now.AddDays(-7);
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        // Expiry is reconciled independently of the bounded source scan.
+        await db.MarketingDestinationDeliveries.Where(d => d.Provider == MarketingDestinationKeys.OpenAi &&
+            d.Channel == "server" && d.CanonicalSource == nameof(AnalyticsEvent) && d.Status != "sent" && d.Status != "permanent_failure" &&
+            d.AnalyticsEventId.HasValue && db.AnalyticsEvents.Any(e => e.Id == d.AnalyticsEventId && e.EventUtc < cutoff))
+            .ExecuteUpdateAsync(u => u.SetProperty(d => d.Status, "permanent_failure")
+                .SetProperty(d => d.ErrorCode, "event_delivery_window_expired").SetProperty(d => d.NextAttemptUtc, (DateTime?)null), ct);
         var candidates = await db.AnalyticsEvents.AsNoTracking()
             .Where(row => row.Id > _scanAfterId && row.EventUtc >= cutoff && row.MetadataJson != null &&
                 (row.MetadataJson.Contains("measurementServerAuthorityEligible") || row.MetadataJson.Contains("metaServerAuthorityEligible")))
@@ -348,17 +354,18 @@ public sealed class OpenAiConversionDispatcherHostedService(
         {
             if (!CanonicalAdvertisingEventProjection.CanProjectServer(source)) continue;
             var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
-            if (owner is null) continue;
+            if (owner is null) { await CanonicalMarketingEligibility.RecordBlockAsync(db, source, "openai", "owner_unresolved", ct); continue; }
             var identity = await CanonicalMarketingIdentityResolver.ResolveAsync(db, source, ct: ct);
             var user = OpenAiConversionUserMapper.Map(identity);
-            if (!OpenAiMeasurementEventMapper.TryMap(source, user, out var conversion)) continue;
+            if (!OpenAiMeasurementEventMapper.TryMap(source, user, out var conversion)) {
+                await CanonicalMarketingEligibility.RecordBlockAsync(db, source, "openai", "event_mapping_or_source_url_missing", ct); continue;
+            }
             var providerEventIdentity = conversion.CustomEventName ?? conversion.Type;
 
             var connection = await connections.GetAsync(owner, ct);
-            if (connection.Owner != owner || !connection.Connected || string.IsNullOrWhiteSpace(connection.AccountId) ||
-                string.IsNullOrWhiteSpace(connection.PixelId) || string.IsNullOrWhiteSpace(connection.ConversionDataSourceId) || !connection.HasConversionsApiCredential)
-                continue;
-
+            var destinationReady = connection.Owner == owner && connection.Connected &&
+                !string.IsNullOrWhiteSpace(connection.AccountId) && !string.IsNullOrWhiteSpace(connection.PixelId) &&
+                !string.IsNullOrWhiteSpace(connection.ConversionDataSourceId) && connection.HasConversionsApiCredential;
             var delivery = await db.Set<MarketingDestinationDelivery>().SingleOrDefaultAsync(row =>
                 row.OwnerKey == owner.Key &&
                 row.Provider == MarketingDestinationKeys.OpenAi &&
@@ -388,12 +395,12 @@ public sealed class OpenAiConversionDispatcherHostedService(
                     Channel = "server",
                     CanonicalSource = nameof(AnalyticsEvent),
                     AnalyticsEventId = source.Id,
-                    AdvertiserAccountId = connection.AccountId,
-                    ConversionDataSourceId = connection.ConversionDataSourceId,
+                    AdvertiserAccountId = destinationReady ? connection.AccountId : null,
+                    ConversionDataSourceId = destinationReady ? connection.ConversionDataSourceId : null,
                     CanonicalEventId = conversion.Id,
                     CanonicalEventName = source.EventType,
                     ProviderEventName = providerEventIdentity,
-                    PixelId = connection.PixelId!,
+                    PixelId = destinationReady ? connection.PixelId! : "",
                     Status = "pending",
                     CreatedUtc = now,
                     UpdatedUtc = now
@@ -405,6 +412,24 @@ public sealed class OpenAiConversionDispatcherHostedService(
                     db.Entry(delivery).State = EntityState.Detached;
                     continue;
                 }
+            }
+
+            var humanEligibility = await CanonicalMarketingEligibility.ResolveAsync(db, source, ct);
+            if (!humanEligibility.Eligible) {
+                delivery.Status = humanEligibility.Reason.StartsWith("measurement_consent", StringComparison.Ordinal) ? "blocked_consent" : humanEligibility.Reason.StartsWith("production_", StringComparison.Ordinal) ? "blocked_outcome_reconciliation" : "blocked_human_evidence"; delivery.ErrorCode = humanEligibility.Reason;
+                delivery.UpdatedUtc = now; await db.SaveChangesAsync(ct); continue;
+            }
+            if (connection.Owner != owner || !connection.Connected || string.IsNullOrWhiteSpace(connection.AccountId) ||
+                string.IsNullOrWhiteSpace(connection.PixelId) || string.IsNullOrWhiteSpace(connection.ConversionDataSourceId) || !connection.HasConversionsApiCredential) {
+                delivery.Status = "blocked_not_configured"; delivery.ErrorCode = "destination_not_ready";
+                delivery.UpdatedUtc = now; await db.SaveChangesAsync(ct); continue;
+            }
+            // A never-attempted fact with no pinned destination can bind once when setup completes.
+            if (delivery.AttemptCount == 0 && string.IsNullOrWhiteSpace(delivery.PixelId) &&
+                string.IsNullOrWhiteSpace(delivery.AdvertiserAccountId) && string.IsNullOrWhiteSpace(delivery.ConversionDataSourceId)) {
+                delivery.PixelId = connection.PixelId; delivery.AdvertiserAccountId = connection.AccountId;
+                delivery.ConversionDataSourceId = connection.ConversionDataSourceId;
+                await db.SaveChangesAsync(ct);
             }
 
             if (string.IsNullOrWhiteSpace(delivery.AdvertiserAccountId) || string.IsNullOrWhiteSpace(delivery.ConversionDataSourceId))
@@ -543,7 +568,11 @@ public sealed class OpenAiMeasurementHealthService(
         var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
             .Where(row => row.OwnerKey == owner.Key && row.Provider == MarketingDestinationKeys.OpenAi && row.CreatedUtc >= from)
             .ToListAsync(cancellationToken);
-        var rows = receipts.Where(row => OpenAiConversionDispatcherHostedService.MatchesCurrentDestination(row, connection)).ToArray();
+        var currentRows = receipts.Where(row => OpenAiConversionDispatcherHostedService.MatchesCurrentDestination(row, connection)).ToArray();
+        var unbound = receipts.Where(row => row.AttemptCount == 0 && string.IsNullOrWhiteSpace(row.PixelId) &&
+            string.IsNullOrWhiteSpace(row.AdvertiserAccountId) && string.IsNullOrWhiteSpace(row.ConversionDataSourceId)).ToArray();
+        var rows = currentRows.Concat(unbound).DistinctBy(row => row.Id).ToArray();
+        var otherDestinations = receipts.Where(row => !rows.Any(current => current.Id == row.Id)).ToArray();
 
         var providerAvailable = false;
         var recentProviderEvents = 0;
@@ -581,7 +610,7 @@ public sealed class OpenAiMeasurementHealthService(
             : rows.Any(x => x.Status.StartsWith("blocked_", StringComparison.Ordinal)) ? "delivery_blocked"
             : rows.Any(x => x.Status == "permanent_failure") ? "delivery_failures"
             : rows.Any(x => x.Status == "retryable") ? "retrying"
-            : rows.Any(x => x.Status == "sent" && x.LastHttpStatusCode >= 200 && x.LastHttpStatusCode < 300) ? "provider_accepted"
+            : currentRows.Any(x => x.Status == "sent" && x.LastHttpStatusCode >= 200 && x.LastHttpStatusCode < 300) ? "provider_accepted"
             : "configured_no_delivery_evidence";
 
         return new(
@@ -597,6 +626,8 @@ public sealed class OpenAiMeasurementHealthService(
             rows.Where(x => x.SentUtc.HasValue).Max(x => x.SentUtc),
             providerAvailable,
             recentProviderEvents,
-            status);
+            status,
+            otherDestinations.Length,
+            otherDestinations.Count(row => row.Status != "sent" && row.Status != "permanent_failure"));
     }
 }

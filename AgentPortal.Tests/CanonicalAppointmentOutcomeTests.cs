@@ -70,9 +70,9 @@ public sealed class CanonicalAppointmentOutcomeTests
         };
         appointment.ApplyStatus(status, DateTime.UtcNow);
 
-        var service = new MetaSignalCrmOutcomeService(
+        var service = new CanonicalCrmOutcomeService(
             db,
-            NullLogger<MetaSignalCrmOutcomeService>.Instance);
+            NullLogger<CanonicalCrmOutcomeService>.Instance);
 
         await service.RecordAppointmentOutcomeAsync(appointment);
         await db.SaveChangesAsync();
@@ -128,9 +128,9 @@ public sealed class CanonicalAppointmentOutcomeTests
             ConfirmationSource = LeadAppointmentBookingSources.MicrosoftGraphWebhook,
             CreatedUtc = DateTime.UtcNow
         };
-        var service = new MetaSignalCrmOutcomeService(
+        var service = new CanonicalCrmOutcomeService(
             db,
-            NullLogger<MetaSignalCrmOutcomeService>.Instance);
+            NullLogger<CanonicalCrmOutcomeService>.Instance);
 
         appointment.ApplyStatus(LeadAppointmentStatus.Booked, DateTime.UtcNow);
         await service.RecordAppointmentOutcomeAsync(appointment);

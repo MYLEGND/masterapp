@@ -153,10 +153,10 @@ public sealed class AnalyticsTrackingProfileScopeTests
         var foreign = Profile("other@example.test", "other");
         db.AgentTrackingProfiles.AddRange(founder, alias, foreign);
         var now = DateTime.UtcNow;
-        db.MetaSignalEvents.AddRange(
-            new MetaSignalEvent { AgentTrackingProfileId = alias.Id, EventName = "Lead", CreatedUtc = now },
-            new MetaSignalEvent { AgentTrackingProfileId = foreign.Id, EventName = "Lead", CreatedUtc = now },
-            new MetaSignalEvent { AgentTrackingProfileId = alias.Id, CommerceBusinessId = Guid.NewGuid(), EventName = "Lead", CreatedUtc = now });
+        db.AnalyticsEvents.AddRange(
+            new AnalyticsEvent { AgentTrackingProfileId = alias.Id, EventId = Guid.NewGuid(), EventType = "Lead", EventUtc = now },
+            new AnalyticsEvent { AgentTrackingProfileId = foreign.Id, EventId = Guid.NewGuid(), EventType = "Lead", EventUtc = now },
+            new AnalyticsEvent { AgentTrackingProfileId = alias.Id, CommerceBusinessId = Guid.NewGuid(), EventId = Guid.NewGuid(), EventType = "Lead", EventUtc = now });
         await db.SaveChangesAsync();
         var scope = ScopeContext.ForFounder(founder.Id);
         var ids = await AnalyticsTrackingProfileScope.ResolveAsync(db, scope);
@@ -165,11 +165,9 @@ public sealed class AnalyticsTrackingProfileScopeTests
         Assert.True(predicate(new WebsiteLead { AgentTrackingProfileId = alias.Id }));
         Assert.False(predicate(new WebsiteLead { AgentTrackingProfileId = foreign.Id }));
         Assert.False(predicate(new WebsiteLead { AgentTrackingProfileId = alias.Id, CommerceBusinessId = Guid.NewGuid() }));
-        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
-        var service = MetaService(db, new MarketingConnectionStore(db, protector));
-        var signalMethod = typeof(MetaAdsService).GetMethod("BaseMetaSignalEvents", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var range = new TimeRangeRequest { FromUtc = now.AddMinutes(-1), ToUtc = now.AddMinutes(1) };
-        var rows = (IQueryable<MetaSignalEvent>)signalMethod.Invoke(service, new object?[] { range, scope, ids })!;
+        var analytics = new AnalyticsQueryService(db, new ConfigurationBuilder().Build());
+        var range = new TimeRangeRequest { FromUtc = now.AddMinutes(-1), ToUtc = now.AddMinutes(1), QualityMode = TrafficQualityMode.AllTraffic };
+        var rows = await analytics.LoadAttributedEventsAsync(range, scope);
         Assert.Equal(alias.Id, Assert.Single(rows).AgentTrackingProfileId);
     }
 

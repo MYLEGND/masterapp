@@ -235,7 +235,7 @@ public sealed class WebsiteSiteSourceV3Tests
             "\"actionKey\": \"business_quote\"",
             "\"actionKey\": \"business_contact\"",
             StringComparison.Ordinal);
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(retargeted, source, BusinessActions()));
 
         var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(serialized, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
@@ -247,7 +247,7 @@ public sealed class WebsiteSiteSourceV3Tests
             model,
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
 
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(removed, source, BusinessActions()));
     }
 
