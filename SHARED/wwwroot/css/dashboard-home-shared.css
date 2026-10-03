@@ -18,7 +18,7 @@
     --legend-modal-area-start: 24px;
     --legend-modal-area-end: 24px;
     --legend-modal-safe-height: calc(100dvh - 48px);
-    --legend-modal-backdrop: rgba(2, 8, 23, 0.88);
+    --legend-modal-backdrop: rgba(7, 10, 14, 0.76);
     --legend-modal-backdrop-z: 5190;
     --legend-modal-surface-z: 5200;
 
@@ -94,22 +94,25 @@ body.legend-app.legend-modal-active > .modal-backdrop {
     html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] > .modal-dialog[data-legend-modal-panel],
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal)[data-legend-modal-open="true"] > [data-legend-modal-panel] {
         box-sizing: border-box;
-        width: var(--legend-desktop-modal-width, min(1120px, calc(100vw - 96px)));
-        max-width: var(--legend-desktop-modal-width, min(1120px, calc(100vw - 96px)));
+        width: var(--legend-desktop-modal-width, min(1600px, calc(100vw - 44px)));
+        max-width: var(--legend-desktop-modal-width, min(1600px, calc(100vw - 44px)));
         min-width: 0;
-        max-height: var(--legend-desktop-modal-height, calc(100dvh - 96px));
+        max-height: var(--legend-desktop-modal-height, calc(100dvh - 44px));
         margin: 0 auto;
         overflow: hidden;
-        border: 1px solid var(--legend-app-control-line, var(--web-border));
+        border: 1px solid var(--legend-modal-line-strong);
         border-radius: var(--legend-app-radius, var(--web-radius-md));
-        background: var(--legend-app-panel, var(--web-white));
-        box-shadow: 0 30px 80px rgba(2, 8, 23, .42);
+        background: linear-gradient(180deg,var(--legend-modal-surface),var(--legend-modal-surface-raised));
+        color: var(--legend-modal-ink);
+        box-shadow: var(--legend-modal-shadow);
     }
 
     html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface] > .modal-dialog[data-legend-modal-panel] > .modal-content,
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal)[data-legend-modal-open="true"] > [data-legend-modal-panel] {
-        max-height: var(--legend-desktop-modal-height, calc(100dvh - 96px));
+        max-height: var(--legend-desktop-modal-height, calc(100dvh - 44px));
         overflow: hidden;
+        background: var(--legend-modal-surface);
+        color: var(--legend-modal-ink);
     }
 
     html[data-legend-modal-region] body.legend-app .modal .modal-body,
@@ -117,6 +120,66 @@ body.legend-app.legend-modal-active > .modal-backdrop {
         min-height: 0;
         overflow-y: auto;
         overscroll-behavior: contain;
+        background: var(--legend-modal-surface);
+        color: var(--legend-modal-ink);
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel] :is(
+        .modal-header,
+        .modal-head,
+        .drawer-header,
+        .panel-header
+    ) {
+        padding: clamp(.72rem,1vw,1rem) clamp(.9rem,1.25vw,1.25rem);
+        border-bottom: 1px solid var(--legend-modal-line-strong);
+        background: linear-gradient(180deg,var(--legend-modal-chrome),var(--legend-modal-chrome-deep));
+        color: #fff;
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel] :is(
+        .modal-footer,
+        .drawer-footer,
+        .panel-footer
+    ) {
+        padding: .72rem 1rem;
+        border-top: 1px solid var(--legend-modal-line);
+        background: var(--legend-modal-surface-raised);
+        color: var(--legend-modal-ink);
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel] :is(
+        input:not([type="checkbox"]):not([type="radio"]),
+        textarea,
+        select,
+        .form-control,
+        .form-select
+    ) {
+        border: 1px solid var(--legend-modal-line);
+        border-radius: var(--legend-app-radius-compact);
+        background: #fff;
+        color: var(--legend-modal-ink);
+        box-shadow: inset 0 1px 1px rgba(17,24,39,.04);
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel] :is(
+        .btn-primary,
+        .btn-gold,
+        [data-legend-modal-primary]
+    ) {
+        border-color: var(--legend-modal-gold);
+        background: linear-gradient(180deg,var(--legend-modal-gold-strong),var(--legend-modal-gold));
+        color: var(--legend-modal-on-gold);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.18),0 8px 18px rgba(79,56,12,.18);
+    }
+
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-panel] :is(
+        .btn-primary,
+        .btn-gold,
+        [data-legend-modal-primary]
+    ):is(:hover,:focus-visible) {
+        border-color: color-mix(in srgb,var(--legend-modal-gold-strong) 78%,#fff);
+        background: linear-gradient(180deg,color-mix(in srgb,var(--legend-modal-gold-strong) 88%,#fff),var(--legend-modal-gold-strong));
+        color: #fff;
     }
 }
 
@@ -8915,7 +8978,7 @@ header .legend-global-nav .container-fluid {
         height: 100dvh;
         max-height: 100dvh;
         margin: 0;
-        padding: var(--legend-desktop-modal-gutter, 48px);
+        padding: var(--legend-desktop-modal-gutter, 22px);
         position: fixed;
         inset: 0;
         display: flex;
@@ -8957,11 +9020,11 @@ header .legend-global-nav .container-fluid {
         max-height: var(--legend-desktop-modal-height);
         margin: 0 auto;
         overflow: hidden;
-        border: 1px solid var(--legend-app-control-line);
+        border: 1px solid var(--legend-modal-line-strong);
         border-radius: var(--legend-app-radius);
-        background: var(--legend-app-surface-elevated);
-        color: var(--legend-app-on-dark);
-        box-shadow: 0 30px 80px rgba(2,8,23,.42);
+        background: linear-gradient(180deg,var(--legend-modal-surface),var(--legend-modal-surface-raised));
+        color: var(--legend-modal-ink);
+        box-shadow: var(--legend-modal-shadow);
     }
 
     html[data-legend-modal-region] body.legend-app :is(
@@ -8981,11 +9044,11 @@ header .legend-global-nav .container-fluid {
     ) {
         max-height: var(--legend-desktop-modal-height);
         overflow: hidden;
-        border: 1px solid var(--legend-app-control-line);
+        border: 1px solid var(--legend-modal-line-strong);
         border-radius: var(--legend-app-radius);
-        background: var(--legend-app-surface-elevated);
-        color: var(--legend-app-on-dark);
-        box-shadow: 0 30px 80px rgba(2,8,23,.42);
+        background: linear-gradient(180deg,var(--legend-modal-surface),var(--legend-modal-surface-raised));
+        color: var(--legend-modal-ink);
+        box-shadow: var(--legend-modal-shadow);
     }
 
     html[data-legend-modal-region] body.legend-app :is(
@@ -9016,18 +9079,18 @@ header .legend-global-nav .container-fluid {
         transform: translate(-50%,-50%);
         display: flex;
         flex-direction: column;
-        width: min(680px, var(--legend-desktop-modal-width));
+        width: min(1120px, var(--legend-desktop-modal-width));
         max-width: var(--legend-desktop-modal-width);
         max-height: var(--legend-desktop-modal-height);
         margin: 0;
         padding: var(--legend-desktop-card-pad);
         overflow: hidden;
         z-index: var(--legend-modal-surface-z);
-        border: 1px solid var(--legend-app-control-line);
+        border: 1px solid var(--legend-modal-line-strong);
         border-radius: var(--legend-app-radius);
-        background: var(--legend-app-surface-elevated);
-        color: var(--legend-app-on-dark);
-        box-shadow: 0 30px 80px rgba(2,8,23,.42);
+        background: linear-gradient(180deg,var(--legend-modal-surface),var(--legend-modal-surface-raised));
+        color: var(--legend-modal-ink);
+        box-shadow: var(--legend-modal-shadow);
     }
 
     html[data-legend-modal-region] body.legend-app :is(
@@ -9092,11 +9155,11 @@ header .legend-global-nav .container-fluid {
         max-height: var(--legend-desktop-modal-height);
         min-width: 0;
         margin: 0 auto;
-        border: 1px solid var(--legend-app-control-line);
+        border: 1px solid var(--legend-modal-line-strong);
         border-radius: var(--legend-app-radius);
-        background: var(--legend-app-surface-elevated);
-        color: var(--legend-app-on-dark);
-        box-shadow: 0 30px 80px rgba(2,8,23,.42);
+        background: linear-gradient(180deg,var(--legend-modal-surface),var(--legend-modal-surface-raised));
+        color: var(--legend-modal-ink);
+        box-shadow: var(--legend-modal-shadow);
     }
 
     body.legend-app .legend-founder-ai-shell {
@@ -9112,7 +9175,7 @@ header .legend-global-nav .container-fluid {
     }
 
     body.legend-app .scripture-card {
-        width: min(760px,var(--legend-desktop-modal-width));
+        width: min(1120px,var(--legend-desktop-modal-width));
         padding: var(--legend-desktop-card-pad);
     }
 
@@ -9121,7 +9184,9 @@ header .legend-global-nav .container-fluid {
         .legend-founder-ai-header,
         .scripture-card-header
     ) {
-        border-color: var(--legend-app-control-line);
+        border-color: var(--legend-modal-line-strong);
+        background: linear-gradient(180deg,var(--legend-modal-chrome),var(--legend-modal-chrome-deep));
+        color: #fff;
     }
 
     body.legend-app :is(
@@ -9136,6 +9201,100 @@ header .legend-global-nav .container-fluid {
     ) {
         min-height: var(--legend-desktop-control-height);
         border-radius: var(--legend-app-radius-compact);
+    }
+}
+
+/*
+ * Canonical premium modal interiors.
+ * CRM custom modals and conversational workspaces consume the same graphite,
+ * grey, and dark-gold authority instead of retaining feature-owned navy chrome.
+ */
+@media (min-width: 901px) {
+    html[data-legend-modal-region] body.legend-app :is(.clients-crm,.leads-crm) .modal.open[data-legend-modal-surface] {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: var(--legend-desktop-modal-width);
+        max-width: var(--legend-desktop-modal-width);
+        max-height: var(--legend-desktop-modal-height);
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        transform: translate(-50%,-50%);
+        overflow: hidden;
+        border: 1px solid var(--legend-modal-line-strong);
+        border-radius: var(--legend-app-radius);
+        background: linear-gradient(180deg,var(--legend-modal-surface),var(--legend-modal-surface-raised));
+        color: var(--legend-modal-ink);
+        box-shadow: var(--legend-modal-shadow);
+        z-index: var(--legend-modal-surface-z);
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(.clients-crm,.leads-crm) .modal.open > .modal-head {
+        flex: 0 0 auto;
+        padding: .82rem 1rem;
+        border-bottom: 1px solid var(--legend-modal-line-strong);
+        background: linear-gradient(180deg,var(--legend-modal-chrome),var(--legend-modal-chrome-deep));
+        color: #fff;
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(.clients-crm,.leads-crm) .modal.open > .modal-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        overflow-y: auto;
+        padding: .9rem 1rem 1rem;
+        background: var(--legend-modal-surface);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app .messaging-command-center-grid {
+        background: var(--legend-modal-surface);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app .messaging-command-center-sidebar {
+        border-right-color: var(--legend-modal-line);
+        background: var(--legend-modal-surface-subtle);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app .messaging-conversation-item {
+        border-color: var(--legend-modal-line);
+        background: rgba(255,255,255,.48);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app .messaging-conversation-item:is(:hover,.is-active) {
+        background: var(--legend-modal-gold-soft);
+        box-shadow: inset 3px 0 0 var(--legend-modal-gold-strong);
+    }
+
+    body.legend-app :is(
+        .messaging-command-center-thread,
+        .messaging-thread-header,
+        .messaging-thread-empty,
+        .messaging-send-form
+    ) {
+        background: var(--legend-modal-surface);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app :is(
+        .messaging-command-center-header h2,
+        .messaging-thread-header h3,
+        .messaging-thread-empty h3
+    ) {
+        color: #fff;
+    }
+
+    body.legend-app :is(
+        .messaging-search-result small,
+        .messaging-search-empty,
+        .messaging-list-empty,
+        .messaging-attachment-note
+    ) {
+        color: var(--legend-modal-muted);
     }
 }
 

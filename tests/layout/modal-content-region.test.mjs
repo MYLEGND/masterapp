@@ -298,6 +298,19 @@ test('all discovered authenticated mobile modals use one full-screen shared auth
   assert.match(modal,/attributeFilter: \['class', 'hidden', 'aria-hidden', 'style'\]/);
 });
 
+test('newly opened modal surfaces always promote above every already-open modal',()=>{
+  const modal=readFileSync(new URL('../../SHARED/wwwroot/js/legend-modal.js',import.meta.url),'utf8');
+
+  assert.match(modal,/const MODAL_LAYER_BASE = 5200/);
+  assert.match(modal,/const MODAL_LAYER_STEP = 20/);
+  assert.match(modal,/function promoteSurfaceLayer\(surface\)/);
+  assert.match(modal,/surfaceList\.forEach\(other => \{[\s\S]*surfaceOpen\(other\)[\s\S]*highest = Math\.max\(highest, value\)/);
+  assert.match(modal,/surface\.style\.zIndex = String\(Math\.max\(MODAL_LAYER_BASE, highest \+ MODAL_LAYER_STEP\)\)/);
+  assert.match(modal,/if \(open && !wasOpen\) promoteSurfaceLayer\(surface\)/);
+  assert.match(modal,/shown\.bs\.modal'[\s\S]*promoteSurfaceLayer\(event\.target\)/);
+  assert.match(modal,/restoreSurfaceLayer\(surface\)[\s\S]*surfaceOpenState\.delete\(surface\)/);
+});
+
 test('feature scripts cannot own modal page scrolling anymore',()=>{
   const files=[
     'AgentPortal/wwwroot/js/home-zoom-hub.js',
@@ -318,6 +331,40 @@ test('feature scripts cannot own modal page scrolling anymore',()=>{
     assert.doesNotMatch(source,/body\.classList\.(?:add|remove)\(['"]overflow-hidden['"]\)/,file);
     assert.doesNotMatch(source,/document\.body\.classList\.(?:add|remove)\(["'](?:note-self-open|uw-open)["']\)/,file);
   }
+});
+
+test('CRM utility backdrops cannot render a Bootstrap black screen before a modal opens',()=>{
+  for(const file of [
+    'AgentPortal/Views/Clients/_ClientsQuickViewUtilities.cshtml',
+    'AgentPortal/Views/Leads/_LeadQuickViewUtilities.cshtml'
+  ]){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.doesNotMatch(source,/class="modal-backdrop"[^>]*id="modalBackdrop"/,file);
+    assert.match(source,/class="backdrop"[^>]*id="modalBackdrop"[^>]*aria-hidden="true"/,file);
+  }
+
+  for(const file of [
+    'AgentPortal/wwwroot/js/clients-index.js',
+    'AgentPortal/wwwroot/js/leads-index.js'
+  ]){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.doesNotMatch(source,/legend-bootstrap-modal-open/,file);
+    assert.match(source,/modalBackdrop\.setAttribute\("aria-hidden", "false"\)/,file);
+    assert.match(source,/modalBackdrop\.setAttribute\("aria-hidden", "true"\)/,file);
+  }
+});
+
+test('premium desktop modal system is wide graphite-grey with one dark-gold control authority',()=>{
+  const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+
+  assert.match(shell,/--legend-modal-surface:#f4f5f7/);
+  assert.match(shell,/--legend-modal-chrome:#656d79/);
+  assert.match(shell,/--legend-modal-gold:#8c671c/);
+  assert.match(shell,/--legend-desktop-modal-width:min\(1600px,calc\(100vw - \(2 \* var\(--legend-desktop-modal-gutter\)\)\)\)/);
+  assert.match(shared,/background:\s*linear-gradient\(180deg,var\(--legend-modal-surface\),var\(--legend-modal-surface-raised\)\)/);
+  assert.match(shared,/\.btn-primary,[\s\S]*\.btn-gold,[\s\S]*background:\s*linear-gradient\(180deg,var\(--legend-modal-gold-strong\),var\(--legend-modal-gold\)\)/);
+  assert.doesNotMatch(shared,/--legend-desktop-modal-width:min\(1120px/);
 });
 
 test('desktop modal geometry is owned by the shared authenticated authority',()=>{
@@ -343,6 +390,12 @@ test('desktop modal geometry is owned by the shared authenticated authority',()=
     ['AgentPortal/wwwroot/css/website-analytics.css',/@media\s*\(\s*min-width\s*:\s*901px\s*\)\s*\{[\s\S]*?\.wa-standalone-modal > \.wa-modal-dialog/],
     ['AgentPortal/wwwroot/css/clients-index.css',/@media\s*\(\s*min-width\s*:\s*901px\s*\)\s*\{[\s\S]*?\.actions-hub-modal \.modal-dialog/]
   ];
+
+  const crmFeature=readFileSync(new URL('../../AgentPortal/wwwroot/css/clients-index.css',import.meta.url),'utf8');
+  assert.doesNotMatch(crmFeature,/\.modal\.crm-command-modal\s*\{[^}]*width:/);
+  assert.doesNotMatch(crmFeature,/\.modal\.crm-command-modal\s*\{[^}]*background:/);
+  assert.doesNotMatch(crmFeature,/\.crm-command-modal-queues\s*\{[^}]*width:/);
+  assert.match(shared,/\.clients-crm,\.leads-crm\)[\s\S]*\.modal\.open\[data-legend-modal-surface\][\s\S]*width:\s*var\(--legend-desktop-modal-width\)/);
   for(const [file,pattern] of featureChecks){
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
     assert.doesNotMatch(source,pattern,file);
@@ -444,7 +497,7 @@ test('canonical modal surface owns shielding and can never be covered by a body-
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   const clients=readFileSync(new URL('../../AgentPortal/wwwroot/css/clients-index.css',import.meta.url),'utf8');
 
-  assert.match(css,/--legend-modal-backdrop:\s*rgba\(2, 8, 23, 0\.88\)/);
+  assert.match(css,/--legend-modal-backdrop:\s*rgba\(7, 10, 14, 0\.76\)/);
   assert.match(css,/\[data-legend-modal-surface\]\[data-legend-modal-open="true"\]:has\(> \[data-legend-modal-panel\]\) \{[\s\S]*background:\s*var\(--legend-modal-backdrop\)[\s\S]*isolation:\s*isolate/);
   assert.match(css,/\[data-legend-modal-surface\] > \[data-legend-modal-panel\] \{[\s\S]*z-index:\s*1/);
   assert.match(css,/\[data-legend-modal-surface\] > \[data-legend-modal-backdrop\] \{[\s\S]*z-index:\s*0[\s\S]*background:\s*transparent/);
