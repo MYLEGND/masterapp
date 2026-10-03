@@ -1752,7 +1752,6 @@ def _apply_content_equivalent_evidence(args, plan):
         return plan
 
     reused = False
-    seen_heads = set()
     examined = 0
     try:
         runs = _trusted_historical_runs(args, token)
@@ -1762,9 +1761,6 @@ def _apply_content_equivalent_evidence(args, plan):
 
     for run in runs:
         head_sha = run["head_sha"]
-        if head_sha in seen_heads:
-            continue
-        seen_heads.add(head_sha)
         try:
             steps = _historical_plan_steps(args, run, token)
             if not steps:
