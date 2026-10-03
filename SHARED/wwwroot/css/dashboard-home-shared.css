@@ -671,9 +671,16 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] {
+        overflow: hidden !important;
+        overscroll-behavior: none !important;
+        touch-action: auto;
+    }
+
+    html[data-legend-modal-region] body.legend-app
+    [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel]:not(:has(> :is(.modal-body,.drawer-body,.panel-body,.dbody,[data-legend-modal-scroll],[data-legend-sheet-scroll]))) {
         overflow-x: hidden !important;
         overflow-y: auto !important;
-        overscroll-behavior: contain !important;
+        overscroll-behavior-y: contain !important;
         touch-action: pan-y;
         -webkit-overflow-scrolling: touch;
     }
@@ -983,10 +990,10 @@ html[data-legend-modal-region] body .modal .modal-body {
 
     html[data-legend-modal-region] body.legend-app .modal .modal-header,
     html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], [data-legend-mobile-sheet]) >
-    :is(.dhead, [class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], [class$="__head"], [class*="__head "], [class$="__header"], [class*="__header "], header) {
-        position: sticky !important;
-        top: 0 !important;
+    [data-legend-modal-panel]:not([data-legend-mobile-sheet]) >
+    :is([class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], [class$="__head"], [class*="__head "], [class$="__header"], [class*="__header "], header) {
+        position: relative !important;
+        top: auto !important;
         z-index: 8 !important;
     }
 
@@ -1114,7 +1121,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet] {
         top: auto;
         right: 0;
-        bottom: 0px;
+        bottom: 0;
         left: 0;
         width: 100%;
         max-width: none;
@@ -1125,12 +1132,11 @@ html[data-legend-modal-region] body .modal .modal-body {
         border-radius: var(--legend-mobile-radius) var(--legend-mobile-radius) 0 0;
         border-bottom: 0;
         background: var(--legend-mobile-surface);
-        display: block;
-        overflow-x: hidden;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior-y: contain;
-        touch-action: pan-y;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: auto;
         transform: translate3d(0, 100%, 0);
         transform-origin: bottom center;
         transition: transform .28s cubic-bezier(.22, .78, .22, 1), opacity .18s ease;
@@ -1152,15 +1158,20 @@ html[data-legend-modal-region] body .modal .modal-body {
     }
 
     html[data-legend-modal-region] body [data-legend-mobile-sheet] [data-legend-sheet-scroll] {
+        flex: 1 1 auto;
         min-height: 0;
-        overflow: visible;
-        overscroll-behavior: auto;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        touch-action: pan-y;
+        -webkit-overflow-scrolling: touch;
     }
 
     html[data-legend-modal-region] body [data-legend-mobile-sheet] > .legend-mobile-sheet-handle {
-        position: sticky;
-        top: 0;
+        position: relative;
+        top: auto;
         z-index: 20;
+        flex: 0 0 22px;
         display: flex;
         align-items: center;
         justify-content: center;
