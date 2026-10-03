@@ -355,7 +355,7 @@ public sealed class LegendFounderAiContractTests
 
         Assert.DoesNotContain("legend-founder-ai-mobile-actions", css, StringComparison.Ordinal);
         Assert.DoesNotContain("is-reading", css, StringComparison.Ordinal);
-        Assert.Contains("--legend-design-midnight", css, StringComparison.Ordinal);
+        Assert.Contains("--legend-app-surface", css, StringComparison.Ordinal);
         Assert.Contains(".legend-founder-ai-logo-image", css, StringComparison.Ordinal);
         Assert.Contains("object-fit: cover", css, StringComparison.Ordinal);
         Assert.Contains("grid-template-rows: 80px minmax(0, 1fr)", css, StringComparison.Ordinal);

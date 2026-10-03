@@ -1027,6 +1027,23 @@ jobs:
         self.assertEqual("no_content_identical_baseline_artifact", result["reason"])
 
 
+    def test_step5_frontend_node_tests_are_neutral_to_dotnet_candidate(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        for path in (
+            "tests/layout/modal-content-region.test.mjs",
+            "tests/legend-connect/limits-presentation.test.mjs",
+        ):
+            plan = m.compute_plan(
+                workflow,
+                "b" * 40,
+                self.prior(),
+                self.successful_steps(workflow),
+                [path],
+                "prior_run",
+            )
+            self.assertEqual("incremental", plan["mode"])
+            self.assertTrue(all(not gate["run"] for gate in plan["gates"].values()))
+
     def test_step5_cloudflare_test_only_change_is_neutral_to_dotnet_candidate(self):
         workflow = "step5-isolated-conversion-mapping-validation.yml"
         plan = m.compute_plan(
@@ -1077,6 +1094,7 @@ jobs:
             "AgentPortal.Tests/LegendFounderPretrainedAcceptanceTests.cs",
             "scripts/test-validation-resume.py",
             "scripts/validation-resume.py",
+            "tests/layout/modal-content-region.test.mjs",
         ]
 
         def download(_repository, _run_id, _name, directory):

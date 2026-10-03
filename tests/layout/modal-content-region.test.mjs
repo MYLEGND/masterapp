@@ -320,23 +320,33 @@ test('feature scripts cannot own modal page scrolling anymore',()=>{
   }
 });
 
-test('feature modal sizing is desktop-only and cannot compete on phones',()=>{
-  const checks=[
-    ['AgentPortal/wwwroot/css/qv-booking.css',/\@media \(min-width:901px\)\{[\s\S]*\.qv-booking-modal-shell \.modal-dialog/],
-    ['AgentPortal/wwwroot/css/legend-connect.css',/@media \(min-width:901px\) \{[\s\S]*\.lc-section-modal \.modal-dialog/],
-    ['AgentPortal/wwwroot/css/website-analytics.css',/@media \(min-width:901px\) \{[\s\S]*\.wa-modal-dialog/],
-    ['AgentPortal/wwwroot/css/home-command-page.css',/@media \(min-width:901px\) \{[\s\S]*\.home-clients-dialog/],
-    ['AgentPortal/wwwroot/css/clients-index.css',/@media \(min-width:901px\)\{[\s\S]*\.actions-hub-modal \.modal-dialog/],
-    ['AgentPortal/wwwroot/css/workstation-home-proposal.css',/@media \(min-width:901px\)\{#proposalDialog\.hp-dialog/],
-    ['AgentPortal/wwwroot/css/scripts-rebuttals.css',/@media \(min-width:901px\)\{[\s\S]*\.note-self-modal/],
-    ['SHARED/wwwroot/css/legend-finance-shared.css',/@media \(min-width:901px\) \{[\s\S]*\.finance-support-modal/]
-  ];
-  for(const [file,pattern] of checks){
-    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
-    assert.match(source,pattern,file);
-  }
-});
+test('desktop modal geometry is owned by the shared authenticated authority',()=>{
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  for(const selector of [
+    '.qv-booking-modal-shell',
+    '.lc-section-modal',
+    '.wa-standalone-modal',
+    '.home-clients-dialog',
+    '.actions-hub-modal',
+    '#proposalOverlay.hp-overlay',
+    '.note-self-overlay',
+    '.legend-founder-ai-modal',
+    '.messaging-command-center-modal',
+    '.scripture-modal'
+  ]) assert.ok(shared.includes(selector),selector);
+  assert.match(shared,/@media \(min-width: 901px\)[\s\S]*--legend-desktop-modal-width/);
+  assert.match(shared,/max-height:\s*var\(--legend-desktop-modal-height/);
 
+  const featureChecks=[
+    ['AgentPortal/wwwroot/css/qv-booking.css',/@media\s*\(\s*min-width\s*:\s*901px\s*\)\s*\{[\s\S]*?\.qv-booking-modal-shell \.modal-dialog/],
+    ['AgentPortal/wwwroot/css/legend-connect.css',/@media\s*\(\s*min-width\s*:\s*901px\s*\)\s*\{[\s\S]*?\.lc-section-modal \.modal-dialog/],
+    ['AgentPortal/wwwroot/css/website-analytics.css',/@media\s*\(\s*min-width\s*:\s*901px\s*\)\s*\{[\s\S]*?\.wa-standalone-modal > \.wa-modal-dialog/],
+    ['AgentPortal/wwwroot/css/clients-index.css',/@media\s*\(\s*min-width\s*:\s*901px\s*\)\s*\{[\s\S]*?\.actions-hub-modal \.modal-dialog/]
+  ];
+  for(const [file,pattern] of featureChecks){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.doesNotMatch(source,pattern,file);
+  }});
 test('feature styles cannot reintroduce mobile modal scroll or sticky-shell authority',()=>{
   const mediaBlocks=source=>{
     const out=[];let pos=0;
@@ -457,7 +467,7 @@ test('feature styles no longer own modal dimming or full-screen backdrop blur',(
   const checks=[
     ['AgentPortal/wwwroot/css/website-analytics.css',/\.wa-standalone-modal\s*\{[^}]*background:|\.wa-standalone-modal\s*\{[^}]*backdrop-filter:/],
     ['AgentPortal/wwwroot/css/clients-index.css',/\.actions-hub-modal,[\s\S]*?backdrop-filter:|\.actions-hub-modal\.modal,[\s\S]{0,280}?background:\s*rgba\(4, 10, 24/],
-    ['AgentPortal/wwwroot/css/home-command-page.css',/\.home-clients-backdrop,[\s\S]{0,220}?(?:background:|backdrop-filter:)/],
+    ['AgentPortal/wwwroot/css/home-command-page.css',/\.home-clients-backdrop,[^{]*\{[^}]*(?:background:|backdrop-filter:)/],
     ['AgentPortal/wwwroot/css/scripts-rebuttals.css',/\.proposal-overlay\s*\{[^}]*background:|\.proposal-overlay\s*\{[^}]*backdrop-filter:|#captureDecisionModal\.legend-popout-modal\s*\{[^}]*backdrop-filter:/],
     ['AgentPortal/wwwroot/css/workstation-home-proposal.css',/#proposalOverlay\.hp-overlay\{[^}]*background:|#proposalOverlay\.hp-overlay\{[^}]*backdrop-filter:|\.ws-client-picker-overlay\s*\{[^}]*backdrop-filter:|#uwOverlay\s*\{[^}]*backdrop-filter:/],
     ['SHARED/wwwroot/css/legend-finance-shared.css',/\.finance-support-backdrop\s*\{[^}]*background:|\.expense-lens-week-panel-backdrop\s*\{[^}]*backdrop-filter:|\.wf-chart-modal-backdrop\s*\{[^}]*background:|\.savings-illustration-backdrop\s*\{[^}]*backdrop-filter:/]

@@ -50,19 +50,45 @@
   --app-mobile-control-gap:.5rem;
   --app-mobile-card-pad:.78rem;
 
-  /* One authenticated-mobile visual contract, derived from the approved
-     Website Studio mobile sheet. Feature CSS consumes these tokens only. */
-  --legend-mobile-surface:#081a3a;
-  --legend-mobile-surface-deep:#07152d;
-  --legend-mobile-control:#142c50;
-  --legend-mobile-control-line:#50617e;
-  --legend-mobile-gold:#d4ad45;
-  --legend-mobile-gold-bright:#f0cf78;
-  --legend-mobile-text:#f7f6f2;
-  --legend-mobile-muted:#b8c6dc;
+  /*
+   * Canonical authenticated-app visual contract.
+   * Mobile and desktop consume one palette/material authority. Viewport-specific
+   * aliases below own geometry only, so a brand/style change is made once.
+   */
+  --legend-app-surface:var(--web-navy-deep);
+  --legend-app-surface-elevated:color-mix(in srgb,var(--web-navy) 78%,var(--web-navy-deep));
+  --legend-app-control:color-mix(in srgb,var(--web-navy) 82%,var(--web-white));
+  --legend-app-control-line:color-mix(in srgb,var(--web-gold) 34%,var(--web-white) 12%);
+  --legend-app-accent:var(--web-gold);
+  --legend-app-accent-bright:var(--web-gold-strong);
+  --legend-app-on-dark:var(--web-white);
+  --legend-app-on-dark-muted:color-mix(in srgb,var(--web-white) 72%,var(--web-navy));
+  --legend-app-panel:var(--web-white);
+  --legend-app-panel-soft:var(--web-surface);
+  --legend-app-border:var(--web-border);
+  --legend-app-radius:14px;
+  --legend-app-radius-compact:10px;
+
+  /* Mobile geometry aliases preserve the approved mobile contract. */
+  --legend-mobile-surface:var(--legend-app-surface);
+  --legend-mobile-surface-deep:var(--legend-app-surface);
+  --legend-mobile-control:var(--legend-app-control);
+  --legend-mobile-control-line:var(--legend-app-control-line);
+  --legend-mobile-gold:var(--legend-app-accent);
+  --legend-mobile-gold-bright:var(--legend-app-accent-bright);
+  --legend-mobile-text:var(--legend-app-on-dark);
+  --legend-mobile-muted:var(--legend-app-on-dark-muted);
   --legend-mobile-radius:14px;
   --legend-mobile-control-height:34px;
   --legend-mobile-gap:6px;
+
+  /* Desktop geometry only; visual language remains shared above. */
+  --legend-desktop-control-height:38px;
+  --legend-desktop-card-pad:clamp(.72rem,.9vw,1rem);
+  --legend-desktop-gap:clamp(.48rem,.7vw,.78rem);
+  --legend-desktop-modal-gutter:clamp(20px,3vw,48px);
+  --legend-desktop-modal-width:min(1120px,calc(100vw - (2 * var(--legend-desktop-modal-gutter))));
+  --legend-desktop-modal-height:calc(100dvh - (2 * var(--legend-desktop-modal-gutter)));
 }
 html{font-size:16px}
 body.legend-app{display:flex;flex-direction:column}
@@ -160,6 +186,57 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
 
 @media(min-width:769px){
  body.legend-app{overflow-x:clip}
+
+ /*
+  * Canonical authenticated desktop geometry. Every AgentPortal/ClientApp page
+  * gets the same full-width workspace while component behavior remains owned
+  * by the feature. This block intentionally changes presentation only.
+  */
+ body.legend-app .legend-app-content{
+  width:100%;
+  max-width:none;
+  min-width:0;
+  padding:clamp(18px,2vw,32px) max(var(--app-shell-gutter),env(safe-area-inset-right)) clamp(22px,2.4vw,40px) max(var(--app-shell-gutter),env(safe-area-inset-left));
+ }
+ body.legend-app .legend-app-content>main{
+  width:100%;
+  max-width:none;
+  min-width:0;
+ }
+ body.legend-app .legend-app-content :where(.container,.container-fluid){
+  width:100%;
+  max-width:none;
+  min-width:0;
+ }
+ body.legend-app .legend-app-content :where(.row)>*{
+  min-width:0;
+ }
+ body.legend-app .legend-app-content :where(.card){
+  border:1px solid var(--legend-app-border);
+  border-radius:var(--legend-app-radius);
+  background:var(--legend-app-panel);
+  box-shadow:var(--legend-shadow-soft);
+ }
+ body.legend-app .legend-app-content :where(.card-body){
+  padding:var(--legend-desktop-card-pad);
+ }
+ body.legend-app .legend-app-content :where(.btn){
+  min-height:var(--legend-desktop-control-height);
+  padding:.5rem .82rem;
+  border-radius:var(--legend-app-radius-compact);
+  line-height:1.15;
+ }
+ body.legend-app .legend-app-content :where(.form-control,.form-select){
+  min-height:var(--legend-desktop-control-height);
+  border-color:var(--legend-app-border);
+  border-radius:var(--legend-app-radius-compact);
+ }
+ body.legend-app .legend-app-content :where(.table-responsive){
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:auto;
+ }
 }
 @media(max-width:768px){
  body.legend-app{
