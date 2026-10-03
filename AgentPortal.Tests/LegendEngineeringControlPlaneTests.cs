@@ -762,7 +762,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     [Fact]
     public void ChatGptPlanResponsesAdapter_UsesCanonicalBoundedToolLoop()
     {
-        var root = RepoRoot();
+        var root = SourceRoot();
         var adapter = File.ReadAllText(Path.Combine(
             root, "AgentPortal", "Services", "Engineering", "ChatGptPlanResponsesAdapter.cs"));
         var authority = File.ReadAllText(Path.Combine(
