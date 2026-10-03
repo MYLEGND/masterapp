@@ -482,7 +482,7 @@
     .crm-card{
         border:2px solid var(--legend-app-accent);
         border-radius:22px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 16px 32px rgba(166,128,35,.12);
         overflow:hidden;
         min-width:0;
@@ -528,7 +528,7 @@
         text-align:left;
         border:1px solid var(--line);
         border-radius:18px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: var(--shadow2);
         padding:12px;
         cursor:pointer;
@@ -693,7 +693,7 @@
         gap:10px;
         border:1px solid var(--line);
         border-radius:18px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: var(--shadow2);
         padding:12px 14px;
         text-decoration:none;
@@ -755,7 +755,7 @@
         padding: 14px;
         border: 2px solid var(--legend-app-accent);
         border-radius: 24px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 18px 36px rgba(166,128,35,.12);
         isolation:isolate;
     }
@@ -775,14 +775,14 @@
         padding:10px 12px;
         border:0;
         border-radius:14px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 10px 22px rgba(0,0,0,.06);
     }
 
     .group{
         border:0;
         border-radius:14px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 10px 22px rgba(0,0,0,.05);
         padding:10px;
         display:flex;
@@ -792,7 +792,7 @@
         min-width:0;
     }
 
-    .search-card{ border:2px solid #2563eb; box-shadow: 0 10px 24px rgba(37,99,235,.12); }
+    .search-card{ border:1px solid var(--legend-app-control-line); box-shadow: 0 10px 24px rgba(0,0,0,.18); }
     .filters-card{ border:2px solid #d97706; box-shadow: 0 10px 24px rgba(217,119,6,.12); }
     .views-card{ border:2px solid #7c3aed; box-shadow: 0 10px 24px rgba(124,58,237,.12); }
     .export-card{ border:2px solid #0f766e; box-shadow: 0 10px 24px rgba(15,118,110,.12); }
@@ -819,7 +819,7 @@
         padding:12px 12px;
         border-radius:14px;
         border:1px solid rgba(166,128,35,.24);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 8px 20px rgba(166,128,35,.06);
     }
 
@@ -839,7 +839,7 @@
         padding:11px 12px;
         border-radius:14px;
         border:1px solid rgba(166,128,35,.24);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:var(--ink);
         font-weight:850;
         outline:none;
@@ -860,7 +860,7 @@
 
     .btn{
         border:1.5px solid #d9dde6;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border-radius:12px;
         padding:10px 12px;
         font-weight:850;
@@ -912,35 +912,35 @@
 
     .btn-amber{
         border:2px solid #d97706;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:#7a3e00;
         box-shadow: 0 8px 20px rgba(217,119,6,.12);
     }
 
     .btn-blue{
-        border:2px solid #2563eb;
-        background:#fff;
+        border:1px solid var(--legend-app-control-line);
+        background: var(--legend-app-surface-elevated);
         color:#1d4ed8;
         box-shadow: 0 8px 20px rgba(37,99,235,.12);
     }
 
     .btn-violet{
         border:2px solid #7c3aed;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:#5b21b6;
         box-shadow: 0 8px 20px rgba(124,58,237,.12);
     }
 
     .btn-teal{
         border:2px solid #0f766e;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:#115e59;
         box-shadow: 0 8px 20px rgba(15,118,110,.12);
     }
 
     .btn-green{
         border:2px solid #15803d;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:#166534;
         box-shadow: 0 8px 20px rgba(21,128,61,.12);
     }
@@ -1019,7 +1019,7 @@
 
     .preset-chip{
         border:1px solid rgba(0,0,0,.12);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border-radius:999px;
         padding:8px 12px;
         font-weight:950;
@@ -1037,7 +1037,7 @@
 
     /* ===== TABLE CARD ===== */
     .card{
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border: 1px solid #e5e7eb;
         border-radius: 16px;
         box-shadow: 0 14px 30px rgba(15,23,42,.12);
@@ -1060,7 +1060,7 @@
         width:100%;
         border-collapse:separate;
         border-spacing:0 8px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         min-width: 1200px;
     }
 
@@ -1097,7 +1097,7 @@
         border: 0;
         vertical-align: middle;
         color: var(--ink);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
     }
 
@@ -1299,7 +1299,7 @@
         height:40px;
         border-radius:12px;
         border:1px solid rgba(166,128,35,.28);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:var(--ink);
         font-weight:950;
         cursor:pointer;
@@ -1327,7 +1327,7 @@
         height:40px;
         border-radius:12px;
         border:1px solid rgba(166,128,35,.28);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 8px 20px rgba(0,0,0,.05);
         display:inline-flex;
         align-items:center;
@@ -1376,7 +1376,7 @@
         right:0;
         top:calc(100% + 8px);
         min-width:190px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border:1px solid var(--line);
         border-radius:18px;
         box-shadow: var(--shadow);
@@ -1436,7 +1436,7 @@
         font-weight:900;
         letter-spacing:.12px;
         border:1px solid rgba(0,0,0,.10);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:var(--ink);
         white-space:nowrap;
         box-shadow: 0 6px 14px rgba(0,0,0,.04);
@@ -1478,7 +1478,7 @@
         border-radius:999px;
         font-weight:950;
         border:1px solid rgba(166,128,35,.22);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:var(--ink);
         max-width:520px;
         white-space:nowrap;
@@ -1655,7 +1655,7 @@
     padding: 0 16px;
     border-radius: 14px;
     border: 1px solid rgba(149, 183, 240, .34) !important;
-    background: linear-gradient(180deg, rgba(59, 92, 160, .98), rgba(31, 55, 109, .98)) !important;
+    background: linear-gradient(180deg, var(--legend-app-surface-elevated), var(--legend-app-surface)) !important;
     color: #f7fbff !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 24px rgba(6, 12, 27, .18);
     font-weight: 900;
@@ -1666,7 +1666,7 @@
 .commitment-add-btn:hover,
 .actions-hub-modal #btnAddActivity:hover,
 .quick-entry-shell .btn.btn-primary:hover{
-    background: linear-gradient(180deg, rgba(70, 108, 186, .99), rgba(36, 65, 130, .99)) !important;
+    background: linear-gradient(180deg, var(--legend-app-surface-elevated), var(--legend-app-surface)) !important;
     color: #ffffff !important;
 }
 
@@ -1717,7 +1717,7 @@
 .quick-entry-shell textarea{
     border: 1px solid rgba(155, 181, 228, .3) !important;
     border-radius: 14px;
-    background: linear-gradient(180deg, rgba(247, 250, 255, .98), rgba(235, 242, 252, .96)) !important;
+    background: linear-gradient(180deg, var(--legend-app-surface-elevated), var(--legend-app-surface)) !important;
     color: #0f172a !important;
     min-height: 42px;
     padding: 10px 12px;
@@ -2159,7 +2159,7 @@
         display:none;
         border:2px solid var(--legend-app-accent);
         border-radius:24px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 24px 46px rgba(166,128,35,.14);
         overflow:hidden;
         position:relative;
@@ -2247,7 +2247,7 @@
     .chip{
         border-radius:999px;
         border:2px solid var(--legend-app-accent);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         padding:8px 12px;
         font-weight:950;
         letter-spacing:.15px;
@@ -2307,7 +2307,7 @@
     .pipeline-nav-shell{
         border:1px solid var(--line2);
         border-radius:18px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: var(--shadow2);
         padding:12px;
         margin-top:14px;
@@ -2390,7 +2390,7 @@
         text-align:left;
         border-radius:16px;
         border:1px solid rgba(166,128,35,.26);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 10px 24px rgba(166,128,35,.10);
         padding:10px 12px 10px 16px;
         cursor:pointer;
@@ -2571,7 +2571,7 @@
         justify-content:center;
         font-weight:1000;
         border:1px solid rgba(0,0,0,.08);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:#2a1b05;
     }
 
@@ -2837,7 +2837,7 @@
         left: 50%;
         bottom: 18px;
         transform: translateX(-50%);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:var(--ink);
         padding:10px 12px;
         border-radius:16px;
@@ -2895,7 +2895,7 @@
     .myday{
         border:2px solid var(--legend-app-accent);
         border-radius:24px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 22px 44px rgba(166,128,35,.14);
         padding:16px;
         margin:0 0 18px;
@@ -3257,7 +3257,7 @@
 
     .zoom-actions .btn{
         border-color: rgba(37,99,235,.22);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:#1d4ed8;
         box-shadow: 0 8px 18px rgba(37,99,235,.08);
     }
@@ -3402,7 +3402,7 @@
     .calendar-free-slot{
         border:1px solid rgba(21,128,61,.22);
         border-radius:999px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:#166534;
         padding:8px 12px;
         font-size:.8rem;
@@ -3443,7 +3443,7 @@
         padding:10px 12px;
         border:1px solid rgba(220,38,38,.14);
         border-radius:14px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
     }
 
     .calendar-busy-item.conflict{
@@ -3512,7 +3512,7 @@
         border:1px solid rgba(0,0,0,.10);
         border-radius:14px;
         padding:10px 12px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:#101010;
         font-weight:900;
         cursor:pointer;
@@ -3532,7 +3532,7 @@
         border:1px solid var(--line);
         border-radius:18px;
         padding:12px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: var(--shadow2);
         margin-bottom:12px;
     }
@@ -3617,7 +3617,7 @@
         padding:6px 9px;
         border:1px solid rgba(0,0,0,.10);
         border-radius:999px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         color:#101010;
         font-size:.78rem;
         font-weight:900;
@@ -3730,7 +3730,7 @@
         top:10%;
         transform: translateX(-50%);
         width:min(760px, 94vw);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border:1px solid var(--line);
         border-radius:22px;
         box-shadow: var(--shadow);
@@ -3762,7 +3762,7 @@
         padding:14px 16px 18px;
         color:#101010;
         font-weight:850;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
     }
 
     .crm-command-modal-copy{
@@ -4047,7 +4047,7 @@
         padding:4px 8px;
         border-radius:10px;
         border:1px solid var(--line);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         font-weight:950;
         margin:0 6px 6px 0;
         box-shadow: 0 8px 20px rgba(0,0,0,.04);
@@ -4225,7 +4225,7 @@
     padding: 8px 12px;
     border-radius: 999px;
     border: 1px solid rgba(15,23,42,.12);
-    background: #fff;
+    background: var(--legend-app-surface-elevated);
     color: #334155;
     font-weight: 850;
 }
