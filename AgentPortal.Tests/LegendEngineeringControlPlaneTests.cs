@@ -18,7 +18,6 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Moq;
 using Shared.Diagnostics;
 using Xunit;
 
@@ -785,17 +784,20 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             ResponseWithToolCall("resp-tool", "call-1", "legend_inspect_repository", toolArguments, 11),
             ResponseWithFinalJson("resp-final",
                 """{"decision":"PROCEED_TO_CODEX","evidence_sufficient":true,"summary":"Inspection complete."}""", 7));
-        var orchestrator = new Mock<ILegendEngineeringOrchestrator>(MockBehavior.Strict);
-        orchestrator.Setup(value => value.InspectRepositoryAsync(
-                context.EngineeringContextId,
-                "AgentPortal/Controllers/HomeController.cs",
-                "live",
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new { ok = true, content = "bounded source" });
+        var orchestrator = new TestEngineeringOrchestrator
+        {
+            InspectRepository = (contextId, path, revision, token) =>
+            {
+                Assert.Equal(context.EngineeringContextId, contextId);
+                Assert.Equal("AgentPortal/Controllers/HomeController.cs", path);
+                Assert.Equal("live", revision);
+                return Task.FromResult<object>(new { ok = true, content = "bounded source" });
+            }
+        };
 
         var adapter = PlanAdapter(
             handler,
-            orchestrator.Object,
+            orchestrator,
             new Dictionary<string, string?>
             {
                 ["LegendEngineering:ChatGptPlan:MaxToolCallsPerTurn"] = "1",
@@ -810,7 +812,6 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.Contains("\"function_call_output\"", handler.Bodies[1], StringComparison.Ordinal);
         Assert.Contains("\"tool_choice\":\"none\"", handler.Bodies[1], StringComparison.Ordinal);
         Assert.Contains("bounded source", handler.Bodies[1], StringComparison.Ordinal);
-        orchestrator.VerifyAll();
     }
 
     [Fact]
@@ -843,15 +844,16 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
                 5),
             ResponseWithFinalJson("resp-final",
                 """{"decision":"ESCALATE","evidence_sufficient":false,"summary":"Mutation denied by context."}""", 3));
-        var orchestrator = new Mock<ILegendEngineeringOrchestrator>(MockBehavior.Strict);
-        var adapter = PlanAdapter(handler, orchestrator.Object);
+        var orchestrator = new TestEngineeringOrchestrator();
+        var adapter = PlanAdapter(handler, orchestrator);
 
         var run = await InvokeRunWithToolsAsync(
             adapter, context, item, """{"mission":"deny unauthorized mutation"}""");
 
         Assert.True(ReadRunBool(run, "Success"));
         Assert.Contains("engineering_context_tool_not_allowed", handler.Bodies[1], StringComparison.Ordinal);
-        orchestrator.VerifyNoOtherCalls();
+        Assert.Equal(0, orchestrator.InspectRepositoryCalls);
+        Assert.Equal(0, orchestrator.PrepareRepairCalls);
     }
 
     [Fact]
@@ -869,7 +871,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         var handler = new PlanResponsesHandler();
         var adapter = PlanAdapter(
             handler,
-            new Mock<ILegendEngineeringOrchestrator>(MockBehavior.Strict).Object);
+            new TestEngineeringOrchestrator());
 
         var outcome = JsonSerializer.SerializeToElement(
             await adapter.StartAsync(context.EngineeringContextId, default));
@@ -893,7 +895,9 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             AllowedTools = ["legend_inspect_repository", "legend_prepare_software_repair"]
         };
         var candidateSha = new string('d', 40);
-        await _store.UpdateWorkItemAsync(item with
+        var leasedItem = await _store.GetWorkItemAsync(item.WorkItemId, default);
+        Assert.NotNull(leasedItem);
+        await _store.UpdateWorkItemAsync(leasedItem! with
         {
             State = "CANDIDATE_PREPARED",
             CandidateSha = candidateSha,
@@ -905,7 +909,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
 
         var adapter = PlanAdapter(
             new PlanResponsesHandler(),
-            new Mock<ILegendEngineeringOrchestrator>(MockBehavior.Strict).Object);
+            new TestEngineeringOrchestrator());
         var output = JsonDocument.Parse(
             """{"decision":"REPAIR_PREPARED","base_sha":"dddddddddddddddddddddddddddddddddddddddd","title":"Prepared","summary":"Prepared through canonical tool.","changes":[]}""")
             .RootElement.Clone();
@@ -1216,8 +1220,8 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             new PlanClientFactory(handler),
             _store,
             orchestrator,
-            new Mock<ILegendChatGptPlanCredentialAuthority>(MockBehavior.Strict).Object,
-            new Mock<ILegendEngineeringContractAuthority>(MockBehavior.Strict).Object);
+            null!,
+            null!);
     }
 
     private static async Task<object> InvokeRunWithToolsAsync(
@@ -1308,6 +1312,86 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             },
             usage = new { total_tokens = tokens }
         });
+
+    private sealed class TestEngineeringOrchestrator : ILegendEngineeringOrchestrator
+    {
+        public Func<Guid, string, string, CancellationToken, Task<object>>? InspectRepository { get; init; }
+        public Func<Guid, FounderSoftwareRepairProposal, CancellationToken, Task<object>>? PrepareRepair { get; init; }
+        public int InspectRepositoryCalls { get; private set; }
+        public int PrepareRepairCalls { get; private set; }
+
+        public Task<object> GetStatusAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<object>(new { ok = true });
+
+        public Task<object> ProcessIncidentsAsync(int maximum, CancellationToken cancellationToken) =>
+            Task.FromResult<object>(new { ok = true });
+
+        public Task<EngineeringContextSnapshot> BootstrapAsync(
+            System.Security.Claims.ClaimsPrincipal founder,
+            Guid workItemId,
+            string role,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<EngineeringContextSnapshot> BootstrapSystemAsync(
+            Guid workItemId,
+            string role,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<EngineeringTaskPacket> GetTaskPacketAsync(
+            Guid engineeringContextId,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<object> InspectRepositoryAsync(
+            Guid engineeringContextId,
+            string path,
+            string revision,
+            CancellationToken cancellationToken)
+        {
+            InspectRepositoryCalls++;
+            return InspectRepository is null
+                ? Task.FromResult<object>(new { ok = false, error = "unexpected_inspection" })
+                : InspectRepository(engineeringContextId, path, revision, cancellationToken);
+        }
+
+        public Task<object> PrepareRepairAsync(
+            Guid engineeringContextId,
+            FounderSoftwareRepairProposal proposal,
+            CancellationToken cancellationToken)
+        {
+            PrepareRepairCalls++;
+            return PrepareRepair is null
+                ? Task.FromResult<object>(new { ok = false, error = "unexpected_repair" })
+                : PrepareRepair(engineeringContextId, proposal, cancellationToken);
+        }
+
+        public Task<object> ApproveReleaseAsync(
+            System.Security.Claims.ClaimsPrincipal founder,
+            Guid workItemId,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<object> DeclineReleaseAsync(
+            System.Security.Claims.ClaimsPrincipal founder,
+            Guid workItemId,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task RecordBrowserFunctionalProofAsync(
+            Guid workItemId,
+            string application,
+            string expectedRevision,
+            string expectedRoute,
+            IReadOnlyList<string> componentIds,
+            IReadOnlyList<string> actionKeys,
+            IReadOnlyList<string> compositionIds,
+            IReadOnlyList<string> modalIds,
+            IReadOnlyList<string> forbiddenErrorNames,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
 
     private sealed class PlanResponsesHandler(params string[] responses) : HttpMessageHandler
     {
