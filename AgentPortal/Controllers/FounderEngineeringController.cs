@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using AgentPortal.Models;
 using AgentPortal.Security;
 using AgentPortal.Services.Engineering;
@@ -13,7 +14,8 @@ namespace AgentPortal.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None, Duration = 0)]
 [Route("founder/engineering")]
 public sealed class FounderEngineeringController(
-    IFounderEngineeringCommandCenterService commandCenter) : Controller
+    IFounderEngineeringCommandCenterService commandCenter,
+    ILegendEngineeringOrchestrator orchestrator) : Controller
 {
     private const string ChatGptStateCookie = "__Host-legend-engineering-chatgpt-state";
     [HttpGet("")]
@@ -21,6 +23,45 @@ public sealed class FounderEngineeringController(
     {
         FounderGuard.EnsureFounderOrThrow(User);
         return View(await commandCenter.GetAsync(cancellationToken));
+    }
+
+    [HttpPost("work-items/{workItemId:guid}/decision")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DecideWorkItem(
+        Guid workItemId,
+        [FromForm] string decision,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        object result;
+        if (string.Equals(decision, "approve_release", StringComparison.Ordinal))
+            result = await orchestrator.ApproveReleaseAsync(User, workItemId, cancellationToken);
+        else if (string.Equals(decision, "deny_release", StringComparison.Ordinal))
+            result = await orchestrator.DeclineReleaseAsync(User, workItemId, cancellationToken);
+        else
+        {
+            TempData["FounderEngineeringError"] = "That engineering action is not available for this work item.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var payload = JsonSerializer.SerializeToElement(result, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var ok = payload.TryGetProperty("ok", out var okValue) && okValue.ValueKind == JsonValueKind.True;
+        if (ok)
+        {
+            TempData["FounderEngineeringSuccess"] = decision == "approve_release"
+                ? "Release approved. LEGEND will continue through the existing governed release gates."
+                : "Release denied. This exact release request is closed and will not deploy.";
+        }
+        else
+        {
+            var error = payload.TryGetProperty("error", out var errorValue) &&
+                        errorValue.ValueKind == JsonValueKind.String
+                ? errorValue.GetString()
+                : null;
+            TempData["FounderEngineeringError"] = EngineeringDecisionError(error);
+        }
+
+        return RedirectToAction(nameof(Index));
     }
 
     [HttpPost("contract")]
@@ -230,6 +271,16 @@ public sealed class FounderEngineeringController(
         string.IsNullOrWhiteSpace(value)
             ? "unknown"
             : value.Length <= 10 ? value : value[..10];
+
+    private static string EngineeringDecisionError(string? code) => code switch
+    {
+        "work_item_not_found" => "That engineering work item no longer exists.",
+        "founder_release_approval_state_invalid" =>
+            "This release is no longer waiting for approval. Refresh to see its current state.",
+        "founder_release_denial_state_invalid" =>
+            "This release is no longer waiting for a deny decision. Refresh to see its current state.",
+        _ => "The engineering decision was rejected by the canonical release authority."
+    };
 
     private static string ErrorMessage(string code) => code switch
     {
