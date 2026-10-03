@@ -1005,8 +1005,8 @@ html[data-legend-modal-region] body .modal .modal-body {
     html[data-legend-modal-region] body.legend-app
     [data-legend-modal-panel]:not([data-legend-mobile-sheet]) >
     :is([class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], [class$="__head"], [class*="__head "], [class$="__header"], [class*="__header "], header) {
-        position: relative !important;
-        top: auto !important;
+        position: sticky !important;
+        top: 0 !important;
         z-index: 8 !important;
     }
 
