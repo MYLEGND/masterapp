@@ -2847,7 +2847,11 @@ def compatible_package_producer(repository, revision, token):
         if not run_id or not _trusted_lineage_run(repository, run, workflow_path, revision):
             continue
         producer = run['head_sha']
-        if not package_inputs_compatible(producer, revision):
+        package_input_changes = [
+            path for path in git_changed(producer, revision)
+            if package_canary_input_path(path)
+        ]
+        if package_input_changes and not package_inputs_compatible(producer, revision):
             continue
         names = sorted(name for name in _run_artifact_names(repository, run_id, token)
                        if re.fullmatch(r'founder-diagnostics-packages-[0-9a-f]{64}', name))
