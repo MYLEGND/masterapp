@@ -393,6 +393,15 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.doesNotMatch(aiJs,/Provider: Cloudflare Workers AI|Billing: Cloudflare Workers AI|OpenAI API used: No/);
 });
 
+test('legacy inline authenticated pages cannot re-own modal material or light controls',()=>{
+  const onboarding=readFileSync(new URL('../../AgentPortal/Views/Onboarding/Index.cshtml',import.meta.url),'utf8');
+  const agency=readFileSync(new URL('../../AgentPortal/Views/AgencyCommand/Index.cshtml',import.meta.url),'utf8');
+  assert.doesNotMatch(onboarding,/\.onb-modal-content\s*\{[^}]*background:/);
+  assert.doesNotMatch(onboarding,/background:#f8fbff\s*!important/);
+  assert.doesNotMatch(agency,/\.rev-modal__panel\s*\{[^}]*background:/);
+  assert.doesNotMatch(agency,/\.founder-tier-page \.rev-modal__panel,[\s\S]*background:/);
+});
+
 test('feature CSS cannot re-own canonical modal geometry or light form materials',()=>{
   const carrier=readFileSync(new URL('../../AgentPortal/wwwroot/css/dashboard-carrier-settings.css',import.meta.url),'utf8');
   const quick=readFileSync(new URL('../../AgentPortal/Views/Clients/_ClientsQuickView.cshtml',import.meta.url),'utf8');
