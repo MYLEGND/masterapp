@@ -1008,16 +1008,6 @@
    ========================================================== */
 
 @media (min-width: 901px) and (max-width: 1100px) {
-    .legend-founder-ai-modal .modal-dialog {
-        width: calc(100vw - 20px);
-        margin: 10px auto;
-    }
-
-    .legend-founder-ai-shell {
-        height: calc(100vh - 20px);
-        min-height: 620px;
-        border-radius: 20px;
-    }
 
     .legend-founder-ai-workspace {
         grid-template-columns: 244px minmax(0, 1fr);
