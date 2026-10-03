@@ -107,7 +107,7 @@ internal sealed class FounderEngineeringCommandCenterService(
                 ReadString(adapterStatus, "providerBlockerClass") == "AUTHENTICATION" ||
                 ReadString(adapterStatus, "eligibility") == "chatgpt_plan_reauthorization_required",
             ShowRetryRuntime = ShouldOfferRuntimeRetry(adapterStatus),
-            AutonomousRuntimeActive =
+            NativeAutonomousRuntimeActive =
                 ReadBool(adapterStatus, "runtimeReady") &&
                 contract.ModelExecutionEnabled &&
                 contract.AutonomousEngineeringEnabled,
