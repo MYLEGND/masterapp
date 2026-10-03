@@ -8,7 +8,8 @@ public sealed record PortalShellIdentity(
     string Initials,
     string RoleLabel,
     string AvatarUrl,
-    string StoreUrl);
+    string StoreUrl,
+    string ProfileUrl);
 
 public interface IPortalShellIdentityResolver
 {
