@@ -66,6 +66,7 @@ public sealed class AgentPortalShellIdentityResolver(
             PortalShellIdentityFactory.Initials(first, last, displayName),
             roleLabel,
             "/avatar/current",
-            PortalShellIdentityFactory.CanonicalStoreUrl);
+            PortalShellIdentityFactory.CanonicalStoreUrl,
+            "/Account/ManageProfile");
     }
 }
