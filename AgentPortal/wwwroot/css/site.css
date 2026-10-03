@@ -21,39 +21,39 @@
     max-width: 90%;
     padding: 0.6rem 2.5rem 0.6rem 1rem;
     border-radius: 50px;
-    border: 2px solid var(--legend-app-accent);
+    border: 1px solid var(--legend-app-control-line);
     font-size: 1rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 .search-container:not(.dashboard-search-panel) .search-input:focus {
     outline: none;
-    border-color: #b2882b;
-    box-shadow: 0 0 10px rgba(166,128,35,0.4);
+    border-color: var(--legend-app-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb,var(--legend-app-accent) 18%,transparent);
 }
 
 /* ------------------------------ Tool Dropdowns ------------------------------ */
 .tool-dropdown {
     display: inline-block;
     padding: 5px 12px;
-    border: 1px solid var(--legend-gold);
+    border: 1px solid var(--legend-app-accent);
     border-radius: 12px;
     background: linear-gradient(180deg,#111827,#0b111f);
-    color: var(--legend-text);
+    color: var(--legend-app-on-dark);
     font-weight: 700;
     transition: all .25s ease;
     box-shadow: 0 10px 22px rgba(0,0,0,.22);
 }
 
 .tool-dropdown:hover {
-    border-color: var(--legend-gold);
-    color: var(--legend-gold);
+    border-color: var(--legend-app-accent);
+    color: var(--legend-app-accent);
     box-shadow: 0 12px 26px rgba(0,0,0,.28);
 }
 
 /* Production badges on lead/client list rows */
 .prod-pill { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
-.prod-pill .pill { border-radius:12px; padding:2px 8px; font-size:12px; font-weight:700; letter-spacing:.01em; background:#0b1324; }
+.prod-pill .pill { border-radius:12px; padding:2px 8px; font-size:12px; font-weight:700; letter-spacing:.01em; background:var(--legend-app-control); }
 .pill-paid { border:1px solid #22c55e; color:#22c55e; }
 .pill-personal { border:1px solid #f59e0b; color:#f59e0b; }
 
@@ -66,7 +66,7 @@
 }
 
 .legend-loading-skeleton {
-    background: linear-gradient(90deg, #111827 25%, #1e293b 50%, #111827 75%);
+    background: linear-gradient(90deg, var(--legend-app-surface) 25%, var(--legend-app-surface-elevated) 50%, var(--legend-app-surface) 75%);
     background-size: 1200px 100%;
     animation: legend-shimmer 1.6s infinite linear;
     border-radius: 6px;
@@ -100,7 +100,7 @@
     text-align: center;
     border: 1.5px dashed rgba(217,179,90,.3);
     border-radius: 16px;
-    background: var(--legend-surface-soft);
+    background: var(--legend-app-surface-elevated);
     margin: 24px 0;
 }
 
@@ -113,13 +113,13 @@
 .legend-empty-state .legend-empty-title {
     font-size: 1.1rem;
     font-weight: 700;
-    color: var(--legend-gold);
+    color: var(--legend-app-accent);
     margin: 0;
 }
 
 .legend-empty-state .legend-empty-sub {
     font-size: .875rem;
-    color: var(--legend-muted);
+    color: var(--legend-app-on-dark-muted);
     margin: 0;
     max-width: 340px;
 }
