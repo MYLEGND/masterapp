@@ -393,6 +393,17 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.doesNotMatch(aiJs,/Provider: Cloudflare Workers AI|Billing: Cloudflare Workers AI|OpenAI API used: No/);
 });
 
+test('feature CSS cannot re-own canonical modal geometry or light form materials',()=>{
+  const carrier=readFileSync(new URL('../../AgentPortal/wwwroot/css/dashboard-carrier-settings.css',import.meta.url),'utf8');
+  const quick=readFileSync(new URL('../../AgentPortal/Views/Clients/_ClientsQuickView.cshtml',import.meta.url),'utf8');
+  const rebut=readFileSync(new URL('../../AgentPortal/wwwroot/css/scripts-rebuttals.css',import.meta.url),'utf8');
+  const booking=readFileSync(new URL('../../AgentPortal/wwwroot/css/qv-booking.css',import.meta.url),'utf8');
+  assert.doesNotMatch(carrier,/carrier-settings-modal \.modal-dialog\s*\{[^}]*max-width:/);
+  assert.doesNotMatch(quick,/\.finplan-modal \.modal-dialog\s*\{[^}]*max-width:/);
+  assert.doesNotMatch(rebut,/#captureDecisionModal\.legend-popout-modal \.modal-dialog\s*\{/);
+  assert.match(booking,/\.qv-booking-field select\s*\{[\s\S]*background:var\(--legend-app-surface-elevated\)/);
+});
+
 test('authenticated nav renders profile photos as image elements rather than object fallbacks',()=>{
   for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']){
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
