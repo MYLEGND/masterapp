@@ -179,15 +179,24 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
             LegendSiteToolDisclosureAuthority.CurrentPageTool,
             LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepairTool
         };
-        tools.AddRange(authority
-            .GetAvailableSiteReadTools()
-            .Where(tool =>
-            {
-                var element = JsonSerializer.SerializeToElement(tool);
-                return element.TryGetProperty("name", out var name) &&
-                    name.GetString() is { } value &&
-                    authority.IsReadOnly(value);
-            }));
+        tools.AddRange(authority.GetAvailableFounderSiteTools());
+        var toolPolicies = tools
+            .Select(tool => JsonSerializer.SerializeToElement(tool))
+            .Where(tool => tool.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
+            .ToDictionary(
+                tool => tool.GetProperty("name").GetString()!,
+                tool =>
+                {
+                    var name = tool.GetProperty("name").GetString()!;
+                    var workflowMutation = authority.IsFounderSiteWorkflowMutation(name);
+                    return new
+                    {
+                        readOnly = !workflowMutation,
+                        consequential = workflowMutation ||
+                            string.Equals(name, LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepairToolName, StringComparison.Ordinal)
+                    };
+                },
+                StringComparer.Ordinal);
 
         return Json(new
         {
@@ -195,7 +204,9 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
             authority = nameof(LegendFounderToolAuthority),
             disclosureAuthority = nameof(LegendSiteToolDisclosureAuthority),
             authentication = "server_session_founder",
-            mutationToolsExposed = false,
+            mutationToolsExposed = true,
+            mutationAuthority = "bounded_founder_engineering_workflow_only",
+            toolPolicies,
             tools
         });
     }
@@ -309,13 +320,12 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
 
         var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
         var allowed = authority
-            .GetAvailableSiteReadTools()
+            .GetAvailableFounderSiteTools()
             .Any(tool =>
             {
                 var element = JsonSerializer.SerializeToElement(tool);
                 return element.TryGetProperty("name", out var name) &&
-                    string.Equals(name.GetString(), request.Name, StringComparison.Ordinal) &&
-                    authority.IsReadOnly(request.Name);
+                    string.Equals(name.GetString(), request.Name, StringComparison.Ordinal);
             });
         if (!allowed)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "legend_site_tool_not_exposed" });
@@ -326,10 +336,13 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
         if (System.Text.Encoding.UTF8.GetByteCount(arguments) > 32 * 1024)
             return BadRequest(new { error = "legend_site_tool_arguments_too_large" });
 
+        var actorMode = authority.IsFounderSiteWorkflowMutation(request.Name)
+            ? "founder_work"
+            : "legend";
         var output = await authority.ExecuteAsync(
             User,
             new FounderAiToolCall(Guid.NewGuid().ToString("N"), request.Name, arguments),
-            "legend",
+            actorMode,
             cancellationToken,
             LegendConnectExternalProviderPolicy.CloudflareFoundation);
 
