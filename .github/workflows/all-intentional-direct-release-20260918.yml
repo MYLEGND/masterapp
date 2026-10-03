@@ -783,7 +783,11 @@ jobs:
           subprocess.run(
               [str(bundle),'--connection',connection],
               check=True,
-              env=os.environ | {'DOTNET_ENVIRONMENT':'Development','ASPNETCORE_ENVIRONMENT':'Development'},
+              env=os.environ | {
+                  'DOTNET_ENVIRONMENT':'Development',
+                  'ASPNETCORE_ENVIRONMENT':'Development',
+                  'SQLCONNSTR_MasterAppDb':connection,
+              },
           )
           print('Schema ready. Executed the exact validated migration bundle from the proven live database baseline.')
           PYMIGRATE
