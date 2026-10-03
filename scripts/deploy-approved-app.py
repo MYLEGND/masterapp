@@ -2,9 +2,8 @@
 """One immutable upload, followed by read-only deployment/runtime reconciliation.
 
 A timeout is not a failed Azure operation. Unknown/active operations are never
-replayed. A static Website OneDeploy that is proven terminal-failed while exact
-provenance remains old may use one bounded Kudu ZipDeploy recovery with the same
-verified immutable ZIP. The approved release workflow remains the only authority.
+replayed. Terminal provider failures require bounded repair through the canonical
+release lifecycle; no alternate upload path can bypass durable operation intent.
 """
 import argparse
 import hashlib
@@ -65,7 +64,15 @@ def verify_package(package, revision, static=False):
     return actual
 
 
-class DeploymentStatusUnavailable(RuntimeError):
+class DeploymentReconciliationRequired(RuntimeError):
+    """Outcome is ambiguous: only read-only reconciliation may follow."""
+
+
+class DeploymentDrift(DeploymentReconciliationRequired):
+    """Live revision is neither the preserved baseline nor immutable candidate."""
+
+
+class DeploymentStatusUnavailable(DeploymentReconciliationRequired):
     """Azure deployment state could not be read within the bounded outage budget."""
 
 
@@ -88,7 +95,7 @@ class Azure:
             raise RuntimeError('Unrecognized Azure deployment status; no upload authorized')
         return rows
 
-    def revision_live(self):
+    def observed_revision(self):
         # A cache-busted runtime assembly revision, not just an uploaded file (.NET).
         request = urllib.request.Request(self.url + '?release=' + self.revision + '&probe=' + str(time.time_ns()),
                                          headers={'Cache-Control': 'no-cache'})
@@ -97,9 +104,14 @@ class Azure:
                 if response.status != 200 or response.url.split('?')[0] != self.url:
                     return None
                 body = response.read(8192).decode().strip()
-                return (body if self.static else json.loads(body).get('sourceRevision')) == self.revision
+                revision = body if self.static else json.loads(body).get('sourceRevision')
+                return revision if isinstance(revision, str) and re.fullmatch(r'[0-9a-f]{40}', revision) else None
         except (OSError, ValueError):
             return None
+
+    def revision_live(self):
+        revision = self.observed_revision()
+        return None if revision is None else revision == self.revision
 
     def submit(self):
         # Async avoids a long synchronous gateway request. CLI runtime tracking is
@@ -121,32 +133,17 @@ class Azure:
             print('::warning::Upload response timed out; Azure may still be working. No resubmission.', flush=True)
             return False
 
-    def submit_static_recovery(self):
-        if not self.static:
-            raise RuntimeError('Static deployment recovery is valid only for the Website target')
-        # This is not a retry of an ambiguous operation. It is authorized only
-        # after OneDeploy has reached terminal failure and exact provenance proves
-        # the candidate is still not live. Reuse the same verified immutable ZIP
-        # through Kudu ZipDeploy once, then return to read-only reconciliation.
-        command = ['az', 'webapp', 'deployment', 'source', 'config-zip',
-                   '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app, '--src', str(self.package),
-                   '--only-show-errors', '-o', 'json']
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=300)
-            if result.returncode:
-                print('::warning::Static recovery response was unsuccessful; reconciling Azure without another submission.', flush=True)
-                print(result.stderr[-4000:], flush=True)
-            return result.returncode == 0
-        except subprocess.TimeoutExpired:
-            print('::warning::Static recovery response timed out; Azure may still be working. No further submission.', flush=True)
-            return False
 
-
-def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15, max_status_failures=3):
+def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None):
     started = clock()
     submitted = False
-    static_recovery_submitted = False
     baseline_ids = set()
+    if journal is not None:
+        baseline = journal.baseline
+        if journal.intent is not None:
+            submitted = True
+            reconcile_only = True
+            baseline_ids = set(journal.intent['baselineDeploymentIds'])
     stable = 0
     previous = None
     consecutive_status_failures = 0
@@ -176,21 +173,16 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
             print(f'Deployment state after {int(clock() - started)}s: {state}', flush=True)
             previous = state
         if len(new) > 1:
-            raise RuntimeError('Multiple new Azure deployments detected; refusing to hide a concurrent publication')
-        live = azure.revision_live()
+            raise DeploymentDrift('Multiple new Azure deployments detected; refusing to hide a concurrent publication')
+        if baseline is not None:
+            observed = azure.observed_revision()
+            if observed is not None and observed not in {baseline, azure.revision}:
+                raise DeploymentDrift('Live revision is neither the preserved baseline nor exact candidate; no write authorized')
+            live = None if observed is None else observed == azure.revision
+        else:
+            live = azure.revision_live()
         if new and new[0]['status'] == 3:
             failed = new[0]
-            if azure.static and not static_recovery_submitted and live is False and not active:
-                baseline_ids.add(failed['id'])
-                static_recovery_submitted = True
-                stable = 0
-                print(
-                    f"Static Website OneDeploy {failed['id']} failed terminally and the approved revision is not live; "
-                    "submitting the same verified immutable ZIP once through Kudu ZipDeploy.",
-                    flush=True)
-                azure.submit_static_recovery()
-                sleep(interval)
-                continue
             raise RuntimeError(
                 f"Azure deployment {failed['id']} failed. "
                 "Inspect its deployment log; no automatic restart.")
@@ -204,25 +196,28 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
             if not submitted or (new and new[0]['status'] == 4):
                 stable += 1
                 if stable >= 2:
-                    return 'deployed' if submitted else 'preserved'
+                    if journal is not None:
+                        try:
+                            journal.record_success([row['id'] for row in rows if row['status'] == 4])
+                        except Exception as exc:
+                            raise DeploymentReconciliationRequired('Exact candidate live but durable success receipt unavailable; preserve publication') from exc
+                    return 'deployed' if submitted and not reconcile_only else 'preserved'
         else:
             stable = 0
-            if not submitted and live is False:
+            if not submitted and live is False and not reconcile_only:
                 baseline_ids = {row['id'] for row in rows}
+                if journal is not None:
+                    try:
+                        allowed = journal.before_submit(baseline_ids)
+                    except Exception as exc:
+                        raise DeploymentReconciliationRequired('Durable upload intent could not be proven; no write authorized') from exc
+                    if not allowed:
+                        raise DeploymentReconciliationRequired('Existing upload intent requires read-only reconciliation')
                 submitted = True  # Set before I/O: ambiguous responses never replay.
                 print('Submitting the verified immutable ZIP once.', flush=True)
                 azure.submit()
         sleep(interval)
-    raise RuntimeError('Deployment remains unverified at the deadline. Azure was not cancelled or restarted; inspect status before resuming.')
-
-
-def _rollback_package(root: Path, key: str):
-    matches = sorted(root.glob(f"diagnostics-rollback-{key}-*/package.zip"))
-    if len(matches) != 1:
-        raise RuntimeError(
-            f"Expected exactly one preserved rollback package for {key}; found {len(matches)}"
-        )
-    return matches[0]
+    raise DeploymentReconciliationRequired('Deployment remains unverified at the deadline. Azure was not cancelled or restarted; inspect status before resuming.')
 
 
 def _baseline_map(raw: str):
@@ -241,7 +236,18 @@ def _baseline_map(raw: str):
     return result
 
 
-def deploy_one(key: str, revision: str, package_root: Path):
+def operation_journal(key, revision, digest, baseline):
+    if os.environ.get('GITHUB_ACTIONS') != 'true':
+        return None
+    if baseline is None:
+        raise ValueError('Preserved transaction baseline required')
+    spec = importlib.util.spec_from_file_location('release_operation_evidence', Path(__file__).with_name('release-operation-evidence.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.OperationJournal(target=key, application_revision=revision, package_digest=digest, baseline=baseline, authority=_RELEASE_AUTHORITY)
+
+
+def deploy_one(key: str, revision: str, package_root: Path, *, baseline=None, reconcile_only=False, journal=None):
     target = TARGETS[key]
     package = package_root / target["package"]
     digest = verify_package(package, revision, target["static"])
@@ -249,7 +255,8 @@ def deploy_one(key: str, revision: str, package_root: Path):
         f'{target["releaseName"]}: approved revision {revision}, ZIP sha256 {digest}',
         flush=True,
     )
-    result = reconcile(target_azure(key, package, revision))
+    journal = journal or operation_journal(key, revision, digest, baseline)
+    result = reconcile(target_azure(key, package, revision), baseline=baseline, reconcile_only=reconcile_only, journal=journal)
     print(
         f'{target["releaseName"]}: {result}; exact revision healthy and no Azure deployment pending.',
         flush=True,
@@ -257,79 +264,185 @@ def deploy_one(key: str, revision: str, package_root: Path):
     return result
 
 
-def rollback_transaction(keys, baselines, rollback_root: Path):
-    failures = []
-    for key in reversed(keys):
-        revision = baselines[key]
-        target = TARGETS[key]
+def retained_rollback_package(root, key, revision, retained=None):
+    target = TARGETS[key]
+    for package in sorted(root.glob(f'diagnostics-rollback-{key}-*/package.zip')):
         try:
-            package = _rollback_package(rollback_root, key)
-            verify_package(package, revision, target["static"])
-            reconcile(target_azure(key, package, revision))
-        except Exception as exc:
-            failures.append(f"{target['releaseName']}:{type(exc).__name__}:{exc}")
-    if failures:
-        raise RuntimeError(
-            "Automatic rollback could not restore the complete pre-release state: "
-            + "; ".join(failures)
-        )
+            digest = verify_package(package, revision, target['static'])
+            if retained is not None and digest != retained['packageDigest']:
+                continue
+            if retained is not None:
+                return retained
+            receipt_path = package.parent / 'receipt.json'
+            receipt = json.loads(receipt_path.read_text()) if receipt_path.exists() else {
+                'artifact': package.parent.name, 'runId': int(os.environ.get('GITHUB_RUN_ID', '0')),
+                'revision': revision, 'packageDigest': digest}
+            return receipt
+        except ValueError:
+            continue
+    # A resumed partial transaction may have observed the candidate during the
+    # rollback-capture job. Restore the original baseline package from its exact
+    # authenticated release receipt; never rebuild or relabel those bytes.
+    repository = os.environ.get('GITHUB_REPOSITORY')
+    if not repository:
+        raise ValueError('Original immutable rollback package unavailable')
+    evidence = ({'reusable': True, 'runId': retained['runId'], 'packageArtifact': retained['artifact']}
+                if retained is not None else _RELEASE_AUTHORITY.compute_rollback_evidence(repository, revision, key))
+    if not evidence.get('reusable'):
+        raise DeploymentReconciliationRequired('Original preserved rollback package evidence unavailable')
+    import shutil
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix='legend-rollback-') as temporary:
+        folder = Path(temporary)
+        _RELEASE_AUTHORITY._download_run_artifact(repository, evidence['runId'], evidence['packageArtifact'], folder)
+        candidate = folder / ('package.zip' if (folder / 'package.zip').exists() else target['package'])
+        digest = verify_package(candidate, revision, target['static'])
+        if retained is not None and digest != retained['packageDigest']:
+            raise ValueError('Preserved rollback artifact digest changed')
+        destination = root / f'diagnostics-rollback-{key}-preserved'
+        destination.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(candidate, destination / 'package.zip')
+        (destination / 'SHA256SUMS').write_text(digest + '  package.zip\n')
+        receipt = {'artifact': evidence['packageArtifact'], 'runId': evidence['runId'],
+                   'revision': revision, 'packageDigest': digest}
+        (destination / 'receipt.json').write_text(json.dumps(receipt, sort_keys=True))
+        return receipt
 
 
-def deploy_transaction(target_names, baselines_raw: str, package_root: Path, rollback_root: Path, revision: str):
+def preflight_target(key, package, revision, baseline, journal):
+    azure = target_azure(key, package, revision)
+    if journal is not None and journal.intent is not None:
+        # Resolve earlier immutable publication before settings/migration writes.
+        reconcile(azure, baseline=baseline, reconcile_only=True, journal=journal)
+        return
+    try:
+        rows = azure.deployments()
+        observed = azure.observed_revision()
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        raise DeploymentReconciliationRequired('Pre-publication Azure state unavailable') from exc
+    if journal is not None and getattr(journal, 'history_error', None) is not None and observed != revision:
+        raise DeploymentReconciliationRequired('Original publication history unproven; no release mutation authorized')
+    if observed is not None and observed not in {baseline, revision}:
+        raise DeploymentDrift('Pre-publication live target differs from original baseline and candidate')
+    if observed is None or any(row['status'] in (0, 1, 2) for row in rows):
+        raise DeploymentReconciliationRequired('Pre-publication runtime or active deployment remains unverified')
+
+
+def prepare_transaction(target_names, baselines_raw, package_root, rollback_root, revision, output):
     keys = _RELEASE_AUTHORITY.selected_release_target_keys(target_names)
     baselines = _baseline_map(baselines_raw)
-    missing = [key for key in keys if key not in baselines]
-    if missing:
-        raise ValueError("Missing rollback baseline for canonical targets: " + ", ".join(missing))
-
-    # Prove every candidate and every compensation package before the first write.
+    digests = {key: verify_package(package_root / TARGETS[key]['package'], revision, TARGETS[key]['static']) for key in keys}
+    identity = {'candidateRevision': revision, 'packageDigests': digests}
+    plan_id = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    prior = None
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        prior = _RELEASE_AUTHORITY.release_transaction_plan_history(
+            os.environ['GITHUB_REPOSITORY'], plan_id, revision, digests,
+            int(os.environ['GITHUB_RUN_ID']), int(os.environ['GITHUB_RUN_ATTEMPT']),
+            os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN'])
+        if prior is not None:
+            baselines = _baseline_map(json.dumps(prior['targets']))
+            if prior.get('historySnapshot') is not None:
+                _RELEASE_AUTHORITY.import_release_history_snapshot(prior['historySnapshot'], revision)
+    entries = []
     for key in keys:
+        if key not in baselines:
+            raise ValueError('Missing preserved transaction baseline')
         target = TARGETS[key]
-        verify_package(package_root / target["package"], revision, target["static"])
-        baseline = baselines[key]
-        if baseline != revision:
-            verify_package(_rollback_package(rollback_root, key), baseline, target["static"])
+        digest = digests[key]
+        journal = operation_journal(key, revision, digest, baselines[key])
+        baseline = journal.baseline if journal is not None else baselines[key]
+        if baseline != baselines[key]:
+            raise DeploymentDrift('Target operation disagrees with original transaction baseline')
+        preserved = next((row.get('rollbackEvidence') for row in prior['targets'] if row['app'] == key), None) if prior else None
+        rollback = retained_rollback_package(rollback_root, key, baseline, preserved) if baseline != revision else None
+        preflight_target(key, package_root / target['package'], revision, baseline, journal)
+        entries.append({'app': key, 'revision': baseline, 'packageDigest': digest, 'rollbackEvidence': rollback})
+    plan = {'schemaVersion': 1, 'planId': plan_id, 'candidateRevision': revision, 'targets': entries,
+            'producingRun': int(os.environ.get('GITHUB_RUN_ID', '0')),
+            'producingAttempt': int(os.environ.get('GITHUB_RUN_ATTEMPT', '1')),
+            'historySnapshot': _RELEASE_AUTHORITY.export_release_history_snapshot(revision)}
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        if prior is not None:
+            plan = prior
+        else:
+            spec = importlib.util.spec_from_file_location('release_operation_evidence', Path(__file__).with_name('release-operation-evidence.py'))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module.publish_record('legend-release-transaction-plan-' + plan_id, plan)
+    output.write_text(json.dumps(plan, sort_keys=True) + '\n')
+    if os.environ.get('GITHUB_ENV'):
+        with open(os.environ['GITHUB_ENV'], 'a') as stream:
+            stream.write('TRANSACTION_PLAN_ID=' + plan_id + '\n')
+            stream.write('REUSE_TRANSACTION_PLAN=true\n')
+    return plan
 
-    try:
-        for key in keys:
-            deploy_one(key, revision, package_root)
 
-        # A single-target release has already been proven terminal-success,
-        # exact-live and free of pending Azure deployment work by deploy_one().
-        # The workflow performs its independent post-publication live proof next,
-        # so repeating the same reconciliation here adds latency without adding
-        # transactional coverage. Multi-target releases retain this final pass
-        # because earlier targets may have changed while later targets deployed.
-        if len(keys) > 1:
-            for key in keys:
-                result = reconcile(
-                    target_azure(key, package_root / TARGETS[key]["package"], revision)
-                )
-                if result not in {"preserved", "deployed"}:
-                    raise RuntimeError("Unrecognized deployment reconciliation result")
-    except DeploymentStatusUnavailable:
-        # Never issue compensation writes while Azure's deployment control plane is
-        # unreadable. The immutable upload is never replayed; a later run resumes by
-        # reconciling exact live provenance and terminal deployment state.
-        raise
-    except Exception as release_error:
-        rollback_keys = [key for key in keys if baselines[key] != revision]
-        try:
-            rollback_transaction(rollback_keys, baselines, rollback_root)
-        except Exception as rollback_error:
-            raise RuntimeError(
-                f"Release transaction failed ({release_error}); rollback also failed ({rollback_error})"
-            ) from rollback_error
-        raise RuntimeError(
-            f"Release transaction failed and every changed target was restored to its preserved baseline: {release_error}"
-        ) from release_error
+def read_transaction_plan(path, revision, key=None):
+    plan = json.loads(path.read_text())
+    if plan.get('schemaVersion') != 1 or plan.get('candidateRevision') != revision:
+        raise ValueError('Transaction plan does not bind immutable candidate')
+    baselines = _baseline_map(json.dumps(plan.get('targets')))
+    if not baselines or (key is not None and key not in baselines):
+        raise ValueError('Target outside prepared transaction')
+    for row in plan['targets']:
+        if not re.fullmatch(r'[0-9a-f]{64}', row.get('packageDigest', '')):
+            raise ValueError('Transaction package identity missing')
+    identity = {'candidateRevision': revision, 'packageDigests': {row['app']: row['packageDigest'] for row in plan['targets']}}
+    expected_id = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    if plan.get('planId') != expected_id:
+        raise ValueError('Transaction plan content identity mismatch')
+    if plan.get('historySnapshot') is not None:
+        _RELEASE_AUTHORITY.import_release_history_snapshot(plan['historySnapshot'], revision)
+    return plan
 
-    print(json.dumps({
-        "revision": revision,
-        "targets": [TARGETS[key]["releaseName"] for key in keys],
-        "transaction": "committed",
-    }, sort_keys=True))
 
+def publish_prepared_target(key, revision, package_root, plan, *, reconcile_only=False):
+    row = next(row for row in plan['targets'] if row['app'] == key)
+    target = TARGETS[key]
+    digest = verify_package(package_root / target['package'], revision, target['static'])
+    if digest != row['packageDigest']:
+        raise ValueError('Prepared immutable package changed')
+    return deploy_one(key, revision, package_root, baseline=row['revision'], reconcile_only=reconcile_only)
+
+
+def finalize_prepared_transaction(plan, package_root, revision):
+    # Finalization owns only read-only proof. A failed or ambiguous target cannot
+    # authorize replay or erase siblings' completed candidate publications.
+    for row in plan['targets']:
+        target = TARGETS[row['app']]
+        digest = verify_package(package_root / target['package'], revision, target['static'])
+        if digest != row['packageDigest']:
+            raise ValueError('Prepared immutable package changed')
+        reconcile(target_azure(row['app'], package_root / target['package'], revision),
+                  baseline=row['revision'], reconcile_only=True)
+    print(json.dumps({'revision': revision, 'transaction': 'committed',
+                      'targets': [TARGETS[row['app']]['releaseName'] for row in plan['targets']]}, sort_keys=True))
+
+
+def transaction_disposition(plan, package_root, revision):
+    observations = []
+    for row in plan['targets']:
+        key = row['app']
+        target = TARGETS[key]
+        digest = verify_package(package_root / target['package'], revision, target['static'])
+        if digest != row['packageDigest']:
+            raise ValueError('Disposition package differs from prepared transaction')
+        journal = operation_journal(key, revision, digest, row['revision'])
+        if journal is not None and getattr(journal, 'history_error', None) is not None:
+            raise DeploymentReconciliationRequired('Deployment history incomplete; lease must remain held')
+        azure = target_azure(key, package_root / target['package'], revision)
+        rows = azure.deployments()
+        observed = azure.observed_revision()
+        if any(item['status'] in (0, 1, 2) for item in rows) or observed not in {row['revision'], revision}:
+            raise DeploymentReconciliationRequired('Provider target not terminal at preserved baseline/candidate')
+        if journal is not None and journal.intent is not None:
+            original = set(journal.intent['baselineDeploymentIds'])
+            published = [item for item in rows if item['id'] not in original]
+            if len(published) != 1 or published[0]['status'] not in (3, 4):
+                raise DeploymentReconciliationRequired('Original upload outcome remains ambiguous; lease must remain held')
+        observations.append({'target': key, 'revision': observed, 'idle': True})
+    return {'schemaVersion': 1, 'candidateRevision': revision, 'terminal': True, 'targets': observations}
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -339,45 +452,45 @@ def main():
     parser.add_argument('--baselines-json')
     parser.add_argument('--package-root', default='/tmp/diagnostics-packages')
     parser.add_argument('--rollback-root', default='/tmp/rollback-packages')
-    parser.add_argument('--rollback-only', action='store_true')
+    parser.add_argument('--prepare-only', action='store_true')
+    parser.add_argument('--finalize-only', action='store_true')
+    parser.add_argument('--disposition-only', action='store_true')
+    parser.add_argument('--transaction-plan', type=Path)
+    parser.add_argument('--reconcile-only', action='store_true', help='Never issue deployment writes; reconcile preserved immutable candidate')
     args = parser.parse_args()
 
     revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')
     if not revision:
         raise SystemExit('APPLICATION_RELEASE_SHA is required')
 
+    reconcile_only = args.reconcile_only
     if args.target:
-        deploy_one(args.target, revision, Path(args.package_root))
+        if args.transaction_plan is None:
+            raise ValueError('Target publication requires an all-target preflight plan')
+        plan = read_transaction_plan(args.transaction_plan, revision, args.target)
+        publish_prepared_target(args.target, revision, Path(args.package_root), plan, reconcile_only=reconcile_only)
+        return
+    if args.disposition_only:
+        plan = read_transaction_plan(args.transaction_plan, revision)
+        print(json.dumps(transaction_disposition(plan, Path(args.package_root), revision), sort_keys=True))
+        return
+    if args.finalize_only:
+        plan = read_transaction_plan(args.transaction_plan, revision)
+        names = json.loads(args.targets_json)
+        if set(_RELEASE_AUTHORITY.selected_release_target_keys(names)) != {row['app'] for row in plan['targets']}:
+            raise ValueError('Finalization target scope changed')
+        finalize_prepared_transaction(plan, Path(args.package_root), revision)
         return
 
     if args.baselines_json is None:
         raise SystemExit('--baselines-json is required for transactional deployment')
     names = json.loads(args.targets_json)
-    if args.rollback_only:
-        keys = _RELEASE_AUTHORITY.selected_release_target_keys(names)
-        baselines = _baseline_map(args.baselines_json)
-        missing = [key for key in keys if key not in baselines]
-        if missing:
-            raise ValueError("Missing rollback baseline for canonical targets: " + ", ".join(missing))
-        rollback_transaction(
-            [key for key in keys if baselines[key] != revision],
-            baselines,
-            Path(args.rollback_root),
-        )
-        print(json.dumps({
-            "revision": revision,
-            "targets": [TARGETS[key]["releaseName"] for key in keys],
-            "transaction": "rolled-back",
-        }, sort_keys=True))
+    if args.prepare_only:
+        if args.transaction_plan is None:
+            raise ValueError('Prepared transaction output path required')
+        prepare_transaction(names, args.baselines_json, Path(args.package_root), Path(args.rollback_root), revision, args.transaction_plan)
         return
-
-    deploy_transaction(
-        names,
-        args.baselines_json,
-        Path(args.package_root),
-        Path(args.rollback_root),
-        revision,
-    )
+    raise ValueError('Select canonical prepare, target publication, or finalization mode')
 
 
 if __name__ == '__main__':

@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import subprocess
+import unittest
+from unittest.mock import patch
+
+spec = importlib.util.spec_from_file_location('journal', Path(__file__).with_name('release-operation-evidence.py'))
+journal = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(journal)
+
+
+class DurableOperationProtocolTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name)
+        self.env = dict(GITHUB_RUN_ID='10', GITHUB_RUN_ATTEMPT='1', PACKAGE_PRODUCER_RUN='8',
+                        GITHUB_REPOSITORY='owner/repo', GH_TOKEN='test-placeholder')
+        self.authority = type('Authority', (), dict(RELEASE_TARGETS={'portal': {}, 'client': {}},
+                              ReleaseOperationHistoryUnproven=journal._authority().ReleaseOperationHistoryUnproven))()
+        self.authority.release_operation_history = lambda repo, key, *args, phase='intent': (
+            json.loads((self.path / (phase + key)).read_text()) if (self.path / (phase + key)).exists() else None)
+
+    def publish(self, name, record):
+        (self.path / (record['phase'] + record['operationId'])).write_text(json.dumps(record))
+        return {'artifactId': 12}
+
+    def make(self, **kwargs):
+        args = dict(target='portal', application_revision='a' * 40, package_digest='b' * 64,
+                    baseline='c' * 40, authority=self.authority, publisher=self.publish, environment=self.env)
+        args.update(kwargs)
+        return journal.OperationJournal(**args)
+
+    def test_crash_after_post_fresh_run_never_replays_and_retains_original_baseline(self):
+        first = self.make()
+        self.assertTrue(first.before_submit(['baseline-operation']))
+        writes = 1  # Azure accepted; runner crashes before a success receipt.
+        self.env['GITHUB_RUN_ID'] = '11'
+        resumed = self.make(baseline='d' * 40)
+        self.assertEqual(resumed.baseline, 'c' * 40)
+        self.assertEqual(resumed.intent['baselineDeploymentIds'], ['baseline-operation'])
+        if resumed.before_submit([]):
+            writes += 1
+        self.assertEqual(writes, 1)
+
+    def test_crash_between_durable_intent_and_post_stays_read_only(self):
+        self.assertTrue(self.make().before_submit([]))
+        self.assertFalse(self.make().before_submit([]))
+
+    def test_untouched_other_target_has_distinct_operation(self):
+        self.assertTrue(self.make().before_submit([]))
+        self.assertTrue(self.make(target='client').before_submit([]))
+
+    def test_publication_timeout_never_authorizes_write_and_next_run_recovers_intent(self):
+        def timeout(name, record):
+            self.publish(name, record)
+            raise TimeoutError('readback interrupted')
+        with self.assertRaises(TimeoutError):
+            self.make(publisher=timeout).before_submit([])
+        self.assertFalse(self.make().before_submit([]))
+
+    def test_history_uncertainty_never_authorizes_write(self):
+        self.authority.release_operation_history = lambda *args: (_ for _ in ()).throw(RuntimeError('expired'))
+        with self.assertRaisesRegex(RuntimeError, 'expired'):
+            self.make()
+
+    def test_unavailable_absence_proof_does_not_block_read_only_candidate(self):
+        exception = self.authority.ReleaseOperationHistoryUnproven
+        self.authority.release_operation_history = lambda *args: (_ for _ in ()).throw(exception('unavailable'))
+        preserved = self.make(baseline='a' * 40)
+        self.assertIsNone(preserved.intent)
+        with self.assertRaises(exception):
+            preserved.before_submit([])
+
+    def test_success_receipt_is_reused_without_duplicate_upload(self):
+        first = self.make()
+        first.before_submit([])
+        first.record_success(['successful-operation'])
+        def forbidden(*args):
+            raise AssertionError('Receipt upload replay')
+        self.env['GITHUB_RUN_ID'] = '11'
+        preserved = self.make(publisher=forbidden).record_success(['successful-operation'])
+        self.assertEqual(preserved['producingRun'], 10)
+
+    def test_sdk_error_payload_not_exposed(self):
+        result = type('Result', (), dict(returncode=1, stdout='secret signed URL', stderr='secret token'))()
+        with patch.object(journal.subprocess, 'run', return_value=result):
+            with self.assertRaisesRegex(RuntimeError, 'unavailable') as failure:
+                self.make(publisher=None)._publish('name', {})
+            self.assertNotIn('secret', str(failure.exception))
+
+
+class CanonicalHistoryTests(unittest.TestCase):
+    def setUp(self):
+        self.authority = journal._authority()
+        self.authority._RELEASE_HISTORY_VERIFIED_PACKAGES.clear()
+        self.authority._RELEASE_HISTORY_SOURCES.clear()
+        self.authority._RELEASE_HISTORY_API.clear()
+        self.authority._RELEASE_HISTORY_TERMINAL_RUNS.clear()
+        self.authority._RELEASE_HISTORY_RECEIPTS.clear()
+        self.authority._RELEASE_HISTORY_EXCLUSIONS.clear()
+        self.job = dict(name='release', status='completed', conclusion='failure', steps=[
+            dict(name='Publish canonical target (portal)', status='completed', conclusion='skipped')])
+        self.run = dict(id=9, run_attempt=1, head_branch=self.authority.TRUSTED_PR_BASE,
+                        event='workflow_dispatch', head_sha='e' * 40, status='completed',
+                        path='.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+                        head_repository=dict(full_name='owner/repo'),
+                        display_title='LEGEND release pr=1 candidate=' + 'a' * 40 + ' authority=' + 'd' * 40)
+        self.artifacts = []
+
+    def api(self, repository, path, token):
+        if path.startswith('actions/artifacts?'):
+            return dict(artifacts=self.artifacts, total_count=len(self.artifacts))
+        if path.startswith('actions/workflows/'):
+            return dict(workflow_runs=[self.run], total_count=1)
+        if path == 'actions/runs/9/artifacts?per_page=100':
+            return dict(artifacts=[], total_count=0)
+        if path.startswith('compare/'):
+            self.assertIn('...' + 'd' * 40, path)  # Actual checkout, not event head.
+            return dict(status='ahead')
+        if '/jobs?' in path:
+            return dict(jobs=[self.job], total_count=1)
+        if path == 'actions/runs/9':
+            return self.run
+        raise AssertionError(path)
+
+    def history(self):
+        with patch.object(self.authority, 'api_get', side_effect=self.api):
+            return self.authority.release_operation_history('owner/repo', 'b' * 64, 'a' * 40, 'portal', 10, 1, 'placeholder')
+
+    def test_positive_target_never_started_allows_first_write(self):
+        self.assertIsNone(self.history())
+
+    def test_started_target_without_retained_intent_blocks_replay(self):
+        self.job['steps'][0]['conclusion'] = 'failure'
+        with self.assertRaisesRegex(RuntimeError, 'No authenticated legacy package'):
+            self.history()
+
+    def test_unknown_execution_owner_cannot_prove_absence(self):
+        self.job['name'] = 'renamed-owner'
+        with self.assertRaisesRegex(RuntimeError, 'publication owner'):
+            self.history()
+
+    def test_legacy_positive_unstarted_publication_needs_no_artifact(self):
+        self.run['display_title'] = 'old release'
+        self.assertIsNone(self.history())
+
+    def test_legacy_entered_publication_cannot_use_event_sha(self):
+        self.run['display_title'] = 'old release'
+        self.job['steps'][0]['conclusion'] = 'failure'
+        with self.assertRaisesRegex(RuntimeError, 'No authenticated legacy package'):
+            self.history()
+
+    def test_expired_intent_does_not_become_missing_intent(self):
+        self.artifacts = [dict(name='legend-release-operation-intent-' + 'b' * 64,
+                               expired=True, workflow_run=dict(id=9))]
+        with self.assertRaisesRegex(RuntimeError, 'expired'):
+            self.history()
+
+    def legacy_fixture(self, revision='f' * 40):
+        self.run['display_title'] = 'old release'
+        self.job['steps'] = [
+            dict(name='Verify restored immutable validation package', status='completed', conclusion='success'),
+            dict(name='Publish selected head as one transaction', status='completed', conclusion='failure')]
+        self.state = dict(schemaVersion=2, runId=9, runAttempt=1, applicationReleaseSha=revision,
+                          releaseJobConclusion='failure', steps=self.job['steps'])
+        self.legacy_artifacts = [dict(name='legend-release-step-state-' + revision + '-9-1', expired=False),
+                                 dict(name='translation-direct-release-' + 'd' * 40, expired=False)]
+        self.old_workflow = subprocess.run(['git', 'show', 'HEAD:.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW],
+                                           text=True, capture_output=True, check=True).stdout
+        self.old_deployer = subprocess.run(['git', 'show', 'HEAD:scripts/deploy-approved-app.py'],
+                                           text=True, capture_output=True, check=True).stdout
+
+    def legacy_history(self):
+        original = self.api
+        def api(repo, path, token):
+            if path == 'actions/runs/9/artifacts?per_page=100':
+                return dict(artifacts=self.legacy_artifacts, total_count=len(self.legacy_artifacts))
+            return original(repo, path, token)
+        def source(repo, revision, path, token):
+            return self.old_workflow if path.endswith('.yml') else self.old_deployer
+        with patch.object(self.authority, 'api_get', side_effect=api), \
+                patch.object(self.authority, '_release_history_json', return_value=self.state), \
+                patch.object(self.authority, '_release_history_source', side_effect=source):
+            return self.authority.release_operation_history('owner/repo', 'b' * 64, 'a' * 40, 'portal', 10, 1, 'placeholder')
+
+    def test_authenticated_legacy_different_verified_package_does_not_block_new_operation(self):
+        self.legacy_fixture()
+        self.assertIsNone(self.legacy_history())
+
+    def test_authenticated_legacy_same_package_missing_intent_blocks_replay(self):
+        self.legacy_fixture('a' * 40)
+        with self.assertRaisesRegex(RuntimeError, 'may have written this immutable package'):
+            self.legacy_history()
+
+    def test_legacy_receipt_attempt_mismatch_is_tampering_not_absence(self):
+        self.legacy_fixture()
+        self.state['runAttempt'] = 2
+        with self.assertRaisesRegex(RuntimeError, 'producer identity mismatch'):
+            self.legacy_history()
+
+    def test_legacy_verifier_changed_cannot_exclude_prior_publication(self):
+        self.legacy_fixture()
+        self.old_deployer = self.old_deployer.replace("raise ValueError('Package does not contain the approved revision')", 'pass')
+        with self.assertRaisesRegex(RuntimeError, 'verifier contract is incompatible'):
+            self.legacy_history()
+
+    def test_modern_unrelated_package_does_not_block_queued_older_candidate(self):
+        self.legacy_fixture()
+        self.run['display_title'] = 'LEGEND release pr=2 candidate=' + 'f' * 40 + ' authority=' + 'd' * 40
+        self.old_workflow = self.old_workflow.replace('Publish selected head as one transaction', 'Publish canonical target (portal)')
+        self.job['steps'][1]['name'] = 'Publish canonical target (portal)'
+        self.assertIsNone(self.legacy_history())
+
+    def test_pre_reuse_translation_identity_requires_source_and_verified_package_binding(self):
+        self.legacy_fixture()
+        self.legacy_artifacts = [self.legacy_artifacts[1]]
+        self.old_workflow = self.old_workflow.replace(
+            '      APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}\n', '')
+        self.old_workflow = self.old_workflow.replace('APPLICATION_RELEASE_SHA', 'RELEASE_SHA')
+        self.old_deployer = self.old_deployer.replace(
+            "os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')", "os.environ['RELEASE_SHA']")
+        self.assertIsNone(self.legacy_history())
+        self.authority._RELEASE_HISTORY_VERIFIED_PACKAGES.clear()
+        self.authority._RELEASE_HISTORY_EXCLUSIONS.clear()
+        self.authority._RELEASE_HISTORY_API.clear()
+        self.job['steps'][0]['conclusion'] = 'failure'
+        with self.assertRaisesRegex(RuntimeError, 'did not pass embedded revision verification'):
+            self.legacy_history()
+
+    def test_transaction_snapshot_reuses_terminal_proof_after_fresh_inventory(self):
+        self.assertIsNone(self.history())
+        snapshot = self.authority.export_release_history_snapshot('a' * 40)
+        self.authority._RELEASE_HISTORY_API.clear()
+        self.authority._RELEASE_HISTORY_EXCLUSIONS.clear()
+        self.authority.import_release_history_snapshot(snapshot, 'a' * 40)
+        paths = []
+        def api(repo, path, token):
+            paths.append(path)
+            return self.api(repo, path, token)
+        with patch.object(self.authority, 'api_get', side_effect=api):
+            self.authority.release_operation_history('owner/repo', 'b' * 64, 'a' * 40, 'portal', 10, 1, 'placeholder')
+        self.assertTrue(any('actions/workflows/' in path for path in paths))
+        self.assertFalse(any('/jobs?' in path or path.startswith('compare/') for path in paths))
+
+    def test_new_attempt_invalidates_imported_terminal_exclusion(self):
+        self.assertIsNone(self.history())
+        snapshot = self.authority.export_release_history_snapshot('a' * 40)
+        self.authority._RELEASE_HISTORY_API.clear()
+        self.authority.import_release_history_snapshot(snapshot, 'a' * 40)
+        self.run['run_attempt'] = 2
+        self.job['steps'][0]['conclusion'] = 'failure'
+        with self.assertRaisesRegex(RuntimeError, 'No authenticated legacy package'):
+            self.history()
+
+
+if __name__ == '__main__':
+    unittest.main()

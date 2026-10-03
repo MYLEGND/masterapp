@@ -33,11 +33,9 @@ APPS = {
     for key, row in _RELEASE_AUTHORITY.RELEASE_TARGETS.items()
 }
 MIGRATION_BUNDLE = _RELEASE_AUTHORITY.MIGRATION_BUNDLE_NAME
-CONTRACT_INPUTS = (
-    "scripts/release-package.py",
-    "scripts/deploy-approved-app.py",
-    ".config/dotnet-tools.json",
-)
+# Consume the canonical builder/toolchain inputs. Deployment reconciliation is a
+# consumer of the bytes and cannot invalidate their immutable package contract.
+CONTRACT_INPUTS = tuple(sorted(_RELEASE_AUTHORITY.PACKAGE_AUTHORITY_PATHS))
 
 
 def sha256_file(path: Path) -> str:
@@ -60,7 +58,7 @@ def validate_revision(value: str) -> str:
 def contract_hash() -> str:
     digest = hashlib.sha256()
     digest.update(
-        json.dumps(APPS, sort_keys=True, separators=(",", ":")).encode()
+        json.dumps({"apps": APPS, "staticSourceRoots": {key: row["sourceRoot"] for key, row in _RELEASE_AUTHORITY.RELEASE_TARGETS.items() if row["static"]}, "migrationBundle": MIGRATION_BUNDLE}, sort_keys=True, separators=(",", ":")).encode()
     )
     digest.update(b"\0")
     for relative in CONTRACT_INPUTS:
@@ -68,7 +66,10 @@ def contract_hash() -> str:
         if not path.exists():
             raise FileNotFoundError(relative)
         digest.update(relative.encode() + b"\0")
-        digest.update(path.read_bytes())
+        if relative == _RELEASE_AUTHORITY.PACKAGE_BUILD_WORKFLOW:
+            digest.update(_RELEASE_AUTHORITY.package_builder_workflow_contract(path.read_text()).encode())
+        else:
+            digest.update(path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
 
@@ -206,12 +207,25 @@ def verify_all(revision: str, directory: Path):
     expected_tree = subprocess.check_output(
         ["git", "rev-parse", revision + "^{tree}"], cwd=ROOT, text=True
     ).strip()
+    declared_contract = manifest.get("packageContractSha256", "")
+    if not re.fullmatch(r"[0-9a-f]{64}", declared_contract):
+        raise ValueError("Validated package contract identity malformed")
+    current_head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    if declared_contract != contract_hash() and not _RELEASE_AUTHORITY.package_inputs_compatible(revision, current_head):
+        raise ValueError("Validated package builder inputs changed")
+    # Retain the producing contract/revision and bytes. Authenticating the producer
+    # belongs to validated-package evidence lookup; never stamp current metadata
+    # over the historical package's immutable manifest.
+    declared_identity = hashlib.sha256(json.dumps({
+        "schema": SCHEMA,
+        "applicationReleaseSha": revision,
+        "packageContractSha256": declared_contract,
+    }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     expected = {
         "schema": SCHEMA,
         "applicationReleaseSha": revision,
         "applicationTreeSha": expected_tree,
-        "packageContractSha256": contract_hash(),
-        "packageIdentity": package_identity(revision),
+        "packageIdentity": declared_identity,
     }
     for key, value in expected.items():
         if manifest.get(key) != value:
