@@ -1054,28 +1054,19 @@ internal sealed class ChatGptPlanResponsesAdapter(
         DateTime? retryAfter = null;
 
         var client = httpClientFactory.CreateClient("LegendChatGptPlanInference");
-        for (var iteration = 0; iteration < maxIterations; iteration++)
+        for (var iteration = 0; iteration <= maxIterations; iteration++)
         {
             deadline.Token.ThrowIfCancellationRequested();
-            var remainingCalls = maxToolCalls - toolCallsUsed;
-            if (remainingCalls <= 0)
-                return PlanRun.Fail(
-                    "engineering_tool_call_budget_exhausted",
-                    responseId,
-                    providerAttempted: true,
-                    logicalAttemptCompleted: true,
-                    providerOutcome: "TOOL_BUDGET_EXHAUSTED",
-                    providerRequestId: providerRequestId,
-                    totalTokens: totalTokens);
-
+            var remainingCalls = Math.Max(0, maxToolCalls - toolCallsUsed);
+            var allowToolsThisRound = iteration < maxIterations && remainingCalls > 0;
             var payload = new
             {
                 model,
                 instructions = Instruction,
                 input = inputItems,
-                tools = toolSchemas,
-                tool_choice = "auto",
-                max_tool_calls = remainingCalls,
+                tools = allowToolsThisRound ? toolSchemas : Array.Empty<object>(),
+                tool_choice = allowToolsThisRound ? "auto" : "none",
+                max_tool_calls = allowToolsThisRound ? remainingCalls : 0,
                 reasoning = new { effort = ResolveEffort(tier) },
                 text = new
                 {
@@ -1192,6 +1183,17 @@ internal sealed class ChatGptPlanResponsesAdapter(
                         retryAfter);
                 }
 
+                if (!allowToolsThisRound && calls.Length > 0)
+                    return PlanRun.Fail(
+                        "engineering_tool_call_after_finalization",
+                        responseId,
+                        providerAttempted: true,
+                        logicalAttemptCompleted: true,
+                        providerOutcome: "TOOL_CALL_AFTER_FINALIZATION",
+                        httpStatus: (int)response.StatusCode,
+                        providerRequestId: providerRequestId,
+                        totalTokens: totalTokens);
+
                 if (calls.Length > remainingCalls)
                     return PlanRun.Fail(
                         "engineering_tool_call_budget_exhausted",
@@ -1280,14 +1282,38 @@ internal sealed class ChatGptPlanResponsesAdapter(
             if (name == "legend_inspect_repository")
             {
                 var path = ReadString(document.RootElement, "path");
-                var revision = ReadString(document.RootElement, "git_reference");
-                if (string.IsNullOrWhiteSpace(path) ||
-                    revision is not ("live" or "candidate"))
+                var requestedReference = ReadString(document.RootElement, "git_reference");
+                if (string.IsNullOrWhiteSpace(path))
                     return JsonSerializer.Serialize(new
                     {
                         ok = false,
-                        error = "engineering_repository_arguments_invalid",
-                        allowedRevisions = new[] { "live", "candidate" }
+                        error = "engineering_repository_arguments_invalid"
+                    }, JsonOptions);
+
+                string? revision = null;
+                if (string.IsNullOrWhiteSpace(requestedReference) ||
+                    string.Equals(requestedReference, "live", StringComparison.Ordinal))
+                    revision = "live";
+                else if (string.Equals(requestedReference, "candidate", StringComparison.Ordinal))
+                    revision = "candidate";
+                else if (LegendEngineeringPolicies.IsImmutableSha(requestedReference) &&
+                         string.Equals(requestedReference, context.LiveSha, StringComparison.OrdinalIgnoreCase))
+                    revision = "live";
+                else if (LegendEngineeringPolicies.IsImmutableSha(requestedReference) &&
+                         LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha) &&
+                         string.Equals(requestedReference, item.CandidateSha, StringComparison.OrdinalIgnoreCase))
+                    revision = "candidate";
+
+                if (revision is null)
+                    return JsonSerializer.Serialize(new
+                    {
+                        ok = false,
+                        error = "engineering_repository_revision_not_allowed",
+                        requestedReference,
+                        authorizedLiveSha = context.LiveSha,
+                        authorizedCandidateSha = LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha)
+                            ? item.CandidateSha
+                            : null
                     }, JsonOptions);
 
                 var result = await orchestrator.InspectRepositoryAsync(
