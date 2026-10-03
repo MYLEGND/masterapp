@@ -6311,13 +6311,13 @@ pipelineBoard?.addEventListener("click", (e) => {
 /* ========= Columns Modal ========= */
 function openModal(el){
   if (!el || !modalBackdrop) return;
-  document.body.classList.add("legend-bootstrap-modal-open");
   modalBackdrop.classList.add("open");
+  modalBackdrop.setAttribute("aria-hidden", "false");
   el.classList.add("open");
 }
 function closeModal(){
-  document.body.classList.remove("legend-bootstrap-modal-open");
   modalBackdrop.classList.remove("open");
+  modalBackdrop.setAttribute("aria-hidden", "true");
   [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal, performanceModal, myDayModal].forEach(m => m?.classList.remove("open"));
 }
 
