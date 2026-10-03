@@ -359,8 +359,9 @@ public sealed class LegendFounderAiContractTests
             1,
             css.Split("@media (max-width: 820px)", StringSplitOptions.None).Length - 1);
         Assert.Contains("linear-gradient(135deg, #f0c767", css, StringComparison.Ordinal);
-        Assert.Contains("--legend-ai-response: var(--legend-design-aiResponseRoyal", css, StringComparison.Ordinal);
-        Assert.Contains("background: var(--legend-ai-response)", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("--legend-ai-response", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("--legend-ai-on-response", css, StringComparison.Ordinal);
+        Assert.Contains("background: linear-gradient(145deg,var(--legend-app-surface-elevated),var(--legend-app-surface))", css, StringComparison.Ordinal);
         Assert.DoesNotContain("border-left: 3px solid var(--legend-ai-gold-600)", css, StringComparison.Ordinal);
         Assert.Contains("\"aiResponseRoyal\"", tokens, StringComparison.Ordinal);
 
