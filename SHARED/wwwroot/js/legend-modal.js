@@ -414,7 +414,9 @@
 
   function registerDialog(dialog){
     if (!dialog || dialog.nodeType !== 1) return;
-    let surface = dialog.matches('.modal') ? dialog : null;
+    let surface = dialog.matches('[data-legend-modal-surface], .modal')
+      ? dialog
+      : dialog.closest?.('[data-legend-modal-surface]') || null;
     if (!surface){
       for (let node = dialog; node && node !== document.body; node = node.parentElement){
         if (window.getComputedStyle(node).position === 'fixed'){ surface = node; break; }
