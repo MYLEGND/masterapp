@@ -145,6 +145,8 @@ public sealed class FounderEngineeringActivationContractTests
         Assert.Contains("continuous implementation partner", source, StringComparison.Ordinal);
         Assert.Contains("Routine CHANGES REQUIRED goes to GPT Head, not the Founder", source, StringComparison.Ordinal);
         Assert.Contains("If tools are temporarily unavailable, preserve exact state and next action", source, StringComparison.Ordinal);
+        Assert.Contains("Preserve explicit Founder release/deployment intent as durable mission context", source, StringComparison.Ordinal);
+        Assert.Contains("prior intent never bypasses that exact gate", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Escalate or stop when evidence is insufficient", source, StringComparison.Ordinal);
         var adapter = File.ReadAllText(Path.Combine(
             SourceRoot(), "AgentPortal", "Services", "Engineering",
