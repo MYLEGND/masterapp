@@ -378,6 +378,29 @@ test('premium desktop modal system consumes the canonical authenticated page nav
   assert.match(shared,/background:\s*var\(--legend-app-control\);[\s\S]*color:\s*var\(--legend-modal-ink\);[\s\S]*box-shadow:\s*var\(--legend-inset\);/);
 });
 
+test('conversational surfaces use the same canonical roadster palette and do not expose provider badges',()=>{
+  const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const aiCss=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
+  const aiView=readFileSync(new URL('../../AgentPortal/Views/Shared/_LegendFounderAiModal.cshtml',import.meta.url),'utf8');
+  const aiJs=readFileSync(new URL('../../AgentPortal/wwwroot/js/legend-founder-ai.js',import.meta.url),'utf8');
+  assert.match(shell,/--legend-app-panel:var\(--legend-app-surface-elevated\)/);
+  assert.match(shared,/\.messaging-send-form textarea[\s\S]*background: var\(--legend-app-surface-elevated\);/);
+  assert.match(aiCss,/--legend-ai-response: var\(--legend-app-surface-elevated\);/);
+  assert.match(aiCss,/\.legend-founder-ai-main[\s\S]*background: var\(--legend-app-surface\);/);
+  assert.match(aiView,/Ask Legend<sup>®<\/sup> Ai/);
+  assert.doesNotMatch(aiView,/OpenAI Teacher mode is a direct Founder-to-OpenAI channel/);
+  assert.doesNotMatch(aiJs,/Provider: Cloudflare Workers AI|Billing: Cloudflare Workers AI|OpenAI API used: No/);
+});
+
+test('authenticated nav renders profile photos as image elements rather than object fallbacks',()=>{
+  for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.match(source,/class="profile-avatar-image"/,file);
+    assert.doesNotMatch(source,/class="profile-avatar-object"/,file);
+  }
+});
+
 test('desktop Bootstrap modal wrapper is transparent geometry and content owns the only visible surface',()=>{
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(shared,/\.modal\.show\[data-legend-modal-surface\] > \.modal-dialog\[data-legend-modal-panel\] \{[\s\S]*height: auto;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
