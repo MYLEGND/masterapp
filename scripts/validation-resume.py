@@ -1419,15 +1419,29 @@ def prior_evidence(args):
         f"actions/workflows/{workflow}/runs?branch={branch}&event={event}&status=completed&per_page=100",
         token,
     )
-    runs = [
-        run
-        for run in payload.get("workflow_runs", [])
-        if int(run.get("id", 0)) != args.current_run_id
-        and run.get("head_branch") == args.head_branch
-        and run.get("event") == args.event
-        and run.get("head_sha")
-        and (args.event != "pull_request" or _trusted_pr_run(args.repository, run, WORKFLOW_PATHS[args.workflow], token))
-    ]
+    runs = []
+    for run in payload.get("workflow_runs", []):
+        if (
+            int(run.get("id", 0)) == args.current_run_id
+            or run.get("head_branch") != args.head_branch
+            or run.get("event") != args.event
+            or not run.get("head_sha")
+        ):
+            continue
+        if args.event == "pull_request":
+            trusted = _trusted_lineage_run(
+                args.repository, run, WORKFLOW_PATHS[args.workflow], args.current_sha
+            )
+            if not trusted:
+                try:
+                    trusted = _trusted_pr_run(
+                        args.repository, run, WORKFLOW_PATHS[args.workflow], token
+                    )
+                except urllib.error.HTTPError:
+                    trusted = False
+            if not trusted:
+                continue
+        runs.append(run)
     if not runs:
         return None, {}, "no_prior_completed_run"
 
