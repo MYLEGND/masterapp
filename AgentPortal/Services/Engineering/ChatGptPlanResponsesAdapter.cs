@@ -187,7 +187,6 @@ internal sealed class ChatGptPlanResponsesAdapter(
 
             var bindings = new[]
             {
-                (Role: EngineeringRole.TriageWorker, Tier: EngineeringModelTier.FastTriage, Configured: contract.HeadGptModel),
                 (Role: EngineeringRole.HeadGpt, Tier: EngineeringModelTier.DeepReasoning, Configured: contract.HeadGptModel),
                 (Role: EngineeringRole.CodexImplementer, Tier: EngineeringModelTier.CodeImplementation, Configured: contract.CodexModel),
                 (Role: EngineeringRole.IndependentReviewer, Tier: EngineeringModelTier.IndependentReview, Configured: contract.ReviewerModel)
