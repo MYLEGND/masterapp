@@ -1134,7 +1134,7 @@ html[data-legend-modal-region] body .modal .modal-body {
     html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet] {
         top: auto;
         right: 0;
-        bottom: 0;
+        bottom: 0px;
         left: 0;
         width: 100%;
         max-width: none;
