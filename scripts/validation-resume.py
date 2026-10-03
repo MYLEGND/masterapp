@@ -1121,23 +1121,6 @@ WORKFLOWS = {
             "AgentPortal/wwwroot/js/website-analytics.js",
             "AgentPortal/wwwroot/css/website-analytics.css",
             "Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs",
-    "steps7-8-governed-advertising-validation.yml": {
-        "unmatched_neutral": True,
-        "force_all": (
-            "Domain/Entities/AdvertisingActionAuthorization.cs",
-            "SHARED/Analytics/AdvertisingActionContracts.cs",
-            "Infrastructure/Analytics/AdvertisingActionAuthorizationService.cs",
-            "Infrastructure/Analytics/MarketingConnectionStore.cs",
-            "Infrastructure/WebsiteEditing/PromotionOrchestrationService.cs",
-            "Infrastructure/WebsiteEditing/WebsitePlatformController.cs",
-            "Infrastructure/Data/MasterAppDbContext.cs",
-            "Infrastructure/Migrations/20260927053000_AddAdvertisingActionAuthorizations.cs",
-            "Infrastructure/Analytics/AdvertisingCommandCenterService.cs",
-            "AgentPortal/Controllers/WebsiteAnalyticsController.cs",
-            "AgentPortal/Views/WebsiteAnalytics/Index.cshtml",
-            "AgentPortal/wwwroot/js/website-analytics.js",
-            "AgentPortal/wwwroot/css/website-analytics.css",
-            "Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs",
         ),
         "neutral": ("scripts/validation-resume.py", "scripts/test-validation-resume.py"),
         "gates": {
@@ -1980,10 +1963,10 @@ def cmd_record_evidence(args):
     except urllib.error.HTTPError as exc:
         if exc.code != 403:
             raise
-        # GitHub can deny self-observation while a pull-request run is active
-        # even with actions:read. Never turn that transport limitation into a
-        # validation failure or fabricate child success. The completed run is
-        # read canonically on the next planner pass and supplies exact step proof.
+        # GitHub may deny self-observation while a PR run is active even with
+        # actions:read. Do not turn that transport limitation into a false gate
+        # failure or invent success. The completed run is read canonically on
+        # the next planner pass and supplies exact child step evidence.
         plan["receiptSchemaVersion"] = 1
         plan["recordingRunId"] = args.run_id
         plan["receiptRecordingDeferred"] = "current_run_actions_observation_forbidden"
