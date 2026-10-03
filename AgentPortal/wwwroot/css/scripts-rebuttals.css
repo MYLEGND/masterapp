@@ -2367,9 +2367,6 @@ details.section{
 }
 
 .proposal-dialog .uw-head{
-    position: sticky;
-    top: 0;
-    z-index: 6;
     background: linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.97));
     border-bottom: 1px solid rgba(166,128,35,.22);
     padding-bottom: .7rem;
@@ -2424,14 +2421,8 @@ details.section{
     background: linear-gradient(180deg,var(--legend-modal-chrome),var(--legend-modal-chrome-deep));
 }
 #captureDecisionModal.legend-popout-modal .modal-header{
-    position: sticky;
-    top: 0;
-    z-index: 8;
 }
 #captureDecisionModal.legend-popout-modal .modal-footer{
-    position: sticky;
-    bottom: 0;
-    z-index: 7;
 }
 #captureDecisionModal.legend-popout-modal .modal-title{
     color: var(--legend-gold-bright, #ddb457);
@@ -9023,9 +9014,6 @@ details.section{
 }
 
 #rbShell #drawer.crm-qv-shell .dhead{
-    position: sticky;
-    top: 0;
-    z-index: 5;
     border-bottom: 1px solid rgba(244,208,121,.2) !important;
     background: linear-gradient(180deg, rgba(8,15,28,.96), rgba(11,19,35,.88)) !important;
     backdrop-filter: blur(18px) saturate(120%);
