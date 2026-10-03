@@ -478,6 +478,29 @@ test('CRM quick views keep only contact identity in fixed mobile chrome',()=>{
   assert.doesNotMatch(workstationCss, /#rbShell #drawer\.crm-qv-shell \.dhead\{\s*position:\s*sticky/);
 });
 
+test('Home Clients uses the canonical wide modal and compact twelve-client summary',()=>{
+  const view=readFileSync(new URL('../../AgentPortal/Views/Home/Index.cshtml',import.meta.url),'utf8');
+  const script=readFileSync(new URL('../../AgentPortal/wwwroot/js/home-clients-hub.js',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../../AgentPortal/wwwroot/css/home-command-page.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const controller=readFileSync(new URL('../../AgentPortal/Controllers/ClientsController.cs',import.meta.url),'utf8');
+
+  assert.match(view,/id="homeClientsHub"[\s\S]*data-legend-modal-surface/);
+  assert.match(view,/class="home-clients-dialog" data-legend-modal-panel/);
+  assert.match(view,/class="home-clients-shell" data-legend-modal-scroll/);
+  assert.match(shared,/:is\(\.lc-limits-modal, \.home-clients-hub\)[\s\S]*1760px/);
+  assert.doesNotMatch(css,/\.home-clients-shell\s*\{[\s\S]{0,180}width:\s*min\(1160px/);
+  assert.match(css,/\.home-clients-recent-grid[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
+
+  assert.match(controller,/PortalQuickAccessClients[\s\S]*\.Take\(string\.IsNullOrWhiteSpace\(search\) \? 12 : 24\)/);
+  assert.match(script,/fallbackItems\.slice\(0, 12\)/);
+  assert.doesNotMatch(script,/legend\.homeClientsHub\.recent|localStorage/);
+  assert.doesNotMatch(script,/No email on file|No phone on file|Client actions|Open Client Profile|Edit Record/);
+  assert.match(script,/access\.textContent = item\.agentWorkspaceAccessEnabled === true \? "Shared Access" : "Self Managed"/);
+  assert.match(script,/openButton\.textContent = "Open Client"/);
+  assert.match(script,/editButton\.textContent = "Edit Client"/);
+});
+
 test('desktop Bootstrap modal wrapper is transparent geometry and content owns the only visible surface',()=>{
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(shared,/\.modal\.show\[data-legend-modal-surface\] > \.modal-dialog\[data-legend-modal-panel\] \{[\s\S]*height: auto;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
