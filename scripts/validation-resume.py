@@ -3682,7 +3682,8 @@ def read_step5_results(path):
     return result
 
 
-def _step5_artifact_complete(repository, run_id, artifact, kind, token):
+@functools.lru_cache(maxsize=128)
+def _step5_artifact_results(repository, run_id, artifact, kind, token):
     """Authenticate the retained child by its artifact bytes, not parent status.
 
     The canonical workflow uploads this artifact only after the child suite has
@@ -3694,8 +3695,11 @@ def _step5_artifact_complete(repository, run_id, artifact, kind, token):
     with tempfile.TemporaryDirectory(prefix="step5-child-") as temporary:
         directory = Path(temporary)
         _download_run_artifact(repository, run_id, artifact, directory)
-        read_step5_results(directory / (kind + ".trx"))
-    return True
+        return read_step5_results(directory / (kind + ".trx"))
+
+
+def _step5_artifact_complete(repository, run_id, artifact, kind, token):
+    return bool(_step5_artifact_results(repository, run_id, artifact, kind, token))
 
 
 def _step5_prior_candidate_evidence(
@@ -3736,7 +3740,9 @@ def _step5_prior_candidate_evidence(
                 continue
             if not _step5_artifact_complete(repository, run_id, artifact, "candidate", token):
                 continue
-            return {"runId": run_id, "headSha": head_sha, "artifact": artifact}
+            rows = _step5_artifact_results(repository, run_id, artifact, "candidate", token)
+            return {"runId": run_id, "headSha": head_sha, "artifact": artifact,
+                    "testNames": tuple(rows)}
         except EvidenceLookupUnavailable:
             raise
         except Exception:
@@ -3816,6 +3822,15 @@ def _step5_isolated_test_source(source):
     return bool(re.search(r"\[(?:Fact|Theory)(?:\]|\()", source))
 
 
+def _step5_extension_method_names(source):
+    # Ordinary calls follow their declaring type through the source closure.
+    # Only extension syntax can omit that type at its call site. A shared name
+    # on an unrelated override (e.g. SendAsync) is not a dependency edge.
+    return set(re.findall(
+        r"\b(?:public|internal)\s+static\s+(?:async\s+)?[\w.<>,?\[\]]+\s+"
+        r"(\w+)\s*(?:<[^>]+>)?\s*\(\s*this\s+", source))
+
+
 def step5_dependency_change(prior_sha, current_sha):
     """Return bounded invalidated classes, or None when suite proof is required.
 
@@ -3892,7 +3907,7 @@ def step5_dependency_change(prior_sha, current_sha):
         referenced = {name.rsplit(".", 1)[-1] for name in affected}
         for file, source in sources.items():
             if classes[file] & affected and not classes[file] & test_classes:
-                referenced.update(re.findall(r"\b(?:public|internal|protected)\s+(?:(?:static|async|virtual|override)\s+)*[\w.<>,?\[\]]+\s+(\w+)\s*\(", source))
+                referenced.update(_step5_extension_method_names(source))
         for file, source in sources.items():
             if any(re.search(r"\b" + re.escape(name) + r"\b", source) for name in referenced):
                 if not classes[file]:
@@ -3902,6 +3917,21 @@ def step5_dependency_change(prior_sha, current_sha):
             bounded = affected & test_classes
             return sorted(bounded) if bounded or not affected else None
         affected = expanded
+
+
+def _step5_discovered_repair_classes(classes, test_names, changed_paths):
+    """Use complete prior discovery to distinguish tests from co-located helpers.
+
+    This narrowing is admitted only while C# discovery/build inputs are unchanged.
+    A source edit that could introduce a new class must retain full proof when
+    the proposed class has no prior discovery evidence.
+    """
+    discovered = [name for name in classes
+                  if any(test.startswith(name + ".") for test in test_names)]
+    if len(discovered) != len(classes) and any(
+            path.endswith((".cs", ".csproj", ".props", ".targets")) for path in changed_paths):
+        return None
+    return discovered
 
 
 def compute_step5_decision(
@@ -3977,6 +4007,12 @@ def compute_step5_decision(
     if classes is None:
         decision["reason"] = "changed_or_unproven_suite_dependencies"
         return decision
+    if "testNames" in candidate_evidence:
+        classes = _step5_discovered_repair_classes(
+            classes, candidate_evidence["testNames"], git_changed(prior_head_sha, current_sha))
+        if classes is None:
+            decision["reason"] = "changed_test_discovery_requires_full_proof"
+            return decision
     decision.update({
         "mode": "repair" if classes else "reuse",
         "repairClasses": classes,

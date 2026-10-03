@@ -68,6 +68,23 @@ class ValidationResumePlannerTests(unittest.TestCase):
             with self.assertRaises(m.EvidenceLookupUnavailable):
                 m.compute_step5_baseline_evidence("owner/repo", "a" * 40)
 
+    def test_only_extension_methods_create_name_only_dependency_edges(self):
+        source = """
+        public static Result CreateClient() => new();
+        protected override Task SendAsync(Request request) => null;
+        public static Result Configure(this Client client) => null;
+        internal static async Task ApplyAsync<T>(this T client) => null;
+        """
+        self.assertEqual({"Configure", "ApplyAsync"}, m._step5_extension_method_names(source))
+
+    def test_complete_discovery_excludes_helpers_without_hiding_new_test_classes(self):
+        classes = ["Tests.RealTests", "Tests.HelperController"]
+        names = ["Tests.RealTests.Check"]
+        self.assertEqual(["Tests.RealTests"], m._step5_discovered_repair_classes(
+            classes, names, ["scripts/validation-resume.py"]))
+        self.assertIsNone(m._step5_discovered_repair_classes(
+            classes, names, ["AgentPortal.Tests/NewTests.cs"]))
+
     def successful_steps(self, workflow):
         return {
             gate["step"]: "success"
