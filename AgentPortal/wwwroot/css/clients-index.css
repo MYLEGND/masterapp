@@ -3874,7 +3874,6 @@
 
     .advanced-markets-modal{
         top:4%;
-        width:min(1120px, 96vw);
         background: linear-gradient(145deg, var(--am-surface), var(--am-surface-2));
         border:1px solid var(--am-border);
         box-shadow: var(--am-shadow);
@@ -5965,7 +5964,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     --crm-qv-text:#f7fbff;
     --crm-qv-muted:rgba(213,225,247,.74);
     --crm-qv-gold:#ecd184;
-    width:min(1160px, calc(100vw - 56px));
     max-height:min(90vh, calc(var(--legend-modal-safe-height, 100vh) - 16px));
     background:
         radial-gradient(circle at top right, rgba(95,138,231,.16), transparent 34%),
@@ -7567,9 +7565,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     color:rgba(221,232,252,.76);
 }
 
-.production-modal-dialog{
-    max-width:min(680px, calc(100vw - 2rem));
-}
 
 .production-modal-shell{
     overflow:hidden;
