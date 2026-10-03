@@ -57,6 +57,40 @@ class ValidationResumePlannerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Ambiguous duplicate test identity"):
             m.read_step5_results(path)
 
+    def test_record_evidence_defers_current_run_403_without_fabricating_success(self):
+        plan = {
+            "workflow": "approved-release-security-validation.yml",
+            "gates": {
+                "diff-check": {
+                    "step": "Verify patch whitespace integrity",
+                    "run": True,
+                    "reason": "gate_inputs_changed",
+                }
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            plan_path = Path(directory) / "plan.json"
+            output_path = Path(directory) / "out.json"
+            plan_path.write_text(__import__("json").dumps(plan))
+            error = m.urllib.error.HTTPError(
+                "https://api.github.com/example", 403, "Forbidden", {}, None
+            )
+            args = SimpleNamespace(
+                plan=str(plan_path),
+                output=str(output_path),
+                repository="MYLEGND/masterapp",
+                run_id=123,
+            )
+            with patch.object(m, "api_get", side_effect=error), \
+                 patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+                m.cmd_record_evidence(args)
+            recorded = __import__("json").loads(output_path.read_text())
+        self.assertEqual(
+            "current_run_actions_observation_forbidden",
+            recorded["receiptRecordingDeferred"],
+        )
+        self.assertNotIn("receipt", recorded["gates"]["diff-check"])
+
     def test_effective_steps_keeps_latest_executed_failure_and_backfills_only_skips(self):
         effective = m._effective_steps([
             {
@@ -438,6 +472,15 @@ jobs:
         self.assertNotIn("STEP6_VALIDATION_PATHS", lifecycle)
         self.assertNotIn("STEP78_VALIDATION_PATHS", lifecycle)
         self.assertNotIn("VALIDATION_NEUTRAL_PATHS =", lifecycle)
+
+    def test_validation_resume_test_change_requires_architecture_only(self):
+        topology = m.required_validation_topology([
+            "scripts/test-validation-resume.py",
+        ])
+        self.assertEqual(
+            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            set(topology["required"]),
+        )
 
     def test_lifecycle_only_change_requires_architecture_only(self):
         topology = m.required_validation_topology([
