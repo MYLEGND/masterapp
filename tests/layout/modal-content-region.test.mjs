@@ -431,11 +431,14 @@ test('authenticated feature surfaces cannot reintroduce legacy white or separate
   assert.doesNotMatch(ai,/--legend-ai-provider(?:-surface)?:/);
 });
 
-test('authenticated nav renders profile photos as image elements rather than object fallbacks',()=>{
+test('authenticated nav renders profile photos through one shared image partial rather than object fallbacks',()=>{
+  const partial=readFileSync(new URL('../../SHARED/Views/Shared/_PortalProfileMenu.cshtml',import.meta.url),'utf8');
+  assert.match(partial,/class="profile-avatar-image"/);
+  assert.doesNotMatch(partial,/class="profile-avatar-object"/);
   for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']){
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
-    assert.match(source,/class="profile-avatar-image"/,file);
-    assert.doesNotMatch(source,/class="profile-avatar-object"/,file);
+    assert.match(source,/_PortalProfileMenu\.cshtml/,file);
+    assert.doesNotMatch(source,/class="profile-avatar-(?:image|object)"/,file);
   }
 });
 
