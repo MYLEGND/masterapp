@@ -146,6 +146,11 @@ public sealed class FounderEngineeringActivationContractTests
         Assert.Contains("Routine CHANGES REQUIRED goes to GPT Head, not the Founder", source, StringComparison.Ordinal);
         Assert.Contains("If tools are temporarily unavailable, preserve exact state and next action", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Escalate or stop when evidence is insufficient", source, StringComparison.Ordinal);
+        var adapter = File.ReadAllText(Path.Combine(
+            SourceRoot(), "AgentPortal", "Services", "Engineering",
+            "ChatGptPlanResponsesAdapter.cs"));
+        Assert.DoesNotContain("If evidence is insufficient, STOP or ESCALATE", adapter, StringComparison.Ordinal);
+        Assert.Contains("do not substitute stale built-in role behavior", adapter, StringComparison.Ordinal);
     }
 
 
