@@ -412,7 +412,7 @@
             <div class="qv-section-body">
                 <div class="qv-subsection">
                     <h5>Opportunity Planning</h5>
-                    <div class="tiny" style="margin-bottom:10px;">Check each planning review completed for this prospect.</div>
+                    <div class="tiny qv-review-help">Check each planning review completed for this prospect.</div>
                     <div class="doc-grid">
                         <label><input type="checkbox" id="dPlanLifeInsurance" /> Life Insurance Planning</label>
                         <label><input type="checkbox" id="dPlanDisabilityIncome" /> Disability Income Planning</label>
@@ -586,23 +586,23 @@
 <!-- Accumulation + Distribution Modal (uses existing Legend modal system/backdrop) -->
 <div class="modal fade finplan-modal" id="clientFinPlanModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content" style="background:#0f172a; color:#e2e8f0; border:1.5px solid rgba(166,128,35,.5); border-radius:16px;">
-            <div class="modal-header" style="border:0; align-items:flex-start;">
+        <div class="modal-content client-finplan-modal-content">
+            <div class="modal-header client-finplan-modal-header">
                 <div>
-                    <h5 class="modal-title fw-bold" style="color:#d9b35a;">Accumulation + Distribution</h5>
+                    <h5 class="modal-title fw-bold client-finplan-modal-title">Accumulation + Distribution</h5>
                     <div class="text-muted small" id="finPlanClientLabel">Client</div>
                     <div class="text-muted small" id="finPlanStatusLabel">Loading…</div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body" style="max-height:70vh; overflow:auto;">
+            <div class="modal-body client-finplan-modal-body">
                 <form id="finPlanForm">
                     <input type="hidden" id="finPlanVersion" value="0" />
                     <input type="hidden" id="finPlanClientProfileId" value="" />
                     <input type="hidden" id="finPlanClientUserId" value="" />
                     <input type="hidden" id="wfd_base" value="" />
                     <div class="finplan-section">
-                        <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Wealth Forecast Inputs</div>
+                        <div class="fw-bold text-uppercase small client-finplan-kicker">Wealth Forecast Inputs</div>
                         <div class="row g-2 mt-1">
                             <div class="col-md-6"><label class="form-label">Starting Balance</label><input class="form-control" id="wbStartingBalance" /></div>
                             <div class="col-md-6"><label class="form-label">Annual Income</label><input class="form-control" id="wbIncome" /></div>
@@ -616,7 +616,7 @@
                     </div>
 
                     <div class="finplan-section">
-                        <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Distribution Planner — Foundation</div>
+                        <div class="fw-bold text-uppercase small client-finplan-kicker">Distribution Planner — Foundation</div>
                         <div class="row g-2 mt-1">
                             <div class="col-md-4"><label class="form-label">Retire Age</label><input class="form-control" id="wfd_retAge" /></div>
                             <div class="col-md-4"><label class="form-label">End Age</label><input class="form-control" id="wfd_endAge" /></div>
@@ -631,35 +631,35 @@
                     </div>
 
                     <div class="finplan-section wfd-sec">
-                        <p class="wfd-sec-title" style="margin:0;">2 — Three Bucket Allocation</p>
-                        <p style="font-size:.8rem;color:#64748b;margin:0 0 10px;">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</p>
+                        <p class="wfd-sec-title is-flush">2 — Three Bucket Allocation</p>
+                        <p class="client-finplan-helper">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</p>
 
                         <div class="wfd-alloc-row">
-                            <span style="font-size:.85rem;font-weight:600;color:#475569;">Total Allocated:</span>
+                            <span class="client-finplan-total-label">Total Allocated:</span>
                             <span id="wfd_allocTotal" class="wfd-alloc-bad">0%</span>
-                            <span id="wfd_allocStatus" style="font-size:.78rem;font-weight:600;color:#dc2626;">— must equal 100%</span>
+                            <span id="wfd_allocStatus" class="client-finplan-allocation-status">— must equal 100%</span>
                         </div>
 
                         <div class="wfd-bkt-vis" id="wfd_allocVis">
                             <div class="wfd-bkt-bar-wrap">
-                                <div id="wfd_invBar" class="wfd-bkt-bar" style="height:3px;background:#3b82f6;"></div>
+                                <div id="wfd_invBar" class="wfd-bkt-bar is-investment"></div>
                                 <div class="wfd-bkt-bar-lbl">Investments</div>
                             </div>
                             <div class="wfd-bkt-bar-wrap">
-                                <div id="wfd_liBar" class="wfd-bkt-bar" style="height:3px;background:#a68023;"></div>
+                                <div id="wfd_liBar" class="wfd-bkt-bar is-life"></div>
                                 <div class="wfd-bkt-bar-lbl">Life Ins</div>
                             </div>
                             <div class="wfd-bkt-bar-wrap">
-                                <div id="wfd_annBar" class="wfd-bkt-bar" style="height:3px;background:#16a34a;"></div>
+                                <div id="wfd_annBar" class="wfd-bkt-bar is-annuity"></div>
                                 <div class="wfd-bkt-bar-lbl">Annuities</div>
                             </div>
                         </div>
 
                         <div class="wfd-bkt-grid">
-                            <div id="wfd_invCard" class="wfd-bkt" style="border-color:rgba(59,130,246,.4);">
-                                <p class="wfd-bkt-title" style="color:#1d4ed8;">A — Investments</p>
+                            <div id="wfd_invCard" class="wfd-bkt is-investment">
+                                <p class="wfd-bkt-title is-investment">A — Investments</p>
                                 <p class="wfd-bkt-sub">Growth Engine — Stocks, bonds, ETFs, mutual funds, brokerage, retirement accounts</p>
-                                <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+                                <div class="wfd-tog-wrap is-spaced">
                                     <span id="wfd_invDmBadge" class="wfd-dm-badge">Down-Market: Off</span>
                                 </div>
                                 <label class="wfd-lbl" for="wfd_invAlloc">Allocation %</label>
@@ -676,21 +676,21 @@
                                 </div>
                             </div>
 
-                            <div id="wfd_liCard" class="wfd-bkt" style="border-color:rgba(166,128,35,.45);">
-                                <p class="wfd-bkt-title" style="color:#a68023;">B — Life Insurance / Equivalent</p>
+                            <div id="wfd_liCard" class="wfd-bkt is-life">
+                                <p class="wfd-bkt-title is-life">B — Life Insurance / Equivalent</p>
                                 <p class="wfd-bkt-sub">Stability Buffer — Cash value life insurance, overfunded permanent insurance, protected strategies</p>
-                                <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+                                <div class="wfd-tog-wrap is-spaced">
                                     <span id="wfd_liDmBadge" class="wfd-dm-badge">Down-Market: On</span>
                                 </div>
                                 <label class="wfd-lbl" for="wfd_liType">Policy Type</label>
-                                <select id="wfd_liType" class="wfd-inp" style="cursor:pointer;">
+                                <select id="wfd_liType" class="wfd-inp is-pointer">
                                     <option value="whole">Whole Life</option>
                                     <option value="iul">Indexed UL</option>
                                     <option value="vul">Variable UL</option>
                                     <option value="legacy_rpu">Legacy / Reduced Paid-Up</option>
                                 </select>
                                 <label class="wfd-lbl" for="wfd_liAccess">Access Method</label>
-                                <select id="wfd_liAccess" class="wfd-inp" style="cursor:pointer;">
+                                <select id="wfd_liAccess" class="wfd-inp is-pointer">
                                     <option value="withdrawal">Withdrawals</option>
                                     <option value="loan">Policy Loans</option>
                                     <option value="none">No Distributions</option>
@@ -705,7 +705,7 @@
                                 <input id="wfd_liGrowth" class="wfd-inp" type="number" step="0.1" placeholder="5.0" />
                                 <label class="wfd-lbl" for="wfd_liTax">Tax Rate %</label>
                                 <input id="wfd_liTax" class="wfd-inp" type="number" step="0.1" placeholder="0" />
-                                <label class="wfd-lbl" for="wfd_liEfficiency">Access / Efficiency Factor % <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">optional, default 100</span></label>
+                                <label class="wfd-lbl" for="wfd_liEfficiency">Access / Efficiency Factor % <span class="client-finplan-optional">optional, default 100</span></label>
                                 <input id="wfd_liEfficiency" class="wfd-inp" type="number" step="0.1" placeholder="100" />
                                 <div class="wfd-tog-wrap">
                                     <label class="wfd-tog"><input type="checkbox" id="wfd_liDownMkt" checked /><span class="wfd-tog-sl"></span></label>
@@ -713,14 +713,14 @@
                                 </div>
                             </div>
 
-                            <div id="wfd_annCard" class="wfd-bkt" style="border-color:rgba(22,163,74,.4);">
-                                <p class="wfd-bkt-title" style="color:#15803d;">C — Annuities</p>
+                            <div id="wfd_annCard" class="wfd-bkt is-annuity">
+                                <p class="wfd-bkt-title is-annuity">C — Annuities</p>
                                 <p class="wfd-bkt-sub">Income Floor — Protected income / accumulation hybrid</p>
-                                <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+                                <div class="wfd-tog-wrap is-spaced">
                                     <span id="wfd_annDmBadge" class="wfd-dm-badge">Down-Market: On</span>
                                 </div>
                                 <label class="wfd-lbl" for="wfd_annDesign">Annuity Design</label>
-                                <select id="wfd_annDesign" class="wfd-inp" style="cursor:pointer;">
+                                <select id="wfd_annDesign" class="wfd-inp is-pointer">
                                     <option value="fixed">Fixed Annuity</option>
                                     <option value="fixedIndexed">Fixed Indexed Annuity</option>
                                     <option value="variable">Variable Annuity</option>
@@ -731,7 +731,7 @@
                                 <input id="wfd_annDeath" class="wfd-inp" type="text" placeholder="e.g., 250,000" />
                                 <label class="wfd-lbl" for="wfd_annAmt">Starting Annuity Value</label>
                                 <input id="wfd_annAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc from allocation" />
-                                <div class="wfd-tog-wrap" style="margin-top:4px;">
+                                <div class="wfd-tog-wrap is-top-spaced">
                                     <label class="wfd-tog"><input type="checkbox" id="wfd_annIncomeRider" /><span class="wfd-tog-sl"></span></label>
                                     <span class="wfd-tog-lbl">Income Rider</span>
                                 </div>
@@ -739,7 +739,7 @@
                                     <label class="wfd-lbl" for="wfd_annRollup">Income Rider Rollup Rate (%)</label>
                                     <input id="wfd_annRollup" class="wfd-inp" type="number" step="0.1" placeholder="5.0" value="5.0" />
                                 </div>
-                                <div class="wfd-tog-wrap" style="margin-top:4px;">
+                                <div class="wfd-tog-wrap is-top-spaced">
                                     <label class="wfd-tog"><input type="checkbox" id="wfd_annDbRider" /><span class="wfd-tog-sl"></span></label>
                                     <span class="wfd-tog-lbl">Death Benefit Rider</span>
                                 </div>
@@ -758,7 +758,7 @@
                     <!-- Strategy & scenarios are managed on the Finance page planner only (source of truth). -->
                 </form>
             </div>
-            <div class="modal-footer" style="border:0;">
+            <div class="modal-footer client-finplan-modal-footer">
                 <div class="text-danger small me-auto" id="finPlanError" style="display:none;"></div>
                 <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-gold" id="finPlanSaveBtn">Save Plan</button>
