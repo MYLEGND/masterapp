@@ -368,12 +368,11 @@
             <div class="profile-avatar">
                 @if (!string.IsNullOrWhiteSpace(avatarUrl))
                 {
-                    <object class="profile-avatar-object"
-                            data="@avatarUrl"
-                            type="image/*"
-                            aria-label="Profile photo">
-                        <span class="profile-avatar-fallback" aria-hidden="true">@initials</span>
-                    </object>
+                    <img class="profile-avatar-image"
+                             src="@avatarUrl"
+                             alt="Profile photo"
+                             loading="eager"
+                             decoding="async" />
                                 }
                                 else
                                 {
