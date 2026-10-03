@@ -165,17 +165,18 @@
 </div>
 
 <div class="home-clients-hub" id="homeClientsHub" hidden
+     data-legend-modal-surface
      data-lookup-url="@Url.Action("PortalQuickAccessClients", "Clients")"
      data-create-url="@Url.Action("Create", "Clients")"
      data-crm-url="@Url.Action("Index", "Clients")">
     <div class="home-clients-backdrop" id="homeClientsBackdrop"></div>
-    <div class="home-clients-dialog" role="dialog" aria-modal="true" aria-labelledby="homeClientsTitle">
-        <div class="home-clients-shell">
+    <div class="home-clients-dialog" data-legend-modal-panel role="dialog" aria-modal="true" aria-labelledby="homeClientsTitle">
+        <div class="home-clients-shell" data-legend-modal-scroll>
             <div class="home-clients-head">
                 <div>
                     <div class="home-clients-kicker">Legend™ Client Access</div>
                     <h3 class="home-clients-title" id="homeClientsTitle">Clients</h3>
-                    <p class="home-clients-sub">Search portal-enabled clients, reopen recent profiles fast, or launch the same create flow used in the Clients CRM page.</p>
+                    <p class="home-clients-sub">Search clients or jump back into your 12 most recent client records.</p>
                 </div>
                 <button type="button" class="home-clients-close" id="homeClientsClose" aria-label="Close client hub">×</button>
             </div>
