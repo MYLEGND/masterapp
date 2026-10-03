@@ -4737,7 +4737,7 @@ namespace AgentPortal.Controllers;
         var results = businessProfiles
             .OrderByDescending(x => x.UpdatedUtc)
             .ThenBy(x => x.DisplayName)
-            .Take(string.IsNullOrWhiteSpace(search) ? 8 : 16)
+            .Take(string.IsNullOrWhiteSpace(search) ? 12 : 24)
             .Select(x => new
             {
                 clientUserId = x.ClientUserId,
