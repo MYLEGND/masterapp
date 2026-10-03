@@ -540,7 +540,7 @@ jobs:
                 return {"workflow_runs": [run]}
             raise AssertionError(path)
         with patch.object(m, "api_get", side_effect=api_get), \
-             patch.object(m, "_trusted_pr_run", return_value=True), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
              patch.object(m, "package_inputs_compatible", return_value=True), \
              patch.object(m, "_successful_package_child", return_value=True), \
              patch.object(m, "_run_artifact_names", return_value={artifact}), \
@@ -577,7 +577,7 @@ jobs:
                 return jobs
             raise AssertionError(path)
         with patch.object(m, "api_get", side_effect=api_get), \
-             patch.object(m, "_trusted_pr_run", return_value=True), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
              patch.object(m, "migration_probe_identity", return_value=identity), \
              patch.object(m, "_run_artifact_names", return_value={identity["artifact"]}), \
              patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
@@ -585,6 +585,34 @@ jobs:
         self.assertTrue(result["reusable"])
         self.assertEqual(88, result["runId"])
         self.assertFalse(any(path.startswith("actions/artifacts?") for path in seen))
+
+    def test_trusted_lineage_run_requires_same_repo_workflow_and_ancestor(self):
+        run = {
+            "path": ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+            "event": "pull_request",
+            "status": "completed",
+            "head_sha": "a" * 40,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+        }
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+            self.assertTrue(m._trusted_lineage_run(
+                "MYLEGND/masterapp", run,
+                ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+                "b" * 40,
+            ))
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=1)):
+            self.assertFalse(m._trusted_lineage_run(
+                "MYLEGND/masterapp", run,
+                ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+                "b" * 40,
+            ))
+        foreign = dict(run, head_repository={"full_name": "outsider/fork"})
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+            self.assertFalse(m._trusted_lineage_run(
+                "MYLEGND/masterapp", foreign,
+                ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+                "b" * 40,
+            ))
 
     def test_package_canary_preserves_original_producer_for_control_only_change(self):
         producer = {'runId': 91, 'revision': 'a' * 40, 'packageIdentity': 'c' * 64,
