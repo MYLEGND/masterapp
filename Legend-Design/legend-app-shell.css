@@ -63,9 +63,9 @@
   --legend-app-accent-bright:var(--web-gold-strong);
   --legend-app-on-dark:var(--web-white);
   --legend-app-on-dark-muted:color-mix(in srgb,var(--web-white) 72%,var(--web-navy));
-  --legend-app-panel:var(--web-white);
-  --legend-app-panel-soft:var(--web-surface);
-  --legend-app-border:var(--web-border);
+  --legend-app-panel:var(--legend-app-surface-elevated);
+  --legend-app-panel-soft:var(--legend-app-control);
+  --legend-app-border:var(--legend-app-control-line);
   --legend-app-radius:14px;
   --legend-app-radius-compact:10px;
 
@@ -84,8 +84,8 @@
 
   /*
    * Canonical desktop geometry + modal material authority.
-   * Main app surfaces stay deep LEGEND navy/gold; modal surfaces intentionally
-   * break into cool graphite/grey so commands read as a distinct work layer.
+   * Every authenticated surface uses one LEGEND navy / gold material language.
+   * Geometry may differ by viewport; color authority never forks by feature.
    */
   --legend-desktop-control-height:38px;
   --legend-desktop-card-pad:clamp(.72rem,.9vw,1rem);
