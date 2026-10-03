@@ -291,11 +291,13 @@ public sealed class LegendFounderAiConversationService
             return LegendFounderAiChatResponse.ModeFailure(mode, "A valid conversation and operation identity is required.", "validation", "history_validation", "invalid_conversation_identity");
         var providerPolicy = request.NativeOnly
             ? LegendConnectExternalProviderPolicy.NativeOnly
-            : request.ExternalAnsweringBlocked
-                ? LegendConnectExternalProviderPolicy.IndependentAnswering
-                : _configuration["LegendConnect:Foundation:HostKind"] == "Cloudflare" && !IsTeacherMode(mode)
+            : IsTeacherMode(mode)
+                ? request.ExternalAnsweringBlocked
+                    ? LegendConnectExternalProviderPolicy.IndependentAnswering
+                    : LegendConnectExternalProviderPolicy.ProviderEnabled
+                : _configuration["LegendConnect:Foundation:HostKind"] == "Cloudflare"
                     ? LegendConnectExternalProviderPolicy.CloudflareFoundation
-                    : LegendConnectExternalProviderPolicy.ProviderEnabled;
+                    : LegendConnectExternalProviderPolicy.IndependentAnswering;
         if (providerPolicy.ForbidsExternalAnswering && IsTeacherMode(mode))
             return LegendFounderAiChatResponse.ModeFailure(mode, "External answering is blocked for this request. Use Legend® Ai mode. OpenAI Teacher was not contacted.",
                 "validation", "native_only_validation", request.NativeOnly ? "native_only_requires_legend_mode" : "external_answering_blocked_requires_legend_mode");
@@ -823,9 +825,11 @@ public sealed class LegendFounderAiConversationService
                     ResearchRequired: true
                 } researchDecision)
             {
-                if (request.NativeOnly)
+                if (providerPolicy.ForbidsOpenAiPayg)
                 {
-                    researchFailureReason = "external_research_blocked_by_native_only_policy";
+                    researchFailureReason = request.NativeOnly
+                        ? "external_research_blocked_by_native_only_policy"
+                        : "openai_research_blocked_in_legend_mode";
                 }
                 else
                 {
@@ -1184,24 +1188,29 @@ public sealed class LegendFounderAiConversationService
                 return LegendFounderAiChatResponse.ModeFailure(mode,
                     "The authenticated cloud request has no active delegation.",
                     "authorization", "cloudflare_scope", "cloudflare_session_scope_unavailable");
-            if (requiresGovernedInspection || request.FounderCommandConfirmed)
-                return LegendFounderAiChatResponse.ModeFailure(mode,
-                    "The cloud tool connection has not completed qualification. This operation was not executed.",
-                    "governed_tool", "cloudflare_tools", "cloudflare_tool_callback_not_qualified");
             var cloudTools = _configuration.GetValue<bool>("LegendConnect:Foundation:Cloudflare:ToolCallbackEnabled")
                 ? _toolAuthority.GetAvailableCloudTools(request.ConversationId, providerPolicy)
                 : Array.Empty<object>();
+            var requireCloudToolCall = ResolveCloudflareToolRequirement(
+                requiresGovernedInspection,
+                cloudTools.Count > 0);
+            if (requiresGovernedInspection && !requireCloudToolCall)
+                return LegendFounderAiChatResponse.ModeFailure(mode,
+                    "The governed Cloudflare read catalog is unavailable for this request.",
+                    "governed_tool", "cloudflare_tools", "cloudflare_governed_read_catalog_unavailable");
             var generated = await _modelInference!.GenerateAsync(model,
                 new LegendModelTaskRequest("conversation", instructions,
-                    conversation[^1].Content ?? string.Empty, "governed_response",
+                    conversation[^1].Content ?? string.Empty, "governed_response_or_tool_request",
                     ConversationInput: JsonSerializer.SerializeToElement(input, JsonOptions),
                     Tools: JsonSerializer.SerializeToElement(cloudTools, JsonOptions), AllowTools: cloudTools.Count > 0,
+                    RequireToolCall: requireCloudToolCall,
                     ProviderPolicy: providerPolicy, RequestingActorId: cloudDelegation.UserId,
                     CloudflareScope: new(operationId.Value.ToString("D"), cloudDelegation.TenantId, cloudDelegation.UserId, cloudDelegation.SessionId,
-                        request.ConversationId!, cloudDelegation.Roles, cloudDelegation.AuthorizationVersion, cloudDelegation.ExpiresUtc)), effectiveToken);
+                        request.ConversationId!, cloudDelegation.Roles, cloudDelegation.AuthorizationVersion, cloudDelegation.ExpiresUtc),
+                    Cognition: LegendModelCognitionPolicy.AdaptiveFounder), effectiveToken);
             if (!generated.Succeeded)
                 return LegendFounderAiChatResponse.ModeFailure(mode,
-                    "LEGEND could not complete the Cloudflare request. No local model or external teacher fallback was used.",
+                    "Escalation required. LEGEND could not complete the Cloudflare request. OpenAI API fallback is forbidden in LEGEND mode.",
                     "cloudflare_foundation", "cloudflare_execution", generated.ErrorCode ?? "cloudflare_execution_failed");
             return new LegendFounderAiChatResponse(true, mode, generated.Text, null,
                 ResponseAuthority: "HostedFoundation", Stage: "foundation_response",
@@ -1732,9 +1741,11 @@ public sealed class LegendFounderAiConversationService
 
                     if (string.Equals(call.Name, "legend_request_teacher_escalation", StringComparison.Ordinal))
                     {
-                        var escalationReason = providerPolicy.ForbidsExternalAnswering
-                            ? "external_provider_forbidden_by_policy"
-                            : usingExternalAnswering || escalationRequested
+                        var escalationReason = providerPolicy.ForbidsOpenAiPayg
+                            ? "openai_payg_forbidden_in_legend_mode"
+                            : providerPolicy.ForbidsExternalAnswering
+                                ? "external_provider_forbidden_by_policy"
+                                : usingExternalAnswering || escalationRequested
                                 ? "escalation_already_used_or_requested"
                                 : localModelRounds == 0
                                     ? "local_foundation_attempt_required"
@@ -2854,7 +2865,7 @@ public sealed class LegendFounderAiConversationService
                 providerCode);
         }
 
-        var diagnostic = $"LEGEND could not complete this response. " +
+        var diagnostic = $"Escalation required. LEGEND could not complete this response. " +
             $"NativeFailure={nativeReasonCode}; NativeDetail={nativeDetail}; " +
             $"EvidenceCount={evidenceCount}; Escalation={escalationState}; " +
             $"ProviderFailure={providerCode}; ProviderDetail={providerDetail}";
@@ -3731,7 +3742,7 @@ Remember information only through the existing scoped memory tool when explicitl
             ". User-local dates may differ; do not assume a user timezone.\n\n" + governance + (mode == "teacher" ? """
 
 MODE: OPENAI TEACHER
-You are the external OpenAI Teacher speaking directly with the Founder. Native LEGEND conversational inference is bypassed in this mode. Do not represent yourself as independent LEGEND inference or Founder authority.
+This mode uses OpenAI API billing. You are the external OpenAI Teacher speaking directly with the Founder. Native LEGEND conversational inference is bypassed in this mode. Do not represent yourself as independent LEGEND inference or Founder authority.
 Use existing governed tools for relevant inspection. When the Founder explicitly directs and confirms teaching, you must execute the matching existing governed training tool and accurately report its lifecycle state. OpenAI-derived teaching remains machine proposed and subject to training rights. You may prepare a bounded software repair only through its authorized capability; never merge or deploy outside the separate release authority.
 """ : cloudflareHosted ? """
 
@@ -4281,6 +4292,11 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             : requireToolCall
                 ? "required"
                 : "auto";
+
+    private static bool ResolveCloudflareToolRequirement(
+        bool requiresGovernedInspection,
+        bool hasCloudTools) =>
+        requiresGovernedInspection && hasCloudTools;
 
     private static string NormalizeReasoningEffort(
         string? value)

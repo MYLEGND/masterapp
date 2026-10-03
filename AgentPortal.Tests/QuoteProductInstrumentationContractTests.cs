@@ -51,7 +51,8 @@ public class QuoteProductInstrumentationContractTests
 
         foreach (var controller in controllers)
         {
-            Assert.Contains("\"lead_persisted\"", controller, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"lead_persisted\"", controller, StringComparison.Ordinal);
+            Assert.Contains("\"website_lead_submitted\"", controller, StringComparison.Ordinal);
             Assert.Contains("\"workstation_capture_attempt\"", controller, StringComparison.Ordinal);
             Assert.Contains("\"workstation_capture_success\"", controller, StringComparison.Ordinal);
             Assert.Contains("\"workstation_capture_failure\"", controller, StringComparison.Ordinal);
@@ -184,7 +185,9 @@ public class QuoteProductInstrumentationContractTests
 
         Assert.Contains("window.LEGEND_ANALYTICS_CONFIG =", layout, StringComparison.Ordinal);
         Assert.Contains("<script src=\"~/js/tracking.js\" asp-append-version=\"true\"></script>", layout, StringComparison.Ordinal);
-        Assert.Contains("<script src=\"~/js/lead-modal.js\" asp-append-version=\"true\"></script>", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("lead-modal.js", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"leadForm\"", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"leadModal\"", layout, StringComparison.Ordinal);
         Assert.Contains("<script src=\"~/js/meta-signal-intelligence.js\" asp-append-version=\"true\"></script>", lifeView, StringComparison.Ordinal);
         Assert.Contains("<script src=\"~/js/life-estimate-engine.js\" asp-append-version=\"true\"></script>", lifeView, StringComparison.Ordinal);
         Assert.Contains("<script src=\"~/js/trusted-carrier-strip.js\" asp-append-version=\"true\"></script>", lifeView, StringComparison.Ordinal);

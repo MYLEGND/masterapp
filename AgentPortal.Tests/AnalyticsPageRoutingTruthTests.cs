@@ -49,7 +49,8 @@ public sealed class AnalyticsPageRoutingTruthTests
             Assert.Contains($"\"{route.TrimStart('/')}\"", businessService, StringComparison.Ordinal);
         }
 
-        Assert.Contains("analyticsEndpoint(\"/DeviceIntelligence\")", ui, StringComparison.Ordinal);
+        Assert.Contains("window.websiteAnalyticsBridge?.endpoint", ui, StringComparison.Ordinal);
+        Assert.Contains("endpoint(\"/DeviceIntelligence\")", ui, StringComparison.Ordinal);
         Assert.Contains("\"DeviceIntelligence\"", businessService, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"DeviceIntelligence\")]", controller, StringComparison.Ordinal);
 
@@ -73,6 +74,23 @@ public sealed class AnalyticsPageRoutingTruthTests
 
         Assert.Contains("AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes)", businessController, StringComparison.Ordinal);
         Assert.Contains("AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes)", controller, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnalyticsPageContinuouslyRefreshesSummaryAndOpenDetailWithoutManualReload()
+    {
+        var root = RepoRoot();
+        var ui = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
+
+        Assert.Contains("pollMs: 15000", ui, StringComparison.Ordinal);
+        Assert.Contains("async function refreshLiveAnalytics()", ui, StringComparison.Ordinal);
+        Assert.Contains("summaryRefreshInFlight", ui, StringComparison.Ordinal);
+        Assert.Contains("await loadSummary();", ui, StringComparison.Ordinal);
+        Assert.Contains("if (state.openModal) refreshOpenModal();", ui, StringComparison.Ordinal);
+        Assert.Contains("setInterval(refreshLiveAnalytics, state.pollMs)", ui, StringComparison.Ordinal);
+        Assert.Contains("visibilitychange", ui, StringComparison.Ordinal);
+        Assert.Contains("window.addEventListener('focus', refreshLiveAnalytics)", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("pollMs: 1500,", ui, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -105,7 +123,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         await db.SaveChangesAsync();
 
         var analytics = new AnalyticsQueryService(db, new ConfigurationBuilder().Build());
-        var service = new BusinessWorkspaceService(db, analytics, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics);
         var range = new TimeRangeRequest
         {
             FromUtc = now.AddHours(-1),
@@ -144,9 +162,88 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("ApplyLeadBucketMembershipInMemory", ads, StringComparison.Ordinal);
         Assert.DoesNotContain("BuildLeadPredicate(range.QualityMode)", ads, StringComparison.Ordinal);
         Assert.Contains("Scoped agent traffic is tenant-owned", resolver, StringComparison.Ordinal);
-        Assert.Contains("trackSingleCustom", metaRuntime, StringComparison.Ordinal);
+        Assert.Contains("trackSingle", metaRuntime, StringComparison.Ordinal);
+        Assert.DoesNotContain("trackSingleCustom", metaRuntime, StringComparison.Ordinal);
         Assert.Contains("config.pixelId", metaRuntime, StringComparison.Ordinal);
         Assert.Contains("ResolvedMetaPixelId", protectBootstrap, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ScopedWebsiteAnalyticsUsesCanonicalOwnerAndEndpointAuthorities()
+    {
+        var root = RepoRoot();
+        var scope = File.ReadAllText(Path.Combine(root, "SHARED", "Analytics", "ScopeContext.cs"));
+        var resolver = File.ReadAllText(Path.Combine(root, "AgentPortal", "Services", "Analytics", "WebsiteAnalyticsScopeResolver.cs"));
+        var queryScope = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "AnalyticsScopeQueryExtensions.cs"));
+        var proxy = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "WebsiteTrackingProxyAuthority.cs"));
+        var analyticsJs = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
+        var layout = File.ReadAllText(Path.Combine(root, "Protect-Website", "Views", "Shared", "_Layout.cshtml"));
+
+        Assert.Contains("Founder,", scope, StringComparison.Ordinal);
+        Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
+        Assert.Contains("ScopeType.Founder", queryScope, StringComparison.Ordinal);
+        Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, protectScope, ct)", proxy, StringComparison.Ordinal);
+        Assert.Contains("WebsiteContentVersionId = publishedScope?.PublishedVersion?.Id", proxy, StringComparison.Ordinal);
+        Assert.Contains("WebsiteBindingId = Clean(req.WebsiteBindingId)", proxy, StringComparison.Ordinal);
+        Assert.Contains("CanonicalizePublishedBinding(req, protectScope)", proxy, StringComparison.Ordinal);
+        Assert.Contains("ProtectWebsiteOwnerResolver.ResolveAsync", proxy, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResolveByUpnAsync", proxy, StringComparison.Ordinal);
+        Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
+        Assert.Contains("siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect", layout, StringComparison.Ordinal);
+        Assert.Contains("endpoint(path)", analyticsJs, StringComparison.Ordinal);
+        Assert.Contains("window.websiteAnalyticsBridge?.endpoint", analyticsJs, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FounderPersonalHydrationAndVisitorDrillInUseTheCanonicalFounderResolver()
+    {
+        var root = RepoRoot();
+        var controller = File.ReadAllText(Path.Combine(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs"));
+        var resolver = File.ReadAllText(Path.Combine(root, "AgentPortal", "Services", "Analytics", "WebsiteAnalyticsScopeResolver.cs"));
+        var visitor = File.ReadAllText(Path.Combine(root, "AgentPortal", "Controllers", "API", "VisitorConcentrationController.cs"));
+        var ui = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
+
+        Assert.Contains("scope.ScopeType is ScopeType.Founder or ScopeType.Agent", controller, StringComparison.Ordinal);
+        Assert.Contains("requestedAgentId.Value == founderProfile.Id", resolver, StringComparison.Ordinal);
+        Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
+        Assert.Contains("new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger)", visitor, StringComparison.Ordinal);
+        Assert.DoesNotContain("FounderGuard.IsFounder(User)", visitor, StringComparison.Ordinal);
+        Assert.Contains("Founder Personal", ui, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PublicWebsiteRuntimeLoadsCanonicalAnalyticsBeforeOptionalAdvertisingProviders()
+    {
+        var root = RepoRoot();
+        var runtime = File.ReadAllText(Path.Combine(root, "SHARED", "WebsitePlatform", "legend-public-cms.js"));
+        var controller = File.ReadAllText(Path.Combine(root, "Infrastructure", "WebsiteEditing", "WebsitePlatformController.cs"));
+
+        var trackingLoad = runtime.IndexOf("await loadRuntimeScript(trackingAsset)", StringComparison.Ordinal);
+        var metaLoad = runtime.IndexOf("await loadRuntimeScript(context.metaSignalAsset", StringComparison.Ordinal);
+        var openAiLoad = runtime.IndexOf("await loadRuntimeScript(context.openAiMeasurementAsset", StringComparison.Ordinal);
+
+        Assert.True(trackingLoad >= 0, "Canonical tracking runtime must load.");
+        Assert.True(metaLoad > trackingLoad, "Meta runtime must remain downstream of canonical tracking.");
+        Assert.True(openAiLoad > trackingLoad, "OpenAI measurement must remain downstream of canonical tracking.");
+        Assert.Contains("schedulePublicRuntimeRetry()", runtime, StringComparison.Ordinal);
+        Assert.Contains("publicRuntimeStarted = true", runtime, StringComparison.Ordinal);
+        Assert.Contains("using Microsoft.Extensions.Logging;", controller, StringComparison.Ordinal);
+        Assert.Contains("MarketingBrowserConfigurationService", controller, StringComparison.Ordinal);
+        var browserConfiguration = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MarketingBrowserConfigurationService.cs"));
+        Assert.Contains("first-party tracking continues", browserConfiguration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SharedAnalyticsTrackingHasNoUserSpecificFounderFallback()
+    {
+        var root = RepoRoot();
+        var proxy = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "WebsiteTrackingProxyAuthority.cs"));
+        var routing = File.ReadAllText(Path.Combine(root, "Protect-Website", "Services", "Tracking", "SlugRoutingMiddleware.cs"));
+
+        Assert.Contains("Founder:Upn configuration is required", proxy, StringComparison.Ordinal);
+        Assert.Contains("Founder:Upn configuration is required", routing, StringComparison.Ordinal);
+        Assert.DoesNotContain("zac.owen@mylegnd.com", proxy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("zac.owen@mylegnd.com", routing, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -179,9 +276,16 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("WebsiteLeadNotificationRecoveryWorker", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("WebsiteLeadNotificationAuthority.DeliverAsync(", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("WebsiteIntakeRecipientResolver", notificationAuthority, StringComparison.Ordinal);
-        Assert.Contains("x.CommerceBusinessId == null", notificationAuthority, StringComparison.Ordinal);
-        Assert.Contains("lead.NotificationAttemptUtc ?? DateTime.UtcNow", submission, StringComparison.Ordinal);
-        Assert.Contains("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", program, StringComparison.Ordinal);
+        Assert.Contains("MarketingOwnerScope.Business(scopedBusinessId)", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("CommerceWebsiteInquiry", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("AnyAsync(x => x.WebsiteLeadId == lead.LeadId", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : DateTime.UtcNow", submission, StringComparison.Ordinal);
+        Assert.Contains("WebsiteLeadSubmission.NotificationRetryCutoff", notificationAuthority, StringComparison.Ordinal);
+        var portal = File.ReadAllText(Path.Combine(root, "AgentPortal", "Program.cs"));
+        var leadRegistration = File.ReadAllText(Path.Combine(root, "Infrastructure", "Leads", "WebsiteLeadServiceRegistration.cs"));
+        Assert.Contains("AddWebsiteLeadBackgroundWorkers", portal, StringComparison.Ordinal);
+        Assert.Contains("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", leadRegistration, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", program, StringComparison.Ordinal);
     }
 
     [Fact]

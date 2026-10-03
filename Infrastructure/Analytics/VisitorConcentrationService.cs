@@ -185,7 +185,8 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
             metaAdId: e.MetaAdId,
             isInternal: e.IsInternal,
             environment: e.Environment,
-            host: e.Host);
+            host: e.Host,
+            oppref: e.Oppref);
 
     private static string ResolveTop(IEnumerable<string?> values, string fallback)
     {

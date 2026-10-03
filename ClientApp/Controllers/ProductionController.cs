@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.Auth;
 
+using Infrastructure.Analytics;
 namespace ClientApp.Controllers
 {
     [Authorize]
@@ -69,9 +70,13 @@ namespace ClientApp.Controllers
                 actorId = context.ClientUserId;
             }
 
+            var oppref = await new OpenAiAttributionLineageResolver(_db)
+                .ResolveForProductionAsync(ProductionSide.Client, null, requestedClientId, HttpContext.RequestAborted);
+
             var record = new ProductionRecord
             {
                 ClientUserId = requestedClientId,
+                Oppref = oppref,
                 Amount = amount,
                 PersonalAmount = personalAmount ?? 0,
                 Status = (ProductionStatus)status,

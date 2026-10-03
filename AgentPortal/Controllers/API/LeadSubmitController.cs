@@ -24,13 +24,13 @@ public class LeadSubmitController : ControllerBase
     private readonly MasterAppDbContext _db;
     private readonly IConfiguration _config;
     private readonly IEmailSender _emailSender;
-    private readonly Services.Tracking.AgentTrackingResolver _resolver;
+    private readonly Infrastructure.Analytics.AgentTrackingResolver _resolver;
     private readonly ILogger<LeadSubmitController> _logger;
     private readonly string _founderUpn;
     private readonly AgentPortal.Models.AppFeatureFlags _flags;
     private readonly IngestSignatureValidator _signatureValidator;
 
-    public LeadSubmitController(MasterAppDbContext db, IConfiguration config, IEmailSender emailSender, Services.Tracking.AgentTrackingResolver resolver, ILogger<LeadSubmitController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> flags, IngestSignatureValidator signatureValidator)
+    public LeadSubmitController(MasterAppDbContext db, IConfiguration config, IEmailSender emailSender, Infrastructure.Analytics.AgentTrackingResolver resolver, ILogger<LeadSubmitController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> flags, IngestSignatureValidator signatureValidator)
     {
         _db = db;
         _config = config;
@@ -68,6 +68,12 @@ public class LeadSubmitController : ControllerBase
         public string? MetaAdSetId { get; set; }
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
+        public string? Oppref { get; set; }
+        public string? Obref { get; set; }
+        public string? Fbp { get; set; }
+        public string? Fbc { get; set; }
+        public string? ClientIpAddress { get; set; }
+        public string? ClientUserAgent { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }
@@ -178,6 +184,11 @@ public class LeadSubmitController : ControllerBase
             MetaAdSetId = string.IsNullOrWhiteSpace(req.MetaAdSetId) ? null : req.MetaAdSetId.Trim(),
             MetaAdId = string.IsNullOrWhiteSpace(req.MetaAdId) ? null : req.MetaAdId.Trim(),
             Fbclid = string.IsNullOrWhiteSpace(req.Fbclid) ? null : req.Fbclid.Trim(),
+            Oppref = OpenAiClickReference.Normalize(req.Oppref),
+            Fbp = string.IsNullOrWhiteSpace(req.Fbp) ? null : req.Fbp.Trim(),
+            Fbc = string.IsNullOrWhiteSpace(req.Fbc) ? null : req.Fbc.Trim(),
+            ClientIpAddress = string.IsNullOrWhiteSpace(req.ClientIpAddress) ? null : req.ClientIpAddress.Trim(),
+            ClientUserAgent = string.IsNullOrWhiteSpace(req.ClientUserAgent) ? null : req.ClientUserAgent.Trim(),
             SessionId = string.IsNullOrWhiteSpace(req.SessionId) ? null : req.SessionId.Trim(),
             VisitorId = string.IsNullOrWhiteSpace(req.VisitorId) ? null : req.VisitorId.Trim(),
             MarketingEmailConsent = req.MarketingEmailConsent,
@@ -190,14 +201,15 @@ public class LeadSubmitController : ControllerBase
             Status = "New",
             AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,
             AgentSlug = resolved.Found ? resolved.CanonicalSlug : null,
-            MetadataJson = string.IsNullOrWhiteSpace(req.MetadataJson) ? null : req.MetadataJson.Trim()
+            MetadataJson = OpenAiAttributionMetadata.WithBrowserReference(req.MetadataJson, req.Obref)
         };
 
         if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, req.SubmissionId, HttpContext.RequestAborted, async ct =>
         {
             var evt = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
             {
-                EventName = "website_lead_submitted",
+                EventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                    EventName = "website_lead_submitted",
                 EventCategory = "lead",
                 EventUtc = now,
                 PageKey = lead.SourcePageKey,
@@ -209,7 +221,15 @@ public class LeadSubmitController : ControllerBase
                 UtmMedium = lead.UtmMedium,
                 UtmCampaign = lead.UtmCampaign,
                 UtmId = lead.UtmId,
+                UtmTerm = req.UtmTerm,
+                UtmContent = req.UtmContent,
                 Fbclid = lead.Fbclid,
+                Oppref = lead.Oppref,
+                Obref = OpenAiBrowserReference.Normalize(req.Obref),
+                Fbp = lead.Fbp,
+                Fbc = lead.Fbc,
+                UserAgent = lead.ClientUserAgent,
+                IpAddress = lead.ClientIpAddress,
                 MetaCampaignId = lead.MetaCampaignId,
                 MetaAdSetId = lead.MetaAdSetId,
                 MetaAdId = lead.MetaAdId,
@@ -219,7 +239,7 @@ public class LeadSubmitController : ControllerBase
                 Host = lead.Host,
                 IsInternal = lead.IsInternal,
                 IsBrowserSignal = false,
-                IsServerAuthority = false,
+                IsServerAuthority = true,
                 MetaServerAuthorityEligible = true,
                 Metadata = new { LeadId = lead.LeadId, CorrelationId = correlationId }
             });
@@ -230,10 +250,14 @@ public class LeadSubmitController : ControllerBase
                 payload: new
                 {
                     LeadId = lead.LeadId,
+                    canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                    obref = OpenAiBrowserReference.Normalize(req.Obref),
+                    fbp = lead.Fbp,
+                    fbc = lead.Fbc,
                     CorrelationId = correlationId
                 },
                 isBrowserSignal: false,
-                isServerAuthority: false,
+                isServerAuthority: true,
                 metaServerAuthorityEligible: true,
                 metaSingleTruthDispatchEligible: false,
                 metaPipelineOrigin: "lead_submit_controller");

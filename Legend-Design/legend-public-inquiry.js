@@ -13,9 +13,21 @@
     }
   } catch {}
 
-  const endpoint = new URL('/api/website-inquiries/public', apiBase).toString();
+  function resolveApiBase() {
+    if (configuredBase) return apiBase;
+    const analyticsEndpoint = window.LEGEND_ANALYTICS_CONFIG?.endpoint;
+    try {
+      if (typeof analyticsEndpoint === 'string' && analyticsEndpoint.trim()) {
+        const candidate = new URL(analyticsEndpoint, location.origin);
+        if (candidate.protocol === 'https:' || candidate.origin === location.origin) return candidate.origin;
+      }
+    } catch {}
+    return location.origin;
+  }
 
-  document.querySelectorAll('[data-website-inquiry]:not([data-preview])').forEach(form => {
+  function bindInquiryForm(form) {
+    if (!form || form.dataset.legendInquiryBound === 'true') return;
+    form.dataset.legendInquiryBound = 'true';
     let submissionId = null;
     let pendingPayload = null;
 
@@ -33,22 +45,46 @@
       const fields = new FormData(form);
       const analytics = window.LegendAnalytics;
       const attribution = analytics?.ids?.getAttribution?.() || {};
+      const measurementConsent = analytics?.measurementConsent?.get?.() || null;
+      const measurementAllowed = measurementConsent?.allowed === true;
       const cookie = name => document.cookie.split(';').map(value => value.trim())
         .find(value => value.startsWith(name + '='))?.slice(name.length + 1) || null;
 
       let sourceActionKey = window.LEGEND_LAST_WEBSITE_ACTION_KEY || null;
       try { sourceActionKey ||= sessionStorage.getItem('legend_last_website_action_key'); } catch {}
 
+      const experienceId = form.dataset.websiteExperienceId || null;
+      const experienceAnswers = {};
+      if (experienceId) {
+        const seenRadio = new Set();
+        form.querySelectorAll('[data-cms-field-key]').forEach(control => {
+          const key = control.dataset.cmsFieldKey;
+          if (!key || control.matches('button,a')) return;
+          if (control.type === 'radio') {
+            if (seenRadio.has(key)) return;
+            seenRadio.add(key);
+            const selected = form.querySelector('input[type="radio"][data-cms-field-key="' + CSS.escape(key) + '"]:checked');
+            experienceAnswers[key] = selected?.value || '';
+          } else if (control.type === 'checkbox') {
+            experienceAnswers[key] = !!control.checked;
+          } else {
+            experienceAnswers[key] = control.value ?? '';
+          }
+        });
+      }
+
       const values = {
-        firstName: String(fields.get('FirstName') || ''),
-        lastName: String(fields.get('LastName') || ''),
-        phone: String(fields.get('Phone') || ''),
-        email: String(fields.get('Email') || ''),
-        message: String(fields.get('Message') || ''),
+        firstName: experienceId ? '' : String(fields.get('FirstName') || ''),
+        lastName: experienceId ? '' : String(fields.get('LastName') || ''),
+        phone: experienceId ? '' : String(fields.get('Phone') || ''),
+        email: experienceId ? '' : String(fields.get('Email') || ''),
+        message: experienceId ? '' : String(fields.get('Message') || ''),
         sourcePath: location.pathname,
         sourceActionKey,
         sourceFormElementId: form.dataset.cmsExtraId ? `extra:${form.dataset.cmsExtraId}` : (form.dataset.cmsId || null),
-        consent: fields.get('consent') === 'on',
+        consent: experienceId ? false : fields.get('consent') === 'on',
+        experienceId,
+        answers: experienceId ? experienceAnswers : null,
         sessionId: analytics?.ids?.getSessionId?.() || null,
         visitorId: analytics?.ids?.getVisitorId?.() || null,
         utmSource: attribution.utmSource || null,
@@ -58,11 +94,14 @@
         utmTerm: attribution.utmTerm || null,
         utmContent: attribution.utmContent || null,
         fbclid: attribution.fbclid || null,
-        fbp: cookie('_fbp'),
-        fbc: cookie('_fbc'),
+        oppref: attribution.oppref || null,
+        obref: measurementAllowed ? cookie('__obref') : null,
+        fbp: measurementAllowed ? cookie('_fbp') : null,
+        fbc: measurementAllowed ? cookie('_fbc') : null,
         metaCampaignId: attribution.metaCampaignId || null,
         metaAdSetId: attribution.metaAdSetId || null,
-        metaAdId: attribution.metaAdId || null
+        metaAdId: attribution.metaAdId || null,
+        measurementConsent: measurementConsent?.state || null
       };
 
       const fingerprint = JSON.stringify(values);
@@ -74,6 +113,7 @@
       button.disabled = true;
       status.textContent = 'Sending your inquiry…';
       try {
+        const endpoint = new URL('/api/website-inquiries/public', resolveApiBase()).toString();
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -103,5 +143,15 @@
         button.disabled = false;
       }
     });
-  });
+  }
+
+  function bindInquiryForms() {
+    document.querySelectorAll('[data-website-inquiry]:not([data-preview])').forEach(bindInquiryForm);
+    document.querySelectorAll(
+      '[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'
+    ).forEach(bindInquiryForm);
+  }
+
+  bindInquiryForms();
+  window.addEventListener('legend:website-content-rendered', bindInquiryForms);
 })();

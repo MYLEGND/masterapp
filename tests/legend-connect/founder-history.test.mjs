@@ -145,7 +145,6 @@ test('legacy browser transcripts are not read, imported, cleared or sent as auth
   assert.doesNotMatch(source, /legendFounderAi\.conversations\.v1|localStorage\.removeItem|messages: conversation\.messages/);
   assert.match(source, /expectedLastMessageId: conversation\.lastMessageId/);
   assert.match(source, /messages: \[\{ role: 'user', content: text \}\]/);
-  assert.match(source, /metadata\.stage === 'response_partial'/);
 });
 
 

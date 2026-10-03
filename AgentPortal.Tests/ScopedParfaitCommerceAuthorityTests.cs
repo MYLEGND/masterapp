@@ -45,10 +45,12 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var workflow = ReadSource(".github", "workflows", "all-intentional-direct-release-20260918.yml");
         var routingConfig = ReadSource("Legend-Cloudflare", "wrangler.website-routing.jsonc");
 
-        Assert.Contains("/commerce/manage/products?ticket=", platform, StringComparison.Ordinal);
-        Assert.DoesNotContain("CommercePublicBaseUrl() + \"/commerce/manage", platform, StringComparison.Ordinal);
-        Assert.Contains("managerUrl = string.IsNullOrWhiteSpace(ticket)", platform, StringComparison.Ordinal);
-        Assert.Contains(": \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
+        Assert.Contains("ResolveCanonicalStoreRootAsync", platform, StringComparison.Ordinal);
+        Assert.Contains("Commerce:LegendPublicBaseUrl", platform, StringComparison.Ordinal);
+        Assert.Contains("WebsiteDomainBinding", platform, StringComparison.Ordinal);
+        Assert.Contains("managerBase + \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
+        Assert.Contains("managerBase + \"/commerce/manage/preview?ticket=\"", platform, StringComparison.Ordinal);
+        Assert.DoesNotContain(": \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection:BlobUri", tickets, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection:KeyVaultKeyId", tickets, StringComparison.Ordinal);
         Assert.Contains("id: editorauth", workflow, StringComparison.Ordinal);
@@ -76,19 +78,28 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.DoesNotContain("ParfaitMetaAdsConnectionStoreAdapter", program, StringComparison.Ordinal);
         Assert.DoesNotContain("IParfaitMetaAdsOAuthService", program, StringComparison.Ordinal);
         Assert.Contains("ScopeContext.ForBusiness(businessId)", analytics, StringComparison.Ordinal);
-        Assert.Contains("MarketingOwnerScope.Business(store.CommerceBusinessId)", controller, StringComparison.Ordinal);
+        Assert.Contains("CanonicalAdvertisingEventProjection.ResolveOwnerAsync", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingOwnerScope.Business(store.CommerceBusinessId)", controller, StringComparison.Ordinal);
         Assert.Contains("MarketingMetaAdsOAuthService", controller, StringComparison.Ordinal);
         Assert.Contains("MarketingConnectionStore", controller, StringComparison.Ordinal);
-        Assert.Contains("MarketingConnections.GetStatusAsync", tracking, StringComparison.Ordinal);
-        Assert.Contains("MetaSignalEventCatalog", signals, StringComparison.Ordinal);
-        Assert.Contains("UnifiedMetaSignalWriter", signals, StringComparison.Ordinal);
+        Assert.Contains("BrowserMarketing.GetAsync(owner", tracking, StringComparison.Ordinal);
+        Assert.Contains("CanonicalAdvertisingEventProjection.ResolveOwnerAsync", tracking, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarketingConnections.GetStatusAsync", tracking, StringComparison.Ordinal);
+        Assert.Contains("context.Request.Path.StartsWithSegments(\"/commerce/manage\")", program, StringComparison.Ordinal);
+        Assert.Contains("context.Response.Headers.Remove(\"X-Frame-Options\")", program, StringComparison.Ordinal);
+        Assert.Contains("frame-ancestors 'self' https://mylegnd.com https://www.mylegnd.com", program, StringComparison.Ordinal);
+        Assert.Contains("AnalyticsEventCatalog", signals, StringComparison.Ordinal);
+        Assert.Contains("MarketingConversionDestinationCatalog", signals, StringComparison.Ordinal);
+        Assert.Contains("UnifiedAnalyticsWriter.Write", signals, StringComparison.Ordinal);
+        Assert.DoesNotContain("MetaSignalAnalyticsBridge.PersistAsync", signals, StringComparison.Ordinal);
+        Assert.DoesNotContain("UnifiedMetaSignalWriter", signals, StringComparison.Ordinal);
     }
 
     [Fact]
     public void CommerceEventsAndAutomations_RemainLiveForEveryScopedStore()
     {
         var checkout = ReadSource("ParfaitApp", "Controllers", "StoreCheckoutController.cs");
-        var analyticsController = ReadSource("ParfaitApp", "Controllers", "ParfaitAnalyticsController.cs");
+        var analyticsController = ReadSource("ParfaitApp", "Controllers", "StoreCartController.cs");
         var automations = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationService.cs");
         var hosted = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationHostedService.cs");
 
@@ -107,7 +118,7 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var viewStart = ReadSource("ParfaitApp", "Views", "_ViewStart.cshtml");
         var scopedLayout = ReadSource("ParfaitApp", "Views", "Shared", "_ScopedWebsiteStoreLayout.cshtml");
         var legacyLayout = ReadSource("ParfaitApp", "Views", "Shared", "_Layout.cshtml");
-        var storeContext = ReadSource("ParfaitApp", "Services", "CommerceStoreContextService.cs");
+        var storeContext = ReadSource("Infrastructure", "Commerce", "CommerceStoreContextService.cs");
         var storefrontCss = ReadSource("ParfaitApp", "wwwroot", "css", "storefront.css");
 
         Assert.Contains("WebsiteShellPrefix", viewStart, StringComparison.Ordinal);

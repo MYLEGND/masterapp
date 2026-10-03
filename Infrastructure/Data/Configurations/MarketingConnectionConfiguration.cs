@@ -29,6 +29,14 @@ public sealed class MarketingConnectionConfiguration : IEntityTypeConfiguration<
         e.Property(x => x.MetaBusinessManagerName).HasMaxLength(300);
         e.Property(x => x.MetaUserId).HasMaxLength(100);
         e.Property(x => x.MetaUserName).HasMaxLength(300);
+        e.Property(x => x.ProviderAccountRole).HasMaxLength(32);
+        e.Property(x => x.ProviderReviewStatus).HasMaxLength(32);
+        e.Property(x => x.ProviderAuthorizationMethod).HasMaxLength(32);
+        e.Property(x => x.ProviderUserId).HasMaxLength(200);
+        e.Property(x => x.ProviderUserEmail).HasMaxLength(320);
+        e.Property(x => x.ProviderPermissionsJson).HasMaxLength(4000);
+        e.Property(x => x.ProviderPixelId).HasMaxLength(200);
+        e.Property(x => x.ProviderDataSourceId).HasMaxLength(200);
         e.Property(x => x.Revision).IsConcurrencyToken();
     }
 }

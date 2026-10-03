@@ -49,8 +49,9 @@ public sealed class BusinessInquiryNotificationService(MasterAppDbContext db,
             return false;
         }
 
-        // Re-resolve the current scoped assignment for every attempt. A revoked or
-        // changed recipient is never reused from the original submission.
+        // Re-resolve the permanent scoped owner's current primary account email
+        // for every attempt. Submission payloads and legacy recipient preferences
+        // never control delivery.
         var recipient = await recipients.ResolveAsync(MarketingOwnerScope.Business(row.CommerceBusinessId), ct);
         var sent = false;
         try

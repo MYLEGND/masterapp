@@ -39,16 +39,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 {
     private const string LearningScopeNoteText = "Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.";
     private const int DispatcherGraceMinutes = 10;
-    private static readonly string[] ExplicitBridgeSourceEventTypes =
-    [
-        "qualified_lead",
-        AppointmentAnalyticsEventCatalog.Booked,
-        "application_submitted",
-        "policy_issued",
-        "policy_paid",
-        "purchase"
-    ];
-    private static readonly HashSet<string> BridgeSourceEventTypes = BuildBridgeSourceEventTypes();
+    private static readonly HashSet<string> BridgeSourceEventTypes = new(
+        MetaSignalAnalyticsBridge.SourceEventTypes, StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> BrowserPixelEventNames = new(
         MetaSignalEventCatalog.BrowserPixelEventNames,
         StringComparer.OrdinalIgnoreCase);
@@ -86,20 +78,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .ApplySiteScope(scope);
 
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
-        {
-            if (scopedAgentIds is { Length: > 0 })
-            {
-                baseQuery = baseQuery.Where(x =>
-                    x.AgentTrackingProfileId.HasValue &&
-                    scopedAgentIds.Contains(x.AgentTrackingProfileId.Value));
-            }
-            else
-            {
-                var agentId = scope.AgentTrackingProfileId.Value;
-                baseQuery = baseQuery.Where(x => x.AgentTrackingProfileId == agentId);
-            }
-        }
+        baseQuery = baseQuery.Where(AnalyticsQueryService.ScopePredicateMetaEvents(scope, scopedAgentIds));
 
         baseQuery = ApplyTrafficFilter(baseQuery, trafficType);
         baseQuery = await ApplyQualityFilterAsync(baseQuery, range, scope, scopedAgentIds, ct);
@@ -759,20 +738,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc)
             .ApplySiteScope(scope);
 
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
-        {
-            if (scopedAgentIds is { Length: > 0 })
-            {
-                query = query.Where(x =>
-                    x.AgentTrackingProfileId.HasValue &&
-                    scopedAgentIds.Contains(x.AgentTrackingProfileId.Value));
-            }
-            else
-            {
-                var agentId = scope.AgentTrackingProfileId.Value;
-                query = query.Where(x => x.AgentTrackingProfileId == agentId);
-            }
-        }
+        query = query.Where(AnalyticsQueryService.ScopePredicateMetaEvents(scope, scopedAgentIds));
 
         return ApplyHealthMetaQualityFilter(query, range, analyticsRows);
     }
@@ -819,6 +785,19 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         if (scope.ScopeType == ScopeType.Business)
             return query.Where(x => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 scope.AgentTrackingProfileId == null && x.CommerceBusinessId == scope.CommerceBusinessId && x.AgentTrackingProfileId == null);
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
+                return query.Where(x => false);
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            query = query.Where(x => x.CommerceBusinessId == null &&
+                ((x.AgentTrackingProfileId.HasValue && founderIds.Contains(x.AgentTrackingProfileId.Value)) ||
+                 (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
+                  x.MetadataJson.Contains("\"SiteKey\":\"legend\""))));
+            return ApplyHealthLeadQualityFilter(query, range.QualityMode);
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return query.Where(x => false);
@@ -1318,20 +1297,6 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 row.IsBounceCandidate);
     }
 
-    private static HashSet<string> BuildBridgeSourceEventTypes()
-    {
-        var leadAndViewContentSources = AnalyticsEventCatalog.Definitions
-            .Where(x => x.CountsAsConfirmedLead || (x.EligibleForMetaSignal && x.CountsAsLandingView))
-            .Select(x => x.Name);
-
-        return new HashSet<string>(
-            leadAndViewContentSources
-                .Concat(ExplicitBridgeSourceEventTypes)
-                .Concat(MetaSignalAnalyticsAliasCatalog.AnalyticsEventNames)
-                .Concat(MetaSignalEventCatalog.Definitions.Select(x => x.Name)),
-            StringComparer.OrdinalIgnoreCase);
-    }
-
     private static HealthMetaSignalContext CreateHealthMetaContext(HealthMetaSignalRow row)
     {
         return new HealthMetaSignalContext
@@ -1398,32 +1363,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
     /// Expands an agent scope to all tracking profile IDs owned by the same AgentUpn.
     /// This is the true agent boundary: same authenticated agent account, not slug guessing.
     /// </summary>
-    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct)
-    {
-        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
-            return null;
-
-        var selectedId = scope.AgentTrackingProfileId.Value;
-
-        var upn = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.Id == selectedId)
-            .Select(p => p.AgentUpn)
-            .FirstOrDefaultAsync(ct);
-
-        if (string.IsNullOrWhiteSpace(upn))
-            return new[] { selectedId };
-
-        var ids = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.AgentUpn == upn)
-            .Select(p => p.Id)
-            .Distinct()
-            .ToListAsync(ct);
-
-        if (!ids.Contains(selectedId))
-            ids.Add(selectedId);
-
-        return ids.ToArray();
-    }
+    private Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct) =>
+        AnalyticsTrackingProfileScope.ResolveAsync(_db, scope, ct);
 
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

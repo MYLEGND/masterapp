@@ -355,6 +355,71 @@ public sealed class InternalModulesController : Controller
         return RedirectToAction(nameof(Analytics), new { preset, fromUtc, toUtc, qualityMode, timezoneId, timezoneOffsetMinutes });
     }
 
+    [HttpGet("analytics/marketing-setup")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    public async Task<IActionResult> MarketingSetup(CancellationToken ct = default)
+    {
+        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
+        return Json(await HttpContext.RequestServices.GetRequiredService<MarketingProviderSetupProjection>().GetAsync(owner, ct));
+    }
+
+    [HttpPost("analytics/openai-connect")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConnectOpenAi([FromBody] MarketingProviderApiKeyRequest request, CancellationToken ct = default)
+    {
+        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
+        try
+        {
+            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().ConnectAsync(owner, request.AdvertiserApiKey, request.ExpectedRevision, ct);
+            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
+        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
+        catch (HttpRequestException)
+        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
+    }
+
+    [HttpPost("analytics/openai-refresh")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RefreshOpenAi([FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
+    {
+        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
+        try
+        {
+            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().RefreshAsync(owner, request.ConnectionRevision, ct);
+            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
+        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
+        catch (HttpRequestException)
+        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
+    }
+
+    [HttpPost("analytics/openai-disconnect")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DisconnectOpenAi([FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
+    {
+        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
+        try
+        {
+            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsAccountConnectionAuthority>().DisconnectAsync(owner, request.ConnectionRevision, ct);
+            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
+        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
+        catch (HttpRequestException)
+        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
+    }
+
     [HttpGet("analytics/meta-connect")]
     [ParfaitInternalPageAccess("/internal/analytics")]
     public async Task<IActionResult> MetaConnect([FromQuery] string? returnUrl = null, CancellationToken ct = default)
@@ -376,7 +441,7 @@ public sealed class InternalModulesController : Controller
         }
     }
 
-    [AllowAnonymous]
+    [ParfaitInternalPageAccess("/internal/analytics")]
     [HttpGet("analytics/meta-callback")]
     public async Task<IActionResult> MetaCallback(
         [FromQuery] string? code = null,
@@ -394,11 +459,12 @@ public sealed class InternalModulesController : Controller
 
         try
         {
-            var result = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
+            var inspected = _metaAdsOAuth.InspectState(state ?? string.Empty);
             var business = await _parfaitScope.GetParfaitAsync(HttpContext.RequestAborted);
-            if (result.Owner.CommerceBusinessId != business.Id || result.Owner.AgentTrackingProfileId.HasValue)
+            if (inspected.Owner != MarketingOwnerScope.Business(business.Id))
                 return Unauthorized();
 
+            var result = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
             await _marketingConnections.SaveAdsAsync(result.Owner, result.Connection, HttpContext.RequestAborted);
             _internalAnalytics.InvalidateCache();
             return Redirect(AppendMetaStatus(result.ReturnUrl, "connected"));

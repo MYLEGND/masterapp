@@ -9,13 +9,12 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
-using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 using Microsoft.AspNetCore.WebUtilities;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.Communication;
 
+using Shared.Analytics;
 namespace Protect_Website.Controllers
 {
     [Route("Quote")]
@@ -34,9 +33,9 @@ namespace Protect_Website.Controllers
         private readonly string clientId;
         private readonly string clientSecret;
         private readonly string senderEmail;
-        private readonly string recipientEmail;
         private readonly string websiteName;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly MasterAppDbContext _db;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
@@ -44,18 +43,18 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
         private readonly IPublicBookingContextProtector _publicBookingContextProtector;
         private readonly ILogger<DentalVisionHearingQuoteController> _logger;
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
-        public DentalVisionHearingQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<DentalVisionHearingQuoteController> logger)
+        public DentalVisionHearingQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
+            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IWebsiteInquiryEmailSender emailSender, ILogger<DentalVisionHearingQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
             clientSecret = configuration["AzureAd:ClientSecret"]!;
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
-            recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _db = db;
             _metaPixelResolution = metaPixelResolution;
             _websiteLeadCapture = websiteLeadCapture;
@@ -144,14 +143,15 @@ namespace Protect_Website.Controllers
                     MetaAdSetId   = string.IsNullOrWhiteSpace(model.MetaAdSetId) ? null : model.MetaAdSetId.Trim(),
                     MetaAdId      = string.IsNullOrWhiteSpace(model.MetaAdId) ? null : model.MetaAdId.Trim(),
                     Fbclid        = string.IsNullOrWhiteSpace(model.Fbclid)      ? null : model.Fbclid.Trim(),
+                    Oppref        = OpenAiClickReference.Normalize(model.Oppref),
                     ClientIpAddress = !string.IsNullOrWhiteSpace(Request?.Headers["CF-Connecting-IP"].ToString())
                         ? Request!.Headers["CF-Connecting-IP"].ToString()
                         : (!string.IsNullOrWhiteSpace(Request?.Headers["X-Forwarded-For"].ToString())
                             ? Request!.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim()
                             : HttpContext?.Connection?.RemoteIpAddress?.ToString()),
                     ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
-                    Fbp = Request?.Cookies.TryGetValue("_fbp", out var fbp) == true ? fbp : null,
-                    Fbc = Request?.Cookies.TryGetValue("_fbc", out var fbc) == true ? fbc : null,
+                    Fbp = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbp"),
+                    Fbc = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbc"),
                     SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
                     VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
                     MarketingEmailConsent = model.AcknowledgedDisclaimer,
@@ -183,6 +183,8 @@ namespace Protect_Website.Controllers
                         BestTimeToContact = model.BestTimeToContact,
                         UtmId          = model.UtmId,
                         Fbclid         = model.Fbclid,
+                        Oppref         = OpenAiClickReference.Normalize(model.Oppref),
+                        Obref          = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(HttpContext?.Request),
                         UtmTerm        = model.UtmTerm,
                         UtmContent     = model.UtmContent,
                         MetaCampaignId = model.MetaCampaignId,
@@ -218,20 +220,6 @@ namespace Protect_Website.Controllers
                             if (!capturedSubmission.Captured && capturedSubmission.Reason != "InternalTestLead")
                                 throw new InvalidOperationException("The advisor handoff could not be completed.");
 await TryWriteLeadEventAsync(
-                    "lead_persisted",
-                    new
-                    {
-                        LeadId = lead.LeadId,
-                        CorrelationId = correlationId,
-                        QuoteType = QuoteInterestType,
-                        OfferKey = QuoteOfferKey,
-                        ProductType = QuoteProductType,
-                        PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
-                        PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
-                        PagePath = Request?.Path.Value
-                    },
-                    lead.CreatedUtc);
-await TryWriteLeadEventAsync(
                 "website_lead_submitted",
                 new
                 {
@@ -255,7 +243,7 @@ await TryWriteLeadEventAsync(
                 effectivePageKey,
                 QuoteOfferKey,
                 HttpContext?.RequestAborted ?? CancellationToken.None);
-                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = "lead_" + lead.LeadId.ToString("N"), booking = replayBookingHint });
+                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), booking = replayBookingHint });
                     return RedirectToAction("Index", "ThankYou");
                 }
                 _logger.LogInformation(
@@ -291,7 +279,7 @@ await TryWriteLeadEventAsync(
                 }
                 catch (Exception analyticsEx)
                 {
-                    if (eventType is "lead_persisted" or "website_lead_submitted") throw;
+                    if (eventType is "website_lead_submitted") throw;
                     if (analyticsEvent != null)
                     {
                         var entry = _db.Entry(analyticsEvent);
@@ -424,7 +412,7 @@ await TryWriteLeadEventAsync(
                     });
             }
 
-            var metaLeadEventId = "lead_" + lead.LeadId.ToString("N");
+            var metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead);
             await MetaLeadTrackingWorkflow.TryPersistAsync(
                 lead,
                 _db,
@@ -452,15 +440,11 @@ await TryWriteLeadEventAsync(
                 HttpContext?.RequestAborted ?? CancellationToken.None);
 
             // ── 2. Send agent/prospect emails through unified sender ───────────────
-            string? primary = null;
-            if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
-                primary = leadRecipientEmail.Trim();
-            else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(senderEmail))
-                primary = senderEmail.Trim();
+            // The permanent website-owner authority has already resolved the
+            // scoped account's primary email. Do not fall back to global/sender config.
+            string? primary = string.IsNullOrWhiteSpace(leadRecipientEmail)
+                ? null
+                : leadRecipientEmail.Trim();
 
             if (!string.IsNullOrWhiteSpace(primary))
             {
@@ -1109,7 +1093,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
             var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
                 HttpContext,
                 _resolver,
-                recipientEmail,
+                _intakeRecipients,
                 ResolveExplicitAgentSlugFromRequest(),
                 HttpContext?.RequestAborted ?? CancellationToken.None);
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
@@ -1239,6 +1223,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                     WorkstationLeadId = intakeLink.WorkstationLeadId,
                     OwnerAgentUserId = intakeLink.AgentUserId,
                     WebsiteLeadIntakeLinkId = intakeLink.Id,
+                    Oppref = OpenAiClickReference.Normalize(intakeLink.Oppref),
                     BookingSource = bookingSource,
                     RequestedBookingSource = bookingSource,
                     CreatedUtc = nowUtc,
@@ -1253,6 +1238,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                 appointment.WorkstationLeadId = intakeLink.WorkstationLeadId;
                 appointment.OwnerAgentUserId = intakeLink.AgentUserId;
                 appointment.WebsiteLeadIntakeLinkId = intakeLink.Id;
+                appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink.Oppref);
                 appointment.BookingSource = bookingSource;
                 appointment.RequestedBookingSource = bookingSource;
                 appointment.ConfirmationSource = null;
@@ -1391,6 +1377,8 @@ Review summary only. Final plan availability, pricing, provider networks, and el
         {
             return UnifiedEventContextBuilder.Build(
                 httpContext: HttpContext,
+                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
+                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
                 eventName: eventType,
                 eventUtc: eventUtc,
                 sessionId: lead.SessionId,
@@ -1403,10 +1391,13 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                 utmMedium: lead.UtmMedium,
                 utmCampaign: lead.UtmCampaign,
                 utmId: lead.UtmId,
+                utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
+                utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
                 metaCampaignId: lead.MetaCampaignId,
                 metaAdSetId: lead.MetaAdSetId,
                 metaAdId: lead.MetaAdId,
                 fbclid: lead.Fbclid,
+                oppref: lead.Oppref,
                 agentSlug: lead.AgentSlug,
                 agentTrackingProfileId: lead.AgentTrackingProfileId,
                 isInternal: lead.IsInternal,

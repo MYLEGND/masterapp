@@ -94,7 +94,22 @@ export async function handleWebsiteRouting(request, env, fetchImpl = fetch) {
 
   const bridged = buildBridgeRequest(request, env);
   if (bridged.error) return bridged.error;
-  return fetchImpl(bridged.request);
+  const response = await fetchImpl(bridged.request);
+
+  // Website Studio embeds the scoped commerce manager on the LEGEND website
+  // origin. Do not allow an upstream platform X-Frame-Options header to
+  // override the manager controller's reviewed frame-ancestors policy.
+  if (incoming.pathname.startsWith("/commerce/manage/")) {
+    const headers = new Headers(response.headers);
+    headers.delete("X-Frame-Options");
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    });
+  }
+
+  return response;
 }
 
 export default {

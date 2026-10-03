@@ -3,6 +3,8 @@ import { requireSecurity } from './errors.mjs';
 
 export const SIGNATURE_VERSION = 'legend-service.v1';
 export const RESPOND_PATH = '/v1/legend/respond';
+export const STATUS_PATH = '/v1/legend/status';
+export const CONTROL_PATH = '/v1/legend/control';
 const TOKEN = /^[A-Za-z0-9_.:@-]{1,128}$/;
 const NONCE = /^[A-Za-z0-9_-]{22,128}$/;
 const MAXIMUM_BODY_BYTES = 1_048_576;
@@ -55,9 +57,10 @@ function validateEnvelope(envelope, env, now, timestamp) {
 }
 
 /** Authenticates only Azure-signed bytes. A browser/model cannot supply context. */
-export async function authenticateRequest(request, env, { now = Date.now } = {}) {
+export async function authenticateRequest(request, env, { now = Date.now, targetPath = RESPOND_PATH } = {}) {
   const url = new URL(request.url);
-  requireSecurity(request.method === 'POST' && url.pathname === RESPOND_PATH && !url.search,
+  requireSecurity([RESPOND_PATH, STATUS_PATH, CONTROL_PATH].includes(targetPath) &&
+    request.method === 'POST' && url.pathname === targetPath && !url.search,
     'request_target_invalid', 404);
   requireSecurity(isIdentifier(env.LEGEND_ACCOUNT_ID), 'account_configuration_missing', 503);
   requireSecurity((request.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase() === 'application/json' &&

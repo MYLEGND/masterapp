@@ -307,9 +307,9 @@ public sealed class MessagingProfileImageResolverTests
         var controller = new AgentAvatarController(
             environment.Object,
             NullLogger<AgentAvatarController>.Instance,
-            new AgentPortal.Services.Tracking.AgentTrackingResolver(
+            new Infrastructure.Analytics.AgentTrackingResolver(
                 db,
-                NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance),
+                NullLogger<Infrastructure.Analytics.AgentTrackingResolver>.Instance),
             new AgentProfileAccessResolver(db),
             CreateResolver(db),
             CreateResolver(db))
@@ -370,9 +370,9 @@ public sealed class MessagingProfileImageResolverTests
         var controller = new AgentAvatarController(
             environment.Object,
             NullLogger<AgentAvatarController>.Instance,
-            new AgentPortal.Services.Tracking.AgentTrackingResolver(
+            new Infrastructure.Analytics.AgentTrackingResolver(
                 db,
-                NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance),
+                NullLogger<Infrastructure.Analytics.AgentTrackingResolver>.Instance),
             new AgentProfileAccessResolver(db),
             CreateResolver(db),
             CreateResolver(db))

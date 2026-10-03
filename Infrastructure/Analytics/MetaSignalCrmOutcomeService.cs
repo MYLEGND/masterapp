@@ -69,6 +69,8 @@ public sealed class MetaSignalCrmOutcomeService
                 .FirstOrDefaultAsync(x => x.LeadId == intakeLink.WebsiteLeadPublicId, cancellationToken);
         }
 
+        appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink?.Oppref ?? websiteLead?.Oppref);
+
         var metaEligible = appointment.Status is LeadAppointmentStatus.Booked
             or LeadAppointmentStatus.Confirmed
             or LeadAppointmentStatus.Completed;
@@ -78,6 +80,13 @@ public sealed class MetaSignalCrmOutcomeService
             EventId = $"appointment:{appointment.Id:N}:{eventName}",
             EventName = eventName,
             EventCategory = "appointment",
+            SiteKey = MetaSignalSingleTruthPolicy.ReadString(websiteLead?.MetadataJson, "siteKey")
+                ?? (websiteLead?.CommerceBusinessId.HasValue == true ? "BusinessWebsite" : "ProtectWebsite"),
+            Referrer = intakeLink?.ReferrerUrl,
+            Fbc = intakeLink?.Fbc ?? websiteLead?.Fbc,
+            Fbp = intakeLink?.Fbp ?? websiteLead?.Fbp,
+            UserAgent = intakeLink?.ClientUserAgent ?? websiteLead?.ClientUserAgent,
+            IpAddress = intakeLink?.ClientIpAddress ?? websiteLead?.ClientIpAddress,
             EventUtc = appointment.UpdatedUtc == default ? DateTime.UtcNow : appointment.UpdatedUtc,
             SessionId = intakeLink?.SessionId ?? websiteLead?.SessionId,
             VisitorId = intakeLink?.VisitorId ?? websiteLead?.VisitorId,
@@ -89,11 +98,13 @@ public sealed class MetaSignalCrmOutcomeService
             UtmMedium = intakeLink?.UtmMedium ?? websiteLead?.UtmMedium,
             UtmCampaign = intakeLink?.UtmCampaign ?? websiteLead?.UtmCampaign,
             UtmId = intakeLink?.UtmId ?? websiteLead?.UtmId,
+            UtmTerm = intakeLink?.UtmTerm,
             UtmContent = intakeLink?.UtmContent,
             MetaCampaignId = intakeLink?.MetaCampaignId ?? websiteLead?.MetaCampaignId,
             MetaAdSetId = intakeLink?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
             MetaAdId = intakeLink?.MetaAdId ?? websiteLead?.MetaAdId,
             Fbclid = intakeLink?.Fbclid ?? websiteLead?.Fbclid,
+            Oppref = OpenAiClickReference.Normalize(appointment.Oppref ?? intakeLink?.Oppref ?? websiteLead?.Oppref),
             AgentTrackingProfileId = websiteLead?.CommerceBusinessId.HasValue == true
                 ? null
                 : websiteLead?.AgentTrackingProfileId,
@@ -122,12 +133,16 @@ public sealed class MetaSignalCrmOutcomeService
                 appointment.BookingSource,
                 appointment.ConfirmationSource,
                 AppointmentStatus = appointment.Status.ToString(),
+                Oppref = OpenAiClickReference.Normalize(appointment.Oppref ?? intakeLink?.Oppref ?? websiteLead?.Oppref),
                 appointment.LastSyncStatus
             }
         };
 
         var analytics = UnifiedEventMapper.ToAnalytics(context);
         analytics.ClientEventId = clientEventId;
+        analytics.EventId = clientEventId;
+        analytics.Url = intakeLink?.LandingPageUrl;
+        analytics.Path = intakeLink?.PagePath;
         UnifiedAnalyticsWriter.Write(_db, analytics);
     }
 
@@ -177,8 +192,13 @@ public sealed class MetaSignalCrmOutcomeService
             throw new ArgumentException("A canonical production record id is required.", nameof(productionRecordId));
 
         var dedupKey = $"{eventName}:production:{productionRecordId:N}";
-        if (await AlreadyRecordedAsync(eventName, dedupKey, cancellationToken))
+        var clientEventId = StableAppointmentEventId(productionRecordId, eventName);
+        var existing = await _db.AnalyticsEvents.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.ClientEventId == clientEventId, cancellationToken);
+        if (existing is not null)
+        {
             return;
+        }
 
         var websiteLeadId = await ResolveProductionWebsiteLeadIdAsync(
             side,
@@ -186,13 +206,31 @@ public sealed class MetaSignalCrmOutcomeService
             clientUserId,
             cancellationToken);
 
+        WebsiteLead? productionWebsiteLead = null;
+        WebsiteLeadIntakeLink? productionIntake = null;
+        if (websiteLeadId.HasValue)
+        {
+            productionWebsiteLead = await _db.WebsiteLeads.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.LeadId == websiteLeadId.Value, cancellationToken);
+            productionIntake = await _db.WebsiteLeadIntakeLinks.AsNoTracking()
+                .Where(x => x.WebsiteLeadPublicId == websiteLeadId.Value)
+                .OrderByDescending(x => x.SubmittedUtc)
+                .ThenByDescending(x => x.CapturedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        var productionOppref = OpenAiClickReference.Normalize(productionIntake?.Oppref ?? productionWebsiteLead?.Oppref);
+        var productionRecord = await _db.ProductionRecords
+            .FirstOrDefaultAsync(x => x.Id == productionRecordId, cancellationToken);
+        if (productionRecord is not null && string.IsNullOrWhiteSpace(productionRecord.Oppref) && productionOppref is not null)
+            productionRecord.Oppref = productionOppref;
+
         var trackingProfile = await _db.AgentTrackingProfiles
             .AsNoTracking()
             .Where(x => x.AgentUserId == agentUserId && x.Status == "active")
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        var row = BuildRow(
+        var row = BuildAnalyticsOutcome(
             eventName: eventName,
             eventId: $"{eventName.ToLowerInvariant()}_{productionRecordId:N}",
             dedupKey: dedupKey,
@@ -228,19 +266,67 @@ public sealed class MetaSignalCrmOutcomeService
                 agentUserId,
                 side = side.ToString(),
                 status = status.ToString(),
-                leadId,
+                workstationLeadId = leadId,
                 clientUserId,
                 amount,
                 personalAmount,
-                notes
+                notes,
+                currency = "USD",
+                valueCents = decimal.ToInt64(decimal.Round(personalAmount * 100m, 0, MidpointRounding.AwayFromZero)),
+                oppref = productionOppref
+            },
+            lineage: new UnifiedEventContext
+            {
+                SiteKey = MetaSignalSingleTruthPolicy.ReadString(productionWebsiteLead?.MetadataJson, "SiteKey")
+                    ?? (productionWebsiteLead?.CommerceBusinessId.HasValue == true ? "BusinessWebsite" : "ProtectWebsite"),
+                CommerceBusinessId = productionWebsiteLead?.CommerceBusinessId ?? productionIntake?.CommerceBusinessId,
+                AgentTrackingProfileId = productionWebsiteLead?.AgentTrackingProfileId ?? trackingProfile?.Id,
+                AgentSlug = productionWebsiteLead?.AgentSlug ?? trackingProfile?.Slug,
+                WebsiteContentVersionId = productionWebsiteLead?.WebsiteContentVersionId,
+                WebsiteBindingId = productionWebsiteLead?.WebsiteBindingId,
+                EventUtc = productionRecord?.UpdatedUtc ?? DateTime.UtcNow,
+                SessionId = productionIntake?.SessionId ?? productionWebsiteLead?.SessionId,
+                VisitorId = productionIntake?.VisitorId ?? productionWebsiteLead?.VisitorId,
+                PageKey = productionIntake?.SourcePageKey ?? productionWebsiteLead?.SourcePageKey,
+                Referrer = productionIntake?.ReferrerUrl,
+                UtmSource = productionIntake?.UtmSource ?? productionWebsiteLead?.UtmSource,
+                UtmMedium = productionIntake?.UtmMedium ?? productionWebsiteLead?.UtmMedium,
+                UtmCampaign = productionIntake?.UtmCampaign ?? productionWebsiteLead?.UtmCampaign,
+                UtmId = productionIntake?.UtmId ?? productionWebsiteLead?.UtmId,
+                UtmTerm = productionIntake?.UtmTerm,
+                UtmContent = productionIntake?.UtmContent,
+                MetaCampaignId = productionIntake?.MetaCampaignId ?? productionWebsiteLead?.MetaCampaignId,
+                MetaAdSetId = productionIntake?.MetaAdSetId ?? productionWebsiteLead?.MetaAdSetId,
+                MetaAdId = productionIntake?.MetaAdId ?? productionWebsiteLead?.MetaAdId,
+                Fbclid = productionIntake?.Fbclid ?? productionWebsiteLead?.Fbclid,
+                Fbc = productionIntake?.Fbc ?? productionWebsiteLead?.Fbc,
+                Fbp = productionIntake?.Fbp ?? productionWebsiteLead?.Fbp,
+                PageVariant = productionIntake?.PageVariant,
+                PageMode = productionIntake?.PageMode,
+                Environment = productionWebsiteLead?.Environment,
+                Host = productionWebsiteLead?.Host,
+                Url = productionIntake?.LandingPageUrl ?? (!string.IsNullOrWhiteSpace(productionWebsiteLead?.Host)
+                    ? "https://" + productionWebsiteLead.Host + (productionIntake?.PagePath ?? "/") : null),
+                UserAgent = productionIntake?.ClientUserAgent ?? productionWebsiteLead?.ClientUserAgent,
+                IpAddress = productionIntake?.ClientIpAddress ?? productionWebsiteLead?.ClientIpAddress
             });
 
-        UnifiedMetaSignalWriter.Write(_db, row);
-        await _db.SaveChangesAsync(cancellationToken);
+        row.ClientEventId = clientEventId;
+        row.EventId = clientEventId;
+        UnifiedAnalyticsWriter.Write(_db, row);
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException)
+        {
+            _db.Entry(row).State = EntityState.Detached;
+            existing = await _db.AnalyticsEvents.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.ClientEventId == clientEventId, cancellationToken);
+            if (existing is null) throw;
+            return;
+        }
 
         _logger.LogInformation(
             "MetaSignal CRM outcome recorded event={EventName} side={Side} contact={ContactKey} amount={Amount}",
-            row.EventName,
+            row.EventType,
             side,
             contactKey,
             amount);
@@ -285,11 +371,6 @@ public sealed class MetaSignalCrmOutcomeService
         return await ResolveWebsiteLeadIdAsync(leadId, null, cancellationToken);
     }
 
-    private async Task<bool> AlreadyRecordedAsync(string eventName, string dedupKey, CancellationToken cancellationToken)
-        => await _db.MetaSignalEvents
-            .AsNoTracking()
-            .AnyAsync(x => x.EventName == eventName && x.MetaDeduplicationKey == dedupKey, cancellationToken);
-
     private async Task<Guid?> ResolveWebsiteLeadIdAsync(string? workstationLeadId, Guid? intakeLinkId, CancellationToken cancellationToken)
     {
         if (intakeLinkId.HasValue)
@@ -316,7 +397,7 @@ public sealed class MetaSignalCrmOutcomeService
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    private static MetaSignalEvent BuildRow(
+    private static AnalyticsEvent BuildAnalyticsOutcome(
         string eventName,
         string eventId,
         string dedupKey,
@@ -328,39 +409,45 @@ public sealed class MetaSignalCrmOutcomeService
         string stepName,
         string scoreTier,
         int totalScore,
-        object metadata)
-        => UnifiedMetaSignalWriter.Create(new UnifiedEventContext
+        object metadata, UnifiedEventContext? lineage = null)
+    {
+        var payload = JsonSerializer.SerializeToNode(metadata)!.AsObject();
+        payload["LeadId"] = websiteLeadId?.ToString("D");
+        payload["fbc"] = lineage?.Fbc;
+        payload["fbp"] = lineage?.Fbp;
+        payload["pageVariant"] = lineage?.PageVariant;
+        payload["pageMode"] = lineage?.PageMode;
+        payload["canonicalOutcomeEventId"] = eventId;
+        payload["canonicalDeduplicationKey"] = dedupKey;
+        payload["upstreamMetaEventId"] = eventId;
+        payload["siteKey"] = lineage?.SiteKey;
+        payload["metaDeduplicationKey"] = dedupKey;
+        payload["stepNumber"] = funnelStep;
+        payload["stepName"] = stepName;
+        payload["scoreTier"] = scoreTier;
+        payload["intentScore"] = totalScore;
+        payload["engagementScore"] = totalScore;
+        payload["qualificationScore"] = totalScore;
+        payload["frictionScore"] = 0;
+        payload["totalSignalScore"] = totalScore;
+        var row = UnifiedEventMapper.ToAnalytics((lineage ?? new UnifiedEventContext()) with
         {
-            EventId = eventId,
-            EventName = eventName,
-            EventCategory = "conversion",
-            EventUtc = DateTime.UtcNow,
-            QuoteType = quoteType,
-            AgentTrackingProfileId = agentTrackingProfileId,
-            AgentSlug = agentSlug,
-            Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
-            Host = "AgentPortal",
-            IsBrowserSignal = false,
-            IsServerAuthority = true,
-            MetaServerAuthorityEligible = true,
-            Metadata = metadata
-        }, row =>
-        {
-            row.LeadId = websiteLeadId;
-            row.TrafficType = "crm";
-            row.FunnelStep = funnelStep;
-            row.StepName = stepName;
-            row.IntentScore = totalScore;
-            row.EngagementScore = totalScore;
-            row.QualificationScore = totalScore;
-            row.FrictionScore = 0;
-            row.TotalSignalScore = totalScore;
-            row.ScoreTier = scoreTier;
-            row.MetaBrowserSent = false;
-            row.MetaServerSent = false;
-            row.MetaDeduplicationKey = dedupKey;
-            row.MetadataJson = BuildMetadataJson(eventName, websiteLeadId, metadata);
+            EventId = eventId, EventName = eventName, EventCategory = "conversion",
+            EventUtc = lineage?.EventUtc ?? DateTime.UtcNow, QuoteType = quoteType,
+            AgentTrackingProfileId = lineage?.CommerceBusinessId.HasValue == true ? null : lineage?.AgentTrackingProfileId ?? agentTrackingProfileId,
+            AgentSlug = lineage?.CommerceBusinessId.HasValue == true ? null : lineage?.AgentSlug ?? agentSlug,
+            Oppref = OpenAiClickReference.Normalize(payload["oppref"]?.GetValue<string>()),
+            Environment = lineage?.Environment ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
+            Host = lineage?.Host ?? "AgentPortal", IsBrowserSignal = false, IsServerAuthority = true,
+            MetaServerAuthorityEligible = true, Metadata = payload
         });
+        row.Url = lineage?.Url;
+        row.Path = Uri.TryCreate(lineage?.Url, UriKind.Absolute, out var sourceUrl) ? sourceUrl.AbsolutePath : null;
+        row.TrackingVersion = "crm-production-authority-v1";
+        row.SchemaVersion = 2;
+        row.MetadataJson = BuildMetadataJson(eventName, websiteLeadId, payload);
+        return row;
+    }
 
     private static string BuildMetadataJson(string eventName, Guid? websiteLeadId, object metadata)
         => MetaSignalSingleTruthPolicy.BuildMetadataJson(
@@ -371,6 +458,6 @@ public sealed class MetaSignalCrmOutcomeService
             isBrowserSignal: false,
             isServerAuthority: true,
             metaServerAuthorityEligible: true,
-            metaSingleTruthDispatchEligible: true,
+            metaSingleTruthDispatchEligible: false,
             metaPipelineOrigin: "crm_outcome_service");
 }

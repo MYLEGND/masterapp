@@ -1,8 +1,9 @@
 using AgentPortal.Models.Analytics;
 using AgentPortal.Services.Analytics;
 using AgentPortal.Services;
+using AgentPortal.Services.Tracking;
 using Domain.Entities;
-using AgentPortal.Security;
+using Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,15 +16,21 @@ public sealed class VisitorConcentrationController : ControllerBase
 {
     private readonly IVisitorConcentrationService _visitorConcentrationService;
     private readonly EffectiveAgentContext _effectiveContext;
+    private readonly IAgentTrackingService _tracking;
+    private readonly MasterAppDbContext _db;
     private readonly ILogger<VisitorConcentrationController> _logger;
 
     public VisitorConcentrationController(
         IVisitorConcentrationService visitorConcentrationService,
         EffectiveAgentContext effectiveContext,
+        IAgentTrackingService tracking,
+        MasterAppDbContext db,
         ILogger<VisitorConcentrationController> logger)
     {
         _visitorConcentrationService = visitorConcentrationService;
         _effectiveContext = effectiveContext;
+        _tracking = tracking;
+        _db = db;
         _logger = logger;
     }
 
@@ -154,30 +161,8 @@ public sealed class VisitorConcentrationController : ControllerBase
         TimeZoneInfo ViewerTimeZone);
 
 
-    private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId)
-    {
-        var isFounder = FounderGuard.IsFounder(User);
-
-        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
-        var effectiveProfileId = effectiveProfile?.Id;
-
-        if (isFounder)
-        {
-            if (requestedAgentId.HasValue)
-                return ScopeContext.ForAgent(requestedAgentId.Value);
-
-            if (_effectiveContext.IsViewingAsAgent && effectiveProfileId.HasValue)
-                return ScopeContext.ForAgent(effectiveProfileId.Value);
-
-            return ScopeContext.Global;
-        }
-
-        if (effectiveProfileId.HasValue)
-            return ScopeContext.ForAgent(effectiveProfileId.Value);
-
-        _logger.LogWarning("VisitorConcentrationController: no scoped agent profile resolved.");
-
-        return ScopeContext.ForAgent(Guid.Empty);
-    }
+    private Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId) =>
+        new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger)
+            .ResolveAsync(HttpContext, requestedAgentId);
 
 }

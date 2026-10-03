@@ -26,11 +26,14 @@ public static class UnifiedEventContextBuilder
         string? utmMedium = null,
         string? utmCampaign = null,
         string? utmId = null,
+        string? utmTerm = null,
         string? utmContent = null,
         string? metaCampaignId = null,
         string? metaAdSetId = null,
         string? metaAdId = null,
         string? fbclid = null,
+        string? oppref = null,
+        string? obref = null,
         string? agentSlug = null,
         Guid? agentTrackingProfileId = null,
         bool? isInternal = null,
@@ -111,14 +114,17 @@ public static class UnifiedEventContextBuilder
             UtmMedium = utmMedium,
             UtmCampaign = utmCampaign,
             UtmId = utmId,
+            UtmTerm = utmTerm,
             UtmContent = utmContent,
             MetaCampaignId = metaCampaignId,
             MetaAdSetId = metaAdSetId,
             MetaAdId = metaAdId,
 
             Fbclid = fbclid,
-            Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbc"),
-            Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "_fbp"),
+            Oppref = OpenAiClickReference.Normalize(oppref),
+            Obref = ResolveOpenAiBrowserReference(request, obref),
+            Fbc = ResolveMarketingCookie(request, "_fbc"),
+            Fbp = ResolveMarketingCookie(request, "_fbp"),
 
             AgentSlug = agentSlug,
             AgentTrackingProfileId = agentTrackingProfileId,
@@ -132,9 +138,36 @@ public static class UnifiedEventContextBuilder
 
             BrowserEventSent = browserEventSent,
             IsBrowserSignal = resolvedIsBrowserSignal,
-            IsServerAuthority = isServerAuthority == true,
+            IsServerAuthority = isServerAuthority ?? (!resolvedIsBrowserSignal && AnalyticsEventCatalog.IsServerAllowed(normalizedEventName) && !AnalyticsEventCatalog.IsBrowserAllowed(normalizedEventName)),
             MetaServerAuthorityEligible = resolvedMetaServerAuthorityEligible,
             Metadata = metadata
         };
     }
+
+    public static string? ResolveOpenAiBrowserReference(HttpRequest? request, string? explicitValue = null)
+    {
+        if (!CanUseOpenAiBrowserReference(request)) return null;
+        return OpenAiBrowserReference.Normalize(explicitValue)
+            ?? OpenAiBrowserReference.Normalize(MetaLeadTrackingWorkflow.ResolveCookieValue(request, "__obref"));
+    }
+
+    public static bool CanUseOpenAiBrowserReference(HttpRequest? request) =>
+        CanUseMarketingIdentifiers(request);
+
+    public static string? ResolveMarketingCookie(HttpRequest? request, string cookieName)
+    {
+        if (!CanUseMarketingIdentifiers(request)) return null;
+        return MetaLeadTrackingWorkflow.ResolveCookieValue(request, cookieName);
+    }
+
+    public static bool CanUseMarketingIdentifiers(HttpRequest? request)
+    {
+        if (request is null) return true;
+        var gpc = request.Headers["Sec-GPC"].FirstOrDefault()?.Trim();
+        if (string.Equals(gpc, "1", StringComparison.Ordinal)) return false;
+
+        var consent = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "legend_measurement_consent");
+        return !string.Equals(consent, "denied", StringComparison.OrdinalIgnoreCase);
+    }
+
 }

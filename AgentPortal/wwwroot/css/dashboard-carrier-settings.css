@@ -1,11 +1,11 @@
 :root {
-    --dcs-navy-1: #17233a;
-    --dcs-navy-2: #101827;
-    --dcs-navy-3: #0a121f;
-    --dcs-navy-4: #070d17;
-    --dcs-gold-1: var(--legend-gold-bright, #d5b24d);
-    --dcs-gold-2: var(--legend-gold, #a68023);
-    --dcs-gold-3: var(--legend-gold-deep, #8b6f1f);
+    --dcs-navy-1: var(--legend-app-surface-elevated);
+    --dcs-navy-2: var(--legend-app-surface-elevated);
+    --dcs-navy-3: var(--legend-app-surface);
+    --dcs-navy-4: var(--legend-app-surface);
+    --dcs-gold-1: var(--legend-app-accent-bright);
+    --dcs-gold-2: var(--legend-app-accent);
+    --dcs-gold-3: var(--legend-gold-deep);
     --dcs-ivory: #f7f1e3;
     --dcs-muted: rgba(247, 241, 227, 0.72);
     --dcs-muted-soft: rgba(247, 241, 227, 0.54);
@@ -14,8 +14,8 @@
     --dcs-shadow: 0 28px 72px rgba(0, 0, 0, 0.44);
     --dcs-shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.24);
     --dcs-radius-xl: 24px;
-    --dcs-radius-lg: 18px;
-    --dcs-radius-md: 14px;
+    --dcs-radius-lg: var(--legend-app-radius);
+    --dcs-radius-md: var(--legend-app-radius-compact);
 }
 
 .legend-modal.carrier-settings-modal .dashboard-search-shell {
@@ -46,7 +46,7 @@
 .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings {
     min-height: 48px;
     padding: 0.72rem 1.15rem;
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     font-size: 0.95rem;
     font-weight: 800;
     letter-spacing: 0.02em;
@@ -94,26 +94,11 @@
     outline-offset: 3px;
 }
 
-.legend-modal.carrier-settings-modal .modal-dialog {
-    max-width: min(1540px, calc(100vw - 40px));
-    margin: clamp(18px, 4vh, 34px) auto;
-}
-
 .legend-modal.carrier-settings-modal .modal-content {
     position: relative;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    background:
-        radial-gradient(120% 90% at 50% 0%, rgba(212, 167, 67, 0.1) 0%, transparent 56%),
-        linear-gradient(180deg, var(--dcs-navy-1) 0%, var(--dcs-navy-2) 42%, var(--dcs-navy-4) 100%);
-    color: var(--dcs-ivory);
-    border: 1.5px solid rgba(212, 167, 67, 0.62);
-    border-radius: var(--dcs-radius-xl);
-    box-shadow:
-        0 38px 94px rgba(0, 0, 0, 0.56),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    max-height: calc(100vh - clamp(36px, 9vh, 88px));
 }
 
 .legend-modal.carrier-settings-modal .modal-content::before {
@@ -129,11 +114,8 @@
 .legend-modal.carrier-settings-modal .modal-footer {
     position: relative;
     z-index: 1;
-    border-color: rgba(212, 167, 67, 0.18);
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
-        rgba(8, 13, 23, 0.42);
-    backdrop-filter: blur(12px);
+    border-color: var(--legend-modal-line);
+    background: linear-gradient(180deg,var(--legend-modal-chrome),var(--legend-modal-chrome-deep));
 }
 
 .legend-modal.carrier-settings-modal .modal-header {
@@ -162,7 +144,7 @@
 }
 
 .legend-modal.carrier-settings-modal .btn-close {
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     border: 1px solid rgba(244, 220, 147, 0.22);
     padding: 0.8rem;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -441,7 +423,7 @@
     align-items: center;
     min-height: 30px;
     padding: 0.24rem 0.65rem;
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     border: 1px solid rgba(244, 220, 147, 0.18);
     background: rgba(244, 220, 147, 0.08);
     color: var(--dcs-gold-1);
@@ -538,7 +520,7 @@
 .carrier-comp-add,
 .carrier-settings-retry,
 .legend-modal.carrier-settings-modal .modal-footer .btn-outline-light {
-    border-radius: 999px;
+    border-radius: var(--legend-app-radius-compact);
     font-weight: 800;
     letter-spacing: 0.02em;
     transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
@@ -692,13 +674,9 @@
 }
 
 @media (max-width: 720px) {
-    .legend-modal.carrier-settings-modal .modal-dialog {
-        max-width: calc(100vw - 22px);
-    }
-
     .carrier-editor-row {
         grid-template-columns: 1fr;
-        gap: 0.68rem;
+        gap: var(--app-mobile-control-gap);
     }
 
     .carrier-editor-summary {
@@ -708,12 +686,12 @@
 
     .carrier-settings-statusbar {
         align-items: flex-start;
+        gap: var(--legend-mobile-gap, 6px);
     }
 }
 
 @media (max-width: 576px) {
-    .legend-modal.carrier-settings-modal .dashboard-search-shell,
-    .legend-modal.carrier-settings-modal .search-actions {
+    .legend-modal.carrier-settings-modal .dashboard-search-shell {
         width: 100%;
     }
 
@@ -722,27 +700,8 @@
         max-width: none;
     }
 
-    .legend-modal.carrier-settings-modal .search-actions {
-        gap: 0.5rem;
-    }
-
-    .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-clear-search,
-    .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings {
-        width: 100%;
-    }
-
-    .legend-modal.carrier-settings-modal .modal-header,
-    .legend-modal.carrier-settings-modal .modal-footer {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-
-    .legend-modal.carrier-settings-modal .modal-body {
-        padding: 1rem 0.92rem 1.1rem;
-    }
-
     .carrier-category-block {
-        padding: 0.95rem 0.88rem 0.92rem;
+        padding: var(--app-mobile-card-pad);
     }
 
     .carrier-comp-row {

@@ -1,13 +1,11 @@
 using Infrastructure.Diagnostics;
 using Shared.Diagnostics;
 using Infrastructure.DailyScripture;
-using ProtectWebsite.Services.Communication;
 using Azure.Identity;
 using Infrastructure.Data;
 using Infrastructure.Leads;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
-using ProtectWebsite.Services.Meta;
 using Infrastructure.Bookings;
 using Infrastructure.Analytics;
 using ProtectWebsite.Services.Booking;
@@ -44,12 +42,14 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddHttpClient();
-builder.Services.AddScoped<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService, Infrastructure.WebsiteEditing.WebsiteStudioAiProposalService>();
 Infrastructure.Social.SocialServiceCollectionExtensions.AddMasterAppMediaStorage(builder.Services);
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteMediaService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteImportService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.PublicWebsiteRuntimeScopeResolver>();
+builder.Services.AddScoped<Infrastructure.Businesses.CommerceBusinessScopeResolver>();
+builder.Services.AddScoped<ParfaitApp.Services.ParfaitBusinessScopeService>();
+builder.Services.AddScoped<ParfaitApp.Services.CommerceStoreContextService>();
 builder.Services.AddScoped<Infrastructure.Businesses.ICommerceBusinessProvisioningService, Infrastructure.Businesses.CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteCommerceScopeService>();
 builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
@@ -58,7 +58,8 @@ builder.Services.AddHostedService<Infrastructure.WebsitePublishing.WebsitePublis
 var publicWebsiteOrigins = new[]
 {
     "https://www.mylegnd.com", "https://mylegnd.com", "https://protect.mylegnd.com",
-    "https://portal.mylegnd.com", "https://client.mylegnd.com"
+    "https://portal.mylegnd.com", "https://client.mylegnd.com",
+    "https://shopparfait.com", "https://www.shopparfait.com"
 };
 builder.Services.AddRuntimeDiagnosticPublicWebsiteTransport(publicWebsiteOrigins);
 builder.Services.AddCors(options =>
@@ -105,32 +106,16 @@ else
         opts.UseSqlite(connString));
 }
 
-builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
-builder.Services.AddScoped<IWebsiteInquiryEmailSender>(services => services.GetRequiredService<IProtectEmailSender>());
-builder.Services.AddScoped<BusinessInquiryNotificationService>();
-builder.Services.AddHostedService<BusinessInquiryNotificationWorker>();
-builder.Services.AddHostedService<WebsiteLeadNotificationRecoveryWorker>();
+Infrastructure.Leads.WebsiteLeadServiceRegistration.AddWebsiteLeadNotificationTransport(builder.Services);
 
-builder.Services.AddScoped<Infrastructure.Analytics.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptureService>();
-builder.Services.AddScoped<Infrastructure.Analytics.IMetaPixelResolutionService, Infrastructure.Analytics.MetaPixelResolutionService>();
-builder.Services.AddScoped<Infrastructure.Analytics.IMetaSendAuthority, Infrastructure.Analytics.MetaSendAuthority>();
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
 builder.Services.AddScoped<IPublicBookingCalendarMatcher, MicrosoftGraphPublicBookingCalendarMatcher>();
 builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
 builder.Services.AddScoped<IPublicBookingConfirmationService, PublicBookingConfirmationService>();
 builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
-builder.Services.AddSingleton<MetaCapiCredentialProtector>();
-builder.Services.Configure<Infrastructure.Analytics.MetaOptions>(builder.Configuration.GetSection("Meta"));
-builder.Services.Configure<Infrastructure.Analytics.MetaSignalIntelligenceOptions>(builder.Configuration.GetSection("MetaSignalIntelligence"));
-builder.Services.AddHttpClient<Infrastructure.Analytics.IMetaConversionsApiService, Infrastructure.Analytics.MetaConversionsApiService>(client =>
-{
-    client.Timeout = TimeSpan.FromSeconds(10);
-});
-builder.Services.AddHostedService<Infrastructure.Analytics.MetaSignalAnalyticsBridge>();
-builder.Services.AddHostedService<Infrastructure.Analytics.MetaSignalOutcomeDispatcherHostedService>();
 
 // Data Protection — platform authority. Shares the "AgentPortal" application
 // name and (in dev) the AgentPortal key directory so protected agent-scoped Meta
@@ -237,7 +222,11 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
     diagnostics => diagnostics.UseCors(RuntimeDiagnosticsExtensions.PublicWebsiteCorsPolicy));
-app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
+app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/legend-public-site-tools"),
+    siteTools => siteTools.UseCors(RuntimeDiagnosticsExtensions.PublicSiteToolsCorsPolicy));
+app.UseWhen(context =>
+        !context.Request.Path.StartsWithSegments("/api/runtime-diagnostics") &&
+        !context.Request.Path.StartsWithSegments("/api/legend-public-site-tools"),
     editor => editor.UseCors("PublicWebsiteEditor"));
 app.UseRateLimiter();
 

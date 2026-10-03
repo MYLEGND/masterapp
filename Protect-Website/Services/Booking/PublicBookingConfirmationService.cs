@@ -7,16 +7,14 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Azure.Core;
-using Azure.Identity;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.Tracking;
 using Shared.Analytics;
 
@@ -44,7 +42,9 @@ public sealed record PublicBookingCalendarMatchRequest(
     string? LeadFirstName,
     string? LeadLastName,
     string? LeadEmail,
-    string? LeadPhone);
+    string? LeadPhone,
+    Guid? CommerceBusinessId = null,
+    Guid? AgentTrackingProfileId = null);
 
 public sealed record PublicBookingCalendarMatchResult(
     string EventId,
@@ -169,7 +169,9 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
                 LeadFirstName: leadProfile?.FirstName ?? websiteLead?.FirstName,
                 LeadLastName: leadProfile?.LastName ?? websiteLead?.LastName,
                 LeadEmail: !string.IsNullOrWhiteSpace(websiteLead?.Email) ? websiteLead.Email : leadProfile?.Email,
-                LeadPhone: !string.IsNullOrWhiteSpace(websiteLead?.Phone) ? websiteLead.Phone : leadProfile?.Phone),
+                LeadPhone: !string.IsNullOrWhiteSpace(websiteLead?.Phone) ? websiteLead.Phone : leadProfile?.Phone,
+                CommerceBusinessId: intakeLink.CommerceBusinessId,
+                AgentTrackingProfileId: resolution.AgentTrackingProfileId),
             cancellationToken);
 
         if (calendarMatch == null)
@@ -194,6 +196,7 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
             ? intakeLink.AgentUserId
             : appointment.OwnerAgentUserId;
         appointment.WebsiteLeadIntakeLinkId ??= intakeLink.Id;
+        appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink.Oppref);
         appointment.RequestedBookingSource = string.IsNullOrWhiteSpace(appointment.RequestedBookingSource)
             ? LeadAppointmentBookingSources.WebsiteEmbed
             : appointment.RequestedBookingSource;
@@ -314,13 +317,19 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
     };
 
     private readonly IConfiguration _configuration;
+    private readonly MasterAppDbContext _db;
+    private readonly Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority _calendarConnections;
     private readonly ILogger<MicrosoftGraphPublicBookingCalendarMatcher> _logger;
 
     public MicrosoftGraphPublicBookingCalendarMatcher(
         IConfiguration configuration,
+        MasterAppDbContext db,
+        Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority calendarConnections,
         ILogger<MicrosoftGraphPublicBookingCalendarMatcher> logger)
     {
         _configuration = configuration;
+        _db = db;
+        _calendarConnections = calendarConnections;
         _logger = logger;
     }
 
@@ -344,9 +353,34 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
             return null;
         }
 
-        var accessToken = await TryGetAccessTokenAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(accessToken))
+        MarketingOwnerScope? owner = null;
+        if (request.CommerceBusinessId is Guid businessId && businessId != Guid.Empty)
         {
+            owner = MarketingOwnerScope.Business(businessId);
+        }
+        else if (request.AgentTrackingProfileId is Guid trackingId && trackingId != Guid.Empty)
+        {
+            var tracking = await _db.AgentTrackingProfiles.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == trackingId, cancellationToken);
+            if (tracking is not null)
+                owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+                    _db,
+                    _configuration,
+                    tracking,
+                    cancellationToken);
+        }
+
+        if (owner is null)
+            return null;
+
+        string accessToken;
+        try
+        {
+            accessToken = await _calendarConnections.GetAccessTokenAsync(owner, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Public booking Graph confirmation requires a connected Microsoft calendar for owner {OwnerKey}.", owner.Key);
             return null;
         }
 
@@ -444,34 +478,6 @@ _logger.LogInformation("TryMatchAsync bestScore={BestScore} bestEventId={BestEve
         }
 
         return MapEvent(bestEvent, $"match_score_{bestScore}_calendar_{bestCalendarIdentity}");
-    }
-
-    private async Task<string?> TryGetAccessTokenAsync(CancellationToken cancellationToken)
-    {
-        var tenantId = _configuration["AzureAd:TenantId"];
-        var clientId = _configuration["AzureAd:ClientId"];
-        var clientSecret = _configuration["AzureAd:ClientSecret"];
-        if (string.IsNullOrWhiteSpace(tenantId) ||
-            string.IsNullOrWhiteSpace(clientId) ||
-            string.IsNullOrWhiteSpace(clientSecret))
-        {
-            _logger.LogWarning("Public booking Graph lookup is disabled because Azure AD application credentials are not configured.");
-            return null;
-        }
-
-        try
-        {
-            var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-            var token = await credential.GetTokenAsync(
-                new TokenRequestContext(new[] { "https://graph.microsoft.com/.default" }),
-                cancellationToken);
-            return token.Token;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to acquire Graph application token for public booking confirmation.");
-            return null;
-        }
     }
 
     private async Task<GraphCalendarEvent?> TryGetEventByIdAsync(

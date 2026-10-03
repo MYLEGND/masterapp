@@ -81,10 +81,12 @@ public sealed class BusinessAnalyticsCompletionTests
     public void SharedTrackingTreatsButtonTextAsPresentationOnly()
     {
         var tracking = File.ReadAllText(Path.Combine(RepoRoot(), "SHARED", "WebsitePlatform", "tracking.js"));
-        Assert.Contains("ElementKey: actionKey", tracking, StringComparison.Ordinal);
+        Assert.Contains("ElementKey: target.dataset.cmsId || target.id || actionKey", tracking, StringComparison.Ordinal);
+        Assert.Contains("ActionKey: actionKey", tracking, StringComparison.Ordinal);
+        Assert.DoesNotContain("ElementKey: actionKey,", tracking, StringComparison.Ordinal);
         Assert.Contains("WebsiteBindingId: target.dataset.websiteBindingId || actionKey", tracking, StringComparison.Ordinal);
         Assert.Contains("ButtonLabel: target.textContent?.trim() || null", tracking, StringComparison.Ordinal);
-        var elementIndex = tracking.IndexOf("ElementKey: actionKey", StringComparison.Ordinal);
+        var elementIndex = tracking.IndexOf("ElementKey: target.dataset.cmsId || target.id || actionKey", StringComparison.Ordinal);
         var labelIndex = tracking.IndexOf("ButtonLabel: target.textContent?.trim() || null", StringComparison.Ordinal);
         Assert.True(elementIndex >= 0 && labelIndex > elementIndex);
     }
@@ -94,8 +96,7 @@ public sealed class BusinessAnalyticsCompletionTests
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["MetaAds:AppId"] = "123",
-            ["MetaAds:ApiVersion"] = "v21.0"
+            ["MetaAds:AppId"] = "123"
         }).Build();
         var provider = new EphemeralDataProtectionProvider();
         var oauth = new MarketingMetaAdsOAuthService(
@@ -141,6 +142,62 @@ public sealed class BusinessAnalyticsCompletionTests
 
 
     [Fact]
+    public void MetaProviderEndpointsUseOneVersionlessAuthority()
+    {
+        Assert.Equal("https://graph.facebook.com/act_123/campaigns",
+            MetaGraphEndpointAuthority.Graph("act_123/campaigns"));
+        Assert.Equal("https://www.facebook.com/dialog/oauth",
+            MetaGraphEndpointAuthority.OAuthDialog());
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["MetaAds:AppId"] = "123",
+            // A stale environment value must not be able to reintroduce a retired runtime pin.
+            ["MetaAds:ApiVersion"] = "v-retired"
+        }).Build();
+        var oauth = new MarketingMetaAdsOAuthService(
+            configuration,
+            Mock.Of<IHttpClientFactory>(),
+            new EphemeralDataProtectionProvider(),
+            NullLogger<MarketingMetaAdsOAuthService>.Instance);
+        var connectUrl = oauth.BuildConnectUrl(
+            MarketingOwnerScope.Founder,
+            "/WebsiteAnalytics/Index",
+            "https://portal.example.com/analytics/meta-callback");
+        Assert.True(connectUrl.StartsWith("https://www.facebook.com/dialog/oauth?", StringComparison.Ordinal));
+        Assert.DoesNotContain("v-retired", connectUrl, StringComparison.Ordinal);
+
+        var root = RepoRoot();
+        var authority = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MetaGraphEndpointAuthority.cs"));
+        Assert.Contains("https://graph.facebook.com/", authority, StringComparison.Ordinal);
+        Assert.Contains("https://www.facebook.com/", authority, StringComparison.Ordinal);
+        Assert.DoesNotContain("MetaAds:ApiVersion", authority, StringComparison.Ordinal);
+
+        foreach (var file in new[]
+        {
+            "MetaAdsService.cs",
+            "MarketingMetaAdsOAuthService.cs",
+            "MetaConversionsApiService.cs"
+        })
+        {
+            var source = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", file));
+            Assert.Contains("MetaGraphEndpointAuthority", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("graph.facebook.com/", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("MetaAds:ApiVersion", source, StringComparison.Ordinal);
+        }
+
+        foreach (var file in new[]
+        {
+            Path.Combine(root, "AgentPortal", "appsettings.json"),
+            Path.Combine(root, "ParfaitApp", "appsettings.json")
+        })
+        {
+            var settings = File.ReadAllText(file);
+            Assert.DoesNotContain("\"ApiVersion\": \"v21.0\"", settings, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void ProtectLeadOwnershipAndNotificationStateHaveSingleAuthorities()
     {
         var root = RepoRoot();
@@ -176,6 +233,19 @@ public sealed class BusinessAnalyticsCompletionTests
         var authority = File.ReadAllText(Path.Combine(root, "Infrastructure", "Leads", "WebsiteLeadNotificationAuthority.cs"));
         Assert.Contains("WebsiteLeadSubmission.TryClaimNotificationAsync", authority, StringComparison.Ordinal);
         Assert.Contains("WebsiteLeadSubmission.CompleteNotificationAsync", authority, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParfaitAnalyticsUsesCanonicalServicesWithoutStaleDashboardCache()
+    {
+        var root = RepoRoot();
+        var source = File.ReadAllText(Path.Combine(root, "ParfaitApp", "Services", "ParfaitInternalAnalyticsService.cs"));
+
+        Assert.Contains("IAnalyticsQueryService _analytics", source, StringComparison.Ordinal);
+        Assert.Contains("IMetaSignalAnalyticsService _metaSignal", source, StringComparison.Ordinal);
+        Assert.Contains("DashboardCacheDuration = TimeSpan.Zero", source, StringComparison.Ordinal);
+        Assert.Contains("WorkspaceCacheDuration = TimeSpan.Zero", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("TimeSpan.FromSeconds(45)", source, StringComparison.Ordinal);
     }
 
     [Fact]

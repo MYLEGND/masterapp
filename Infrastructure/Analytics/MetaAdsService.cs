@@ -51,18 +51,15 @@ public sealed class MetaAdsService : IMetaAdsService
 
         var (token, accountId) = await ResolveCredentialsAsync(scope, ct);
         if (string.IsNullOrWhiteSpace(token))
-            throw new InvalidOperationException("Meta Ads access token missing. Connect Meta Ads or set MetaAds:AccessToken.");
+            throw new InvalidOperationException("Meta Ads is not connected for this permanent owner. Global/team views cannot select provider credentials.");
         if (string.IsNullOrWhiteSpace(accountId))
             throw new InvalidOperationException("No Meta Ads account mapping found for this agent. Connect Meta Ads to bind an account.");
 
-        var version = (_config["MetaAds:ApiVersion"] ?? "v21.0").Trim();
-        if (string.IsNullOrWhiteSpace(version)) version = "v21.0";
-
         var client = _httpClientFactory.CreateClient("ResilientDefault");
-        var accountMetadata = await FetchAccountMetadataAsync(client, version, accountId, token, range, ct);
+        var accountMetadata = await FetchAccountMetadataAsync(client, accountId, token, range, ct);
 
-        var campaigns = await FetchCampaignDefinitionsAsync(client, version, accountId, token, ct);
-        var insights = await FetchCampaignInsightsAsync(client, version, accountId, token, range, accountMetadata.TimeZone, ct);
+        var campaigns = await FetchCampaignDefinitionsAsync(client, accountId, token, ct);
+        var insights = await FetchCampaignInsightsAsync(client, accountId, token, range, accountMetadata.TimeZone, ct);
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
         var websiteLeadCounts = await BuildWebsiteLeadCountsAsync(range, scope, scopedAgentIds, campaigns, ct);
         var campaignOutcomes = await BuildCampaignOutcomeCountsAsync(range, scope, scopedAgentIds, campaigns, ct);
@@ -124,31 +121,8 @@ public sealed class MetaAdsService : IMetaAdsService
         };
     }
 
-    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct)
-    {
-        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
-            return null;
-
-        var selectedId = scope.AgentTrackingProfileId.Value;
-        var upn = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.Id == selectedId)
-            .Select(p => p.AgentUpn)
-            .FirstOrDefaultAsync(ct);
-
-        if (string.IsNullOrWhiteSpace(upn))
-            return new[] { selectedId };
-
-        var ids = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.AgentUpn == upn)
-            .Select(p => p.Id)
-            .Distinct()
-            .ToListAsync(ct);
-
-        if (!ids.Contains(selectedId))
-            ids.Add(selectedId);
-
-        return ids.ToArray();
-    }
+    private Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct) =>
+        AnalyticsTrackingProfileScope.ResolveAsync(_db, scope, ct);
 
     private async Task<Dictionary<string, long>> BuildWebsiteLeadCountsAsync(
         TimeRangeRequest range,
@@ -338,11 +312,7 @@ public sealed class MetaAdsService : IMetaAdsService
         _db.MetaSignalEvents.AsNoTracking()
             .Where(e => e.CreatedUtc >= range.FromUtc && e.CreatedUtc <= range.ToUtc)
             .ApplySiteScope(scope)
-            .Where(e => scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue
-                ? true
-                : scopedAgentIds != null
-                    ? e.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(e.AgentTrackingProfileId.Value)
-                    : e.AgentTrackingProfileId == scope.AgentTrackingProfileId.Value);
+            .Where(AnalyticsQueryService.ScopePredicateMetaEvents(scope, scopedAgentIds));
 
     private IQueryable<WebsiteLead> BaseWebsiteLeadsWithoutQualityFilter(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
         _db.WebsiteLeads.AsNoTracking()
@@ -395,31 +365,8 @@ public sealed class MetaAdsService : IMetaAdsService
         QualityMode = qualityMode
     };
 
-    private static System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadScopePredicate(ScopeContext scope, Guid[]? scopedAgentIds)
-    {
-        if (scope.ScopeType == ScopeType.Business)
-        {
-            if (scope.CommerceBusinessId is not { } businessId || businessId == Guid.Empty || scope.AgentTrackingProfileId.HasValue || scope.HasSiteScope)
-                return l => false;
-            return l => l.CommerceBusinessId == businessId && l.AgentTrackingProfileId == null;
-        }
-
-        if (scope.HasSiteScope)
-            return l => false;
-
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
-        {
-            if (scopedAgentIds != null && scopedAgentIds.Length > 0)
-            {
-                return l => l.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(l.AgentTrackingProfileId.Value);
-            }
-
-            var agentId = scope.AgentTrackingProfileId.Value;
-            return l => l.AgentTrackingProfileId == agentId;
-        }
-
-        return l => true;
-    }
+    private static System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadScopePredicate(ScopeContext scope, Guid[]? scopedAgentIds) =>
+        AnalyticsQueryService.ScopePredicateLeads(scope, scopedAgentIds);
 
     private static string? NormalizeCampaignKey(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -508,117 +455,15 @@ public sealed class MetaAdsService : IMetaAdsService
 
     private async Task<(string Token, string AccountId)> ResolveCredentialsAsync(ScopeContext scope, CancellationToken ct)
     {
-        if (_marketingConnections is not null)
-        {
-            MarketingOwnerScope? owner = null;
-            if (scope.ScopeType == ScopeType.Business &&
-                scope.CommerceBusinessId is { } businessId &&
-                businessId != Guid.Empty &&
-                !scope.AgentTrackingProfileId.HasValue &&
-                !scope.HasSiteScope)
-            {
-                if (await _db.CommerceBusinesses.AsNoTracking()
-                    .AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct))
-                    owner = MarketingOwnerScope.Business(businessId);
-            }
-            else if (scope.ScopeType == ScopeType.Agent &&
-                     scope.AgentTrackingProfileId is { } agentId &&
-                     agentId != Guid.Empty &&
-                     !scope.CommerceBusinessId.HasValue &&
-                     !scope.HasSiteScope)
-            {
-                owner = MarketingOwnerScope.Agent(agentId);
-            }
-            else if (scope.ScopeType == ScopeType.Global &&
-                     scope.HasSiteScope &&
-                     string.Equals(scope.SiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
-            {
-                owner = MarketingOwnerScope.Founder;
-            }
-
-            if (owner is not null)
-            {
-                var connection = await _marketingConnections.GetAdsAsync(owner, ct);
-                if (connection is not null && !string.IsNullOrWhiteSpace(connection.AccessToken))
-                    return (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
-
-                // Agent-only compatibility is intentionally handled below so an
-                // owner-checked encrypted legacy connection can migrate into the
-                // canonical store. Business and Founder scopes must fail closed:
-                // they may never inherit process-global Meta credentials.
-                if (!string.Equals(owner.OwnerType, "agent", StringComparison.OrdinalIgnoreCase))
-                    return (string.Empty, string.Empty);
-            }
-        }
-
-        // Compatibility migration path for an agent-scoped encrypted connection.
-        // This never permits a business/founder to inherit another owner's account.
-        if (scope.ScopeType == ScopeType.Agent &&
-            scope.AgentTrackingProfileId.HasValue &&
-            scope.AgentTrackingProfileId.Value != Guid.Empty)
-        {
-            var connection = await _connectionStore.GetAsync(scope.AgentTrackingProfileId.Value, ct);
-            if (connection != null && !string.IsNullOrWhiteSpace(connection.AccessToken))
-                return (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
-
-            return (string.Empty, string.Empty);
-        }
-
-        // A recognized scoped analytics owner without a canonical connection is
-        // explicitly disconnected. Global configuration is reserved for genuinely
-        // unscoped legacy/global callers and cannot satisfy a tenant-scoped request.
-        if (scope.ScopeType == ScopeType.Business || scope.HasSiteScope)
-            return (string.Empty, string.Empty);
-
-        var token = (_config["MetaAds:AccessToken"] ?? string.Empty).Trim();
-        var accountId = await ResolveAccountIdAsync(scope, ct);
-        return (token, accountId);
-    }
-
-    private async Task<string> ResolveAccountIdAsync(ScopeContext scope, CancellationToken ct)
-    {
-        var map = _config.GetSection("MetaAds:AgentAccountMap").Get<Dictionary<string, string>>()
-                  ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        string? defaultAccount = NormalizeAccountId(_config["MetaAds:DefaultAccountId"]);
-
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
-        {
-            var profileId = scope.AgentTrackingProfileId.Value;
-            var profile = await _db.AgentTrackingProfiles.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == profileId, ct);
-
-            var keys = new List<string>
-            {
-                profileId.ToString(),
-                profileId.ToString("D"),
-                profileId.ToString("N")
-            };
-
-            if (!string.IsNullOrWhiteSpace(profile?.Slug)) keys.Add(profile.Slug.Trim());
-            if (!string.IsNullOrWhiteSpace(profile?.AgentUpn)) keys.Add(profile.AgentUpn.Trim());
-            if (!string.IsNullOrWhiteSpace(profile?.AgentUserId)) keys.Add(profile.AgentUserId.Trim());
-
-            foreach (var key in keys)
-            {
-                if (TryGetMappedAccount(map, key, out var mapped)) return mapped;
-                if (TryGetMappedAccount(map, key.ToLowerInvariant(), out mapped)) return mapped;
-            }
-
-            return defaultAccount ?? string.Empty;
-        }
-
-        return defaultAccount ?? string.Empty;
-    }
-
-    private static bool TryGetMappedAccount(IReadOnlyDictionary<string, string> map, string key, out string accountId)
-    {
-        accountId = string.Empty;
-        if (!map.TryGetValue(key, out var raw)) return false;
-        var normalized = NormalizeAccountId(raw);
-        if (string.IsNullOrWhiteSpace(normalized)) return false;
-        accountId = normalized;
-        return true;
+        var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _config, scope, ct);
+        if (owner is null) return (string.Empty, string.Empty);
+        var connection = _marketingConnections is null ? null : await _marketingConnections.GetAdsAsync(owner, ct);
+        // Only a canonically resolved ordinary Agent can import its old encrypted account.
+        if (connection is null && owner.AgentTrackingProfileId is { } agentId)
+            connection = await _connectionStore.GetAsync(agentId, ct);
+        return connection is null || string.IsNullOrWhiteSpace(connection.AccessToken)
+            ? (string.Empty, string.Empty)
+            : (connection.AccessToken.Trim(), NormalizeAccountId(connection.AccountId) ?? string.Empty);
     }
 
     private static string? NormalizeAccountId(string? raw)
@@ -638,20 +483,20 @@ public sealed class MetaAdsService : IMetaAdsService
         return null;
     }
 
-    private async Task<List<MetaCampaignSeed>> FetchCampaignDefinitionsAsync(HttpClient client, string version, string accountId, string token, CancellationToken ct)
+    private async Task<List<MetaCampaignSeed>> FetchCampaignDefinitionsAsync(HttpClient client, string accountId, string token, CancellationToken ct)
     {
         var rows = new List<MetaCampaignSeed>();
-        string? nextUrl = BuildCampaignsUrl(version, accountId, token);
+        string? nextUrl = BuildCampaignsUrl(accountId, token);
 
         while (!string.IsNullOrWhiteSpace(nextUrl))
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, nextUrl);
-            using var res = await client.SendAsync(req, ct);
-            var json = await res.Content.ReadAsStringAsync(ct);
+            var res = await MetaGraphEndpointAuthority.GetAsync(client, nextUrl, ct);
+            var json = res.Body;
             if (!res.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Meta campaigns fetch failed. status={Status} body={Body}", (int)res.StatusCode, TrimForLog(json));
-                throw new InvalidOperationException("Unable to load campaigns from Meta Ads API.");
+                throw new InvalidOperationException(
+                    MetaGraphEndpointAuthority.SafeErrorMessage(json, "Unable to load campaigns from Meta Ads API."));
             }
 
             using var doc = JsonDocument.Parse(json);
@@ -696,20 +541,20 @@ public sealed class MetaAdsService : IMetaAdsService
         return rows;
     }
 
-    private async Task<Dictionary<string, MetaCampaignInsight>> FetchCampaignInsightsAsync(HttpClient client, string version, string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone, CancellationToken ct)
+    private async Task<Dictionary<string, MetaCampaignInsight>> FetchCampaignInsightsAsync(HttpClient client, string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone, CancellationToken ct)
     {
         var map = new Dictionary<string, MetaCampaignInsight>(StringComparer.OrdinalIgnoreCase);
-        string? nextUrl = BuildInsightsUrl(version, accountId, token, range, reportTimeZone);
+        string? nextUrl = BuildInsightsUrl(accountId, token, range, reportTimeZone);
 
         while (!string.IsNullOrWhiteSpace(nextUrl))
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, nextUrl);
-            using var res = await client.SendAsync(req, ct);
-            var json = await res.Content.ReadAsStringAsync(ct);
+            var res = await MetaGraphEndpointAuthority.GetAsync(client, nextUrl, ct);
+            var json = res.Body;
             if (!res.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Meta insights fetch failed. status={Status} body={Body}", (int)res.StatusCode, TrimForLog(json));
-                throw new InvalidOperationException("Unable to load campaign insights from Meta Ads API.");
+                throw new InvalidOperationException(
+                    MetaGraphEndpointAuthority.SafeErrorMessage(json, "Unable to load campaign insights from Meta Ads API."));
             }
 
             using var doc = JsonDocument.Parse(json);
@@ -752,22 +597,22 @@ public sealed class MetaAdsService : IMetaAdsService
         return map;
     }
 
-    private static string BuildCampaignsUrl(string version, string accountId, string token)
+    private static string BuildCampaignsUrl(string accountId, string token)
     {
         var fields = "id,name,status,effective_status,configured_status,objective,start_time,stop_time,updated_time";
-        return $"https://graph.facebook.com/{version}/act_{accountId}/campaigns?fields={Uri.EscapeDataString(fields)}&limit=500&access_token={Uri.EscapeDataString(token)}";
+        return $"{MetaGraphEndpointAuthority.Graph($"act_{accountId}/campaigns")}?fields={Uri.EscapeDataString(fields)}&limit=500&access_token={Uri.EscapeDataString(token)}";
     }
 
-    private static string BuildInsightsUrl(string version, string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone)
+    private static string BuildInsightsUrl(string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone)
     {
         var fields = "campaign_id,campaign_name,spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions";
         var since = TimeZoneInfo.ConvertTimeFromUtc(range.FromUtc, reportTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var until = TimeZoneInfo.ConvertTimeFromUtc(range.ToUtc, reportTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var timeRange = $"{{\"since\":\"{since}\",\"until\":\"{until}\"}}";
-        return $"https://graph.facebook.com/{version}/act_{accountId}/insights?level=campaign&fields={Uri.EscapeDataString(fields)}&time_range={Uri.EscapeDataString(timeRange)}&limit=500&access_token={Uri.EscapeDataString(token)}";
+        return $"{MetaGraphEndpointAuthority.Graph($"act_{accountId}/insights")}?level=campaign&fields={Uri.EscapeDataString(fields)}&time_range={Uri.EscapeDataString(timeRange)}&limit=500&access_token={Uri.EscapeDataString(token)}";
     }
 
-    private async Task<MetaAccountMetadata> FetchAccountMetadataAsync(HttpClient client, string version, string accountId, string token, TimeRangeRequest range, CancellationToken ct)
+    private async Task<MetaAccountMetadata> FetchAccountMetadataAsync(HttpClient client, string accountId, string token, TimeRangeRequest range, CancellationToken ct)
     {
         var fallbackTimeZone = range.ViewerTimeZone ?? TimeZoneInfo.Utc;
         var metadata = new MetaAccountMetadata
@@ -780,10 +625,9 @@ public sealed class MetaAdsService : IMetaAdsService
         try
         {
             var fields = "name,timezone_name,timezone_offset_hours_utc";
-            var url = $"https://graph.facebook.com/{version}/act_{accountId}?fields={Uri.EscapeDataString(fields)}&access_token={Uri.EscapeDataString(token)}";
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            using var res = await client.SendAsync(req, ct);
-            var json = await res.Content.ReadAsStringAsync(ct);
+            var url = $"{MetaGraphEndpointAuthority.Graph($"act_{accountId}")}?fields={Uri.EscapeDataString(fields)}&access_token={Uri.EscapeDataString(token)}";
+            var res = await MetaGraphEndpointAuthority.GetAsync(client, url, ct);
+            var json = res.Body;
             if (!res.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Meta account metadata fetch failed. status={Status} body={Body}", (int)res.StatusCode, TrimForLog(json));

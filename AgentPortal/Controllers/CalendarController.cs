@@ -1,18 +1,14 @@
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using AgentPortal.Filters;
 using AgentPortal.Services;
+using AgentPortal.Security;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Identity.Client;
-using Microsoft.Identity.Web;
 using Infrastructure.Data;
 using AgentPortal.Models;
 using AgentPortal.Helpers;
 using Domain.Entities;
 using Domain.Enums;
 using System.Security.Claims;
-using System.Net.Http.Headers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
@@ -42,32 +38,24 @@ public class CalendarController : Controller
         LeadAppointmentStatus.Completed
     };
 
-    private readonly ITokenAcquisition _tokenAcquisition;
     private readonly ILogger<CalendarController> _logger;
     private readonly MasterAppDbContext _db;
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAgentTimeZoneResolver _agentTimeZoneResolver;
-    private readonly GraphServiceClient _appGraph;
+    private readonly Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority _calendarConnections;
 
-    // Scopes must match what you consent to in /calendar/connect
-    private static readonly string[] CalendarScopes = new[] { "offline_access", "Calendars.ReadWrite" };
-    private static readonly string[] CalendarAvailabilityScopes = new[] { "offline_access", "Calendars.ReadWrite", "MailboxSettings.Read" };
     private static readonly TimeSpan DefaultWorkdayStart = new(7, 0, 0);
     private static readonly TimeSpan DefaultWorkdayEnd = new(19, 0, 0);
 
-    public CalendarController(ITokenAcquisition tokenAcquisition,
+    public CalendarController(
         ILogger<CalendarController> logger,
         MasterAppDbContext db,
-        IHttpClientFactory httpClientFactory,
         IAgentTimeZoneResolver agentTimeZoneResolver,
-        GraphServiceClient appGraph)
+        Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority calendarConnections)
     {
-        _tokenAcquisition = tokenAcquisition;
         _logger = logger;
         _db = db;
-        _httpClientFactory = httpClientFactory;
         _agentTimeZoneResolver = agentTimeZoneResolver;
-        _appGraph = appGraph;
+        _calendarConnections = calendarConnections;
     }
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
@@ -1006,6 +994,62 @@ public class CalendarController : Controller
             clientProfile?.Phone ?? leadProfile?.Phone);
     }
 
+    private async Task<Shared.Analytics.MarketingOwnerScope> ResolveCalendarOwnerAsync(
+        Guid? scopedBusinessId,
+        string? scopedBookingAgentUserId,
+        CancellationToken cancellationToken)
+    {
+        if (scopedBusinessId is Guid businessId && businessId != Guid.Empty)
+            return Shared.Analytics.MarketingOwnerScope.Business(businessId);
+
+        var businessClaim = User.FindFirstValue("legend_business_id");
+        if (Guid.TryParse(businessClaim, out var claimedBusinessId) && claimedBusinessId != Guid.Empty)
+            return Shared.Analytics.MarketingOwnerScope.Business(claimedBusinessId);
+
+        if (FounderGuard.IsFounder(User))
+            return Shared.Analytics.MarketingOwnerScope.Founder;
+
+        var agentUserId = CleanOptional(scopedBookingAgentUserId) ?? GetAgentOidOrThrow();
+        var normalized = Norm(agentUserId);
+        var upn = CleanOptional(
+            User.FindFirstValue("preferred_username") ??
+            User.FindFirstValue(ClaimTypes.Upn) ??
+            User.Identity?.Name);
+
+        var tracking = await _db.AgentTrackingProfiles.AsNoTracking()
+            .Where(x =>
+                (x.AgentUserId ?? string.Empty).Trim().ToLower() == normalized ||
+                (upn != null && (x.AgentUpn ?? string.Empty).Trim().ToLower() == upn.ToLower()))
+            .OrderByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidOperationException("The calendar owner could not be resolved.");
+
+        return Shared.Analytics.MarketingOwnerScope.Agent(tracking.Id);
+    }
+
+    private async Task<string?> ResolveBookingBusinessIdAsync(
+        Guid? scopedBusinessId,
+        AgentProfile? agentProfile,
+        Shared.Analytics.MarketingOwnerScope owner,
+        CancellationToken cancellationToken)
+    {
+        string? manualTarget = null;
+        if (scopedBusinessId is Guid businessId && businessId != Guid.Empty)
+        {
+            manualTarget = await _db.CommerceBusinessStorefrontSettings.AsNoTracking()
+                .Where(x => x.CommerceBusinessId == businessId)
+                .Select(x => x.BookingMailboxId)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+
+        manualTarget = CleanOptional(manualTarget) ?? CleanOptional(agentProfile?.BookingPageIdOrMailbox);
+        if (!string.IsNullOrWhiteSpace(manualTarget))
+            return manualTarget.Trim().TrimEnd('/');
+
+        var connection = await _calendarConnections.GetAsync(owner, cancellationToken);
+        return CleanOptional(connection.Email)?.TrimEnd('/');
+    }
+
     private static DateTime? UtcDate(DateTime? value)
         => value.HasValue
             ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
@@ -1026,64 +1070,78 @@ public class CalendarController : Controller
     }
 
     // GET /calendar/connect
-    // Triggers incremental consent for delegated calendar scopes.
+    // Compatibility route retained for CRM callers; the owner-scoped connection
+    // authority now owns OAuth, persistence, verification, refresh, and status.
     [HttpGet("connect")]
-    public IActionResult Connect()
-    {
-        var props = new AuthenticationProperties
-        {
-            RedirectUri = Url.Action("Connected", "Calendar") ?? "/calendar/connected"
-        };
-
-        // Force consent prompt during testing
-        props.Items["prompt"] = "consent";
-
-        // Correct incremental consent for Microsoft.Identity.Web
-        props.Items["scope"] = string.Join(" ", CalendarAvailabilityScopes);
-        return Challenge(props, OpenIdConnectDefaults.AuthenticationScheme);
-    }
-
-    // GET /calendar/connected
-    // Redirect back to CRM instead of blank text page.
-    [HttpGet("connected")]
-    public IActionResult Connected()
-    {
-        TempData["Created"] = "✅ Calendar connected for this agent.";
-        return RedirectToAction("Index", "Clients");
-    }
-
-    // GET /calendar/status
-    // This is what your Index.cshtml calls to set the button state.
-    [HttpGet("status")]
-    public async Task<IActionResult> Status()
+    public async Task<IActionResult> Connect(CancellationToken cancellationToken = default)
     {
         try
         {
-            // If we can acquire an access token for these scopes, we're "connected"
-            var token = await _tokenAcquisition.GetAccessTokenForUserAsync(CalendarScopes);
+            var owner = await ResolveCalendarOwnerAsync(null, null, cancellationToken);
+            var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/calendar/connected";
+            var returnUrl = Url.Action("Index", "Clients") ?? "/Clients";
+            return Redirect(_calendarConnections.BuildConnectUrl(owner, returnUrl, callback));
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+            return RedirectToAction("Index", "Clients");
+        }
+    }
 
-            // Optional: show the signed-in user
-            var email =
-                User.FindFirstValue("preferred_username") ??
-                User.FindFirstValue(ClaimTypes.Upn) ??
-                User.Identity?.Name ??
-                "";
+    [HttpGet("connected")]
+    public async Task<IActionResult> Connected(
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var inspected = _calendarConnections.InspectState(state ?? string.Empty);
+            var currentOwner = await ResolveCalendarOwnerAsync(null, null, cancellationToken);
+            if (inspected.Owner != currentOwner) return Forbid();
 
-            return Json(new { connected = !string.IsNullOrWhiteSpace(token), email });
+            if (!string.IsNullOrWhiteSpace(error))
+                throw new InvalidOperationException(
+                    string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription);
+
+            var connection = await _calendarConnections.CompleteCallbackAsync(
+                code ?? string.Empty,
+                state ?? string.Empty,
+                cancellationToken);
+            if (!connection.Connected || connection.Owner != currentOwner)
+                throw new InvalidOperationException("Microsoft Calendar authorization was not verified.");
+
+            TempData["Created"] = "Calendar connected.";
         }
-        catch (MicrosoftIdentityWebChallengeUserException ex)
+        catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Calendar status requires user interaction/consent.");
-            return Json(new { connected = false, needsConsent = true });
+            TempData["Error"] = ex.Message;
         }
-        catch (MsalUiRequiredException ex)
+
+        return RedirectToAction("Index", "Clients");
+    }
+
+    [HttpGet("status")]
+    public async Task<IActionResult> Status(CancellationToken cancellationToken = default)
+    {
+        try
         {
-            _logger.LogWarning(ex, "Calendar status token not available (user_null).");
-            return Json(new { connected = false, needsConsent = true });
+            var owner = await ResolveCalendarOwnerAsync(null, null, cancellationToken);
+            var connection = await _calendarConnections.GetAsync(owner, cancellationToken);
+            return Json(new
+            {
+                connected = connection.Connected,
+                email = connection.Email,
+                authorizationMethod = connection.AuthorizationMethod,
+                lastVerifiedUtc = connection.LastVerifiedUtc
+            });
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Calendar status check failed (not consented or token unavailable).");
+            _logger.LogWarning(ex, "Calendar status owner resolution failed.");
             return Json(new { connected = false });
         }
     }
@@ -1245,7 +1303,20 @@ public class CalendarController : Controller
                                                (x.NormalizedEmail ?? "").Trim().ToLower() == currentUpn.Trim().ToLower()));
             }
 
-            var bookingBusinessId = (agentProfile?.BookingPageIdOrMailbox ?? "").Trim().TrimEnd('/');
+            Guid? scopedBusinessId = null;
+            if (Guid.TryParse(User.FindFirstValue("legend_business_id"), out var claimedBusinessId) &&
+                claimedBusinessId != Guid.Empty)
+                scopedBusinessId = claimedBusinessId;
+
+            var calendarOwner = await ResolveCalendarOwnerAsync(
+                scopedBusinessId,
+                null,
+                HttpContext.RequestAborted);
+            var bookingBusinessId = await ResolveBookingBusinessIdAsync(
+                scopedBusinessId,
+                agentProfile,
+                calendarOwner,
+                HttpContext.RequestAborted);
             if (string.IsNullOrWhiteSpace(bookingBusinessId))
             {
                 return Ok(new
@@ -1254,11 +1325,14 @@ public class CalendarController : Controller
                     date = localDate.ToString("yyyy-MM-dd"),
                     items = Array.Empty<object>(),
                     freeSlots = Array.Empty<object>(),
-                    message = "Agent booking configuration missing."
+                    message = "Microsoft calendar target is not configured."
                 });
             }
 
-            var services = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+            var graph = await _calendarConnections.CreateGraphClientAsync(
+                calendarOwner,
+                HttpContext.RequestAborted);
+            var services = await graph.Solutions.BookingBusinesses[bookingBusinessId]
                 .Services
                 .GetAsync(cancellationToken: HttpContext.RequestAborted);
 
@@ -1284,7 +1358,7 @@ public class CalendarController : Controller
 
             if (serviceStaffIds.Count == 0)
             {
-                var staff = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+                var staff = await graph.Solutions.BookingBusinesses[bookingBusinessId]
                     .StaffMembers
                     .GetAsync(cancellationToken: HttpContext.RequestAborted);
 
@@ -1329,7 +1403,7 @@ public class CalendarController : Controller
                 }
             };
 
-            var availability = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+            var availability = await graph.Solutions.BookingBusinesses[bookingBusinessId]
                 .GetStaffAvailability
                 .PostAsGetStaffAvailabilityPostResponseAsync(request, cancellationToken: HttpContext.RequestAborted);
 
@@ -1407,7 +1481,7 @@ public class CalendarController : Controller
                 .OrderBy(x => x.Start)
                 .ToList();
 
-            var appointmentPage = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+            var appointmentPage = await graph.Solutions.BookingBusinesses[bookingBusinessId]
                 .Appointments
                 .GetAsync(config =>
                 {
@@ -1423,7 +1497,7 @@ public class CalendarController : Controller
 
             while (!string.IsNullOrWhiteSpace(appointmentPage?.OdataNextLink))
             {
-                appointmentPage = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+                appointmentPage = await graph.Solutions.BookingBusinesses[bookingBusinessId]
                     .Appointments
                     .WithUrl(appointmentPage.OdataNextLink)
                     .GetAsync(cancellationToken: HttpContext.RequestAborted);
@@ -1739,12 +1813,21 @@ public class CalendarController : Controller
                                                (x.NormalizedEmail ?? "").Trim().ToLower() == currentUpn.Trim().ToLower()));
             }
 
-            var bookingBusinessId = (ownerAgentProfile?.BookingPageIdOrMailbox ?? "").Trim();
+            var calendarOwner = await ResolveCalendarOwnerAsync(
+                req.ScopedBusinessId,
+                req.ScopedBookingAgentUserId,
+                cancellationToken);
+            var bookingBusinessId = await ResolveBookingBusinessIdAsync(
+                req.ScopedBusinessId,
+                ownerAgentProfile,
+                calendarOwner,
+                cancellationToken);
             if (string.IsNullOrWhiteSpace(bookingBusinessId))
-                return BadRequest("Agent booking configuration missing.");
+                return BadRequest("Microsoft calendar target is not configured.");
 
+            var graph = await _calendarConnections.CreateGraphClientAsync(calendarOwner, cancellationToken);
             var durationMinutes = MinutesBetween(localStart, localEnd);
-            var bookingService = await ResolveBookingServiceByDurationAsync(bookingBusinessId, durationMinutes, HttpContext.RequestAborted, req.ServiceId);
+            var bookingService = await ResolveBookingServiceByDurationAsync(graph, bookingBusinessId, durationMinutes, HttpContext.RequestAborted, req.ServiceId);
             if (bookingService == null || string.IsNullOrWhiteSpace(bookingService.Id))
                 return BadRequest($"No Microsoft Bookings service matches {durationMinutes} minutes.");
 
@@ -1795,7 +1878,7 @@ public class CalendarController : Controller
                 OptOutOfCustomerEmail = false
             };
 
-            var bookingCreated = await _appGraph
+            var bookingCreated = await graph
                 .Solutions
                 .BookingBusinesses[bookingBusinessId]
                 .Appointments
@@ -2258,13 +2341,20 @@ public class CalendarController : Controller
                     "Appointment is not linked to a live Microsoft Bookings event.");
             }
 
-            var bookingBusinessId =
-                CleanOptional(
-                    context.BookingAgentProfile
-                        ?.BookingPageIdOrMailbox);
+            var calendarOwner = await ResolveCalendarOwnerAsync(
+                req.ScopedBusinessId,
+                req.ScopedBookingAgentUserId,
+                cancellationToken);
+            var bookingBusinessId = await ResolveBookingBusinessIdAsync(
+                req.ScopedBusinessId,
+                context.BookingAgentProfile,
+                calendarOwner,
+                cancellationToken);
 
             if (string.IsNullOrWhiteSpace(bookingBusinessId))
-                return BadRequest("Agent booking configuration missing.");
+                return BadRequest("Microsoft calendar target is not configured.");
+
+            var graph = await _calendarConnections.CreateGraphClientAsync(calendarOwner, cancellationToken);
 
             var agentTimeZone = context.AgentTimeZone;
             var utcStart =
@@ -2302,6 +2392,7 @@ public class CalendarController : Controller
             var durationMinutes = MinutesBetween(localStart, localEnd);
             var bookingService =
                 await ResolveBookingServiceByDurationAsync(
+                    graph,
                     bookingBusinessId,
                     durationMinutes,
                     cancellationToken, req.ServiceId);
@@ -2342,7 +2433,7 @@ public class CalendarController : Controller
                  """;
 
             var patchedAppointment =
-                await _appGraph
+                await graph
                     .Solutions
                     .BookingBusinesses[bookingBusinessId]
                     .Appointments[context.Appointment.CalendarEventId]
@@ -2606,15 +2697,22 @@ public class CalendarController : Controller
                     "Appointment is not linked to a live Microsoft Bookings event.");
             }
 
-            var bookingBusinessId =
-                CleanOptional(
-                    context.BookingAgentProfile
-                        ?.BookingPageIdOrMailbox);
+            var calendarOwner = await ResolveCalendarOwnerAsync(
+                req.ScopedBusinessId,
+                req.ScopedBookingAgentUserId,
+                cancellationToken);
+            var bookingBusinessId = await ResolveBookingBusinessIdAsync(
+                req.ScopedBusinessId,
+                context.BookingAgentProfile,
+                calendarOwner,
+                cancellationToken);
 
             if (string.IsNullOrWhiteSpace(bookingBusinessId))
-                return BadRequest("Agent booking configuration missing.");
+                return BadRequest("Microsoft calendar target is not configured.");
 
-            await _appGraph
+            var graph = await _calendarConnections.CreateGraphClientAsync(calendarOwner, cancellationToken);
+
+            await graph
                 .Solutions
                 .BookingBusinesses[bookingBusinessId]
                 .Appointments[context.Appointment.CalendarEventId]
@@ -2809,9 +2907,14 @@ public class CalendarController : Controller
     private static int MinutesBetween(DateTime start, DateTime end)
         => Math.Max(1, (int)Math.Round((end - start).TotalMinutes));
 
-    private async Task<BookingService?> ResolveBookingServiceByDurationAsync(string businessId, int durationMinutes, CancellationToken ct, string? serviceId = null)
+    private async Task<BookingService?> ResolveBookingServiceByDurationAsync(
+        GraphServiceClient graph,
+        string businessId,
+        int durationMinutes,
+        CancellationToken ct,
+        string? serviceId = null)
     {
-        var services = await _appGraph.Solutions.BookingBusinesses[businessId].Services.GetAsync(cancellationToken: ct);
+        var services = await graph.Solutions.BookingBusinesses[businessId].Services.GetAsync(cancellationToken: ct);
 
         _logger.LogInformation(
             "Bookings services: {Services}",

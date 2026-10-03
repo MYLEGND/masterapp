@@ -44,6 +44,8 @@ public sealed class PageHealthContractTests
         // tests/layout/page-health.test.mjs. Classification belongs to the server.
         Assert.Equal(1, CountOccurrences(source, "window.fetch = async function"));
         Assert.Contains("/api/runtime-diagnostics", source, StringComparison.Ordinal);
+        Assert.Contains("structuralReproducer: structuralSnapshot()", source, StringComparison.Ordinal);
+        Assert.Contains("structuralSnapshot() { return structuralSnapshot(); }", source, StringComparison.Ordinal);
         Assert.Contains("RequestVerificationToken", source, StringComparison.Ordinal);
         Assert.DoesNotContain("localStorage.getItem", source, StringComparison.Ordinal);
         Assert.DoesNotContain("localStorage.setItem", source, StringComparison.Ordinal);

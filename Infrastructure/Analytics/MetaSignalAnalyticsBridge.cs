@@ -17,18 +17,7 @@ namespace Infrastructure.Analytics;
 
 public sealed class MetaSignalAnalyticsBridge : BackgroundService
 {
-    private static readonly string[] ExplicitSourceEventTypes =
-    [
-        "qualified_lead",
-        AppointmentAnalyticsEventCatalog.Booked,
-        AppointmentAnalyticsEventCatalog.Completed,
-        "application_submitted",
-        "policy_issued",
-        "policy_paid",
-        "purchase"
-    ];
-
-    private static readonly string[] SourceEventTypes = BuildSourceEventTypes();
+    public static IReadOnlyList<string> SourceEventTypes { get; } = Array.AsReadOnly(BuildSourceEventTypes());
 
     private static readonly BridgeMapping ViewContentMapping =
         new("ViewContent", "page", FunnelStep: 1, StepName: "view_content", IntentScore: 5, EngagementScore: 5, QualificationScore: 0, FrictionScore: 0, ScoreTier: "ViewContent");
@@ -121,39 +110,8 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         {
             try
             {
-                var bridgeRow = await TryBuildBridgeRowAsync(db, analyticsEvent, cancellationToken);
-                if (bridgeRow == null || await AlreadyDerivedAsync(db, bridgeRow, cancellationToken))
-                {
-                    _watermark = analyticsEvent.Id;
-                    continue;
-                }
-
-                UnifiedMetaSignalWriter.Write(db, bridgeRow);
-
-                try
-                {
-                    await db.SaveChangesAsync(cancellationToken);
-                }
-                catch (DbUpdateException ex) when (IsDuplicateMetaSignalEvent(ex))
-                {
-                    var entry = db.Entry(bridgeRow);
-                    if (entry.State != EntityState.Detached)
-                        entry.State = EntityState.Detached;
-
-                    _watermark = analyticsEvent.Id;
-                    _logger.LogDebug(
-                        ex,
-                        "MetaSignalAnalyticsBridge ignored duplicate derived row sourceAnalyticsEventId={AnalyticsId} eventName={EventName}",
-                        analyticsEvent.Id,
-                        bridgeRow.EventName);
-                    continue;
-                }
-
+                await PersistAsync(db, analyticsEvent, cancellationToken, bridgeOptions.Weights);
                 _watermark = analyticsEvent.Id;
-                _logger.LogInformation(
-                    "MetaSignalBridge processed event {EventType} for Lead {LeadId}",
-                    bridgeRow.EventName,
-                    bridgeRow.LeadId);
             }
             catch (Exception ex)
             {
@@ -171,25 +129,33 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return analyticsEvents.Count == batchSize;
     }
 
+    /// <summary>Derives and persists a signal from a durably accepted canonical analytics event.</summary>
+    public static async Task<bool> PersistAsync(MasterAppDbContext db, AnalyticsEvent source,
+        CancellationToken cancellationToken = default, MetaSignalScoreWeights? weights = null)
+    {
+        var persisted = source.Id <= 0 ? null : await db.AnalyticsEvents.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == source.Id && x.EventId == source.EventId, cancellationToken);
+        if (persisted is null)
+            throw new InvalidOperationException("Meta derivation requires a persisted analytics event.");
+        var row = await TryBuildBridgeRowAsync(db, persisted, cancellationToken, weights);
+        if (row is null || await AlreadyDerivedAsync(db, row, cancellationToken)) return false;
+        UnifiedMetaSignalWriter.Write(db, row);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException ex) when (IsDuplicateMetaSignalEvent(ex))
+        {
+            db.Entry(row).State = EntityState.Detached;
+            if (!await AlreadyDerivedAsync(db, row, cancellationToken)) throw;
+            return false;
+        }
+        return true;
+    }
+
     private async Task<long> InitializeWatermarkAsync(MasterAppDbContext db, CancellationToken cancellationToken)
     {
-        var recentBridgeRows = await db.MetaSignalEvents
-            .AsNoTracking()
-            .Where(x => x.MetadataJson != null && x.MetadataJson.Contains(MetaSignalAnalyticsBridgeMetadata.BridgeSourceMarker))
-            .OrderByDescending(x => x.Id)
-            .Take(100)
-            .ToListAsync(cancellationToken);
-
-        var bridgeWatermark = recentBridgeRows
-            .Select(x => MetaSignalAnalyticsBridgeMetadata.ReadInt64(x.MetadataJson, "sourceAnalyticsEventId"))
-            .Where(x => x.HasValue)
-            .Select(x => x!.Value)
-            .DefaultIfEmpty(0)
-            .Max();
-
-        if (bridgeWatermark > 0)
-            return bridgeWatermark;
-
+        // Restart from the configured lookback floor, not from the highest
+        // globally bridged event. A global high-water mark can skip an older eligible
+        // row from another Founder/agent/business scope forever. Replaying the bounded
+        // window is safe because bridge derivation is idempotent and duplicate-protected.
         var lookbackUtc = DateTime.UtcNow.AddHours(-Math.Clamp(_options.Value.AnalyticsBridgeStartupLookbackHours, 1, 168));
         var floor = await db.AnalyticsEvents
             .AsNoTracking()
@@ -201,15 +167,18 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return floor ?? 0;
     }
 
-    private async Task<MetaSignalEvent?> TryBuildBridgeRowAsync(
+    private static async Task<MetaSignalEvent?> TryBuildBridgeRowAsync(
         MasterAppDbContext db,
         AnalyticsEvent analyticsEvent,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, MetaSignalScoreWeights? weights = null)
     {
-        if (!TryResolveMapping(analyticsEvent, out var mapping))
+        if (!TryResolveMapping(analyticsEvent, out var mapping, weights))
             return null;
 
-        if (!MetaSignalSingleTruthPolicy.CanBridgeToServerAuthority(mapping.MetaEventName, analyticsEvent.MetadataJson))
+        if (analyticsEvent.IsInternal ||
+            (MetaSignalEventCatalog.IsServerAuthorityEvent(mapping.MetaEventName) &&
+             !CanonicalAdvertisingEventProjection.CanProjectServer(analyticsEvent)) ||
+            !MetaSignalSingleTruthPolicy.CanBridgeToServerAuthority(mapping.MetaEventName, analyticsEvent.MetadataJson))
             return null;
 
         var eventUtc = analyticsEvent.EventUtc == default ? analyticsEvent.ReceivedUtc : analyticsEvent.EventUtc;
@@ -243,13 +212,34 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
 
         var scopedEventId = ScopeEventId(
             analyticsEvent.CommerceBusinessId,
-            !string.IsNullOrWhiteSpace(leadDispatchState?.MetaEventId)
+            !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "canonicalOutcomeEventId"))
+                ? ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "canonicalOutcomeEventId")!
+                : !string.IsNullOrWhiteSpace(leadDispatchState?.MetaEventId)
                 ? leadDispatchState.MetaEventId!
                 : !string.IsNullOrWhiteSpace(upstreamMetaEventId)
                     ? upstreamMetaEventId!
                     : analyticsEvent.EventId == Guid.Empty
                         ? $"analytics_bridge_{analyticsEvent.Id}"
                         : analyticsEvent.EventId.ToString("N"));
+        var canonicalBrowserIdentity = analyticsEvent.ClientEventId == analyticsEvent.EventId &&
+            ReadAnalyticsMetadataBoolean(analyticsEvent.MetadataJson, "isBrowserSignal") == true;
+        var canonicalSourceIdentity = canonicalBrowserIdentity ||
+            !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "canonicalOutcomeEventId"));
+        if (canonicalBrowserIdentity)
+        {
+            // Globally unique accepted envelope IDs are shared verbatim by browser providers.
+            scopedEventId = analyticsEvent.EventId.ToString("D");
+            deduplicationKey = $"analytics:{analyticsEvent.EventId:N}:{mapping.MetaEventName}";
+        }
+        var stableServerOutcome = IsStableServerOutcome(analyticsEvent);
+        if (stableServerOutcome)
+        {
+            deduplicationKey = ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "metaDeduplicationKey")
+                ?? throw new InvalidOperationException("Server outcome requires stable deduplication identity.");
+            scopedEventId = ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "upstreamMetaEventId")
+                ?? throw new InvalidOperationException("Server outcome requires stable destination identity.");
+            trafficType = analyticsEvent.TrackingVersion == "commerce-server-authority-v1" ? "ecommerce" : "crm";
+        }
         var effectivePageKey = Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "EffectivePageKey"))
             ?? Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "effectivePageKey"))
             ?? Normalize(analyticsEvent.PageKey);
@@ -286,6 +276,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             UtmId = Normalize(analyticsEvent.UtmId),
             UtmContent = Normalize(analyticsEvent.UtmContent),
             Fbclid = Normalize(analyticsEvent.Fbclid),
+            Oppref = OpenAiClickReference.Normalize(analyticsEvent.Oppref),
             Fbc = fbc,
             Fbp = fbp,
             Referrer = Normalize(analyticsEvent.Referrer),
@@ -343,11 +334,28 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                 leadDispatchState?.MetaEventId,
                 leadDispatchState?.MetaServerStatus,
                 leadDispatchState?.MetaServerNote);
+            if (canonicalSourceIdentity)
+            {
+                var envelope = System.Text.Json.Nodes.JsonNode.Parse(row.MetadataJson)!.AsObject();
+                envelope["canonicalSourceIdentity"] = true;
+                row.MetadataJson = envelope.ToJsonString();
+            }
+            if (stableServerOutcome)
+            {
+                var payload = System.Text.Json.Nodes.JsonNode.Parse(analyticsEvent.MetadataJson!)!.AsObject();
+                var canonical = System.Text.Json.Nodes.JsonNode.Parse(row.MetadataJson)!.AsObject();
+                foreach (var property in canonical)
+                    payload[property.Key] = property.Value?.DeepClone();
+                payload["serverOutcomeStableIdentity"] = true;
+                payload["metaPipelineOrigin"] = trafficType == "ecommerce"
+                    ? "analytics_events>CommercePurchaseBridge" : "analytics_events>crm_outcome_service";
+                row.MetadataJson = payload.ToJsonString();
+            }
         });
 
     }
 
-    private async Task<LeadDispatchState?> ResolveLeadDispatchStateAsync(
+    private static async Task<LeadDispatchState?> ResolveLeadDispatchStateAsync(
         MasterAppDbContext db,
         AnalyticsEvent analyticsEvent,
         WebsiteLead? resolvedLead,
@@ -420,7 +428,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return null;
     }
 
-    private async Task<WebsiteLead?> ResolveLeadAsync(
+    private static async Task<WebsiteLead?> ResolveLeadAsync(
         MasterAppDbContext db,
         AnalyticsEvent analyticsEvent,
         DateTime eventUtc,
@@ -480,7 +488,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return null;
     }
 
-    private async Task<bool> AlreadyDerivedAsync(
+    private static async Task<bool> AlreadyDerivedAsync(
         MasterAppDbContext db,
         MetaSignalEvent candidate,
         CancellationToken cancellationToken)
@@ -488,9 +496,20 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         if (await db.MetaSignalEvents.AsNoTracking().AnyAsync(x =>
                 x.EventId == candidate.EventId &&
                 x.CommerceBusinessId == candidate.CommerceBusinessId &&
-                (!candidate.CommerceBusinessId.HasValue || x.AgentTrackingProfileId == null), cancellationToken))
+                x.AgentTrackingProfileId == candidate.AgentTrackingProfileId, cancellationToken))
             return true;
 
+        if (ReadAnalyticsMetadataBoolean(candidate.MetadataJson, "serverOutcomeStableIdentity") == true)
+            return await db.MetaSignalEvents.AsNoTracking().AnyAsync(x =>
+                x.MetaDeduplicationKey == candidate.MetaDeduplicationKey &&
+                x.CommerceBusinessId == candidate.CommerceBusinessId &&
+                x.AgentTrackingProfileId == candidate.AgentTrackingProfileId, cancellationToken);
+
+        if (ReadAnalyticsMetadataBoolean(candidate.MetadataJson, "canonicalSourceIdentity") == true)
+            return false;
+
+        // Required historical adapter only: old independently generated browser/provider
+        // records did not share an action identity. Never apply this heuristic to new facts.
         var roundedMinute = RoundToNearestMinute(candidate.CreatedUtc);
         var windowStart = roundedMinute.AddMinutes(-1);
         var windowEnd = roundedMinute.AddMinutes(1);
@@ -526,73 +545,36 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return await query.AnyAsync(cancellationToken);
     }
 
-    private bool TryResolveMapping(AnalyticsEvent analyticsEvent, out BridgeMapping mapping)
+    private static bool IsStableServerOutcome(AnalyticsEvent source) =>
+        source.TrackingVersion is "commerce-server-authority-v1" or "crm-production-authority-v1" &&
+        ReadAnalyticsMetadataBoolean(source.MetadataJson, "isServerAuthority") == true &&
+        ReadAnalyticsMetadataBoolean(source.MetadataJson, "isBrowserSignal") != true &&
+        MetaSignalSingleTruthPolicy.CanBridgeToServerAuthority(source.EventType, source.MetadataJson) &&
+        MetaSignalEventCatalog.IsServerAuthorityEvent(source.EventType) &&
+        !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(source.MetadataJson, "upstreamMetaEventId")) &&
+        !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(source.MetadataJson, "metaDeduplicationKey"));
+
+    private static bool TryResolveMapping(AnalyticsEvent analyticsEvent, out BridgeMapping mapping, MetaSignalScoreWeights? weights = null)
     {
         mapping = null!;
         var normalized = Normalize(analyticsEvent.EventType);
         if (string.IsNullOrWhiteSpace(normalized))
             return false;
 
-        if (string.Equals(normalized, "qualified_lead", StringComparison.OrdinalIgnoreCase))
+        if (IsStableServerOutcome(analyticsEvent) && MetaSignalEventCatalog.TryGet(normalized, out var serverDefinition))
         {
-            mapping = QualifiedLeadMapping;
+            mapping = BuildMetaSignalSourceMapping(analyticsEvent, serverDefinition, weights);
             return true;
-        }
-
-        if (string.Equals(normalized, AppointmentAnalyticsEventCatalog.Booked, StringComparison.OrdinalIgnoreCase))
-        {
-            mapping = AppointmentBookedMapping;
-            return true;
-        }
-
-        if (string.Equals(normalized, AppointmentAnalyticsEventCatalog.Completed, StringComparison.OrdinalIgnoreCase))
-        {
-            mapping = AppointmentCompletedMapping;
-            return true;
-        }
-
-        if (string.Equals(normalized, "application_submitted", StringComparison.OrdinalIgnoreCase))
-        {
-            mapping = ApplicationSubmittedMapping;
-            return true;
-        }
-
-        if (string.Equals(normalized, "policy_issued", StringComparison.OrdinalIgnoreCase))
-        {
-            mapping = PolicyIssuedMapping;
-            return true;
-        }
-
-        if (string.Equals(normalized, "policy_paid", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(normalized, "purchase", StringComparison.OrdinalIgnoreCase))
-        {
-            mapping = PolicyPaidMapping;
-            return true;
-        }
-
-        if (AnalyticsEventCatalog.TryGet(normalized, out var definition))
-        {
-            if (definition.CountsAsConfirmedLead && definition.AllowServer)
-            {
-                mapping = LeadMapping;
-                return true;
-            }
-
-            if (definition.EligibleForMetaSignal && definition.CountsAsLandingView)
-            {
-                mapping = ViewContentMapping;
-                return true;
-            }
         }
 
         if (MetaSignalAnalyticsAliasCatalog.TryGet(normalized, out var aliasDefinition))
         {
-            return TryResolveAnalyticsAliasMapping(analyticsEvent, aliasDefinition, out mapping);
+            return TryResolveAnalyticsAliasMapping(analyticsEvent, aliasDefinition, out mapping, weights);
         }
 
         if (MetaSignalEventCatalog.TryGet(normalized, out var metaSignalDefinition))
         {
-            mapping = BuildMetaSignalSourceMapping(analyticsEvent, metaSignalDefinition);
+            mapping = BuildMetaSignalSourceMapping(analyticsEvent, metaSignalDefinition, weights);
             return true;
         }
 
@@ -601,16 +583,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
 
     private static string[] BuildSourceEventTypes()
     {
-        var leadAndViewContentSources = AnalyticsEventCatalog.Definitions
-            .Where(x => (x.CountsAsConfirmedLead && x.AllowServer) || (x.EligibleForMetaSignal && x.CountsAsLandingView))
-            .Select(x => x.Name);
-
-        return leadAndViewContentSources
-            .Concat(ExplicitSourceEventTypes)
-            .Concat(MetaSignalAnalyticsAliasCatalog.AnalyticsEventNames)
-            .Concat(MetaSignalEventCatalog.Definitions.Select(x => x.Name))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return MetaSignalAnalyticsAliasCatalog.AnalyticsEventNames.ToArray();
     }
 
     private static Guid? ReadLeadIdFromAnalytics(string? metadataJson)
@@ -631,7 +604,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
     }
 
     private static string? ReadAnalyticsMetadataString(string? metadataJson, string propertyName) =>
-        MetaSignalAnalyticsBridgeMetadata.ReadString(metadataJson, propertyName);
+        CanonicalAdvertisingEventProjection.ReadString(metadataJson, propertyName);
 
     private static int? ReadAnalyticsMetadataInt32(string? metadataJson, string propertyName)
     {
@@ -647,10 +620,10 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return bool.TryParse(raw, out var parsed) ? parsed : null;
     }
 
-    private bool TryResolveAnalyticsAliasMapping(
+    private static bool TryResolveAnalyticsAliasMapping(
         AnalyticsEvent analyticsEvent,
         MetaSignalAnalyticsAliasDefinition aliasDefinition,
-        out BridgeMapping mapping)
+        out BridgeMapping mapping, MetaSignalScoreWeights? weights = null)
     {
         mapping = null!;
         if (!MetaSignalAnalyticsAliasCatalog.IsBridgeEligibleAnalyticsSource(
@@ -666,14 +639,14 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         if (!MetaSignalEventCatalog.TryGet(aliasDefinition.MetaSignalEventName, out var definition))
             return false;
 
-        mapping = BuildMetaSignalSourceMapping(analyticsEvent, definition);
+        mapping = BuildMetaSignalSourceMapping(analyticsEvent, definition, weights);
         return true;
     }
 
-    private BridgeMapping BuildMetaSignalSourceMapping(AnalyticsEvent analyticsEvent, MetaSignalEventDefinition definition)
+    private static BridgeMapping BuildMetaSignalSourceMapping(AnalyticsEvent analyticsEvent, MetaSignalEventDefinition definition, MetaSignalScoreWeights? weights = null)
     {
         var metadataJson = analyticsEvent.MetadataJson;
-        var defaults = ResolveDefaultBridgeMapping(definition);
+        var defaults = ResolveDefaultBridgeMapping(definition, weights);
         var stepName = ReadAnalyticsMetadataString(metadataJson, "StepName")
             ?? ReadAnalyticsMetadataString(metadataJson, "stepName")
             ?? defaults.StepName;
@@ -707,11 +680,19 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                 ?? ReadAnalyticsMetadataInt32(metadataJson, "totalSignalScore"));
     }
 
-    private BridgeMapping ResolveDefaultBridgeMapping(MetaSignalEventDefinition definition)
+    private static BridgeMapping ResolveDefaultBridgeMapping(MetaSignalEventDefinition definition, MetaSignalScoreWeights? configuredWeights = null)
     {
-        var weights = _options.Value.Weights ?? new MetaSignalScoreWeights();
+        var weights = configuredWeights ?? new MetaSignalScoreWeights();
         return definition.Name switch
         {
+            "ViewContent" => ViewContentMapping,
+            "Lead" => LeadMapping,
+            "QualifiedLead" => QualifiedLeadMapping,
+            "AppointmentBooked" => AppointmentBookedMapping,
+            "AppointmentCompleted" => AppointmentCompletedMapping,
+            "ApplicationSubmitted" => ApplicationSubmittedMapping,
+            "PolicyIssued" => PolicyIssuedMapping,
+            "PolicyPaid" => PolicyPaidMapping,
             "SessionEngaged5s" => new BridgeMapping(
                 MetaEventName: definition.Name,
                 EventCategory: definition.Category,
@@ -909,9 +890,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
     }
 
     private static string ScopeEventId(Guid? commerceBusinessId, string eventId) =>
-        commerceBusinessId.HasValue && commerceBusinessId != Guid.Empty
-            ? $"business:{commerceBusinessId.Value:N}:{eventId}"
-            : eventId;
+        CanonicalAdvertisingEventProjection.ScopeEventId(commerceBusinessId, eventId);
 
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

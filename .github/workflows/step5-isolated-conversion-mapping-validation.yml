@@ -1,0 +1,642 @@
+name: Step 5 isolated conversion mapping validation
+
+on:
+  pull_request:
+    branches:
+      - legend/approved-changes
+    paths:
+      - 'SHARED/**'
+      - 'Infrastructure/**'
+      - 'Domain/**'
+      - 'AgentPortal/**'
+      - 'ClientApp/**'
+      - 'Protect-Website/**'
+      - 'ParfaitApp/**'
+      - 'AgentPortal.Tests/**'
+      - '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
+      - 'scripts/validation-resume.py'
+      - 'scripts/release-package.py'
+      - 'scripts/approved-release-baseline.py'
+      - '.github/workflows/all-intentional-direct-release-20260918.yml'
+      - '.github/workflows/masterapp-platform-architecture-validation.yml'
+      - 'scripts/test-validation-resume.py'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+  MSBUILDDISABLENODEREUSE: '1'
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      prior_run_id: ${{ steps.plan.outputs.prior_run_id }}
+      prior_head_sha: ${{ steps.plan.outputs.prior_head_sha }}
+      baseline_evidence_run_id: ${{ steps.plan.outputs.baseline_evidence_run_id }}
+      baseline_evidence_artifact: ${{ steps.plan.outputs.baseline_evidence_artifact }}
+      repair_filter: ${{ steps.plan.outputs.repair_filter }}
+      repair_classes: ${{ steps.plan.outputs.repair_classes }}
+      candidate_restore_run: ${{ steps.plan.outputs.candidate_restore_run }}
+      candidate_build_run: ${{ steps.plan.outputs.candidate_build_run }}
+      candidate_focused_run: ${{ steps.plan.outputs.candidate_focused_run }}
+      candidate_full_run: ${{ steps.plan.outputs.candidate_full_run }}
+      candidate_any_run: ${{ steps.plan.outputs.candidate_any_run }}
+      candidate_full_evidence_run_id: ${{ steps.plan.outputs.candidate_full_evidence_run_id }}
+      candidate_full_evidence_head_sha: ${{ steps.plan.outputs.candidate_full_evidence_head_sha }}
+      comparison_run: ${{ steps.plan.outputs.comparison_run }}
+    steps:
+      - name: Checkout exact isolated head for diff planning
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Preserve valid work and invalidate only repaired failures
+        id: plan
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          plan="$RUNNER_TEMP/validation-resume.json"
+          decision="$RUNNER_TEMP/step5-decision.json"
+
+          python3 scripts/validation-resume.py plan \
+            --workflow step5-isolated-conversion-mapping-validation.yml \
+            --current-sha "${{ github.event.pull_request.head.sha }}" \
+            --current-run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --head-branch "${{ github.head_ref }}" \
+            --event "${{ github.event_name }}" \
+            --repository "${{ github.repository }}" \
+            --output "$plan"
+
+          python3 scripts/validation-resume.py step5-decision \
+            --current-sha "${{ github.event.pull_request.head.sha }}" \
+            --base-sha "${{ github.event.pull_request.base.sha }}" \
+            --current-run-id "${{ github.run_id }}" \
+            --head-branch "${{ github.head_ref }}" \
+            --repository "${{ github.repository }}" \
+            --output "$decision"
+
+          python3 - "$plan" "$decision" "$GITHUB_OUTPUT" <<'PYPLAN'
+          import json,sys
+          plan=json.load(open(sys.argv[1]))
+          decision=json.load(open(sys.argv[2]))
+          gates=plan.get('gates',{})
+          mode=decision.get('mode') or 'full'
+          def gate(name):
+              return gates.get(name,{})
+          candidate_keys=('candidate-restore','candidate-build','candidate-focused','candidate-full')
+          comparison_run = True if mode in {'repair','reuse'} else bool(gate('comparison').get('run'))
+          with open(sys.argv[3],'a') as output:
+              output.write(f"mode={mode}\n")
+              output.write(f"prior_run_id={decision.get('priorRunId') or ''}\n")
+              output.write(f"prior_head_sha={decision.get('priorHeadSha') or ''}\n")
+              output.write(f"baseline_evidence_run_id={decision.get('baselineEvidenceRunId') or ''}\n")
+              output.write(f"baseline_evidence_artifact={decision.get('baselineEvidenceArtifact') or ''}\n")
+              output.write(f"repair_filter={decision.get('repairFilter') or ''}\n")
+              output.write("repair_classes="+';'.join(decision.get('repairClasses') or [])+"\n")
+              for key,out_name in (
+                  ('candidate-restore','candidate_restore_run'),
+                  ('candidate-build','candidate_build_run'),
+                  ('candidate-focused','candidate_focused_run'),
+                  ('candidate-full','candidate_full_run'),
+              ):
+                  output.write(f"{out_name}={str(bool(gate(key).get('run'))).lower()}\n")
+              output.write("candidate_any_run="+str(any(gate(key).get('run') for key in candidate_keys)).lower()+"\n")
+              output.write(f"candidate_full_evidence_run_id={gate('candidate-full').get('evidenceRunId') or ''}\n")
+              output.write(f"candidate_full_evidence_head_sha={gate('candidate-full').get('evidenceHeadSha') or ''}\n")
+              output.write("comparison_run="+str(comparison_run).lower()+"\n")
+          PYPLAN
+
+      - name: Retain exact Step 5 resume decision
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        env:
+          MODE: ${{ steps.plan.outputs.mode }}
+          PRIOR_RUN_ID: ${{ steps.plan.outputs.prior_run_id }}
+          PRIOR_HEAD_SHA: ${{ steps.plan.outputs.prior_head_sha }}
+          BASELINE_EVIDENCE_RUN_ID: ${{ steps.plan.outputs.baseline_evidence_run_id }}
+          BASELINE_EVIDENCE_ARTIFACT: ${{ steps.plan.outputs.baseline_evidence_artifact }}
+          REPAIR_CLASSES: ${{ steps.plan.outputs.repair_classes }}
+          REPAIR_FILTER: ${{ steps.plan.outputs.repair_filter }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          data={
+              'schemaVersion':1,
+              'currentHeadSha':'${{ github.event.pull_request.head.sha }}',
+              'currentBaseSha':'${{ github.event.pull_request.base.sha }}',
+              'mode':os.environ.get('MODE') or 'full',
+              'priorRunId':os.environ.get('PRIOR_RUN_ID') or None,
+              'priorHeadSha':os.environ.get('PRIOR_HEAD_SHA') or None,
+              'baselineEvidenceRunId':os.environ.get('BASELINE_EVIDENCE_RUN_ID') or None,
+              'baselineEvidenceArtifact':os.environ.get('BASELINE_EVIDENCE_ARTIFACT') or None,
+              'repairClasses':[x for x in os.environ.get('REPAIR_CLASSES','').split(';') if x],
+              'repairFilter':os.environ.get('REPAIR_FILTER') or None,
+              'gateRuns':{
+                  'candidate-restore':'${{ steps.plan.outputs.candidate_restore_run }}'=='true',
+                  'candidate-build':'${{ steps.plan.outputs.candidate_build_run }}'=='true',
+                  'candidate-focused':'${{ steps.plan.outputs.candidate_focused_run }}'=='true',
+                  'candidate-full':'${{ steps.plan.outputs.candidate_full_run }}'=='true',
+                  'comparison':'${{ steps.plan.outputs.comparison_run }}'=='true',
+              },
+              'candidateFullEvidenceRunId':'${{ steps.plan.outputs.candidate_full_evidence_run_id }}' or None,
+              'candidateFullEvidenceHeadSha':'${{ steps.plan.outputs.candidate_full_evidence_head_sha }}' or None,
+          }
+          with open('/tmp/step5-resume-decision.json','w') as output:
+              json.dump(data,output,sort_keys=True,indent=2)
+          print(json.dumps(data,sort_keys=True))
+          PY
+
+      - name: Preserve exact Step 5 resume decision
+        if: always() && steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-resume-decision-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/step5-resume-decision.json
+          retention-days: 30
+          if-no-files-found: error
+
+  baseline-evidence:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      reusable: ${{ steps.lookup.outputs.reusable }}
+      run_id: ${{ steps.lookup.outputs.run_id }}
+      artifact: ${{ steps.lookup.outputs.artifact }}
+    steps:
+      - name: Checkout exact isolated head for baseline identity
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reuse content-identical approved baseline evidence
+        id: lookup
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/step5-baseline-evidence.json"
+          python3 scripts/validation-resume.py step5-baseline \
+            --base-sha "${{ github.event.pull_request.base.sha }}" \
+            --repository "${{ github.repository }}" \
+            --output "$evidence"
+          python3 - "$evidence" "$GITHUB_OUTPUT" <<'PYBASE'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          with open(sys.argv[2],'a') as output:
+              output.write('reusable='+str(bool(data.get('reusable'))).lower()+'\n')
+              output.write(f"run_id={data.get('evidenceRunId') or ''}\n")
+              output.write(f"artifact={data.get('evidenceArtifact') or ''}\n")
+          PYBASE
+
+      - name: Retain exact Step 5 baseline reuse decision
+        if: always() && steps.lookup.outcome == 'success'
+        shell: bash
+        env:
+          REUSABLE: ${{ steps.lookup.outputs.reusable }}
+          EVIDENCE_RUN_ID: ${{ steps.lookup.outputs.run_id }}
+          EVIDENCE_ARTIFACT: ${{ steps.lookup.outputs.artifact }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          data={
+              'schemaVersion':1,
+              'approvedBaseSha':'${{ github.event.pull_request.base.sha }}',
+              'reusable':os.environ.get('REUSABLE')=='true',
+              'evidenceRunId':os.environ.get('EVIDENCE_RUN_ID') or None,
+              'evidenceArtifact':os.environ.get('EVIDENCE_ARTIFACT') or None,
+          }
+          with open('/tmp/step5-baseline-reuse.json','w') as output:
+              json.dump(data,output,sort_keys=True,indent=2)
+          print(json.dumps(data,sort_keys=True))
+          PY
+
+      - name: Preserve exact Step 5 baseline reuse decision
+        if: always() && steps.lookup.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-baseline-reuse-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/step5-baseline-reuse.json
+          retention-days: 30
+          if-no-files-found: error
+
+  candidate:
+    needs: plan
+    if: >-
+      needs.plan.outputs.mode == 'full' &&
+      (needs.plan.outputs.candidate_any_run == 'true' ||
+       needs.plan.outputs.comparison_run == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Capture candidate tree identity
+        id: tree
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
+
+      - name: Setup .NET 10
+        if: needs.plan.outputs.candidate_any_run == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Restore AgentPortal tests
+        if: needs.plan.outputs.candidate_restore_run == 'true'
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+
+      - name: Build affected test graph
+        if: needs.plan.outputs.candidate_build_run == 'true'
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
+
+      - name: Run Step 5 focused tests
+        if: needs.plan.outputs.candidate_focused_run == 'true'
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~MarketingScopeParityContractTests"
+
+      - name: Run full AgentPortal candidate suite
+        id: full
+        if: needs.plan.outputs.candidate_full_run == 'true'
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/step5-candidate
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --logger "trx;LogFileName=candidate.trx" --results-directory /tmp/step5-candidate
+          exit 0
+
+      - name: Load preserved full candidate suite evidence
+        id: preservedcandidate
+        if: needs.plan.outputs.candidate_full_run != 'true' && needs.plan.outputs.comparison_run == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-candidate-${{ needs.plan.outputs.candidate_full_evidence_head_sha }}
+          path: /tmp/step5-candidate
+          run-id: ${{ needs.plan.outputs.candidate_full_evidence_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify exact candidate comparison evidence
+        if: needs.plan.outputs.comparison_run == 'true'
+        shell: bash
+        run: test -f /tmp/step5-candidate/candidate.trx
+
+      - name: Preserve completed candidate results
+        if: needs.plan.outputs.comparison_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-candidate-${{ github.event.pull_request.head.sha }}
+          path: /tmp/step5-candidate/candidate.trx
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve content-addressed candidate suite evidence
+        if: needs.plan.outputs.comparison_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-tree-candidate-${{ steps.tree.outputs.sha }}
+          path: /tmp/step5-candidate/candidate.trx
+          if-no-files-found: error
+          retention-days: 30
+
+
+  baseline:
+    needs: [plan, baseline-evidence]
+    if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact approved baseline
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Capture approved baseline tree identity
+        id: tree
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
+
+      - name: Setup identical .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Run identical suite on approved baseline
+        id: full
+        shell: bash
+        run: |
+          baseline_artifacts=/tmp/masterapp-step5-baseline
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj -p:MasterAppArtifactsRoot="$baseline_artifacts"
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false -p:MasterAppArtifactsRoot="$baseline_artifacts"
+          set +e
+          rm -rf /tmp/step5-baseline
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build -p:MasterAppArtifactsRoot="$baseline_artifacts" --logger "trx;LogFileName=baseline.trx" --results-directory /tmp/step5-baseline
+          exit 0
+
+      - name: Preserve completed baseline results
+        if: always() && steps.full.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-baseline/baseline.trx
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve content-addressed baseline suite evidence
+        if: always() && steps.full.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-tree-baseline-${{ steps.tree.outputs.sha }}
+          path: /tmp/step5-baseline/baseline.trx
+          if-no-files-found: error
+          retention-days: 30
+
+  validate:
+    name: step5-validation
+    needs: [plan, candidate, baseline, baseline-evidence]
+    if: >-
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.plan.outputs.mode == 'repair' ||
+       needs.plan.outputs.mode == 'reuse' ||
+       (needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'false') ||
+       (needs.plan.outputs.mode == 'full' &&
+        needs.plan.outputs.comparison_run == 'true' &&
+        needs.candidate.result == 'success' &&
+        (needs.baseline.result == 'success' || needs.baseline-evidence.outputs.reusable == 'true')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Load exact current candidate results
+        if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-candidate-${{ github.event.pull_request.head.sha }}
+          path: /tmp/step5-candidate
+
+      - name: Load exact current approved baseline results
+        if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true' && needs.baseline.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-baseline
+
+      - name: Load content-identical approved baseline results
+        if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.baseline-evidence.outputs.artifact }}
+          path: /tmp/step5-baseline
+          run-id: ${{ needs.baseline-evidence.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Normalize content-identical approved baseline result
+        if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/step5-baseline/baseline.trx ]; then
+            test ! -f /tmp/step5-baseline/candidate.trx
+          elif [ -f /tmp/step5-baseline/candidate.trx ]; then
+            mv /tmp/step5-baseline/candidate.trx /tmp/step5-baseline/baseline.trx
+          else
+            echo "::error::Reusable approved-tree evidence contained neither baseline.trx nor candidate.trx."
+            exit 1
+          fi
+          test -f /tmp/step5-baseline/baseline.trx
+
+      - name: Checkout only the repaired isolated head
+        if: needs.plan.outputs.mode == 'repair'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup .NET only for repaired failure proof
+        if: needs.plan.outputs.mode == 'repair'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Load preserved candidate results from prior exact head
+        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-candidate-${{ needs.plan.outputs.prior_head_sha }}
+          path: /tmp/step5-prior-candidate
+          run-id: ${{ needs.plan.outputs.prior_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Load independently proven approved baseline results
+        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.plan.outputs.baseline_evidence_artifact }}
+          path: /tmp/step5-prior-baseline
+          run-id: ${{ needs.plan.outputs.baseline_evidence_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Normalize independently proven approved baseline result
+        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/step5-prior-baseline/baseline.trx ]; then
+            test ! -f /tmp/step5-prior-baseline/candidate.trx
+          elif [ -f /tmp/step5-prior-baseline/candidate.trx ]; then
+            mv /tmp/step5-prior-baseline/candidate.trx /tmp/step5-prior-baseline/baseline.trx
+          else
+            echo "::error::Independent baseline evidence contained neither baseline.trx nor candidate.trx."
+            exit 1
+          fi
+
+      - name: Build only what the invalidated test authority requires
+        if: needs.plan.outputs.mode == 'repair'
+        shell: bash
+        run: |
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
+
+      - name: Rerun only invalidated test classes
+        if: needs.plan.outputs.mode == 'repair'
+        shell: bash
+        env:
+          REPAIR_FILTER: ${{ needs.plan.outputs.repair_filter }}
+        run: |
+          set +e
+          rm -rf /tmp/step5-repair
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+            --filter "$REPAIR_FILTER" \
+            --logger "trx;LogFileName=repair.trx" \
+            --results-directory /tmp/step5-repair
+          repair_rc=$?
+          set -e
+          test -f /tmp/step5-repair/repair.trx
+          echo "Focused repaired-class test exit code: $repair_rc"
+
+      - name: Prove Step 5 adds no full-suite failures
+        shell: bash
+        env:
+          VALIDATION_MODE: ${{ needs.plan.outputs.mode }}
+          REPAIR_CLASSES: ${{ needs.plan.outputs.repair_classes }}
+          COMPARISON_RUN: ${{ needs.plan.outputs.comparison_run }}
+        run: |
+          if [ "$COMPARISON_RUN" != "true" ]; then
+            echo "PRESERVED comparison: canonical child evidence remains valid and unchanged."
+            exit 0
+          fi
+          python3 - <<'PY'
+          import copy
+          import os
+          from pathlib import Path
+          import shutil
+          import xml.etree.ElementTree as ET
+
+          def results(path):
+              root = ET.parse(path).getroot()
+              return {
+                  node.attrib.get("testName", ""): node.attrib.get("outcome", "")
+                  for node in root.iter()
+                  if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
+              }
+
+          def failed(path):
+              return {name for name, outcome in results(path).items() if outcome == "Failed"}
+
+          mode = os.environ["VALIDATION_MODE"]
+          classes = []
+          if mode in {"repair", "reuse"}:
+              prior_candidate = failed("/tmp/step5-prior-candidate/candidate.trx")
+              baseline = failed("/tmp/step5-prior-baseline/baseline.trx")
+              if mode == "repair":
+                  repair_rows = results("/tmp/step5-repair/repair.trx")
+                  repair_failed = {name for name, outcome in repair_rows.items() if outcome == "Failed"}
+                  classes = [value for value in os.environ.get("REPAIR_CLASSES", "").split(";") if value]
+                  if not classes:
+                      raise SystemExit("Repair mode had no bounded failing class authority.")
+                  for class_name in classes:
+                      prefix = class_name + "."
+                      if not any(name.startswith(prefix) for name in repair_rows):
+                          raise SystemExit(f"Repair proof did not execute the full affected class: {class_name}")
+                  candidate = {
+                      name for name in prior_candidate
+                      if not any(name.startswith(class_name + ".") for class_name in classes)
+                  }
+                  candidate.update(repair_failed)
+                  print("Reused unchanged prior candidate/baseline evidence; only invalidated-class results were replaced.")
+              else:
+                  candidate = prior_candidate
+                  print("Reused unchanged candidate/baseline evidence; only the final Step 5 comparison logic was re-executed.")
+          else:
+              candidate = failed("/tmp/step5-candidate/candidate.trx")
+              baseline = failed("/tmp/step5-baseline/baseline.trx")
+
+          introduced = sorted(candidate - baseline)
+          print(f"candidate failures: {len(candidate)}")
+          print(f"approved baseline failures: {len(baseline)}")
+          if introduced:
+              print("Step 5 introduced full-suite failures:")
+              for name in introduced:
+                  print(f" - {name}")
+              raise SystemExit(1)
+
+          if mode in {"repair", "reuse"}:
+              effective = Path("/tmp/step5-effective")
+              effective.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(
+                  "/tmp/step5-prior-baseline/baseline.trx",
+                  effective / "baseline.trx",
+              )
+              if mode == "reuse":
+                  shutil.copy2(
+                      "/tmp/step5-prior-candidate/candidate.trx",
+                      effective / "candidate.trx",
+                  )
+              else:
+                  candidate_tree = ET.parse("/tmp/step5-prior-candidate/candidate.trx")
+                  candidate_root = candidate_tree.getroot()
+                  repair_tree = ET.parse("/tmp/step5-repair/repair.trx")
+                  repair_nodes = {
+                      node.attrib.get("testName", ""): node
+                      for node in repair_tree.getroot().iter()
+                      if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
+                  }
+                  candidate_nodes = {
+                      node.attrib.get("testName", ""): node
+                      for node in candidate_root.iter()
+                      if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
+                  }
+                  affected = lambda name: any(
+                      name.startswith(class_name + ".") for class_name in classes
+                  )
+                  prior_affected = {name for name in candidate_nodes if affected(name)}
+                  missing = sorted(name for name in prior_affected if name not in repair_nodes)
+                  if missing:
+                      raise SystemExit(
+                          "Repair proof omitted prior tests from the affected class: "
+                          + ", ".join(missing)
+                      )
+                  for name in prior_affected:
+                      candidate_nodes[name].set(
+                          "outcome",
+                          repair_nodes[name].attrib.get("outcome", ""),
+                      )
+                  results_node = next(
+                      (node for node in candidate_root.iter() if node.tag.endswith("Results")),
+                      None,
+                  )
+                  if results_node is None:
+                      raise SystemExit("Prior candidate TRX has no Results node.")
+                  for name, node in repair_nodes.items():
+                      if affected(name) and name not in candidate_nodes:
+                          results_node.append(copy.deepcopy(node))
+                  candidate_tree.write(
+                      effective / "candidate.trx",
+                      encoding="utf-8",
+                      xml_declaration=True,
+                  )
+              print("Materialized effective repaired/reused Step 5 evidence for the current head.")
+
+          print("Step 5 introduced zero new full-suite failures.")
+          PY
+
+      - name: Preserve effective Step 5 candidate evidence
+        if: success() && (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse')
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-candidate-${{ github.event.pull_request.head.sha }}
+          path: /tmp/step5-effective/candidate.trx
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Preserve effective Step 5 baseline evidence
+        if: success() && (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse')
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-effective/baseline.trx
+          if-no-files-found: error
+          retention-days: 30

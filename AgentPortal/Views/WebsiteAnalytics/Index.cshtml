@@ -30,6 +30,364 @@
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
 <div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="modal fade fa-modal" id="marketingSetupModal" tabindex="-1" aria-labelledby="marketingSetupModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+        <div class="modal-content wa-modal-shell">
+            <div class="modal-header wa-modal-header">
+                <div>
+                    <div class="wa-modal-kicker">Centralized Marketing Authority</div>
+                    <h5 class="modal-title mb-0" id="marketingSetupModalLabel">Marketing Setup</h5>
+                    <div class="wa-modal-subtitle" id="marketing-setup-scope-label">Loading scoped setup…</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body wa-modal-body">
+                <form id="marketing-setup-form" class="marketing-setup-form-grid" novalidate>
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" id="marketing-setup-revision" />
+                    <input type="hidden" id="marketing-setup-profile-revision" />
+
+                    <div class="marketing-setup-status-grid" aria-label="Marketing setup status">
+                        <div class="marketing-setup-status" data-status-key="publicReady"><span>Public</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="metaCustomPixel"><span>Meta</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="openAiReady"><span>ChatGPT Ads</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="bookingPersonalLive"><span>Booking</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="calendarLinked"><span>Calendar</span><strong>—</strong></div>
+                    </div>
+
+                    <section class="marketing-setup-section marketing-setup-meta">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Marketing</div>
+                                <h6>Meta destination</h6>
+                            </div>
+                            <div class="marketing-setup-connection" id="marketing-setup-meta-account">Meta Ads status: —</div>
+                        </div>
+                        <p class="marketing-setup-help">Leave the Pixel ID blank to keep using the default LEGEND tracking setup. Meta CAPI credentials are never entered here; they are stored securely and managed automatically when the scoped Meta Ads account is connected.</p>
+                        <label class="marketing-setup-field" for="marketing-setup-pixel">
+                            <span>Meta Pixel ID</span>
+                            <input id="marketing-setup-pixel" type="text" inputmode="numeric" maxlength="32" autocomplete="off" placeholder="Optional custom Pixel ID" />
+                        </label>
+                        <label class="marketing-setup-field" for="marketing-setup-test-code">
+                            <span>Meta Test Event Code</span>
+                            <input id="marketing-setup-test-code" type="text" maxlength="100" autocomplete="off" placeholder="TEST12345 from Meta Events Manager" />
+                            <small>Use the code shown in Meta Events Manager &gt; Test Events. Test traffic stays on the same scoped Pixel/CAPI destination and does not create a second sender.</small>
+                        </label>
+                        <div class="marketing-setup-readiness" id="marketing-setup-openai-readiness">
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Readiness</div>
+                                    <h6>ChatGPT Ads onboarding</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-openai-readiness-status">Checking…</div>
+                            </div>
+                            <div class="marketing-setup-readiness-grid" id="marketing-setup-openai-readiness-steps"></div>
+                        </div>
+
+                        <div class="marketing-setup-product-feed" id="marketing-setup-openai-product-feed" hidden>
+                            <div class="marketing-setup-section-head">
+                                <div>
+                                    <div class="marketing-setup-eyebrow">Catalog</div>
+                                    <h6>ChatGPT Ads product feed</h6>
+                                </div>
+                                <div class="marketing-setup-connection" id="marketing-setup-openai-feed-status">Not published</div>
+                            </div>
+                            <div class="marketing-setup-feed-summary" id="marketing-setup-openai-feed-summary"></div>
+                            <div class="d-flex gap-2 flex-wrap mt-3">
+                                <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-openai-feed-publish">Publish / reconcile feed</button>
+                                <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-feed-refresh">Refresh feed status</button>
+                            </div>
+                        </div>
+
+                        <div class="marketing-setup-secure-row">
+                            <div>
+                                <span class="marketing-setup-secure-label">Meta CAPI</span>
+                                <strong id="marketing-setup-capi-status">Checking secure connection…</strong>
+                            </div>
+                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Meta Ads</a>
+                        </div>
+                    </section>
+
+                    <section class="marketing-setup-section marketing-setup-openai" id="marketing-setup-openai">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Marketing</div>
+                                <h6>ChatGPT Ads destination</h6>
+                            </div>
+                            <div class="marketing-setup-connection" id="marketing-setup-openai-account">ChatGPT Ads status: —</div>
+                        </div>
+                        <p class="marketing-setup-help">Connect the scoped ChatGPT Ads account here. Your Advertiser API key is sent once to the server for OpenAI verification, encrypted in the existing marketing authority, and never returned to the browser.</p>
+
+                        <div class="marketing-setup-connect-panel" id="marketing-setup-openai-connect-panel" hidden>
+                            <div class="marketing-setup-connect-copy">
+                                <strong>Connect ChatGPT Ads</strong>
+                                <span>Paste the Advertiser API key from OpenAI Ads Manager Settings. LEGEND verifies the key against the ad account before saving anything.</span>
+                            </div>
+                            <div class="marketing-setup-connect-controls">
+                                <label class="marketing-setup-field" for="marketing-setup-openai-api-key">
+                                    <span>Advertiser API key</span>
+                                    <input id="marketing-setup-openai-api-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="Paste once to verify and connect" />
+                                </label>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-openai-connect-submit">Verify &amp; connect</button>
+                                    <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-connect-cancel">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="marketing-setup-detail-grid">
+                            <div class="marketing-setup-detail"><span>Advertiser account</span><strong id="marketing-setup-openai-account-name">—</strong><small id="marketing-setup-openai-account-id">—</small></div>
+                            <div class="marketing-setup-detail"><span>Connection</span><strong id="marketing-setup-openai-connection-method">—</strong><small id="marketing-setup-openai-access-detail">—</small></div>
+                            <div class="marketing-setup-detail"><span>Account status</span><strong id="marketing-setup-openai-account-status">—</strong><small id="marketing-setup-openai-account-meta">—</small></div>
+                            <div class="marketing-setup-detail"><span>Brand review</span><strong id="marketing-setup-openai-review">—</strong><small id="marketing-setup-openai-review-detail">—</small></div>
+                            <div class="marketing-setup-detail"><span>OpenAI Pixel</span><strong id="marketing-setup-openai-pixel">—</strong><small>Scoped browser destination</small></div>
+                            <div class="marketing-setup-detail"><span>Conversion data source</span><strong id="marketing-setup-openai-data-source">—</strong><small>Scoped server destination</small></div>
+                            <div class="marketing-setup-detail"><span>Conversions API</span><strong id="marketing-setup-openai-capi">—</strong><small>Server credential remains protected</small></div>
+                            <div class="marketing-setup-detail"><span>Delivery health</span><strong id="marketing-setup-openai-health">—</strong><small id="marketing-setup-openai-last-send">—</small></div>
+                        </div>
+
+                        <div class="marketing-setup-delivery-grid" aria-label="ChatGPT Ads delivery diagnostics">
+                            <div><span>Pending</span><strong id="marketing-setup-openai-pending">0</strong></div>
+                            <div><span>Retrying</span><strong id="marketing-setup-openai-retrying">0</strong></div>
+                            <div><span>Failed</span><strong id="marketing-setup-openai-failed">0</strong></div>
+                            <div><span>Sent</span><strong id="marketing-setup-openai-sent">0</strong></div>
+                        </div>
+
+                        <div class="marketing-setup-secure-row">
+                            <div>
+                                <span class="marketing-setup-secure-label">Connection controls</span>
+                                <strong id="marketing-setup-openai-action-status">Read-only authority projection</strong>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-verify">Verify / refresh</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="marketing-setup-openai-disconnect">Disconnect</button>
+                            </div>
+                        </div>
+
+                    </section>
+
+                    <section class="marketing-setup-section">
+                        <h6>Measurement evidence</h6>
+                        <p class="marketing-setup-help">Connection and configuration do not prove delivery or campaign attribution. Evidence below covers the selected owner over the last 30 days. A click reference is not proof of campaign credit.</p>
+                        <p id="marketing-setup-receiving-evidence">First-party events: not observed</p>
+                        <div class="table-responsive"><table class="table">
+                            <thead><tr><th>Provider</th><th>Connected</th><th>Configured</th><th>Server attempts</th><th>Provider accepted</th><th>Attribution reference</th></tr></thead>
+                            <tbody>
+                                <tr id="marketing-setup-meta-evidence"><th>Meta</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">—</td><td data-evidence="accepted">—</td><td data-evidence="attribution">—</td></tr>
+                                <tr id="marketing-setup-openai-evidence"><th>ChatGPT Ads</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">—</td><td data-evidence="accepted">—</td><td data-evidence="attribution">—</td></tr>
+                            </tbody>
+                        </table></div>
+                        <p id="marketing-setup-meta-receipt-evidence">Meta receipt evidence: unavailable</p>
+                        <p id="marketing-setup-openai-receipt-evidence">OpenAI receipt evidence: unavailable</p>
+                    </section>
+
+                    <section class="marketing-setup-section marketing-setup-booking">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Booking</div>
+                                <h6>Personal scheduler</h6>
+                            </div>
+                        </div>
+                        <p class="marketing-setup-help">Connect Microsoft first so LEGEND can use the owner's authorized calendar. The fields below stay available when you need to target a specific Bookings page, mailbox, shared calendar, or fallback scheduler.</p>
+                        <div class="marketing-setup-provider-card" id="marketing-setup-calendar-connection">
+                            <div>
+                                <strong id="marketing-setup-calendar-account">Microsoft Calendar not connected</strong>
+                                <div class="marketing-setup-help" id="marketing-setup-calendar-auth-detail">Connect the calendar account that owns this workspace.</div>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <a class="btn btn-outline-light btn-sm" id="marketing-setup-calendar-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Microsoft Calendar</a>
+                                <button type="button" class="btn btn-outline-danger btn-sm" id="marketing-setup-calendar-disconnect" hidden>Disconnect</button>
+                            </div>
+                        </div>
+                        <label class="marketing-setup-toggle">
+                            <input id="marketing-setup-booking-enabled" type="checkbox" />
+                            <span>Use my personal scheduler on public quote handoff flows</span>
+                        </label>
+                        <div class="marketing-setup-field-grid">
+                            <label class="marketing-setup-field" for="marketing-setup-embed">
+                                <span>Embed URL</span>
+                                <input id="marketing-setup-embed" type="url" maxlength="2048" autocomplete="off" placeholder="https://outlook.office.com/bookings/..." />
+                            </label>
+                            <label class="marketing-setup-field" for="marketing-setup-fallback">
+                                <span>Fallback URL</span>
+                                <input id="marketing-setup-fallback" type="url" maxlength="2048" autocomplete="off" placeholder="Optional backup scheduler link" />
+                            </label>
+                            <label class="marketing-setup-field" for="marketing-setup-mailbox">
+                                <span>Mailbox / Page ID</span>
+                                <input id="marketing-setup-mailbox" type="text" maxlength="320" autocomplete="off" placeholder="Mailbox, page ID, or calendar handle" />
+                            </label>
+                            <label class="marketing-setup-field" for="marketing-setup-calendar">
+                                <span>Calendar email</span>
+                                <input id="marketing-setup-calendar" type="email" maxlength="320" autocomplete="email" placeholder="calendar@example.com" />
+                            </label>
+                        </div>
+                    </section>
+
+                    <div class="marketing-setup-save-row">
+                        <div id="marketing-setup-status" role="status" aria-live="polite"></div>
+                        <button type="submit" class="btn btn-gold" id="marketing-setup-save">Save Marketing Setup</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade fa-modal" id="advertisingCommandModal" tabindex="-1" aria-labelledby="advertisingCommandModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+        <div class="modal-content wa-modal-shell">
+            <div class="modal-header wa-modal-header">
+                <div>
+                    <div class="wa-modal-kicker">Canonical Advertising Authority</div>
+                    <h5 class="modal-title mb-0" id="advertisingCommandModalLabel">Advertising Command Center</h5>
+                    <div class="wa-modal-subtitle" id="advertising-command-scope">Scoped campaigns, approvals, performance, and promotion execution.</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body wa-modal-body advertising-command-body">
+                <div class="advertising-command-statusbar">
+                    <div><span>ChatGPT Ads</span><strong id="advertising-command-connection">Checking…</strong></div>
+                    <div><span>Campaigns</span><strong id="advertising-command-campaign-count">0</strong></div>
+                    <div><span>Awaiting approval</span><strong id="advertising-command-approval-count">0</strong></div>
+                    <div><span>Executed / audited</span><strong id="advertising-command-audit-count">0</strong></div>
+                </div>
+
+                <div class="advertising-command-toolbar">
+                    <button type="button" class="btn btn-gold" id="advertising-command-promote">Promote This</button>
+                    <button type="button" class="btn btn-outline-light" id="advertising-command-refresh">Refresh</button>
+                    <span id="advertising-command-status" role="status" aria-live="polite"></span>
+                </div>
+
+                <section class="advertising-command-section">
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Live provider state</span>
+                            <h6>Campaigns</h6>
+                        </div>
+                        <small>Reads the scoped ChatGPT Ads account. Mutations always become approval proposals first.</small>
+                    </div>
+                    <div id="advertising-command-campaigns" class="advertising-command-grid"></div>
+                </section>
+
+                <section class="advertising-command-section" id="advertising-command-promotion" hidden>
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Promotion Builder</span>
+                            <h6>Promote an existing LEGEND asset</h6>
+                        </div>
+                        <small>Published pages, canonical services, and active store products only.</small>
+                    </div>
+                    <div class="advertising-command-form-grid">
+                        <label><span>Source</span><select id="advertising-promote-source" class="form-select"></select></label>
+                        <label><span>Objective</span><select id="advertising-promote-objective" class="form-select"><option value="clicks">Drive qualified visits</option><option value="conversions">Optimize for conversion</option></select></label>
+                        <label id="advertising-promote-conversion-wrap" hidden><span>Conversion</span><select id="advertising-promote-conversion" class="form-select"></select></label>
+                        <label><span>Daily budget</span><input id="advertising-promote-budget" class="form-control" type="number" min="1" step="0.01" placeholder="25.00" /></label>
+                        <label class="advertising-command-wide"><span>Goal / offer</span><input id="advertising-promote-goal" class="form-control" type="text" maxlength="4000" placeholder="What result should this campaign drive?" /></label>
+                        <label class="advertising-command-wide"><span>Context hints</span><input id="advertising-promote-hints" class="form-control" type="text" placeholder="roof repair, storm damage, local contractor" /></label>
+                        <label><span>Countries</span><input id="advertising-promote-countries" class="form-control" type="text" placeholder="US" /></label>
+                        <label><span>Provider state after approval</span><select id="advertising-promote-status" class="form-select"><option value="paused">Create paused</option><option value="active">Launch active</option></select></label>
+                    </div>
+                    <div class="advertising-command-toolbar advertising-command-builder-actions">
+                        <button type="button" class="btn btn-gold" id="advertising-promote-preview">Build Preview</button>
+                        <button type="button" class="btn btn-outline-light" id="advertising-promote-cancel">Close Builder</button>
+                    </div>
+                    <div id="advertising-promote-preview-panel" class="advertising-command-preview" hidden></div>
+                </section>
+
+                <section class="advertising-command-section">
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Governance</span>
+                            <h6>Approval Queue &amp; Audit History</h6>
+                        </div>
+                        <small>Every consequential change is digest-bound, approved, executed once, and retained with provider receipts.</small>
+                    </div>
+                    <div id="advertising-command-proposals" class="advertising-command-ledger"></div>
+                </section>
+
+                <section class="advertising-command-section" id="advertising-command-insights" hidden>
+                    <div class="advertising-command-section-head">
+                        <div>
+                            <span>Performance</span>
+                            <h6 id="advertising-command-insights-title">Campaign performance</h6>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-light" id="advertising-command-insights-close">Close</button>
+                    </div>
+                    <div id="advertising-command-insights-body" class="advertising-command-insights-grid"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade fa-modal" id="marketingManagerModal" tabindex="-1" aria-labelledby="marketingManagerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+        <div class="modal-content wa-modal-shell">
+            <div class="modal-header wa-modal-header">
+                <div>
+                    <div class="wa-modal-kicker">LEGEND Growth Operator</div>
+                    <h5 class="modal-title mb-0" id="marketingManagerModalLabel">Marketing Manager</h5>
+                    <div class="wa-modal-subtitle">Turn a business outcome into a scoped, evidence-backed growth plan. Consequential changes still require exact-action approval.</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body wa-modal-body marketing-manager-body">
+                <section class="marketing-manager-goal-panel">
+                    <div>
+                        <span class="marketing-manager-eyebrow">Outcome first</span>
+                        <h6>What do you want the business to accomplish?</h6>
+                        <p>LEGEND will read the current funnel, CRM outcomes, traffic, landing inventory, and paid-channel performance before proposing the next moves.</p>
+                    </div>
+                    <div class="marketing-manager-goal-grid">
+                        <label class="marketing-manager-goal-wide">
+                            <span>Growth goal</span>
+                            <textarea id="marketing-manager-goal" class="form-control" rows="3" maxlength="1000" placeholder="I want 15 more estimates next month."></textarea>
+                        </label>
+                        <label>
+                            <span>Target increase</span>
+                            <input id="marketing-manager-target" class="form-control" type="number" min="1" step="1" placeholder="15" />
+                        </label>
+                        <label>
+                            <span>Monthly paid budget</span>
+                            <input id="marketing-manager-budget" class="form-control" type="number" min="0" step="1" placeholder="Optional" />
+                        </label>
+                    </div>
+                    <div class="marketing-manager-toolbar">
+                        <button type="button" class="btn btn-gold" id="marketing-manager-build">Build Growth Plan</button>
+                        <button type="button" class="btn btn-outline-light" id="marketing-manager-refresh">Refresh Evidence</button>
+                        <span id="marketing-manager-status" role="status" aria-live="polite"></span>
+                    </div>
+                </section>
+
+                <section id="marketing-manager-result" class="marketing-manager-result" hidden>
+                    <div class="marketing-manager-result-head">
+                        <div>
+                            <span class="marketing-manager-eyebrow">Governed plan</span>
+                            <h6 id="marketing-manager-plan-goal">Growth plan</h6>
+                        </div>
+                        <div class="marketing-manager-result-meta" id="marketing-manager-generated">—</div>
+                    </div>
+                    <div class="marketing-manager-evidence-grid" id="marketing-manager-evidence"></div>
+                    <div class="marketing-manager-plan-grid">
+                        <div>
+                            <div class="marketing-manager-section-title">Recommended moves</div>
+                            <div id="marketing-manager-recommendations" class="marketing-manager-recommendations"></div>
+                        </div>
+                        <div>
+                            <div class="marketing-manager-section-title">Guardrails</div>
+                            <div id="marketing-manager-guardrails" class="marketing-manager-guardrails"></div>
+                        </div>
+                    </div>
+                    <div class="marketing-manager-toolbar">
+                        <button type="button" class="btn btn-gold" id="marketing-manager-open-advertising">Open Advertising Command Center</button>
+                        <span class="marketing-manager-governance-note">Planning never executes provider changes by itself.</span>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
     Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
 </div>
@@ -43,7 +401,36 @@
             <div class="hero-link-top">
                 <div class="hero-link-intro">
                     <div class="hero-link-kicker">Shared Command Area</div>
-                    <h3 class="hero-link-title">Marketing Links</h3>
+                    <div class="hero-link-title-row">
+                        <h3 class="hero-link-title">Marketing Links</h3>
+                        <div class="hero-link-command-actions" role="group" aria-label="Marketing command shortcuts">
+                            <a class="btn event-map-trigger" href="@Url.Action("EventMap", "WebsiteAnalytics", new { agentProfileId = Context.Request.Query["agentProfileId"].ToString(), team = Context.Request.Query["team"].ToString() })">Event Map</a>
+                            <button type="button"
+                                    class="btn marketing-setup-trigger"
+                                    id="marketing-setup-open"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#marketingSetupModal"
+                                    aria-controls="marketingSetupModal">
+                                Marketing Setup
+                            </button>
+                            <button type="button"
+                                    class="btn advertising-command-trigger"
+                                    id="advertising-command-open"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#advertisingCommandModal"
+                                    aria-controls="advertisingCommandModal">
+                                Advertising Command Center
+                            </button>
+                            <button type="button"
+                                    class="btn marketing-manager-trigger"
+                                    id="marketing-manager-open"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#marketingManagerModal"
+                                    aria-controls="marketingManagerModal">
+                                Marketing Manager
+                            </button>
+                        </div>
+                     </div>
                     <div class="hero-link-subtitle text-silver">Open the website and jump into behavior review fast. Meta Ads controls now live inside Core Metrics for quicker access.</div>
                 </div>
             </div>
@@ -191,8 +578,8 @@
     </form>
 
     <div class="modal fade fa-modal" id="landingRoutesModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog landing-routes-dialog">
-        <div class="modal-content wa-modal-shell landing-routes-shell">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+        <div class="modal-content wa-modal-shell">
           <div class="modal-header wa-modal-header">
             <div class="wa-modal-header-main">
               <div class="wa-modal-header-copy">
@@ -210,7 +597,7 @@
             </div>
             <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
-          <div class="modal-body wa-modal-body landing-routes-body">
+          <div class="modal-body wa-modal-body">
             <div class="wa-modal-note">Compare the listed effective page keys in Page Performance using Ads Only traffic.</div>
             <section class="wa-modal-section landing-routes-section">
               <div class="product-links-header">Discovered Paid Landing Routes + Test Variants</div>
@@ -287,6 +674,40 @@
             </div>
         </div>
 
+        <div class="wa-growth-economics" id="growth-economics-command">
+            <div class="wa-channel-command-head">
+                <div>
+                    <div class="wa-kpi-band-label">Growth Economics</div>
+                    <div class="wa-kpi-band-copy">Blended spend, acquisition cost, revenue, ROAS, and pipeline value</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-light" id="growth-economics-refresh">Refresh</button>
+            </div>
+            <div class="wa-growth-economics-summary">
+                <div><span>Total marketing spend</span><strong id="growth-economics-spend">—</strong></div>
+                <div><span>Customers acquired</span><strong id="growth-economics-customers">—</strong></div>
+                <div><span>Cost / customer</span><strong id="growth-economics-cac">—</strong></div>
+                <div><span>Total revenue</span><strong id="growth-economics-revenue">—</strong></div>
+                <div><span>Blended ROAS</span><strong id="growth-economics-roas">—</strong></div>
+                <div><span>Pipeline value</span><strong id="growth-economics-pipeline">—</strong></div>
+            </div>
+            <div class="wa-growth-economics-grid" id="growth-economics-grid"></div>
+            <div class="wa-channel-note" id="growth-economics-note"></div>
+        </div>
+
+        <div class="wa-channel-command" id="channel-performance-command" aria-live="polite">
+            <div class="wa-channel-command-head">
+                <div>
+                    <div class="wa-kpi-band-label">Channel Outcomes</div>
+                    <div class="wa-kpi-band-copy">Spend through revenue, joined to canonical downstream outcomes</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-light" id="channel-performance-refresh">Refresh</button>
+            </div>
+            <div class="wa-channel-grid" id="channel-performance-grid">
+                <div class="wa-channel-loading">Loading unified channel performance…</div>
+            </div>
+            <div class="wa-channel-note" id="channel-performance-note"></div>
+        </div>
+
         <div class="wa-kpi-band wa-kpi-band-primary">
             <div class="wa-kpi-band-head">
                 <div class="wa-kpi-band-label">Traffic Pulse</div>
@@ -353,14 +774,14 @@
                 <div>
                     <div class="kpi-card kpi-card-secondary kpi-card-context">
                         <div class="fa-kpi-title">Top Page</div>
-                        <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-page">—</div>
+                        <div class="fa-kpi-value fa-kpi-value--compact" id="kpi-top-page">—</div>
                         <div class="fa-kpi-sub">Most viewed</div>
                     </div>
                 </div>
                 <div>
                     <div class="kpi-card kpi-card-secondary kpi-card-context">
                         <div class="fa-kpi-title">Top CTA</div>
-                        <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-cta">—</div>
+                        <div class="fa-kpi-value fa-kpi-value--compact" id="kpi-top-cta">—</div>
                         <div class="fa-kpi-sub">Most clicked</div>
                     </div>
                 </div>
@@ -642,7 +1063,7 @@
     </section>
 
     <div class="modal fade fa-modal" id="mhErrorDetailModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">
           <div class="modal-header wa-modal-header">
             <div class="wa-modal-header-main">
@@ -672,17 +1093,18 @@
 
 @if (canViewFounderTeamUi)
 {
-<div class="modal fade" id="teamRollupModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width:1200px;">
-    <div class="modal-content" style="background:#0a1122;color:#f5f7fb;border:2px solid rgba(199,153,49,0.95);box-shadow:0 28px 72px rgba(0,0,0,.55);border-radius:18px;">
-      <div class="modal-header border-0 pb-0">
-        <div>
-          <h4 class="modal-title fw-bold mb-1" style="color:#e6c078;">Team Performance</h4>
-          <div class="text-muted small">Agency-wide rollup across all sites</div>
+<div class="modal fade fa-modal" id="teamRollupModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-copy">
+          <div class="wa-modal-kicker">Founder Team Rollup</div>
+          <h5 class="modal-title mb-0">Team Performance</h5>
+          <div class="wa-modal-subtitle">Agency-wide rollup across all sites.</div>
         </div>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body pt-3">
+      <div class="modal-body wa-modal-body">
         <div class="row g-3 mb-3">
           <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Page Views</div><div class="fa-kpi-value" id="team-kpi-pageviews">0</div></div></div>
           <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Unique Visitors</div><div class="fa-kpi-value" id="team-kpi-visitors">0</div></div></div>
@@ -706,13 +1128,13 @@
 
         <div class="row g-3 mb-3">
           <div class="col-lg-6">
-            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+            <div class="fa-module team-module">
               <h6 class="text-warning">Top Pages</h6>
               <ul class="list-unstyled mb-0" id="team-top-pages-list"></ul>
             </div>
           </div>
           <div class="col-lg-6">
-            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+            <div class="fa-module team-module">
               <h6 class="text-warning">Top CTAs</h6>
               <ul class="list-unstyled mb-0" id="team-top-ctas-list"></ul>
             </div>
@@ -721,13 +1143,13 @@
 
         <div class="row g-3 mb-3">
           <div class="col-lg-6">
-            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+            <div class="fa-module team-module">
               <h6 class="text-warning">Top Sources</h6>
               <ul class="list-unstyled mb-0" id="team-top-sources-list"></ul>
             </div>
           </div>
           <div class="col-lg-6">
-            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+            <div class="fa-module team-module">
               <h6 class="text-warning">Top Campaigns</h6>
               <ul class="list-unstyled mb-0" id="team-top-campaigns-list"></ul>
             </div>
@@ -736,7 +1158,7 @@
 
         <div class="row g-3 mb-3">
           <div class="col-12">
-            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+            <div class="fa-module team-module">
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <h6 class="text-warning mb-0">Agent Leaderboard</h6>
                 <div class="text-silver small">Best performers across the agency</div>
@@ -753,7 +1175,7 @@
 
         <div class="row g-3">
           <div class="col-12">
-            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+            <div class="fa-module team-module">
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <h6 class="text-warning mb-0">Recent Activity</h6>
                 <div class="text-silver small">Latest team-wide events</div>
@@ -763,7 +1185,7 @@
           </div>
         </div>
       </div>
-      <div class="modal-footer border-0">
+      <div class="modal-footer wa-modal-footer">
         <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
@@ -772,39 +1194,39 @@
 }
 <!-- Modals -->
 <div class="modal fade fa-modal" id="metaSignalModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable meta-signal-dialog">
-    <div class="modal-content meta-signal-shell">
-      <div class="modal-header meta-signal-header">
-        <div class="meta-signal-header-copy">
-          <div class="meta-signal-kicker">Intelligence Overview</div>
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-copy">
+          <div class="wa-modal-kicker">Intelligence Overview</div>
           <h5 class="modal-title mb-0">Meta Signal Intelligence</h5>
-          <div class="meta-signal-subtitle">Paid Meta learning readiness, high-intent drop-off, campaign signal strength, and exclusion diagnostics.</div>
+          <div class="wa-modal-subtitle">Paid Meta learning readiness, high-intent drop-off, campaign signal strength, and exclusion diagnostics.</div>
         </div>
-        <div class="meta-signal-header-actions">
-          <div class="meta-signal-range-chip">
-            <span class="meta-signal-range-label">Range</span>
-            <span class="meta-signal-range-value" id="metasignal-range-label"></span>
+        <div class="wa-modal-header-actions">
+          <div class="wa-modal-range-chip">
+            <span class="wa-modal-range-label">Range</span>
+            <span class="wa-modal-range-value" id="metasignal-range-label"></span>
           </div>
-          <div class="meta-signal-traffic-controls">
-            <div class="btn-group btn-group-sm meta-signal-toggle-group" role="group" aria-label="Traffic Type">
+          <div class="wa-modal-toolbar">
+            <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
               <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="all">All Traffic</button>
               <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="paid">Ads Only</button>
               <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
             </div>
-            <span class="badge meta-signal-mode-badge" id="metasignal-active-mode">Viewing: Ads Only</span>
+            <span class="badge wa-modal-mode-badge" id="metasignal-active-mode">Viewing: Ads Only</span>
             <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn meta-signal-copy-btn" data-copy-modal-view="metaSignalModal">Copy Form</button>
           </div>
         </div>
-        <button type="button" class="btn-close btn-close-white meta-signal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body meta-signal-body">
-        <section class="meta-signal-section">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section meta-signal-section">
           <div class="alert alert-warning small py-2 px-3 mb-0" id="metasignal-scope-note">
             Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.
           </div>
         </section>
 
-        <section class="meta-signal-section meta-signal-filter-panel">
+        <section class="wa-modal-section meta-signal-section meta-signal-filter-panel">
           <div class="meta-signal-section-head">
             <div>
               <h6 class="mb-1">Refine View</h6>
@@ -847,7 +1269,7 @@
           </div>
         </section>
 
-        <section class="meta-signal-section meta-signal-metrics">
+        <section class="wa-modal-section meta-signal-section meta-signal-metrics">
           <div class="meta-signal-section-head">
             <div>
               <h6 class="mb-1">Signal Health</h6>
@@ -908,7 +1330,7 @@
           </div>
         </section>
 
-        <section class="meta-signal-section">
+        <section class="wa-modal-section meta-signal-section">
           <div class="meta-signal-section-head">
             <div>
               <h6 class="mb-1">What To Act On</h6>
@@ -931,7 +1353,7 @@
           </div>
         </section>
 
-        <section class="meta-signal-section">
+        <section class="wa-modal-section meta-signal-section">
           <div class="meta-signal-section-head">
             <div>
               <h6 class="mb-1">Distribution</h6>
@@ -970,7 +1392,7 @@
           </div>
         </section>
 
-        <section class="meta-signal-section">
+        <section class="wa-modal-section meta-signal-section">
           <div class="meta-signal-section-head">
             <div>
               <h6 class="mb-1">Score Quality</h6>
@@ -1023,7 +1445,7 @@
           </div>
         </section>
 
-        <section class="meta-signal-section">
+        <section class="wa-modal-section meta-signal-section">
           <div class="meta-signal-section-head">
             <div>
               <h6 class="mb-1">Friction &amp; Progression</h6>
@@ -1062,7 +1484,7 @@
           </div>
         </section>
 
-        <section class="meta-signal-section">
+        <section class="wa-modal-section meta-signal-section">
           <div class="meta-signal-section-head">
             <div>
               <h6 class="mb-1">Recent Diagnostics</h6>
@@ -1088,7 +1510,7 @@
           </div>
         </section>
       </div>
-      <div class="modal-footer meta-signal-footer">
+      <div class="modal-footer wa-modal-footer">
         <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
@@ -1096,9 +1518,9 @@
 </div>
 
 <div class="modal fade fa-modal" id="metaSignalHealthModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog meta-signal-health-dialog">
-    <div class="modal-content wa-modal-shell meta-signal-health-shell">
-      <div class="modal-header wa-modal-header meta-signal-health-header">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
           <div class="wa-modal-header-copy">
             <div class="wa-modal-kicker">Diagnostic Layer</div>
@@ -1119,7 +1541,7 @@
         </div>
         <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body wa-modal-body meta-signal-health-body">
+      <div class="modal-body wa-modal-body">
         <div class="wa-modal-note">This dashboard is strictly read-only. It does not write events, alter dispatch behavior, or change Meta pipeline state.</div>
 
         <section class="wa-modal-section meta-signal-health-section">
@@ -1184,7 +1606,7 @@
           </div>
         </section>
       </div>
-      <div class="modal-footer wa-modal-footer meta-signal-health-footer">
+      <div class="modal-footer wa-modal-footer">
         <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
@@ -1192,7 +1614,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="behaviorModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1425,7 +1847,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="trafficModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1506,7 +1928,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="trafficExitedBeforeStartModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1539,7 +1961,7 @@
 @if(isFounder)
 {
 <div class="modal fade fa-modal" id="agentPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1574,7 +1996,7 @@
 }
 
 <div class="modal fade fa-modal" id="pagePerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1614,7 +2036,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="ctaPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1654,7 +2076,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="quoteModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1822,7 +2244,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="convModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1882,7 +2304,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="leadsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1971,7 +2393,7 @@
 }
 
 <div class="modal fade fa-modal" id="aiReviewSnapshotModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2008,7 +2430,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="metaCampaignsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable meta-campaigns-dialog wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2078,89 +2500,81 @@
   </div>
 </div>
 
-<!-- KPI Detail Modal -->
-<div id="kpiDetailBackdrop" class="kpi-detail-backdrop" aria-hidden="true" hidden></div>
-
-<button type="button" id="openVisitorConcentrationModal" class="visually-hidden" aria-hidden="true" tabindex="-1">
-    Open Visitor Concentration
-</button>
-
-<div id="visitorConcentrationModal" class="vc-modal" role="dialog" aria-modal="true" aria-labelledby="visitorConcentrationModalTitle" hidden>
-    <div class="vc-modal-backdrop"></div>
-    <div class="vc-modal-panel">
-        <div class="vc-modal-header">
-            <div>
-                <h5 id="visitorConcentrationModalTitle" class="mb-1">Visitor Concentration Breakdown</h5>
-                <p class="mb-0 text-muted">Recurring visitor patterns, high-volume sessions, and concentration risk.</p>
+<!-- Canonical standalone analytics modals -->
+<div id="visitorConcentrationModal" class="wa-standalone-modal" role="dialog" aria-modal="true" aria-labelledby="visitorConcentrationModalTitle" hidden>
+    <div class="wa-modal-dialog" role="document">
+        <div class="wa-modal-shell">
+            <div class="wa-modal-header">
+                <div class="wa-modal-header-copy">
+                    <div class="wa-modal-kicker">Unique Visitor Trust Check</div>
+                    <h5 class="modal-title mb-0" id="visitorConcentrationModalTitle">Visitor Concentration Breakdown</h5>
+                    <div class="wa-modal-subtitle">Recurring visitor patterns, high-volume sessions, and concentration risk.</div>
+                </div>
+                <div class="wa-modal-header-actions">
+                    <button type="button" class="btn btn-sm btn-outline-light vc-modal-copy" data-default-label="Copy All">Copy All</button>
+                    <button type="button" class="btn-close btn-close-white wa-modal-close" data-wa-modal-close aria-label="Close Visitor Concentration"></button>
+                </div>
             </div>
-            <button type="button" class="vc-modal-close" aria-label="Close Visitor Concentration">&times;</button>
-        </div>
-        <div class="vc-modal-actions">
-            <button type="button" class="btn btn-sm btn-outline-light vc-modal-copy">Copy All</button>
-        </div>
-        <div id="visitorConcentrationModalBody" class="vc-modal-body">
-            <div class="text-muted">No visitor concentration data loaded yet.</div>
+            <div id="visitorConcentrationModalBody" class="wa-modal-body" data-vc-modal-body>
+                <div class="text-muted">No visitor concentration data loaded yet.</div>
+            </div>
         </div>
     </div>
 </div>
 
-<div id="visitorTimelineModal" class="vc-modal" role="dialog" aria-modal="true" aria-labelledby="visitorTimelineModalTitle" hidden>
-    <div class="vc-modal-backdrop"></div>
-    <div class="vc-modal-panel">
-        <div class="vc-modal-header">
-            <div>
-                <h5 id="visitorTimelineModalTitle" class="mb-1">Visitor Timeline</h5>
-                <p class="mb-0 text-muted">Session-level journey, trust score, and event detail.</p>
+<div id="visitorTimelineModal" class="wa-standalone-modal" role="dialog" aria-modal="true" aria-labelledby="visitorTimelineModalTitle" hidden>
+    <div class="wa-modal-dialog" role="document">
+        <div class="wa-modal-shell">
+            <div class="wa-modal-header">
+                <div class="wa-modal-header-copy">
+                    <div class="wa-modal-kicker">Visitor Intelligence</div>
+                    <h5 class="modal-title mb-0" id="visitorTimelineModalTitle">Visitor Timeline</h5>
+                    <div class="wa-modal-subtitle">Session-level journey, trust score, and event detail.</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white wa-modal-close" data-wa-modal-close aria-label="Close Visitor Timeline"></button>
             </div>
-            <button type="button" class="vc-modal-close" aria-label="Close Visitor Timeline">&times;</button>
+            <div class="wa-modal-body" data-vc-modal-body></div>
         </div>
-        <div class="vc-modal-body"></div>
     </div>
 </div>
 
-<div id="kpiDetailModal" class="kpi-detail-modal" role="dialog" aria-modal="true" aria-labelledby="kpiDetailTitle" hidden>
-  <div class="kpi-detail-header">
-    <div>
-      <div class="kpi-detail-title" id="kpiDetailTitle">Detail</div>
-      <div class="kpi-detail-range" id="kpiDetailRange"></div>
+<div id="kpiDetailModal" class="wa-standalone-modal" role="dialog" aria-modal="true" aria-labelledby="kpiDetailTitle" hidden>
+    <div class="wa-modal-dialog" role="document">
+        <div class="wa-modal-shell">
+            <div class="wa-modal-header">
+                <div class="wa-modal-header-copy">
+                    <div class="wa-modal-kicker">Core Metric Detail</div>
+                    <h5 class="modal-title mb-0" id="kpiDetailTitle">Detail</h5>
+                    <div class="wa-modal-subtitle" id="kpiDetailRange"></div>
+                </div>
+                <button type="button" class="btn-close btn-close-white wa-modal-close" id="kpiDetailClose" aria-label="Close detail modal"></button>
+            </div>
+            <div class="wa-modal-body">
+                <div id="kpiDetailLoading" class="kpi-detail-loading" hidden>
+                    <div class="kpi-skel kpi-skel-stat-row">
+                        <div class="kpi-skel-tile"></div><div class="kpi-skel-tile"></div><div class="kpi-skel-tile"></div><div class="kpi-skel-tile"></div><div class="kpi-skel-tile"></div>
+                    </div>
+                    <div class="kpi-skel kpi-skel-chart"></div>
+                    <div class="kpi-skel kpi-skel-list"></div>
+                </div>
+                <div id="kpiDetailError" class="kpi-detail-state-msg kpi-detail-error" hidden>
+                    <div class="kpi-state-icon">&#9888;</div>
+                    <div id="kpiDetailErrorMsg">Unable to load data.</div>
+                </div>
+                <div id="kpiDetailEmpty" class="kpi-detail-state-msg" hidden>
+                    <div class="kpi-state-icon">&#9680;</div>
+                    <div>No data for this period.</div>
+                </div>
+                <div id="kpiDetailContent" hidden>
+                    <div class="kpi-detail-stat-tiles" id="kpiDetailStatTiles"></div>
+                    <div class="kpi-detail-chart-container">
+                        <canvas id="kpiDetailChart" aria-label="KPI detail trend chart" role="img"></canvas>
+                    </div>
+                    <div class="kpi-detail-breakdown" id="kpiDetailBreakdown"></div>
+                </div>
+            </div>
+        </div>
     </div>
-    <button type="button" class="kpi-detail-close" id="kpiDetailClose" aria-label="Close detail modal">&times;</button>
-  </div>
-  <div class="kpi-detail-body">
-    <!-- Loading skeleton -->
-    <div id="kpiDetailLoading" class="kpi-detail-loading" hidden>
-      <div class="kpi-skel kpi-skel-stat-row">
-        <div class="kpi-skel-tile"></div>
-        <div class="kpi-skel-tile"></div>
-        <div class="kpi-skel-tile"></div>
-        <div class="kpi-skel-tile"></div>
-        <div class="kpi-skel-tile"></div>
-      </div>
-      <div class="kpi-skel kpi-skel-chart"></div>
-      <div class="kpi-skel kpi-skel-list"></div>
-    </div>
-    <!-- Error state -->
-    <div id="kpiDetailError" class="kpi-detail-state-msg kpi-detail-error" hidden>
-      <div class="kpi-state-icon">&#9888;</div>
-      <div id="kpiDetailErrorMsg">Unable to load data.</div>
-    </div>
-    <!-- Empty state -->
-    <div id="kpiDetailEmpty" class="kpi-detail-state-msg" hidden>
-      <div class="kpi-state-icon">&#9680;</div>
-      <div>No data for this period.</div>
-    </div>
-    <!-- Content -->
-    <div id="kpiDetailContent" hidden>
-      <!-- Summary stat tiles -->
-      <div class="kpi-detail-stat-tiles" id="kpiDetailStatTiles"></div>
-      <!-- Chart -->
-      <div class="kpi-detail-chart-container">
-        <canvas id="kpiDetailChart" aria-label="KPI detail trend chart" role="img"></canvas>
-      </div>
-      <!-- Breakdown -->
-      <div class="kpi-detail-breakdown" id="kpiDetailBreakdown"></div>
-    </div>
-  </div>
 </div>
 
 @* ── AI Insights Drawer ───────────────────────────────────────────────────── *@
@@ -2169,15 +2583,12 @@
     @Html.AntiForgeryToken()
 </form>
 
-@* Backdrop overlay *@
-<div id="aiInsightsBackdrop" class="ai-drawer-backdrop" aria-hidden="true"></div>
-
 @* Drawer panel *@
 
 <div class="modal fade fa-modal" id="deviceIntelligenceModal" tabindex="-1" aria-labelledby="deviceIntelligenceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog wa-device-modal-dialog">
-        <div class="modal-content wa-modal-shell wa-device-modal-shell">
-            <div class="modal-header wa-modal-header wa-device-modal-header">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+        <div class="modal-content wa-modal-shell">
+            <div class="modal-header wa-modal-header">
                 <div class="wa-modal-header-main">
                     <div class="wa-modal-header-copy">
                         <div class="wa-modal-kicker">Prospect Environment Learning</div>
@@ -2190,7 +2601,7 @@
                 </div>
                 <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body wa-modal-body wa-device-modal-body">
+            <div class="modal-body wa-modal-body">
                 <div class="wa-device-toolbar">
                     <div class="wa-pill-group" role="group" aria-label="Device traffic filter">
                         <button type="button" class="wa-pill is-active" data-device-traffic="all">All Traffic</button>
@@ -2225,26 +2636,27 @@
     </div>
 </div>
 
-<div id="aiInsightsDrawer" class="ai-drawer" inert aria-hidden="true" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
+<div id="aiInsightsDrawer" class="ai-drawer" data-legend-modal-surface inert aria-hidden="true" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
+    <div class="ai-drawer-panel" data-legend-modal-panel>
     <div class="ai-drawer-header">
         <div>
             <div class="ai-drawer-title">AI Review</div>
             <div class="ai-drawer-subtitle">Website Analytics · Aggregate insights only</div>
             <div class="small text-muted" id="ai-drawer-scope-label">AI reviewing: All Traffic · Last 30 Days · Global</div>
         </div>
-        <button type="button" class="ai-drawer-close" aria-label="Close AI Review panel">&times;</button>
+        <button type="button" class="ai-drawer-close" data-ai-drawer-close aria-label="Close AI Review panel">&times;</button>
     </div>
 
-    <div class="ai-drawer-body">
+    <div class="ai-drawer-body" data-legend-modal-scroll>
         @* Loading state *@
         <div class="ai-drawer-loading" aria-live="polite">
-            <div class="ai-skel-line medium" style="margin-top:4px;"></div>
+            <div class="ai-skel-line medium ai-skel-line--lead"></div>
             <div class="ai-skel-line short"></div>
-            <div class="ai-skel-block" style="margin-top:14px;"></div>
-            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-block ai-skel-block--spaced"></div>
+            <div class="ai-skel-line medium ai-skel-line--spaced"></div>
             <div class="ai-skel-line short"></div>
             <div class="ai-skel-block"></div>
-            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-line medium ai-skel-line--spaced"></div>
             <div class="ai-skel-block"></div>
             <div class="ai-skel-line short"></div>
         </div>
@@ -2253,8 +2665,7 @@
         <div class="ai-drawer-error" hidden aria-live="assertive">
             <div class="ai-error-icon">&#9888;</div>
             <div class="ai-error-message">Unable to load AI review.</div>
-            <button type="button" class="btn btn-sm ai-retry-btn"
-                    style="background:rgba(199,153,49,0.15);color:#c79931;border:1px solid #a68023;font-weight:700;">
+            <button type="button" class="btn btn-sm ai-retry-btn" data-ai-retry>
                 Try Again
             </button>
         </div>
@@ -2277,6 +2688,7 @@
                 <button type="submit" class="ai-followup-btn">Submit Follow-Up</button>
             </form>
         </div>
+    </div>
     </div>
 </div>
 

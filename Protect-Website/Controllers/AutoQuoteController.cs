@@ -13,11 +13,10 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
-using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
-using ProtectWebsite.Services.Communication;
 
+using Shared.Analytics;
 namespace Protect_Website.Controllers
 {
     [Route("Quote")]
@@ -28,24 +27,24 @@ namespace Protect_Website.Controllers
         private readonly string clientSecret;
 
         private readonly string senderEmail;
-        private readonly string recipientEmail;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly MasterAppDbContext _db;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
         private readonly ILogger<AutoQuoteController> _logger;
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
-        public AutoQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IProtectEmailSender emailSender, ILogger<AutoQuoteController> logger)
+        public AutoQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
+            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IWebsiteInquiryEmailSender emailSender, ILogger<AutoQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"] ?? throw new ArgumentNullException("AzureAd:TenantId");
             clientId = configuration["AzureAd:ClientId"] ?? throw new ArgumentNullException("AzureAd:ClientId");
             clientSecret = configuration["AzureAd:ClientSecret"] ?? throw new ArgumentNullException("AzureAd:ClientSecret");
 
             senderEmail = configuration["Contact:SenderEmail"] ?? throw new ArgumentNullException("Contact:SenderEmail");
-            recipientEmail = configuration["Contact:RecipientEmail"] ?? throw new ArgumentNullException("Contact:RecipientEmail");
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _db = db;
             _metaPixelResolution = metaPixelResolution;
             _websiteLeadCapture = websiteLeadCapture;
@@ -130,14 +129,15 @@ namespace Protect_Website.Controllers
                     MetaAdSetId   = string.IsNullOrWhiteSpace(model.MetaAdSetId) ? null : model.MetaAdSetId.Trim(),
                     MetaAdId      = string.IsNullOrWhiteSpace(model.MetaAdId) ? null : model.MetaAdId.Trim(),
                     Fbclid        = string.IsNullOrWhiteSpace(model.Fbclid)      ? null : model.Fbclid.Trim(),
+                    Oppref        = OpenAiClickReference.Normalize(model.Oppref),
                     ClientIpAddress = !string.IsNullOrWhiteSpace(Request?.Headers["CF-Connecting-IP"].ToString())
                         ? Request!.Headers["CF-Connecting-IP"].ToString()
                         : (!string.IsNullOrWhiteSpace(Request?.Headers["X-Forwarded-For"].ToString())
                             ? Request!.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim()
                             : HttpContext?.Connection?.RemoteIpAddress?.ToString()),
                     ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
-                    Fbp = Request?.Cookies.TryGetValue("_fbp", out var fbp) == true ? fbp : null,
-                    Fbc = Request?.Cookies.TryGetValue("_fbc", out var fbc) == true ? fbc : null,
+                    Fbp = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbp"),
+                    Fbc = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbc"),
                     SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
                     VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
                     MarketingEmailConsent = model.AcknowledgedDisclaimer,
@@ -158,6 +158,8 @@ namespace Protect_Website.Controllers
                         PriorCarrier   = model.PriorCarrier,
                         UtmId          = model.UtmId,
                         Fbclid         = model.Fbclid,
+                        Oppref         = OpenAiClickReference.Normalize(model.Oppref),
+                        Obref          = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(HttpContext?.Request),
                         UtmTerm        = model.UtmTerm,
                         UtmContent     = model.UtmContent,
                         MetaCampaignId = model.MetaCampaignId,
@@ -191,10 +193,6 @@ namespace Protect_Website.Controllers
                     HttpContext?.RequestAborted ?? CancellationToken.None);
                             if (!capturedSubmission.Captured && capturedSubmission.Reason != "InternalTestLead")
                                 throw new InvalidOperationException("The advisor handoff could not be completed.");
-await TryWriteLeadEventAsync(
-                "lead_persisted",
-                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "auto_insurance" },
-                lead.CreatedUtc);
 await TryWriteLeadEventAsync(
                 "website_lead_submitted",
                 new { LeadId = lead.LeadId, CorrelationId = correlationId },
@@ -231,7 +229,7 @@ await TryWriteLeadEventAsync(
                 }
                 catch (Exception analyticsEx)
                 {
-                    if (eventType is "lead_persisted" or "website_lead_submitted") throw;
+                    if (eventType is "website_lead_submitted") throw;
                     if (analyticsEvent != null)
                     {
                         var entry = _db.Entry(analyticsEvent);
@@ -306,7 +304,7 @@ await TryWriteLeadEventAsync(
                     });
             }
 
-            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            var metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead);
             await MetaLeadTrackingWorkflow.TryPersistAsync(
                 lead,
                 _db,
@@ -550,6 +548,8 @@ await TryWriteLeadEventAsync(
         {
             return UnifiedEventContextBuilder.Build(
                 httpContext: HttpContext,
+                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
+                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
                 eventName: eventType,
                 eventUtc: eventUtc,
                 sessionId: lead.SessionId,
@@ -562,10 +562,13 @@ await TryWriteLeadEventAsync(
                 utmMedium: lead.UtmMedium,
                 utmCampaign: lead.UtmCampaign,
                 utmId: lead.UtmId,
+                utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
+                utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
                 metaCampaignId: lead.MetaCampaignId,
                 metaAdSetId: lead.MetaAdSetId,
                 metaAdId: lead.MetaAdId,
                 fbclid: lead.Fbclid,
+                oppref: lead.Oppref,
                 agentSlug: lead.AgentSlug,
                 agentTrackingProfileId: lead.AgentTrackingProfileId,
                 isInternal: lead.IsInternal,
@@ -580,7 +583,7 @@ await TryWriteLeadEventAsync(
             var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
                 HttpContext,
                 _resolver,
-                recipientEmail,
+                _intakeRecipients,
                 ResolveExplicitAgentSlugFromRequest(),
                 HttpContext?.RequestAborted ?? CancellationToken.None);
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);

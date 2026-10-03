@@ -38,6 +38,7 @@ public sealed record UnifiedEventContext
     public string? PageMode { get; init; }
     public string? FormKey { get; init; }
     public string? ElementKey { get; init; }
+    public string? ActionKey { get; init; }
     public string? ButtonLabel { get; init; }
 
     // =========================
@@ -76,12 +77,15 @@ public sealed record UnifiedEventContext
     public string? UtmMedium { get; init; }
     public string? UtmCampaign { get; init; }
     public string? UtmId { get; init; }
+    public string? UtmTerm { get; init; }
     public string? UtmContent { get; init; }
     public string? MetaCampaignId { get; init; }
     public string? MetaAdSetId { get; init; }
     public string? MetaAdId { get; init; }
 
     public string? Fbclid { get; init; }
+    public string? Oppref { get; init; }
+    public string? Obref { get; init; }
     public string? Fbc { get; init; }
     public string? Fbp { get; init; }
 

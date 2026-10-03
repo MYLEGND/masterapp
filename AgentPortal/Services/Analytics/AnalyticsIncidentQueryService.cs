@@ -299,7 +299,8 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         var currentRange = BuildRange(currentWindowStartUtc, nowUtc);
         var previousRange = BuildRange(previousWindowStartUtc, currentWindowStartUtc);
 
-        var resolvedScope = await ResolveScopeAsync(null, false);
+        // Founder-only system monitor intentionally queries the global monitoring scope.
+        var resolvedScope = ScopeContext.Global;
         var currentEvents = await _analytics.ScopedEvents(currentRange, resolvedScope).ToListAsync(ct);
         var previousEvents = await _analytics.ScopedEvents(previousRange, resolvedScope).ToListAsync(ct);
 
@@ -541,17 +542,6 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         query = ApplyEnvironmentFilter(query);
         query = ApplyHostFilter(query);
         return query;
-    }
-
-    private static ValueTask<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team)
-    {
-        _ = requestedAgentId;
-        _ = team;
-
-        return ValueTask.FromResult(new ScopeContext
-        {
-            ScopeType = ScopeType.Global
-        });
     }
 
     private IQueryable<MetaSignalEvent> QueryMetaSignalEvents(DateTime fromUtc, DateTime toUtc)

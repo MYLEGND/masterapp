@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using System.ComponentModel.DataAnnotations;
 using System.Net;
+using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Leads;
@@ -62,11 +63,16 @@ public class WebsiteInquiryAuthority : ControllerBase
         string? UtmTerm = null,
         string? UtmContent = null,
         string? Fbclid = null,
+        string? Oppref = null,
+        string? Obref = null,
         string? Fbp = null,
         string? Fbc = null,
         string? MetaCampaignId = null,
         string? MetaAdSetId = null,
-        string? MetaAdId = null);
+        string? MetaAdId = null,
+        string? MeasurementConsent = null,
+        string? ExperienceId = null,
+        Dictionary<string, JsonElement>? Answers = null);
 
     [HttpPost("public")]
     [RequestSizeLimit(32768)]
@@ -76,19 +82,45 @@ public class WebsiteInquiryAuthority : ControllerBase
         if (!PublicWebsiteRuntimeScopeResolver.HasValidPublicOrigin(HttpContext))
             return BadRequest(new { error = "verified_website_origin_required" });
 
-        var scope = await _publicScopes.ResolveInquiryAsync(HttpContext, cancellationToken);
+        var path = request.SourcePath?.Trim() ?? "/";
+        var scope = await _publicScopes.ResolveInquiryAsync(HttpContext, path, cancellationToken);
         if (scope is null)
             return NotFound(new { error = "published_website_required" });
 
-        var firstName = request.FirstName?.Trim() ?? "";
-        var lastName = request.LastName?.Trim() ?? "";
-        var phone = request.Phone?.Trim() ?? "";
-        var email = request.Email?.Trim() ?? "";
-        var message = request.Message?.Trim() ?? "";
-        var path = request.SourcePath?.Trim() ?? "/";
+        WebsiteExperienceSubmission? experience = null;
+        if (!string.IsNullOrWhiteSpace(request.ExperienceId))
+        {
+            try
+            {
+                experience = WebsiteExperiencePolicy.ResolvePublishedSubmission(
+                    scope.PublishedVersion,
+                    scope.SiteKey,
+                    path,
+                    request.ExperienceId,
+                    request.Answers);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = "invalid_experience_submission", message = ex.Message });
+            }
+
+            if (experience is null)
+                return BadRequest(new
+                {
+                    error = "published_experience_required",
+                    message = "This interactive experience is not available on the published website."
+                });
+        }
+
+        var firstName = (experience?.FirstName ?? request.FirstName)?.Trim() ?? "";
+        var lastName = (experience?.LastName ?? request.LastName)?.Trim() ?? "";
+        var phone = (experience?.Phone ?? request.Phone)?.Trim() ?? "";
+        var email = (experience?.Email ?? request.Email)?.Trim() ?? "";
+        var message = (experience?.Message ?? request.Message)?.Trim() ?? "";
+        var consent = experience?.Consent ?? request.Consent;
         var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
 
-        if (request.SubmissionId == Guid.Empty || !request.Consent ||
+        if (request.SubmissionId == Guid.Empty || !consent ||
             firstName.Length is < 1 or > 120 || lastName.Length is < 1 or > 120 ||
             phone.Length is < 7 or > 64 || phoneDigits.Length is < 10 or > 15 ||
             email.Length is < 3 or > 254 || !new EmailAddressAttribute().IsValid(email) ||
@@ -103,7 +135,7 @@ public class WebsiteInquiryAuthority : ControllerBase
                 message = "Enter your first name, last name, phone number, email and message, and agree to share them with this website."
             });
 
-        var lead = BuildLead(scope, request, firstName, lastName, phone, email, message, path);
+        var lead = BuildLead(scope, request, firstName, lastName, phone, email, message, path, consent);
         var submissionBinding = ResolvePublishedSubmissionBinding(scope, path, request.SourceFormElementId);
         lead.WebsiteBindingId = submissionBinding?.Id
             ?? Optional(request.SourceFormElementId, 120)
@@ -113,8 +145,10 @@ public class WebsiteInquiryAuthority : ControllerBase
         {
             WebsiteEditorSiteKeys.Business when scope.CommerceBusinessId.HasValue && scope.PublishedVersion is not null =>
                 await SubmitBusinessAsync(scope, request, lead, firstName, lastName, phone, email, message, path, submissionBinding, cancellationToken),
-            WebsiteEditorSiteKeys.Legend =>
-                await SubmitFounderAsync(scope, request, lead, firstName, lastName, phone, email, message, path, submissionBinding, cancellationToken),
+            WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Protect =>
+                await SubmitScopedLeadAsync(scope, request, lead, firstName, lastName, phone, email, message, path, submissionBinding, cancellationToken),
+            _ when scope.IsCommerceApp && scope.CommerceBusinessId.HasValue =>
+                await SubmitScopedLeadAsync(scope, request, lead, firstName, lastName, phone, email, message, path, submissionBinding, cancellationToken),
             _ => NotFound(new { error = "published_website_required" })
         };
     }
@@ -127,12 +161,15 @@ public class WebsiteInquiryAuthority : ControllerBase
         string phone,
         string email,
         string message,
-        string path)
+        string path,
+        bool consent)
     {
         var lead = new WebsiteLead
         {
             LeadId = Guid.NewGuid(),
             CommerceBusinessId = scope.CommerceBusinessId,
+            AgentTrackingProfileId = scope.CommerceBusinessId.HasValue ? null : scope.AgentTrackingProfileId,
+            AgentSlug = scope.CommerceBusinessId.HasValue ? null : scope.AgentSlug,
             WebsiteContentVersionId = scope.PublishedVersion?.Id,
             FirstName = firstName,
             LastName = lastName,
@@ -142,8 +179,10 @@ public class WebsiteInquiryAuthority : ControllerBase
             SourcePageKey = path.Length <= 120 ? path : scope.SiteKey + "-inquiry",
             SourceCtaKey = Optional(request.SourceActionKey, 120),
             WebsiteBindingId = Optional(request.SourceActionKey, 120),
-            InterestType = scope.SiteKey == WebsiteEditorSiteKeys.Business ? "BusinessInquiry" : "LegendInquiry",
-            TermsAccepted = request.Consent,
+            InterestType = scope.CommerceBusinessId.HasValue
+                ? "BusinessInquiry"
+                : scope.SiteKey == WebsiteEditorSiteKeys.Protect ? "ProtectionInquiry" : "LegendInquiry",
+            TermsAccepted = consent,
             // Sharing an inquiry is not separate marketing or call/text permission.
             MarketingEmailConsent = false,
             CallTextConsent = false,
@@ -154,8 +193,13 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmCampaign = Optional(request.UtmCampaign, 160),
             UtmId = Optional(request.UtmId, 160),
             Fbclid = Optional(request.Fbclid, 120),
-            Fbp = Optional(request.Fbp, 512),
-            Fbc = Optional(request.Fbc, 512),
+            Oppref = OpenAiClickReference.Normalize(request.Oppref),
+            Fbp = CanUseSubmittedMarketingIdentifiers(request)
+                ? Optional(request.Fbp, 512)
+                : null,
+            Fbc = CanUseSubmittedMarketingIdentifiers(request)
+                ? Optional(request.Fbc, 512)
+                : null,
             MetaCampaignId = Optional(request.MetaCampaignId, 200),
             MetaAdSetId = Optional(request.MetaAdSetId, 200),
             MetaAdId = Optional(request.MetaAdId, 200),
@@ -171,7 +215,12 @@ public class WebsiteInquiryAuthority : ControllerBase
             SourceActionKey = lead.SourceCtaKey,
             UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
-            PublishedWebsiteVersionId = scope.PublishedVersion?.Id
+            Oppref = lead.Oppref,
+            Obref = CanUseSubmittedMarketingIdentifiers(request)
+                ? UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, request.Obref)
+                : null,
+            PublishedWebsiteVersionId = scope.PublishedVersion?.Id,
+            ExperienceId = Optional(request.ExperienceId, 160)
         });
         lead.LeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));
         return lead;
@@ -260,7 +309,7 @@ public class WebsiteInquiryAuthority : ControllerBase
         return Ok(new { accepted = true, notificationSent });
     }
 
-    private async Task<IActionResult> SubmitFounderAsync(
+    private async Task<IActionResult> SubmitScopedLeadAsync(
         PublicWebsiteRuntimeScope scope,
         PublicRequest request,
         WebsiteLead lead,
@@ -273,6 +322,11 @@ public class WebsiteInquiryAuthority : ControllerBase
         WebsiteSignalBinding? submissionBinding,
         CancellationToken cancellationToken)
     {
+        var owner = ResolveScopeOwner(scope);
+        if (owner is null)
+            return NotFound(new { error = "website_owner_required" });
+
+        var descriptor = InquiryDescriptorFor(scope);
         var created = await WebsiteLeadSubmission.TryCreateAsync(
             _db,
             lead,
@@ -280,21 +334,26 @@ public class WebsiteInquiryAuthority : ControllerBase
             cancellationToken,
             async ct =>
             {
-                var founderRecipient = await _recipients.ResolveAsync(MarketingOwnerScope.Founder, ct);
+                var recipient = await _recipients.ResolveAsync(owner, ct);
+                if (string.IsNullOrWhiteSpace(recipient))
+                    throw new InvalidOperationException("The scoped website owner has no primary inquiry email.");
+
                 var captured = await _capture.UpsertAsync(new WebsiteLifeLeadCaptureRequest
                 {
                     WebsiteLeadId = lead.LeadId,
                     SubmittedUtc = lead.CreatedUtc,
-                    ProductType = "legend_inquiry",
-                    OfferKey = "legend",
+                    ProductType = descriptor.ProductType,
+                    OfferKey = descriptor.OfferKey,
                     FirstName = lead.FirstName,
                     LastName = lead.LastName,
                     Email = lead.Email,
                     Phone = lead.Phone,
-                    RecipientEmail = founderRecipient
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug = lead.AgentSlug,
+                    RecipientEmail = recipient
                 }, ct);
                 if (!captured.Captured)
-                    throw new InvalidOperationException("The LEGEND website inquiry could not be linked to CRM.");
+                    throw new InvalidOperationException("The website inquiry could not be linked to CRM.");
 
                 WriteLeadAnalytics(scope, lead, request, submissionBinding);
                 await _db.SaveChangesAsync(ct);
@@ -310,12 +369,14 @@ public class WebsiteInquiryAuthority : ControllerBase
                 (existing.Phone ?? "") != phone ||
                 existing.Email != email ||
                 (existing.Notes ?? "") != message ||
-                existing.SourcePageKey != lead.SourcePageKey)
+                existing.SourcePageKey != lead.SourcePageKey ||
+                existing.AgentTrackingProfileId != lead.AgentTrackingProfileId ||
+                existing.CommerceBusinessId != lead.CommerceBusinessId)
                 return Conflict(new { error = "submission_id_already_used" });
             lead = existing;
         }
 
-        var notificationSent = await TryNotifyFounderAsync(lead, cancellationToken);
+        var notificationSent = await TryNotifyScopedLeadAsync(scope, lead, descriptor.Subject, cancellationToken);
         return Ok(new { accepted = true, notificationSent });
     }
 
@@ -332,22 +393,29 @@ public class WebsiteInquiryAuthority : ControllerBase
         {
             SiteKey = scope.SiteKey,
             CommerceBusinessId = scope.CommerceBusinessId,
+            AgentTrackingProfileId = scope.CommerceBusinessId.HasValue ? null : scope.AgentTrackingProfileId,
+            AgentSlug = scope.CommerceBusinessId.HasValue ? null : scope.AgentSlug,
             WebsiteContentVersionId = scope.PublishedVersion?.Id,
             WebsiteBindingId = submissionBinding?.Id ?? Optional(request.SourceFormElementId, 120) ?? lead.SourceCtaKey,
-            EventId = scope.SiteKey + "_lead_" + lead.LeadId.ToString("N"),
+            EventId = CanonicalLeadEventIdentity.Resolve(lead),
             EventName = leadEvent.Name,
             EventCategory = leadEvent.Category,
             EventUtc = lead.CreatedUtc,
             SessionId = lead.SessionId,
             VisitorId = lead.VisitorId,
             PageKey = lead.SourcePageKey,
-            FormKey = "website_inquiry",
+            FormKey = string.IsNullOrWhiteSpace(request.ExperienceId)
+                ? "website_inquiry"
+                : "experience:" + Optional(request.ExperienceId, 120),
             UtmSource = lead.UtmSource,
             UtmMedium = lead.UtmMedium,
             UtmCampaign = lead.UtmCampaign,
             UtmId = lead.UtmId,
+            UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
             Fbclid = lead.Fbclid,
+            Oppref = lead.Oppref,
+            Obref = CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "Obref"),
             Fbp = lead.Fbp,
             Fbc = lead.Fbc,
             MetaCampaignId = lead.MetaCampaignId,
@@ -359,7 +427,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             Environment = lead.Environment,
             IsBrowserSignal = false,
             IsServerAuthority = true,
-            MetaServerAuthorityEligible = submissionBinding is null || submissionBinding.DeliveryMode == "meta",
+            MetaServerAuthorityEligible = submissionBinding is null || submissionBinding.DeliveryMode is "meta" or "destinations",
             Metadata = new
             {
                 LeadId = lead.LeadId,
@@ -385,14 +453,17 @@ public class WebsiteInquiryAuthority : ControllerBase
 
         try
         {
-            var document = WebsiteContentSanitizer.Sanitize(
-                System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(
-                    scope.PublishedVersion.DocumentJson,
-                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new());
+            // Historical-only translation. Canonical v3 forms do not carry a
+            // browser-authored Lead outcome mapping; Lead remains server-authoritative.
+            var document = WebsiteContentSanitizer.ReadPersisted(
+                scope.PublishedVersion.DocumentJson,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            var legacy = document.LegacyMigration;
+            if (legacy is null) return null;
 
             var route = path.TrimEnd('/');
             if (route.Length == 0) route = "/";
-            if (!document.Pages.TryGetValue(route, out var page))
+            if (!legacy.Pages.TryGetValue(route, out var page))
                 return null;
 
             IEnumerable<WebsiteSignalBinding>? bindings = null;
@@ -417,42 +488,86 @@ public class WebsiteInquiryAuthority : ControllerBase
         }
     }
 
-    private async Task<bool> TryNotifyFounderAsync(WebsiteLead lead, CancellationToken cancellationToken)
+    private async Task<bool> TryNotifyScopedLeadAsync(
+        PublicWebsiteRuntimeScope scope,
+        WebsiteLead lead,
+        string subject,
+        CancellationToken cancellationToken)
     {
         if (lead.NotificationSentUtc.HasValue)
             return true;
 
-        var trackedLead = await _db.WebsiteLeads.SingleAsync(x => x.LeadId == lead.LeadId, cancellationToken);
-        if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, trackedLead, cancellationToken))
-            return trackedLead.NotificationSentUtc.HasValue;
+        var owner = ResolveScopeOwner(scope);
+        if (owner is null)
+            return false;
 
-        var recipient = await _recipients.ResolveAsync(MarketingOwnerScope.Founder, cancellationToken);
-        var sent = false;
-        if (!string.IsNullOrWhiteSpace(recipient))
+        var trackedLead = await _db.WebsiteLeads.SingleAsync(x => x.LeadId == lead.LeadId, cancellationToken);
+        var recipient = await _recipients.ResolveAsync(owner, cancellationToken);
+        if (string.IsNullOrWhiteSpace(recipient))
         {
-            var name = $"{trackedLead.FirstName} {trackedLead.LastName}".Trim();
-            var html =
-                $"<p><strong>{WebUtility.HtmlEncode(name)}</strong></p>" +
-                $"<p>{WebUtility.HtmlEncode(trackedLead.Email)} · {WebUtility.HtmlEncode(trackedLead.Phone)}</p>" +
-                $"<p>{WebUtility.HtmlEncode(trackedLead.Notes ?? "").Replace("\n", "<br>")}</p>" +
-                $"<p>Page: {WebUtility.HtmlEncode(trackedLead.SourcePageKey)}</p>";
-            try
-            {
-                sent = await _emailSender.TrySendAsync(
-                    recipient,
-                    "New LEGEND® website inquiry",
-                    html,
-                    replyToEmail: trackedLead.Email,
-                    cancellationToken: cancellationToken);
-            }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                sent = false;
-            }
+            trackedLead.Status = "NotificationFailed";
+            trackedLead.NotificationSentUtc = null;
+            trackedLead.NotificationAttemptUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            return false;
         }
 
-        await WebsiteLeadSubmission.CompleteNotificationAsync(_db, trackedLead, sent, cancellationToken);
-        return sent;
+        var name = $"{trackedLead.FirstName} {trackedLead.LastName}".Trim();
+        var html =
+            $"<p><strong>{WebUtility.HtmlEncode(name)}</strong></p>" +
+            $"<p>{WebUtility.HtmlEncode(trackedLead.Email)} · {WebUtility.HtmlEncode(trackedLead.Phone)}</p>" +
+            $"<p>{WebUtility.HtmlEncode(trackedLead.Notes ?? "").Replace("\n", "<br>")}</p>" +
+            $"<p>Page: {WebUtility.HtmlEncode(trackedLead.SourcePageKey)}</p>";
+
+        var result = await WebsiteLeadNotificationAuthority.DeliverAsync(
+            _db,
+            trackedLead,
+            recipient,
+            ct => _emailSender.TrySendAsync(
+                recipient,
+                subject,
+                html,
+                replyToEmail: trackedLead.Email,
+                cancellationToken: ct),
+            cancellationToken);
+
+        return result.Sent;
+    }
+
+    private static MarketingOwnerScope? ResolveScopeOwner(PublicWebsiteRuntimeScope scope)
+    {
+        if (scope.CommerceBusinessId is Guid businessId && businessId != Guid.Empty)
+            return MarketingOwnerScope.Business(businessId);
+
+        if (scope.SiteKey == WebsiteEditorSiteKeys.Legend || scope.IsFounder)
+            return MarketingOwnerScope.Founder;
+
+        if (scope.SiteKey == WebsiteEditorSiteKeys.Protect &&
+            scope.AgentTrackingProfileId is Guid agentId && agentId != Guid.Empty)
+            return MarketingOwnerScope.Agent(agentId);
+
+        return null;
+    }
+
+    private static InquiryDescriptor InquiryDescriptorFor(PublicWebsiteRuntimeScope scope)
+    {
+        if (scope.IsCommerceApp)
+            return new("parfait_inquiry", "parfait", "New Parfait website inquiry");
+        if (scope.SiteKey == WebsiteEditorSiteKeys.Protect)
+            return new("protect_inquiry", "protect", "New LEGEND Legacy Protection inquiry");
+        return new("legend_inquiry", "legend", "New LEGEND® website inquiry");
+    }
+
+    private sealed record InquiryDescriptor(string ProductType, string OfferKey, string Subject);
+
+    private bool CanUseSubmittedMarketingIdentifiers(PublicRequest request)
+    {
+        if (!UnifiedEventContextBuilder.CanUseMarketingIdentifiers(Request))
+            return false;
+
+        var consent = request.MeasurementConsent?.Trim();
+        return !string.Equals(consent, "denied", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(consent, "unknown", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? Optional(string? value, int max)

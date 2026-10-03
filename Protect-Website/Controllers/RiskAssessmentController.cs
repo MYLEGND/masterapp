@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Mvc;
 using Protect_Website.Models;
 using Protect_Website.Services;
 using ProtectWebsite.Services;
-using ProtectWebsite.Services.Communication;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using System.Text;
 using System.Net;
@@ -20,22 +19,22 @@ namespace Protect_Website.Controllers
     [Route("RiskAssessment")]
     public class RiskAssessmentController : Controller
     {
-        private readonly string recipientEmail;
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
         private readonly MasterAppDbContext _db;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly IWebsiteLifeLeadCaptureService _capture;
         private readonly ILogger<RiskAssessmentController> _logger;
 
-        public RiskAssessmentController(IConfiguration configuration, IProtectEmailSender emailSender,
-            MasterAppDbContext db, AgentTrackingResolver resolver, IWebsiteLifeLeadCaptureService capture,
+        public RiskAssessmentController(IConfiguration configuration, IWebsiteInquiryEmailSender emailSender,
+            MasterAppDbContext db, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients, IWebsiteLifeLeadCaptureService capture,
             ILogger<RiskAssessmentController> logger)
         {
-            recipientEmail = configuration["Contact:RecipientEmail"]!;
             _emailSender = emailSender;
             _db = db;
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _capture = capture;
             _logger = logger;
         }
@@ -65,7 +64,7 @@ namespace Protect_Website.Controllers
                 var ownership = await WebsiteLeadOwnerAuthority.ResolveAsync(
                     HttpContext,
                     _resolver,
-                    recipientEmail,
+                    _intakeRecipients,
                     requestedSlug,
                     ct);
                 if (!string.IsNullOrWhiteSpace(requestedSlug) && ownership.ExplicitSlugInvalid)
@@ -85,9 +84,12 @@ namespace Protect_Website.Controllers
                     SessionId = Request.Form["SessionId"].FirstOrDefault(), VisitorId = Request.Form["VisitorId"].FirstOrDefault(),
                     UtmSource = Request.Form["UtmSource"].FirstOrDefault(), UtmMedium = Request.Form["UtmMedium"].FirstOrDefault(),
                     UtmCampaign = Request.Form["UtmCampaign"].FirstOrDefault(),
+                    Oppref = OpenAiClickReference.Normalize(model.Oppref ?? Request.Form["Oppref"].FirstOrDefault()),
                     Host = Request.Host.ToString(), Environment = EnvironmentLabelResolver.Resolve(),
                     IsInternal = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request.Host.Host),
-                    CreatedUtc = DateTime.UtcNow, Status = "New", MetadataJson = JsonSerializer.Serialize(model)
+                    CreatedUtc = DateTime.UtcNow, Status = "New",
+                    MetadataJson = OpenAiAttributionMetadata.WithBrowserReference(
+                        JsonSerializer.Serialize(model), UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request))
                 };
                 WebsiteLifeLeadCaptureResult captured = null!;
                 if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, Request.Form["SubmissionId"].FirstOrDefault(), ct, async _ =>
@@ -104,7 +106,8 @@ namespace Protect_Website.Controllers
                 lead.Status = captured.Captured ? "New" : "InternalTestLead";
                 var persistedEvent = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
                 {
-                    EventName = "lead_persisted",
+                    EventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                    EventName = "website_lead_submitted",
                     EventCategory = "lead",
                     EventUtc = lead.CreatedUtc,
                     PageKey = "risk_assessment",
@@ -112,23 +115,25 @@ namespace Protect_Website.Controllers
                     QuoteType = "risk_assessment",
                     SessionId = lead.SessionId,
                     VisitorId = lead.VisitorId,
+                    Oppref = lead.Oppref,
+                    Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request),
                     AgentTrackingProfileId = lead.AgentTrackingProfileId,
                     AgentSlug = lead.AgentSlug,
                     Environment = lead.Environment,
                     Host = lead.Host,
                     IsInternal = lead.IsInternal,
                     IsBrowserSignal = false,
-                    IsServerAuthority = false,
+                    IsServerAuthority = true,
                     MetaServerAuthorityEligible = true,
                     Metadata = new { LeadId = lead.LeadId, CrmCaptured = captured.Captured }
                 });
                 persistedEvent.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
-                    eventName: "lead_persisted",
+                    eventName: "website_lead_submitted",
                     leadId: lead.LeadId,
                     sessionId: lead.SessionId,
-                    payload: new { LeadId = lead.LeadId, CrmCaptured = captured.Captured },
+                    payload: new { LeadId = lead.LeadId, canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request), CrmCaptured = captured.Captured },
                     isBrowserSignal: false,
-                    isServerAuthority: false,
+                    isServerAuthority: true,
                     metaServerAuthorityEligible: true,
                     metaSingleTruthDispatchEligible: false,
                     metaPipelineOrigin: "risk_assessment");

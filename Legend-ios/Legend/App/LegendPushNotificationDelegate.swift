@@ -35,6 +35,25 @@ enum LegendAPNSRegistrationState: String, Equatable, Sendable {
     }
 }
 
+extension Notification.Name {
+    static let legendOpenNotifications = Notification.Name("legend.open-notifications")
+}
+
+enum LegendPushNotificationNavigation {
+    private static let pendingKey = "legend.push.pending-notifications"
+
+    static func requestNotifications() {
+        UserDefaults.standard.set(true, forKey: pendingKey)
+        NotificationCenter.default.post(name: .legendOpenNotifications, object: nil)
+    }
+
+    static func consumePendingNotifications() -> Bool {
+        guard UserDefaults.standard.bool(forKey: pendingKey) else { return false }
+        UserDefaults.standard.removeObject(forKey: pendingKey)
+        return true
+    }
+}
+
 /// Captures only the opaque APNs device token. The authenticated notification
 /// store registers it against the current server actor after sign-in; no token
 /// is ever associated with an anonymous or stale account session.
@@ -89,6 +108,22 @@ final class LegendPushNotificationDelegate: NSObject, UIApplicationDelegate, UNU
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .list, .sound, .badge])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        defer { completionHandler() }
+        let payload = response.notification.request.content.userInfo
+        let conversationID = (payload["conversationId"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Conversation pushes keep their existing message navigation authority.
+        // Every other server notification opens the one native Notifications center.
+        if conversationID?.isEmpty != false {
+            LegendPushNotificationNavigation.requestNotifications()
+        }
     }
 
     private static func signedEnvironment() -> LegendAPNSEnvironment? {

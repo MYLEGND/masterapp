@@ -136,7 +136,7 @@ main() {
 
   run_stage "ingest tests" "$TEST_TIMEOUT_SECONDS" \
     dotnet test "$TEST_PROJECT" "${TEST_ARGS[@]}" \
-    --filter 'FullyQualifiedName~AnalyticsIngestControllerTests' || return $?
+    --filter 'FullyQualifiedName~WebsiteTrackingIngestTests' || return $?
 
   run_stage "quote funnel tests" "$TEST_TIMEOUT_SECONDS" \
     dotnet test "$TEST_PROJECT" "${TEST_ARGS[@]}" \

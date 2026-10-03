@@ -28,7 +28,6 @@ using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using ProtectWebsite.Services.Communication;
 using Shared.Analytics;
 using Shared.Crm;
 using Xunit;
@@ -46,7 +45,7 @@ public sealed class BusinessWorkspaceTests
         var second = new WorkstationLeadProfile { LeadId = "bulk-second", CommerceBusinessId = business.Id, CrmStage = "New" };
         db.AddRange(business, first, second, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id });
         await db.SaveChangesAsync();
-        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
         var input = new BusinessCrmBulkRequest { ClientUserIds = [first.LeadId, second.LeadId], PipelineStage = "Qualified", CrmPriority = "High" };
         foreach (var id in input.ClientUserIds)
         {
@@ -77,7 +76,7 @@ public sealed class BusinessWorkspaceTests
         db.AddRange(business, row, foreign, new CommerceBusinessStorefrontSettings
             { CommerceBusinessId = business.Id, WorkspacePreferencesJson = preferences.Write() });
         await db.SaveChangesAsync();
-        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
         var initial = System.Text.Json.JsonSerializer.SerializeToElement(await service.QuickViewAsync(business.Id, row.LeadId, "Lead", default));
         var input = new BusinessCrmQuickViewRequest { ClientUserId = row.LeadId,
             Revision = initial.GetProperty("revision").GetString()!, PipelineStage = "Scheduled", CrmStatus = "Lead",
@@ -109,7 +108,7 @@ public sealed class BusinessWorkspaceTests
         var other = new WorkstationLeadProfile { LeadId = "other", CommerceBusinessId = Guid.NewGuid(), CrmStage = "New" };
         db.AddRange(business, first, second, other, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id });
         await db.SaveChangesAsync();
-        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
         var request = new BusinessCrmReorderRequest { Bucket = "Qualified", Ids = [second.LeadId, first.LeadId] };
         foreach (var id in request.Ids)
         {
@@ -140,7 +139,7 @@ public sealed class BusinessWorkspaceTests
             LeadId = "contact-" + index, CommerceBusinessId = business.Id, AgentUserId = "", CrmStatus = "Lead", CrmOrder = index
         });
         await db.SaveChangesAsync();
-        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
         var board = await service.CrmAsync(business, "Lead", null, 1, null, default);
         Assert.Equal(41, board.Total);
         Assert.Equal(41, board.CanonicalContacts.Count);
@@ -162,7 +161,7 @@ public sealed class BusinessWorkspaceTests
             new CommerceBusinessStorefrontSettings { CommerceBusinessId = selected.Id },
             new CommerceBusinessStorefrontSettings { CommerceBusinessId = other.Id });
         await db.SaveChangesAsync();
-        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
         Assert.Empty(await service.NavigationForBusinessAsync(null, actor, "agent@example.org", default));
         Assert.Empty(await service.NavigationForBusinessAsync(Guid.Empty, actor, "agent@example.org", default));
         Assert.Equal(selected.Id, Assert.Single(await service.NavigationForBusinessAsync(selected.Id, actor, "agent@example.org", default)).BusinessId);
@@ -182,7 +181,7 @@ public sealed class BusinessWorkspaceTests
         var member = new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id };
         db.AddRange(business, profile, member, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id });
         await db.SaveChangesAsync();
-        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
         var own = await service.NavigationAsync(profile.Id, profile.ClientUserId, profile.Email, default);
         Assert.True(Assert.Single(own).CanWebsite);
         Assert.Empty(await service.NavigationAsync(profile.Id, "unrelated-actor", "stranger@example.org", default));
@@ -229,7 +228,7 @@ public sealed class BusinessWorkspaceTests
             new WorkstationLeadProfile { LeadId = "client", CommerceBusinessId = business.Id, AgentUserId = "", CrmStatus = "Client" },
             new WorkstationLeadProfile { LeadId = "foreign", CommerceBusinessId = other.Id, AgentUserId = "", CrmStatus = "Client" });
         await db.SaveChangesAsync();
-        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
         var controller = new PageController(service, business);
         var clients = Assert.IsType<Microsoft.AspNetCore.Mvc.ViewResult>(await controller.Clients(business.Id, null));
         Assert.Equal("~/Views/Clients/Index.cshtml", clients.ViewName);
@@ -550,7 +549,7 @@ public sealed class BusinessWorkspaceTests
         analytics.Setup(x => x.GetSummaryAsync(range,
             It.Is<ScopeContext>(scope => scope.ScopeType == ScopeType.Business && scope.CommerceBusinessId == businessId && scope.AgentTrackingProfileId == null),
             TrafficType.All)).ReturnsAsync(summary);
-        var service = new BusinessWorkspaceService(db, analytics.Object, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics.Object);
         Assert.Same(summary, await service.AnalyticsDataAsync(businessId, "summary", range, TrafficType.All));
         Assert.Null(await service.AnalyticsDataAsync(businessId, "unregistered-agent-action", range, TrafficType.All));
         await Assert.ThrowsAsync<ArgumentException>(() => service.AnalyticsDataAsync(Guid.Empty, "summary", range, TrafficType.All));
@@ -566,7 +565,7 @@ public sealed class BusinessWorkspaceTests
         db.AddRange(a, b);
         db.AddRange(new CommerceBusinessStorefrontSettings { CommerceBusinessId = a.Id }, new CommerceBusinessStorefrontSettings { CommerceBusinessId = b.Id });
         await db.SaveChangesAsync();
-        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
         var settings = await service.CustomizeAsync(a, default);
         await service.CustomizeAsync(a.Id, new() { Revision = settings.SettingsRevision, LeadLabel = "Requests", ClientLabel = "Customers", Stages = "Received\nScheduled\nCompleted", Metrics = ["leads", "sessions"] }, default);
         var lead = new WebsiteLead { LeadId = Guid.NewGuid(), CommerceBusinessId = a.Id, FirstName = "Visitor", Email = "visitor@example.org" };
@@ -585,7 +584,7 @@ public sealed class BusinessWorkspaceTests
     }
 
     [Fact]
-    public async Task RecipientRevocationNeverFallsBackToFounderOrAnotherBusiness()
+    public async Task BusinessInquiryRecipientAlwaysUsesCurrentBusinessProfileEmail()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var business = new CommerceBusiness { Key = "business", OwnerEmail = "owner@example.org" };
@@ -594,9 +593,11 @@ public sealed class BusinessWorkspaceTests
         var settings = new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id, WorkspacePreferencesJson = new BusinessWorkspacePreferences { NotificationMemberId = member.Id }.Write() };
         db.AddRange(business, profile, member, settings); await db.SaveChangesAsync();
         var resolver = new WebsiteIntakeRecipientResolver(db, new ConfigurationBuilder().AddInMemoryCollection(new[] { new System.Collections.Generic.KeyValuePair<string,string?>("Contact:RecipientEmail", "founder@example.org") }).Build());
-        Assert.Equal(profile.Email, await resolver.ResolveAsync(MarketingOwnerScope.Business(business.Id)));
-        member.Status = "Inactive"; await db.SaveChangesAsync();
-        Assert.Null(await resolver.ResolveAsync(MarketingOwnerScope.Business(business.Id)));
+        Assert.Equal(business.OwnerEmail, await resolver.ResolveAsync(MarketingOwnerScope.Business(business.Id)));
+        member.Status = "Inactive";
+        business.OwnerEmail = "new-primary@example.org";
+        await db.SaveChangesAsync();
+        Assert.Equal("new-primary@example.org", await resolver.ResolveAsync(MarketingOwnerScope.Business(business.Id)));
         Assert.Null(await resolver.ResolveAsync(MarketingOwnerScope.Business(Guid.NewGuid())));
     }
 
@@ -609,7 +610,7 @@ public sealed class BusinessWorkspaceTests
         var row = new CommerceWebsiteInquiry { CommerceBusinessId = business.Id, Email = "visitor@example.org", Message = "<script>unsafe</script>" };
         db.AddRange(business, profile, row, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id }, new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id });
         await db.SaveChangesAsync();
-        var sender = new Mock<IProtectEmailSender>();
+        var sender = new Mock<IWebsiteInquiryEmailSender>();
         sender.Setup(x => x.TrySendAsync(business.OwnerEmail, It.IsAny<string>(), It.Is<string>(s => s.Contains("&lt;script&gt;") && !s.Contains("<script>")), null, row.Email, false, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var service = new BusinessInquiryNotificationService(db, new(db, new ConfigurationBuilder().Build()), sender.Object);
         await service.DeliverPendingAsync(default);
@@ -618,4 +619,32 @@ public sealed class BusinessWorkspaceTests
         Assert.NotNull(row.NotificationSentUtc);
         sender.Verify(x => x.TrySendAsync(business.OwnerEmail, It.IsAny<string>(), It.IsAny<string>(), null, row.Email, false, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task AgentInquiryRecipientUsesCurrentPrimaryAccountEmail()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var tracking = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "agent-primary",
+            AgentUpn = "legacy@example.org",
+            Slug = "agent-primary",
+            Status = "active"
+        };
+        db.AgentTrackingProfiles.Add(tracking);
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = tracking.AgentUserId,
+            AgentUpn = "Primary@Example.org",
+            NormalizedEmail = "primary@example.org",
+            IsActive = true,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var resolver = new WebsiteIntakeRecipientResolver(db, new ConfigurationBuilder().Build());
+        Assert.Equal("primary@example.org", await resolver.ResolveAsync(MarketingOwnerScope.Agent(tracking.Id)));
+    }
+
 }

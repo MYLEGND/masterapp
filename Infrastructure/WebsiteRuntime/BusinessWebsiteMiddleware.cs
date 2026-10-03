@@ -39,16 +39,15 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         // APIs retain their own authenticated/business-scoped authorities. Resolve the host first.
         if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) ||
             path == "/api/website-inquiries/public" ||
-            path == "/api/tracking/ingest" ||
-            path == "/api/analytics/ingest" ||
-            path == "/analytics/meta-signal" ||
-            path == "/analytics/business-page")
+            path == "/api/tracking/ingest")
         {
             await next(context);
             return;
         }
         if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method)) { context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed; return; }
-        context.Response.Headers.CacheControl = "public,max-age=0,must-revalidate";
+        context.Response.Headers.CacheControl = "no-store,no-cache,must-revalidate,max-age=0";
+        context.Response.Headers.Pragma = "no-cache";
+        context.Response.Headers.Expires = "0";
         context.Response.Headers.XContentTypeOptions = "nosniff";
         context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
         var publicApiBase = (configuration["WebsiteContentApiBaseUrl"] ?? "https://masterapp-protect.azurewebsites.net").TrimEnd('/');
@@ -56,9 +55,9 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
             ? apiUri.GetLeftPart(UriPartial.Authority)
             : "https://masterapp-protect.azurewebsites.net";
         context.Response.Headers["Content-Security-Policy"] =
-            $"default-src 'self'; script-src 'self' https://connect.facebook.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' {publicApiOrigin} https://www.facebook.com https://connect.facebook.net; frame-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+            $"default-src 'self'; script-src 'self' https://connect.facebook.net https://bzrcdn.openai.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: https://bzr.openai.com; media-src 'self' https:; connect-src 'self' {publicApiOrigin} https://www.facebook.com https://connect.facebook.net https://bzr.openai.com https://bzrcdn.openai.com; frame-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
         if (path is "/site.css" or "/legend-public-web.js" or "/legend-public-inquiry.js" or "/legend-public-cms.js" or
-            "/legend-public-tracking.js" or "/legend-public-meta-signal-intelligence.js")
+            "/legend-public-tracking.js" or "/legend-public-meta-signal-intelligence.js" or "/legend-public-openai-measurement.js")
         {
             var asset = Path.Combine(environment.ContentRootPath, "WebsiteCompiler", "dist", path.TrimStart('/'));
             if (!File.Exists(asset)) { await Unavailable(context, bridged, "asset"); return; }
@@ -71,6 +70,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         var origin = "https://" + host;
         if (path == "/robots.txt")
         {
+            context.Response.Headers["X-Robots-Tag"] = "index, follow";
             context.Response.ContentType = "text/plain; charset=utf-8";
             await context.Response.WriteAsync("User-agent: *\nAllow: /\nSitemap: " + origin + "/sitemap.xml\n", context.RequestAborted);
             return;
@@ -78,7 +78,12 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         if (path == "/sitemap.xml")
         {
             XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
-            var sitemap = new XDocument(new XElement(ns + "urlset", pages.EnumerateObject().Select(page => new XElement(ns + "url", new XElement(ns + "loc", origin + page.Name)))));
+            var lastModifiedUtc = version.CreatedUtc.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+            var sitemap = new XDocument(new XElement(ns + "urlset", pages.EnumerateObject().Select(page =>
+                new XElement(ns + "url",
+                    new XElement(ns + "loc", origin + page.Name),
+                    new XElement(ns + "lastmod", lastModifiedUtc)))));
+            context.Response.Headers["X-Robots-Tag"] = "index, follow";
             context.Response.ContentType = "application/xml; charset=utf-8";
             await context.Response.WriteAsync(sitemap.ToString(), context.RequestAborted);
             return;
@@ -88,6 +93,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         if (!pages.TryGetProperty(normalized, out var page)) { await Unavailable(context, bridged, "page"); return; }
         var html = page.GetProperty("html").GetString() ?? "";
         html = html.Replace("__LEGEND_CANONICAL_URL__", WebUtility.HtmlEncode(origin + normalized), StringComparison.Ordinal);
+        context.Response.Headers["X-Robots-Tag"] = "index, follow";
         context.Response.ContentType = "text/html; charset=utf-8";
         if (!HttpMethods.IsHead(context.Request.Method)) await context.Response.WriteAsync(html, context.RequestAborted);
     }

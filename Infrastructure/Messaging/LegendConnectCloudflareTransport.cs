@@ -60,6 +60,13 @@ internal sealed partial class LegendConnectModelInferenceTransport
             if (toolSchemas.ValueKind != JsonValueKind.Array || toolSchemas.GetArrayLength() > 64)
                 return new(false, null, "cloudflare_tool_schema_invalid");
             var hasTools = toolSchemas.GetArrayLength() != 0;
+            var cognition = task.Cognition;
+            if (cognition is not null &&
+                (cognition.Version != LegendModelCognitionPolicy.CurrentVersion ||
+                 cognition.Mode != "adaptive" ||
+                 cognition.MaxSpecialists is < 1 or > 3))
+                return new(false, null, "cloudflare_cognition_policy_invalid");
+            var adaptiveCognition = cognition is not null;
             if ((task.AllowTools || task.RequireToolCall || hasTools) &&
                 (!_configuration.GetValue<bool>(prefix + "Cloudflare:ToolCallbackEnabled") || !task.AllowTools || !hasTools))
                 return new(false, null, "cloudflare_tool_callback_not_qualified");
@@ -92,9 +99,29 @@ internal sealed partial class LegendConnectModelInferenceTransport
                 version = "legend-cloudflare.v1", requestId = scope.RequestId, issuedAt = now, expiresAt = expires,
                 scope = new { accountId, tenantId = scope.TenantId, userId = scope.UserId, sessionId = scope.SessionId,
                     conversationId = scope.ConversationId, roles = scope.Roles, authorizationVersion = scope.AuthorizationVersion },
-                task = new { kind = "general", messages, tools = toolSchemas, requiredCapabilities = hasTools ? new[] { "text", "tools" } : new[] { "text" } },
-                limits = new { deadlineUnixMs = expires, maxOutputTokens = tokens, maxIterations = hasTools ? 3 : 1,
-                    maxModelCalls = hasTools ? 3 : 1, maxToolCalls = hasTools ? 4 : 0, maxCostMicrousd = cost },
+                task = new
+                {
+                    kind = "general",
+                    messages,
+                    tools = toolSchemas,
+                    requiredCapabilities = hasTools ? new[] { "text", "tools" } : new[] { "text" },
+                    cognition = cognition is null ? null : new
+                    {
+                        version = cognition.Version,
+                        mode = cognition.Mode,
+                        maxSpecialists = cognition.MaxSpecialists,
+                        independentCritique = cognition.IndependentCritique
+                    }
+                },
+                limits = new
+                {
+                    deadlineUnixMs = expires,
+                    maxOutputTokens = tokens,
+                    maxIterations = adaptiveCognition ? (hasTools ? 4 : 2) : (hasTools ? 3 : 1),
+                    maxModelCalls = adaptiveCognition ? (hasTools ? 7 : 5) : (hasTools ? 3 : 1),
+                    maxToolCalls = hasTools ? 4 : 0,
+                    maxCostMicrousd = cost
+                },
                 stream = false
             });
             if (payload.Length > 131072) return new(false, null, "cloudflare_context_too_large");
@@ -151,6 +178,7 @@ internal sealed partial class LegendConnectModelInferenceTransport
                     usage = usage.Clone(),
                     toolResults = root.TryGetProperty("toolResults", out var toolResults) ? toolResults.Clone() : (JsonElement?)null,
                     modelSettings = root.TryGetProperty("modelSettings", out var settings) ? settings.Clone() : (JsonElement?)null,
+                    cognition = root.TryGetProperty("cognition", out var cognitionReceipt) ? cognitionReceipt.Clone() : (JsonElement?)null,
                     executionMode = root.TryGetProperty("executionMode", out var executionMode) ? executionMode.GetString() : null
                 }));
         }
