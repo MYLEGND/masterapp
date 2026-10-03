@@ -343,8 +343,15 @@ jobs:
               with urllib.request.urlopen('https://'+host+row['path'],timeout=30) as response:
                   actual=response.read().decode().strip() if row['project']=='static' else json.load(response)['sourceRevision']
               print(host,actual)
-              assert actual == row['revision'], 'Live revision changed; rebuild the release baseline'
-              if os.environ['CLIENT_ONLY'] == 'true':
+              candidate=os.environ['APPLICATION_RELEASE_SHA']
+              if actual not in {row['revision'], candidate}:
+                  raise AssertionError(
+                      f"Live revision drifted outside preserved baseline/candidate: {host} actual={actual} "
+                      f"baseline={row['revision']} candidate={candidate}"
+                  )
+              if actual == candidate:
+                  print(f"{host}: exact candidate already live; preserve and continue reconciliation.")
+              if os.environ['CLIENT_ONLY'] == 'true' and actual != candidate:
                   subprocess.run(['git','diff','--quiet',row['revision'],'HEAD','--','Infrastructure/Migrations'],check=True)
           PYBASE
       - name: Verify ClientApp browser entry routes
