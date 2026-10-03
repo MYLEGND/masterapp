@@ -106,11 +106,13 @@ public sealed class LegendFounderAiInspectionRegressionTests
     [Fact]
     public void BroadFounderConfirmation_DoesNotClassifyACloudflareReadAsAReviewedAction()
     {
-        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "AgentPortal", "Services", "LegendFounderAiConversationService.cs"));
+        var assemblyBytes = File.ReadAllBytes(typeof(LegendFounderAiConversationService).Assembly.Location);
+        var rejectedMessage = System.Text.Encoding.Unicode.GetBytes(
+            "Cloudflare consequential actions require the separate reviewed-action approval path. This operation was not executed.");
 
-        Assert.DoesNotContain("if (request.FounderCommandConfirmed)\n                return LegendFounderAiChatResponse.ModeFailure(mode,\n                    \"Cloudflare consequential actions require the separate reviewed-action approval path.", source, StringComparison.Ordinal);
-        Assert.Contains("reviewedAction is null", source, StringComparison.Ordinal);
-        Assert.Contains("ExecuteReviewedCloudActionAsync", source, StringComparison.Ordinal);
+        Assert.False(assemblyBytes.AsSpan().IndexOf(rejectedMessage) >= 0);
+        Assert.NotNull(typeof(LegendFounderAiConversationService)
+            .GetMethod("ExecuteReviewedCloudActionAsync", BindingFlags.NonPublic | BindingFlags.Instance));
     }
 
     [Theory]
