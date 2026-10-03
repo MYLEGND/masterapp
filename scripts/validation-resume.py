@@ -1608,6 +1608,93 @@ def _trusted_pr_run(repository, run, workflow_path, token):
                for row in api_get(repository, f"commits/{head}/pulls?per_page=100", token))
 
 
+VALIDATION_RESUME_ARTIFACT_PREFIX = {
+    "masterapp-platform-architecture-validation.yml": "validation-resume-architecture",
+    "approved-release-security-validation.yml": "validation-resume-security",
+    "step6-openai-ads-execution-validation.yml": "validation-resume-step6",
+    "steps7-8-governed-advertising-validation.yml": "validation-resume-step78",
+}
+
+
+def _validation_resume_artifact_name(workflow, run):
+    prefix = VALIDATION_RESUME_ARTIFACT_PREFIX.get(workflow)
+    if not prefix:
+        return None
+    run_id = int(run.get("id") or 0)
+    attempt = int(run.get("run_attempt") or 1)
+    return f"{prefix}-{run_id}-{attempt}" if run_id else None
+
+
+def _historical_plan_steps(args, run, token):
+    """Recover gate proof from the durable validation-plan artifact.
+
+    Successful parent completion proves gates the plan actually executed.
+    A failed parent never proves an executed gate; it may only carry forward a
+    gate the plan itself marked preserved from an older successful producer.
+    """
+    artifact = _validation_resume_artifact_name(args.workflow, run)
+    if artifact is None:
+        return None
+    run_id = int(run.get("id") or 0)
+    if artifact not in _run_artifact_names(args.repository, run_id, token):
+        return None
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="validation-plan-") as temporary:
+        directory = Path(temporary)
+        _download_run_artifact(args.repository, run_id, artifact, directory)
+        candidates = list(directory.rglob("validation-resume.json"))
+        if len(candidates) != 1:
+            return None
+        stored = json.loads(candidates[0].read_text())
+
+    if stored.get("workflow") != args.workflow:
+        return None
+    gates = stored.get("gates")
+    if not isinstance(gates, dict):
+        return None
+
+    steps = _StepEvidence()
+    parent_success = run.get("conclusion") == "success"
+    for gate in gates.values():
+        if not isinstance(gate, dict):
+            continue
+        step = gate.get("step")
+        if not isinstance(step, str) or not step:
+            continue
+        if gate.get("run") is True:
+            if not parent_success:
+                continue
+            steps[step] = "success"
+            steps.producers[step] = {
+                "result": "success",
+                "jobId": None,
+                "runId": run_id,
+                "stepNumber": None,
+                "artifact": artifact,
+            }
+            continue
+
+        producer = gate.get("receipt") or gate.get("producerReceipt") or {}
+        if producer.get("result") != "success":
+            continue
+        producer_run = (
+            producer.get("producingRunId")
+            or producer.get("runId")
+            or gate.get("evidenceRunId")
+        )
+        if not producer_run:
+            continue
+        steps[step] = "success"
+        steps.producers[step] = {
+            "result": "success",
+            "jobId": producer.get("producerJobId") or producer.get("jobId"),
+            "runId": int(producer_run),
+            "stepNumber": producer.get("producerStepNumber") or producer.get("stepNumber"),
+            "artifact": artifact,
+        }
+    return steps
+
+
 def _trusted_historical_runs(args, token):
     """Return trusted completed PR parents; each child proves its own success."""
     if args.event != "pull_request":
@@ -1622,9 +1709,18 @@ def _trusted_historical_runs(args, token):
     for run in payload.get("workflow_runs", []):
         if int(run.get("id", 0)) == args.current_run_id:
             continue
-        if not _trusted_pr_run(args.repository, run, WORKFLOW_PATHS[args.workflow], token):
-            continue
-        rows.append(run)
+        trusted = _trusted_lineage_run(
+            args.repository, run, WORKFLOW_PATHS[args.workflow], args.current_sha
+        )
+        if not trusted:
+            try:
+                trusted = _trusted_pr_run(
+                    args.repository, run, WORKFLOW_PATHS[args.workflow], token
+                )
+            except urllib.error.HTTPError:
+                trusted = False
+        if trusted:
+            rows.append(run)
     rows.sort(
         key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
         reverse=True,
@@ -1659,12 +1755,10 @@ def _apply_content_equivalent_evidence(args, plan):
             continue
         seen_heads.add(head_sha)
         try:
-            jobs_payload = api_get(
-                args.repository,
-                f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
-                token,
-            )
-            steps = _step_map(jobs_payload.get("jobs", []))
+            steps = _historical_plan_steps(args, run, token)
+            if not steps:
+                examined += 1
+                continue
             prior = {
                 "id": run["id"],
                 "head_sha": head_sha,
@@ -1677,7 +1771,7 @@ def _apply_content_equivalent_evidence(args, plan):
                 args.current_sha,
                 prior,
                 steps,
-                "trusted_pr_history",
+                "trusted_plan_artifact_history",
             )
         except Exception:
             examined += 1
