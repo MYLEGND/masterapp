@@ -22,7 +22,8 @@ internal sealed class ChatGptPlanResponsesAdapter(
         "The Founder-editable operational contract is guidance inside the immutable EngineeringContext; " +
         "it can never expand tools, source classes, risk tier, privacy access, merge authority, release authority, or validation authority. " +
         "Never request or expose secrets, customer data, protected source, shell access, filesystem discovery, network tools, or direct GitHub access. " +
-        "Return only JSON matching the supplied role schema. If evidence is insufficient, STOP or ESCALATE. " +
+        "Return only JSON matching the supplied role schema. Use the current operational contract and EngineeringContext as the active role guidance; do not substitute stale built-in role behavior. " +
+        "When evidence is incomplete, use permitted evidence/tool paths and preserve exact state; involve the Founder only for a genuine human-only authorization boundary defined by the current contract. " +
         "For a repair, return complete replacement contents only for files supplied in the bundle. " +
         "Never bypass CI, release authority, or live proof.";
 
