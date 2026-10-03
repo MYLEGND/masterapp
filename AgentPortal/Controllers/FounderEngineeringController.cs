@@ -23,6 +23,34 @@ public sealed class FounderEngineeringController(
         return View(await commandCenter.GetAsync(cancellationToken));
     }
 
+    [HttpPost("work-items/{workItemId:guid}/decision")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DecideWorkItem(
+        Guid workItemId,
+        [FromForm] string decision,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        var result = await commandCenter.DecideWorkItemAsync(
+            User,
+            workItemId,
+            decision,
+            cancellationToken);
+
+        if (result.Succeeded)
+        {
+            TempData["FounderEngineeringSuccess"] = decision == "approve_release"
+                ? "Release approved. LEGEND will continue through the existing governed release gates."
+                : "Release denied. This exact release request is closed and will not deploy.";
+        }
+        else
+        {
+            TempData["FounderEngineeringError"] = EngineeringDecisionError(result.ErrorCode);
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
     [HttpPost("contract")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveContract(
@@ -230,6 +258,16 @@ public sealed class FounderEngineeringController(
         string.IsNullOrWhiteSpace(value)
             ? "unknown"
             : value.Length <= 10 ? value : value[..10];
+
+    private static string EngineeringDecisionError(string? code) => code switch
+    {
+        "work_item_not_found" => "That engineering work item no longer exists.",
+        "founder_release_approval_state_invalid" =>
+            "This release is no longer waiting for approval. Refresh to see its current state.",
+        "founder_release_denial_state_invalid" =>
+            "This release is no longer waiting for a deny decision. Refresh to see its current state.",
+        _ => "The engineering decision was rejected by the canonical release authority."
+    };
 
     private static string ErrorMessage(string code) => code switch
     {

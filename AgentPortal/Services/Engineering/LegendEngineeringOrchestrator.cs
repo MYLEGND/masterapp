@@ -20,6 +20,7 @@ internal interface ILegendEngineeringOrchestrator
     Task<object> InspectRepositoryAsync(Guid engineeringContextId, string path, string revision, CancellationToken cancellationToken);
     Task<object> PrepareRepairAsync(Guid engineeringContextId, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
     Task<object> ApproveReleaseAsync(ClaimsPrincipal founder, Guid workItemId, CancellationToken cancellationToken);
+    Task<object> DeclineReleaseAsync(ClaimsPrincipal founder, Guid workItemId, CancellationToken cancellationToken);
     Task RecordBrowserFunctionalProofAsync(
         Guid workItemId,
         string application,
@@ -416,6 +417,39 @@ internal sealed class LegendEngineeringOrchestrator(
             candidateSha = approved.CandidateSha,
             pullRequestNumber = approved.PullRequestNumber,
             automaticReleaseStillRequiresCanonicalCohortPolicy = true
+        };
+    }
+
+    public async Task<object> DeclineReleaseAsync(
+        ClaimsPrincipal founder,
+        Guid workItemId,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(founder);
+        var item = await store.GetWorkItemAsync(workItemId, cancellationToken);
+        if (item is null) return new { ok = false, error = "work_item_not_found" };
+        if (item.RiskClass != EngineeringRiskClass.TierB ||
+            item.State != "FOUNDER_RELEASE_APPROVAL_REQUIRED")
+            return new { ok = false, error = "founder_release_denial_state_invalid" };
+
+        var declined = item with
+        {
+            State = "CLOSED",
+            FounderReleaseApprovedUtc = null,
+            LeaseOwner = null,
+            LeaseIdentity = null,
+            LeaseExpiresUtc = null,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        await store.UpdateWorkItemAsync(declined, cancellationToken);
+        return new
+        {
+            ok = true,
+            workItemId,
+            decision = "tier_b_release_declined",
+            candidateSha = declined.CandidateSha,
+            pullRequestNumber = declined.PullRequestNumber,
+            closed = true
         };
     }
 

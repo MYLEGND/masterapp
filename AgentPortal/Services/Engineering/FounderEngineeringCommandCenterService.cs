@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using AgentPortal.Models;
 
@@ -6,6 +7,12 @@ namespace AgentPortal.Services.Engineering;
 public interface IFounderEngineeringCommandCenterService
 {
     Task<FounderEngineeringCommandCenterViewModel> GetAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<FounderEngineeringActionItemViewModel>> GetActionItemsAsync(CancellationToken cancellationToken);
+    Task<FounderEngineeringDecisionResult> DecideWorkItemAsync(
+        ClaimsPrincipal founder,
+        Guid workItemId,
+        string decision,
+        CancellationToken cancellationToken);
     Task<FounderEngineeringContractMutationResult> SaveAsync(
         FounderEngineeringContractInput input,
         CancellationToken cancellationToken);
@@ -35,7 +42,8 @@ internal sealed class FounderEngineeringCommandCenterService(
     ILegendEngineeringContractAuthority contractAuthority,
     ILegendEngineeringOrchestrator orchestrator,
     ILegendChatGptPlanCredentialAuthority credentials,
-    ILegendEngineeringAgentAdapter adapter)
+    ILegendEngineeringAgentAdapter adapter,
+    LegendEngineeringStateStore store)
     : IFounderEngineeringCommandCenterService
 {
     public async Task<FounderEngineeringCommandCenterViewModel> GetAsync(
@@ -51,6 +59,7 @@ internal sealed class FounderEngineeringCommandCenterService(
             await adapter.GetStatusAsync(cancellationToken),
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var catalog = await adapter.GetModelCatalogAsync(cancellationToken);
+        var actionItems = await GetActionItemsAsync(cancellationToken);
 
         return new FounderEngineeringCommandCenterViewModel
         {
@@ -112,6 +121,7 @@ internal sealed class FounderEngineeringCommandCenterService(
                 status,
                 "LIVE_FUNCTIONAL_PROOF_REQUIRED"),
             SecurityReviewItems = ReadInt(status, "securityReviewItems"),
+            ActionItems = actionItems,
             History = history.Select(row => new FounderEngineeringContractHistoryItem(
                 row.Revision,
                 row.Version,
@@ -120,6 +130,60 @@ internal sealed class FounderEngineeringCommandCenterService(
                 row.UpdatedUtc,
                 row.UpdatedBy)).ToArray()
         };
+    }
+
+    public async Task<IReadOnlyList<FounderEngineeringActionItemViewModel>> GetActionItemsAsync(
+        CancellationToken cancellationToken)
+    {
+        return (await store.GetOpenWorkItemsAsync(100, cancellationToken))
+            .Where(LegendEngineeringFounderPresentation.ShouldSurface)
+            .Select(LegendEngineeringFounderPresentation.Present)
+            .OrderByDescending(item => item.RequiresFounderAction)
+            .ThenByDescending(item => item.UpdatedUtc)
+            .Take(25)
+            .Select(item => new FounderEngineeringActionItemViewModel(
+                item.WorkItemId,
+                item.AttentionKind,
+                item.Title,
+                item.Summary,
+                item.ActionStep,
+                item.RequiresFounderAction,
+                item.PrimaryAction,
+                item.PrimaryActionLabel,
+                item.SecondaryAction,
+                item.SecondaryActionLabel,
+                item.TechnicalSummary,
+                item.UpdatedUtc))
+            .ToArray();
+    }
+
+    public async Task<FounderEngineeringDecisionResult> DecideWorkItemAsync(
+        ClaimsPrincipal founder,
+        Guid workItemId,
+        string decision,
+        CancellationToken cancellationToken)
+    {
+        object result;
+        if (string.Equals(decision, "approve_release", StringComparison.Ordinal))
+            result = await orchestrator.ApproveReleaseAsync(founder, workItemId, cancellationToken);
+        else if (string.Equals(decision, "deny_release", StringComparison.Ordinal))
+            result = await orchestrator.DeclineReleaseAsync(founder, workItemId, cancellationToken);
+        else
+            return new FounderEngineeringDecisionResult(false, "founder_engineering_decision_invalid");
+
+        var payload = JsonSerializer.SerializeToElement(
+            result,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var ok = payload.TryGetProperty("ok", out var okValue) &&
+                 okValue.ValueKind == JsonValueKind.True;
+        var error = !ok &&
+                    payload.TryGetProperty("error", out var errorValue) &&
+                    errorValue.ValueKind == JsonValueKind.String
+            ? errorValue.GetString()
+            : null;
+        return new FounderEngineeringDecisionResult(
+            ok,
+            error ?? (ok ? null : "founder_engineering_decision_rejected"));
     }
 
     public async Task<FounderEngineeringContractMutationResult> SaveAsync(
