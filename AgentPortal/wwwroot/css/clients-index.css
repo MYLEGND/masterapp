@@ -6408,18 +6408,10 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     padding:14px 18px 12px;
 }
 
-.drawer.crm-qv-shell.lead-qv-shell .drawer-head-row-secondary{
-    align-items:end;
-}
-
 .drawer.crm-qv-shell.lead-qv-shell .drawer-head-context{
     display:flex;
     justify-content:flex-end;
     min-width:0;
-}
-
-.drawer.crm-qv-shell.lead-qv-shell .drawer-head-row-secondary .drawer-statbar{
-    align-items:center;
 }
 
 .drawer.crm-qv-shell.lead-qv-shell #dPortalWrap{
