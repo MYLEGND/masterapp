@@ -649,7 +649,7 @@ jobs:
              patch.object(m, "_trusted_lineage_run", return_value=True), \
              patch.object(m, "package_inputs_compatible", return_value=True), \
              patch.object(m, "_run_artifact_names", return_value={artifact}), \
-             patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+             patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="")):
             result = m.compatible_package_producer("MYLEGND/masterapp", revision, "token")
         self.assertTrue(result["reusable"])
         self.assertEqual(77, result["runId"])
