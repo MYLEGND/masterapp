@@ -751,6 +751,28 @@ class ResourceAdmission(unittest.TestCase):
         self.api.pages_map['actions/runs/98/attempts/1/jobs'] = skipped
         self.assertTrue(m._never_admitted(self.api, self.run))
 
+    def test_own_retry_after_cancelled_admission_does_not_block_itself(self):
+        self.run.update(run_attempt=2)
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'admission', 'conclusion': 'cancelled'},
+            {'name': 'discover-live', 'conclusion': 'skipped'},
+            {'name': 'release', 'conclusion': 'skipped'}]
+        with patch.dict(os.environ, {'GITHUB_RUN_ATTEMPT': '2'}), \
+             patch.object(m, '_admission_records', return_value=[]):
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=98))
+
+    def test_own_retry_with_missing_or_entered_prior_jobs_remains_blocked(self):
+        self.run.update(run_attempt=2)
+        for jobs in ([], [
+            {'name': 'admission', 'conclusion': 'success'},
+            {'name': 'discover-live', 'conclusion': 'success'},
+            {'name': 'release', 'conclusion': 'failure'}]):
+            with self.subTest(jobs=jobs):
+                self.api.pages_map['actions/runs/98/attempts/1/jobs'] = jobs
+                with patch.dict(os.environ, {'GITHUB_RUN_ATTEMPT': '2'}), \
+                     patch.object(m, '_admission_records', return_value=[]):
+                    self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=98))
+
     def test_own_prior_attempt_cannot_silently_change_resource_scope(self):
         self.run.update(run_attempt=2)
         self.prior.update(applicationRevision=self.candidate['applicationRevision'],
