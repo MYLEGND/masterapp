@@ -23,6 +23,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 
 
 TRUSTED_PR_BASE = "legend/approved-changes"
@@ -1335,6 +1336,13 @@ def git_changed(prior: str, current: str) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
+class EvidenceLookupUnavailable(RuntimeError):
+    """Evidence transport failed; do not infer absence or invalidate proof."""
+    def __init__(self, message="Evidence read unavailable", *, status=None):
+        super().__init__(message)
+        self.code = status
+
+
 def api_get(repository: str, path: str, token: str):
     url = f"https://api.github.com/repos/{repository}/{path.lstrip('/')}"
     request = urllib.request.Request(
@@ -1346,8 +1354,15 @@ def api_get(repository: str, path: str, token: str):
             "User-Agent": "legend-validation-resume/1.0",
         },
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return json.load(response)
+        except (TimeoutError, urllib.error.URLError) as exc:
+            retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
+            if not retryable or attempt == 2:
+                raise EvidenceLookupUnavailable("GitHub evidence read unavailable", status=getattr(exc, "code", None)) from exc
+            time.sleep(2 ** attempt)
 
 
 class _StepEvidence(dict):
@@ -1478,6 +1493,8 @@ def _plan_against_prior(workflow, current_sha, prior, prior_steps, evidence_sour
                 _gate_execution_contract(prior_text, prior_config, key) !=
                 _gate_execution_contract(current_text, WORKFLOWS[workflow], key)
             }
+        except EvidenceLookupUnavailable:
+            raise
         except Exception:
             workflow_structure_changed = True
         changed = [path for path in changed if path != workflow_path]
@@ -1504,6 +1521,8 @@ def _plan_against_prior(workflow, current_sha, prior, prior_steps, evidence_sour
                     gate.update({"run": True, "reason": "dependency_identity_changed"})
                 else:
                     gate["dependencyIdentity"] = current_ids[key]["contentIdentity"]
+        except EvidenceLookupUnavailable:
+            raise
         except Exception:
             for gate in plan["gates"].values():
                 if not gate.get("run"):
@@ -1755,6 +1774,8 @@ def _apply_content_equivalent_evidence(args, plan):
     examined = 0
     try:
         runs = _trusted_historical_runs(args, token)
+    except EvidenceLookupUnavailable:
+        raise
     except Exception as exc:
         plan["historicalEvidenceError"] = type(exc).__name__
         return plan
@@ -1780,6 +1801,8 @@ def _apply_content_equivalent_evidence(args, plan):
                 steps,
                 "trusted_plan_artifact_history",
             )
+        except EvidenceLookupUnavailable:
+            raise
         except Exception:
             examined += 1
             continue
@@ -2085,7 +2108,7 @@ def cmd_record_evidence(args):
         raise ValueError("Evidence recording requires authenticated producer observations")
     try:
         jobs = api_get(args.repository, f"actions/runs/{args.run_id}/jobs?filter=latest&per_page=100", token).get("jobs", [])
-    except urllib.error.HTTPError as exc:
+    except (urllib.error.HTTPError, EvidenceLookupUnavailable) as exc:
         if exc.code != 403:
             raise
         # GitHub may deny self-observation while a PR run is active even with
@@ -2129,6 +2152,18 @@ def cmd_record_evidence(args):
     Path(args.output).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
 
 
+def _stop_unresolved_planning(args, exc):
+    """An unavailable planner is not permission to repeat expensive work."""
+    record = {"schemaVersion": 2, "mode": "blocked",
+              "reason": "planner_unavailable_resume_planning_only",
+              "plannerError": type(exc).__name__}
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(record, sort_keys=True))
+    raise SystemExit(1)
+
+
 def cmd_plan(args):
     if args.workflow not in WORKFLOWS:
         raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
@@ -2150,23 +2185,7 @@ def cmd_plan(args):
         plan["schemaVersion"] = 2
         plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
     except Exception as exc:
-        # Fail closed: planner uncertainty is never permission to skip validation.
-        config = WORKFLOWS[args.workflow]
-        plan = {
-            "schemaVersion": 1,
-            "workflow": args.workflow,
-            "currentSha": args.current_sha,
-            "priorRunId": None,
-            "priorHeadSha": None,
-            "evidenceSource": "planner_fallback",
-            "changedPaths": [],
-            "mode": "full",
-            "plannerError": type(exc).__name__,
-            "gates": {
-                key: {"step": gate["step"], "run": True, "reason": "planner_error_fail_closed"}
-                for key, gate in config["gates"].items()
-            },
-        }
+        _stop_unresolved_planning(args, exc)
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -3618,16 +3637,19 @@ def _download_run_artifact(repository: str, run_id: int, name: str, directory: P
     env = os.environ.copy()
     if env.get("GITHUB_TOKEN") and not env.get("GH_TOKEN"):
         env["GH_TOKEN"] = env["GITHUB_TOKEN"]
-    subprocess.run(
-        [
-            "gh", "run", "download", str(run_id),
-            "--repo", repository,
-            "--name", name,
-            "--dir", str(directory),
-        ],
-        check=True,
-        env=env,
-    )
+    try:
+        subprocess.run(
+            [
+                "gh", "run", "download", str(run_id),
+                "--repo", repository,
+                "--name", name,
+                "--dir", str(directory),
+            ],
+            check=True,
+            env=env,
+        )
+    except (subprocess.CalledProcessError, OSError) as exc:
+        raise EvidenceLookupUnavailable("Artifact evidence read unavailable") from exc
 
 
 def read_step5_results(path):
@@ -3715,6 +3737,8 @@ def _step5_prior_candidate_evidence(
             if not _step5_artifact_complete(repository, run_id, artifact, "candidate", token):
                 continue
             return {"runId": run_id, "headSha": head_sha, "artifact": artifact}
+        except EvidenceLookupUnavailable:
+            raise
         except Exception:
             continue
     return None
@@ -3972,16 +3996,8 @@ def cmd_step5_decision(args):
             args.head_branch,
         )
     except Exception as exc:
-        decision = {
-            "schemaVersion": 2,
-            "mode": "full",
-            "priorRunId": None,
-            "priorHeadSha": None,
-            "repairClasses": [],
-            "repairFilter": None,
-            "reason": "planner_error_fail_closed",
-            "plannerError": type(exc).__name__,
-        }
+        _stop_unresolved_planning(args, exc)
+
     Path(args.output).write_text(json.dumps(decision, indent=2, sort_keys=True) + "\n")
     print(json.dumps(decision, indent=2, sort_keys=True))
 
@@ -4049,6 +4065,8 @@ def compute_step5_baseline_evidence(repository: str, base_sha: str):
             run = api_get(repository, f"actions/runs/{run_id}", token)
             if accept(run, exact_name, base_sha):
                 return result
+        except EvidenceLookupUnavailable:
+            raise
         except Exception:
             continue
 
@@ -4072,6 +4090,8 @@ def compute_step5_baseline_evidence(repository: str, base_sha: str):
             continue
         try:
             names = _run_artifact_names(repository, run_id, token)
+        except EvidenceLookupUnavailable:
+            raise
         except Exception:
             continue
         for artifact_name in sorted(names):
@@ -4084,6 +4104,8 @@ def compute_step5_baseline_evidence(repository: str, base_sha: str):
             try:
                 if accept(run, artifact_name, evidence_base_sha):
                     return result
+            except EvidenceLookupUnavailable:
+                raise
             except Exception:
                 continue
 
@@ -4095,15 +4117,8 @@ def cmd_step5_baseline(args):
     try:
         result = compute_step5_baseline_evidence(args.repository, args.base_sha)
     except Exception as exc:
-        result = {
-            "schemaVersion": 2,
-            "approvedBaseSha": args.base_sha,
-            "reusable": False,
-            "evidenceRunId": None,
-            "evidenceArtifact": None,
-            "reason": "planner_error_fail_closed",
-            "plannerError": type(exc).__name__,
-        }
+        _stop_unresolved_planning(args, exc)
+
     Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, indent=2, sort_keys=True))
 

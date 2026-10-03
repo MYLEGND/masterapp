@@ -13,6 +13,61 @@ spec.loader.exec_module(m)
 
 
 class ValidationResumePlannerTests(unittest.TestCase):
+    def test_planner_errors_stop_before_expensive_children(self):
+        for command, computation in ((m.cmd_plan, "prior_evidence"),
+                                     (m.cmd_step5_decision, "compute_step5_decision"),
+                                     (m.cmd_step5_baseline, "compute_step5_baseline_evidence")):
+            with self.subTest(command=command.__name__), tempfile.TemporaryDirectory() as directory:
+                args = SimpleNamespace(output=str(Path(directory) / "plan.json"),
+                    workflow="step5-isolated-conversion-mapping-validation.yml",
+                    repository="owner/repo", current_sha="a" * 40, base_sha="b" * 40,
+                    current_run_id=4, head_branch="repair")
+                with patch.object(m, computation, side_effect=TimeoutError()), self.assertRaises(SystemExit) as stopped:
+                    command(args)
+                self.assertEqual(1, stopped.exception.code)
+                record = m.json.loads(Path(args.output).read_text())
+                self.assertEqual("blocked", record["mode"])
+                self.assertNotIn("gates", record)
+
+    def test_evidence_get_retries_transient_timeout_only(self):
+        import io
+        with patch.object(m.urllib.request, "urlopen", side_effect=[TimeoutError(), io.BytesIO(b'{"ok":true}')]) as request, patch.object(m.time, "sleep"):
+            self.assertEqual({"ok": True}, m.api_get("owner/repo", "actions/runs", "fixture"))
+            self.assertEqual(2, request.call_count)
+        with patch.object(m.urllib.request, "urlopen", side_effect=TimeoutError()) as request, patch.object(m.time, "sleep"):
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.api_get("owner/repo", "actions/runs", "fixture")
+            self.assertEqual(3, request.call_count)
+        denied = m.urllib.error.HTTPError("https://api.github.com", 403, "denied", {}, None)
+        with patch.object(m.urllib.request, "urlopen", side_effect=denied) as request:
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.api_get("owner/repo", "actions/runs", "fixture")
+            self.assertEqual(1, request.call_count)
+
+    def test_candidate_artifact_transport_failure_is_not_missing_evidence(self):
+        run = {"id": 7, "head_sha": "a" * 40}
+        with patch.object(m, "api_get", return_value={"workflow_runs": [run]}), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "step5_dependency_change", return_value=[]), \
+             patch.object(m, "_step5_jobs_unchanged", return_value=True), \
+             patch.object(m, "_run_artifact_names", side_effect=m.EvidenceLookupUnavailable()):
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m._step5_prior_candidate_evidence("owner/repo", 9, "repair", "fixture", "b" * 40)
+
+    def test_historical_lookup_transport_failure_cannot_return_full_plan(self):
+        args = SimpleNamespace(event="pull_request")
+        with patch.dict(m.os.environ, {"GITHUB_TOKEN": "fixture"}), \
+             patch.object(m, "_trusted_historical_runs", side_effect=m.EvidenceLookupUnavailable()):
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m._apply_content_equivalent_evidence(args, {"gates": {"one": {"run": True}}})
+
+    def test_baseline_artifact_transport_failure_is_not_missing_evidence(self):
+        with patch.dict(m.os.environ, {"GITHUB_TOKEN": "fixture"}), \
+             patch.object(m, "_artifact_rows", return_value=[{"workflow_run": {"id": 7}}]), \
+             patch.object(m, "api_get", side_effect=m.EvidenceLookupUnavailable()):
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.compute_step5_baseline_evidence("owner/repo", "a" * 40)
+
     def successful_steps(self, workflow):
         return {
             gate["step"]: "success"
@@ -81,7 +136,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
                 repository="MYLEGND/masterapp",
                 run_id=123,
             )
-            with patch.object(m, "api_get", side_effect=error), \
+            with patch.object(m.urllib.request, "urlopen", side_effect=error), \
                  patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
                 m.cmd_record_evidence(args)
             recorded = __import__("json").loads(output_path.read_text())

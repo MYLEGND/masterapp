@@ -29,6 +29,8 @@ The GitHub `delete_branch_on_merge` setting remains false. Merge completion is n
 
 ## Failure and repair
 
+Evidence transport failures retry bounded read-only requests. If the planner still cannot inspect required evidence, it stops at planning with a blocked diagnostic; it never turns a timeout into authorization for a full validation rerun. Resume the failed planning job after access recovers. Positively missing or incompatible evidence still requires its affected checks.
+
 A failed validation or deployment preserves all unaffected successful evidence. Repair the canonical failed source on the retained branch, then resume from the invalidated gate. Full reruns occur only when evidence cannot safely be reused.
 
 If a merged change needs deployment correction, the approved branch remains the source authority and a new explicit release request or corrected approved descendant is used. No branch promotion, merge-back, parity reconciliation, or second release branch exists.
