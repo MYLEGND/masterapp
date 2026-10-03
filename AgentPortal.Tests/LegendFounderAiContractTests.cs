@@ -235,11 +235,10 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("responseAuthority === 'LocalFoundation'", script, StringComparison.Ordinal);
         Assert.Contains("'LEGEND-controlled model'", script, StringComparison.Ordinal);
         Assert.Contains("metadata?.foundationHosting === 'CloudflareHosted'", script, StringComparison.Ordinal);
-        Assert.Contains("'LEGEND · Cloudflare Workers AI'", script, StringComparison.Ordinal);
-        Assert.Contains("'Provider: Cloudflare Workers AI'", script, StringComparison.Ordinal);
-        Assert.Contains("'Billing: Cloudflare Workers AI'", script, StringComparison.Ordinal);
-        Assert.Contains("'OpenAI API used: No'", script, StringComparison.Ordinal);
-        Assert.Contains("'OpenAI Teacher escalation: No'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'Provider: Cloudflare Workers AI'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'Billing: Cloudflare Workers AI'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'OpenAI API used: No'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'OpenAI Teacher escalation: No'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
     }
 
