@@ -2587,15 +2587,21 @@ def migration_probe_evidence(repository, identity):
     token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
     if not token:
         raise ValueError('Probe evidence authentication unavailable')
-    for artifact in _artifact_rows(repository, identity['artifact'], token):
-        run_id = int((artifact.get('workflow_run') or {}).get('id') or 0)
-        if not run_id:
-            continue
-        run = api_get(repository, f'actions/runs/{run_id}', token)
-        if not _trusted_pr_run(repository, run, '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW, token):
+    workflow_path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    workflow = urllib.parse.quote(PACKAGE_VALIDATION_WORKFLOW, safe='')
+    payload = api_get(repository,
+        f'actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100', token)
+    runs = sorted(payload.get('workflow_runs', []),
+        key=lambda row: (row.get('updated_at') or row.get('created_at', ''), int(row.get('id', 0))),
+        reverse=True)
+    for run in runs:
+        run_id = int(run.get('id') or 0)
+        if not run_id or not _trusted_pr_run(repository, run, workflow_path, token):
             continue
         producer = migration_probe_identity(run['head_sha'], run['head_sha'])
         if producer != identity:
+            continue
+        if identity['artifact'] not in _run_artifact_names(repository, run_id, token):
             continue
         jobs = api_get(repository, f'actions/runs/{run_id}/jobs?filter=latest&per_page=100', token).get('jobs', [])
         children = [job for job in jobs if job.get('name') == 'validated-migration-probe']
@@ -2709,31 +2715,38 @@ def _successful_package_child(repository, run_id, token):
 
 
 def compatible_package_producer(repository, revision, token):
-    """Locate authenticated immutable bytes from a content-equivalent producer."""
+    """Locate authenticated immutable bytes from a content-equivalent producer.
+
+    Enumerate trusted completed producer runs first, then inspect each run's own
+    artifacts. Repository-wide artifact listing is not required for provenance
+    and can be unavailable to an active PR token.
+    """
     workflow_path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
-    for page in range(1, 11):
-        artifacts = api_get(repository, f'actions/artifacts?per_page=100&page={page}', token).get('artifacts', [])
-        for artifact in artifacts:
-            name = artifact.get('name', '')
-            if artifact.get('expired') or not re.fullmatch(r'founder-diagnostics-packages-[0-9a-f]{64}', name):
-                continue
-            run_id = int((artifact.get('workflow_run') or {}).get('id') or 0)
-            if not run_id:
-                continue
-            run = api_get(repository, f'actions/runs/{run_id}', token)
-            if not _trusted_pr_run(repository, run, workflow_path, token):
-                continue
-            producer = run['head_sha']
-            if subprocess.run(['git', 'merge-base', '--is-ancestor', producer, revision], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
-                continue
-            if not package_inputs_compatible(producer, revision) or not _successful_package_child(repository, run_id, token):
-                continue
-            return {'schemaVersion': 1, 'revision': producer, 'requestedRevision': revision,
-                    'packageIdentity': name.removeprefix('founder-diagnostics-packages-'),
-                    'artifact': name, 'runId': run_id, 'reusable': True,
-                    'reason': 'dependency_equivalent_immutable_package_producer'}
-        if len(artifacts) < 100:
-            break
+    workflow = urllib.parse.quote(PACKAGE_VALIDATION_WORKFLOW, safe='')
+    payload = api_get(repository,
+        f'actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100', token)
+    runs = sorted(payload.get('workflow_runs', []),
+        key=lambda row: (row.get('updated_at') or row.get('created_at', ''), int(row.get('id', 0))),
+        reverse=True)
+    for run in runs:
+        run_id = int(run.get('id') or 0)
+        if not run_id or not _trusted_pr_run(repository, run, workflow_path, token):
+            continue
+        producer = run['head_sha']
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', producer, revision],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+            continue
+        if not package_inputs_compatible(producer, revision) or not _successful_package_child(repository, run_id, token):
+            continue
+        names = sorted(name for name in _run_artifact_names(repository, run_id, token)
+                       if re.fullmatch(r'founder-diagnostics-packages-[0-9a-f]{64}', name))
+        if not names:
+            continue
+        name = names[-1]
+        return {'schemaVersion': 1, 'revision': producer, 'requestedRevision': revision,
+                'packageIdentity': name.removeprefix('founder-diagnostics-packages-'),
+                'artifact': name, 'runId': run_id, 'reusable': True,
+                'reason': 'dependency_equivalent_immutable_package_producer'}
     return None
 
 def compute_validated_package_evidence(repository: str, revision: str, package_identity: str, *, allow_equivalent=True):
