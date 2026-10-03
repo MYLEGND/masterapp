@@ -62,8 +62,6 @@
     --legend-ai-text: var(--legend-app-on-dark);
     --legend-ai-muted: var(--legend-app-on-dark-muted);
     --legend-ai-native: var(--legend-design-contactConnected, #4ae28b);
-    --legend-ai-provider: var(--legend-design-royal, #234284);
-    --legend-ai-provider-surface: var(--legend-design-brandBlueSurface, #e0ebff);
     --legend-ai-compact-control: var(--legend-desktop-control-height);
     --legend-ai-control: var(--legend-desktop-control-height);
     --legend-ai-line: color-mix(in srgb, var(--legend-ai-navy-900) 12%, transparent);
