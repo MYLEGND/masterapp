@@ -413,6 +413,24 @@ test('feature CSS cannot re-own canonical modal geometry or light form materials
   assert.match(booking,/\.qv-booking-field select\s*\{[\s\S]*background:var\(--legend-app-surface-elevated\)/);
 });
 
+test('authenticated feature surfaces cannot reintroduce legacy white or separate AI palette drift',()=>{
+  const files=[
+    'AgentPortal/wwwroot/css/clients-index.css',
+    'AgentPortal/wwwroot/css/scripts-rebuttals.css',
+    'AgentPortal/wwwroot/css/website-analytics.css',
+    'AgentPortal/wwwroot/css/legend-forms.css',
+    'AgentPortal/wwwroot/css/founder-engineering-command-center.css'
+  ];
+  for(const file of files){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.doesNotMatch(source,/background(?:-color)?\\s*:\\s*(?:#fff(?:fff|efa|ef8)?|white)\\b/i,file);
+  }
+  const rebut=readFileSync(new URL('../../AgentPortal/wwwroot/css/scripts-rebuttals.css',import.meta.url),'utf8');
+  assert.doesNotMatch(rebut,/Workstation premium elevation pass|Stronger global contrast override/);
+  const ai=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
+  assert.doesNotMatch(ai,/--legend-ai-provider(?:-surface)?:/);
+});
+
 test('authenticated nav renders profile photos as image elements rather than object fallbacks',()=>{
   for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']){
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
