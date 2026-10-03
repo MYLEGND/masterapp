@@ -24,6 +24,10 @@ public sealed record FounderEngineeringActionItemViewModel(
     string TechnicalSummary,
     DateTime UpdatedUtc);
 
+public sealed record FounderEngineeringDecisionResult(
+    bool Succeeded,
+    string? ErrorCode);
+
 public sealed class FounderEngineeringCommandCenterViewModel
 {
     public string Revision { get; init; } = string.Empty;
