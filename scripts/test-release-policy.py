@@ -646,6 +646,8 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn("DATABASE_AUTHORITY", migration)
         self.assertIn("RELEASE_RESOURCE_GROUP", migration)
         self.assertIn("release_proven", migration)
+        self.assertIn("'SQLCONNSTR_MasterAppDb':connection", migration)
+        self.assertIn("::add-mask::'+connection", migration)
         changed_index = migration.index('changed="$(')
         no_change_index = migration.index('if [ -z "$changed" ]')
         receipt_index = migration.index("release_proven")
