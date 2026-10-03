@@ -6588,8 +6588,8 @@ if (t.id === "SavingsAccelerator") {
     <div class="el-tip-strip" id="${pid('Tips')}">
         Direct extra cash strategically across savings, debt reduction, and key priorities.
     </div>
-    <div id="${pid('IllustrationBackdrop')}" class="savings-illustration-backdrop" hidden aria-hidden="true">
-        <div id="${pid('IllustrationModal')}" class="savings-illustration-modal" role="dialog" aria-modal="true" aria-labelledby="${pid('IllustrationTitle')}" aria-describedby="${pid('IllustrationSubtitle')}">
+    <div id="${pid('IllustrationBackdrop')}" class="savings-illustration-backdrop" data-legend-modal-surface hidden aria-hidden="true">
+        <div id="${pid('IllustrationModal')}" class="savings-illustration-modal" data-legend-modal-panel role="dialog" aria-modal="true" aria-labelledby="${pid('IllustrationTitle')}" aria-describedby="${pid('IllustrationSubtitle')}">
             <div class="savings-illustration-modal-head">
                 <div class="savings-illustration-modal-copy">
                     <div id="${pid('IllustrationCounter')}" class="savings-illustration-step-counter" aria-live="polite">Step 1 of 1</div>
@@ -6599,7 +6599,7 @@ if (t.id === "SavingsAccelerator") {
                 <div id="${pid('IllustrationSummary')}" class="savings-illustration-summary-bar" aria-live="polite"></div>
                 <button id="${pid('IllustrationClose')}" type="button" class="savings-illustration-close" aria-label="Close cashflow illustration">&times;</button>
             </div>
-            <div id="${pid('IllustrationContent')}" class="savings-illustration-content"></div>
+            <div id="${pid('IllustrationContent')}" class="savings-illustration-content" data-legend-modal-scroll></div>
             <div class="savings-illustration-footer">
                 <button id="${pid('IllustrationBack')}" type="button" class="savings-illustration-nav-btn" aria-label="Go to previous illustration step">Back</button>
                 <div id="${pid('IllustrationProgress')}" class="savings-illustration-progress" aria-hidden="true"></div>
