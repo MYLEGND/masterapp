@@ -1,4 +1,3 @@
-using System.Text.Json;
 using AgentPortal.Security;
 using AgentPortal.Services.Engineering;
 using Infrastructure.Mobile;
@@ -21,16 +20,13 @@ namespace AgentPortal.Mobile;
 [TypeFilter(typeof(MobileApiExceptionFilter))]
 public sealed class MobileFounderEngineeringController : MobileApiControllerBase
 {
-    private readonly LegendEngineeringStateStore _store;
-    private readonly ILegendEngineeringOrchestrator _orchestrator;
+    private readonly IFounderEngineeringCommandCenterService _commandCenter;
 
     public MobileFounderEngineeringController(
         IMobileActorResolver actorResolver,
-        LegendEngineeringStateStore store,
-        ILegendEngineeringOrchestrator orchestrator) : base(actorResolver)
+        IFounderEngineeringCommandCenterService commandCenter) : base(actorResolver)
     {
-        _store = store;
-        _orchestrator = orchestrator;
+        _commandCenter = commandCenter;
     }
 
     [HttpGet("actions")]
@@ -40,14 +36,7 @@ public sealed class MobileFounderEngineeringController : MobileApiControllerBase
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null || resolved.Actor is null) return resolved.Error!;
 
-        var items = (await _store.GetOpenWorkItemsAsync(100, cancellationToken))
-            .Where(LegendEngineeringFounderPresentation.ShouldSurface)
-            .Select(LegendEngineeringFounderPresentation.Present)
-            .OrderByDescending(item => item.RequiresFounderAction)
-            .ThenByDescending(item => item.UpdatedUtc)
-            .Take(25)
-            .ToArray();
-        return Ok(items);
+        return Ok(await _commandCenter.GetActionItemsAsync(cancellationToken));
     }
 
     [HttpPost("actions/{workItemId:guid}/decision")]
@@ -60,31 +49,27 @@ public sealed class MobileFounderEngineeringController : MobileApiControllerBase
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null || resolved.Actor is null) return resolved.Error!;
 
-        object result;
-        if (string.Equals(request?.Decision, "approve_release", StringComparison.Ordinal))
-            result = await _orchestrator.ApproveReleaseAsync(User, workItemId, cancellationToken);
-        else if (string.Equals(request?.Decision, "deny_release", StringComparison.Ordinal))
-            result = await _orchestrator.DeclineReleaseAsync(User, workItemId, cancellationToken);
-        else
-            return Error(
-                StatusCodes.Status400BadRequest,
-                "founder_engineering_decision_invalid",
-                "That engineering action is not available for this work item.");
+        var decision = request?.Decision ?? string.Empty;
+        var result = await _commandCenter.DecideWorkItemAsync(
+            User,
+            workItemId,
+            decision,
+            cancellationToken);
+        if (result.Succeeded)
+            return Ok(new { ok = true });
 
-        var payload = JsonSerializer.SerializeToElement(result, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        var ok = payload.TryGetProperty("ok", out var okValue) && okValue.ValueKind == JsonValueKind.True;
-        if (ok) return Ok(result);
-
-        var code = payload.TryGetProperty("error", out var errorValue) &&
-                   errorValue.ValueKind == JsonValueKind.String
-            ? errorValue.GetString() ?? "founder_engineering_decision_rejected"
-            : "founder_engineering_decision_rejected";
+        var code = result.ErrorCode ?? "founder_engineering_decision_rejected";
         return Error(
-            StatusCodes.Status409Conflict,
+            code == "founder_engineering_decision_invalid"
+                ? StatusCodes.Status400BadRequest
+                : StatusCodes.Status409Conflict,
             code,
             code switch
             {
-                "work_item_not_found" => "That engineering work item no longer exists.",
+                "founder_engineering_decision_invalid" =>
+                    "That engineering action is not available for this work item.",
+                "work_item_not_found" =>
+                    "That engineering work item no longer exists.",
                 "founder_release_approval_state_invalid" =>
                     "This release is no longer waiting for approval. Refresh to see its current state.",
                 "founder_release_denial_state_invalid" =>
