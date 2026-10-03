@@ -47,7 +47,7 @@ public sealed class FounderEngineeringCommandCenterTests : IAsyncDisposable
         Assert.Equal(LegendEngineeringContractAuthority.AutoModel, current.HeadGptModel);
         Assert.Equal(LegendEngineeringContractAuthority.AutoModel, current.CodexModel);
         Assert.Equal(LegendEngineeringContractAuthority.AutoModel, current.ReviewerModel);
-        Assert.Contains("Preserve successful evidence", current.SharedDirective, StringComparison.Ordinal);
+        Assert.Contains("Preserve valid green parent and child evidence", current.SharedDirective, StringComparison.Ordinal);
         Assert.Contains("engineering supervisor", current.HeadGptDirective, StringComparison.Ordinal);
         Assert.Contains("implementation engineer", current.CodexDirective, StringComparison.Ordinal);
         Assert.Empty(await _authority.GetHistoryAsync(10, default));
