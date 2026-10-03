@@ -386,7 +386,8 @@ test('conversational surfaces use the same canonical roadster palette and do not
   const aiJs=readFileSync(new URL('../../AgentPortal/wwwroot/js/legend-founder-ai.js',import.meta.url),'utf8');
   assert.match(shell,/--legend-app-panel:var\(--legend-app-surface-elevated\)/);
   assert.match(shared,/\.messaging-send-form textarea[\s\S]*background: var\(--legend-app-surface-elevated\);/);
-  assert.match(aiCss,/--legend-ai-response: var\(--legend-design-aiResponseRoyal, var\(--legend-app-surface-elevated\)\);/);
+  assert.doesNotMatch(aiCss,/--legend-ai-response/);
+  assert.match(aiCss,/background: linear-gradient\(145deg,var\(--legend-app-surface-elevated\),var\(--legend-app-surface\)\)/);
   assert.match(aiCss,/\.legend-founder-ai-main[\s\S]*background: var\(--legend-app-surface\);/);
   assert.match(aiView,/Ask Legend<sup>®<\/sup> Ai/);
   assert.doesNotMatch(aiView,/OpenAI Teacher mode is a direct Founder-to-OpenAI channel/);
