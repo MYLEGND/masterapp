@@ -30,11 +30,7 @@
     return (value || "").toString().trim();
   }
 
-  function phoneDisplay(value) {
-    return norm(value) || "No phone on file";
-  }
-
-  function loadRecent() {
+    function loadRecent() {
     try {
       const raw = window.localStorage.getItem(recentKey);
       const parsed = raw ? JSON.parse(raw) : [];
@@ -46,7 +42,7 @@
 
   function saveRecent(items) {
     try {
-      window.localStorage.setItem(recentKey, JSON.stringify(items.slice(0, 6)));
+      window.localStorage.setItem(recentKey, JSON.stringify(items.slice(0, 12)));
     } catch {
       // ignore storage failures
     }
@@ -126,47 +122,36 @@
     badge.textContent = norm(item.recordType) || "Client";
     titleRow.appendChild(badge);
 
-    const email = document.createElement("div");
-    email.className = "home-clients-card-meta";
-    email.textContent = norm(item.email) || "No email on file";
-
-    const phone = document.createElement("div");
-    phone.className = "home-clients-card-meta";
-    phone.textContent = phoneDisplay(item.phone);
-
-    const cta = document.createElement("div");
-    cta.className = "home-clients-card-cta";
-    cta.textContent = context === "result" ? "Open or edit from home" : "Client actions";
-
-    const actions = document.createElement("div");
+        const actions = document.createElement("div");
     actions.className = "home-clients-card-actions";
 
-    if (item.agentWorkspaceAccessEnabled === true) {
-      const openButton = document.createElement("button");
-      openButton.type = "button";
-      openButton.className = "home-clients-card-action is-primary";
-      openButton.textContent = "Open Client Profile";
-      openButton.addEventListener("click", () => openProfile(item));
-      actions.appendChild(openButton);
-    } else {
-      const selfManaged = document.createElement("span");
-      selfManaged.className = "home-clients-card-meta";
-      selfManaged.textContent = "Self-managed account";
-      actions.appendChild(selfManaged);
-    }
+    const access = document.createElement("span");
+    access.className = "home-clients-card-access";
+    access.textContent = item.agentWorkspaceAccessEnabled === true ? "Shared Access" : "Self Managed";
 
     const editButton = document.createElement("button");
     editButton.type = "button";
     editButton.className = "home-clients-card-action";
-    editButton.textContent = "Edit Record";
+    editButton.textContent = "Edit Client";
     editButton.addEventListener("click", () => openEdit(item));
 
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "home-clients-card-action is-primary";
+    openButton.textContent = "Open Client";
+    if (item.agentWorkspaceAccessEnabled === true) {
+      openButton.addEventListener("click", () => openProfile(item));
+    } else {
+      openButton.disabled = true;
+      openButton.setAttribute("aria-disabled", "true");
+      openButton.title = "This client manages their own account.";
+    }
+
     actions.appendChild(editButton);
+    actions.appendChild(openButton);
 
     card.appendChild(titleRow);
-    card.appendChild(email);
-    card.appendChild(phone);
-    card.appendChild(cta);
+    card.appendChild(access);
     card.appendChild(actions);
     return card;
   }
@@ -200,7 +185,7 @@
     recentGrid.innerHTML = "";
 
     const recentItems = loadRecent();
-    const items = recentItems.length ? recentItems : fallbackItems.slice(0, 6);
+    const items = recentItems.length ? recentItems.slice(0, 12) : fallbackItems.slice(0, 12);
 
     if (recentHeading) {
       recentHeading.textContent = recentItems.length ? "Recently Viewed Clients" : "Quick Access Clients";
@@ -208,7 +193,7 @@
 
     if (recentSub) {
       recentSub.textContent = recentItems.length
-        ? "The last client profiles you opened are pinned here for fast repeat access."
+        ? "Your 12 most recently opened clients, kept compact for fast repeat access."
         : "";
     }
 
@@ -254,7 +239,7 @@
       }
       renderRecent(defaultItems);
       if (hasQuery) {
-        setResultsStatus(items.length ? "Select a client to open the live client profile." : "No portal-enabled clients found.", !items.length);
+        setResultsStatus(items.length ? "Select a client to edit or open." : "No portal-enabled clients found.", !items.length);
       } else {
         setResultsStatus("");
       }
